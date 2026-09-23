@@ -285,7 +285,10 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
             await db.SaveChangesAsync();
             var report = new VerificationReport([
                 new VerificationCheck("Decode health", CheckOutcome.Failed,
-                    "Authorization: Bearer secret-token")]);
+                    "Authorization: Bearer secret-token"),
+                .. Enumerable.Repeat(new VerificationCheck("Output readable", CheckOutcome.Passed,
+                    "Authorization: Bearer secret-token"), 120)
+            ]);
             var job = new Job
             {
                 MediaFileId = media.Id,
@@ -339,6 +342,7 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
             var bundle = await DiagnosticJobBundleQueries.BuildAsync(db, sessionId, jobId,
                 DateTimeOffset.UtcNow, CancellationToken.None);
             var json = System.Text.Json.JsonSerializer.Serialize(bundle);
+            Assert.Equal(100, bundle.Job.CurrentReport?.Checks.Count);
             Assert.Contains("Decode health", json);
             Assert.Contains(new string('a', 64), json);
             Assert.DoesNotContain("private-title", json);

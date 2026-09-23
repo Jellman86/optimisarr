@@ -88,6 +88,12 @@ internal sealed record DiagnosticJobBundle(
 
 internal static class DiagnosticJobBundleQueries
 {
+    private const int MaximumAttempts = 200;
+    private const int MaximumLeases = 500;
+    private const int MaximumChecksPerReport = 100;
+    private const int MaximumStoredReportCharacters = 1_000_000;
+    private const int MaximumStoredAttemptCharacters = 2_000_000;
+
     private static readonly JsonSerializerOptions ReportOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -111,9 +117,10 @@ internal static class DiagnosticJobBundleQueries
         var job = await db.Jobs.AsNoTracking().Include(candidate => candidate.MediaFile)
             .FirstOrDefaultAsync(candidate => candidate.Id == jobId, cancellationToken)
             ?? throw new KeyNotFoundException("Job not found.");
-        var leases = await db.JobLeases.AsNoTracking().Include(lease => lease.Worker)
+        var allLeases = await db.JobLeases.AsNoTracking().Include(lease => lease.Worker)
             .Where(lease => lease.JobId == jobId)
             .ToListAsync(cancellationToken);
+        var leases = allLeases.OrderBy(lease => lease.AcquiredAt).TakeLast(MaximumLeases).ToList();
         var events = await db.DiagnosticEvents.AsNoTracking()
             .Where(entry => entry.SessionId == sessionId && entry.JobId == jobId)
             .OrderBy(entry => entry.Id)
@@ -124,12 +131,30 @@ internal static class DiagnosticJobBundleQueries
         {
             "Sidecar-local diagnostic logs are not collected by this bundle; server-held lease and evidence-presence records are included.",
             "Raw FFmpeg output and commands are omitted because they may contain paths or credentials.",
-            "Only retries already archived in job attempt history are listed as historical attempts; the current attempt is summarised on the job."
+            "Only retries already archived in job attempt history are listed as historical attempts; the current attempt is summarised on the job.",
+            "Each verification report includes at most 100 check names and outcomes; raw check details are omitted."
         };
+        if (allLeases.Count > MaximumLeases)
+        {
+            omissions.Add("Older worker leases were omitted to bound bundle size.");
+        }
         IReadOnlyList<JobAttemptSnapshot> attempts;
         try
         {
-            attempts = JobAttemptHistory.Read(job.AttemptHistoryJson);
+            if (job.AttemptHistoryJson?.Length > MaximumStoredAttemptCharacters)
+            {
+                attempts = [];
+                omissions.Add("Stored attempt history exceeded the bundle size limit.");
+            }
+            else
+            {
+                var storedAttempts = JobAttemptHistory.Read(job.AttemptHistoryJson);
+                attempts = storedAttempts.TakeLast(MaximumAttempts).ToList();
+                if (storedAttempts.Count > MaximumAttempts)
+                {
+                    omissions.Add("Older attempts were omitted to bound bundle size.");
+                }
+            }
         }
         catch (JsonException)
         {
@@ -208,7 +233,7 @@ internal static class DiagnosticJobBundleQueries
 
     private static DiagnosticReportSummary? SummariseReport(string? json)
     {
-        if (string.IsNullOrWhiteSpace(json))
+        if (string.IsNullOrWhiteSpace(json) || json.Length > MaximumStoredReportCharacters)
         {
             return null;
         }
@@ -218,11 +243,11 @@ internal static class DiagnosticJobBundleQueries
             var report = JsonSerializer.Deserialize<VerificationReport>(json, ReportOptions);
             return report is null ? null : new DiagnosticReportSummary(
                 report.Passed,
-                report.Checks.Select(check => new DiagnosticCheckSummary(
+                report.Checks.Take(MaximumChecksPerReport).Select(check => new DiagnosticCheckSummary(
                     DiagnosticSafeFields.CheckName(check.Name), check.Outcome.ToString())).ToList(),
                 report.Vmaf?.Scores is { } scores
-                    ? new DiagnosticVmafScores(scores.VmafMean, scores.VmafHarmonicMean,
-                        scores.VmafFifthPercentile, scores.VmafMin, scores.FrameCount)
+                    ? new DiagnosticVmafScores(Finite(scores.VmafMean), Finite(scores.VmafHarmonicMean),
+                        Finite(scores.VmafFifthPercentile), Finite(scores.VmafMin), scores.FrameCount)
                     : null,
                 DiagnosticSafeFields.Encoder(report.Context?.VideoEncoder),
                 DiagnosticSafeFields.VerificationLocation(report.Context?.VerificationLocation));
@@ -232,4 +257,7 @@ internal static class DiagnosticJobBundleQueries
             return null;
         }
     }
+
+    private static double? Finite(double? value) =>
+        value is { } number && double.IsFinite(number) ? number : null;
 }

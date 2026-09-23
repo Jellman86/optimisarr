@@ -47,6 +47,8 @@ a stopped session until retention removes it. The export omits raw FFmpeg logs,
 commands, stored credential fields and media content. Sidecar-local diagnostic logs are not
 yet collected; the bundle's manifest names that omission. If you opt in to
 full paths, review the file before sharing it publicly.
+Bundles also bound historical attempts, worker leases and verification check
+summaries; the manifest reports when older records were omitted.
 
 This is an administrative feature. Protect remote access to the UI/API with an
 authenticated reverse proxy or the admin token. A bundle may still reveal
