@@ -22,6 +22,19 @@
    </ControlTemplate></Setter.Value></Setter>
   </Style>
   <Style TargetType="TextBox"><Setter Property="Background" Value="{DynamicResource Ground}"/><Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="BorderBrush" Value="{DynamicResource Line}"/><Setter Property="Padding" Value="9"/></Style>
+  <Style TargetType="ScrollBar">
+   <Setter Property="Width" Value="9"/>
+   <Setter Property="Background" Value="{DynamicResource Ground}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+    <Grid Background="{TemplateBinding Background}">
+     <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="2,0">
+      <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0"/></Track.DecreaseRepeatButton>
+      <Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border x:Name="Grip" Background="{DynamicResource Line}" CornerRadius="3"/><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+      <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0"/></Track.IncreaseRepeatButton>
+     </Track>
+    </Grid>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="ProgressBar">
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
     <Border x:Name="PART_Track" Background="{DynamicResource Line}" CornerRadius="2" ClipToBounds="True">
@@ -110,8 +123,7 @@
      </UniformGrid>
      <Expander x:Name="ProcessingDetails" Header="Processing details" Foreground="{DynamicResource Ink}" IsExpanded="False">
       <StackPanel Margin="0,12,0,0">
-       <TextBlock Text="{Binding Detail}" Foreground="{DynamicResource Accent}" Margin="0,0,0,8"/>
-       <ItemsControl ItemsSource="{Binding Jobs}" Margin="0,0,0,8">
+       <ItemsControl ItemsSource="{Binding JobRows}" Margin="0,0,0,8">
         <ItemsControl.ItemTemplate><DataTemplate>
          <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition/></Grid.ColumnDefinitions>
           <Border Width="56" Height="36" CornerRadius="5" BorderBrush="{DynamicResource Line}" BorderThickness="1" Background="{DynamicResource Ground}" HorizontalAlignment="Left" ClipToBounds="True">
@@ -121,7 +133,7 @@
           </Border>
           <StackPanel Grid.Column="1" VerticalAlignment="Center">
            <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Title}"/>
-           <TextBlock Text="{Binding Stage}" FontSize="10" Foreground="{DynamicResource Muted}"/>
+           <TextBlock Text="{Binding Caption}" FontSize="10" Foreground="{DynamicResource Muted}"/>
           </StackPanel>
          </Grid>
         </DataTemplate></ItemsControl.ItemTemplate>
@@ -130,7 +142,7 @@
        <TextBlock Text="{Binding Last}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,12,0,0"/>
       </StackPanel>
      </Expander>
-     <Border Background="{DynamicResource Ground}" Padding="0,16"><TextBlock Text="One job at a time. Verification follows your server’s policy." Foreground="{DynamicResource Muted}" FontSize="12"/></Border>
+     <Border Background="{DynamicResource Ground}" Padding="0,16"><TextBlock Text="Previews stay on this PC. Verification follows your server’s policy." Foreground="{DynamicResource Muted}" FontSize="12"/></Border>
      <Button Content="{Binding PauseLabel}" IsEnabled="{Binding Available}" Click="Pause_Click"/>
      <TextBlock Text="{Binding Note}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,12,0,0"/>
     </StackPanel>

@@ -150,11 +150,15 @@ public sealed class MonitorTests
             new MonitorJob(8, "Second", "hevc_nvenc", RemoteStage.Encoding, 2, second)));
         Assert.Equal(first, model.Preview);
         Assert.Equal(second, model.Jobs[1].PreviewJpeg);
+        Assert.Equal("Job #7 · Encoding · 00:00:01 encoded", model.JobRows[0].Caption);
+        Assert.Equal(second, model.JobRows[1].PreviewJpeg);
         model.Update(WithJobs(new MonitorJob(8, "Second", "hevc_nvenc", RemoteStage.Encoding, 3, second)));
         Assert.Equal(second, model.Preview);
         model.Update(WithJobs(new MonitorJob(9, "Third", "hevc_nvenc", RemoteStage.Encoding, 0)));
         Assert.Null(model.Preview);
         Assert.True(model.PreviewMissing);
+        Assert.Equal("Third", model.JobRows[0].Title);
+        Assert.Null(model.JobRows[0].PreviewJpeg);
         model.Update(WithJobs(new MonitorJob(8, "Second", "hevc_nvenc", RemoteStage.Encoding, 4, second)));
         model.ClearPreviews();
         Assert.Null(model.Preview);

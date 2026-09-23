@@ -28,6 +28,10 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
     public string ConnectionDetail => Available ? Snapshot!.Detail : error ?? "Connecting to the local worker…";
     public bool Working => Available && Snapshot!.Jobs.Count > 0;
     public IReadOnlyList<MonitorJob> Jobs => Available ? Snapshot!.Jobs : [];
+    public IReadOnlyList<MonitorJobRow> JobRows => Jobs.Select(job => new MonitorJobRow(
+        job.Title,
+        $"Job #{job.JobId} · {StageName(job.Stage)}" + (job.EncodedSeconds is { } seconds ? $" · {TimeSpan.FromSeconds(Math.Max(0, seconds)):hh\\:mm\\:ss} encoded" : ""),
+        job.PreviewJpeg)).ToArray();
     public byte[]? Preview => Jobs.FirstOrDefault()?.PreviewJpeg;
     public bool PreviewMissing => Preview is null;
     public string PreviewLabel => Working ? "WAITING FOR FRAME" : "NO ACTIVE MEDIA";
@@ -50,3 +54,5 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
         _ => "Working"
     };
 }
+
+internal sealed record MonitorJobRow(string Title, string Caption, byte[]? PreviewJpeg);
