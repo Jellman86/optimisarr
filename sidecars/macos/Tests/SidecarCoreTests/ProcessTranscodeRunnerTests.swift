@@ -18,7 +18,7 @@ struct ProcessTranscodeRunnerTests {
 
         do {
             _ = try await ProcessTranscodeRunner().run(Self.shell,
-                ["-c", "printf '1234567890123' > \"$1\"; sleep 120", "-", output.path],
+                ["-c", "printf '1234567890123' > \"$1\"; exec sleep 120", "-", output.path],
                 sizeBudget: OutputSizeBudget(output: output, maxBytes: 12), progress: { _ in })
             Issue.record("expected the runner to stop an oversized candidate")
         } catch let exceeded as OutputSizeExceeded {
