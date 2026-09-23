@@ -110,7 +110,8 @@ the former global policy into each existing library so behaviour does not change
 | HDR tone-map engine | Software is the compatible default. Hardware uses Intel QSV or VA-API for a freshly confirmed non-Dolby-Vision HDR10/PQ source under an existing **Tone-map to SDR** library rule when hardware decoding is active, and retries once with software if that path fails. HLG, Dolby Vision, unknown transfer metadata, VMAF-gated work, and disposable comparisons retain the software transform. |
 
 There is no global processing window: *when* work runs is set per library (see
-below). Jobs you queue manually run whenever the queue can start one.
+below). Manually queued jobs in a library with auto-optimise enabled also obey its
+window; libraries without auto-optimise have no window.
 
 ![Library Advanced encoding page with breadcrumbs, codec and container overrides, encoder effort, and bitrate controls](../images/optimisarr-library-advanced-encoding-dark.png)
 
@@ -309,6 +310,12 @@ without auto-optimise have no window, so their manually queued jobs run at any
 time. Scanning/probing is independent and global (see the scan interval above),
 and Queue dispatch still obeys concurrency, activity-pause, and disk-safety
 controls. A start time equal to the end time means the window is open all day.
+
+The **Schedule** view shows each library's window, whether it is currently open,
+and why new work is waiting. It distinguishes an operator pause from other dispatch
+gates and links each library to its configuration.
+
+![Schedule view with queue dispatch reason and per-library automation windows](../images/optimisarr-schedule-dark.png)
 
 **Auto-replace** is disabled by default. When enabled for a library, a job that
 passes every verification gate is replaced automatically. The original is still
