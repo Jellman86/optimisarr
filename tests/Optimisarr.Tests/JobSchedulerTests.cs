@@ -117,6 +117,25 @@ public sealed class JobSchedulerTests
             JobScheduler.SelectJobsByWorkload(queued, new WorkloadSlots(0, 0, 0),
                 new WorkloadSlots(1, 0, 1), lastStartedVideoClass: WorkloadLane.Video));
     }
+
+    [Fact]
+    public void Dispatch_and_lane_status_exclude_closed_windows_but_keep_manual_unwindowed_and_preview_jobs()
+    {
+        var jobs = new[]
+        {
+            new QueuedJob(1, 1, 0, T0, Kind: MediaKind.Video),
+            new QueuedJob(2, 2, 0, T0, Kind: MediaKind.Audio),
+            new QueuedJob(3, 1, 0, T0, IgnoreLibraryWindow: true, Kind: MediaKind.Video),
+        };
+        var windows = new Dictionary<int, (TimeOnly Start, TimeOnly End)>
+        {
+            [1] = (new TimeOnly(1, 0), new TimeOnly(6, 0))
+        };
+        Assert.Equal([2, 3], JobScheduler.WithinLibraryWindows(jobs, windows, new TimeOnly(12, 0))
+            .Select(job => job.Id).ToArray());
+        Assert.Equal([1, 2, 3], JobScheduler.WithinLibraryWindows(jobs, windows, new TimeOnly(3, 0))
+            .Select(job => job.Id).ToArray());
+    }
     private static readonly DateTimeOffset T0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private static QueuedJob Job(int id, int priority = 0, int enqueuedMinutes = 0) =>

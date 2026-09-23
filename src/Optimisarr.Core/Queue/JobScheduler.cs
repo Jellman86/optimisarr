@@ -143,6 +143,18 @@ public static class JobScheduler
         || windowEnd is null
         || Scheduling.DispatchPolicyEvaluator.WithinWindow(windowStart.Value, windowEnd.Value, now);
 
+    public static List<QueuedJob> WithinLibraryWindows(
+        IEnumerable<QueuedJob> queued,
+        IReadOnlyDictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows,
+        TimeOnly now) => queued.Where(job =>
+        {
+            var window = job.LibraryId is { } libraryId
+                && autoWindows.TryGetValue(libraryId, out var configuredWindow)
+                    ? configuredWindow
+                    : ((TimeOnly Start, TimeOnly End)?)null;
+            return CanRunInLibraryWindow(job, window?.Start, window?.End, now);
+        }).ToList();
+
     public static IReadOnlyList<int> SelectJobsToStart(
         IReadOnlyList<QueuedJob> queued,
         int runningCount,

@@ -273,8 +273,10 @@ limits concurrent validation of strict sidecar evidence. Automatic mode computes
 from the server's CPU and memory; the `automatic*Slots` response fields show that recommendation
 and are read-only. Older clients that omit the workload fields retain the current values.
 `GET /api/queue/status` includes `workloadLanes` with each lane's active, capacity, waiting,
-and reason values. A bounded finalisation lane covers replacement and rollback; worker slots
-remain controlled by the paired sidecars.
+and reason values. Queued jobs enter lane waiting counts only inside their library window;
+delivered worker results always await a verdict. The Schedule view explains closed windows.
+A bounded finalisation lane covers replacement and
+rollback; worker slots remain controlled by the paired sidecars.
 `remoteWorkersAvailable` is returned as server capability information, not a toggle that can enable
 the feature without its environment flag. See [Remote Workers](#remote-workers) for the contract.
 

@@ -567,20 +567,7 @@ public sealed class QueueDispatcher(
         // hold expired while every job sat ineligible to run at all; by the time the window opened
         // the server was free to take the lot, and did. The hold now starts when a job first
         // becomes runnable, which is what it was always meant to mean.
-        var withinWindow = queued
-            .Where(job =>
-            {
-                var window = job.LibraryId is { } libraryId
-                    && autoWindows.TryGetValue(libraryId, out var configuredWindow)
-                        ? configuredWindow
-                        : ((TimeOnly Start, TimeOnly End)?)null;
-                return JobScheduler.CanRunInLibraryWindow(
-                    job,
-                    window?.Start,
-                    window?.End,
-                    nowLocal);
-            })
-            .ToList();
+        var withinWindow = JobScheduler.WithinLibraryWindows(queued, autoWindows, nowLocal);
 
         // Kept in memory rather than on the job: losing it across a restart simply restarts the
         // hold, which errs towards offering the work to a worker — the safe direction for a
@@ -3389,24 +3376,31 @@ public sealed class QueueDispatcher(
                 Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown })
             .ToListAsync(cancellationToken);
         var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
-        var placements = await db.Libraries.AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement })
-            .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, cancellationToken);
+        var libraries = await db.Libraries.AsNoTracking()
+            .Select(library => new { library.Id, library.WorkPlacement, library.AutoEnqueueEnabled,
+                library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+            .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var availability = await WorkerAvailability.ResolveAsync(db, settings.RemoteWorkersEnabled,
             scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(), now, cancellationToken);
         var remoteWorkersOn = availability.RemoteWorkersOn;
         var scheduled = queued.Select(job => new QueuedJob(job.Id, job.LibraryId, 0,
-            job.EnqueuedAt, Placement: job.Type == JobType.Normal && job.LibraryId is { } id
-                && placements.TryGetValue(id, out var placement) ? placement : WorkPlacement.Anywhere,
+            job.EnqueuedAt, IgnoreLibraryWindow: job.Type == JobType.Preview,
+            Placement: job.Type == JobType.Normal && job.LibraryId is { } id
+                && libraries.TryGetValue(id, out var library) ? library.WorkPlacement : WorkPlacement.Anywhere,
             Kind: job.Kind)).ToList();
+        var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
+            .ToDictionary(library => library.Id,
+                library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));
+        var withinWindow = JobScheduler.WithinLibraryWindows(scheduled, autoWindows,
+            TimeOnly.FromDateTime(DateTime.Now));
         // Use the same first-runnable clock and placement policy as dispatch. Counting every
         // PreferWorker job as local made the lane cards claim there was local work ready while the
         // scheduler was correctly reserving it for a sidecar.
-        var local = SelectLocallyRunnable(scheduled, _firstRunnableAt,
+        var local = SelectLocallyRunnable(withinWindow, _firstRunnableAt,
             remoteWorkersOn, _ => availability.AWorkerCouldTakeWork, now);
         var localIds = local.Select(job => job.Id).ToHashSet();
-        var workerWaiting = scheduled.Count(job => !localIds.Contains(job.Id));
+        var workerWaiting = withinWindow.Count(job => !localIds.Contains(job.Id));
         var videoWaiting = local.Count(job => JobScheduler.LaneFor(job.Kind) == WorkloadLane.Video)
             + delivered.Count(job => job.Lane == WorkloadLane.Video);
         var nonVideoWaiting = local.Count(job => JobScheduler.LaneFor(job.Kind) == WorkloadLane.NonVideo);
