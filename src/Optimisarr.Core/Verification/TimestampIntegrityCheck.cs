@@ -20,11 +20,11 @@ public sealed record TimestampCheckResult(
 /// Reads the output's video packet timestamps with ffprobe and, via the pure
 /// <see cref="PacketTimestampParser"/>, tallies any decode timestamp that steps backward
 /// and tracks the latest presentation time (where the video actually ends). This is a
-/// metadata-only read (<c>-show_entries packet=pts_time,dts_time</c>), not a decode, so
-/// it is cheap relative to the full-decode health check, and one pass feeds both the
-/// monotonicity and truncated-tail gates. ffprobe is invoked through an explicit argument
-/// list, never a shell string, and a probe that yields no timestamps is reported as
-/// not-measured so the gates simply abstain rather than blocking on missing evidence.
+/// metadata-only read (<c>-show_entries packet=pts_time,dts_time</c>), not a decode, and
+/// one pass feeds both the monotonicity and truncated-tail gates. It still traverses the
+/// source, so callers must not repeat it on each queue poll or worker claim. ffprobe uses
+/// an explicit argument list, never a shell string. A probe that yields no timestamps is
+/// reported as not-measured so the gates abstain rather than blocking on missing evidence.
 /// </summary>
 public sealed class TimestampIntegrityCheck
 {
@@ -61,7 +61,7 @@ public sealed class TimestampIntegrityCheck
             return TimestampCheckResult.NotMeasured;
         }
 
-        string stdout;
+        TimestampIntegrity integrity;
         int exitCode;
 
         try
@@ -86,11 +86,11 @@ public sealed class TimestampIntegrityCheck
 
             process.Start();
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
             try
             {
+                integrity = await PacketTimestampParser.ParseAsync(process.StandardOutput, cancellationToken);
                 await process.WaitForExitAsync(cancellationToken);
             }
             catch (OperationCanceledException)
@@ -99,7 +99,6 @@ public sealed class TimestampIntegrityCheck
                 throw;
             }
 
-            stdout = await stdoutTask;
             await stderrTask;
             exitCode = process.ExitCode;
         }
@@ -107,8 +106,6 @@ public sealed class TimestampIntegrityCheck
         {
             return TimestampCheckResult.NotMeasured;
         }
-
-        var integrity = PacketTimestampParser.Parse(stdout);
 
         // No readable timestamps (probe failed or the stream carries none) means we have
         // no evidence to judge, so abstain rather than fail the output.
