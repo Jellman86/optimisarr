@@ -84,6 +84,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var monitor: AnchoredPopover?
     private var iconObservation: AnyCancellable?
+    private var iconSettleTask: Task<Void, Never>?
+    private var lastWorkingIcon: NSImage?
+    private var lastWorkingPhase = 0.0
+    private var iconWasWorking = false
+    private var iconWasReduced = false
+    private var lastIdleStatus: SidecarStatus?
     /// False until the stored pairing has been looked for. Reopen arrives before that answer does.
     private var restoreSettled = false
 
@@ -193,7 +199,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppState.shared.session.$status,
             AppState.shared.session.$spin
         ).sink { [weak self] status, spin in
-            self?.statusItem?.button?.image = MenuBarIcon.image(for: status, spin: spin)
+            guard let self else { return }
+            if case .working = status {
+                self.lastIdleStatus = nil
+                let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                if reduced && self.iconWasWorking && self.iconWasReduced { return }
+                self.iconSettleTask?.cancel()
+                self.iconSettleTask = nil
+                self.iconWasWorking = true
+                self.iconWasReduced = reduced
+                // The session clears its phase just before publishing the idle status. Keep the
+                // last active frame until that status arrives, so the outgoing motion can settle.
+                if spin == 0 && self.lastWorkingPhase > 0 && !reduced { return }
+                self.lastWorkingPhase = spin
+                let frame = MenuBarIcon.image(for: status, spin: spin)
+                self.lastWorkingIcon = frame
+                self.statusItem?.button?.image = frame
+            } else {
+                let idle = MenuBarIcon.image(for: status)
+                if self.iconSettleTask != nil && self.lastIdleStatus != status {
+                    self.iconSettleTask?.cancel()
+                    self.iconSettleTask = nil
+                }
+                self.lastIdleStatus = status
+                if self.iconWasWorking, let previous = self.lastWorkingIcon,
+                   !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                    self.iconSettleTask?.cancel()
+                    self.iconSettleTask = Task { [weak self] in
+                        for step in 1...6 {
+                            try? await Task.sleep(for: .milliseconds(80))
+                            guard !Task.isCancelled else { return }
+                            self?.statusItem?.button?.image = step == 6 ? idle : MenuBarIcon.blend(
+                                from: previous, to: idle, progress: CGFloat(step) / 6)
+                        }
+                        self?.iconSettleTask = nil
+                    }
+                } else if self.iconSettleTask == nil {
+                    self.statusItem?.button?.image = idle
+                }
+                self.iconWasWorking = false
+                self.iconWasReduced = false
+                self.lastWorkingIcon = nil
+                self.lastWorkingPhase = 0
+            }
         }
     }
 

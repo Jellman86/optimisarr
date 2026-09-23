@@ -35,6 +35,10 @@ monitor anchored to the notification-area screen. Preferences and diagnostics st
 Changing pages or expanding **Processing details** keeps the rounded panel inside that screen’s
 working area. It dismisses on focus loss or Escape and is not an always-on-top window.
 The tray, panel, executable and Start shortcut share the main application’s Precession icon.
+When working, the tray selects pre-rendered frames of the cube's internal motion from the web
+renderer; the bundled static icon remains the idle and reduced-motion frame. Regenerate both
+themes' native atlases with `node --experimental-strip-types scripts/render-sidecar-motion.ts`
+from `web/` after changing the main Precession geometry or lighting.
 The tray is optional: closing it leaves work running. See [installer notes](installer/README.md)
 for the unsigned MSI preview, pairing, upgrade safeguards and release limitations.
 

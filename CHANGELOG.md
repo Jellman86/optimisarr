@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Mac and Windows sidecars now animate the Precession cube's internal slices and reactive light when working, using compact antialiased frames from the application's renderer; the tray settles into the exact static mark, respects reduced motion, and stops its timer when idle.
 - Verification bounds full-decode errors and decoder threads, stops stalled decode/VMAF processes, and skips repeated full-file measurements once a local candidate fails decode health. Corrupt AV1 outputs remain failed with the original intact instead of driving prolonged verification I/O. The server's VMAF log path is escaped correctly on Windows.
 - Verification retries an implausibly short source packet scan once and, if it remains inconsistent with both audio and encoded-video spans, reports the source timeline as indeterminate and retains the original. Server and sidecar timestamp/frame-rate probes select moving video rather than attached artwork. Server, Mac and Windows quality measurements now align each VMAF sample against its own pictures, preventing a shift chosen near the start of a file from corrupting later quality scores.
 - Media-server and notification switches now span their Settings cards, advanced library quality controls wrap on small screens, and Dashboard metrics, worker details and the Personal quality check reflow when enlarged text reduces available space. The sidebar language menu stays hidden until it is correctly positioned.
