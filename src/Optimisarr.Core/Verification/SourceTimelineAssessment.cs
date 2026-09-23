@@ -22,17 +22,38 @@ public static class SourceTimelineAssessment
     public static bool IsIndeterminate(
         double? sourceVideoSeconds,
         double? sourceAudioSeconds,
-        double? outputVideoSeconds)
+        double? outputVideoSeconds,
+        double? sourceVideoMetadataSeconds = null)
     {
         if (sourceVideoSeconds is not { } source || source < 0 || !double.IsFinite(source)
-            || sourceAudioSeconds is not { } audio || audio < 30 || !double.IsFinite(audio)
-            || outputVideoSeconds is not { } output || output < 30 || !double.IsFinite(output))
+            || sourceAudioSeconds is not { } audio || audio < 30 || !double.IsFinite(audio))
         {
             return false;
         }
 
-        var longerSpan = Math.Min(audio, output);
-        return source < longerSpan / 2
-            && Math.Abs(audio - output) / Math.Max(audio, output) <= 0.05;
+        // Metadata alone cannot overrule a plausible packet scan. When a scan returns only the
+        // opening frames, though, agreement between primary audio and either an independently
+        // encoded output or the source stream's own duration makes that scan suspect. The caller
+        // confirms the packet read once before using this result. Indeterminate still blocks
+        // replacement; it simply does not assert that the original is corrupt.
+        if (source >= audio / 2)
+        {
+            return false;
+        }
+
+        // A complete candidate timeline that agrees with the short source is independent
+        // corroboration. Stream duration metadata must not override that stronger observation.
+        if (outputVideoSeconds is { } output && output >= 30 && double.IsFinite(output)
+            && Math.Abs(source - output) / Math.Max(source, output) <= 0.05)
+        {
+            return false;
+        }
+
+        return AgreesWithAudio(outputVideoSeconds) || AgreesWithAudio(sourceVideoMetadataSeconds);
+
+        bool AgreesWithAudio(double? span) =>
+            span is { } candidate && candidate >= 30 && double.IsFinite(candidate)
+            && source < candidate / 2
+            && Math.Abs(audio - candidate) / Math.Max(audio, candidate) <= 0.05;
     }
 }

@@ -32,6 +32,20 @@ public sealed class SourceTimelineAssessmentTests
     }
 
     [Fact]
+    public void A_two_packet_source_measurement_is_indeterminate_without_output_when_source_metadata_spans_audio()
+    {
+        Assert.True(SourceTimelineAssessment.IsIndeterminate(0.08, 1277.27, null, 1279.24));
+    }
+
+    [Fact]
+    public void A_genuinely_short_picture_is_not_excused_by_stream_duration_metadata()
+    {
+        Assert.False(SourceTimelineAssessment.IsIndeterminate(2362.943, 2881.365, null, 2881.365));
+        Assert.False(SourceTimelineAssessment.IsIndeterminate(0.08, 1277.27, null, 0.08));
+        Assert.False(SourceTimelineAssessment.IsIndeterminate(100, 3600, 101, 3600));
+    }
+
+    [Fact]
     public void A_short_source_with_an_equally_short_output_is_a_real_source_timeline_failure()
     {
         Assert.False(SourceTimelineAssessment.IsIndeterminate(2362.943, 2881.365, 2361.609));

@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- An implausibly tiny source packet scan is reported as indeterminate when the source video stream's duration agrees with primary audio, even if a failed candidate has no usable output timeline. The original remains protected without falsely diagnosing it as corrupt.
 - Full video encodes with a required size reduction stop once their candidate exceeds the source-size budget. Sidecars report this as a terminal size-saving failure, so another worker cannot repeat the doomed encode; the original remains untouched.
 - Container and sidecar verification confirm a source picture packet scan once when it ends materially before primary audio, including moderate shortfalls, before attributing a failed timeline to the original.
 
