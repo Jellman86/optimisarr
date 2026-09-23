@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A delivered worker candidate is verified against the policy frozen when it was claimed, so editing library verification settings while it encodes cannot silently change the result.
 - Local, Mac and Windows encodes also check the finished file against their frozen size budget, catching final mux bytes that arrive after the last in-flight poll before quality measurement or upload.
 - An implausibly tiny source packet scan is reported as indeterminate when the source video stream's duration agrees with primary audio, even if a failed candidate has no usable output timeline. The original remains protected without falsely diagnosing it as corrupt.
 - Full video encodes with a required size reduction stop once their candidate exceeds the source-size budget. Sidecars report this as a terminal size-saving failure, so another worker cannot repeat the doomed encode; the original remains untouched.
