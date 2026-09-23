@@ -514,8 +514,17 @@ public final class SidecarSession: ObservableObject {
             }
             guard let assignment, jobTasks[assignment.jobId] == nil else { return }
             if isPaused || shutdown.armed {
-                try? await client.release(serverAddress: pairing.serverAddress,
-                                          credential: pairing.credential, leaseId: assignment.leaseId)
+                do {
+                    try await client.release(serverAddress: pairing.serverAddress,
+                                             credential: pairing.credential, leaseId: assignment.leaseId)
+                } catch {
+                    // The claim may have returned after shutdown was armed. A failed hand-back
+                    // leaves a possibly held lease, so the countdown must stay blocked.
+                    let reason = "Job \(assignment.jobId): hand-back was not acknowledged: \(error.localizedDescription)"
+                    unconfirmedResult = true
+                    lastOutcome = .unconfirmed(jobId: assignment.jobId, reason: reason)
+                    status = .unreachable(reason: reason)
+                }
                 return
             }
 

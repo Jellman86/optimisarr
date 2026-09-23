@@ -17,6 +17,8 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     private(set) var claims = 0
     private(set) var releases = 0
     var onClaim: (@Sendable () async -> Void)?
+    var onClaimAfterReply: (@Sendable () async -> Void)?
+    var releaseStatusOverride: Int?
     private(set) var heartbeatScratchBytes: [Int64] = []
     private(set) var heartbeatCapacities: [Int] = []
 
@@ -39,8 +41,11 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
                     heartbeatCapacities.append(capacity)
                 }
             }
+            if request.url?.path.hasSuffix("/release") == true,
+               let releaseStatusOverride { return Reply(status: releaseStatusOverride, json: [:]) }
             return replies.count > 1 ? replies.removeFirst() : replies[0]
         }
+        if request.url?.path.hasSuffix("/claim") == true { await onClaimAfterReply?() }
         let data = (try? JSONSerialization.data(withJSONObject: reply.json)) ?? Data()
         let response = HTTPURLResponse(
             url: request.url!, statusCode: reply.status, httpVersion: nil, headerFields: nil)!
@@ -368,6 +373,29 @@ struct SidecarSessionTests {
         try await Task.sleep(nanoseconds: 10_000_000)
         #expect(!executor.started)
         #expect(transport.releases == 1)
+        await session.prepareToQuit()
+    }
+
+    @Test("shutdown stays blocked if an in-flight claim cannot be handed back")
+    func shutdownDuringClaimWithFailedRelease() async throws {
+        let executor = HangingExecutor()
+        let transport = ScriptedTransport([Self.beat, Self.claim, Self.beat])
+        transport.releaseStatusOverride = 503
+        let session = SidecarSession(client: SidecarClient(transport: transport),
+            store: InMemoryCredentialStore(stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11)),
+            capabilities: SidecarCapabilities(name: "Test", videoEncoders: ["libx265"], maxConcurrency: 1),
+            prober: nil, executor: executor, jobConcurrency: 1, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) },
+            requestShutdown: { Issue.record("a failed lease hand-back must never shut down the Mac") })
+        transport.onClaimAfterReply = { await session.armShutdown() }
+        session.restore()
+        try await waitFor { transport.releases > 0 }
+        try await waitFor { session.shutdown.detail.contains("not acknowledged") }
+        #expect(!executor.started)
+        guard case .unconfirmed = session.lastOutcome else {
+            Issue.record("expected an unconfirmed hand-back")
+            return
+        }
         await session.prepareToQuit()
     }
 

@@ -206,7 +206,18 @@ public sealed class SidecarSession(
                     // A pause can arrive while the claim request is in flight.
                     if (IsPaused || ShutdownArmed)
                     {
-                        await client.ReleaseAsync(pairing, assignment.LeaseId, cancellationToken);
+                        try
+                        {
+                            await client.ReleaseAsync(pairing, assignment.LeaseId, cancellationToken);
+                        }
+                        catch (Exception error)
+                        {
+                            // A claim can return after shutdown was armed. Until its hand-back
+                            // is acknowledged, the server may still believe we hold this lease.
+                            Interlocked.Exchange(ref _unacknowledgedResult, 1);
+                            Set(SidecarState.Faulted,
+                                $"Job {assignment.JobId}: hand-back was not acknowledged: {error.Message}");
+                        }
                         break;
                     }
                     Start(runJob, pairing, assignment, cancellationToken);

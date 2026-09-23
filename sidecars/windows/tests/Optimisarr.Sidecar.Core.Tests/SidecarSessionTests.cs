@@ -368,6 +368,27 @@ public sealed class ConcurrentSidecarSessionTests
     }
 
     [Fact]
+    public async Task Shutdown_stays_blocked_when_an_in_flight_claim_cannot_be_handed_back()
+    {
+        var handler = new Handler((HttpStatusCode.OK, Beat), (HttpStatusCode.OK, Assignment(1)),
+            (HttpStatusCode.ServiceUnavailable, "{}"), (HttpStatusCode.OK, Beat));
+        var ran = false;
+        var session = Session(handler, 1, (_, assignment, _) =>
+        {
+            ran = true;
+            return Task.FromResult(new JobOutcome(assignment.JobId, true, "done"));
+        }, 2);
+        handler.BeforeClaimReply = session.ArmShutdown;
+
+        await session.RunAsync(CancellationToken.None);
+
+        Assert.False(ran);
+        Assert.Equal(1, handler.Releases);
+        Assert.True(session.HasUnacknowledgedResult);
+        Assert.False(session.ShutdownReady);
+    }
+
+    [Fact]
     public async Task The_check_in_carries_on_while_a_job_runs()
     {
         // The whole point. A job that outlasts the offline threshold must not make this machine
