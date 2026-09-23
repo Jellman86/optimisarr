@@ -771,7 +771,7 @@ export const zh: Messages = {
     minimum_saving_tip: "视频重新编码的可选设置。设为 10% 时，输出必须比原文件至少小 10%。服务器和侧车在无法达到目标时会停止编码。留空表示只需有所减小；兼容性任务不应用此设置。",
     validation_minimum_saving: "最低有效节省比例必须大于 0%，且不超过 99%。",
     maximum_saving: '允许的最大节省比例',
-    maximum_saving_tip: '设为 65% 时，小于原文件大小 35% 的视频会在 VMAF 前被拒绝。此设置可选；留空则无上限，兼容性任务不受影响。',
+    maximum_saving_tip: '设为 65% 时，小于原文件大小 35% 的视频会在最终 VMAF 验证前被拒绝。此设置可选；留空则无上限，兼容性任务不受影响。',
     validation_maximum_saving: '该值必须大于 0% 且不超过 99%。',
     validation_saving_order: '最小节省比例不能超过最大节省比例。',
     vmaf_label: "感知质量（VMAF）",

@@ -771,7 +771,7 @@ export const pt: Messages = {
     minimum_saving_tip: "Opcional para recodificações de vídeo. Com 10%, a saída tem de ser pelo menos 10% menor. O servidor e os sidecars param a codificação quando deixam de conseguir cumprir a meta. Deixe em branco para aceitar qualquer redução; trabalhos de compatibilidade ignoram-na.",
     validation_minimum_saving: "A poupança mínima útil tem de ser superior a 0% e não pode exceder 99%.",
     maximum_saving: 'Poupança máxima permitida',
-    maximum_saving_tip: 'Com 65%, um vídeo inferior a 35% do tamanho original é rejeitado antes do VMAF. Opcional; deixe em branco para não impor limite. As tarefas de compatibilidade ignoram-no.',
+    maximum_saving_tip: 'Com 65%, um vídeo inferior a 35% do tamanho original é rejeitado antes da verificação VMAF final. Opcional; deixe em branco para não impor limite. As tarefas de compatibilidade ignoram-no.',
     validation_maximum_saving: 'O valor deve ser superior a 0% e não ultrapassar 99%.',
     validation_saving_order: 'A poupança mínima não pode exceder a máxima.',
     vmaf_label: "Qualidade perceptiva (VMAF)",

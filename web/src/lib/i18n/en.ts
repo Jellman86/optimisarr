@@ -942,7 +942,7 @@ export const en = {
     minimum_saving_tip: 'Optional for video re-encodes. At 10%, the output must be at least 10% smaller. Local and sidecar encodes stop when they can no longer meet this target. Leave blank for any reduction; compatibility jobs ignore it.',
     validation_minimum_saving: 'Minimum useful saving must be above 0% and no more than 99%.',
     maximum_saving: 'Maximum allowed saving',
-    maximum_saving_tip: 'Optional for video re-encodes. At 65%, an output smaller than 35% of the original fails before VMAF runs. Use this only if unusually high compression is a warning for your library. Leave blank for no upper limit; compatibility jobs ignore it.',
+    maximum_saving_tip: 'Optional for video re-encodes. At 65%, an output smaller than 35% of the original fails before final full-file VMAF verification. Adaptive quality may already have scored short samples. Use this only if unusually high compression is a warning for your library. Leave blank for no upper limit; compatibility jobs ignore it.',
     validation_maximum_saving: 'Maximum allowed saving must be above 0% and no more than 99%.',
     validation_saving_order: 'Minimum useful saving cannot exceed maximum allowed saving.',
     vmaf_label: 'Perceptual quality (VMAF)',

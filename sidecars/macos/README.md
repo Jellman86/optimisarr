@@ -60,7 +60,7 @@ same limit for both server and worker encodes. A blank target accepts any reduct
 The Mac stops when the candidate exceeds that limit and reports a terminal **Size saving** failure
 instead of handing the same job to another worker. The source is retained.
 An optional maximum allowed saving sets a frozen final-size floor (65% requires at least 35% of
-the source size). Updated Mac sidecars reject a smaller finished candidate before VMAF or upload
+the source size). Updated Mac sidecars reject a smaller finished candidate before final full-file VMAF verification or upload
 with a terminal **Compression ceiling** result; blank leaves compression unrestricted.
 
 Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every

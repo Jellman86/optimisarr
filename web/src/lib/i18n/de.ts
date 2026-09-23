@@ -806,7 +806,7 @@ export const de: Messages = {
     minimum_saving_tip: 'Optional für Video-Neucodierungen. Bei 10 % muss die Ausgabe mindestens 10 % kleiner sein. Server und Sidecars stoppen, wenn das Ziel nicht mehr erreichbar ist. Leer lassen für jede Einsparung; Kompatibilitätsjobs ignorieren den Wert.',
     validation_minimum_saving: 'Die Mindesteinsparung muss über 0 % und höchstens 99 % betragen.',
     maximum_saving: 'Maximal zulässige Ersparnis',
-    maximum_saving_tip: 'Bei 65 % wird eine Videoausgabe unter 35 % der Originalgröße vor VMAF abgelehnt. Optional; leer lassen für keine Obergrenze. Kompatibilitätsaufträge ignorieren dies.',
+    maximum_saving_tip: 'Bei 65 % wird eine Videoausgabe unter 35 % der Originalgröße vor der abschließenden VMAF-Prüfung abgelehnt. Optional; leer lassen für keine Obergrenze. Kompatibilitätsaufträge ignorieren dies.',
     validation_maximum_saving: 'Der Wert muss über 0 % und höchstens 99 % liegen.',
     validation_saving_order: 'Die minimale Ersparnis darf die maximale nicht überschreiten.',
     vmaf_label: 'Wahrnehmungsqualität (VMAF)',

@@ -797,7 +797,7 @@ quarantine: {
     minimum_saving_tip: 'Opzionale per le ricodifiche video. Con il 10%, l’output deve essere almeno il 10% più piccolo. Server e sidecar fermano la codifica quando il risultato non è più raggiungibile. Lascia vuoto per accettare qualsiasi riduzione; i lavori di compatibilità lo ignorano.',
     validation_minimum_saving: 'Il risparmio minimo utile deve essere maggiore di 0% e non superare il 99%.',
     maximum_saving: 'Risparmio massimo consentito',
-    maximum_saving_tip: 'Con il 65 %, un video sotto il 35 % della dimensione originale viene rifiutato prima di VMAF. Facoltativo; lascia vuoto per nessun limite. I lavori di compatibilità lo ignorano.',
+    maximum_saving_tip: 'Con il 65 %, un video sotto il 35 % della dimensione originale viene rifiutato prima della verifica VMAF finale. Facoltativo; lascia vuoto per nessun limite. I lavori di compatibilità lo ignorano.',
     validation_maximum_saving: 'Il valore deve superare lo 0 % e non oltrepassare il 99 %.',
     validation_saving_order: 'Il risparmio minimo non può superare il massimo.',
     vmaf_label: 'Qualità percettiva (VMAF)',
