@@ -33,6 +33,16 @@ public static class HardwareDecodeFallback
     /// </summary>
     public const string DecodeHealthCheckName = "Decode health";
     private const string VmafCheckName = "Perceptual quality (VMAF)";
+    public const string SourceVideoTimelineCheckName = VerificationEvaluator.SourceVideoTimelineCheckName;
+
+    /// <summary>
+    /// A candidate-only retry cannot repair a gate measured on the unchanged original. Keep this
+    /// decision separate from the corruption signature so the operator can see which source check
+    /// prevented an otherwise plausible software-decode retry.
+    /// </summary>
+    public static string? SourceFailureBlockingRetry(VerificationReport report) =>
+        report.Checks.FirstOrDefault(check => check.Outcome == CheckOutcome.Failed
+            && check.Name == SourceVideoTimelineCheckName)?.Name;
 
     /// <summary>
     /// The context note carried by the second verification, so the report says why the encode
@@ -53,7 +63,7 @@ public static class HardwareDecodeFallback
     /// </summary>
     public static bool ShouldRetryAfterVerification(VerificationReport report, double catastrophicFloor)
     {
-        if (report.Passed)
+        if (report.Passed || SourceFailureBlockingRetry(report) is not null)
         {
             return false;
         }

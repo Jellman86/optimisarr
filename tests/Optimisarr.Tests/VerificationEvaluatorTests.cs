@@ -1,4 +1,5 @@
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Tests;
@@ -900,6 +901,28 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void An_incomplete_source_with_catastrophic_vmaf_stays_failed_without_a_futile_retry()
+    {
+        var input = Healthy() with
+        {
+            OriginalTimestampsMeasured = true,
+            OriginalLastPresentationSeconds = 2898.395,
+            OriginalAudioLastPresentationSeconds = 3268.863,
+            OutputLastPresentationSeconds = 2898.395,
+            TimestampsMeasured = true,
+            QualityScores = new QualityScores(75, 40, 0, null, null)
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default with { QualityGateEnabled = true });
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, VerificationEvaluator.SourceVideoTimelineCheckName));
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Perceptual quality (VMAF)"));
+        Assert.False(HardwareDecodeFallback.ShouldRetryAfterVerification(report, catastrophicFloor: 40));
+        Assert.False(VmafRetryPolicy.ShouldRetry(report, retryCount: 0, effectiveQuality: 38));
+    }
+
+    [Fact]
     public void A_subtitle_longer_than_the_picture_does_not_make_a_complete_source_look_corrupt()
     {
         var input = Healthy() with
@@ -918,6 +941,31 @@ public sealed class VerificationEvaluatorTests
         Assert.True(report.Passed);
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Duration"));
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Source video timeline"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
+    }
+
+    [Fact]
+    public void Packet_derived_video_and_audio_spans_keep_an_aligned_long_gop_source_valid()
+    {
+        // A VFR/long-GOP stream need not begin at container time zero. Compare each stream's
+        // packet endpoint against its own first presentation time, not the format duration.
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 3600,
+            OutputDurationSeconds = 3600,
+            OriginalTimestampsMeasured = true,
+            OriginalVideoStartSeconds = 0.083,
+            OriginalLastPresentationSeconds = 3600.083,
+            OriginalAudioStartSeconds = 0.021,
+            OriginalAudioLastPresentationSeconds = 3600.021,
+            TimestampsMeasured = true,
+            OutputVideoStartSeconds = 0.083,
+            OutputLastPresentationSeconds = 3600.083
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, VerificationEvaluator.SourceVideoTimelineCheckName));
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
     }
 
