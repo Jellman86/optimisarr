@@ -79,6 +79,15 @@ public sealed class Job
     /// <summary>How many times this job has been started; incremented on crash recovery.</summary>
     public int Attempt { get; set; }
 
+    /// <summary>Human-facing execution number, including both local starts and worker leases.</summary>
+    public int ExecutionAttempt { get; set; }
+
+    /// <summary>Durable snapshots of attempts superseded by a retry, serialised as JSON.</summary>
+    public string? AttemptHistoryJson { get; set; }
+
+    /// <summary>Why the current attempt was queued again; null for ordinary first attempts.</summary>
+    public string? RetryReason { get; set; }
+
     /// <summary>
     /// Why this job was enqueued — the eligibility reason computed at enqueue time
     /// (e.g. "h264 → hevc", "Remove 2 audio track(s) (fra, deu) not in the kept

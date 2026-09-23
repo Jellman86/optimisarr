@@ -159,6 +159,46 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_worker_claim_starts_a_fresh_attempt_without_an_older_verdict()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("PICARD claim reset");
+        await QueueAJob();
+        int jobId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.OrderByDescending(item => item.Id).FirstAsync();
+            jobId = job.Id;
+            job.VerificationPassed = false;
+            job.VerificationReportJson = "{\"checks\":[]}";
+            job.VerifiedAt = DateTimeOffset.UtcNow;
+            job.OutputSizeBytes = 1234;
+            job.VideoEncoder = "hevc_videotoolbox";
+            job.Progress = 0.8;
+            job.ErrorMessage = "previous failure";
+            await db.SaveChangesAsync();
+        }
+
+        var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.NotEqual(JsonValueKind.Null, assignment.ValueKind);
+        using var readScope = _api.Services.CreateScope();
+        var readDb = readScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var claimed = await readDb.Jobs.FindAsync(jobId);
+        Assert.NotNull(claimed);
+        Assert.Equal(JobStatus.Leased, claimed.Status);
+        Assert.Equal(1, claimed.ExecutionAttempt);
+        Assert.Equal("libx265", claimed.VideoEncoder);
+        Assert.Null(claimed.VerificationPassed);
+        Assert.Null(claimed.VerificationReportJson);
+        Assert.Null(claimed.VerifiedAt);
+        Assert.Null(claimed.OutputSizeBytes);
+        Assert.Equal(0, claimed.Progress);
+        Assert.Null(claimed.ErrorMessage);
+    }
+
+    [Fact]
     public async Task Full_verification_evidence_is_lease_bound_authenticated_and_immutable()
     {
         await EnableRemoteWorkers();

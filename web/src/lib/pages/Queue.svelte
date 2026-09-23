@@ -5,7 +5,7 @@
   import WorkingJob from '../components/WorkingJob.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
-  import { api, type Job, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type Job, type JobAttemptSnapshot, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
@@ -348,6 +348,25 @@
     return fullReport(job)?.checks ?? null
   }
 
+  function attemptHistory(job: Job): JobAttemptSnapshot[] {
+    if (!job.attemptHistoryJson) return []
+    try {
+      const entries: unknown = JSON.parse(job.attemptHistoryJson)
+      return Array.isArray(entries) ? entries as JobAttemptSnapshot[] : []
+    } catch {
+      return []
+    }
+  }
+
+  function attemptChecks(attempt: JobAttemptSnapshot): VerificationCheck[] {
+    if (!attempt.verificationReportJson) return []
+    try {
+      return (JSON.parse(attempt.verificationReportJson) as VerificationReport).checks ?? []
+    } catch {
+      return []
+    }
+  }
+
   function isVmafOnlyFailure(job: Job): boolean {
     const failed = fullReport(job)?.checks.filter((check) => check.outcome === 'Failed') ?? []
     return failed.length === 1 && failed[0].name === 'Perceptual quality (VMAF)'
@@ -459,6 +478,8 @@
     {#if selectedJob}
       {@const report = fullReport(selectedJob)}
       {@const suspended = isJobSuspended(selectedJob, queueStatus)}
+      {@const earlierAttempts = attemptHistory(selectedJob)}
+      {@const lastAttempt = earlierAttempts.at(-1)}
       <dialog id="queue-job-dialog" class="app-modal queue-detail" use:modal={closeDetails} aria-labelledby="queue-detail-label queue-detail-title">
         <header class="queue-detail-heading">
           <div class="queue-detail-poster"><Thumbnail mediaFileId={selectedJob.mediaFileId} size="poster" /></div>
@@ -467,6 +488,7 @@
             <h2 id="queue-detail-title" tabindex="-1">{heroTitle(selectedJob.relativePath) ?? jobName(selectedJob)}</h2>
             <div class="queue-detail-status">
               <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : statusLabel(selectedJob.status)}</span>
+              {#if selectedJob.executionAttempt && selectedJob.executionAttempt > 0}<span>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt })}</span>{/if}
               {#if selectedJob.workerName}<span>{selectedJob.workerName}</span>
               {:else if ['Transcoding', 'Probing', 'Verifying'].includes(selectedJob.status)}<span>{i18n.m.dashboard.this_server}</span>{/if}
             </div>
@@ -475,6 +497,12 @@
         </header>
         <div class="queue-detail-body">
           {#if error}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
+          {#if selectedJob.retryReason === 'SoftwareDecode' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
+            <div class="callout tone-warn mb-4 p-4" role="status">
+              <p class="font-semibold">{i18n.m.queue.retry_software_title}</p>
+              <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_software_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server, encoder: lastAttempt.videoEncoder ?? '—' })}</p>
+            </div>
+          {/if}
           {#if isWorkingJob(selectedJob)}
             <JobProgress job={selectedJob} queue={queueStatus} telemetry={live[selectedJob.id]} />
             <JobStages job={selectedJob} />
@@ -540,6 +568,25 @@
         <div class="mt-4 border-t border-line-soft pt-4 border-line">
           {#if checks}<VerificationChecks {checks} />{/if}
         </div>
+      {/if}
+      {#if earlierAttempts.length > 0}
+        <details class="mt-4 rounded-lg border border-line-soft bg-raised p-4 text-xs text-ink-3">
+          <summary class="cursor-pointer font-semibold text-ink-2">{i18n.m.queue.attempt_history} ({earlierAttempts.length})</summary>
+          <div class="mt-4 space-y-4">
+            {#each [...earlierAttempts].reverse() as attempt (attempt.number)}
+              <div class="rounded-md bg-panel p-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <strong class="text-ink">{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {i18n.m.queue.attempt_rejected}</strong>
+                  <span>{new Date(attempt.endedAt).toLocaleString()}</span>
+                </div>
+                <p class="mt-2">{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder} · {attempt.hardwareDecoder}{/if}</p>
+                {#if attemptChecks(attempt).length > 0}
+                  <div class="mt-3 border-t border-line-soft pt-3"><VerificationChecks checks={attemptChecks(attempt)} /></div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </details>
       {/if}
 
           </div>

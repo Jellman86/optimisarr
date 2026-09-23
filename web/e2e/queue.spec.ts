@@ -135,6 +135,35 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
   await expect(rows.filter({ hasText: 'Severance' })).toContainText('waiting for a worker')
 })
 
+test('a software-decode retry shows its current worker and keeps the rejected Mac checks in history', async ({ page }) => {
+  const previous = {
+    number: 1, workerName: 'MacBook Air', videoEncoder: 'hevc_videotoolbox',
+    hardwareDecoder: 'videotoolbox', startedAt: '2026-09-20T22:08:00Z', endedAt: '2026-09-20T22:20:00Z',
+    verificationPassed: false, verificationReportJson: JSON.stringify({ checks: [{ name: 'Decode health', outcome: 'Failed', detail: 'Frame mismatch.' }] }),
+    verifiedAt: '2026-09-20T22:20:00Z', outputSizeBytes: 1234, outcome: 'Rejected', reason: 'HardwareDecodeCorruption',
+  }
+  const retried = {
+    ...job(8, 'AwaitingVerification', null), relativePath: 'Mad Men S02E06.mkv',
+    workerName: 'PICARD', videoEncoder: 'hevc_nvenc', executionAttempt: 2,
+    retryReason: 'SoftwareDecode', attemptHistoryJson: JSON.stringify([previous]),
+    outputSizeBytes: null, verifiedAt: null,
+  }
+  await mockWorkingQueue(page, { jobs: [retried] })
+  await page.goto('/#/queue')
+  const working = page.getByRole('region', { name: 'Working now' })
+  await expect(working).toContainText('Returned from PICARD')
+  await expect(working).toContainText('Retrying with software decode')
+  await working.getByRole('button', { name: 'View job' }).click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details).toContainText('Attempt 2')
+  await expect(details).toContainText('hevc_nvenc')
+  await expect(details).toContainText('The candidate from MacBook Air (hevc_videotoolbox) failed verification')
+  await expect(details.getByText('Frame mismatch.')).toBeHidden()
+  await details.getByText('Earlier attempts (1)').click()
+  await expect(details.getByText('Frame mismatch.')).toBeVisible()
+  await expect(details).toContainText('Attempt 1 · Rejected candidate')
+})
+
 const clearQueue = {
   canStart: true, manuallyPaused: false, manualPauseMode: 'inactive', runningEncodesSuspended: false,
   suspendedEncodeCount: 0, pauseFailedEncodeCount: 0, runningJobs: 1, hardwareAccelerated: true,

@@ -893,11 +893,8 @@ public sealed class QueueDispatcher(
                 DeleteWorkOutput(candidatePath);
                 await WithJobAsync(jobId, job =>
                 {
-                    job.PreferSoftwareDecode = true;
-                    job.Status = JobStatus.Queued;
-                    job.Progress = 0;
-                    job.WorkOutputPath = null;
-                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                    JobAttemptHistory.RequeueAfterRejectedCandidate(
+                        job, deliveredBy.Name, deliveredLease.HardwareDecoder, DateTimeOffset.UtcNow);
                 }, cancellationToken);
                 logger.LogWarning(
                     "Job {JobId}: the candidate {Worker} decoded with {Decoder} showed decoder corruption; requeued to be encoded with software decode",
@@ -1587,7 +1584,10 @@ public sealed class QueueDispatcher(
             search,
             strictVerification ? new RemoteVerificationContract(1, Guid.NewGuid(),
                 work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
-            strictVerification ? JsonSerializer.Serialize(work, ReportJsonOptions) : null));
+            strictVerification ? JsonSerializer.Serialize(work, ReportJsonOptions) : null,
+            work.VideoQuality?.Requested,
+            work.VideoQuality?.Effective,
+            work.VideoQuality?.Mode));
     }
 
     /// <summary>
@@ -2851,10 +2851,24 @@ public sealed class QueueDispatcher(
     {
         job.Status = JobStatus.Transcoding;
         job.Attempt += 1;
+        job.ExecutionAttempt += 1;
         job.StartedAt = nowUtc;
         job.UpdatedAt = nowUtc;
         job.ErrorMessage = null;
         job.FailureCategory = null;
+        job.ProcessLog = null;
+        job.FfmpegArguments = null;
+        job.VideoEncoder = null;
+        // Calibration's requested quality is the candidate being tested, not a stale result.
+        if (job.Type == JobType.Normal) job.RequestedVideoQuality = null;
+        job.EffectiveVideoQuality = null;
+        job.VideoQualityMode = null;
+        job.WorkOutputPath = null;
+        job.OutputSizeBytes = null;
+        job.VerificationPassed = null;
+        job.VerificationReportJson = null;
+        job.VerifiedAt = null;
+        job.FinishedAt = null;
     }
 
     // Keep a durable per-file failure tally so a file that keeps failing is excluded automatically
