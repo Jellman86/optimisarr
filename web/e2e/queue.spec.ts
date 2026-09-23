@@ -158,10 +158,48 @@ test('a software-decode retry shows its current worker and keeps the rejected Ma
   await expect(details).toContainText('Attempt 2')
   await expect(details).toContainText('hevc_nvenc')
   await expect(details).toContainText('The candidate from MacBook Air (hevc_videotoolbox) failed verification')
+  const attempts = details.getByRole('list', { name: 'Attempts' })
+  await expect(attempts).toContainText('Attempt 2 · Current attempt')
+  await expect(attempts).toContainText('Attempt 1 · Rejected candidate')
+  await expect(attempts).toContainText('Hardware decode corruption')
+  await expect(attempts).toContainText('PICARD · hevc_nvenc')
+  await expect(attempts).toContainText('MacBook Air · hevc_videotoolbox')
   await expect(details.getByText('Frame mismatch.')).toBeHidden()
-  await details.getByText('Earlier attempts (1)').click()
+  await attempts.getByText('Verification checks').click()
   await expect(details.getByText('Frame mismatch.')).toBeVisible()
-  await expect(details).toContainText('Attempt 1 · Rejected candidate')
+})
+
+test('job detail downloads only a matching opt-in diagnostic capture', async ({ page }) => {
+  await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false), job(9, 'Failed', false)] })
+  let releaseLookup!: () => void
+  const lookup = new Promise<void>(resolve => { releaseLookup = resolve })
+  await page.route('**/api/diagnostics/capture', async route => {
+    await lookup
+    return json(route, {
+      id: 'capture-1', status: 'Recording', scopedJobId: 8, startedAt: '2026-09-20T22:00:00Z',
+      expiresAt: null, stoppedAt: null, includePaths: false, eventsStored: 4, maximumEvents: 10_000,
+      eventLimitReached: false,
+    })
+  })
+  await page.route('**/api/diagnostics/capture/capture-1/jobs/8/bundle', route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"jobId":8}' }))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const otherDetails = page.getByRole('dialog', { name: /Job details/ })
+  await expect(otherDetails.locator('.queue-diagnostic-action').getByRole('status')).toContainText('Loading…')
+  await expect(otherDetails.getByRole('button', { name: 'Open diagnostic settings' })).toHaveCount(0)
+  releaseLookup()
+  await expect(otherDetails.getByRole('button', { name: 'Download diagnostics' })).toHaveCount(0)
+  await otherDetails.getByRole('button', { name: 'Open diagnostic settings' }).click()
+  await expect(page).toHaveURL(/#\/settings\/system$/)
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-8').click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  const downloadButton = details.getByRole('button', { name: 'Download diagnostics' })
+  await expect(downloadButton).toBeVisible()
+  const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()])
+  expect(download.suggestedFilename()).toBe('optimisarr-diagnostics-8-capture-1.json')
 })
 
 const clearQueue = {
