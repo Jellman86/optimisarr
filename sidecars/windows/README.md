@@ -62,6 +62,10 @@ example server addresses. No copyrighted media material is used.
 
 <img src="../../docs/images/optimisarr-sidecar-windows-two-jobs.png" width="390" alt="Expanded Windows Processing details showing two separate fabricated job previews">
 
+<img src="../../docs/images/optimisarr-sidecar-windows-shutdown.png" width="390" alt="Dark Windows Compact Monitor with optional shutdown armed, new assignments stopped, and a cancelable countdown">
+
+<img src="../../docs/images/optimisarr-sidecar-windows-light-shutdown.png" width="390" alt="Light Windows Compact Monitor showing the same cancelable shutdown countdown">
+
 If a frame is unavailable, the monitor keeps a labelled placeholder. Previews are sampled from
 the worker's local source only while the activity panel is open; they never affect encoding or
 verification.
