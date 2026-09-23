@@ -115,7 +115,7 @@ Where this library's work may run**. **Only on workers** keeps eligible video re
 container; **Prefer a worker** allows server fallback after ten minutes. Remote workers must remain
 enabled for these placement choices to apply. Remuxes, audio-only and image jobs remain server work.
 
-**Verify entirely on the sidecar**, alongside the global worker toggle, applies to new assignments.
+**Verify entirely on the sidecar** defaults on for new installations and applies to new assignments.
 It asks updated sidecars for source/candidate probes, complete candidate decode, timestamp checks,
 optional audio loudness measurements and any configured VMAF measurements. The server binds this
 evidence to the transferred source and candidate hashes and evaluates its safety rules. Missing or

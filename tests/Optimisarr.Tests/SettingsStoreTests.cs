@@ -22,14 +22,14 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task Strict_worker_verification_is_opt_in_and_round_trips()
+    public async Task Strict_worker_verification_defaults_on_and_explicit_opt_out_round_trips()
     {
         await using var db = CreateDb();
         var store = new SettingsStore(db);
         var original = await store.GetQueueSettingsAsync(CancellationToken.None);
-        Assert.False(original.WorkerVerificationRequired);
-        await store.SetQueueSettingsAsync(original with { WorkerVerificationRequired = true }, CancellationToken.None);
-        Assert.True((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
+        Assert.True(original.WorkerVerificationRequired);
+        await store.SetQueueSettingsAsync(original with { WorkerVerificationRequired = false }, CancellationToken.None);
+        Assert.False((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
     }
 
     [Fact]
@@ -187,14 +187,19 @@ public sealed class SettingsStoreTests : IDisposable
                 CancellationToken.None);
             Assert.Equal(SetupState.Pending, state);
             Assert.True((await new SettingsStore(freshDb).GetQueueSettingsAsync(CancellationToken.None)).DryRunMode);
+            Assert.True((await new SettingsStore(freshDb).GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
         }
 
         await using (var retainedDb = CreateDb())
         {
+            var previousDefault = await retainedDb.AppSettings.FindAsync(SettingKeys.WorkerVerificationRequired);
+            retainedDb.AppSettings.Remove(previousDefault!);
+            await retainedDb.SaveChangesAsync();
             var retained = await new SettingsStore(retainedDb).InitialiseSetupStateAsync(
                 databaseExistedBeforeStartup: true,
                 CancellationToken.None);
             Assert.Equal(SetupState.Pending, retained);
+            Assert.False((await new SettingsStore(retainedDb).GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
         }
 
         await using (var upgradeDb = CreateDb())
@@ -206,7 +211,26 @@ public sealed class SettingsStoreTests : IDisposable
                 CancellationToken.None);
             Assert.Equal(SetupState.CompletedUpgrade, upgrade);
             Assert.False((await new SettingsStore(upgradeDb).GetQueueSettingsAsync(CancellationToken.None)).DryRunMode);
+            Assert.False((await new SettingsStore(upgradeDb).GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
         }
+    }
+
+    [Fact]
+    public async Task Upgrade_keeps_a_saved_verification_choice_and_export_import_round_trips_it()
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db);
+        await store.SetQueueSettingsAsync((await store.GetQueueSettingsAsync(CancellationToken.None))
+            with { WorkerVerificationRequired = false }, CancellationToken.None);
+        await store.InitialiseSetupStateAsync(databaseExistedBeforeStartup: true, CancellationToken.None);
+        Assert.False((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
+
+        var exported = await store.ExportSettingsAsync(CancellationToken.None);
+        Assert.Equal(bool.FalseString, exported[SettingKeys.WorkerVerificationRequired]);
+        await store.SetQueueSettingsAsync((await store.GetQueueSettingsAsync(CancellationToken.None))
+            with { WorkerVerificationRequired = true }, CancellationToken.None);
+        await store.ImportSettingsAsync(exported, CancellationToken.None);
+        Assert.False((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
     }
 
     [Fact]

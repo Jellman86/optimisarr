@@ -2631,8 +2631,10 @@
             ]
           },
           "workerVerificationRequired": {
-            "default": false,
-            "type": "boolean"
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         },
         "required": [

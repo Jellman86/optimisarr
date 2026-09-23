@@ -10,6 +10,7 @@ from acceptance.core import Blocked, Report, inside, quality_failures, statistic
 from acceptance.media import compare_report
 from acceptance.corpus import import_corpus
 from acceptance.runner import missing_workers
+from media_acceptance import strict_worker_verification_for_run
 
 
 def frames(values):
@@ -17,6 +18,11 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+    def test_fleet_defaults_to_complete_sidecar_verification_with_explicit_opt_out(self):
+        self.assertTrue(strict_worker_verification_for_run("fleet", server_verification=False))
+        self.assertFalse(strict_worker_verification_for_run("fleet", server_verification=True))
+        self.assertFalse(strict_worker_verification_for_run("smoke", server_verification=False))
+
     def test_expected_offline_revoked_and_empty_workers_cannot_disappear_from_coverage(self):
         workers = [{"name": "online", "online": True, "videoEncoders": ["libx265"]},
                    {"name": "offline", "online": False, "videoEncoders": ["libx265"]},

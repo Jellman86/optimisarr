@@ -20,6 +20,21 @@ public sealed class SettingsRequestParserTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_older_client_omitting_worker_verification_keeps_the_saved_choice(bool savedChoice)
+    {
+        var request = ValidRequest() with { WorkerVerificationRequired = null };
+
+        var parsed = SettingsRequestParser.TryParse(request, remoteWorkersAvailable: true,
+            out var settings, out var error, currentWorkerVerificationRequired: savedChoice);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(savedChoice, settings.WorkerVerificationRequired);
+    }
+
+    [Theory]
     [InlineData("Magic")]
     [InlineData("999")]
     public void An_unknown_tone_map_mode_is_rejected_before_it_reaches_ffmpeg(string value)

@@ -441,7 +441,8 @@ class Harness:
         if self.report.case("preflight", self.preflight)["status"] != "passed":
             return self.report.exit_code
         self.strict_worker_verification = strict_worker_verification
-        self.configure(workerVerificationRequired=strict_worker_verification)
+        if tier == "fleet":
+            self.configure(workerVerificationRequired=strict_worker_verification)
         self.report.environment["strictWorkerVerification"] = strict_worker_verification
         try:
             fixture_dir = self.root / "fixtures"

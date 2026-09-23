@@ -12,7 +12,8 @@ internal static class SettingsRequestParser
         SettingsDto request,
         bool remoteWorkersAvailable,
         out QueueSettings settings,
-        out SettingsRequestError? error)
+        out SettingsRequestError? error,
+        bool currentWorkerVerificationRequired = true)
     {
         settings = default!;
         if (request.RemoteWorkersEnabled && !remoteWorkersAvailable)
@@ -58,7 +59,7 @@ internal static class SettingsRequestParser
             request.DryRunMode,
             request.ReplacementQuarantineRetentionDays,
             request.RemoteWorkersEnabled,
-            request.WorkerVerificationRequired);
+            request.WorkerVerificationRequired ?? currentWorkerVerificationRequired);
         error = null;
         return true;
     }

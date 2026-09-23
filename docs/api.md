@@ -246,7 +246,7 @@ Settings fields include:
   "hardwareDecode": true,
   "hdrToneMapMode": "Software",
   "remoteWorkersEnabled": false,
-  "workerVerificationRequired": false,
+  "workerVerificationRequired": true,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
@@ -255,7 +255,9 @@ Settings fields include:
 
 `remoteWorkersEnabled` enables the preview worker service when available.
 `workerVerificationRequired` requires complete worker verification for newly issued remote
-full-file video assignments; it defaults off and is separate from per-library work placement.
+full-file video assignments. It defaults on for new installations, while upgrades keep their
+previous choice, and is separate from per-library work placement.
+Older clients that omit this field from an update retain the installation's current choice.
 `remoteWorkersAvailable` is returned as server capability information, not a toggle that can enable
 the feature without its environment flag. See [Remote Workers](#remote-workers) for the contract.
 
@@ -615,7 +617,7 @@ those windows represent, fixed at claim and recorded on the lease. The worker re
 with both file hashes before delivering the candidate. The server parses and pools quality itself;
 it does not accept a worker-supplied pass/fail verdict.
 
-With `workerVerificationRequired: false` (the default), usable remote quality evidence avoids the
+With `workerVerificationRequired: false` (an explicit opt-out), usable remote quality evidence avoids the
 server's VMAF pass while the remaining verification media checks run on the server. Missing,
 mismatched, or insufficient quality evidence triggers a local VMAF measurement with the reason
 reported on the worker's card. Hardware decode is selected only when the worker proved it and it
