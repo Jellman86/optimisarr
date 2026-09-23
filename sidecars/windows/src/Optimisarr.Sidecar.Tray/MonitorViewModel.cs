@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Collections.Generic;
 using Optimisarr.Sidecar.Core.Session;
 
 namespace Optimisarr.Sidecar.Tray;
@@ -26,8 +27,22 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
     public string Version => Snapshot?.Version ?? "Unavailable";
     public string ConnectionDetail => Available ? Snapshot!.Detail : error ?? "Connecting to the local worker…";
     public bool Working => Available && Snapshot!.Jobs.Count > 0;
+    public IReadOnlyList<MonitorJob> Jobs => Available ? Snapshot!.Jobs : [];
+    public IReadOnlyList<MonitorJobRow> JobRows => Jobs.Select(job => new MonitorJobRow(
+        job.Title,
+        $"Job #{job.JobId} · {StageName(job.Stage)}" + (job.EncodedSeconds is { } seconds ? $" · {TimeSpan.FromSeconds(Math.Max(0, seconds)):hh\\:mm\\:ss} encoded" : ""),
+        job.PreviewJpeg)).ToArray();
+    public byte[]? Preview => Jobs.FirstOrDefault()?.PreviewJpeg;
+    public bool PreviewMissing => Preview is null;
+    public string PreviewLabel => Working ? "WAITING FOR FRAME" : "NO ACTIVE MEDIA";
     public void Update(MonitorSnapshot snapshot) { Snapshot = snapshot; error = null; Changed(); }
     public void Disconnect(string reason) { error = reason; Changed(); }
+    public void ClearPreviews()
+    {
+        if (Snapshot is null) return;
+        Snapshot = Snapshot with { Jobs = Snapshot.Jobs.Select(job => job with { PreviewJpeg = null }).ToArray() };
+        Changed();
+    }
     private void Changed() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     private string Percent(double? value) => Available && value is { } number && double.IsFinite(number) ? $"{Math.Clamp(number, 0, 1) * 100:0}%" : "—";
     private static string StageName(RemoteStage stage) => stage switch
@@ -39,3 +54,5 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
         _ => "Working"
     };
 }
+
+internal sealed record MonitorJobRow(string Title, string Caption, byte[]? PreviewJpeg);

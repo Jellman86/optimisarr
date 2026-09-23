@@ -32,6 +32,9 @@ tests/                          Core and local pipe tests.
 
 `Optimisarr.Sidecar.Service` hosts the worker; `Optimisarr.Sidecar.Tray` provides the compact
 monitor anchored to the notification-area screen. Preferences and diagnostics stay inside the panel.
+The active card shows a small frame from the worker's downloaded source while the activity panel
+is open; Processing details keeps each preview with its own job. Sampling is best-effort and never
+changes an encode. Unsupported or audio-only media keeps a stable fallback instead.
 Changing pages or expanding **Processing details** keeps the rounded panel inside that screen’s
 working area. It dismisses on focus loss or Escape and is not an always-on-top window.
 The tray, panel, executable and Start shortcut share the main application’s Precession icon.
@@ -48,6 +51,12 @@ Screenshots use fabricated dummy media created for documentation, invented machi
 example server addresses. No copyrighted media material is used.
 
 <img src="../../docs/images/optimisarr-sidecar-windows-encoding.png" width="390" alt="Dark Windows Compact Monitor showing a fabricated Prism Field encoding job and resource readings">
+
+<img src="../../docs/images/optimisarr-sidecar-windows-two-jobs.png" width="390" alt="Expanded Windows Processing details showing two separate fabricated job previews">
+
+If a frame is unavailable, the monitor keeps a labelled placeholder. Previews are sampled from
+the worker's local source only while the activity panel is open; they never affect encoding or
+verification.
 
 <img src="../../docs/images/optimisarr-sidecar-windows-light-preferences.png" width="390" alt="Light Windows Preferences showing pairing, worker start and tray sign-in controls inside the native panel">
 
@@ -163,7 +172,10 @@ dotnet build Optimisarr.Sidecar.slnx -c Release -warnaserror
 
 The native check opens the actual monitor, changes pages and disclosure state, and checks its
 working-area anchor. `--render-monitor <directory>` writes isolated fixture images without polling
-a live worker. [Installer validation](installer/README.md#validation) additionally exercises the
+a live worker, including preview, fallback and two-job states. Set
+`OPTIMISARR_PREVIEW_FFMPEG` to an installed `ffmpeg.exe` before running the focused native preview
+test to exercise extraction from a synthetic video and audio-only fallback.
+[Installer validation](installer/README.md#validation) additionally exercises the
 installed binaries and private runtime. Real GPU and end-to-end media checks use the
 [media acceptance harness](../../docs/development/media-acceptance.md).
 
