@@ -24,6 +24,10 @@ Playwright's Chromium browser before running its suite. `npm --prefix web run de
 starts the interactive development server; it is not a substitute for the
 browser regression suite.
 
+For visual layout regressions, run the [UI layout audit](ui-layout-audit.md).
+It checks every route at desktop, tablet, phone and enlarged text sizes, then
+inspects card width, clipping, modal fit, translations and interaction states.
+
 Native sidecars have separate platform checks. On macOS, run `swift test` and
 `swift build --configuration release` from `sidecars/macos`. On Windows, build
 `sidecars/windows/Optimisarr.Sidecar.slnx` in Release with `-warnaserror`, run

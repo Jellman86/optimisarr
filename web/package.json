@@ -11,6 +11,8 @@
     "check:locales": "node scripts/check-locales.mjs",
     "test:unit": "node --test 'src/lib/**/*.test.ts'",
     "test:e2e": "playwright test",
+    "audit:ui": "playwright test e2e/layout-audit.spec.ts",
+    "audit:ui:webkit": "playwright test -c playwright.webkit-audit.config.ts",
     "brand:assets": "node scripts/render-stellar-assets.ts"
   },
   "devDependencies": {

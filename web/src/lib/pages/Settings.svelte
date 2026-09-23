@@ -1150,7 +1150,7 @@
             {/if}
           </div>
         </div>
-        <div class="mt-3 grid max-w-2xl gap-3">
+        <div class="mt-3 grid gap-3">
           <Toggle bind:checked={watcherDraft.enabled} label={i18n.m.settings.pause_streaming} hint={i18n.m.settings.pause_streaming_hint} />
           <Toggle bind:checked={watcherDraft.refreshOnReplace} label={i18n.m.settings.refresh_replace} hint={i18n.m.settings.refresh_replace_hint} />
         </div>
@@ -1360,7 +1360,7 @@
           />
         </div>
       </div>
-      <div class="mt-3 grid max-w-2xl gap-3">
+      <div class="mt-3 grid gap-3">
         <Toggle bind:checked={targetDraft.enabled} label={i18n.m.settings.enabled} />
         <Toggle bind:checked={targetDraft.notifyOnReplacement} label={i18n.m.settings.notify_replaced} />
         <Toggle bind:checked={targetDraft.notifyOnFailure} label={i18n.m.settings.notify_failed} />

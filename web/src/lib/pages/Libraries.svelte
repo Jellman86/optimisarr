@@ -1913,7 +1913,7 @@
       <section class="space-y-4">
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <div class="mb-1 flex items-center justify-between">
+            <div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
               <label class="label mb-0" for="lib-priority">{i18n.m.libraries.queue_priority} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.queue_priority })} text={i18n.m.libraries.queue_priority_tip} /></label>
               <span class="badge tone-neutral">{priorityLabel(form.priority)}</span>
             </div>
@@ -2175,7 +2175,7 @@
         </div>
 
 {#if !isRemuxProfile}        <div class="mt-4">
-          <div class="mb-1 flex items-center justify-between">
+          <div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <label class="label mb-0" for="lib-crf">{i18n.m.libraries.quality_crf} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.quality_crf })} text={i18n.m.libraries.quality_crf_tip} /></label>
             <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
               <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
@@ -2183,11 +2183,11 @@
             </label>
           </div>
           {#if form.qualityCrf != null}
-            <div class="flex items-center gap-3">
+            <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
               <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="min-w-0 w-full accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
               <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-              <span class="badge w-10 justify-center tone-accent">{form.qualityCrf}</span>
+              <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.qualityCrf}</span>
             </div>
           {:else}
             <p class="text-xs text-ink-4">{i18n.m.libraries.using_preset_quality}</p>
@@ -2390,10 +2390,10 @@
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="space-y-4">
 
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div class="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
 
-          <div>
-            <div class="mb-1 flex items-center justify-between">
+          <div class="min-w-0">
+            <div class="mb-1 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
               <label class="label mb-0" for="lib-image-quality">{i18n.m.libraries.quality} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.quality })} text={i18n.m.libraries.image_quality_tip} /></label>
               <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
                 <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
@@ -2401,11 +2401,11 @@
               </label>
             </div>
             {#if form.imageQuality != null}
-              <div class="flex items-center gap-3">
+              <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
                 <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="flex-1 accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
+                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="min-w-0 w-full accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
                 <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-                <span class="badge w-10 justify-center tone-accent">{form.imageQuality}</span>
+                <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.imageQuality}</span>
               </div>
             {:else}
               <p class="text-xs text-ink-4">{i18n.m.libraries.using_default_80}</p>
