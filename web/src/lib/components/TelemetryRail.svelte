@@ -27,7 +27,8 @@
   // eligible. A dashboard that overstates what it can win is what this application exists not to be.
 </script>
 
-<div class="card grid grid-cols-1 divide-y divide-line sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x">
+<div class="telemetry-container">
+<div class="telemetry-grid card grid">
   <div class="p-4">
     <div class="flex items-start justify-between gap-2">
       <span class="label mb-0">{i18n.m.dashboard.total_saved}</span>
@@ -99,3 +100,20 @@
     <div class="mt-1 text-xs text-ink-3">{healthDetail}</div>
   </div>
 </div>
+</div>
+
+<style>
+  .telemetry-container { container-type: inline-size; }
+  .telemetry-grid { grid-template-columns: minmax(0, 1fr); }
+  .telemetry-grid > div + div { border-top: 1px solid var(--divide); }
+  @container (min-width: 30rem) {
+    .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .telemetry-grid > div:nth-child(2) { border-top: 0; }
+    .telemetry-grid > div:nth-child(even) { border-left: 1px solid var(--divide); }
+  }
+  @container (min-width: 60rem) {
+    .telemetry-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .telemetry-grid > div { border-top: 0; }
+    .telemetry-grid > div:nth-child(3) { border-left: 1px solid var(--divide); }
+  }
+</style>

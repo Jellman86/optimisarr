@@ -233,8 +233,10 @@ test('review Change actions preserve the plan and keyboard focus order', async (
   await page.goto('/')
 
   const change = page.getByRole('button', { name: 'Change' }).first()
-  await change.focus()
-  await expect(change).toBeFocused()
+  await expect.poll(async () => {
+    await change.focus()
+    return change.evaluate(element => element === document.activeElement)
+  }).toBe(true)
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: /Set up your libraries/ })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Back' })).toBeDisabled()

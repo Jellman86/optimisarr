@@ -544,7 +544,7 @@
   {#if loading}
     <div class="card flex min-h-72 items-center justify-center text-sm text-ink-3">{i18n.m.common.loading}</div>
   {:else if !session}
-    <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <div class="quality-columns">
       <section class="card p-5 sm:p-6">
         <h2 class="text-lg font-semibold text-ink">
           {selected?.mediaKind === 'Audio' ? i18n.m.calibration.choose_audio : selected?.mediaKind === 'Image' ? i18n.m.calibration.choose_image : i18n.m.calibration.choose_source}
@@ -613,7 +613,7 @@
   {:else if session.status === 'Failed'}
     <Banner kind="error">{session.error ?? i18n.m.calibration.failed}</Banner>
   {:else}
-    <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div class="quality-columns">
       <div class="min-w-0 space-y-5">
         <section class="overflow-hidden rounded-2xl bg-black shadow-xl ring-1 ring-white/10" bind:this={viewer} aria-busy={switching}>
           <div class="flex min-h-16 items-center justify-between gap-3 border-b border-white/10 px-3 py-2.5 text-white/85 sm:px-4 sm:py-3">
@@ -767,6 +767,11 @@
 </div>
 
 <style>
+  .quality-lab { container-type: inline-size; }
+  .quality-columns { display: grid; gap: 1.25rem; }
+  @container (min-width: 60rem) {
+    .quality-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); }
+  }
   .quality-lab :global(:fullscreen) { width: 100vw; height: 100vh; border-radius: 0; }
   .quality-lab :global(:fullscreen .comparison-stage) { height: calc(100vh - 7.5rem); min-height: 0; aspect-ratio: auto; }
   @media (prefers-reduced-motion: reduce) { .quality-lab * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }

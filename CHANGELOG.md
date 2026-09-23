@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Repeatable Playwright UI layout audit across every main page and nested control room, seven viewport/text-size profiles, all nine locales on narrow screens, modal sizing, and card hover/focus behavior, with an optional WebKit pass for Safari rendering.
+
 ### Fixed
 
+- Media-server and notification switches now span their Settings cards, advanced library quality controls wrap on small screens, and Dashboard metrics, worker details and the Personal quality check reflow when enlarged text reduces available space. The sidebar language menu stays hidden until it is correctly positioned.
 - Complete sidecar verification now defaults on for fresh settings stores; upgrades retain the prior worker-verification choice, and fleet acceptance exercises the strict mode by default.
 - Remote verification now uses each worker assignment's frozen colour-conversion plan, preserving SD SMPTE 170M output and reporting source, expected, and output colour tags including range.
 - A failed source video timeline now blocks software-decode and higher-quality retries that cannot repair the unchanged original, with the exact gate named in the job failure reason.
