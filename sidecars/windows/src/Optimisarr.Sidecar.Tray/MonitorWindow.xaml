@@ -143,7 +143,12 @@
       </StackPanel>
      </Expander>
      <Border Background="{DynamicResource Ground}" Padding="0,16"><TextBlock Text="Previews stay on this PC. Verification follows your server’s policy." Foreground="{DynamicResource Muted}" FontSize="12"/></Border>
-     <Button Content="{Binding PauseLabel}" IsEnabled="{Binding Available}" Click="Pause_Click"/>
+     <Button Content="{Binding PauseLabel}" IsEnabled="{Binding CanPause}" Click="Pause_Click"/>
+     <Border Style="{StaticResource Card}" Margin="0,12,0,0"><StackPanel>
+      <TextBlock Text="AFTER CURRENT WORK" Foreground="{DynamicResource Accent}" FontSize="10" FontWeight="SemiBold"/>
+      <TextBlock Text="{Binding ShutdownDetail}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,7,0,10"/>
+      <Button Content="{Binding ShutdownLabel}" IsEnabled="{Binding CanArmShutdown}" Click="Shutdown_Click" ToolTip="No new jobs are taken while shutdown is armed. The countdown can be canceled."/>
+     </StackPanel></Border>
      <TextBlock Text="{Binding Note}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,12,0,0"/>
     </StackPanel>
     <StackPanel x:Name="PreferencesPage" Visibility="Collapsed">

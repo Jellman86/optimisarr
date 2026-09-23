@@ -103,7 +103,7 @@ struct SidecarMenu: View {
                         .font(.caption).foregroundStyle(Instrument.dim).lineLimit(1)
                 }
                 Spacer()
-                Text(session.isPaused ? "PAUSED" : session.status.readout)
+                Text(session.shutdown.armed ? "SHUTDOWN ARMED" : session.isPaused ? "PAUSED" : session.status.readout)
                     .font(.system(size: 10, weight: .semibold)).foregroundStyle(session.status.lamp)
                 Button { page = page == "preferences" ? "activity" : "preferences" } label: {
                     Image(systemName: "gearshape").frame(width: 28, height: 28)
@@ -202,17 +202,38 @@ struct SidecarMenu: View {
                         .font(.caption).foregroundStyle(Instrument.dim)
                 }.padding(.top, 12)
             }.font(.system(size: 12, weight: .medium)).tint(Instrument.phosphor)
-            HStack {
-                Text("Jobs at once").font(.caption).foregroundStyle(Instrument.dim)
-                Spacer()
-                ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { concurrencyKey($0) }
+            if session.shutdown.armed {
+                Label("New assignments stopped", systemImage: "checkmark.shield")
+                    .font(.caption.weight(.semibold)).foregroundStyle(Instrument.phosphor)
+            } else {
+                HStack {
+                    Text("Jobs at once").font(.caption).foregroundStyle(Instrument.dim)
+                    Spacer()
+                    ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { concurrencyKey($0) }
+                }
+                Button { session.setPaused(!session.isPaused) } label: {
+                    Label(session.isPaused ? "Resume accepting jobs" : session.activeJobs.isEmpty ? "Pause new jobs" : "Pause after current jobs",
+                          systemImage: session.isPaused ? "play.fill" : "pause.fill")
+                        .font(.system(size: 12, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 10)
+                }.buttonStyle(MonitorButtonStyle()).disabled(!session.isPaired)
             }
-            Button { session.setPaused(!session.isPaused) } label: {
-                Label(session.isPaused ? "Resume accepting jobs" : session.activeJobs.isEmpty ? "Pause new jobs" : "Pause after current jobs",
-                      systemImage: session.isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 12, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 10)
-            }.buttonStyle(MonitorButtonStyle()).disabled(!session.isPaired)
-            Text(session.isPaused ? "Current work will finish. New jobs are paused until resumed or the app restarts." : "Closing this panel keeps your jobs running.")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("AFTER CURRENT WORK")
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(Instrument.phosphor)
+                Text(session.shutdown.armed ? shutdownDetail :
+                     "Stops new jobs, waits for held work to return, then starts a 60-second countdown.")
+                    .font(.caption).foregroundStyle(Instrument.dim)
+                Button {
+                    if session.shutdown.armed { session.cancelShutdown() }
+                    else { session.armShutdown() }
+                } label: {
+                    Label(session.shutdown.armed ? "Cancel shutdown" : "Shut down when work is complete",
+                          systemImage: session.shutdown.armed ? "xmark.circle" : "power")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                }.buttonStyle(MonitorButtonStyle()).disabled(!session.isPaired || (session.shutdown.armed && !session.shutdown.canCancel))
+            }.padding(12).monitorCard()
+            Text(session.shutdown.armed ? "Closing this panel does not cancel shutdown." : session.isPaused ? "Current work will finish. New jobs are paused until resumed or the app restarts." : "Closing this panel keeps your jobs running.")
                 .font(.caption).foregroundStyle(Instrument.dim).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -222,6 +243,7 @@ struct SidecarMenu: View {
     /// An idle instrument still reports. "No job held" is the state; the line under it is the
     /// evidence that the machine was working recently and is not quietly broken.
     private var idleTitle: String {
+        if session.shutdown.armed { return "Finishing before shutdown" }
         if session.isPaused { return "New jobs paused" }
         switch session.status {
         case .unreachable: return "Waiting for the server"
@@ -231,12 +253,28 @@ struct SidecarMenu: View {
         }
     }
 
+    private var shutdownDetail: String {
+        if case .unreachable = session.status { return session.shutdown.detail }
+        if session.activeJobs.values.contains(where: {
+            if case .delivering = $0 { return true }; return false
+        }) {
+            return "Finishing candidate upload and waiting for the server acknowledgement. No new jobs are accepted."
+        }
+        if session.activeJobs.values.contains(where: {
+            if case .measuring = $0 { return true }; return false
+        }) {
+            return "Waiting for sidecar quality checks and verification to finish. No new jobs are accepted."
+        }
+        return session.shutdown.detail
+    }
+
     private var idleHead: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(idleTitle)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Instrument.ink)
-            Text(session.lastOutcome.map(Self.lastLine) ?? "New jobs will appear here automatically.")
+            Text(session.shutdown.armed ? "No new jobs will be accepted." :
+                 session.lastOutcome.map(Self.lastLine) ?? "New jobs will appear here automatically.")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .tracking(0.9)
                 .foregroundStyle(Instrument.dim)
@@ -363,7 +401,7 @@ struct SidecarMenu: View {
         switch outcome {
         case let .delivered(jobId, bytes):
             return "#\(jobId) · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-        case let .released(jobId, _), let .leaseLost(jobId, _):
+        case let .released(jobId, _), let .leaseLost(jobId, _), let .unconfirmed(jobId, _):
             return "#\(jobId) · handed back"
         }
     }
@@ -475,6 +513,8 @@ private extension JobOutcome {
             return "Last job #\(jobId): returned \(size) to the server."
         case let .released(jobId, reason):
             return "Last job #\(jobId): handed back — \(reason)"
+        case let .unconfirmed(jobId, reason):
+            return "Last job #\(jobId): hand-back unconfirmed — \(reason)"
         case let .leaseLost(jobId, reason):
             return "Last job #\(jobId): lease lost — \(reason)"
         }

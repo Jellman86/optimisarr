@@ -45,6 +45,14 @@ from `web/` after changing the main Precession geometry or lighting.
 The tray is optional: closing it leaves work running. See [installer notes](installer/README.md)
 for the unsigned MSI preview, pairing, upgrade safeguards and release limitations.
 
+**Shut down when work is complete** is available from the tray menu and Compact Monitor. The
+service immediately stops claiming jobs, reports zero capacity to the server, and keeps current
+verification, uploads and result acknowledgement running. Only after the server confirms draining
+and no job is held does a 60-second, cancelable countdown begin. A lost connection or an
+unacknowledged lease blocks power-off and explains why. Closing the tray leaves the request armed;
+canceling restores the previous pause setting. The request is never restored after a service
+restart. If Windows denies the shutdown request, the monitor shows the error without retrying.
+
 ## The Compact Monitor
 
 Screenshots use fabricated dummy media created for documentation, invented machine names and

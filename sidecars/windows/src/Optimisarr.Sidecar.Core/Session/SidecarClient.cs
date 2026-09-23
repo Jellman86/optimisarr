@@ -363,8 +363,9 @@ public sealed class SidecarClient(HttpClient http)
             HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/release"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
         using var response = await http.SendAsync(request, cancellationToken);
-        // Best effort by design: a release that does not land costs a lease period, while throwing
-        // here would lose the reason the job was being given back in the first place.
+        // A shutdown request must distinguish an acknowledged hand-back from a lease that may
+        // still be held. The runner preserves its original failure reason in the returned outcome.
+        response.EnsureSuccessStatusCode();
     }
 
     private sealed record HeartbeatResponse(

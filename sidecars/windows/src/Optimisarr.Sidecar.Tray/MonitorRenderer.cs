@@ -13,7 +13,7 @@ internal static class MonitorRenderer
     public static void Render(string directory)
     {
         Directory.CreateDirectory(directory);
-        foreach (var state in new[] { "idle", "encoding", "verifying", "offline", "light-encoding", "details", "light-details", "preferences", "light-preferences", "preview-fallback", "light-preview-fallback", "two-jobs", "light-two-jobs", "many-jobs", "light-many-jobs" })
+        foreach (var state in new[] { "idle", "encoding", "verifying", "offline", "light-encoding", "details", "light-details", "preferences", "light-preferences", "preview-fallback", "light-preview-fallback", "two-jobs", "light-two-jobs", "many-jobs", "light-many-jobs", "shutdown-countdown", "light-shutdown-countdown" })
         {
             var pose = state.Replace("light-", "");
             var model = new MonitorViewModel();
@@ -30,7 +30,9 @@ internal static class MonitorRenderer
             model.Update(new MonitorSnapshot("Studio PC", "Connected", "Connected to server", false, "https://optimisarr.example.com",
                 new MachineLoad(0.18, 0.64), 428L * 1_073_741_824,
                 jobs,
-                "Job #41: candidate returned to server", SidecarBuild.Version));
+                "Job #41: candidate returned to server", SidecarBuild.Version,
+                pose == "shutdown-countdown", pose == "shutdown-countdown" ? "No jobs held. Shutting down in 48 seconds; cancel at any time." : null,
+                pose == "shutdown-countdown" ? 48 : null));
             if (pose == "offline") model.Disconnect("The worker is unavailable. Live readings have been cleared.");
             var window = new MonitorWindow(live: false) { DataContext = model };
             window.ProcessingDetails.IsExpanded = pose is "details" or "two-jobs" or "many-jobs";

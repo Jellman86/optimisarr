@@ -18,6 +18,7 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     private(set) var releases = 0
     var onClaim: (@Sendable () async -> Void)?
     private(set) var heartbeatScratchBytes: [Int64] = []
+    private(set) var heartbeatCapacities: [Int] = []
 
     init(_ replies: [Reply]) {
         self.replies = replies
@@ -34,6 +35,9 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
                let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
                let bytes = (json["freeScratchBytes"] as? NSNumber)?.int64Value {
                 heartbeatScratchBytes.append(bytes)
+                if let capacity = (json["maxConcurrency"] as? NSNumber)?.intValue {
+                    heartbeatCapacities.append(capacity)
+                }
             }
             return replies.count > 1 ? replies.removeFirst() : replies[0]
         }
@@ -249,6 +253,30 @@ struct SidecarSessionTests {
 
         #expect(transport.heartbeatScratchBytes.first == 321)
         session.unpair()
+    }
+
+    @Test("shutdown arm reports zero capacity and cancellation restores the previous pause")
+    func shutdownDrainsWithoutClaiming() async throws {
+        let store = InMemoryCredentialStore(
+            stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11))
+        let transport = ScriptedTransport([Self.beat])
+        let session = SidecarSession(
+            client: SidecarClient(transport: transport), store: store,
+            capabilities: SidecarCapabilities(name: "Test", videoEncoders: ["libx265"], maxConcurrency: 1),
+            prober: nil, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) },
+            requestShutdown: { Issue.record("a test must never shut down the Mac") })
+        session.setPaused(true)
+        await session.restoreAndSettle()
+        session.armShutdown()
+        try await waitFor { transport.heartbeatCapacities.contains(0) }
+        #expect(transport.claims == 0)
+        session.cancelShutdown()
+        #expect(session.isPaused)
+        try await waitFor { transport.heartbeatCapacities.last == 1 }
+        session.armShutdown()
+        session.unpair()
+        #expect(!session.shutdown.armed)
     }
 
     private static let beat: ScriptedTransport.Reply =

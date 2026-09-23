@@ -67,6 +67,16 @@ way before the app exits. **Start at login** in the menu registers the app as a 
 the system's own service, so it also appears under System Settings › General › Login Items; it needs
 the app to run from the built bundle rather than a bare build directory.
 
+**Shut down when work is complete** in the menu immediately stops new claims and reports zero worker
+capacity. Current jobs continue through verification, upload and server acknowledgement. Once no
+lease or transfer is held and the server has confirmed the drain, the menu shows a 60-second
+countdown with **Cancel shutdown**. A disconnect or unconfirmed hand-back blocks the countdown;
+closing the menu does not cancel it. Cancel restores the previous pause setting. The request is
+in-memory only, so restarting the app does not unexpectedly shut down the Mac. macOS may ask for
+System Events automation permission; a denial is shown in the menu and is never retried silently.
+
+<img src="../../docs/images/optimisarr-sidecar-macos-shutdown.png" width="390" alt="Mac Compact Monitor with shutdown armed, new assignments stopped, and a cancelable countdown">
+
 This loop has run end to end on real hardware: `LiveWorkLoopTests` pairs with a running server,
 claims a queued job, encodes it with the bundled ffmpeg and delivers it, and the server's own
 verification policy — including the configured VMAF gate — then judges the candidate. Run it

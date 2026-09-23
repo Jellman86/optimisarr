@@ -206,6 +206,9 @@ public enum JobOutcome: Sendable, Equatable {
     /// The job was handed back for the server to reassign, with the reason it could not be done.
     case released(jobId: Int, reason: String)
 
+    /// The hand-back could not be confirmed; a shutdown must wait rather than assume the lease ended.
+    case unconfirmed(jobId: Int, reason: String)
+
     /// The lease lapsed or was refused mid-job; the server has already moved on.
     case leaseLost(jobId: Int, reason: String)
 }
@@ -616,7 +619,7 @@ public struct JobRunner: WorkExecutor {
                 if let held = try? await client.uploadOffset(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId) {
-                    offset = held ?? offset
+                    offset = held
                 }
             }
         }
@@ -1131,10 +1134,14 @@ public struct JobRunner: WorkExecutor {
     /// Hands the job back. Best effort: if the release itself fails the lease lapses on its own
     /// and the server reclaims the job then, so nothing is stranded either way.
     private func release(_ assignment: Assignment, pairing: StoredPairing, reason: String) async -> JobOutcome {
-        try? await client.release(
-            serverAddress: pairing.serverAddress, credential: pairing.credential,
-            leaseId: assignment.leaseId)
-        return .released(jobId: assignment.jobId, reason: reason)
+        do {
+            try await client.release(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId)
+            return .released(jobId: assignment.jobId, reason: reason)
+        } catch {
+            return .unconfirmed(jobId: assignment.jobId, reason: "\(reason) Hand-back was not acknowledged: \(error.localizedDescription)")
+        }
     }
 
     /// Streams the file through SHA-256 so a multi-gigabyte source is never held in memory.
