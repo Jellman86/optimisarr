@@ -70,6 +70,10 @@ functional suite. Update the route inventory whenever a page is added.
 - Personal quality check's fixed side column squeezed the main panel at 200%
   text. Its columns now depend on the available content width and stack when
   needed.
+- Linux Chromium exposed additional 200% text pressure in Dashboard metrics
+  and worker details. Those grids now follow their card widths. The sidebar
+  language list stays hidden until its measured position is applied, avoiding
+  a brief offscreen jump when the rail changes size.
 
 The audit is browser-rendered UI verification with deterministic fixtures. It
 does not certify live encoder data, native sidecar panels, or a real user's

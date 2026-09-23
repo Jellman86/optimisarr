@@ -15,6 +15,7 @@
   let menu = $state<HTMLDivElement>()
   let menuLeft = $state(0)
   let menuMaxHeight = $state(288)
+  let positioned = $state(false)
 
   const selectedName = $derived(
     AVAILABLE_LOCALES.find((locale) => locale.code === i18n.locale)?.name ?? i18n.locale,
@@ -55,13 +56,16 @@
       const left = Math.max(8, Math.min(triggerRect.left + (triggerRect.width - width) / 2, window.innerWidth - width - 8))
       menuLeft = left - root.getBoundingClientRect().left
     }
+    positioned = true
   }
 
   async function toggle() {
     open = !open
     if (!open) return
+    positioned = false
     await tick()
     positionMenu()
+    await tick()
     focusOption(i18n.locale)
   }
 
@@ -132,6 +136,7 @@
       class="card absolute z-50 max-h-72 overflow-y-auto p-1 {compact ? 'w-44 max-w-none' : 'left-6 right-0'}"
       style:left={compact ? `${menuLeft}px` : undefined}
       style:max-height={`${menuMaxHeight}px`}
+      style:visibility={positioned ? 'visible' : 'hidden'}
       class:bottom-full={opensUp}
       class:mb-1={opensUp}
       class:top-full={!opensUp}

@@ -150,13 +150,17 @@ async function measure(page: Page): Promise<Layout> {
     const clippedCards = cards.filter(visible).filter(card => {
       const overflow = getComputedStyle(card).overflowX
       return !['auto', 'scroll'].includes(overflow) && card.scrollWidth > card.clientWidth + epsilon
-    }).map(card => {
+    }).flatMap(card => {
       const box = card.getBoundingClientRect()
       const offenders = [...card.querySelectorAll<HTMLElement>('*')].filter(visible).filter(child => {
         const childBox = child.getBoundingClientRect()
         return childBox.right > box.right + epsilon || childBox.left < box.left - epsilon
       }).slice(0, 3).map(child => child.id || `${child.tagName.toLowerCase()}.${child.className.toString().split(' ').slice(0, 2).join('.')}`)
-      return `${card.id || card.className.split(' ').slice(0, 3).join('.')} (+${card.scrollWidth - card.clientWidth}px; ${offenders.join(', ')})`
+      // scrollWidth can include browser-specific fractional text/paint extents. A child
+      // actually crossing the card edge distinguishes clipping from those false positives.
+      return offenders.length
+        ? [`${card.id || card.className.split(' ').slice(0, 3).join('.')} (+${card.scrollWidth - card.clientWidth}px; ${offenders.join(', ')})`]
+        : []
     })
 
     // Text and numeric inputs are intentionally capped for readable line length. Toggle rows
@@ -220,10 +224,18 @@ for (const viewport of viewports) {
         await page.locator('html').evaluate((element, scale) => { element.style.fontSize = `${scale * 100}%` }, viewport.fontScale)
       }
       const layout = await measure(page)
+      if (viewport.name === 'large text' && name === 'dashboard') {
+        const columns = await page.locator('.telemetry-grid').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)
+        expect(columns, 'dashboard metrics reflow at 200% text').toBeLessThanOrEqual(2)
+      }
+      if (viewport.name === 'large text' && name === 'settings workers') {
+        const columns = await page.locator('.worker-details').first().evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)
+        expect(columns, 'worker details stack at 200% text').toBe(1)
+      }
       samples[name] = layout
       const slug = name.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase()
       if (viewport.name === 'desktop dark' || viewport.name === 'phone dark'
-        || (viewport.name === 'large text' && ['personal quality check', 'settings media servers', 'photo encoding advanced'].includes(name))) {
+        || (viewport.name === 'large text' && ['dashboard', 'settings workers', 'personal quality check', 'settings media servers', 'photo encoding advanced'].includes(name))) {
         await page.screenshot({ path: testInfo.outputPath(`${slug}.png`), animations: 'disabled' })
       }
       if (layout.documentOverflow > 2 || layout.mainOverflow > 2 || layout.escapedCards.length || layout.clippedCards.length || layout.narrowRows.length) {

@@ -297,7 +297,7 @@
     {:else}
       <div class="grid gap-4 lg:grid-cols-2" data-testid="worker-cards">
         {#each workers as worker (worker.id)}
-          <article class="card flex flex-col gap-3 p-4" data-testid="worker-card">
+          <article class="worker-card card flex flex-col gap-3 p-4" data-testid="worker-card">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <h3 class="truncate text-base font-semibold text-ink">{worker.name}</h3>
@@ -363,7 +363,7 @@
               </div>
             {/if}
 
-            <dl class="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5 text-sm">
+            <dl class="worker-details grid gap-x-3 gap-y-1.5 text-sm">
               <dt class="text-ink-3">{i18n.m.workers.working_on}</dt>
               <dd class="min-w-0 text-ink">
                 {#if worker.activeJobs.length === 0}
@@ -386,12 +386,12 @@
               </dd>
 
               <dt class="text-ink-3">{i18n.m.workers.load}</dt>
-              <dd class="text-ink">
+              <dd class="min-w-0 break-words text-ink">
                 {t(i18n.m.workers.load_value, { held: worker.heldLeases, max: worker.maxConcurrency, scratch: formatSize(worker.freeScratchBytes) })}
               </dd>
 
               <dt class="text-ink-3">{i18n.m.workers.last_seen}</dt>
-              <dd class="text-ink">{ago(worker.lastSeenAt)}</dd>
+              <dd class="min-w-0 break-words text-ink">{ago(worker.lastSeenAt)}</dd>
 
               <dt class="text-ink-3">{i18n.m.workers.last_problem}</dt>
               <dd class="min-w-0 text-ink">
@@ -432,3 +432,13 @@
     {/if}
   </section>
 </div>
+
+<style>
+  .worker-card { container-type: inline-size; }
+  .worker-details { grid-template-columns: minmax(0, 1fr); }
+  .worker-details dd { margin-bottom: 0.5rem; }
+  @container (min-width: 28rem) {
+    .worker-details { grid-template-columns: minmax(0, 7rem) minmax(0, 1fr); }
+    .worker-details dd { margin-bottom: 0; }
+  }
+</style>
