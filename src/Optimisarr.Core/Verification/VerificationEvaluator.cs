@@ -110,9 +110,11 @@ public static class VerificationEvaluator
             checks.Add(AudioFidelity(input));
         }
 
-        // Colour metadata is only worth comparing when the original declared some.
+        // A tone-mapped encode has an explicit Rec.709 target even if its HDR source omitted tags.
+        // Otherwise compare only when the original declared a colour domain.
         if (isVideo
-            && (input.OriginalColorPrimaries is not null
+            && (input.HdrConvertedToSdr
+                || input.OriginalColorPrimaries is not null
                 || input.OriginalColorTransfer is not null
                 || input.OriginalColorSpace is not null
                 || input.OriginalColorRange is not null))

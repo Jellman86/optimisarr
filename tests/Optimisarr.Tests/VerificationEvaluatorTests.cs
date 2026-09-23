@@ -1449,6 +1449,22 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Intentional_hdr_to_sdr_checks_output_even_when_source_colour_tags_are_missing()
+    {
+        var input = Healthy() with
+        {
+            OriginalIsHdr = true,
+            HdrConvertedToSdr = true,
+            OutputIsHdr = false,
+            OutputColorPrimaries = "bt2020"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
     public void Aligned_audio_and_video_starts_pass_sync()
     {
         var input = Healthy() with { OutputVideoStartSeconds = 0.0, OutputAudioStartSeconds = 0.02 };
