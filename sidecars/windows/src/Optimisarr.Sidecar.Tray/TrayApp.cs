@@ -48,6 +48,13 @@ public sealed class TrayApp : Application
             Shutdown();
             return;
         }
+        if (args.Contains("--render-tray-motion"))
+        {
+            var index = Array.IndexOf(args, "--render-tray-motion");
+            if (index + 1 < args.Length) TrayIconAnimator.RenderPreview(args[index + 1]);
+            Shutdown();
+            return;
+        }
         if (args.Contains("--setup") || args.Contains("--start-worker"))
         {
             using var identity = WindowsIdentity.GetCurrent();

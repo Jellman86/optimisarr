@@ -67,11 +67,7 @@ public final class SidecarSession: ObservableObject {
     /// which they were in every shipped build.
     @Published public internal(set) var cpu: Double?
 
-    /// Turns of the menu bar cube, advanced only while a job is running.
-    ///
-    /// A cube spinning about its body diagonal keeps exactly the hexagonal silhouette the mark
-    /// already has; only the three visible edges rotate. So this is the mark itself turning rather
-    /// than a different icon swapped in, which is what makes it read as "still the same app, busy".
+    /// Phase of the production Precession frame sequence, advanced only while a job is running.
     @Published public internal(set) var spin: Double = 0
 
     /// How many jobs this Mac takes at once. Chosen by the operator, reported to the server on
@@ -515,7 +511,7 @@ public final class SidecarSession: ObservableObject {
     private var menuIsOpen = false
 
     /// How often the menu bar mark is redrawn while work is running.
-    private static let spinTicksPerSecond = 6.0
+    private static let spinTicksPerSecond = 10.0
 
     /// Starts or stops the short timer behind the menu bar's spin and the load figures.
     ///
@@ -536,33 +532,34 @@ public final class SidecarSession: ObservableObject {
         }
 
         uiTicker = Task { [weak self] in
-            // The spin wants a smooth cadence; the load figures want a coarse one. A busy fraction
-            // is measured between two readings of the kernel's tick counters, and six times a
+            // The icon wants a smooth cadence; the load figures want a coarse one. A busy fraction
+            // is measured between two readings of the kernel's tick counters, and ten times a
             // second is often too little time for them to move at all — which is precisely the
             // interval that cannot be answered, so the meters spent their lives blanking. Sampling
-            // once a second gives the counters something to say and costs six times less.
+            // once a second gives the counters something to say at a tenth of the icon cadence.
             let ticksPerSample = Int(Self.spinTicksPerSecond)
             var tick = 0
             while !Task.isCancelled {
                 guard let self else { return }
-                if tick % ticksPerSample == 0 {
+                let hasWork = !self.activeJobs.isEmpty
+                if !hasWork || tick % ticksPerSample == 0 {
                     self.uiDisplay.observe(self.uiLoad.sample())
                     self.cpu = self.uiDisplay.cpu
                     if let device = self.uiDisplay.gpu {
                         self.gpu = GpuUsage(device: device, memoryInUse: self.gpu?.memoryInUse ?? 0)
                     }
                 }
-                // A third of a turn per second, and only while something is actually running. The
+                // One motion cycle in 8.8 seconds, matching the web icon. The
                 // ticker also runs for the load meters whenever the menu is open, and turning the
                 // mark from that made an idle Mac look busy for exactly as long as somebody was
                 // looking at it — which is the one moment the mark has to be honest.
-                if self.activeJobs.isEmpty {
-                    self.spin = 0
+                if !hasWork {
+                    if self.spin != 0 { self.spin = 0 }
                 } else {
-                    self.spin += 1.0 / (3 * Self.spinTicksPerSecond)
+                    self.spin += 1.0 / (8.8 * Self.spinTicksPerSecond)
                 }
                 tick &+= 1
-                try? await Task.sleep(for: .milliseconds(Int(1000.0 / Self.spinTicksPerSecond)))
+                try? await Task.sleep(for: .milliseconds(hasWork ? Int(1000.0 / Self.spinTicksPerSecond) : 1000))
             }
         }
     }

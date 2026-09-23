@@ -33,7 +33,7 @@ for name in ['ffmpeg', 'ffprobe', 'AppIcon.icns']:
         raise SystemExit(f'Missing packaged resource: {name}')
     if name in ('ffmpeg', 'ffprobe') and not os.access(path, os.X_OK):
         raise SystemExit(f'Packaged media tool is not executable: {name}')
-for name in ['BrandMark.png', 'BrandMarkLight.png']:
+for name in ['BrandMark.png', 'BrandMarkLight.png', 'BrandMotion.png', 'BrandMotionLight.png']:
     matches = list(resources.glob(f'OptimisarrSidecar_OptimisarrSidecar.bundle/**/{name}'))
     if len(matches) != 1 or not matches[0].resolve().is_relative_to(app.resolve()):
         raise SystemExit(f'Precession artwork must be embedded in the app: {name}')

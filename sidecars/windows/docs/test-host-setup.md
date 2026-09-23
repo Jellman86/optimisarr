@@ -358,6 +358,8 @@ Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Optimi
 writes fixture states to disk (`--render-monitor <directory>`), the way the macOS sidecar’s
 `--render-menu` does. The fixtures do not connect to the live worker. `--verify-popover` additionally
 drives the real WPF window through pages and disclosure changes and checks its working-area anchor.
+`--render-tray-motion <directory>` exports six native-size frames in each system theme through the
+same atlas-to-icon path the notification area uses, without starting or pairing the worker.
 
 ---
 
