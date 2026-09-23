@@ -53,8 +53,8 @@ public static class TimelineAlignmentProbe
         return
         [
             "-nostdin", "-v", "error",
-            "-ss", start, "-i", distorted,
-            "-ss", start, "-i", reference,
+            "-ss", start, "-threads", "4", "-i", distorted,
+            "-ss", start, "-threads", "4", "-i", reference,
             "-lavfi", graph,
             "-t", length, "-f", "null", "-",
         ];

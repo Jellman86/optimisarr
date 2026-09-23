@@ -81,5 +81,33 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
         Assert.DoesNotContain(outcome.Report.Checks, check => check.Name == "Tail integrity");
     }
 
+    [Fact]
+    public async Task Corrupt_candidate_skips_quality_work_even_when_a_score_was_supplied()
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "corrupt-candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot(Path.Combine(_root, "source.mkv"), 1000, 8,
+            0, 0, false, false, ExpectedVideoCodec: "hevc");
+        var evidence = Evidence() with
+        {
+            Decode = DecodeHealthResult.Unhealthy("AV1 parser error", 100)
+        };
+        var scores = new QualityScores(95, 95, 95, 45, 0.99);
+        var remoteQuality = new RemoteQuality(QualityResult.Ok(scores), "worker");
+
+        var outcome = await Service().VerifyAsync(original, output,
+            VerificationPolicy.Default with { QualityGateEnabled = true },
+            CancellationToken.None, remoteQuality: remoteQuality, remoteEvidence: evidence);
+
+        Assert.False(outcome.Report.Passed);
+        Assert.Contains(outcome.Report.Checks,
+            check => check.Name == "Decode health" && check.Outcome == CheckOutcome.Failed);
+        Assert.Contains(outcome.Report.Checks,
+            check => check.Name == "Perceptual quality (VMAF)"
+                && check.Outcome == CheckOutcome.Failed
+                && check.Detail.Contains("decode", StringComparison.OrdinalIgnoreCase));
+    }
+
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }
 }

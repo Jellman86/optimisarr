@@ -249,6 +249,7 @@ public static class QualityScoreCommandBuilder
         }
         AppendInputAcceleration(arguments, acceleration);
         // libvmaf requires distorted first and reference second.
+        arguments.AddRange(["-threads", boundedThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.Add("-i");
         arguments.Add(distortedPath);
         // Preview outputs begin at zero after an accurate decode seek into the source. Seek the
@@ -260,6 +261,7 @@ public static class QualityScoreCommandBuilder
             arguments.Add(FormatSeconds(referenceInputStart.Value));
         }
         AppendInputAcceleration(arguments, acceleration);
+        arguments.AddRange(["-threads", boundedThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.Add("-i");
         arguments.Add(referencePath);
         arguments.AddRange(["-lavfi", filter]);

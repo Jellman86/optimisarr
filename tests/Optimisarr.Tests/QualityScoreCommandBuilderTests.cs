@@ -19,6 +19,10 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Equal("SDR", command.Preprocessing);
         Assert.Equal("/work/output.mkv", ValueAfter(command.Arguments, "-i", occurrence: 1));
         Assert.Equal("/data/original.mkv", ValueAfter(command.Arguments, "-i", occurrence: 2));
+        var inputs = command.Arguments.Select((argument, index) => (argument, index))
+            .Where(entry => entry.argument == "-i").Select(entry => entry.index).ToArray();
+        Assert.Equal(2, inputs.Length);
+        Assert.All(inputs, index => Assert.Equal(["-threads", "4"], command.Arguments.Skip(index - 2).Take(2)));
         Assert.Contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist]", command.FilterGraph);
         Assert.Contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref]", command.FilterGraph);
         Assert.Contains("model=version=vmaf_v0.6.1", command.FilterGraph);
