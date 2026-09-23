@@ -19,7 +19,7 @@ struct FullVerificationTests {
         #expect(FullVerification.needsSourceVideoConfirmation(video: video, audio: audio, sourceProbe: probe))
         #expect(!FullVerification.needsSourceVideoConfirmation(video: audio, audio: audio, sourceProbe: probe))
         #expect(!FullVerification.needsSourceVideoConfirmation(video: video, audio: nil, sourceProbe: probe))
-        let offsetProbe = #"{"streams":[{"codec_type":"video","start_time":"60"},{"codec_type":"audio","start_time":"0"}]}"#
+        let offsetProbe = #"{"streams":[{"codec_type":"video","start_time":"0","disposition":{"attached_pic":1}},{"codec_type":"video","start_time":"60","disposition":{"attached_pic":0}},{"codec_type":"audio","start_time":"0"}]}"#
         #expect(FullVerification.needsSourceVideoConfirmation(video: video, audio: video, sourceProbe: offsetProbe))
     }
 
