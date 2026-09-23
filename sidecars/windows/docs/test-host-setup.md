@@ -360,6 +360,10 @@ writes fixture states to disk (`--render-monitor <directory>`), the way the macO
 drives the real WPF window through pages and disclosure changes and checks its working-area anchor.
 `--render-tray-motion <directory>` exports six native-size frames in each system theme through the
 same atlas-to-icon path the notification area uses, without starting or pairing the worker.
+The Compact Monitor's media imagery fixtures include `preview-fallback` and `two-jobs`; all
+artwork is synthetic. For a real decoder check on this host, set `OPTIMISARR_PREVIEW_FFMPEG` to
+the installed `ffmpeg.exe` path and run the `Native_ffmpeg_extracts_a_small_frame_and_falls_back_for_audio_only`
+test. It creates a temporary generated video and audio-only file and leaves the live service alone.
 
 ---
 

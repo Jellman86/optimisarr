@@ -20,7 +20,10 @@ public sealed class JobRunner(
     string scratchRoot,
     Func<MachineLoad?> load,
     Action<string>? report = null,
-    Action<MonitorJob>? observe = null)
+    Action<MonitorJob>? observe = null,
+    Func<bool>? wantsPreview = null,
+    Action<int, byte[]>? publishPreview = null,
+    IFramePreviewExtractor? previewExtractor = null)
 {
     public async Task<JobOutcome> RunAsync(
         StoredPairing pairing, Assignment assignment, CancellationToken cancellationToken)
@@ -33,6 +36,11 @@ public sealed class JobRunner(
         var source = Path.Combine(scratch, "source");
         var candidatePrefix = Path.Combine(scratch, "candidate");
         var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
+        using var previewLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var previews = wantsPreview is not null && publishPreview is not null
+            ? new JobPreviewSampler(ffmpegPath, previewExtractor ?? new FfmpegFramePreviewExtractor(),
+                wantsPreview, jpeg => publishPreview(assignment.JobId, jpeg))
+            : null;
 
         try
         {
@@ -53,6 +61,8 @@ public sealed class JobRunner(
                         "The source did not arrive intact (hash mismatch), so it was not encoded.");
                 }
             }
+
+            if (previews is not null) _ = previews.TrySampleAsync(source, 0, previewLifetime.Token);
 
             // The per-title quality search, when the server sent one. It runs here, on the encoder
             // that will do the real encode, because a quality proven by measuring one encoder means
@@ -88,7 +98,11 @@ public sealed class JobRunner(
             var result = await WhileRenewing(
                 pairing, assignment, RemoteStage.Encoding, () => encoded, cancellationToken,
                 token => transcoder.RunAsync(
-                    ffmpegPath, arguments, new Progress<double>(seconds => encoded = seconds), token));
+                    ffmpegPath, arguments, new Progress<double>(seconds =>
+                    {
+                        encoded = seconds;
+                        if (previews is not null) _ = previews.TrySampleAsync(source, seconds, token);
+                    }), token));
 
             if (!result.Succeeded)
             {
@@ -169,6 +183,8 @@ public sealed class JobRunner(
         }
         finally
         {
+            previewLifetime.Cancel();
+            if (previews is not null) await previews.WaitForIdleAsync();
             // Never left behind. A worker that kept every source it was ever sent would fill a disk
             // in a weekend, and nothing here is of any use once the job has ended.
             TryDelete(scratch);

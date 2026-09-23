@@ -19,6 +19,7 @@ namespace Optimisarr.Sidecar.Tray;
 public partial class MonitorWindow : Window
 {
     private readonly MonitorViewModel model = new();
+    private readonly bool live;
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim requests = new(1, 1);
     private bool initialized;
@@ -27,6 +28,7 @@ public partial class MonitorWindow : Window
 
     public MonitorWindow(bool live = true)
     {
+        this.live = live;
         InitializeComponent();
         DataContext = model;
         ApplyTheme();
@@ -34,7 +36,12 @@ public partial class MonitorWindow : Window
         initialized = true;
         Deactivated += (_, _) => Hide();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };
-        IsVisibleChanged += (_, _) => { if (live && IsVisible) _ = RefreshAsync(MonitorProtocol.Read); };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!live) return;
+            if (IsVisible) _ = RefreshAsync(CurrentReadCommand());
+            else { model.ClearPreviews(); _ = StopPreviewsAsync(); }
+        };
         Closed += (_, _) => lifetime.Cancel();
         SizeChanged += (_, _) => QueuePosition();
         DpiChanged += (_, _) => QueuePosition();
@@ -144,7 +151,7 @@ public partial class MonitorWindow : Window
         {
             while (!lifetime.IsCancellationRequested)
             {
-                if (IsVisible) await RefreshAsync(MonitorProtocol.Read);
+                if (IsVisible) await RefreshAsync(CurrentReadCommand());
                 await Task.Delay(2000, lifetime.Token);
             }
         }
@@ -154,7 +161,13 @@ public partial class MonitorWindow : Window
     private async Task RefreshAsync(byte command)
     {
         if (!await requests.WaitAsync(0)) return;
-        try { model.Update(await MonitorClient.RequestAsync(command, lifetime.Token)); }
+        try
+        {
+            var snapshot = await MonitorClient.RequestAsync(command, lifetime.Token);
+            if (!IsVisible || ActivityPage.Visibility != Visibility.Visible)
+                snapshot = snapshot with { Jobs = snapshot.Jobs.Select(job => job with { PreviewJpeg = null }).ToArray() };
+            model.Update(snapshot);
+        }
         catch (Exception e) when (e is IOException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
             model.Disconnect("The worker is unavailable. Live readings have been cleared; try Start worker in Preferences.");
@@ -162,13 +175,29 @@ public partial class MonitorWindow : Window
         finally { requests.Release(); }
     }
 
-    private async void Pause_Click(object sender, RoutedEventArgs e) => await RefreshAsync(model.Snapshot?.Paused == true ? MonitorProtocol.Resume : MonitorProtocol.Pause);
+    private byte CurrentReadCommand() => ActivityPage.Visibility == Visibility.Visible
+        ? MonitorProtocol.ReadPreview : MonitorProtocol.Read;
+
+    private async Task StopPreviewsAsync()
+    {
+        try { await MonitorClient.RequestAsync(MonitorProtocol.EndPreview, lifetime.Token); }
+        catch (Exception error) when (error is IOException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException) { }
+    }
+
+    private async void Pause_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshAsync(model.Snapshot?.Paused == true ? MonitorProtocol.Resume : MonitorProtocol.Pause);
+        if (IsVisible && ActivityPage.Visibility == Visibility.Visible) await RefreshAsync(MonitorProtocol.ReadPreview);
+    }
     private void Back_Click(object sender, RoutedEventArgs e) => Page(ActivityPage);
     private void Preferences_Click(object sender, RoutedEventArgs e) => Page(PreferencesPage);
     private void Diagnostics_Click(object sender, RoutedEventArgs e) => Page(DiagnosticsPage);
     private void Page(StackPanel selected)
     {
         foreach (var page in new[] { ActivityPage, PreferencesPage, DiagnosticsPage }) page.Visibility = page == selected ? Visibility.Visible : Visibility.Collapsed;
+        if (!live) return;
+        if (selected == ActivityPage && IsVisible) _ = RefreshAsync(MonitorProtocol.ReadPreview);
+        else { model.ClearPreviews(); _ = StopPreviewsAsync(); }
     }
     private void More_Click(object sender, RoutedEventArgs e)
     {
