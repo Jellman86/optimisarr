@@ -137,7 +137,9 @@ public final class SidecarSession: ObservableObject {
         } catch {
             if shutdown.armed {
                 lastDrainedHeartbeat = nil
-                shutdown.deferShutdown("Final server check failed: \(error.localizedDescription)")
+                let reason = "Final shutdown check failed: \(error.localizedDescription)"
+                status = .unreachable(reason: reason)
+                shutdown.deferShutdown("\(reason). Shutdown is blocked until check-ins recover.")
             }
             return
         }

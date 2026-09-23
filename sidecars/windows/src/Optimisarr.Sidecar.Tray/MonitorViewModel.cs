@@ -12,6 +12,8 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
     public MonitorSnapshot? Snapshot { get; private set; }
     private string? error;
     public bool Available => Snapshot is not null && error is null;
+    public bool ShutdownArmed => Available && Snapshot?.ShutdownArmed == true;
+    public bool ShowPause => !ShutdownArmed;
     public bool CanPause => Available && Snapshot?.ShutdownArmed != true;
     public bool CanArmShutdown => Available && (Snapshot?.ShutdownArmed == true
         ? Snapshot.ShutdownCanCancel : Snapshot?.State is "Connected" or "Working" or "Unreachable");
