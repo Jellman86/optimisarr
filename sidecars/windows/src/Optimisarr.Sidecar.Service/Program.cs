@@ -88,6 +88,8 @@ public static class Program
             null, LogLevel.Information);
 
         builder.Services.AddSingleton<WorkerMonitor>();
+        builder.Services.AddSingleton<HostShutdown>();
+        builder.Services.AddHostedService(services => services.GetRequiredService<HostShutdown>());
         builder.Services.AddHostedService<MonitorServer>();
         builder.Services.AddSingleton(services =>
         {

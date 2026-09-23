@@ -160,7 +160,15 @@ public partial class MonitorWindow : Window
 
     private async Task RefreshAsync(byte command)
     {
-        if (!await requests.WaitAsync(0)) return;
+        if (command is MonitorProtocol.Read or MonitorProtocol.ReadPreview)
+        {
+            if (!await requests.WaitAsync(0)) return;
+        }
+        else
+        {
+            try { await requests.WaitAsync(lifetime.Token); }
+            catch (OperationCanceledException) { return; }
+        }
         try
         {
             var snapshot = await MonitorClient.RequestAsync(command, lifetime.Token);
@@ -186,8 +194,13 @@ public partial class MonitorWindow : Window
 
     private async void Pause_Click(object sender, RoutedEventArgs e)
     {
+        if (model.Snapshot?.ShutdownArmed == true) return;
         await RefreshAsync(model.Snapshot?.Paused == true ? MonitorProtocol.Resume : MonitorProtocol.Pause);
         if (IsVisible && ActivityPage.Visibility == Visibility.Visible) await RefreshAsync(MonitorProtocol.ReadPreview);
+    }
+    private async void Shutdown_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshAsync(model.Snapshot?.ShutdownArmed == true ? MonitorProtocol.CancelShutdown : MonitorProtocol.ArmShutdown);
     }
     private void Back_Click(object sender, RoutedEventArgs e) => Page(ActivityPage);
     private void Preferences_Click(object sender, RoutedEventArgs e) => Page(PreferencesPage);

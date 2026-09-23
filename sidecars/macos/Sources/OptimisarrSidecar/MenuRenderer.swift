@@ -53,11 +53,16 @@ enum MenuRenderer {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = SidecarSettings(defaults: defaults, physicalMemoryBytes: 16 * 1024 * 1024 * 1024)
+        var shutdown = ShutdownCountdown()
+        shutdown.arm()
+        _ = shutdown.evaluate(at: Date(), ready: true, activeJobs: 0)
         let poses: [(String, SidecarSession)] = [
             ("unpaired", .posed(status: .unpaired, serverAddress: "")),
             ("connected-idle", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()),
                 lastOutcome: .delivered(jobId: 5845, bytes: 394_256_442))),
+            ("shutdown-countdown", .posed(
+                status: .connected(workerId: 1, lastCheckIn: Date()), shutdown: shutdown)),
             ("receiving", .posed(
                 status: .working(jobId: 5846, progress: .fetchingSource(received: 182_000_000, total: 493_040_520)),
                 activeJobs: [5846: .fetchingSource(received: 182_000_000, total: 493_040_520)],

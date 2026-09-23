@@ -45,6 +45,14 @@ from `web/` after changing the main Precession geometry or lighting.
 The tray is optional: closing it leaves work running. See [installer notes](installer/README.md)
 for the unsigned MSI preview, pairing, upgrade safeguards and release limitations.
 
+**Shut down when work is complete** is available from the tray menu and Compact Monitor. The
+service immediately stops claiming jobs, reports zero capacity to the server, and keeps current
+verification, uploads and result acknowledgement running. Only after the server confirms draining
+and no job is held does a 60-second, cancelable countdown begin. A lost connection or an
+unacknowledged lease blocks power-off and explains why. Closing the tray leaves the request armed;
+canceling restores the previous pause setting. The request is never restored after a service
+restart. If Windows denies the shutdown request, the monitor shows the error without retrying.
+
 ## The Compact Monitor
 
 Screenshots use fabricated dummy media created for documentation, invented machine names and
@@ -53,6 +61,10 @@ example server addresses. No copyrighted media material is used.
 <img src="../../docs/images/optimisarr-sidecar-windows-encoding.png" width="390" alt="Dark Windows Compact Monitor showing a fabricated Prism Field encoding job and resource readings">
 
 <img src="../../docs/images/optimisarr-sidecar-windows-two-jobs.png" width="390" alt="Expanded Windows Processing details showing two separate fabricated job previews">
+
+<img src="../../docs/images/optimisarr-sidecar-windows-shutdown.png" width="390" alt="Dark Windows Compact Monitor with optional shutdown armed, new assignments stopped, and a cancelable countdown">
+
+<img src="../../docs/images/optimisarr-sidecar-windows-light-shutdown.png" width="390" alt="Light Windows Compact Monitor showing the same cancelable shutdown countdown">
 
 If a frame is unavailable, the monitor keeps a labelled placeholder. Previews are sampled from
 the worker's local source only while the activity panel is open; they never affect encoding or

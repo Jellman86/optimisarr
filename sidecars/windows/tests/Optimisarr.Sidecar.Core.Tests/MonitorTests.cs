@@ -82,6 +82,20 @@ public sealed class MonitorTests
         Assert.Contains("Cannot reach", model.Stage);
     }
 
+    [Fact]
+    public void Armed_shutdown_explains_upload_and_exposes_cancel_without_promising_new_work()
+    {
+        var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
+        model.Update(new MonitorSnapshot("PC", "Working", "Returning", false, "http://test", null, null,
+            [new MonitorJob(7, "Film", "hevc_nvenc", RemoteStage.Delivering, null)], null, "test",
+            ShutdownArmed: true, ShutdownDetail: "Waiting for 1 job", ShutdownSeconds: null));
+        Assert.Equal("SHUTDOWN ARMED", model.State);
+        Assert.Contains("upload", model.ShutdownDetail);
+        Assert.Equal("Cancel shutdown", model.ShutdownLabel);
+        Assert.False(model.CanPause);
+        Assert.True(model.CanArmShutdown);
+    }
+
     [Theory]
     [InlineData("file:///C:/Windows/System32/cmd.exe")]
     [InlineData("javascript:alert(1)")]
