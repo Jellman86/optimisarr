@@ -178,6 +178,7 @@ export type LibraryRules = {
   requireAudioRetained: boolean
   requireSubtitlesRetained: boolean
   requireSizeReduction: boolean
+  minimumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
   audioClippingGateEnabled: boolean
@@ -287,6 +288,7 @@ export function newLibraryDefaults(): SaveLibrary {
     requireAudioRetained: true,
     requireSubtitlesRetained: false,
     requireSizeReduction: true,
+    minimumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
     audioClippingGateEnabled: false,

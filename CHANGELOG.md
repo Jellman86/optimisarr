@@ -4,12 +4,15 @@
 
 ### Fixed
 
+- A delivered worker candidate is verified against the policy frozen when it was claimed, so editing library verification settings while it encodes cannot silently change the result.
+- Local, Mac and Windows encodes also check the finished file against their frozen size budget, catching final mux bytes that arrive after the last in-flight poll before quality measurement or upload.
 - An implausibly tiny source packet scan is reported as indeterminate when the source video stream's duration agrees with primary audio, even if a failed candidate has no usable output timeline. The original remains protected without falsely diagnosing it as corrupt.
 - Full video encodes with a required size reduction stop once their candidate exceeds the source-size budget. Sidecars report this as a terminal size-saving failure, so another worker cannot repeat the doomed encode; the original remains untouched.
 - Container and sidecar verification confirm a source picture packet scan once when it ends materially before primary audio, including moderate shortfalls, before attributing a failed timeline to the original.
 
 ### Added
 
+- An optional per-library minimum useful saving for video re-encodes. A 10% target rejects outputs above 90% of the source size; the same frozen limit stops container and sidecar encodes early. Blank keeps the existing any-reduction rule, and compatibility work with size reduction disabled is unaffected.
 - Queue job details now show the active and rejected worker attempts as a clear timeline, with each prior verification report one click away. A job with a matching opt-in diagnostic capture can download its bundle directly from the detail view.
 - Mac and Windows sidecar tray controls can drain new assignments, finish held work and server acknowledgement, then shut down the host after a visible, cancelable 60-second countdown. Disconnects and unconfirmed lease results block shutdown; the request is not restored after a restart.
 - Independent, bounded queue lanes for media jobs, lightweight jobs, strict sidecar evidence checks, and safe replacement. Equal-priority libraries take turns, while Queue shows each lane's capacity, backlog, and wait reason; Settings → Advanced offers automatic or manual limits with an effective-capacity preview. Schedule now explains dispatch gates and each library's window in the same card layout as Libraries.

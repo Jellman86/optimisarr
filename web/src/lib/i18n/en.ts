@@ -938,6 +938,9 @@ export const en = {
     require_audio: 'Require all audio tracks to be retained',
     require_subtitles: 'Require all subtitle tracks to be retained',
     require_smaller: 'Require output to be smaller than the original',
+    minimum_saving: 'Minimum useful saving',
+    minimum_saving_tip: 'Optional for video re-encodes. At 10%, the output must be at least 10% smaller. Local and sidecar encodes stop when they can no longer meet this target. Leave blank for any reduction; compatibility jobs ignore it.',
+    validation_minimum_saving: 'Minimum useful saving must be above 0% and no more than 99%.',
     vmaf_label: 'Perceptual quality (VMAF)',
     vmaf_hint:
       "Compares video re-encodes with the original using FFmpeg's libvmaf and rejects an output that scores below the chosen floor. Optimisarr automatically selects the HDTV or 4K model and handles scaling, timing, colour range, and HDR-to-SDR reference preparation. Off by default because it is CPU-intensive: full-file, every-frame scoring decodes both files, often uses most of a CPU core for several minutes, and roughly doubles verification time. Clip scoring and frame sampling reduce that cost. Higher stops are stricter; Archival is close to lossless.",

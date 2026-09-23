@@ -793,6 +793,9 @@ quarantine: {
     require_audio: 'Richiedi che tutte le tracce audio siano conservate',
     require_subtitles: 'Richiedi che tutte le tracce sottotitoli siano conservate',
     require_smaller: 'Richiedi che l’output sia più piccolo dell’originale',
+    minimum_saving: 'Risparmio minimo utile',
+    minimum_saving_tip: 'Opzionale per le ricodifiche video. Con il 10%, l’output deve essere almeno il 10% più piccolo. Server e sidecar fermano la codifica quando il risultato non è più raggiungibile. Lascia vuoto per accettare qualsiasi riduzione; i lavori di compatibilità lo ignorano.',
+    validation_minimum_saving: 'Il risparmio minimo utile deve essere maggiore di 0% e non superare il 99%.',
     vmaf_label: 'Qualità percettiva (VMAF)',
     vmaf_hint:
       "Confronta i video ricodificati con l’originale tramite libvmaf di FFmpeg e rifiuta un output sotto la soglia scelta. Optimisarr seleziona automaticamente il modello HDTV o 4K e gestisce ridimensionamento, sincronizzazione, intervallo colore e preparazione del riferimento da HDR a SDR. È disattivato per impostazione predefinita perché usa intensamente la CPU: la valutazione dell’intero file fotogramma per fotogramma decodifica entrambi i file, spesso impegna gran parte di un core per diversi minuti e raddoppia all’incirca il tempo di verifica. La valutazione di clip e il campionamento dei fotogrammi riducono questo costo. I livelli superiori sono più severi; Archivio è quasi senza perdita.",

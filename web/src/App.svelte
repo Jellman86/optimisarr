@@ -180,7 +180,7 @@
     </header>
 
     <main
-      class="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"
+      class="min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
       <div class:mx-auto={!/^\/libraries\/\d+\/quality-check$/.test(router.path)} class:max-w-6xl={!/^\/libraries\/\d+\/quality-check$/.test(router.path)}>

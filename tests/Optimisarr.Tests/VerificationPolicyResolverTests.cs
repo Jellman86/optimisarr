@@ -80,6 +80,7 @@ public sealed class VerificationPolicyResolverTests
                 requireAudioRetained: false,
                 requireSubtitlesRetained: true,
                 requireSizeReduction: false,
+                minimumSizeSavingPercent: 10,
                 audioLoudnessGateEnabled: true,
                 maxLoudnessDriftLufs: 1.5,
                 audioClippingGateEnabled: true,
@@ -92,6 +93,7 @@ public sealed class VerificationPolicyResolverTests
         Assert.False(resolved.RequireAudioRetained);
         Assert.True(resolved.RequireSubtitlesRetained);
         Assert.False(resolved.RequireSizeReduction);
+        Assert.Equal(10, resolved.MinimumSizeSavingPercent);
         Assert.True(resolved.AudioLoudnessGateEnabled);
         Assert.Equal(1.5, resolved.MaxLoudnessDriftLufs);
         Assert.True(resolved.AudioClippingGateEnabled);
@@ -133,7 +135,8 @@ public sealed class VerificationPolicyResolverTests
         double? maxTruePeakDbtp = null,
         bool? imageQualityGateEnabled = null,
         double? minimumImageSsim = null,
-        bool? imageMetadataGateEnabled = null) =>
+        bool? imageMetadataGateEnabled = null,
+        double? minimumSizeSavingPercent = null) =>
         new(
             enabled,
             harmonic,
@@ -151,5 +154,6 @@ public sealed class VerificationPolicyResolverTests
             maxTruePeakDbtp,
             imageQualityGateEnabled,
             minimumImageSsim,
-            imageMetadataGateEnabled);
+            imageMetadataGateEnabled,
+            minimumSizeSavingPercent);
 }

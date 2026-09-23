@@ -341,6 +341,7 @@ Create and update library bodies use the same shape. Common fields:
   "requireAudioRetained": true,
   "requireSubtitlesRetained": false,
   "requireSizeReduction": true,
+  "minimumSizeSavingPercent": null,
   "audioLoudnessGateEnabled": false,
   "maxLoudnessDriftLufs": 1,
   "audioClippingGateEnabled": false,

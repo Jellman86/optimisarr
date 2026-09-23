@@ -831,10 +831,11 @@ public sealed class QueueDispatcher(
                 var library = await db.Libraries.AsNoTracking()
                     .Where(library => db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
                     .SingleOrDefaultAsync(cancellationToken);
-                var currentSettings = await GetQueueSettingsAsync(cancellationToken);
                 work = work.Value with
                 {
-                    VerificationPolicy = ResolveVerificationPolicy(currentSettings.VerificationPolicy, library),
+                    // The worker's byte limit and verification contract were fixed together at
+                    // claim time. Applying a later library edit here could reject an output the
+                    // worker was told to produce, or accept one the worker was told to stop.
                     AutoReplace = library?.AutoReplace ?? false,
                     MoveOnComplete = library?.MoveOnComplete ?? false,
                     TargetFolder = library?.TargetFolder,
@@ -1208,7 +1209,9 @@ public sealed class QueueDispatcher(
             var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
                 preparedWork.Original.SizeBytes,
                 preparedWork.VerificationPolicy.RequireSizeReduction,
-                preparedWork.IsDisposable);
+                preparedWork.IsDisposable,
+                spec.VideoCodec is not null
+                    ? preparedWork.VerificationPolicy.MinimumSizeSavingPercent : null);
             await BeginTranscodeAsync(
                 jobId,
                 spec.OutputPath,
@@ -1495,7 +1498,8 @@ public sealed class QueueDispatcher(
                 library?.MaxTruePeakDbtp,
                 library?.ImageQualityGateEnabled,
                 library?.MinimumImageSsim,
-                library?.ImageMetadataGateEnabled));
+                library?.ImageMetadataGateEnabled,
+                library?.MinimumSizeSavingPercent));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
@@ -2592,6 +2596,18 @@ public sealed class QueueDispatcher(
             // being read as success should a platform report otherwise.
             var exitCode = process.ExitCode == 0 ? -1 : process.ExitCode;
             return new FfmpegRun(exitCode, stallMonitor.Describe(stalledAs), stderr.Log);
+        }
+
+        // FFmpeg can finish and write its final mux overhead between budget polls. Apply the
+        // frozen limit once more before any decode or VMAF work on the completed file.
+        if (process.ExitCode == 0 && maxCandidateBytes is { } maximum
+            && TryReadOutputSize(outputPath) is { } finalBytes
+            && SizeBudget.Exceeded(finalBytes, maximum))
+        {
+            return new FfmpegRun(-1,
+                $"Size saving: finished candidate is {finalBytes:n0} bytes, exceeding the {maximum:n0}-byte budget.",
+                stderr.Log,
+                SizeBudgetExceeded: true);
         }
 
         return process.ExitCode == 0

@@ -12,6 +12,24 @@ public sealed class SizeBudgetTests
         Assert.True(SizeBudget.Exceeded(1000, 999));
     }
 
+    [Fact]
+    public void Minimum_useful_saving_sets_the_same_early_stop_limit_as_final_verification()
+    {
+        var maximum = SizeBudget.MaxCandidateBytes(1000, true, false, minimumSavingPercent: 10);
+
+        Assert.Equal(900L, maximum);
+        Assert.False(SizeBudget.Exceeded(900, maximum!.Value));
+        Assert.True(SizeBudget.Exceeded(901, maximum.Value));
+        Assert.Equal(6L, SizeBudget.MaxCandidateBytes(7, true, false, minimumSavingPercent: 10));
+    }
+
+    [Fact]
+    public void Compatibility_and_disposable_work_ignore_a_minimum_saving_target()
+    {
+        Assert.Null(SizeBudget.MaxCandidateBytes(1000, false, false, minimumSavingPercent: 10));
+        Assert.Null(SizeBudget.MaxCandidateBytes(1000, true, true, minimumSavingPercent: 10));
+    }
+
     [Theory]
     [InlineData(false, false, 1000)]
     [InlineData(true, true, 1000)]

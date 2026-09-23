@@ -55,6 +55,8 @@ evidence, writes its database and performs replacement/quarantine. This is not a
 mode. Keep remote workers enabled: placement preferences are ignored while they are disabled.
 
 If a library requires a smaller output, its full-encode assignment includes a frozen byte limit.
+The library can optionally require a minimum useful saving (for example, 10%); this tightens the
+same limit for both server and worker encodes. A blank target accepts any reduction.
 The Mac stops when the candidate exceeds that limit and reports a terminal **Size saving** failure
 instead of handing the same job to another worker. The source is retained.
 

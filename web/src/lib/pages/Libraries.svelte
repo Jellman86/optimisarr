@@ -223,6 +223,13 @@
   })
 
   const verificationError = $derived.by<string | null>(() => {
+    if (form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+      && form.minimumSizeSavingPercent != null
+      && (!Number.isFinite(Number(form.minimumSizeSavingPercent))
+        || Number(form.minimumSizeSavingPercent) <= 0
+        || Number(form.minimumSizeSavingPercent) > 99)) {
+      return i18n.m.settings.validation_minimum_saving
+    }
     if (!Number.isFinite(Number(form.durationTolerancePercent))
       || Number(form.durationTolerancePercent) < 0) {
       return i18n.m.settings.validation_duration
@@ -723,7 +730,7 @@
       'encode/video/advanced': ['targetVideoCodec', 'targetContainer', 'encoderPreset', 'qualityCrf', 'contentTune', 'maxBitrateKbps', 'minBitrateKbps', 'strongerAdaptiveQuantisation'],
       'encode/audio/advanced': ['audioBitrateKbps', 'videoAudioBitrateKbps', 'reencodeLossyAudio'],
       'encode/images/advanced': ['imageQuality', 'reencodeLossyImages'],
-      'verify/advanced': ['durationTolerancePercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
+      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
     }
     const keys = fields[target] ?? Object.entries(fields).filter(([key]) => key.startsWith(target + '/')).flatMap(([, fields]) => fields)
     return keys.filter(key => {
@@ -982,6 +989,7 @@
         library.requireSubtitlesRetained ?? defaults.requireSubtitlesRetained,
       requireSizeReduction:
         library.requireSizeReduction ?? defaults.requireSizeReduction,
+      minimumSizeSavingPercent: library.minimumSizeSavingPercent ?? null,
       audioLoudnessGateEnabled:
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
@@ -1070,6 +1078,8 @@
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
       durationTolerancePercent: Number(form.durationTolerancePercent),
+      minimumSizeSavingPercent: form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+        ? toNullableNumber(form.minimumSizeSavingPercent) : null,
       maxLoudnessDriftLufs: Number(form.maxLoudnessDriftLufs),
       maxTruePeakDbtp: Number(form.maxTruePeakDbtp),
       minimumImageSsim: Number(form.minimumImageSsim),
@@ -1678,6 +1688,28 @@
           {/if}
           <Toggle bind:checked={form.requireSizeReduction} label={i18n.m.settings.require_smaller} hint={i18n.m.libraryWorkflow.size_hint} />
         </div>
+        {#if room === 'verify/advanced' && showVideoOptions && !isNoEncodeProfile}
+          <div class="mt-4 rounded-lg border border-line bg-raised/50 p-3.5">
+            <label class="label" for="lib-minimum-saving">
+              {i18n.m.settings.minimum_saving}
+              <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.minimum_saving })} text={i18n.m.settings.minimum_saving_tip} />
+            </label>
+            <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
+              <input
+                id="lib-minimum-saving"
+                aria-label={i18n.m.settings.minimum_saving}
+                aria-invalid={verificationError === i18n.m.settings.validation_minimum_saving}
+                aria-describedby="lib-verification-error"
+                class="input min-w-0 flex-1"
+                type="number" min="0.1" max="99" step="0.1"
+                disabled={!form.requireSizeReduction}
+                bind:value={form.minimumSizeSavingPercent}
+              />
+              <span class="flex-none text-sm text-ink-3">%</span>
+            </div>
+            <p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.settings.minimum_saving_tip}</p>
+          </div>
+        {/if}
       </fieldset>
 
       {#if showVideoOptions || showAudioOptions}

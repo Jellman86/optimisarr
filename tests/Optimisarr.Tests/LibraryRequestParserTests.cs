@@ -375,9 +375,34 @@ public sealed class LibraryRequestParserTests
         Assert.Equal(VerificationPolicy.Default.RequireAudioRetained, parsed.RequireAudioRetained);
         Assert.Equal(VerificationPolicy.Default.RequireSubtitlesRetained, parsed.RequireSubtitlesRetained);
         Assert.Equal(VerificationPolicy.Default.RequireSizeReduction, parsed.RequireSizeReduction);
+        Assert.Null(parsed.MinimumSizeSavingPercent);
         Assert.Equal(VerificationPolicy.Default.ImageQualityGateEnabled, parsed.ImageQualityGateEnabled);
         Assert.Equal(VerificationPolicy.Default.MinimumImageSsim, parsed.MinimumImageSsim);
         Assert.Equal(VerificationPolicy.Default.ImageMetadataGateEnabled, parsed.ImageMetadataGateEnabled);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(99.1)]
+    [InlineData(double.NaN)]
+    public void Invalid_minimum_useful_saving_is_rejected(double percent)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = percent }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("minimum useful saving", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Minimum_useful_saving_is_preserved_as_an_optional_library_policy()
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = 10 }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(10, parsed.MinimumSizeSavingPercent);
     }
 
     [Theory]

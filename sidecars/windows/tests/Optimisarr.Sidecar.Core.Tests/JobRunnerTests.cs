@@ -102,6 +102,25 @@ public sealed class JobRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_finished_candidate_over_budget_is_rejected_before_quality_work_or_upload()
+    {
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source));
+        var transcoder = new FakeMeasuringTranscoder(0);
+        var runner = new JobRunner(new SidecarClient(new HttpClient(server)), new JobTransfer(new HttpClient(server)),
+            transcoder, "ffmpeg.exe", _scratch, () => null);
+
+        var outcome = await runner.RunAsync(Pairing(), Assignment() with { MaxCandidateBytes = 12 }, CancellationToken.None);
+
+        Assert.False(outcome.Delivered);
+        Assert.Contains("Size saving", outcome.Detail);
+        Assert.Contains(server.Calls, call => call.EndsWith("/size-budget-exceeded", StringComparison.Ordinal));
+        Assert.DoesNotContain(server.Calls, call => call.EndsWith("/release", StringComparison.Ordinal));
+        Assert.False(server.Completed);
+        Assert.Single(transcoder.AllRuns);
+    }
+
+    [Fact]
     public async Task A_source_that_did_not_arrive_intact_is_never_encoded()
     {
         // The server declares a hash that will not match what it actually sent. Encoding anyway

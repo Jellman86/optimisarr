@@ -58,6 +58,7 @@ internal readonly record struct ParsedLibrary(
     bool RequireAudioRetained,
     bool RequireSubtitlesRetained,
     bool RequireSizeReduction,
+    double? MinimumSizeSavingPercent,
     bool AudioLoudnessGateEnabled,
     double MaxLoudnessDriftLufs,
     bool AudioClippingGateEnabled,
@@ -257,6 +258,13 @@ internal static class LibraryRequestParser
         if (request.DurationTolerancePercent is < 0)
         {
             error = "Verification duration tolerance cannot be negative.";
+            return false;
+        }
+
+        if (request.MinimumSizeSavingPercent is { } minimumSaving
+            && (!double.IsFinite(minimumSaving) || minimumSaving <= 0 || minimumSaving > 99))
+        {
+            error = "Minimum useful saving must be greater than 0% and at most 99%, or blank to disable it.";
             return false;
         }
 
@@ -507,6 +515,7 @@ internal static class LibraryRequestParser
             request.RequireAudioRetained ?? VerificationPolicy.Default.RequireAudioRetained,
             request.RequireSubtitlesRetained ?? VerificationPolicy.Default.RequireSubtitlesRetained,
             request.RequireSizeReduction ?? VerificationPolicy.Default.RequireSizeReduction,
+            request.MinimumSizeSavingPercent,
             request.AudioLoudnessGateEnabled ?? VerificationPolicy.Default.AudioLoudnessGateEnabled,
             request.MaxLoudnessDriftLufs ?? VerificationPolicy.Default.MaxLoudnessDriftLufs,
             request.AudioClippingGateEnabled ?? VerificationPolicy.Default.AudioClippingGateEnabled,
