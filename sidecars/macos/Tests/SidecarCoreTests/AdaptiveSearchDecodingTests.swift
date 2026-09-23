@@ -87,6 +87,7 @@ struct AdaptiveSearchDecodingTests {
             "leaseId": UUID().uuidString,
             "jobId": 7,
             "sourceBytes": 4096,
+            "maxCandidateBytes": 4095,
             "videoEncoder": "hevc_videotoolbox",
             "renewWithinSeconds": 30,
             "arguments": ["-i", "{{input}}", "{{output}}"],
@@ -98,6 +99,7 @@ struct AdaptiveSearchDecodingTests {
         ])
         #expect(assignment != nil)
         #expect(assignment?.search == nil)
+        #expect(assignment?.maxCandidateBytes == 4095)
     }
 
     @Test("a search that genuinely cannot be read is dropped, not guessed at")

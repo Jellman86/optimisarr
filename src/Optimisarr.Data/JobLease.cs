@@ -53,6 +53,15 @@ public sealed class JobLease
     /// </summary>
     public string? OutputExtension { get; set; }
 
+    /// <summary>
+    /// Frozen maximum candidate size for this attempt. Null means the size-saving gate is off;
+    /// older workers may ignore it, but a reporting worker cannot invent a different limit.
+    /// </summary>
+    public long? MaxCandidateBytes { get; set; }
+
+    /// <summary>The partial candidate size observed when the frozen budget stopped this lease.</summary>
+    public long? SizeBudgetExceededAtBytes { get; set; }
+
     /// <summary>Where the worker says it is, from its latest renewal. Null until it reports.</summary>
     public RemoteStage? Stage { get; set; }
 

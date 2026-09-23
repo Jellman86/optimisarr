@@ -1205,6 +1205,10 @@ public sealed class QueueDispatcher(
 
             var (spec, arguments) = preparedWork;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
+            var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
+                preparedWork.Original.SizeBytes,
+                preparedWork.VerificationPolicy.RequireSizeReduction,
+                preparedWork.IsDisposable);
             await BeginTranscodeAsync(
                 jobId,
                 spec.OutputPath,
@@ -1236,11 +1240,13 @@ public sealed class QueueDispatcher(
                 progressDuration,
                 expectedFrameCount,
                 hardwareEncoder,
-                cancellationToken);
+                cancellationToken,
+                maxCandidateBytes: maxCandidateBytes);
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
             if (run.ExitCode != 0
+                && !run.SizeBudgetExceeded
                 && preparedWork.SoftwareFallbackArguments is { } softwareArguments
                 && (preparedWork.UsedHardwareDecode
                         && HardwareDecodeFallback.ShouldRetryInSoftware(run.Log ?? run.Error)
@@ -1266,7 +1272,8 @@ public sealed class QueueDispatcher(
                     progressDuration,
                     expectedFrameCount,
                     hardwareEncoder,
-                    cancellationToken);
+                    cancellationToken,
+                    maxCandidateBytes: maxCandidateBytes);
             }
 
             if (run.ExitCode == 0)
@@ -1364,7 +1371,8 @@ public sealed class QueueDispatcher(
                         progressDuration,
                         expectedFrameCount,
                         hardwareEncoder,
-                        cancellationToken);
+                        cancellationToken,
+                        maxCandidateBytes: maxCandidateBytes);
                     if (run.ExitCode == 0)
                     {
                         await VerifyAndFinishAsync(jobId, spec.OutputPath, retriedWork, cancellationToken);
@@ -2493,7 +2501,7 @@ public sealed class QueueDispatcher(
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 
-    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log);
+    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeBudgetExceeded = false);
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
@@ -2504,7 +2512,8 @@ public sealed class QueueDispatcher(
         bool hardwareEncoder,
         CancellationToken cancellationToken,
         bool reportProgress = true,
-        Func<double, double>? progressMap = null)
+        Func<double, double>? progressMap = null,
+        long? maxCandidateBytes = null)
     {
         // Every attempt must recreate the directory: rejecting a candidate prunes its empty
         // parent. Reserve it before creation so another job's cleanup cannot remove it while
@@ -2546,10 +2555,11 @@ public sealed class QueueDispatcher(
             cancellationToken);
         var stderrTask = ReadStderrAsync(process, cancellationToken);
 
-        EncodeStallKind? stall = null;
+        EncodeWaitResult? stopped = null;
         try
         {
-            stall = await WaitForExitOrStallAsync(process, jobId, stallMonitor, cancellationToken);
+            stopped = await WaitForExitOrStallAsync(
+                process, jobId, stallMonitor, outputPath, maxCandidateBytes, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -2569,7 +2579,14 @@ public sealed class QueueDispatcher(
 
         await progressTask;
         var stderr = await stderrTask;
-        if (stall is { } stalledAs)
+        if (stopped?.BudgetExceededAtBytes is { } observed)
+        {
+            return new FfmpegRun(-1,
+                $"Size saving: candidate reached {observed:n0} bytes, exceeding the {maxCandidateBytes:n0}-byte budget before encoding finished.",
+                stderr.Log,
+                SizeBudgetExceeded: true);
+        }
+        if (stopped?.Stall is { } stalledAs)
         {
             // A killed process reports a signal exit, never zero; the guard keeps a stall from ever
             // being read as success should a platform report otherwise.
@@ -2583,20 +2600,37 @@ public sealed class QueueDispatcher(
     }
 
     private static readonly TimeSpan StallCheckInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan SizeBudgetCheckInterval = TimeSpan.FromSeconds(2);
 
     // Waits for ffmpeg to exit, asking the stall monitor on a timer whether it still deserves the
     // wait. A stalled process is killed and the kind of stall returned so the caller can fail the
     // job with a reason instead of holding a queue slot until someone restarts the container.
-    private async Task<EncodeStallKind?> WaitForExitOrStallAsync(
+    private sealed record EncodeWaitResult(EncodeStallKind? Stall = null, long? BudgetExceededAtBytes = null);
+
+    private async Task<EncodeWaitResult?> WaitForExitOrStallAsync(
         Process process,
         int jobId,
         EncodeStallMonitor stallMonitor,
+        string outputPath,
+        long? maxCandidateBytes,
         CancellationToken cancellationToken)
     {
         var exited = process.WaitForExitAsync(cancellationToken);
-        while (await Task.WhenAny(exited, Task.Delay(StallCheckInterval, cancellationToken)) != exited)
+        var checkInterval = maxCandidateBytes is null ? StallCheckInterval : SizeBudgetCheckInterval;
+        while (await Task.WhenAny(exited, Task.Delay(checkInterval, cancellationToken)) != exited)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (maxCandidateBytes is { } maximum
+                && TryReadOutputSize(outputPath) is { } bytes
+                && SizeBudget.Exceeded(bytes, maximum))
+            {
+                logger.LogInformation(
+                    "Job {JobId}: size-saving budget exceeded at {ObservedBytes} bytes (limit {MaxBytes}); stopping encode",
+                    jobId, bytes, maximum);
+                KillQuietly(process);
+                await exited;
+                return new EncodeWaitResult(BudgetExceededAtBytes: bytes);
+            }
             if (stallMonitor.Check(DateTimeOffset.UtcNow, pauseManager.IsPaused) is not { } stall)
             {
                 continue;
@@ -2605,11 +2639,17 @@ public sealed class QueueDispatcher(
             logger.LogWarning("Job {JobId}: {Reason}", jobId, stallMonitor.Describe(stall));
             KillQuietly(process);
             await exited;
-            return stall;
+            return new EncodeWaitResult(Stall: stall);
         }
 
         await exited;
         return null;
+    }
+
+    private static long? TryReadOutputSize(string path)
+    {
+        try { return File.Exists(path) ? new FileInfo(path).Length : null; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
     private sealed record FfmpegStderr(string? Tail, string? Log);
@@ -2769,7 +2809,10 @@ public sealed class QueueDispatcher(
         var error = FfmpegErrorInterpreter.Explain(run.Error)
             ?? run.Error
             ?? $"ffmpeg exited with code {run.ExitCode}";
-        await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log);
+        await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log,
+            immediateAutoExclusion: run.SizeBudgetExceeded
+                ? ImmediateAutoExclusionReason.SizeSaving
+                : ImmediateAutoExclusionReason.None);
         await NotifyJobFailedAsync(jobId, error);
     }
 

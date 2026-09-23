@@ -23,6 +23,25 @@ public static class ChildOutput
     /// <summary>How long a stream is given to end after its process already has.</summary>
     public static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(2);
 
+    /// <summary>Gives a progress-stream reader the same bounded drain as text output.</summary>
+    public static async Task WithinGraceAsync(Task reading)
+    {
+        if (await Task.WhenAny(reading, Task.Delay(DrainGrace)).ConfigureAwait(false) == reading)
+        {
+            try { await reading.ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+            catch (IOException) { }
+            catch (ObjectDisposedException) { }
+            return;
+        }
+
+        _ = reading.ContinueWith(
+            static abandoned => _ = abandoned.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     /// <summary>
     /// Waits for <paramref name="reading"/> to finish, for no longer than the grace.
     /// </summary>

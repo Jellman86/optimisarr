@@ -401,6 +401,8 @@ struct SidecarMenu: View {
         switch outcome {
         case let .delivered(jobId, bytes):
             return "#\(jobId) · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        case let .failed(jobId, _):
+            return "#\(jobId) · failed"
         case let .released(jobId, _), let .leaseLost(jobId, _), let .unconfirmed(jobId, _):
             return "#\(jobId) · handed back"
         }
@@ -511,6 +513,8 @@ private extension JobOutcome {
         case let .delivered(jobId, bytes):
             let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
             return "Last job #\(jobId): returned \(size) to the server."
+        case let .failed(jobId, reason):
+            return "Last job #\(jobId): \(reason)"
         case let .released(jobId, reason):
             return "Last job #\(jobId): handed back — \(reason)"
         case let .unconfirmed(jobId, reason):
