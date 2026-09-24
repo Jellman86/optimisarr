@@ -124,6 +124,8 @@ internal static class AdaptiveSearchPlanner
                 $"Adaptive sample at quality {quality}",
                 policy.MinimumVmafHarmonicMean,
                 policy.MinimumVmafMin,
-                measurements));
+                measurements,
+                sourceVideoDurationSeconds,
+                windows.Sum(window => window.DurationSeconds ?? 0)));
     }
 }

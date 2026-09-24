@@ -15,7 +15,11 @@ public sealed record RemoteQualityContract(
     string Sampling,
     double MinimumHarmonicMean,
     double MinimumMinimum,
-    IReadOnlyList<IReadOnlyList<string>> Commands)
+    IReadOnlyList<IReadOnlyList<string>> Commands,
+    // The adaptive search stores these on the lease for the control plane's size forecast. A
+    // final-candidate quality contract leaves them null, and sidecars need not interpret them.
+    double? SourceDurationSeconds = null,
+    double? SampledDurationSeconds = null)
 {
     public const string DistortedPlaceholder = "{{distorted}}";
     public const string ReferencePlaceholder = "{{reference}}";

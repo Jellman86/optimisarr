@@ -63,6 +63,7 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("POST", "/api/jobs/replace-ready")]
     [InlineData("POST", "/api/jobs/1/cancel")]
     [InlineData("POST", "/api/jobs/1/retry")]
+    [InlineData("POST", "/api/jobs/1/approve-size-preflight")]
     [InlineData("DELETE", "/api/jobs/1")]
     [InlineData("POST", "/api/jobs/1/replace")]
     [InlineData("POST", "/api/replacements/1/rollback")]
@@ -85,6 +86,60 @@ public sealed class AdminTokenAuthEndpointTests
             .SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Approval_requeues_only_a_held_normal_job_and_keeps_final_gates()
+    {
+        int jobId;
+        int mediaId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                Path = Path.Combine(_api.LibraryDirectory, $"size-review-{Guid.NewGuid():N}.mkv"),
+                RelativePath = "size-review.mkv"
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaId = media.Id;
+            var job = new Job
+            {
+                MediaFileId = media.Id,
+                Status = JobStatus.AwaitingSizeReview,
+                AdaptiveVideoQuality = 22,
+                ErrorMessage = "Sample estimate suggests a large output."
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        try
+        {
+            using var client = _api.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+            using var approved = await client.PostAsync($"/api/jobs/{jobId}/approve-size-preflight", null);
+            Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
+            using var repeated = await client.PostAsync($"/api/jobs/{jobId}/approve-size-preflight", null);
+            Assert.Equal(HttpStatusCode.BadRequest, repeated.StatusCode);
+
+            using var check = _api.Services.CreateScope();
+            var persisted = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.Single(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Queued, persisted.Status);
+            Assert.True(persisted.BypassSizePreflight);
+            Assert.Null(persisted.AdaptiveVideoQuality);
+            Assert.Null(persisted.ErrorMessage);
+        }
+        finally
+        {
+            using var cleanup = _api.Services.CreateScope();
+            var db = cleanup.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Jobs.Remove(db.Jobs.Single(j => j.Id == jobId));
+            db.MediaFiles.Remove(db.MediaFiles.Single(m => m.Id == mediaId));
+            await db.SaveChangesAsync();
+        }
     }
 
     [Fact]

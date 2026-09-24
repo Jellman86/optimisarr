@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using Optimisarr.Api;
 using Optimisarr.Api.Diagnostics;
 using Optimisarr.Api.Endpoints;
@@ -457,6 +458,44 @@ internal static class MediaAndQueueEndpoints
             return Results.Ok(new { id = job.Id, status = job.Status.ToString() });
         })
         .WithName("CancelJob");
+
+        // Operator approval permits a full encode despite the sample-size forecast. The
+        // adaptive search is repeated on the worker that actually receives the queued job;
+        // its selected quality is encoder-specific. Final size and quality gates remain active.
+        app.MapPost("/api/jobs/{id:int}/approve-size-preflight", async (
+            int id,
+            OptimisarrDbContext db,
+            QueueDispatcher dispatcher,
+            IHubContext<JobsHub> hub,
+            CancellationToken cancellationToken) =>
+        {
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
+            if (job is null)
+            {
+                return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
+            }
+
+            if (job.Status != JobStatus.AwaitingSizeReview)
+            {
+                return ApiErrors.BadRequest("job.sizePreflight.invalidState",
+                    $"Job {id} is {job.Status} and is not awaiting size review.",
+                    new { id, status = job.Status.ToString() });
+            }
+
+            job.BypassSizePreflight = true;
+            job.AdaptiveVideoQuality = null;
+            job.ErrorMessage = null;
+            job.Progress = 0;
+            job.Status = JobStatus.Queued;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            dispatcher.Wake();
+            await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+            return Results.Ok(new { id = job.Id, status = job.Status.ToString() });
+        })
+        .WithName("ApproveSizePreflight");
 
         // Removes a cancelled or failed job so an operator can reset it and enqueue it again.
         // Completed replacements are deliberately excluded: their job record protects rollback state.

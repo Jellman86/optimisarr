@@ -435,6 +435,14 @@ export const ja: Messages = {
     preview: "プレビュー"
   },
   queue: {
+    clear_review_included: "サイズ確認のため保留中のジョブ {count} 件も削除されます。",
+    filter_review: "確認が必要",
+    status_awaitingsizereview: "サイズを確認",
+    size_review_title: "サイズ確認のため全編のエンコードを保留中",
+    size_review_detail: "サンプルから出力サイズが上限を超えると予測されます。元ファイルは変更されていません。",
+    action_encode_anyway: "それでもエンコード",
+    confirm_encode_anyway: "サイズ警告があってもこのジョブをエンコードしますか？\n\n{name}\n\n適応的な品質探索を再実行します。最終的なサイズと品質の検査は引き続き適用され、元ファイルは保護されます。",
+    error_approve_size: "ジョブを再開できませんでした",
     lane_finalization: '安全な置換',
     execution_path: '実行経路',
     lanes_title: '実行レーン',

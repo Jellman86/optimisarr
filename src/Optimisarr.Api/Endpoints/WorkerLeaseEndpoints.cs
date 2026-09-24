@@ -559,6 +559,7 @@ internal static class WorkerLeaseEndpoints
             SettingsStore settings,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            IHubContext<JobsHub> hub,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
@@ -620,8 +621,8 @@ internal static class WorkerLeaseEndpoints
             // job's own work rather than being reconstructed here, because an approximate policy
             // would leave out the catastrophic floor and a different baseline would bracket around
             // a different number.
-            if (await dispatcher.GetSearchContextAsync(lease.JobId, cancellationToken)
-                is not var (policy, baseline))
+            if (await dispatcher.GetSearchContextAsync(lease.JobId, worker.ToCapabilities(), cancellationToken)
+                is not var (policy, baseline, sourceBytes, bypassSizePreflight))
             {
                 return ApiErrors.Conflict("worker.search.notRequested",
                     "This job can no longer be read, so its search cannot continue.");
@@ -659,6 +660,41 @@ internal static class WorkerLeaseEndpoints
             if (progress.Decision.Complete)
             {
                 lease.AdaptiveAskedQuality = null;
+                var selectedProbe = progress.Probes.LastOrDefault(
+                    measured => measured.Quality == progress.Decision.SelectedQuality);
+                var forecast = SizePreflight.Assess(
+                    sourceBytes,
+                    contract.SourceDurationSeconds ?? 0,
+                    contract.SampledDurationSeconds ?? 0,
+                    selectedProbe?.EncodedBytes ?? 0,
+                    !progress.Decision.FellBack && selectedProbe?.MeetsTarget == true,
+                    lease.MaxCandidateBytes is not null,
+                    policy.MinimumSizeSavingPercent,
+                    bypassSizePreflight,
+                    contract.WindowCount,
+                    lease.MaxCandidateBytes);
+                if (forecast.ShouldHold && lease.Job is { Status: JobStatus.Leased } heldJob)
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    var release = lease.ToDomain().Release(worker.Id, now);
+                    if (release.Outcome != LeaseOutcome.Released)
+                    {
+                        return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
+                    }
+                    lease.Apply(release.Lease, now);
+                    heldJob.Status = JobStatus.AwaitingSizeReview;
+                    heldJob.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    heldJob.Progress = 0;
+                    heldJob.ErrorMessage = forecast.Reason;
+                    heldJob.UpdatedAt = now;
+                    await db.SaveChangesAsync(cancellationToken);
+                    logger.LogInformation(
+                        "Job {JobId}: worker quality search held full encode for size review; sampled video projects {ProjectedBytes} bytes",
+                        heldJob.Id, forecast.ProjectedVideoBytes);
+                    dispatcher.Wake();
+                    await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+                    return ApiErrors.Conflict("worker.search.sizeReview", forecast.Reason!);
+                }
                 // Recorded on the job, exactly as a local search records it. Without this the
                 // server would not know what the worker is encoding at: the value would exist only
                 // in the reply the worker acted on, so a recovery retry would start from nothing
