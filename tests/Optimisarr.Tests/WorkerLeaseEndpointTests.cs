@@ -1142,6 +1142,33 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(JsonValueKind.False, search.GetProperty("clipVmaf").ValueKind);
     }
 
+    [Fact]
+    public async Task A_workers_samples_are_measured_on_the_sources_frame_grid()
+    {
+        // The job's stored frame rate is empty on this path, and the sample planner used nothing
+        // else, so every worker sample went out with no cadence on either side. libvmaf then paired
+        // a third of the frames with their predecessors against millisecond-timed sources: clean
+        // samples on VideoToolbox, NVENC and libx265 all scored zeros on every cut.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Grid");
+        await QueueAJob(videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var commands = (await claim.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("search").GetProperty("measurement").GetProperty("commands");
+
+        Assert.NotEqual(0, commands.GetArrayLength());
+        foreach (var command in commands.EnumerateArray())
+        {
+            var graph = command.EnumerateArray().Select(a => a.GetString()!).Single(a => a.Contains("libvmaf"));
+            foreach (var branch in graph.Split(';').Take(2))
+            {
+                Assert.Contains("fps=fps=23.976", branch);
+            }
+        }
+    }
+
     private static IReadOnlyList<string> Fields(JsonElement element) =>
         element.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToList();
 

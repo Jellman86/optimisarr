@@ -94,6 +94,25 @@ public sealed class SampleMeasurementAlignmentTests
         Assert.Contains("trim=", graph, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void A_clip_with_no_known_frame_rate_is_paired_frame_by_frame()
+    {
+        // libvmaf pairs each frame with the latest frame of the other stream at or before its
+        // timestamp. A sample encoded with exact 1001/24000 steps against a source stored in
+        // milliseconds sits up to 0.4 ms behind it, so without a common grid a third of the frames
+        // met their predecessor: a clean libx265 sample scored harmonic 59.8 with zeros on every
+        // cut, and 94.9 once paired frame by frame. Both are cut clips, so order is the pairing.
+        var context = Sample(cutClip: true) with { ReferenceFrameRate = null };
+
+        var branches = QualityScoreCommandBuilder
+            .Build("distorted.mkv", "reference.mkv", "log.json", context, threads: 8)
+            .FilterGraph
+            .Split(';');
+
+        Assert.EndsWith("setpts=PTS-STARTPTS,setpts=N,scale=1440:1080", branches[0].Split(":flags")[0]);
+        Assert.EndsWith("setpts=PTS-STARTPTS,setpts=N,scale=1440:1080", branches[1].Split(":flags")[0]);
+    }
+
     [Theory]
     [InlineData(true, true)]
     [InlineData(true, false)]

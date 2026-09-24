@@ -1176,6 +1176,8 @@ public sealed class AdminTokenAuthEndpointTests
                           "height": 1080,
                           "pix_fmt": "{{(tenBit ? "yuv420p10le" : "yuv420p")}}",
                           "bits_per_raw_sample": "{{(tenBit ? "10" : "8")}}",
+                          "r_frame_rate": "24000/1001",
+                          "avg_frame_rate": "24000/1001",
                           "tags": { "DURATION": "00:05:00.000000000" }
                         },
                         { "codec_type": "audio", "codec_name": "aac" }

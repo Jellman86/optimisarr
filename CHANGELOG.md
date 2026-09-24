@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Quality-search samples measured on Mac and Windows sidecars no longer score frames at 0. Worker sample measurements were planned without the source's frame rate, so VMAF compared some frames with the frame before them; clean samples on VideoToolbox, NVENC and libx265 alike showed zeros on every scene cut, and searches fell back to the library quality having learned nothing. Samples now use the source's frame rate, and a clip with no known rate is compared frame by frame (#269).
 - Final VMAF no longer fails good encodes with near-zero scores. Before each measured window, the server and both sidecars choose a one-frame timing correction; that choice was made with a separate two-second comparison that did not match the real measurement, so it often picked a correction that put the frames one apart. A clean libx265 encode scoring 94–96 was being failed at 21.5. The choice is now made by running the real measurement itself for five seconds at each offset, and the unshifted timing is kept unless another offset is clearly better (#269).
 - A delivered worker candidate is verified against the policy frozen when it was claimed, so editing library verification settings while it encodes cannot silently change the result.
 - Local, Mac and Windows encodes also check the finished file against their frozen size budget, catching final mux bytes that arrive after the last in-flight poll before quality measurement or upload.

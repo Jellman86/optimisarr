@@ -402,7 +402,9 @@ public static class QualityScoreCommandBuilder
             : string.Empty;
         if (cadence.Length == 0 && alignment.Length == 0)
         {
-            return origin;
+            // The clip's own side of a cut-clip comparison: renumbered like the reference below
+            // when there is no shared rate, so the two are paired frame by frame.
+            return cutClip ? $"{origin},setpts=N" : origin;
         }
 
         // Against an independently cut clip the window is taken first and the cadence normalised
@@ -419,8 +421,12 @@ public static class QualityScoreCommandBuilder
         // became an empty element once the caller joined the next filter on: FFmpeg answers
         // "No such filter: ''" and refuses the whole graph, so every per-title search on such a
         // source failed at its first scoring pass.
+        // With no rate to share, the two cut clips are paired frame by frame. libvmaf pairs each
+        // frame with the latest one of the other stream at or before its timestamp, and a clip
+        // timed in exact 1001/24000 steps sits up to 0.4 ms behind a source stored in milliseconds,
+        // so pairing on raw timestamps met a third of the frames with their predecessors.
         var cut = $"{inputTimeline},{lead}{alignment}{origin}";
-        return cadence.Length == 0 ? cut : $"{cut},{cadence.TrimEnd(',')}";
+        return cadence.Length == 0 ? $"{cut},setpts=N" : $"{cut},{cadence.TrimEnd(',')}";
     }
 
     private static string DescribePreprocessing(
