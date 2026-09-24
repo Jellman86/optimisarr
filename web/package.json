@@ -16,7 +16,7 @@
     "brand:assets": "node scripts/render-stellar-assets.ts"
   },
   "devDependencies": {
-    "@napi-rs/canvas": "0.1.80",
+    "@napi-rs/canvas": "1.0.9",
     "@playwright/test": "^1.63.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@tailwindcss/vite": "^4.3.3",
