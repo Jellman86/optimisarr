@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: Validate release tag
@@ -31,7 +31,7 @@ jobs:
       - run: dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build
       - run: ./sidecars/windows/installer/build.ps1
       - run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: windows-sidecar-unsigned-preview
@@ -47,7 +47,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-sidecar-unsigned-preview
           path: artifacts
