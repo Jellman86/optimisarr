@@ -177,6 +177,25 @@ public sealed class SidecarClientTests
     {
         Assert.Throws<SidecarException>(() => SidecarClient.Endpoint("   ", "/api/workers/pair"));
     }
+
+    [Fact]
+    public async Task A_measurement_reports_its_bytes_per_window_and_their_total()
+    {
+        // The server compares each window with the source's own bytes over the same scenes. The
+        // total stays for servers that predate the split; the two must agree or it is refused.
+        var (client, handler) = Client(
+            HttpStatusCode.OK, "{\"nextStep\":null,\"selectedQuality\":24,\"reason\":\"done\"}");
+
+        await client.ReportAdaptiveProbeAsync(
+            new StoredPairing("https://optimisarr.example.com", "secret", 7),
+            Guid.NewGuid(), 24, [100, 110, 120], ["{}", "{}", "{}"]);
+
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        Assert.Equal(330, body.RootElement.GetProperty("encodedBytes").GetInt64());
+        Assert.Equal(
+            [100L, 110L, 120L],
+            body.RootElement.GetProperty("windowEncodedBytes").EnumerateArray().Select(e => e.GetInt64()));
+    }
 }
 
 /// <summary>

@@ -50,7 +50,12 @@ public sealed record AdaptiveSearchStep(
 public sealed record AdaptiveSearchReport(
     int Quality,
     long EncodedBytes,
-    IReadOnlyList<string> Logs);
+    IReadOnlyList<string> Logs,
+    /// <summary>
+    /// <see cref="EncodedBytes"/> split by window, in command order. Optional: a worker older than
+    /// the per-window size forecast sends only the total, which is still enough to forecast from.
+    /// </summary>
+    IReadOnlyList<long>? WindowEncodedBytes = null);
 
 /// <summary>
 /// The control plane's answer to a report: measure this next, or stop and encode.

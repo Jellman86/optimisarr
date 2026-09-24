@@ -996,6 +996,122 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             (await result.JobLeases.SingleAsync(l => l.Id == Guid.Parse(leaseId))).State);
     }
 
+    private async Task<(HttpClient Worker, int JobId, string LeaseId, int Quality, int Windows)> ClaimASizeGatedSearch(
+        string workerName, double minimumVmaf)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker(workerName);
+        var jobId = await QueueAJob(strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+            job.MediaFile!.SizeBytes = 1_000_000_000;
+            job.MediaFile.DurationSeconds = 300;
+            var library = await db.Libraries.SingleAsync(l => l.Id == job.LibraryId);
+            library.MinVmafHarmonicMean = minimumVmaf;
+            library.MinVmafMin = 90;
+            library.MinVmafCatastrophicMin = 90;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var search = assignment.GetProperty("search");
+        return (worker, jobId, assignment.GetProperty("leaseId").GetString()!,
+            search.GetProperty("quality").GetInt32(),
+            search.GetProperty("measurement").GetProperty("commands").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_worker_sample_that_misses_vmaf_and_cannot_fit_ends_the_search_at_once()
+    {
+        // The fixed source spent 100 MB per window on its picture. These samples are 100%, 110%
+        // and 120% of it while missing a 97 target, so any quality that passes would be larger.
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Early stopper", 97);
+        Assert.Equal(3, windows);
+
+        using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+        {
+            quality,
+            encodedBytes = 330_000_000L,
+            windowEncodedBytes = new[] { 100_000_000L, 110_000_000L, 120_000_000L },
+            logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, report.StatusCode);
+        Assert.Contains("worker.search.sizeReview", await report.Content.ReadAsStringAsync());
+        using var check = _api.Services.CreateScope();
+        var held = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>()
+            .Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.AwaitingSizeReview, held.Status);
+        Assert.Contains("missed the VMAF target", held.ErrorMessage);
+        Assert.Contains("100%, 110%, 120% across the 3 samples", held.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Encode_anyway_offers_a_size_held_job_straight_back_to_the_worker_that_measured_it()
+    {
+        // The worker did nothing wrong: it measured what it was asked and the server chose to
+        // pause. Counting that as a refusal would park an approved job behind the handback
+        // cooldown, and three such holds would bar it from every worker.
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Approved worker", 97);
+        using (var held = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+        {
+            quality,
+            encodedBytes = 330_000_000L,
+            logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+        }))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, held.StatusCode);
+        }
+
+        using (var approve = await Admin().PostAsync($"/api/jobs/{jobId}/approve-size-preflight", null))
+        {
+            approve.EnsureSuccessStatusCode();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        Assert.Equal(jobId, (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("jobId").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_worker_sample_that_fits_keeps_the_search_going()
+    {
+        var (worker, _, leaseId, quality, windows) = await ClaimASizeGatedSearch("Fitter", 90);
+
+        using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+        {
+            quality,
+            encodedBytes = 240_000_000L,
+            windowEncodedBytes = new[] { 80_000_000L, 80_000_000L, 80_000_000L },
+            logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+        });
+
+        Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+        var direction = await report.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Object, direction.GetProperty("nextStep").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_per_window_split_that_does_not_add_up_is_refused()
+    {
+        var (worker, _, leaseId, quality, windows) = await ClaimASizeGatedSearch("Miscounter", 90);
+
+        using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+        {
+            quality,
+            encodedBytes = 240_000_000L,
+            windowEncodedBytes = new[] { 80_000_000L, 80_000_000L },
+            logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, report.StatusCode);
+        Assert.Contains("worker.search.reportInvalid", await report.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task A_search_measurement_is_the_same_shape_as_the_quality_gate_it_answers_to()
     {

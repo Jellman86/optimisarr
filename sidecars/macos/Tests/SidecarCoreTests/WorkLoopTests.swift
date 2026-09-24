@@ -1503,6 +1503,14 @@ struct AdaptiveSearchWorkLoopTests {
         #expect(server.probeReports.map { $0["quality"] as? Int } == [24, 30])
         // Bytes come from the samples this machine actually encoded, never invented.
         #expect(server.probeReports.allSatisfy { ($0["encodedBytes"] as? Int ?? 0) > 0 })
+        // Split by window too, so the server's size forecast can say which scenes grew. The split
+        // covers every sample and adds up to the total, or the server would refuse the report.
+        #expect(server.probeReports.allSatisfy { report in
+            guard let split = report["windowEncodedBytes"] as? [Int] else { return false }
+            // The fixture's step has one sample window.
+            return split.count == 1 && split.allSatisfy { $0 > 0 }
+                && split.reduce(0, +) == report["encodedBytes"] as? Int
+        })
         // And the job still completes, encoded with the command the search settled on rather than
         // the one the assignment arrived carrying.
         #expect(outcome == .delivered(jobId: 12, bytes: 15))

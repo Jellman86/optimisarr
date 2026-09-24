@@ -278,7 +278,7 @@ public sealed class SidecarClient(HttpClient http)
         StoredPairing pairing,
         Guid leaseId,
         int quality,
-        long encodedBytes,
+        IReadOnlyList<long> windowEncodedBytes,
         IReadOnlyList<string> logs,
         CancellationToken cancellationToken = default)
     {
@@ -287,7 +287,10 @@ public sealed class SidecarClient(HttpClient http)
             Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/quality-probe"))
         {
             Content = JsonContent.Create(
-                new { quality, encodedBytes, logs }, options: Json),
+                // The total is what every server reads; the split is what lets a newer one say
+                // which scenes grew. A server that predates the split ignores it.
+                new { quality, encodedBytes = windowEncodedBytes.Sum(), windowEncodedBytes, logs },
+                options: Json),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
 
