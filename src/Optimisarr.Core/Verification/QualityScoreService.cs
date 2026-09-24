@@ -82,7 +82,7 @@ public sealed class QualityScoreService(
             {
                 var chosen = await ChooseAlignmentAsync(
                     executableFor(requestedAcceleration), referencePath, distortedPath,
-                    effectiveContext, cancellationToken);
+                    effectiveContext, threads, cancellationToken);
                 if (chosen is not null)
                 {
                     effectiveContext = effectiveContext with { DistortedShiftToken = chosen };
@@ -239,7 +239,7 @@ public sealed class QualityScoreService(
     }
 
     /// <summary>
-    /// Tries the candidate against the reference at each offset and returns the one that matched
+    /// Runs the measurement itself, cut short, at each offset and returns the one that matched
     /// best, or null when none could be scored — in which case the builder falls back to what the
     /// containers claim, which is what it always did.
     /// </summary>
@@ -248,6 +248,7 @@ public sealed class QualityScoreService(
         string referencePath,
         string distortedPath,
         QualityMeasurementContext context,
+        int threads,
         CancellationToken cancellationToken)
     {
         if (TimelineAlignmentProbe.FrameSeconds(context.ReferenceFrameRate) is not { } frameSeconds)
@@ -255,23 +256,23 @@ public sealed class QualityScoreService(
             return null;
         }
 
-        double? bestShift = null;
-        var bestScore = double.NegativeInfinity;
-        var probeStart = context.ReferenceStartSeconds is { } windowStart
-            ? Math.Max(0, windowStart - TimelineAlignmentProbe.ProbeLeadSeconds)
-            : TimelineAlignmentProbe.ProbeStartSeconds;
-
+        var scored = new List<(int Frames, double Mean)>(TimelineAlignmentProbe.FramesToTry.Count);
         foreach (var frames in TimelineAlignmentProbe.FramesToTry)
         {
-            var shift = frames * frameSeconds;
             var log = Path.Combine(Path.GetTempPath(), $"optimisarr-align-{Guid.NewGuid():N}.json");
             try
             {
+                var measurement = BuildCommand(
+                    distortedPath,
+                    referencePath,
+                    log,
+                    context with { DistortedShiftToken = TimelineAlignmentProbe.Format(frames * frameSeconds) },
+                    threads);
                 using var probeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 probeTimeout.CancelAfter(AlignmentProbeTimeout);
                 using var process = CreateProcess(
                     executable,
-                    TimelineAlignmentProbe.Arguments(referencePath, distortedPath, shift, log, probeStart));
+                    TimelineAlignmentProbe.Truncate(measurement.Arguments, TimelineAlignmentProbe.ProbeSeconds));
                 process.Start();
                 var stderr = process.StandardError.ReadToEndAsync(probeTimeout.Token);
                 try
@@ -294,12 +295,9 @@ public sealed class QualityScoreService(
                     continue;
                 }
 
-                var score = TimelineAlignmentProbe.MeanScore(
-                    await File.ReadAllTextAsync(log, cancellationToken));
-                if (score is { } value && value > bestScore)
+                if (TimelineAlignmentProbe.MeanScore(await File.ReadAllTextAsync(log, cancellationToken)) is { } mean)
                 {
-                    bestScore = value;
-                    bestShift = shift;
+                    scored.Add((frames, mean));
                 }
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
@@ -313,7 +311,9 @@ public sealed class QualityScoreService(
             }
         }
 
-        return bestShift is { } chosen ? TimelineAlignmentProbe.Format(chosen) : null;
+        return TimelineAlignmentProbe.Choose(scored) is { } chosen
+            ? TimelineAlignmentProbe.Format(chosen * frameSeconds)
+            : null;
     }
 
     private static async Task<bool> HasFilterAsync(

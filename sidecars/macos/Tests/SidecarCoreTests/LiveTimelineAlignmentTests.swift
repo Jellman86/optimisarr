@@ -30,9 +30,18 @@ struct LiveTimelineAlignmentTests {
             ?? "/Applications/OptimisarrSidecar.app/Contents/Resources/ffmpeg")
     }
 
+    /// The shape of the server's window measurement, forty seconds from one minute in.
+    private static let windowAtOneMinute = [
+        "-nostdin", "-v", "error",
+        "-ss", "55", "-i", "{{distorted}}", "-ss", "55", "-i", "{{reference}}",
+        "-lavfi", "[0:v]settb=AVTB,setpts=PTS-{{distortedShift}}*1000000,fps=fps=25:start_time=0,trim=start=5:duration=40,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[dist];[1:v]settb=AVTB,fps=fps=25:start_time=0,trim=start=5:duration=40,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:log_fmt=json:log_path={{log}}:shortest=1:repeatlast=0",
+        "-t", "40", "-f", "null", "-",
+    ]
+
     private func chosenShift(source: String, candidate: String) async -> String? {
         await TimelineAlignment.measure(
             ffmpeg: ffmpeg,
+            command: try! MeasurementCommand.validate(Self.windowAtOneMinute),
             source: fixtures.appendingPathComponent(source),
             candidate: fixtures.appendingPathComponent(candidate),
             frameSeconds: 1.0 / 25.0,
