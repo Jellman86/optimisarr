@@ -225,6 +225,44 @@ async function mockWorkingQueue(page: Page, fixture: { jobs: ReturnType<typeof j
   })
 }
 
+test('a size preflight hold explains the estimate and requeues only after confirmation', async ({ page }) => {
+  let held = { ...job(19, 'AwaitingSizeReview', null), progress: 0,
+    errorMessage: 'Three video-only quality samples project video data at about 150% of the source file.' }
+  let approvals = 0
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { completed: true, completedStep: 5, stepCount: 5 })
+    if (path === '/api/jobs') return json(route, [held])
+    if (path === '/api/queue/status') return json(route, { ...clearQueue, runningJobs: 0 })
+    if (path === '/api/jobs/19/approve-size-preflight' && route.request().method() === 'POST') {
+      approvals += 1
+      held = { ...held, status: 'Queued', errorMessage: null }
+      return json(route, { id: 19, status: 'Queued' })
+    }
+    return route.fulfill({ status: 404, body: '{}' })
+  })
+  page.on('dialog', async dialog => {
+    expect(dialog.message()).toContain('Final size and quality gates still apply')
+    await dialog.accept()
+  })
+
+  await page.goto('/#/queue')
+  await page.locator('.queue-review-alert').click()
+  await page.locator('#queue-job-19').click()
+  await expect(page.locator('#queue-job-dialog').getByText('Full encode paused for size review')).toBeVisible()
+  await expect(page.getByText(/project video data at about 150%/)).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const dialogBox = await page.locator('#queue-job-dialog').boundingBox()
+  expect(dialogBox).not.toBeNull()
+  expect(dialogBox!.x).toBeGreaterThanOrEqual(0)
+  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(390)
+  await expect(page.getByRole('button', { name: 'Encode anyway' })).toBeVisible()
+  await page.getByRole('button', { name: 'Encode anyway' }).click()
+  await expect(page.getByText('Review size')).toHaveCount(0)
+  expect(approvals).toBe(1)
+})
+
 test('Now and next keeps working jobs separate and opens a keyboard-accessible job dialog', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [{ ...job(1, 'Transcoding', null), progress: .9999 }, job(2, 'Queued', null)] })
   await page.goto('/#/queue')

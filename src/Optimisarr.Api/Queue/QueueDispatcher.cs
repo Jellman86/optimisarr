@@ -1068,58 +1068,24 @@ public sealed class QueueDispatcher(
     }
 
     /// <summary>
-    /// The two facts an exchange of the quality search needs about a job: what its evidence is
-    /// judged by, and which quality the search brackets around.
+    /// The facts a worker quality-search exchange needs about a job: what its evidence is
+    /// judged by, which quality its encoder searches around, and the source-size policy.
     ///
-    /// <para>Both come from the job's own work, so a search that runs on a worker is judged and
-    /// centred exactly as one that runs here. Rebuilding an approximate policy from the contract's
-    /// two thresholds would leave out the catastrophic floor and quietly judge a remote search more
-    /// leniently; taking the baseline from the job's requested quality rather than its effective
-    /// one would bracket around a different number than a local search would.</para>
+    /// <para>These come from the job's work resolved for that worker. Rebuilding an approximate
+    /// policy from the contract's two thresholds would leave out the catastrophic floor and judge
+    /// a remote search more leniently. Taking the requested quality instead of the worker's effective
+    /// one would bracket around a different number than the assignment planned.</para>
     /// </summary>
-    public async Task<(VerificationPolicy Policy, int Baseline)?> GetSearchContextAsync(
-        int jobId, CancellationToken cancellationToken)
+    public async Task<(VerificationPolicy Policy, int Baseline, long SourceBytes, bool BypassSizePreflight)?> GetSearchContextAsync(
+        int jobId, WorkerCapabilities worker, CancellationToken cancellationToken)
     {
-        var work = await LoadWorkAsync(jobId, cancellationToken);
+        // Use the same encoder placement that planned the sample commands. A worker may support
+        // HEVC even when this server has no local HEVC encoder, and quality scales differ.
+        var work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
         return work is { VideoQuality: { } quality }
-            ? (work.Value.VerificationPolicy, quality.Effective)
+            ? (work.Value.VerificationPolicy, quality.Effective,
+                work.Value.Original.SizeBytes, work.Value.BypassSizePreflight)
             : null;
-    }
-
-    private async Task<bool> ShouldHandToWorkerAsync(int jobId, CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-        var settings = await GetQueueSettingsAsync(cancellationToken);
-
-        var availability = await WorkerAvailability.ResolveAsync(
-            db,
-            settings.RemoteWorkersEnabled,
-            scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(),
-            DateTimeOffset.UtcNow,
-            cancellationToken);
-
-        var placement = await JobPlacementLookup.ForJobAsync(db, jobId, cancellationToken);
-
-        var handOver = availability.RemoteWorkersOn
-            && availability.AWorkerCouldTakeWork
-            && placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
-
-        // Says which of the three it was. This decision was silent, and a library set to prefer a
-        // worker that never handed one anything looked identical whether the fleet was offline, the
-        // feature was off, or the placement had not been read at all. It is written once per job
-        // that searched its quality here, not once per poll.
-        if (!handOver)
-        {
-            logger.LogInformation(
-                "Job {JobId}: keeping the encode here — remote workers {Remote}, a worker could take it: {Fleet}, placement {Placement}",
-                jobId,
-                availability.RemoteWorkersOn ? "on" : "off",
-                availability.AWorkerCouldTakeWork,
-                placement?.ToString() ?? "unresolved");
-        }
-
-        return handOver;
     }
 
     private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
@@ -1173,35 +1139,17 @@ public sealed class QueueDispatcher(
                 preparedWork.AdaptiveVideoQuality is not null,
                 preparedWork.IsCalibration))
             {
-                preparedWork = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
-
-                // The search is the control plane's decision and only it can make one; the encode
-                // that follows is not. A library set to prefer a worker meant nothing at all while
-                // both happened here: the job was unofferable until the quality was chosen, and by
-                // the time it was chosen this machine was already encoding it. Handing it back now
-                // is what makes the preference real.
-                if (await ShouldHandToWorkerAsync(jobId, cancellationToken))
+                var selection = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
+                if (selection is null)
                 {
-                    // Restart the head start, or handing the job back achieves nothing. The clock
-                    // began when the job first became runnable — before a quality search that takes
-                    // minutes — so by now it has almost always lapsed, and the dispatcher polls
-                    // every three seconds while a worker only asks on its next check-in. Without
-                    // this the server would take the job straight back and the handback would be a
-                    // round trip to nowhere.
-                    _firstRunnableAt[jobId] = DateTimeOffset.UtcNow;
-
-                    await WithJobAsync(jobId, job =>
-                    {
-                        job.Status = JobStatus.Queued;
-                        job.Progress = 0;
-                        job.UpdatedAt = DateTimeOffset.UtcNow;
-                    }, cancellationToken);
-                    logger.LogInformation(
-                        "Job {JobId}: quality chosen here; returned to the queue so a worker can encode it",
-                        jobId);
-                    await NotifyAsync();
+                    // The sample-size forecast is advisory, so this job waits for an operator
+                    // rather than producing or failing a candidate. It owns no full output.
                     return;
                 }
+                preparedWork = selection.Value;
+                // The sample result belongs to this encoder. Worker-first placement already had
+                // its head start before this machine claimed the job; handing the chosen quality
+                // to a different encoder would discard the proof the search just gathered.
             }
 
             var (spec, arguments) = preparedWork;
@@ -1476,7 +1424,8 @@ public sealed class QueueDispatcher(
         PictureSize? SourcePicture = null,
         // Why this work is a second encode of the same job, when it is one; carried into the
         // verification report's context so the record explains itself.
-        string? SoftwareDecodeRetryReason = null)
+        string? SoftwareDecodeRetryReason = null,
+        bool BypassSizePreflight = false)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -2105,7 +2054,8 @@ public sealed class QueueDispatcher(
             media.Width is > 0 && media.Height is > 0
                 ? new PictureSize(media.Width.Value, media.Height.Value)
                 : null,
-            SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null);
+            SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null,
+            BypassSizePreflight: job.BypassSizePreflight);
     }
 
     /// <summary>
@@ -2134,7 +2084,7 @@ public sealed class QueueDispatcher(
     /// Preparation may choose an encoder quality; it can never authorise replacement, and any
     /// unavailable/noisy evidence falls back to the library's value before the normal full encode.
     /// </summary>
-    private async Task<JobWork> SelectAdaptiveQualityAsync(
+    private async Task<JobWork?> SelectAdaptiveQualityAsync(
         int jobId,
         JobWork work,
         CancellationToken cancellationToken)
@@ -2204,6 +2154,22 @@ public sealed class QueueDispatcher(
                 var decision = AdaptiveQualitySearch.Decide(baseline, measured);
                 if (decision.Complete)
                 {
+                    var selectedProbe = measured.LastOrDefault(probe => probe.Quality == decision.SelectedQuality);
+                    var forecast = SizePreflight.Assess(
+                        work.Original.SizeBytes,
+                        samplingDuration.Value,
+                        windows.Sum(window => window.DurationSeconds ?? 0),
+                        selectedProbe?.EncodedBytes ?? 0,
+                        !decision.FellBack && selectedProbe?.MeetsTarget == true,
+                        policy.RequireSizeReduction && !work.IsDisposable,
+                        policy.MinimumSizeSavingPercent,
+                        work.BypassSizePreflight,
+                        windows.Count);
+                    if (forecast.ShouldHold)
+                    {
+                        await HoldForSizeReviewAsync(jobId, decision.SelectedQuality, forecast, cancellationToken);
+                        return null;
+                    }
                     return await FinishAdaptiveSelectionAsync(
                         jobId,
                         RebuildWorkAtQuality(work, decision.SelectedQuality),
@@ -2463,6 +2429,31 @@ public sealed class QueueDispatcher(
             reason);
         await NotifyAsync();
         return work;
+    }
+
+    private async Task HoldForSizeReviewAsync(
+        int jobId,
+        int selectedQuality,
+        SizePreflightAssessment forecast,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await WithJobAsync(jobId, job =>
+        {
+            if (job.Status != JobStatus.Probing)
+            {
+                return;
+            }
+            job.Status = JobStatus.AwaitingSizeReview;
+            job.AdaptiveVideoQuality = selectedQuality;
+            job.Progress = 0;
+            job.ErrorMessage = forecast.Reason;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+        }, cancellationToken);
+        logger.LogInformation(
+            "Job {JobId}: full encode held for size review; sampled video projects {ProjectedBytes} bytes",
+            jobId, forecast.ProjectedVideoBytes);
+        await NotifyAsync();
     }
 
     private static JobWork RebuildWorkAtQuality(JobWork work, int selectedQuality)
@@ -3594,6 +3585,7 @@ public sealed class QueueDispatcher(
             .Where(job => job.Type == JobType.Normal
                 && (job.Status == JobStatus.Queued
                     || job.Status == JobStatus.AwaitingVerification
+                    || job.Status == JobStatus.AwaitingSizeReview
                     || job.Status == JobStatus.ReadyToReplace))
             .ToListAsync(cancellationToken);
         if (pending.Count == 0)

@@ -1248,6 +1248,7 @@ export const api = {
     return response.text()
   },
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
+  approveSizePreflight: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/approve-size-preflight`, { method: 'POST' }),
   removeJob: (id: number) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
   retryJob: (id: number, higherQuality = false) =>
     request<{ id: number; status: string }>(`/api/jobs/${id}/retry?higherQuality=${higherQuality}`, { method: 'POST' }),

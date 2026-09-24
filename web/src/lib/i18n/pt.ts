@@ -435,6 +435,14 @@ export const pt: Messages = {
     preview: "Visualização"
   },
   queue: {
+    clear_review_included: "Isto também remove {count} tarefas suspensas para revisão do tamanho.",
+    filter_review: "Precisa de revisão",
+    status_awaitingsizereview: "Rever tamanho",
+    size_review_title: "Codificação completa suspensa para revisão do tamanho",
+    size_review_detail: "As amostras preveem uma saída demasiado grande. O original não foi alterado.",
+    action_encode_anyway: "Codificar mesmo assim",
+    confirm_encode_anyway: "Codificar esta tarefa apesar do aviso de tamanho?\n\n{name}\n\nA pesquisa de qualidade adaptativa será repetida. As verificações finais de tamanho e qualidade continuam ativas; o original permanece protegido.",
+    error_approve_size: "Não foi possível libertar a tarefa",
     lane_finalization: 'Substituição segura',
     execution_path: 'Percurso de execução',
     lanes_title: 'Faixas de execução',

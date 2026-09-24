@@ -186,6 +186,16 @@ The Queue tells you why work is running or waiting. Common waiting reasons are a
 closed auto-optimise window, an activity watcher pause, concurrency limits, or
 low free space in `/work`.
 
+For adaptive per-title quality with a required size saving, Optimisarr compares
+the video-only sample encodes with the source size before starting the full encode.
+If three quality-passing samples strongly predict that even the video data would
+exceed the allowed output size, the job moves to **Needs review**. Open it to read
+the estimate. **Encode anyway** repeats the quality search on the assigned encoder
+and permits one full encode; the final size and quality checks still apply.
+**Stop and remove** clears the held job. The estimate is uncertain because the
+sampled scenes may differ from the rest of the video and do not include audio or
+subtitles. No original file changes while a job waits for review.
+
 Use **Pause queue** at the top right of the Queue page when you need Optimisarr to yield the server
 for maintenance or other work. It stops new jobs and automatic replacements from starting. On the
 Linux container and on macOS, running transcodes are suspended in place without losing progress;

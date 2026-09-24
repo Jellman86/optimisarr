@@ -29,11 +29,12 @@
   let replacingId = $state<number | null>(null)
   let replacingAll = $state(false)
   let retryingId = $state<number | null>(null)
+  let approvingSizeId = $state<number | null>(null)
   let excludingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
   let clearingPending = $state(false)
   let pauseBusy = $state(false)
-  let filter = $state<'all' | 'active' | 'completed' | 'failed' | 'verified' | 'verifyFailed'>('all')
+  let filter = $state<'all' | 'active' | 'review' | 'completed' | 'failed' | 'verified' | 'verifyFailed'>('all')
   // Queue (live work) vs Failures (failed jobs grouped by reason, with the captured ffmpeg log).
   let activeTab = $state<'queue' | 'failures'>('queue')
 
@@ -148,9 +149,22 @@
     }
   }
 
-  const ACTIVE = ['Queued', 'Probing', 'Transcoding', 'Verifying', 'Leased', 'AwaitingVerification', 'ReadyToReplace']
+  const ACTIVE = ['Queued', 'Probing', 'Transcoding', 'Verifying', 'Leased', 'AwaitingVerification', 'ReadyToReplace', 'AwaitingSizeReview']
   function isActive(status: string) {
     return ACTIVE.includes(status)
+  }
+
+  async function approveSizePreflight(job: Job) {
+    if (!confirm(t(i18n.m.queue.confirm_encode_anyway, { name: jobName(job) }))) return
+    approvingSizeId = job.id
+    try {
+      await api.approveSizePreflight(job.id)
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : i18n.m.queue.error_approve_size
+    } finally {
+      approvingSizeId = null
+    }
   }
 
   async function retry(job: Job, higherQuality = false) {
@@ -191,18 +205,17 @@
     }
   }
 
-  // Reset the pending queue (e.g. after a rules change): removes all queued and ready-to-replace
+  // Reset the pending queue (e.g. after a rules change): removes queued, size-held and ready-to-replace
   // jobs and cancels anything in flight. No original is touched — ready-to-replace outputs are
   // verified-but-not-applied, so only recomputable work is discarded.
   async function clearPending() {
-    if (!confirm(
-      plural(
-        pendingCount,
-        i18n.m.queue.confirm_clear_pending_one,
-        i18n.m.queue.confirm_clear_pending_other,
-        pendingCount.toLocaleString(),
-      ),
-    )) return
+    const warning = plural(
+      pendingCount,
+      i18n.m.queue.confirm_clear_pending_one,
+      i18n.m.queue.confirm_clear_pending_other,
+      pendingCount.toLocaleString(),
+    ) + (counts.review > 0 ? `\n\n${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')
+    if (!confirm(warning)) return
     clearingPending = true
     try {
       await api.clearPendingJobs()
@@ -217,6 +230,7 @@
   function matchesFilter(job: Job): boolean {
     switch (filter) {
       case 'active': return isActive(job.status)
+      case 'review': return job.status === 'AwaitingSizeReview'
       case 'completed': return job.status === 'Completed'
       case 'failed': return job.status === 'Failed'
       // Verification outcome cuts across status (a ready-to-replace job has passed; a job can fail
@@ -237,6 +251,7 @@
   let counts = $derived({
     all: remainingJobs.length,
     active: remainingJobs.filter(job => isActive(job.status)).length,
+    review: remainingJobs.filter(job => job.status === 'AwaitingSizeReview').length,
     completed: remainingJobs.filter(job => job.status === 'Completed').length,
     failed: remainingJobs.filter(job => job.status === 'Failed').length,
     verified: remainingJobs.filter(job => job.verificationPassed === true).length,
@@ -389,6 +404,7 @@
     Verifying: i18n.m.queue.status_verifying,
     Leased: i18n.m.queue.status_leased,
     AwaitingVerification: i18n.m.queue.status_awaitingverification,
+    AwaitingSizeReview: i18n.m.queue.status_awaitingsizereview,
     ReadyToReplace: i18n.m.queue.status_readytoreplace,
     Completed: i18n.m.queue.status_completed,
     Failed: i18n.m.queue.status_failed,
@@ -488,7 +504,7 @@
   let finishedProtected = $derived(jobs.filter((j) => j.status === 'Completed' && !j.clearable).length)
   let erroredClearable = $derived(jobs.filter((j) => (j.status === 'Failed' || j.status === 'Cancelled') && j.clearable).length)
   // Pending = not-yet-applied work that a reset can safely discard (queued + verified-but-unreplaced).
-  let pendingCount = $derived(jobs.filter((j) => j.status === 'Queued' || j.status === 'ReadyToReplace').length)
+  let pendingCount = $derived(jobs.filter((j) => j.status === 'Queued' || j.status === 'ReadyToReplace' || j.status === 'AwaitingSizeReview').length)
 </script>
 
 <div class="queue-layout">
@@ -504,6 +520,13 @@
   {#if activeTab === 'failures'}
     <FailuresPanel />
   {:else}
+    {#if counts.review > 0}
+      <button class="queue-review-alert card tone-warn focus-ring" onclick={() => selectFilter('review')}>
+        <Icon name="warning" />
+        <span><strong>{i18n.m.queue.filter_review} · {counts.review}</strong><small>{i18n.m.queue.size_review_detail}</small></span>
+        <Icon name="arrow-right" />
+      </button>
+    {/if}
     {#if loadError}<Banner kind="error" class="mb-4">{loadError}<button class="btn ml-3" onclick={load}>{i18n.m.setup.retry}</button></Banner>{/if}
     {#if error && !selectedJob}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
     {#if queueStatus?.manuallyPaused}
@@ -581,7 +604,7 @@
               <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_software_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server, encoder: lastAttempt.videoEncoder ?? '—' })}</p>
             </div>
           {/if}
-          {#if selectedJob.status !== 'Queued'}
+          {#if selectedJob.status !== 'Queued' && selectedJob.status !== 'AwaitingSizeReview'}
             <section class="queue-execution-path" aria-label={i18n.m.queue.execution_path}>
               <h3>{i18n.m.queue.execution_path}</h3>
               <div><span>{i18n.m.queue.step_encode}</span><strong>{selectedJob.workerName ?? i18n.m.dashboard.this_server}</strong></div>
@@ -597,6 +620,12 @@
           {#if selectedJob.status === 'Failed'}
             <p class="callout tone-bad mt-4">{jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
             {#if selectedJob.errorMessage}<details class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
+          {/if}
+          {#if selectedJob.status === 'AwaitingSizeReview'}
+            <div class="callout tone-warn mb-4 p-4" role="status">
+              <p class="font-semibold">{i18n.m.queue.size_review_title}</p>
+              <p class="mt-1 text-xs leading-relaxed">{selectedJob.errorMessage ?? i18n.m.queue.size_review_detail}</p>
+            </div>
           {/if}
           <div class="queue-detail-specs">
       <!-- Details -->
@@ -725,6 +754,11 @@
             {replacingId === selectedJob.id ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace_original}
           </button>
         {/if}
+        {#if selectedJob.status === 'AwaitingSizeReview'}
+          <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && approveSizePreflight(selectedJob)} disabled={approvingSizeId === selectedJob.id}>
+            {approvingSizeId === selectedJob.id ? i18n.m.common.loading_short : i18n.m.queue.action_encode_anyway}
+          </button>
+        {/if}
         {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
           <button class="btn btn-ghost" onclick={() => selectedJob && exclude(selectedJob)} disabled={excludingId === selectedJob.id} title={i18n.m.queue.exclude_title}>{excludingId === selectedJob.id ? i18n.m.queue.action_excluding : i18n.m.queue.action_exclude}</button>
           {#if isVmafOnlyFailure(selectedJob)}
@@ -760,14 +794,14 @@
       {#if jobs.length > 0}
         <div class="queue-tools">
           <div class="queue-filters">
-            {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed], ['verified', i18n.m.queue.filter_verified], ['verifyFailed', i18n.m.queue.filter_verify_failed]] as [key, label]}
+            {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['review', i18n.m.queue.filter_review], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed], ['verified', i18n.m.queue.filter_verified], ['verifyFailed', i18n.m.queue.filter_verify_failed]] as [key, label]}
               <button class="focus-ring" aria-pressed={filter === key} onclick={() => selectFilter(key as typeof filter)}>{label} · {counts[key as keyof typeof counts]}</button>
             {/each}
           </div>
           <div class="queue-bulk">
             {#if readyToReplaceCount > 0}<button class="btn btn-primary" onclick={replaceAll} disabled={replacingAll || replacingId !== null} title={i18n.m.queue.replace_all_title}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
             {#if pendingCount > 0 || erroredClearable > 0 || counts.completed > 0}<details class="queue-management"><summary class="focus-ring">{i18n.m.queue.manage_queue}</summary><div>
-              {#if pendingCount > 0}<button class="btn btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
+              {#if pendingCount > 0}<button class="btn btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title + (counts.review > 0 ? ` ${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
               {#if erroredClearable > 0}<button class="btn btn-ghost" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: erroredClearable })}</button>{/if}
               {#if counts.completed > 0}<button class="btn btn-ghost" onclick={() => clear('finished')} disabled={clearingScope !== null || finishedClearable === 0} title={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected}>{clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}</button>{/if}
             </div></details>{/if}
@@ -781,7 +815,7 @@
           <tbody>{#each pagedJobs as job (job.id)}
             <tr class:selected-row={selectedJobId === job.id}>
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
-              <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureDescription(job.failureCategory, i18n.m)}</small>{/if}</td>
+              <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureDescription(job.failureCategory, i18n.m)}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
               <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>
@@ -796,6 +830,12 @@
 </div>
 
 <style>
+  .queue-review-alert { width: 100%; display: flex; align-items: center; gap: .875rem; margin-bottom: 1.25rem; padding: 1rem 1.125rem; text-align: left; box-shadow: var(--lift-1); transition: transform 180ms ease, box-shadow 180ms ease; }
+  .queue-review-alert:hover, .queue-review-alert:focus-visible { transform: translateY(-2px); box-shadow: var(--lift-3); }
+  .queue-review-alert > :global(svg) { flex: none; }
+  .queue-review-alert span { min-width: 0; flex: 1; display: grid; gap: .25rem; }
+  .queue-review-alert strong { color: var(--ink); font-size: .8125rem; }
+  .queue-review-alert small { color: var(--ink-3); font-size: .75rem; line-height: 1.45; }
   .queue-layout { max-width: 72rem; margin-inline: auto; }.queue-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }.queue-heading > div { flex: 1; min-width: 15rem; }.queue-heading .page-subtitle { max-width: 45rem; }
   .queue-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--divide-soft); }.queue-tabs button { padding: .75rem 1rem; font-size: .8125rem; color: var(--ink-3); }.queue-tabs button[aria-pressed=true] { color: var(--accent); box-shadow: 0 2px 0 var(--accent); }.queue-tabs > span { margin-left: auto; color: var(--ink-3); font-size: .6875rem; padding: .5rem 0; }.queue-tabs strong { margin-left: .5rem; font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }

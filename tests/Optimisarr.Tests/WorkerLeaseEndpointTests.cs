@@ -937,6 +937,66 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Worker_samples_can_hold_an_oversized_full_encode_without_failing_the_job()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Size reviewer");
+        var jobId = await QueueAJob(
+            strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile)
+                .SingleAsync(j => j.Id == jobId);
+            job.MediaFile!.SizeBytes = 1_000_000_000;
+            job.MediaFile.DurationSeconds = 300;
+            var library = await db.Libraries.SingleAsync(l => l.Id == job.LibraryId);
+            library.MinVmafHarmonicMean = 90;
+            library.MinVmafMin = 90;
+            library.MinVmafCatastrophicMin = 90;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+        var search = assignment.GetProperty("search");
+        var windows = search.GetProperty("measurement").GetProperty("commands").GetArrayLength();
+        Assert.Equal(3, windows);
+        var quality = search.GetProperty("quality").GetInt32();
+        var logs = Enumerable.Repeat(LibvmafLog, windows).ToArray();
+
+        HttpResponseMessage? last = null;
+        for (var probe = 0; probe < 4; probe++)
+        {
+            last?.Dispose();
+            last = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+            {
+                quality,
+                encodedBytes = 600_000_000L,
+                logs
+            });
+            if (last.StatusCode == HttpStatusCode.Conflict) break;
+            Assert.Equal(HttpStatusCode.OK, last.StatusCode);
+            var direction = await last.Content.ReadFromJsonAsync<JsonElement>();
+            quality = direction.GetProperty("nextStep").GetProperty("quality").GetInt32();
+        }
+        Assert.NotNull(last);
+        Assert.Equal(HttpStatusCode.Conflict, last.StatusCode);
+        Assert.Contains("worker.search.sizeReview", await last.Content.ReadAsStringAsync());
+        last.Dispose();
+
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var held = await result.Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.AwaitingSizeReview, held.Status);
+        Assert.NotNull(held.ErrorMessage);
+        Assert.Equal(Optimisarr.Core.Workers.LeaseState.Released,
+            (await result.JobLeases.SingleAsync(l => l.Id == Guid.Parse(leaseId))).State);
+    }
+
+    [Fact]
     public async Task A_search_measurement_is_the_same_shape_as_the_quality_gate_it_answers_to()
     {
         // The defect this pins: the search's measurement went out as the planner's own contract,

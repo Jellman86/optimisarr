@@ -435,6 +435,14 @@ export const zh: Messages = {
     preview: "预览"
   },
   queue: {
+    clear_review_included: "这也会移除 {count} 个等待大小审核的任务。",
+    filter_review: "需要审核",
+    status_awaitingsizereview: "检查大小",
+    size_review_title: "完整编码已暂停以审核大小",
+    size_review_detail: "样本预测输出文件过大。原文件未更改。",
+    action_encode_anyway: "仍然编码",
+    confirm_encode_anyway: "尽管有大小警告，仍要编码此任务吗？\n\n{name}\n\n自适应质量搜索将重新运行。最终大小和质量检查仍会执行；原文件继续受到保护。",
+    error_approve_size: "无法继续此任务",
     lane_finalization: '安全替换',
     execution_path: '执行路径',
     lanes_title: '执行通道',
