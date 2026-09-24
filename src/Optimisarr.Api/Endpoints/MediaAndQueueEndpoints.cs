@@ -565,6 +565,9 @@ internal static class MediaAndQueueEndpoints
             job.ErrorMessage = null;
             job.FailureCategory = null;
             job.ProcessLog = null;
+            // A retry must re-evaluate the samples against the current settings and whichever
+            // encoder claims the job. Reusing the old selected quality also skips size preflight.
+            job.AdaptiveVideoQuality = null;
             if (higherQuality)
             {
                 job.QualityRetryCount += 1;

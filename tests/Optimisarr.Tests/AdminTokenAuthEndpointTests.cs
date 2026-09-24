@@ -143,6 +143,56 @@ public sealed class AdminTokenAuthEndpointTests
     }
 
     [Fact]
+    public async Task Retrying_a_failed_job_repeats_adaptive_selection_and_size_preflight()
+    {
+        int jobId;
+        int mediaId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                Path = Path.Combine(_api.LibraryDirectory, $"size-retry-{Guid.NewGuid():N}.mkv"),
+                RelativePath = "size-retry.mkv"
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaId = media.Id;
+            var job = new Job
+            {
+                MediaFileId = mediaId,
+                Status = JobStatus.Failed,
+                AdaptiveVideoQuality = 22,
+                ErrorMessage = "Output exceeded its size budget."
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        try
+        {
+            using var client = _api.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+            using var response = await client.PostAsync($"/api/jobs/{jobId}/retry", null);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var check = _api.Services.CreateScope();
+            var persisted = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.Single(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Queued, persisted.Status);
+            Assert.Null(persisted.AdaptiveVideoQuality);
+        }
+        finally
+        {
+            using var cleanup = _api.Services.CreateScope();
+            var db = cleanup.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Jobs.Remove(db.Jobs.Single(j => j.Id == jobId));
+            db.MediaFiles.Remove(db.MediaFiles.Single(m => m.Id == mediaId));
+            await db.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
     public async Task Admin_can_start_stop_and_download_a_scoped_diagnostic_capture()
     {
         using var client = _api.CreateClient();
