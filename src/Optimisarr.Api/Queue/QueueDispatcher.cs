@@ -1061,7 +1061,9 @@ public sealed class QueueDispatcher(
             loaded.Original.IsHdr,
             loaded.Original.HdrConvertedToSdr,
             samplingDuration,
-            loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate,
+            // The job's own rate is empty on this path; the probe just made is the authority, as
+            // it is for the final measurement. Without a rate neither side gets a common grid.
+            loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate ?? sourceProbe.VideoFrameRate,
             ContainerLeadSeconds(sourceProbe),
             loaded.Spec.CropTo,
             loaded.Spec.FrameRate);
