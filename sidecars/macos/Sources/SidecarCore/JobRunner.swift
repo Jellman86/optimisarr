@@ -724,7 +724,7 @@ public struct JobRunner: WorkExecutor {
         latest: LatestProgress,
         progress: @escaping @Sendable (JobProgress) -> Void,
         preview: @escaping @Sendable (Data) -> Void
-    ) async -> SearchOutcome {
+    ) async throws -> SearchOutcome {
         var step = first
         // The server bounds its own search at four candidates, but this machine should not depend
         // on that to stop: a bound only the other end enforces is not a bound. Twice the expected
@@ -759,6 +759,8 @@ public struct JobRunner: WorkExecutor {
                         step, assignment, ffmpeg: ffmpeg, source: source, scratch: scratch,
                         preview: preview)
                 }
+            } catch let problem as SidecarError where problem.endsTheLease {
+                throw problem
             } catch {
                 return .failed(reason:
                     "The lease could not be renewed while a candidate was being measured.")
@@ -777,6 +779,8 @@ public struct JobRunner: WorkExecutor {
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId,
                     quality: step.quality, encodedBytes: bytes, logs: logs)
+            } catch let problem as SidecarError where problem.endsTheLease {
+                throw problem
             } catch {
                 return .failed(reason: "The measurement could not be reported: \(error).")
             }
@@ -1094,7 +1098,7 @@ public struct JobRunner: WorkExecutor {
         // on another. The server chooses every candidate; this machine measures them.
         var encodeCommand = command
         if let first = assignment.search {
-            switch await runSearch(
+            switch try await runSearch(
                 first, assignment, pairing: pairing, ffmpeg: ffmpeg,
                 source: source, scratch: scratch, latest: latest, progress: progress,
                 preview: preview)

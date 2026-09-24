@@ -167,6 +167,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var qualityReport: [String: Any]?
     /// What the search answers, in order: the worker is told what to measure next until told to stop.
     var probeAnswers: [[String: Any]] = []
+    var probeStatus = 200
     private(set) var probeReports: [[String: Any]] = []
     private(set) var renewalsWhenProbed: [Int] = []
     private(set) var qualityReportedBeforeDelivery = false
@@ -267,6 +268,10 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             if path.hasSuffix("/quality-probe") {
                 let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
                 probeReports.append(body ?? [:])
+                if probeStatus != 200 {
+                    return (Data(#"{"error":"The full encode is held for size review."}"#.utf8),
+                            response(request, probeStatus))
+                }
                 // How many renewals had arrived by the time this candidate was reported. A total
                 // taken at the end of the job cannot tell a search that renewed from one that did
                 // not, because the encode that follows renews either way.
@@ -1523,6 +1528,26 @@ struct AdaptiveSearchWorkLoopTests {
         if case .released = outcome {} else { Issue.record("expected the job to be handed back") }
     }
 
+    @Test("size review from the server stops a worker before the full encode")
+    func sizeReviewStopsBeforeEncode() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
+        server.probeStatus = 409
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            Self.searching(Self.step(quality: 24)), pairing: pairing) { _ in }
+
+        #expect(server.probeReports.count == 1)
+        #expect(server.deliveredFile == nil)
+        #expect(!server.released)
+        if case .leaseLost = outcome {} else { Issue.record("expected size review to end the lease, got \(outcome)") }
+    }
+
     @Test("the lease is renewed while a candidate is being measured")
     func renewsWhileMeasuring() async throws {
         // A search is the longest thing this machine does before it has anything to show: several
@@ -1568,6 +1593,8 @@ struct AdaptiveSearchWorkLoopTests {
 
         #expect(Date().timeIntervalSince(started) < 4)
         #expect(server.deliveredFile == nil)
-        if case .released = outcome {} else { Issue.record("expected the job to be handed back, got \(outcome)") }
+        // A 409 means the server has already revoked the lease. There is nothing left to
+        // release; timing must not turn that explicit loss into a handback expectation.
+        if case .leaseLost = outcome {} else { Issue.record("expected the expired lease to be reported, got \(outcome)") }
     }
 }
