@@ -47,6 +47,16 @@ internal static class AdaptiveSearchCoordinator
             return null;
         }
 
+        // A split that does not add up to the total, or does not cover every window, describes
+        // some other set of samples. Judging sizes on it would misplace which scenes grew.
+        if (report.WindowEncodedBytes is { } split
+            && (split.Count != contract.WindowCount
+                || split.Any(bytes => bytes <= 0)
+                || split.Sum() != report.EncodedBytes))
+        {
+            return null;
+        }
+
         var windows = new List<QualityResult>(report.Logs.Count);
         foreach (var log in report.Logs)
         {
@@ -79,7 +89,8 @@ internal static class AdaptiveSearchCoordinator
                 report.Quality,
                 VmafSoftwareConfirmation.MeetsGate(pooled.Scores, policy),
                 report.EncodedBytes,
-                pooled.Scores))
+                pooled.Scores,
+                report.WindowEncodedBytes))
             .ToList();
 
         return new AdaptiveSearchProgress(probes, AdaptiveQualitySearch.Decide(baselineQuality, probes));

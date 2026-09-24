@@ -1076,15 +1076,14 @@ public sealed class QueueDispatcher(
     /// a remote search more leniently. Taking the requested quality instead of the worker's effective
     /// one would bracket around a different number than the assignment planned.</para>
     /// </summary>
-    public async Task<(VerificationPolicy Policy, int Baseline, long SourceBytes, bool BypassSizePreflight)?> GetSearchContextAsync(
+    public async Task<(VerificationPolicy Policy, int Baseline, bool BypassSizePreflight)?> GetSearchContextAsync(
         int jobId, WorkerCapabilities worker, CancellationToken cancellationToken)
     {
         // Use the same encoder placement that planned the sample commands. A worker may support
         // HEVC even when this server has no local HEVC encoder, and quality scales differ.
         var work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
         return work is { VideoQuality: { } quality }
-            ? (work.Value.VerificationPolicy, quality.Effective,
-                work.Value.Original.SizeBytes, work.Value.BypassSizePreflight)
+            ? (work.Value.VerificationPolicy, quality.Effective, work.Value.BypassSizePreflight)
             : null;
     }
 
@@ -2147,29 +2146,37 @@ public sealed class QueueDispatcher(
                     jobId, work, baseline, fellBack: true, "no representative windows could be planned", cancellationToken);
             }
 
+            var maximumCandidateBytes = SizeBudget.MaxCandidateBytes(
+                work.Original.SizeBytes,
+                policy.RequireSizeReduction,
+                work.IsDisposable,
+                policy.MinimumSizeSavingPercent);
+            var sizeBasis = maximumCandidateBytes is null || work.BypassSizePreflight
+                ? null
+                : await MeasureSizeForecastBasisAsync(
+                    jobId, work, windows, sourceProbe, samplingDuration.Value, cancellationToken);
+
             Directory.CreateDirectory(scratchRoot);
             var measured = new List<AdaptiveQualityProbe>();
             while (true)
             {
                 var decision = AdaptiveQualitySearch.Decide(baseline, measured);
+                var sizeReview = SizePreflight.Review(
+                    sizeBasis,
+                    measured,
+                    measured.LastOrDefault(),
+                    decision,
+                    maximumCandidateBytes,
+                    work.BypassSizePreflight);
+                if (sizeReview.ShouldHold)
+                {
+                    await HoldForSizeReviewAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
+                    return null;
+                }
+
                 if (decision.Complete)
                 {
-                    var selectedProbe = measured.LastOrDefault(probe => probe.Quality == decision.SelectedQuality);
-                    var forecast = SizePreflight.Assess(
-                        work.Original.SizeBytes,
-                        samplingDuration.Value,
-                        windows.Sum(window => window.DurationSeconds ?? 0),
-                        selectedProbe?.EncodedBytes ?? 0,
-                        !decision.FellBack && selectedProbe?.MeetsTarget == true,
-                        policy.RequireSizeReduction && !work.IsDisposable,
-                        policy.MinimumSizeSavingPercent,
-                        work.BypassSizePreflight,
-                        windows.Count);
-                    if (forecast.ShouldHold)
-                    {
-                        await HoldForSizeReviewAsync(jobId, decision.SelectedQuality, forecast, cancellationToken);
-                        return null;
-                    }
+                    LogSizeForecast(logger, jobId, sizeReview);
                     return await FinishAdaptiveSelectionAsync(
                         jobId,
                         RebuildWorkAtQuality(work, decision.SelectedQuality),
@@ -2246,7 +2253,7 @@ public sealed class QueueDispatcher(
         CancellationToken cancellationToken)
     {
         var results = new List<QualityResult>(windows.Count);
-        long encodedBytes = 0;
+        var windowBytesMeasured = new List<long>(windows.Count);
         for (var index = 0; index < windows.Count; index++)
         {
             var window = windows[index];
@@ -2318,7 +2325,7 @@ public sealed class QueueDispatcher(
                     qualityValue);
                 return null;
             }
-            encodedBytes = checked(encodedBytes + windowBytes);
+            windowBytesMeasured.Add(windowBytes);
 
             var context = new QualityMeasurementContext(
                 sourceProbe.Width!.Value,
@@ -2388,8 +2395,9 @@ public sealed class QueueDispatcher(
             ? new AdaptiveQualityProbe(
                 qualityValue,
                 VmafSoftwareConfirmation.MeetsGate(scores, policy),
-                encodedBytes,
-                scores)
+                windowBytesMeasured.Sum(),
+                scores,
+                windowBytesMeasured)
             : null;
     }
 
@@ -2451,9 +2459,99 @@ public sealed class QueueDispatcher(
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
         logger.LogInformation(
-            "Job {JobId}: full encode held for size review; sampled video projects {ProjectedBytes} bytes",
-            jobId, forecast.ProjectedVideoBytes);
+            "Job {JobId}: full encode held for size review; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
+            jobId, forecast.VideoRatio, forecast.ProjectedBytes);
         await NotifyAsync();
+    }
+
+    /// <summary>
+    /// What the source itself spent on the sample windows, for the size forecast. Null, with the
+    /// reason logged, when the windows cannot be read: the forecast then abstains and the final
+    /// size gate is left to decide, exactly as before any forecast existed.
+    /// </summary>
+    private async Task<SizeForecastBasis?> MeasureSizeForecastBasisAsync(
+        int jobId,
+        JobWork work,
+        IReadOnlyList<VmafWindow> windows,
+        MediaProbeResult sourceProbe,
+        double samplingDurationSeconds,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var measured = await scope.ServiceProvider
+            .GetRequiredService<ISourceWindowBytesProbe>()
+            .MeasureAsync(work.Original.Path, windows, sourceProbe.ContainerStartSeconds, cancellationToken);
+        var basis = measured is null
+            ? null
+            : SizeForecastBasis.From(work.Original.SizeBytes, measured, work.Spec, samplingDurationSeconds);
+        if (basis is null)
+        {
+            logger.LogInformation(
+                "Job {JobId}: source bytes over the sample windows could not be read; no size forecast for this search",
+                jobId);
+        }
+        return basis;
+    }
+
+    /// <summary>
+    /// The size-forecast basis for a search a worker is running. Measured here, on the control
+    /// plane's own copy of the source, because the worker's copy is the same bytes and the
+    /// judgement belongs here; the worker only reports what its samples came to.
+    /// </summary>
+    public async Task<SizeForecastBasis?> MeasureSizeForecastBasisAsync(
+        int jobId,
+        WorkerCapabilities worker,
+        CancellationToken cancellationToken)
+    {
+        JobWork? work;
+        try
+        {
+            work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        if (work is not { } loaded)
+        {
+            return null;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var sourceProbe = await scope.ServiceProvider
+            .GetRequiredService<IMediaProbeService>()
+            .ProbeAsync(loaded.Original.Path, cancellationToken);
+        // The same windows the worker was asked to encode, planned from the same timeline.
+        var samplingDuration = MediaTimelineDuration.Resolve(
+            MediaKind.Video,
+            sourceProbe.VideoDurationSeconds,
+            loaded.DurationSeconds);
+        if (samplingDuration is not > 0)
+        {
+            return null;
+        }
+
+        return await MeasureSizeForecastBasisAsync(
+            jobId,
+            loaded,
+            VmafWindowPlanner.PlanAdaptive(samplingDuration.Value),
+            sourceProbe,
+            samplingDuration.Value,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Every forecast that let a job through is logged beside the one that held a job, so its
+    /// accuracy can be checked against the finished file rather than taken on trust.
+    /// </summary>
+    internal static void LogSizeForecast(ILogger logger, int jobId, SizePreflightAssessment forecast)
+    {
+        if (forecast.ProjectedBytes is { } projected)
+        {
+            logger.LogInformation(
+                "Job {JobId}: size forecast — samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes ({Change:+0.0;-0.0}% against the source)",
+                jobId, forecast.VideoRatio, projected, forecast.ProjectedPercentChange);
+        }
     }
 
     private static JobWork RebuildWorkAtQuality(JobWork work, int selectedQuality)

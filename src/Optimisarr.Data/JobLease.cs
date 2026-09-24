@@ -112,6 +112,12 @@ public sealed class JobLease
     /// </summary>
     public int? AdaptiveAskedQuality { get; set; }
 
+    /// <summary>
+    /// Set when the control plane, not the worker, ended the lease. Such a release is not a
+    /// handback, so it neither pauses the job for this worker nor counts towards barring it.
+    /// </summary>
+    public LeaseEndReason? EndReason { get; set; }
+
     /// <summary>The source hash the worker says it measured against.</summary>
     public string? QualitySourceSha256 { get; set; }
 

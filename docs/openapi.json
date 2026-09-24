@@ -98,6 +98,20 @@
               "integer",
               "string"
             ]
+          },
+          "windowEncodedBytes": {
+            "items": {
+              "format": "int64",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           }
         },
         "required": [

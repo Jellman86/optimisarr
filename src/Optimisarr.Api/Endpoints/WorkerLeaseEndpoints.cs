@@ -132,7 +132,13 @@ internal sealed record QualityEvidenceRequest(
 internal sealed record AdaptiveProbeRequest(
     int Quality,
     long EncodedBytes,
-    IReadOnlyList<string> Logs);
+    IReadOnlyList<string> Logs,
+    /// <summary>
+    /// The same bytes split by window, in command order, so the size forecast can say which
+    /// scenes grew. Optional for workers that predate it; when sent it must add up to
+    /// <c>encodedBytes</c>.
+    /// </summary>
+    IReadOnlyList<long>? WindowEncodedBytes = null);
 
 /// <summary>
 /// Measure this next, or stop searching and encode at this quality. Never both.
@@ -268,7 +274,9 @@ internal static class WorkerLeaseEndpoints
             // candidate: the shortlist is 25 jobs and this runs on every check-in from every worker.
             var handbacks = await db.JobLeases
                 .AsNoTracking()
-                .Where(lease => shortlist.Contains(lease.JobId) && lease.State == LeaseState.Released)
+                .Where(lease => shortlist.Contains(lease.JobId)
+                    && lease.State == LeaseState.Released
+                    && lease.EndReason == null)
                 .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
                 .ToListAsync(cancellationToken);
             // Distinct workers, not refusals: see HandbackPolicy.MaxRefusingWorkers. One machine
@@ -622,7 +630,7 @@ internal static class WorkerLeaseEndpoints
             // would leave out the catastrophic floor and a different baseline would bracket around
             // a different number.
             if (await dispatcher.GetSearchContextAsync(lease.JobId, worker.ToCapabilities(), cancellationToken)
-                is not var (policy, baseline, sourceBytes, bypassSizePreflight))
+                is not var (policy, baseline, bypassSizePreflight))
             {
                 return ApiErrors.Conflict("worker.search.notRequested",
                     "This job can no longer be read, so its search cannot continue.");
@@ -634,7 +642,8 @@ internal static class WorkerLeaseEndpoints
 
             var progress = AdaptiveSearchCoordinator.Advance(
                 baseline, prior, asked, 
-                new AdaptiveSearchReport(request.Quality, request.EncodedBytes, request.Logs ?? []),
+                new AdaptiveSearchReport(
+                    request.Quality, request.EncodedBytes, request.Logs ?? [], request.WindowEncodedBytes),
                 contract,
                 policy);
             if (progress is null)
@@ -657,44 +666,50 @@ internal static class WorkerLeaseEndpoints
                 probe.EncodedBytes,
                 AdaptiveProbeReport.Describe(probe, policy));
 
+            // Measured once per search, on this machine's copy of the source, then kept with the
+            // search's contract so later candidates reuse it. Not at all when nothing would be
+            // judged by it: no size gate, or an operator already chose to encode anyway.
+            var sizeForecast = contract.SizeForecast
+                ?? (lease.MaxCandidateBytes is null || bypassSizePreflight
+                    ? null
+                    : await dispatcher.MeasureSizeForecastBasisAsync(
+                        lease.JobId, worker.ToCapabilities(), cancellationToken));
+            var sizeReview = SizePreflight.Review(
+                sizeForecast,
+                progress.Probes,
+                probe,
+                progress.Decision,
+                lease.MaxCandidateBytes,
+                bypassSizePreflight);
+            if (sizeReview.ShouldHold && lease.Job is { Status: JobStatus.Leased } heldJob)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var release = lease.ToDomain().Release(worker.Id, now);
+                if (release.Outcome != LeaseOutcome.Released)
+                {
+                    return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
+                }
+                lease.AdaptiveAskedQuality = null;
+                lease.Apply(release.Lease, now);
+                lease.EndReason = LeaseEndReason.HeldForSizeReview;
+                heldJob.Status = JobStatus.AwaitingSizeReview;
+                heldJob.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                heldJob.Progress = 0;
+                heldJob.ErrorMessage = sizeReview.Reason;
+                heldJob.UpdatedAt = now;
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogInformation(
+                    "Job {JobId}: worker quality search held the full encode for size review; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
+                    heldJob.Id, sizeReview.VideoRatio, sizeReview.ProjectedBytes);
+                dispatcher.Wake();
+                await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+                return ApiErrors.Conflict("worker.search.sizeReview", sizeReview.Reason!);
+            }
+
             if (progress.Decision.Complete)
             {
+                QueueDispatcher.LogSizeForecast(logger, lease.JobId, sizeReview);
                 lease.AdaptiveAskedQuality = null;
-                var selectedProbe = progress.Probes.LastOrDefault(
-                    measured => measured.Quality == progress.Decision.SelectedQuality);
-                var forecast = SizePreflight.Assess(
-                    sourceBytes,
-                    contract.SourceDurationSeconds ?? 0,
-                    contract.SampledDurationSeconds ?? 0,
-                    selectedProbe?.EncodedBytes ?? 0,
-                    !progress.Decision.FellBack && selectedProbe?.MeetsTarget == true,
-                    lease.MaxCandidateBytes is not null,
-                    policy.MinimumSizeSavingPercent,
-                    bypassSizePreflight,
-                    contract.WindowCount,
-                    lease.MaxCandidateBytes);
-                if (forecast.ShouldHold && lease.Job is { Status: JobStatus.Leased } heldJob)
-                {
-                    var now = DateTimeOffset.UtcNow;
-                    var release = lease.ToDomain().Release(worker.Id, now);
-                    if (release.Outcome != LeaseOutcome.Released)
-                    {
-                        return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
-                    }
-                    lease.Apply(release.Lease, now);
-                    heldJob.Status = JobStatus.AwaitingSizeReview;
-                    heldJob.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
-                    heldJob.Progress = 0;
-                    heldJob.ErrorMessage = forecast.Reason;
-                    heldJob.UpdatedAt = now;
-                    await db.SaveChangesAsync(cancellationToken);
-                    logger.LogInformation(
-                        "Job {JobId}: worker quality search held full encode for size review; sampled video projects {ProjectedBytes} bytes",
-                        heldJob.Id, forecast.ProjectedVideoBytes);
-                    dispatcher.Wake();
-                    await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
-                    return ApiErrors.Conflict("worker.search.sizeReview", forecast.Reason!);
-                }
                 // Recorded on the job, exactly as a local search records it. Without this the
                 // server would not know what the worker is encoding at: the value would exist only
                 // in the reply the worker acted on, so a recovery retry would start from nothing
@@ -749,7 +764,8 @@ internal static class WorkerLeaseEndpoints
             }
 
             lease.AdaptiveAskedQuality = next.Quality;
-            lease.AdaptiveContractJson = JsonSerializer.Serialize(next.Measurement, EvidenceJson);
+            lease.AdaptiveContractJson = JsonSerializer.Serialize(
+                next.Measurement with { SizeForecast = sizeForecast }, EvidenceJson);
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(new AdaptiveProbeDirectionDto(

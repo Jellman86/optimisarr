@@ -766,7 +766,7 @@ public struct JobRunner: WorkExecutor {
                     "The lease could not be renewed while a candidate was being measured.")
             }
 
-            guard case let .measured(bytes, logs) = candidate else {
+            guard case let .measured(windowBytes, logs) = candidate else {
                 guard case let .failed(reason) = candidate else { return .failed(reason: "unreachable") }
                 SidecarLog.job.error(
                     "Job \(assignment.jobId): \(reason, privacy: .public)")
@@ -778,7 +778,7 @@ public struct JobRunner: WorkExecutor {
                 direction = try await client.reportAdaptiveProbe(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId,
-                    quality: step.quality, encodedBytes: bytes, logs: logs)
+                    quality: step.quality, windowEncodedBytes: windowBytes, logs: logs)
             } catch let problem as SidecarError where problem.endsTheLease {
                 throw problem
             } catch {
@@ -822,7 +822,9 @@ public struct JobRunner: WorkExecutor {
     /// what ffmpeg said, and the scratch directory is deleted on the way out, so afterwards there
     /// is nothing left to look at.
     enum CandidateMeasurement {
-        case measured(bytes: Int64, logs: [String])
+        /// One byte count per sample window, in command order, so the server's size forecast can
+        /// compare each with the source's own bytes over the same scenes.
+        case measured(windowBytes: [Int64], logs: [String])
         case failed(String)
     }
 
@@ -883,7 +885,7 @@ public struct JobRunner: WorkExecutor {
                 """)
         }
 
-        var bytes: Int64 = 0
+        var windowBytes: [Int64] = []
         var logs: [String] = []
 
         for (index, sample) in commands.enumerated() {
@@ -928,7 +930,7 @@ public struct JobRunner: WorkExecutor {
                 return .failed("sample \(index + 1) at quality \(step.quality) encoded to nothing at all")
             }
 
-            bytes += size
+            windowBytes.append(size)
 
             // A sample begins at its own first picture, so there is no lead to remove — unlike a
             // finished candidate, where the window is a slice of a whole file.
@@ -963,7 +965,7 @@ public struct JobRunner: WorkExecutor {
             try? FileManager.default.removeItem(at: log)
         }
 
-        return .measured(bytes: bytes, logs: logs)
+        return .measured(windowBytes: windowBytes, logs: logs)
     }
 
     /// Runs each of the server's measurement commands and reads back its log. Nil means the

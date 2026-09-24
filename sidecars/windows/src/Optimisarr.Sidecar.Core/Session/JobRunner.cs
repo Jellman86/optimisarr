@@ -275,7 +275,7 @@ public sealed class JobRunner(
             {
                 direction = await client.ReportAdaptiveProbeAsync(
                     pairing, assignment.LeaseId, step.Quality,
-                    measured.Bytes, measured.Logs!, cancellationToken);
+                    measured.WindowBytes!, measured.Logs!, cancellationToken);
             }
             catch (SidecarException exception)
             {
@@ -454,12 +454,16 @@ public sealed class JobRunner(
     /// ever offered with exactly that line and nothing else to go on.</para>
     /// </summary>
     private readonly record struct CandidateMeasurement(
-        long Bytes, IReadOnlyList<string>? Logs, string? Reason)
+        IReadOnlyList<long>? WindowBytes, IReadOnlyList<string>? Logs, string? Reason)
     {
-        public static CandidateMeasurement Failed(string reason) => new(0, null, reason);
+        public static CandidateMeasurement Failed(string reason) => new(null, null, reason);
 
-        public static CandidateMeasurement Ok(long bytes, IReadOnlyList<string> logs) =>
-            new(bytes, logs, null);
+        /// <summary>
+        /// One byte count per sample window, in command order, so the server's size forecast can
+        /// compare each with the source's own bytes over the same scenes.
+        /// </summary>
+        public static CandidateMeasurement Ok(IReadOnlyList<long> windowBytes, IReadOnlyList<string> logs) =>
+            new(windowBytes, logs, null);
 
         public bool Measured => Reason is null;
     }
@@ -478,7 +482,7 @@ public sealed class JobRunner(
                 + $"{step.Measurement.Commands.Count} command(s) to score them with.");
         }
 
-        long bytes = 0;
+        var windowBytes = new List<long>(step.SampleCommands.Count);
         var logs = new List<string>(step.SampleCommands.Count);
 
         for (var index = 0; index < step.SampleCommands.Count; index++)
@@ -514,7 +518,7 @@ public sealed class JobRunner(
                     $"Sample {index + 1} at quality {step.Quality} encoded to nothing at all.");
             }
 
-            bytes += new FileInfo(sample).Length;
+            windowBytes.Add(new FileInfo(sample).Length);
 
             // A sample begins at its own first picture, so there is no lead to remove — unlike a
             // finished candidate, where the measured window is a slice of a whole file.
@@ -561,7 +565,7 @@ public sealed class JobRunner(
             TryDeleteFile(log);
         }
 
-        return CandidateMeasurement.Ok(bytes, logs);
+        return CandidateMeasurement.Ok(windowBytes, logs);
     }
 
     private static void TryDeleteFile(string path)

@@ -11,12 +11,17 @@ namespace Optimisarr.Core.Queue;
 /// were — and the first search ever watched end to end did exactly that, on a file whose finished
 /// encode at the same quality then scored 91.5. Optional because probes recorded before this
 /// existed are still read back from the lease.</para>
+///
+/// <para><see cref="WindowEncodedBytes"/> splits <see cref="EncodedBytes"/> by sample window so the
+/// size forecast can say which scenes grew. Optional because an older worker reports only the
+/// total, and the forecast itself needs nothing more.</para>
 /// </summary>
 public sealed record AdaptiveQualityProbe(
     int Quality,
     bool MeetsTarget,
     long EncodedBytes,
-    QualityScores? Scores = null);
+    QualityScores? Scores = null,
+    IReadOnlyList<long>? WindowEncodedBytes = null);
 
 /// <summary>The next candidate to measure, or the final quality selected by the search.</summary>
 public sealed record AdaptiveQualityDecision(int? NextQuality, int SelectedQuality, bool FellBack, string Reason)

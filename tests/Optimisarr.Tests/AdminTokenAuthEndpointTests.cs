@@ -15,6 +15,7 @@ using Optimisarr.Api.Security;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
@@ -1123,9 +1124,36 @@ public sealed class AdminTokenAuthEndpointTests
                 {
                     services.Remove(probe);
                 }
+                foreach (var windowBytes in services
+                    .Where(service => service.ServiceType == typeof(ISourceWindowBytesProbe))
+                    .ToList())
+                {
+                    services.Remove(windowBytes);
+                }
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
                 services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
+                services.AddSingleton<ISourceWindowBytesProbe, FixedSourceWindowBytes>();
             });
+        }
+
+        /// <summary>
+        /// Every sample window of every source spent 100 MB on its picture and nothing else, so a
+        /// test states a sample's size relative to the source by what it reports: 300 MB across
+        /// three windows is exactly the source's own size over the same scenes.
+        /// </summary>
+        public sealed class FixedSourceWindowBytes : ISourceWindowBytesProbe
+        {
+            public const long VideoBytesPerWindow = 100_000_000;
+
+            public Task<IReadOnlyList<IReadOnlyList<SampledStreamBytes>>?> MeasureAsync(
+                string path,
+                IReadOnlyList<VmafWindow> windows,
+                double? containerStartSeconds,
+                CancellationToken cancellationToken) =>
+                Task.FromResult<IReadOnlyList<IReadOnlyList<SampledStreamBytes>>?>(windows
+                    .Select(_ => (IReadOnlyList<SampledStreamBytes>)
+                        [new SampledStreamBytes("video", 0, true, VideoBytesPerWindow)])
+                    .ToList());
         }
 
         private sealed class FixedCalibrationRandomizer : ICalibrationRandomizer

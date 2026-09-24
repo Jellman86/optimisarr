@@ -9,6 +9,17 @@ public enum LeaseState
     Completed
 }
 
+/// <summary>
+/// Why a released lease ended, when the worker is not the reason. A plain release is a worker
+/// giving the job back, which earns it a handback cooldown; these are the control plane's own
+/// decisions and must not be held against the worker.
+/// </summary>
+public enum LeaseEndReason
+{
+    /// <summary>The worker's samples forecast an oversized output and the job waits for review.</summary>
+    HeldForSizeReview
+}
+
 /// <summary>Why a lease operation was accepted or refused.</summary>
 public enum LeaseOutcome
 {
