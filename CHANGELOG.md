@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **The optional Stellar cube icon is now a deep field.** Its three photographic faces are replaced by a generated sky modelled on the Hubble Deep Field: spiral, elliptical, edge-on and irregular galaxies drift past with parallax, over nebula and dust, with temperature-coloured stars. At rest the sky drifts slowly. While work runs, the stars stream into the front corner and a comet traces the outline, then everything settles back to the exact resting frame. The cube now fills its frame, is lit from above with three distinct planes, and picks out its edges in the interface's cyan. The rail and favicons use a simpler drawing with a bold front-corner star that still reads in a 16 px tab. The icon no longer downloads about 380 KB of textures. Settings → System → Appearance keeps an existing Stellar choice, and Precession remains the default.
+
 ### Fixed
 
 - A delivered worker candidate is verified against the policy frozen when it was claimed, so editing library verification settings while it encodes cannot silently change the result.
