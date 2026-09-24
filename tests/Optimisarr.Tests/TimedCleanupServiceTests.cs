@@ -269,12 +269,14 @@ public sealed class TimedCleanupServiceTests : IDisposable
         Assert.Equal(outside, (await db.Jobs.SingleAsync(item => item.Id == jobId)).WorkOutputPath);
     }
 
-    [Fact]
-    public async Task Purge_keeps_a_path_referenced_by_an_active_job()
+    [Theory]
+    [InlineData(JobStatus.Transcoding)]
+    [InlineData(JobStatus.AwaitingSizeReview)]
+    public async Task Purge_keeps_a_path_referenced_by_an_active_job(JobStatus status)
     {
         await SetRetentionDaysAsync(1);
         var (_, outputPath) = await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-30));
-        await SeedFailedJobAsync(outputPath, DateTimeOffset.UtcNow, JobStatus.Transcoding);
+        await SeedFailedJobAsync(outputPath, DateTimeOffset.UtcNow, status);
 
         var purged = await PurgeAsync();
 
