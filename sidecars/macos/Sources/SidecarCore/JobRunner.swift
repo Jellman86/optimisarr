@@ -984,12 +984,10 @@ public struct JobRunner: WorkExecutor {
         for (index, command) in commands.enumerated() {
             var distortedShift: String?
             if command.needsDistortedShift {
-                guard let probeStart = TimelineAlignment.probeStart(for: command.arguments),
-                      let frameSeconds,
+                guard let frameSeconds,
                       let measured = await TimelineAlignment.measure(
-                          ffmpeg: ffmpeg, source: source, candidate: candidate,
-                          frameSeconds: frameSeconds, probeStartSeconds: probeStart,
-                          scratch: scratch, runner: runner)
+                          ffmpeg: ffmpeg, command: command, source: source, candidate: candidate,
+                          frameSeconds: frameSeconds, scratch: scratch, runner: runner)
                 else { return nil }
                 distortedShift = measured
             }

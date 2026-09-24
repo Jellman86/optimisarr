@@ -342,11 +342,9 @@ public sealed class JobRunner(
             if (commands[index].Any(argument =>
                 argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)))
             {
-                var probeStart = TimelineAlignment.ProbeStartForCommand(commands[index]);
-                if (probeStart is null) return null;
                 distortedShift = await TimelineAlignment.MeasureAsync(
-                    transcoder, ffmpegPath, source, candidate, frameSeconds!.Value,
-                    scratch, cancellationToken, probeStart.Value);
+                    transcoder, ffmpegPath, commands[index], source, candidate, frameSeconds!.Value,
+                    scratch, cancellationToken);
                 if (distortedShift is null)
                 {
                     report?.Invoke($"Job {assignment.JobId}: window {index} could not be aligned; "

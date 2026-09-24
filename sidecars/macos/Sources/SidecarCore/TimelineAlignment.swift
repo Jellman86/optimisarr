@@ -19,95 +19,86 @@ import Foundation
 /// encode — one in the first of those files, six in the second — so whether a given window lines
 /// up depends on how many went missing before it. No arithmetic over metadata can know that.
 ///
-/// So this measures it instead. The worker is the only machine holding both files, a couple of
-/// seconds of pictures is enough to tell a frame's misalignment from a good match, and the answer
-/// is the one the real measurement then uses.
+/// So this measures it instead, with the server's own measurement command cut to a few seconds
+/// and run once per candidate offset. The probe must be that command: an earlier one built a graph
+/// of its own — no cadence grid, no lead correction, a different seek — and the offset it liked was
+/// a frame wrong for the measurement that followed, failing clean encodes at harmonic 9.
 public enum TimelineAlignment {
     /// Offsets to try, in frames. One frame either way covers every case seen; a candidate further
     /// out than that is not misaligned, it is a different file.
     static let framesToTry = [0, 1, -1]
 
-    /// Where to take the probe from, and how much of it. Far enough in to be past titles and
-    /// black, short enough that three of them cost a second or two.
-    public static let probeStartSeconds = 60.0
-    static let probeLeadSeconds = 1.0
-    static let probeSeconds = 2.0
+    /// Seconds of the window each offset is tried on: long enough to hold motion or a cut, which
+    /// is what separates a frame of misalignment from a good match. Two seconds of a static shot
+    /// scored every offset alike.
+    static let probeSeconds = 5.0
 
-    /// Seek so the probe's one-second lead lands at the window this command will score.
-    static func probeStart(for command: [String]) -> Double? {
-        guard let seekIndex = command.firstIndex(of: "-ss") else { return probeStartSeconds }
-        guard seekIndex + 1 < command.count,
-              let seek = Double(command[seekIndex + 1]), seek.isFinite, seek >= 0,
-              let graphIndex = command.firstIndex(of: "-lavfi"), graphIndex + 1 < command.count,
-              let marker = command[graphIndex + 1].range(of: "trim=start=")
-        else { return nil }
-        let suffix = command[graphIndex + 1][marker.upperBound...]
-        let value = String(suffix.prefix { !":,;[]".contains($0) })
-        guard let trim = Double(value), trim.isFinite, trim >= 0 else { return nil }
-        return max(0, ((seek + trim - probeLeadSeconds) * 1_000_000).rounded() / 1_000_000)
-    }
+    /// How far another offset must beat the unshifted timeline to be chosen. A frame of real
+    /// misalignment costs tens of points; anything closer is the scene, not the timeline.
+    static let choiceMarginPoints = 2.0
 
-    /// The shift to hand the server's measurement commands, written the way it writes seconds.
-    /// Nil when no probe could be scored at all, which the caller treats as it treats any other
+    /// The shift to hand the server's measurement command, written the way it writes seconds.
+    /// Nil when no offset could be scored at all, which the caller treats as it treats any other
     /// measurement it could not make.
     public static func measure(
         ffmpeg: URL,
+        command: MeasurementCommand,
         source: URL,
         candidate: URL,
         frameSeconds: Double = 1.0 / 25.0,
-        probeStartSeconds: Double = TimelineAlignment.probeStartSeconds,
         scratch: URL,
         runner: TranscodeRunner
     ) async -> String? {
-        var best: (shift: Double, score: Double)?
+        var scored: [(frames: Int, mean: Double)] = []
 
         for frames in framesToTry {
-            let shift = Double(frames) * frameSeconds
             let log = scratch.appendingPathComponent("align-\(frames).json", isDirectory: false)
             defer { try? FileManager.default.removeItem(at: log) }
 
-            guard let run = try? await runner.run(
-                ffmpeg,
-                arguments(source: source, candidate: candidate, shift: shift, log: log,
-                          probeStartSeconds: probeStartSeconds),
-                progress: { _ in }),
-                run.exitCode == 0,
-                let text = try? String(contentsOf: log, encoding: .utf8),
-                let score = meanScore(text)
+            let probe = truncate(
+                command.materialise(
+                    distorted: candidate, reference: source, log: log,
+                    distortedShift: shift(frames: frames, frameSeconds: frameSeconds)),
+                seconds: probeSeconds)
+            guard let run = try? await runner.run(ffmpeg, probe, progress: { _ in }),
+                  run.exitCode == 0,
+                  let text = try? String(contentsOf: log, encoding: .utf8),
+                  let score = meanScore(text)
             else { continue }
-
-            if best == nil || score > best!.score {
-                best = (shift, score)
-            }
+            scored.append((frames, score))
         }
 
-        guard let best else { return nil }
-        return TimelineLead.shift(candidate: 0, source: -best.shift)
+        return choose(scored).map { shift(frames: $0, frameSeconds: frameSeconds) }
     }
 
-    /// The probe: the same pairing the real measurement does, on a short window, at a small size.
-    /// Same shape deliberately — an alignment chosen by a differently-built comparison would be
-    /// the alignment for a measurement nobody runs.
-    static func arguments(source: URL, candidate: URL, shift: Double, log: URL,
-                          probeStartSeconds: Double = TimelineAlignment.probeStartSeconds) -> [String] {
-        let lead = String(format: "%g", probeLeadSeconds)
-        let length = String(format: "%g", probeSeconds)
-        let offset = String(format: "%.6f", shift * 1_000_000)
-        let graph = """
-            [0:v]settb=AVTB,setpts=PTS-\(offset),trim=start=\(lead):duration=\(length),\
-            settb=AVTB,setpts=PTS-STARTPTS,scale=320:240:flags=bilinear,format=yuv420p[dist];\
-            [1:v]settb=AVTB,trim=start=\(lead):duration=\(length),\
-            settb=AVTB,setpts=PTS-STARTPTS,scale=320:240:flags=bilinear,format=yuv420p[ref];\
-            [dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=4:n_subsample=1:\
-            log_fmt=json:log_path=\(escapedForFilterOption(log.path)):shortest=1:repeatlast=0
-            """
-        return [
-            "-nostdin", "-v", "error",
-            "-ss", String(format: "%g", probeStartSeconds), "-i", candidate.path,
-            "-ss", String(format: "%g", probeStartSeconds), "-i", source.path,
-            "-lavfi", graph,
-            "-t", length, "-f", "null", "-",
-        ]
+    /// The measurement stopped after `seconds` of output: its own limit replaced, or one added
+    /// before the output when it has none.
+    static func truncate(_ arguments: [String], seconds: Double) -> [String] {
+        var arguments = arguments
+        let length = String(format: "%g", seconds)
+        if let limit = arguments.lastIndex(of: "-t"), limit + 1 < arguments.count {
+            arguments[limit + 1] = length
+        } else {
+            arguments.insert(contentsOf: ["-t", length], at: arguments.lastIndex(of: "-f") ?? arguments.count)
+        }
+        return arguments
+    }
+
+    /// The offset, in frames, whose probe matched best, or nil when none could be scored. The
+    /// unshifted timeline keeps the window unless another offset beats it clearly.
+    static func choose(_ scored: [(frames: Int, mean: Double)]) -> Int? {
+        guard let best = scored.max(by: { $0.mean < $1.mean }) else { return nil }
+        if best.frames != 0,
+           let unshifted = scored.first(where: { $0.frames == 0 }),
+           best.mean - unshifted.mean < choiceMarginPoints {
+            return 0
+        }
+        return best.frames
+    }
+
+    /// The token for moving the candidate `frames` pictures later, as the server writes seconds.
+    static func shift(frames: Int, frameSeconds: Double) -> String {
+        TimelineLead.shift(candidate: 0, source: -Double(frames) * frameSeconds)
     }
 
     /// How long one picture lasts, from the source's own declared rate. Nil when it cannot be
@@ -126,12 +117,6 @@ public enum TimelineAlignment {
               numerator > 0, denominator > 0
         else { return nil }
         return denominator / numerator
-    }
-
-    /// A colon inside a filter option ends the option, so one in a path has to survive both the
-    /// filtergraph parser and the option parser — which unescape it once each.
-    static func escapedForFilterOption(_ path: String) -> String {
-        path.replacingOccurrences(of: ":", with: "\\\\:")
     }
 
     /// The mean of a probe's frame scores. The mean rather than the harmonic mean on purpose: this
