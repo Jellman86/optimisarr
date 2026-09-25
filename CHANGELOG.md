@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- The Mac sidecar now bundles libvmaf 3.2.1 (was 3.0.0), matching the container's and the Windows sidecar's VMAF library. Quality scores don't change: on 30 real sample clips, the current VMAF model scores identically on both versions. This makes the newer VMAF v1 models available everywhere for the study in #114; Optimisarr still uses the current model.
+
 ### Fixed
 
 - Quality-search samples no longer score a good window near zero when the source's container starts slightly before its picture. The comparison cut the original a few milliseconds later than the sample was cut, so on some titles every frame in a window was compared with the next one. It happened on the server and on sidecars, and could send a search back to the library's default quality. The original is now cut at exactly the instant the sample was (#269).
