@@ -278,7 +278,7 @@ public sealed class SidecarClient(HttpClient http)
         StoredPairing pairing,
         Guid leaseId,
         int quality,
-        long encodedBytes,
+        IReadOnlyList<long> windowEncodedBytes,
         IReadOnlyList<string> logs,
         CancellationToken cancellationToken = default)
     {
@@ -287,7 +287,10 @@ public sealed class SidecarClient(HttpClient http)
             Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/quality-probe"))
         {
             Content = JsonContent.Create(
-                new { quality, encodedBytes, logs }, options: Json),
+                // The total is what every server reads; the split is what lets a newer one say
+                // which scenes grew. A server that predates the split ignores it.
+                new { quality, encodedBytes = windowEncodedBytes.Sum(), windowEncodedBytes, logs },
+                options: Json),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
 
@@ -363,8 +366,35 @@ public sealed class SidecarClient(HttpClient http)
             HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/release"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
         using var response = await http.SendAsync(request, cancellationToken);
-        // Best effort by design: a release that does not land costs a lease period, while throwing
-        // here would lose the reason the job was being given back in the first place.
+        // A shutdown request must distinguish an acknowledged hand-back from a lease that may
+        // still be held. The runner preserves its original failure reason in the returned outcome.
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task ReportSizeBudgetExceededAsync(
+        StoredPairing pairing, Guid leaseId, long observedBytes, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/size-budget-exceeded"))
+        {
+            Content = JsonContent.Create(new { observedBytes })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+        using var response = await http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task ReportSizeBudgetUndershotAsync(
+        StoredPairing pairing, Guid leaseId, long observedBytes, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/size-budget-undershot"))
+        {
+            Content = JsonContent.Create(new { observedBytes })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+        using var response = await http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
     }
 
     private sealed record HeartbeatResponse(

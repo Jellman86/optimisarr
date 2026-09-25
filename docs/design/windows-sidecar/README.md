@@ -79,6 +79,12 @@ current AppKit and WPF views with isolated fixture data; no live worker is conta
 
 ![Windows Compact Monitor with fabricated Prism Field job and expanded processing details](../../images/optimisarr-sidecar-windows-details.png)
 
+![Windows Compact Monitor with two fabricated active jobs and separate frame previews](../../images/optimisarr-sidecar-windows-two-jobs.png)
+
+The Windows tray now samples a small local source frame only while its activity panel is visible.
+The [fallback fixture](../../images/optimisarr-sidecar-windows-preview-fallback.png) shows the
+labelled state when video cannot be decoded or the job is audio-only.
+
 See [the native comparison](native.html) for light/dark activity and Preferences views. The
 [original design studies](index.html) remain historical mockups with proposed controls, using a
 fabricated geometric scene in place of real media artwork. They are not evidence of shipped features.

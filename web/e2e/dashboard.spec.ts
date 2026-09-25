@@ -473,7 +473,7 @@ test('unavailable precession graphics leaves a complete still and the app usable
 
 test('reduced-motion sessions never load graphics code', async ({ page }) => {
   const graphics: string[] = []
-  page.on('request', request => { if (/(brand-(renderer|geometry|shaders)|stellar-(renderer|textures)|scene\.jpg)/.test(request.url())) graphics.push(request.url()) })
+  page.on('request', request => { if (/(brand-(renderer|geometry|shaders)|stellar-(renderer|sky))/.test(request.url())) graphics.push(request.url()) })
   const fixture: Fixture = {}
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await mockDashboard(page, fixture)
@@ -719,9 +719,9 @@ test('stellar activity settles back to idle and retains its renderer through the
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
 })
 
-test('unavailable stellar textures retain a themed still and a working favicon', async ({ page }) => {
+test('an unavailable stellar renderer leaves a themed still and a working favicon', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('optimisarr.brand', 'stellar'))
-  await page.route('**/*-scene.jpg', route => route.abort())
+  await page.route(/stellar-renderer/, route => route.abort())
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
   await page.goto('/#/')
   const mark = page.locator('aside canvas').first()

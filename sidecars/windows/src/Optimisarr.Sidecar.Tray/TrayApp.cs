@@ -19,6 +19,7 @@ public sealed class TrayApp : Application
 {
     private Forms.NotifyIcon? tray;
     private TrayIconAnimator? trayIcon;
+    private Forms.ToolStripMenuItem? shutdownItem;
     private readonly CancellationTokenSource activityLifetime = new();
     private Mutex? singleInstance;
 
@@ -48,6 +49,13 @@ public sealed class TrayApp : Application
             Shutdown();
             return;
         }
+        if (args.Contains("--render-tray-motion"))
+        {
+            var index = Array.IndexOf(args, "--render-tray-motion");
+            if (index + 1 < args.Length) TrayIconAnimator.RenderPreview(args[index + 1]);
+            Shutdown();
+            return;
+        }
         if (args.Contains("--setup") || args.Contains("--start-worker"))
         {
             using var identity = WindowsIdentity.GetCurrent();
@@ -74,6 +82,21 @@ public sealed class TrayApp : Application
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Dispatcher.Invoke(window.ShowAtTray); };
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open compact monitor", null, (_, _) => Dispatcher.Invoke(window.ShowAtTray));
+        shutdownItem = new Forms.ToolStripMenuItem("Shut down when work is complete");
+        shutdownItem.Click += async (_, _) =>
+        {
+            try
+            {
+                var armed = shutdownItem.Text == "Cancel shutdown";
+                await MonitorClient.RequestAsync(armed ? MonitorProtocol.CancelShutdown : MonitorProtocol.ArmShutdown, activityLifetime.Token);
+                await Dispatcher.InvokeAsync(() => { if (!window.IsVisible) window.ShowAtTray(); });
+            }
+            catch (Exception error) when (error is IOException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                Forms.MessageBox.Show("Could not contact the worker: " + error.Message, "Optimisarr Sidecar");
+            }
+        };
+        menu.Items.Add(shutdownItem);
         menu.Items.Add("Quit tray — keep worker running", null, (_, _) => Dispatcher.Invoke(Shutdown));
         tray.ContextMenuStrip = menu;
         _ = WatchActivityAsync();
@@ -89,10 +112,17 @@ public sealed class TrayApp : Application
                 {
                     var snapshot = await MonitorClient.RequestAsync(MonitorProtocol.Read, activityLifetime.Token);
                     trayIcon?.SetWorking(snapshot.Jobs.Count > 0);
+                    if (shutdownItem is not null)
+                    {
+                        shutdownItem.Text = snapshot.ShutdownArmed ? "Cancel shutdown" : "Shut down when work is complete";
+                        shutdownItem.Enabled = snapshot.ShutdownArmed
+                            ? snapshot.ShutdownCanCancel : snapshot.State is "Connected" or "Working" or "Unreachable";
+                    }
                 }
                 catch (Exception error) when (error is IOException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException)
                 {
                     trayIcon?.SetWorking(false);
+                    if (shutdownItem is not null) shutdownItem.Enabled = false;
                 }
                 await Task.Delay(TimeSpan.FromSeconds(2), activityLifetime.Token);
             }

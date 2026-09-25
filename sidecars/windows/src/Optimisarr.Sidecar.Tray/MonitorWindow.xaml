@@ -1,5 +1,5 @@
 <Window x:Class="Optimisarr.Sidecar.Tray.MonitorWindow"
- xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Optimisarr.Sidecar.Tray"
  Title="Optimisarr Sidecar" Width="410" SizeToContent="Height" MaxHeight="720" WindowStyle="None" ResizeMode="NoResize"
  ShowInTaskbar="False" Topmost="False" AllowsTransparency="True" Background="Transparent" Foreground="{DynamicResource Ink}" FontFamily="Segoe UI" FontSize="13">
  <Window.Resources>
@@ -7,6 +7,7 @@
   <SolidColorBrush x:Key="Raised" Color="#203149"/><SolidColorBrush x:Key="Line" Color="#34455F"/>
   <SolidColorBrush x:Key="Ink" Color="#EFF4FC"/><SolidColorBrush x:Key="Muted" Color="#B0BDD1"/><SolidColorBrush x:Key="Accent" Color="#7BD8D1"/>
   <BooleanToVisibilityConverter x:Key="BoolVisibility"/>
+  <local:PreviewImageConverter x:Key="PreviewImage"/>
   <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
   <Style TargetType="Button">
    <Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="Background" Value="{DynamicResource Surface}"/>
@@ -21,6 +22,19 @@
    </ControlTemplate></Setter.Value></Setter>
   </Style>
   <Style TargetType="TextBox"><Setter Property="Background" Value="{DynamicResource Ground}"/><Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="BorderBrush" Value="{DynamicResource Line}"/><Setter Property="Padding" Value="9"/></Style>
+  <Style TargetType="ScrollBar">
+   <Setter Property="Width" Value="9"/>
+   <Setter Property="Background" Value="{DynamicResource Ground}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+    <Grid Background="{TemplateBinding Background}">
+     <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="2,0">
+      <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0"/></Track.DecreaseRepeatButton>
+      <Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border x:Name="Grip" Background="{DynamicResource Line}" CornerRadius="3"/><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+      <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0"/></Track.IncreaseRepeatButton>
+     </Track>
+    </Grid>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="ProgressBar">
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
     <Border x:Name="PART_Track" Background="{DynamicResource Line}" CornerRadius="2" ClipToBounds="True">
@@ -87,8 +101,16 @@
    <Grid Margin="20">
     <StackPanel x:Name="ActivityPage">
      <Border Style="{StaticResource Card}"><StackPanel>
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition/></Grid.ColumnDefinitions>
-       <Border Width="52" Height="66" CornerRadius="7" Background="{DynamicResource Ground}" HorizontalAlignment="Left"><TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.Name="Media artwork unavailable"/></Border>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="112"/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <Border Width="100" Height="64" CornerRadius="7" Background="{DynamicResource Ground}" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" ClipToBounds="True">
+        <Grid>
+         <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="19" Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
+          <TextBlock Text="{Binding PreviewLabel}" FontSize="8" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+         </StackPanel>
+         <Image Source="{Binding Preview, Converter={StaticResource PreviewImage}}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Current media preview"/>
+        </Grid>
+       </Border>
        <StackPanel Grid.Column="1"><TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" ToolTip="{Binding Title}" MaxHeight="65" TextTrimming="CharacterEllipsis"/>
        <TextBlock Text="{Binding Stage}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,6,0,0"/></StackPanel>
       </Grid>
@@ -101,13 +123,33 @@
      </UniformGrid>
      <Expander x:Name="ProcessingDetails" Header="Processing details" Foreground="{DynamicResource Ink}" IsExpanded="False">
       <StackPanel Margin="0,12,0,0">
-       <TextBlock Text="{Binding Detail}" Foreground="{DynamicResource Accent}" Margin="0,0,0,8"/>
+       <ItemsControl ItemsSource="{Binding JobRows}" Margin="0,0,0,8">
+        <ItemsControl.ItemTemplate><DataTemplate>
+         <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <Border Width="56" Height="36" CornerRadius="5" BorderBrush="{DynamicResource Line}" BorderThickness="1" Background="{DynamicResource Ground}" HorizontalAlignment="Left" ClipToBounds="True">
+           <Grid><TextBlock Text="NO FRAME" FontSize="7" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Image Source="{Binding PreviewJpeg, Converter={StaticResource PreviewImage}}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+           </Grid>
+          </Border>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+           <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Title}"/>
+           <TextBlock Text="{Binding Caption}" FontSize="10" Foreground="{DynamicResource Muted}"/>
+          </StackPanel>
+         </Grid>
+        </DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
        <TextBlock Text="Receive → encode → verify when requested → return" Foreground="{DynamicResource Muted}" FontSize="12"/>
        <TextBlock Text="{Binding Last}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,12,0,0"/>
       </StackPanel>
      </Expander>
-     <Border Background="{DynamicResource Ground}" Padding="0,16"><TextBlock Text="One job at a time. Verification follows your server’s policy." Foreground="{DynamicResource Muted}" FontSize="12"/></Border>
-     <Button Content="{Binding PauseLabel}" IsEnabled="{Binding Available}" Click="Pause_Click"/>
+     <Border Background="{DynamicResource Ground}" Padding="0,16"><TextBlock Text="Previews stay on this PC. Verification follows your server’s policy." Foreground="{DynamicResource Muted}" FontSize="12"/></Border>
+     <TextBlock Text="✓  New assignments stopped" Foreground="{DynamicResource Accent}" FontWeight="SemiBold" Margin="0,0,0,12" Visibility="{Binding ShutdownArmed, Converter={StaticResource BoolVisibility}}"/>
+     <Button Content="{Binding PauseLabel}" IsEnabled="{Binding CanPause}" Visibility="{Binding ShowPause, Converter={StaticResource BoolVisibility}}" Click="Pause_Click"/>
+     <Border Style="{StaticResource Card}" Margin="0,12,0,0"><StackPanel>
+      <TextBlock Text="AFTER CURRENT WORK" Foreground="{DynamicResource Accent}" FontSize="10" FontWeight="SemiBold"/>
+      <TextBlock Text="{Binding ShutdownDetail}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,7,0,10"/>
+      <Button Content="{Binding ShutdownLabel}" IsEnabled="{Binding CanArmShutdown}" Click="Shutdown_Click" ToolTip="No new jobs are taken while shutdown is armed. The countdown can be canceled."/>
+     </StackPanel></Border>
      <TextBlock Text="{Binding Note}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,12,0,0"/>
     </StackPanel>
     <StackPanel x:Name="PreferencesPage" Visibility="Collapsed">

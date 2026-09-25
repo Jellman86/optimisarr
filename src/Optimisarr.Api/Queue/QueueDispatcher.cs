@@ -56,7 +56,14 @@ public sealed class QueueDispatcher(
     };
 
     private readonly string _workRoot = WorkPaths.Resolve(environment);
-    private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
+    private sealed record ActiveWork(CancellationTokenSource Cancellation, WorkloadLane Lane);
+    private readonly ConcurrentDictionary<int, ActiveWork> _running = new();
+    private int? _lastStartedLibraryId;
+    private WorkloadLane? _lastStartedVideoClass;
+    private WorkloadSlots RunningSlots() => new(
+        _running.Values.Count(work => work.Lane == WorkloadLane.Video),
+        _running.Values.Count(work => work.Lane == WorkloadLane.NonVideo),
+        _running.Values.Count(work => work.Lane == WorkloadLane.Evidence));
     // Scratch directories an encode is writing into. A directory is momentarily empty between
     // being created and FFmpeg opening its output, and two jobs on the same media file share one
     // directory — so without this, one job's cleanup prunes another job's freshly made tree.
@@ -82,9 +89,9 @@ public sealed class QueueDispatcher(
     /// <summary>Stops the ffmpeg process backing a running job, if any.</summary>
     public void RequestCancel(int jobId)
     {
-        if (_running.TryGetValue(jobId, out var cts))
+        if (_running.TryGetValue(jobId, out var work))
         {
-            cts.Cancel();
+            work.Cancellation.Cancel();
         }
     }
 
@@ -109,7 +116,7 @@ public sealed class QueueDispatcher(
                 released.FailedEncodeCount);
             foreach (var source in _running.Values)
             {
-                source.Cancel();
+                source.Cancellation.Cancel();
             }
         }
 
@@ -132,7 +139,7 @@ public sealed class QueueDispatcher(
                 _running.Count);
             foreach (var source in _running.Values)
             {
-                source.Cancel();
+                source.Cancellation.Cancel();
             }
         }
 
@@ -439,15 +446,12 @@ public sealed class QueueDispatcher(
         }
 
         var settings = await GetQueueSettingsAsync(stoppingToken);
-        var maxConcurrent = settings.MaxConcurrentJobs;
-        if (maxConcurrent - _running.Count <= 0)
-        {
-            return;
-        }
+        var limits = settings.EffectiveWorkloadSlots(Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
 
         List<QueuedJob> queued;
         HashSet<int> adaptiveLibraryIds = [];
-        List<int> delivered;
+        List<(int Id, WorkloadLane Lane)> delivered;
         Dictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows;
         var remoteWorkersOn = false;
         var aWorkerCouldTakeWork = false;
@@ -478,12 +482,7 @@ public sealed class QueueDispatcher(
                 .Select(library => library.Id)
                 .ToListAsync(stoppingToken);
             adaptiveLibraryIds = [.. adaptiveLibraries];
-            delivered = await db.Jobs
-                .AsNoTracking()
-                .Where(job => job.Status == JobStatus.AwaitingVerification)
-                .OrderBy(job => job.Id)
-                .Select(job => job.Id)
-                .ToListAsync(stoppingToken);
+            delivered = await DeliveredWorkloadsAsync(db, stoppingToken);
             queued = (await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
@@ -493,6 +492,7 @@ public sealed class QueueDispatcher(
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
+                    Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
                     IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
                     IgnoreLibraryWindow = job.Type == JobType.Preview,
                     QualityChosen = job.AdaptiveVideoQuality != null,
@@ -512,7 +512,8 @@ public sealed class QueueDispatcher(
                         && placements.TryGetValue(libraryId, out var placement)
                         ? placement
                         : WorkPlacement.Anywhere,
-                    job.QualityChosen))
+                    job.QualityChosen,
+                    job.Kind))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -536,15 +537,14 @@ public sealed class QueueDispatcher(
             return;
         }
 
-        // Candidates delivered by remote workers are finished work waiting only for this machine's
-        // verdict. They take slots under the same cap and the same activity policy, ahead of
-        // starting new encodes: a verdict on work already done is worth more than a new start,
-        // and holding a delivered candidate longer than necessary only invites a lease to lapse
-        // or a source to change under it.
-        foreach (var jobId in delivered)
+        // Strict sidecar evidence uses a small independent lane: it must not wait for a long
+        // container encode. Legacy delivered candidates still require full media verification
+        // here and therefore take video capacity.
+        var running = RunningSlots();
+        foreach (var (jobId, lane) in delivered)
         {
             if (Volatile.Read(ref _draining) != 0
-                || _running.Count >= maxConcurrent
+                || running.For(lane) >= limits.For(lane)
                 || _running.ContainsKey(jobId)
                 || !await TryClaimDeliveredAsync(jobId, stoppingToken))
             {
@@ -552,7 +552,8 @@ public sealed class QueueDispatcher(
             }
 
             var cts = new CancellationTokenSource();
-            _running[jobId] = cts;
+            _running[jobId] = new ActiveWork(cts, lane);
+            running = running.WithStarted(lane);
             _ = Task.Run(() => VerifyDeliveredAsync(jobId, cts.Token), CancellationToken.None);
         }
 
@@ -566,20 +567,7 @@ public sealed class QueueDispatcher(
         // hold expired while every job sat ineligible to run at all; by the time the window opened
         // the server was free to take the lot, and did. The hold now starts when a job first
         // becomes runnable, which is what it was always meant to mean.
-        var withinWindow = queued
-            .Where(job =>
-            {
-                var window = job.LibraryId is { } libraryId
-                    && autoWindows.TryGetValue(libraryId, out var configuredWindow)
-                        ? configuredWindow
-                        : ((TimeOnly Start, TimeOnly End)?)null;
-                return JobScheduler.CanRunInLibraryWindow(
-                    job,
-                    window?.Start,
-                    window?.End,
-                    nowLocal);
-            })
-            .ToList();
+        var withinWindow = JobScheduler.WithinLibraryWindows(queued, autoWindows, nowLocal);
 
         // Kept in memory rather than on the job: losing it across a restart simply restarts the
         // hold, which errs towards offering the work to a worker — the safe direction for a
@@ -602,11 +590,9 @@ public sealed class QueueDispatcher(
             _ => aWorkerCouldTakeWork,
             nowUtc);
 
-        var toStart = JobScheduler.SelectJobsToStart(
-            runnable,
-            _running.Count,
-            maxConcurrent,
-            mediaServicesActive: activity.Active);
+        var toStart = JobScheduler.SelectJobsByWorkload(runnable, running, limits,
+            mediaServicesActive: activity.Active, lastStartedLibraryId: _lastStartedLibraryId,
+            lastStartedVideoClass: _lastStartedVideoClass);
 
         // Say why nothing started, when something plainly could have.
         //
@@ -616,7 +602,9 @@ public sealed class QueueDispatcher(
         // from outside took three wrong guesses; naming the filter that emptied the list makes it
         // a fact instead. Logged once per cycle at Information, and only when the answer is
         // genuinely surprising — queued work, free capacity, and still nothing chosen.
-        if (toStart.Count == 0 && queued.Count > 0 && _running.Count < maxConcurrent)
+        if (toStart.Count == 0 && queued.Count > 0 && runnable.Any(job =>
+                running.Video < limits.Video ||
+                (JobScheduler.LaneFor(job.Kind) == WorkloadLane.NonVideo && running.NonVideo < limits.NonVideo)))
         {
             // Throttled, because the loop runs every three seconds: a queue parked outside its
             // window overnight would otherwise write some thirty thousand identical lines and bury
@@ -643,7 +631,7 @@ public sealed class QueueDispatcher(
             }
         }
 
-        foreach (var jobId in toStart)
+        foreach (var (jobId, lane) in toStart)
         {
             if (Volatile.Read(ref _draining) != 0
                 || _running.ContainsKey(jobId)
@@ -653,9 +641,33 @@ public sealed class QueueDispatcher(
             }
 
             var cts = new CancellationTokenSource();
-            _running[jobId] = cts;
+            _running[jobId] = new ActiveWork(cts, lane);
+            _lastStartedLibraryId = queued.First(job => job.Id == jobId).LibraryId;
+            if (lane == WorkloadLane.Video)
+                _lastStartedVideoClass = JobScheduler.LaneFor(queued.First(job => job.Id == jobId).Kind);
             _ = Task.Run(() => RunJobAsync(jobId, cts.Token), CancellationToken.None);
         }
+    }
+
+    internal static async Task<List<(int Id, WorkloadLane Lane)>> DeliveredWorkloadsAsync(
+        OptimisarrDbContext db, CancellationToken cancellationToken)
+    {
+        var ids = await db.Jobs.AsNoTracking()
+            .Where(job => job.Status == JobStatus.AwaitingVerification)
+            .OrderBy(job => job.Id)
+            .Select(job => job.Id)
+            .ToListAsync(cancellationToken);
+        if (ids.Count == 0) return [];
+
+        var leases = await db.JobLeases.AsNoTracking()
+            .Where(lease => ids.Contains(lease.JobId) && lease.State == LeaseState.Completed)
+            .Select(lease => new { lease.JobId, lease.AcquiredAt,
+                HasStrictEvidence = lease.VerificationContractJson != null })
+            .ToListAsync(cancellationToken);
+        var latest = leases.GroupBy(lease => lease.JobId).ToDictionary(group => group.Key,
+            group => group.OrderByDescending(lease => lease.AcquiredAt).First().HasStrictEvidence);
+        return ids.Select(id => (id,
+            latest.GetValueOrDefault(id) ? WorkloadLane.Evidence : WorkloadLane.Video)).ToList();
     }
 
     // Single-writer claim: only transition if still Queued, so a job can never start twice.
@@ -757,10 +769,9 @@ public sealed class QueueDispatcher(
     }
 
     /// <summary>
-    /// Verifies a candidate a remote worker delivered, exactly as a local encode is verified. The
-    /// encode contract is rebuilt for the worker that produced it, so the gates hold the candidate
-    /// to the picture, tracks and quality it was told to make; the candidate then earns
-    /// replacement, or does not, through the same path as everything else.
+    /// Judges a delivered candidate against its lease snapshot. Strict sidecar results validate
+    /// bound evidence without repeating media checks; older leases run the full server verification
+    /// path. Neither route can replace a source until every required gate passes.
     /// </summary>
     private async Task VerifyDeliveredAsync(int jobId, CancellationToken cancellationToken)
     {
@@ -798,30 +809,33 @@ public sealed class QueueDispatcher(
                 return;
             }
 
-            // A strict lease freezes its plan at assignment. Re-planning after upload would run
-            // local probes and filters, violating sidecar-only verification and changing the question.
-            var work = deliveredLease!.VerificationContractJson is not null
-                ? deliveredLease.VerificationWorkJson is { } frozen
-                    ? JsonSerializer.Deserialize<JobWork>(frozen, ReportJsonOptions)
-                    : throw new InvalidOperationException("The strict verification work snapshot is missing.")
-                : await LoadWorkAsync(jobId, new EncodePlacement(deliveredBy.ToCapabilities()), cancellationToken);
+            // The executed encode plan, including its colour conversion, belongs to the lease.
+            // A later settings edit or a different worker must not change the verification target.
+            // Existing leases without a snapshot cannot be reconstructed safely after settings
+            // or worker capabilities change. Keep their candidate and original for inspection.
+            if (deliveredLease!.VerificationWorkJson is not { } frozen)
+            {
+                throw new InvalidOperationException(
+                    "The worker assignment's frozen verification plan is missing. The original was kept; retry this job to create a new assignment.");
+            }
+            var work = JsonSerializer.Deserialize<JobWork?>(frozen, ReportJsonOptions);
             if (work is null)
             {
                 await CompleteAsync(jobId, JobStatus.Failed, error: "Job or media file no longer exists.");
                 return;
             }
 
-            if (deliveredLease!.VerificationContractJson is not null)
+            await using (var policyScope = scopeFactory.CreateAsyncScope())
             {
-                await using var policyScope = scopeFactory.CreateAsyncScope();
                 var db = policyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
                 var library = await db.Libraries.AsNoTracking()
                     .Where(library => db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
                     .SingleOrDefaultAsync(cancellationToken);
-                var currentSettings = await GetQueueSettingsAsync(cancellationToken);
                 work = work.Value with
                 {
-                    VerificationPolicy = ResolveVerificationPolicy(currentSettings.VerificationPolicy, library),
+                    // The worker's byte limit and verification contract were fixed together at
+                    // claim time. Applying a later library edit here could reject an output the
+                    // worker was told to produce, or accept one the worker was told to stop.
                     AutoReplace = library?.AutoReplace ?? false,
                     MoveOnComplete = library?.MoveOnComplete ?? false,
                     TargetFolder = library?.TargetFolder,
@@ -893,11 +907,8 @@ public sealed class QueueDispatcher(
                 DeleteWorkOutput(candidatePath);
                 await WithJobAsync(jobId, job =>
                 {
-                    job.PreferSoftwareDecode = true;
-                    job.Status = JobStatus.Queued;
-                    job.Progress = 0;
-                    job.WorkOutputPath = null;
-                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                    JobAttemptHistory.RequeueAfterRejectedCandidate(
+                        job, deliveredBy.Name, deliveredLease.HardwareDecoder, DateTimeOffset.UtcNow);
                 }, cancellationToken);
                 logger.LogWarning(
                     "Job {JobId}: the candidate {Worker} decoded with {Decoder} showed decoder corruption; requeued to be encoded with software decode",
@@ -928,9 +939,9 @@ public sealed class QueueDispatcher(
         }
         finally
         {
-            if (_running.TryRemove(jobId, out var cts))
+            if (_running.TryRemove(jobId, out var work))
             {
-                cts.Dispose();
+                work.Cancellation.Dispose();
             }
             await NotifyAsync();
             Wake();
@@ -1050,65 +1061,32 @@ public sealed class QueueDispatcher(
             loaded.Original.IsHdr,
             loaded.Original.HdrConvertedToSdr,
             samplingDuration,
-            loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate,
+            // The job's own rate is empty on this path; the probe just made is the authority, as
+            // it is for the final measurement. Without a rate neither side gets a common grid.
+            loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate ?? sourceProbe.VideoFrameRate,
             ContainerLeadSeconds(sourceProbe),
             loaded.Spec.CropTo,
             loaded.Spec.FrameRate);
     }
 
     /// <summary>
-    /// The two facts an exchange of the quality search needs about a job: what its evidence is
-    /// judged by, and which quality the search brackets around.
+    /// The facts a worker quality-search exchange needs about a job: what its evidence is
+    /// judged by, which quality its encoder searches around, and the source-size policy.
     ///
-    /// <para>Both come from the job's own work, so a search that runs on a worker is judged and
-    /// centred exactly as one that runs here. Rebuilding an approximate policy from the contract's
-    /// two thresholds would leave out the catastrophic floor and quietly judge a remote search more
-    /// leniently; taking the baseline from the job's requested quality rather than its effective
-    /// one would bracket around a different number than a local search would.</para>
+    /// <para>These come from the job's work resolved for that worker. Rebuilding an approximate
+    /// policy from the contract's two thresholds would leave out the catastrophic floor and judge
+    /// a remote search more leniently. Taking the requested quality instead of the worker's effective
+    /// one would bracket around a different number than the assignment planned.</para>
     /// </summary>
-    public async Task<(VerificationPolicy Policy, int Baseline)?> GetSearchContextAsync(
-        int jobId, CancellationToken cancellationToken)
+    public async Task<(VerificationPolicy Policy, int Baseline, bool BypassSizePreflight)?> GetSearchContextAsync(
+        int jobId, WorkerCapabilities worker, CancellationToken cancellationToken)
     {
-        var work = await LoadWorkAsync(jobId, cancellationToken);
+        // Use the same encoder placement that planned the sample commands. A worker may support
+        // HEVC even when this server has no local HEVC encoder, and quality scales differ.
+        var work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
         return work is { VideoQuality: { } quality }
-            ? (work.Value.VerificationPolicy, quality.Effective)
+            ? (work.Value.VerificationPolicy, quality.Effective, work.Value.BypassSizePreflight)
             : null;
-    }
-
-    private async Task<bool> ShouldHandToWorkerAsync(int jobId, CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-        var settings = await GetQueueSettingsAsync(cancellationToken);
-
-        var availability = await WorkerAvailability.ResolveAsync(
-            db,
-            settings.RemoteWorkersEnabled,
-            scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(),
-            DateTimeOffset.UtcNow,
-            cancellationToken);
-
-        var placement = await JobPlacementLookup.ForJobAsync(db, jobId, cancellationToken);
-
-        var handOver = availability.RemoteWorkersOn
-            && availability.AWorkerCouldTakeWork
-            && placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
-
-        // Says which of the three it was. This decision was silent, and a library set to prefer a
-        // worker that never handed one anything looked identical whether the fleet was offline, the
-        // feature was off, or the placement had not been read at all. It is written once per job
-        // that searched its quality here, not once per poll.
-        if (!handOver)
-        {
-            logger.LogInformation(
-                "Job {JobId}: keeping the encode here — remote workers {Remote}, a worker could take it: {Fleet}, placement {Placement}",
-                jobId,
-                availability.RemoteWorkersOn ? "on" : "off",
-                availability.AWorkerCouldTakeWork,
-                placement?.ToString() ?? "unresolved");
-        }
-
-        return handOver;
     }
 
     private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
@@ -1162,39 +1140,33 @@ public sealed class QueueDispatcher(
                 preparedWork.AdaptiveVideoQuality is not null,
                 preparedWork.IsCalibration))
             {
-                preparedWork = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
-
-                // The search is the control plane's decision and only it can make one; the encode
-                // that follows is not. A library set to prefer a worker meant nothing at all while
-                // both happened here: the job was unofferable until the quality was chosen, and by
-                // the time it was chosen this machine was already encoding it. Handing it back now
-                // is what makes the preference real.
-                if (await ShouldHandToWorkerAsync(jobId, cancellationToken))
+                var selection = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
+                if (selection is null)
                 {
-                    // Restart the head start, or handing the job back achieves nothing. The clock
-                    // began when the job first became runnable — before a quality search that takes
-                    // minutes — so by now it has almost always lapsed, and the dispatcher polls
-                    // every three seconds while a worker only asks on its next check-in. Without
-                    // this the server would take the job straight back and the handback would be a
-                    // round trip to nowhere.
-                    _firstRunnableAt[jobId] = DateTimeOffset.UtcNow;
-
-                    await WithJobAsync(jobId, job =>
-                    {
-                        job.Status = JobStatus.Queued;
-                        job.Progress = 0;
-                        job.UpdatedAt = DateTimeOffset.UtcNow;
-                    }, cancellationToken);
-                    logger.LogInformation(
-                        "Job {JobId}: quality chosen here; returned to the queue so a worker can encode it",
-                        jobId);
-                    await NotifyAsync();
+                    // The sample-size forecast is advisory, so this job waits for an operator
+                    // rather than producing or failing a candidate. It owns no full output.
                     return;
                 }
+                preparedWork = selection.Value;
+                // The sample result belongs to this encoder. Worker-first placement already had
+                // its head start before this machine claimed the job; handing the chosen quality
+                // to a different encoder would discard the proof the search just gathered.
             }
 
             var (spec, arguments) = preparedWork;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
+            var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
+                preparedWork.Original.SizeBytes,
+                preparedWork.VerificationPolicy.RequireSizeReduction,
+                preparedWork.IsDisposable,
+                spec.VideoCodec is not null
+                    ? preparedWork.VerificationPolicy.MinimumSizeSavingPercent : null);
+            var minCandidateBytes = SizeBudget.MinCandidateBytes(
+                preparedWork.Original.SizeBytes,
+                preparedWork.VerificationPolicy.RequireSizeReduction,
+                preparedWork.IsDisposable,
+                spec.VideoCodec is not null
+                    ? preparedWork.VerificationPolicy.MaximumSizeSavingPercent : null);
             await BeginTranscodeAsync(
                 jobId,
                 spec.OutputPath,
@@ -1226,11 +1198,14 @@ public sealed class QueueDispatcher(
                 progressDuration,
                 expectedFrameCount,
                 hardwareEncoder,
-                cancellationToken);
+                cancellationToken,
+                maxCandidateBytes: maxCandidateBytes,
+                minCandidateBytes: minCandidateBytes);
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
             if (run.ExitCode != 0
+                && !run.SizeGateFailed
                 && preparedWork.SoftwareFallbackArguments is { } softwareArguments
                 && (preparedWork.UsedHardwareDecode
                         && HardwareDecodeFallback.ShouldRetryInSoftware(run.Log ?? run.Error)
@@ -1256,7 +1231,9 @@ public sealed class QueueDispatcher(
                     progressDuration,
                     expectedFrameCount,
                     hardwareEncoder,
-                    cancellationToken);
+                    cancellationToken,
+                    maxCandidateBytes: maxCandidateBytes,
+                    minCandidateBytes: minCandidateBytes);
             }
 
             if (run.ExitCode == 0)
@@ -1354,7 +1331,9 @@ public sealed class QueueDispatcher(
                         progressDuration,
                         expectedFrameCount,
                         hardwareEncoder,
-                        cancellationToken);
+                        cancellationToken,
+                        maxCandidateBytes: maxCandidateBytes,
+                        minCandidateBytes: minCandidateBytes);
                     if (run.ExitCode == 0)
                     {
                         await VerifyAndFinishAsync(jobId, spec.OutputPath, retriedWork, cancellationToken);
@@ -1387,9 +1366,9 @@ public sealed class QueueDispatcher(
         }
         finally
         {
-            if (_running.TryRemove(jobId, out var cts))
+            if (_running.TryRemove(jobId, out var work))
             {
-                cts.Dispose();
+                work.Cancellation.Dispose();
             }
             await NotifyAsync();
             Wake(); // a slot just freed up
@@ -1446,7 +1425,8 @@ public sealed class QueueDispatcher(
         PictureSize? SourcePicture = null,
         // Why this work is a second encode of the same job, when it is one; carried into the
         // verification report's context so the record explains itself.
-        string? SoftwareDecodeRetryReason = null)
+        string? SoftwareDecodeRetryReason = null,
+        bool BypassSizePreflight = false)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1477,7 +1457,9 @@ public sealed class QueueDispatcher(
                 library?.MaxTruePeakDbtp,
                 library?.ImageQualityGateEnabled,
                 library?.MinimumImageSsim,
-                library?.ImageMetadataGateEnabled));
+                library?.ImageMetadataGateEnabled,
+                library?.MinimumSizeSavingPercent,
+                library?.MaximumSizeSavingPercent));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
@@ -1587,7 +1569,10 @@ public sealed class QueueDispatcher(
             search,
             strictVerification ? new RemoteVerificationContract(1, Guid.NewGuid(),
                 work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
-            strictVerification ? JsonSerializer.Serialize(work, ReportJsonOptions) : null));
+            JsonSerializer.Serialize(work, ReportJsonOptions),
+            work.VideoQuality?.Requested,
+            work.VideoQuality?.Effective,
+            work.VideoQuality?.Mode));
     }
 
     /// <summary>
@@ -1835,7 +1820,7 @@ public sealed class QueueDispatcher(
             media.AudioTrackCount ?? 0,
             media.SubtitleTrackCount ?? 0,
             media.IsHdr,
-            rules.Hdr == HdrHandling.TonemapToSdr,
+            spec.TonemapToSdr,
             media.MediaKind,
             // A video job whose audio was re-encoded (not copied) may legitimately normalise
             // the sample rate, so the audio-fidelity gate must treat it like an audio job.
@@ -2070,7 +2055,8 @@ public sealed class QueueDispatcher(
             media.Width is > 0 && media.Height is > 0
                 ? new PictureSize(media.Width.Value, media.Height.Value)
                 : null,
-            SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null);
+            SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null,
+            BypassSizePreflight: job.BypassSizePreflight);
     }
 
     /// <summary>
@@ -2099,7 +2085,7 @@ public sealed class QueueDispatcher(
     /// Preparation may choose an encoder quality; it can never authorise replacement, and any
     /// unavailable/noisy evidence falls back to the library's value before the normal full encode.
     /// </summary>
-    private async Task<JobWork> SelectAdaptiveQualityAsync(
+    private async Task<JobWork?> SelectAdaptiveQualityAsync(
         int jobId,
         JobWork work,
         CancellationToken cancellationToken)
@@ -2162,13 +2148,37 @@ public sealed class QueueDispatcher(
                     jobId, work, baseline, fellBack: true, "no representative windows could be planned", cancellationToken);
             }
 
+            var maximumCandidateBytes = SizeBudget.MaxCandidateBytes(
+                work.Original.SizeBytes,
+                policy.RequireSizeReduction,
+                work.IsDisposable,
+                policy.MinimumSizeSavingPercent);
+            var sizeBasis = maximumCandidateBytes is null || work.BypassSizePreflight
+                ? null
+                : await MeasureSizeForecastBasisAsync(
+                    jobId, work, windows, sourceProbe, samplingDuration.Value, cancellationToken);
+
             Directory.CreateDirectory(scratchRoot);
             var measured = new List<AdaptiveQualityProbe>();
             while (true)
             {
                 var decision = AdaptiveQualitySearch.Decide(baseline, measured);
+                var sizeReview = SizePreflight.Review(
+                    sizeBasis,
+                    measured,
+                    measured.LastOrDefault(),
+                    decision,
+                    maximumCandidateBytes,
+                    work.BypassSizePreflight);
+                if (sizeReview.ShouldHold)
+                {
+                    await HoldForSizeReviewAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
+                    return null;
+                }
+
                 if (decision.Complete)
                 {
+                    LogSizeForecast(logger, jobId, sizeReview);
                     return await FinishAdaptiveSelectionAsync(
                         jobId,
                         RebuildWorkAtQuality(work, decision.SelectedQuality),
@@ -2245,7 +2255,7 @@ public sealed class QueueDispatcher(
         CancellationToken cancellationToken)
     {
         var results = new List<QualityResult>(windows.Count);
-        long encodedBytes = 0;
+        var windowBytesMeasured = new List<long>(windows.Count);
         for (var index = 0; index < windows.Count; index++)
         {
             var window = windows[index];
@@ -2317,7 +2327,7 @@ public sealed class QueueDispatcher(
                     qualityValue);
                 return null;
             }
-            encodedBytes = checked(encodedBytes + windowBytes);
+            windowBytesMeasured.Add(windowBytes);
 
             var context = new QualityMeasurementContext(
                 sourceProbe.Width!.Value,
@@ -2387,8 +2397,9 @@ public sealed class QueueDispatcher(
             ? new AdaptiveQualityProbe(
                 qualityValue,
                 VmafSoftwareConfirmation.MeetsGate(scores, policy),
-                encodedBytes,
-                scores)
+                windowBytesMeasured.Sum(),
+                scores,
+                windowBytesMeasured)
             : null;
     }
 
@@ -2428,6 +2439,121 @@ public sealed class QueueDispatcher(
             reason);
         await NotifyAsync();
         return work;
+    }
+
+    private async Task HoldForSizeReviewAsync(
+        int jobId,
+        int selectedQuality,
+        SizePreflightAssessment forecast,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await WithJobAsync(jobId, job =>
+        {
+            if (job.Status != JobStatus.Probing)
+            {
+                return;
+            }
+            job.Status = JobStatus.AwaitingSizeReview;
+            job.AdaptiveVideoQuality = selectedQuality;
+            job.Progress = 0;
+            job.ErrorMessage = forecast.Reason;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+        }, cancellationToken);
+        logger.LogInformation(
+            "Job {JobId}: full encode held for size review; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
+            jobId, forecast.VideoRatio, forecast.ProjectedBytes);
+        await NotifyAsync();
+    }
+
+    /// <summary>
+    /// What the source itself spent on the sample windows, for the size forecast. Null, with the
+    /// reason logged, when the windows cannot be read: the forecast then abstains and the final
+    /// size gate is left to decide, exactly as before any forecast existed.
+    /// </summary>
+    private async Task<SizeForecastBasis?> MeasureSizeForecastBasisAsync(
+        int jobId,
+        JobWork work,
+        IReadOnlyList<VmafWindow> windows,
+        MediaProbeResult sourceProbe,
+        double samplingDurationSeconds,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var measured = await scope.ServiceProvider
+            .GetRequiredService<ISourceWindowBytesProbe>()
+            .MeasureAsync(work.Original.Path, windows, sourceProbe.ContainerStartSeconds, cancellationToken);
+        var basis = measured is null
+            ? null
+            : SizeForecastBasis.From(work.Original.SizeBytes, measured, work.Spec, samplingDurationSeconds);
+        if (basis is null)
+        {
+            logger.LogInformation(
+                "Job {JobId}: source bytes over the sample windows could not be read; no size forecast for this search",
+                jobId);
+        }
+        return basis;
+    }
+
+    /// <summary>
+    /// The size-forecast basis for a search a worker is running. Measured here, on the control
+    /// plane's own copy of the source, because the worker's copy is the same bytes and the
+    /// judgement belongs here; the worker only reports what its samples came to.
+    /// </summary>
+    public async Task<SizeForecastBasis?> MeasureSizeForecastBasisAsync(
+        int jobId,
+        WorkerCapabilities worker,
+        CancellationToken cancellationToken)
+    {
+        JobWork? work;
+        try
+        {
+            work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        if (work is not { } loaded)
+        {
+            return null;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var sourceProbe = await scope.ServiceProvider
+            .GetRequiredService<IMediaProbeService>()
+            .ProbeAsync(loaded.Original.Path, cancellationToken);
+        // The same windows the worker was asked to encode, planned from the same timeline.
+        var samplingDuration = MediaTimelineDuration.Resolve(
+            MediaKind.Video,
+            sourceProbe.VideoDurationSeconds,
+            loaded.DurationSeconds);
+        if (samplingDuration is not > 0)
+        {
+            return null;
+        }
+
+        return await MeasureSizeForecastBasisAsync(
+            jobId,
+            loaded,
+            VmafWindowPlanner.PlanAdaptive(samplingDuration.Value),
+            sourceProbe,
+            samplingDuration.Value,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Every forecast that let a job through is logged beside the one that held a job, so its
+    /// accuracy can be checked against the finished file rather than taken on trust.
+    /// </summary>
+    internal static void LogSizeForecast(ILogger logger, int jobId, SizePreflightAssessment forecast)
+    {
+        if (forecast.ProjectedBytes is { } projected)
+        {
+            logger.LogInformation(
+                "Job {JobId}: size forecast — samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes ({Change:+0.0;-0.0}% against the source)",
+                jobId, forecast.VideoRatio, projected, forecast.ProjectedPercentChange);
+        }
     }
 
     private static JobWork RebuildWorkAtQuality(JobWork work, int selectedQuality)
@@ -2480,7 +2606,7 @@ public sealed class QueueDispatcher(
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 
-    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log);
+    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
@@ -2491,7 +2617,9 @@ public sealed class QueueDispatcher(
         bool hardwareEncoder,
         CancellationToken cancellationToken,
         bool reportProgress = true,
-        Func<double, double>? progressMap = null)
+        Func<double, double>? progressMap = null,
+        long? maxCandidateBytes = null,
+        long? minCandidateBytes = null)
     {
         // Every attempt must recreate the directory: rejecting a candidate prunes its empty
         // parent. Reserve it before creation so another job's cleanup cannot remove it while
@@ -2533,10 +2661,11 @@ public sealed class QueueDispatcher(
             cancellationToken);
         var stderrTask = ReadStderrAsync(process, cancellationToken);
 
-        EncodeStallKind? stall = null;
+        EncodeWaitResult? stopped = null;
         try
         {
-            stall = await WaitForExitOrStallAsync(process, jobId, stallMonitor, cancellationToken);
+            stopped = await WaitForExitOrStallAsync(
+                process, jobId, stallMonitor, outputPath, maxCandidateBytes, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -2556,12 +2685,41 @@ public sealed class QueueDispatcher(
 
         await progressTask;
         var stderr = await stderrTask;
-        if (stall is { } stalledAs)
+        if (stopped?.BudgetExceededAtBytes is { } observed)
+        {
+            return new FfmpegRun(-1,
+                $"Size saving: candidate reached {observed:n0} bytes, exceeding the {maxCandidateBytes:n0}-byte budget before encoding finished.",
+                stderr.Log,
+                SizeGateFailed: true);
+        }
+        if (stopped?.Stall is { } stalledAs)
         {
             // A killed process reports a signal exit, never zero; the guard keeps a stall from ever
             // being read as success should a platform report otherwise.
             var exitCode = process.ExitCode == 0 ? -1 : process.ExitCode;
             return new FfmpegRun(exitCode, stallMonitor.Describe(stalledAs), stderr.Log);
+        }
+
+        // FFmpeg can finish and write its final mux overhead between budget polls. Apply the
+        // frozen limit once more before any decode or VMAF work on the completed file.
+        if (process.ExitCode == 0 && maxCandidateBytes is { } maximum
+            && TryReadOutputSize(outputPath) is { } finalBytes
+            && SizeBudget.Exceeded(finalBytes, maximum))
+        {
+            return new FfmpegRun(-1,
+                $"Size saving: finished candidate is {finalBytes:n0} bytes, exceeding the {maximum:n0}-byte budget.",
+                stderr.Log,
+                SizeGateFailed: true);
+        }
+
+        if (process.ExitCode == 0 && minCandidateBytes is { } minimum
+            && TryReadOutputSize(outputPath) is { } finalSize
+            && SizeBudget.Below(finalSize, minimum))
+        {
+            return new FfmpegRun(-1,
+                $"Compression ceiling: finished candidate is {finalSize:n0} bytes, below the {minimum:n0}-byte floor.",
+                stderr.Log,
+                SizeGateFailed: true);
         }
 
         return process.ExitCode == 0
@@ -2570,20 +2728,37 @@ public sealed class QueueDispatcher(
     }
 
     private static readonly TimeSpan StallCheckInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan SizeBudgetCheckInterval = TimeSpan.FromSeconds(2);
 
     // Waits for ffmpeg to exit, asking the stall monitor on a timer whether it still deserves the
     // wait. A stalled process is killed and the kind of stall returned so the caller can fail the
     // job with a reason instead of holding a queue slot until someone restarts the container.
-    private async Task<EncodeStallKind?> WaitForExitOrStallAsync(
+    private sealed record EncodeWaitResult(EncodeStallKind? Stall = null, long? BudgetExceededAtBytes = null);
+
+    private async Task<EncodeWaitResult?> WaitForExitOrStallAsync(
         Process process,
         int jobId,
         EncodeStallMonitor stallMonitor,
+        string outputPath,
+        long? maxCandidateBytes,
         CancellationToken cancellationToken)
     {
         var exited = process.WaitForExitAsync(cancellationToken);
-        while (await Task.WhenAny(exited, Task.Delay(StallCheckInterval, cancellationToken)) != exited)
+        var checkInterval = maxCandidateBytes is null ? StallCheckInterval : SizeBudgetCheckInterval;
+        while (await Task.WhenAny(exited, Task.Delay(checkInterval, cancellationToken)) != exited)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (maxCandidateBytes is { } maximum
+                && TryReadOutputSize(outputPath) is { } bytes
+                && SizeBudget.Exceeded(bytes, maximum))
+            {
+                logger.LogInformation(
+                    "Job {JobId}: size-saving budget exceeded at {ObservedBytes} bytes (limit {MaxBytes}); stopping encode",
+                    jobId, bytes, maximum);
+                KillQuietly(process);
+                await exited;
+                return new EncodeWaitResult(BudgetExceededAtBytes: bytes);
+            }
             if (stallMonitor.Check(DateTimeOffset.UtcNow, pauseManager.IsPaused) is not { } stall)
             {
                 continue;
@@ -2592,11 +2767,17 @@ public sealed class QueueDispatcher(
             logger.LogWarning("Job {JobId}: {Reason}", jobId, stallMonitor.Describe(stall));
             KillQuietly(process);
             await exited;
-            return stall;
+            return new EncodeWaitResult(Stall: stall);
         }
 
         await exited;
         return null;
+    }
+
+    private static long? TryReadOutputSize(string path)
+    {
+        try { return File.Exists(path) ? new FileInfo(path).Length : null; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
     private sealed record FfmpegStderr(string? Tail, string? Log);
@@ -2756,7 +2937,10 @@ public sealed class QueueDispatcher(
         var error = FfmpegErrorInterpreter.Explain(run.Error)
             ?? run.Error
             ?? $"ffmpeg exited with code {run.ExitCode}";
-        await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log);
+        await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log,
+            immediateAutoExclusion: run.SizeGateFailed
+                ? ImmediateAutoExclusionReason.SizeSaving
+                : ImmediateAutoExclusionReason.None);
         await NotifyJobFailedAsync(jobId, error);
     }
 
@@ -2851,10 +3035,24 @@ public sealed class QueueDispatcher(
     {
         job.Status = JobStatus.Transcoding;
         job.Attempt += 1;
+        job.ExecutionAttempt += 1;
         job.StartedAt = nowUtc;
         job.UpdatedAt = nowUtc;
         job.ErrorMessage = null;
         job.FailureCategory = null;
+        job.ProcessLog = null;
+        job.FfmpegArguments = null;
+        job.VideoEncoder = null;
+        // Calibration's requested quality is the candidate being tested, not a stale result.
+        if (job.Type == JobType.Normal) job.RequestedVideoQuality = null;
+        job.EffectiveVideoQuality = null;
+        job.VideoQualityMode = null;
+        job.WorkOutputPath = null;
+        job.OutputSizeBytes = null;
+        job.VerificationPassed = null;
+        job.VerificationReportJson = null;
+        job.VerifiedAt = null;
+        job.FinishedAt = null;
     }
 
     // Keep a durable per-file failure tally so a file that keeps failing is excluded automatically
@@ -2898,7 +3096,7 @@ public sealed class QueueDispatcher(
                     Reason = immediateAutoExclusion switch
                     {
                         ImmediateAutoExclusionReason.SizeSaving =>
-                            "Auto-excluded after the output failed the size-saving gate",
+                            "Auto-excluded after the output failed a configured size gate",
                         ImmediateAutoExclusionReason.VmafAfterHigherQualityRetry =>
                             "Auto-excluded after VMAF failed the higher-quality retry",
                         ImmediateAutoExclusionReason.VmafAtMaximumQuality =>
@@ -2988,7 +3186,7 @@ public sealed class QueueDispatcher(
         // Mark verification as active work so the metrics broadcaster keeps sampling CPU load
         // (the VMAF pass runs its own ffmpeg outside the encode registry).
         VerificationOutcome outcome;
-        using (encodes.TrackVerification())
+        using (remoteEvidence is null ? encodes.TrackVerification() : null)
         {
             var vmafAcceleration = VmafAccelerationSelector.Select(
                 work.VideoEncoder,
@@ -3038,6 +3236,13 @@ public sealed class QueueDispatcher(
 
         if (!outcome.Report.Passed)
         {
+            var sourceFailure = HardwareDecodeFallback.SourceFailureBlockingRetry(outcome.Report);
+            if (sourceFailure is not null)
+            {
+                logger.LogWarning(
+                    "Job {JobId}: retry suppressed because unchanged source check {FailedGate} failed",
+                    jobId, sourceFailure);
+            }
             // Asked before the higher-quality retry: a corrupt decode fails at every quality, so
             // re-encoding it at a higher one would only spend a second encode on the same rubbish.
             if (softwareDecodeRetryAvailable
@@ -3056,7 +3261,7 @@ public sealed class QueueDispatcher(
                 return VerificationDisposition.RetryWithSoftwareDecode;
             }
 
-            if (!work.IsDisposable && VmafRetryPolicy.ShouldRetry(
+            if (sourceFailure is null && !work.IsDisposable && VmafRetryPolicy.ShouldRetry(
                     outcome.Report,
                     work.VideoQuality?.RetryCount ?? 0,
                     work.VideoQuality?.Effective))
@@ -3069,6 +3274,10 @@ public sealed class QueueDispatcher(
                 .Where(check => check.Outcome == CheckOutcome.Failed)
                 .ToList();
             var summary = "Verification failed: " + string.Join("; ", failed.Select(check => check.Name));
+            if (sourceFailure is not null)
+            {
+                summary += $". Retry skipped: {sourceFailure} failed on the unchanged source.";
+            }
             logger.LogWarning(
                 "Job {JobId} verification failed: {Failures}",
                 jobId,
@@ -3289,6 +3498,9 @@ public sealed class QueueDispatcher(
     public async Task<QueueDispatchStatus> GetDispatchStatusAsync(CancellationToken cancellationToken)
     {
         var settings = await GetQueueSettingsAsync(cancellationToken);
+        var limits = settings.EffectiveWorkloadSlots(Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+        var running = RunningSlots();
         var activity = await activityMonitor.GetActivityAsync(cancellationToken);
         var decision = EvaluateDispatchPolicy(settings, activity);
         var freeDiskBytes = WorkPaths.TryGetAvailableFreeSpace(_workRoot);
@@ -3298,6 +3510,9 @@ public sealed class QueueDispatcher(
         var waitingReason = decision.CanStart && _running.Count == 0
             ? await DescribeWindowWaitAsync(cancellationToken)
             : null;
+
+        var lanes = await GetWorkloadLanesAsync(settings, limits, running, decision,
+            waitingReason, cancellationToken);
 
         var pause = pauseManager.Snapshot;
         return new QueueDispatchStatus(
@@ -3316,7 +3531,83 @@ public sealed class QueueDispatcher(
             encodes.AnyHardware,
             freeDiskBytes,
             _workRoot,
-            waitingReason);
+            waitingReason,
+            lanes);
+    }
+
+    private async Task<IReadOnlyList<WorkloadLaneStatus>> GetWorkloadLanesAsync(
+        QueueSettings settings, WorkloadSlots limits, WorkloadSlots running,
+        DispatchDecision decision, string? waitingReason, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var queued = await db.Jobs.AsNoTracking()
+            .Where(job => job.Status == JobStatus.Queued)
+            .Select(job => new { job.Id, job.LibraryId, job.Type, job.EnqueuedAt,
+                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown })
+            .ToListAsync(cancellationToken);
+        var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
+        var libraries = await db.Libraries.AsNoTracking()
+            .Select(library => new { library.Id, library.WorkPlacement, library.AutoEnqueueEnabled,
+                library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+            .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var availability = await WorkerAvailability.ResolveAsync(db, settings.RemoteWorkersEnabled,
+            scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(), now, cancellationToken);
+        var remoteWorkersOn = availability.RemoteWorkersOn;
+        var scheduled = queued.Select(job => new QueuedJob(job.Id, job.LibraryId, 0,
+            job.EnqueuedAt, IgnoreLibraryWindow: job.Type == JobType.Preview,
+            Placement: job.Type == JobType.Normal && job.LibraryId is { } id
+                && libraries.TryGetValue(id, out var library) ? library.WorkPlacement : WorkPlacement.Anywhere,
+            Kind: job.Kind)).ToList();
+        var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
+            .ToDictionary(library => library.Id,
+                library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));
+        var withinWindow = JobScheduler.WithinLibraryWindows(scheduled, autoWindows,
+            TimeOnly.FromDateTime(DateTime.Now));
+        // Use the same first-runnable clock and placement policy as dispatch. Counting every
+        // PreferWorker job as local made the lane cards claim there was local work ready while the
+        // scheduler was correctly reserving it for a sidecar.
+        var local = SelectLocallyRunnable(withinWindow, _firstRunnableAt,
+            remoteWorkersOn, _ => availability.AWorkerCouldTakeWork, now);
+        var localIds = local.Select(job => job.Id).ToHashSet();
+        var workerWaiting = withinWindow.Count(job => !localIds.Contains(job.Id));
+        var videoWaiting = local.Count(job => JobScheduler.LaneFor(job.Kind) == WorkloadLane.Video)
+            + delivered.Count(job => job.Lane == WorkloadLane.Video);
+        var nonVideoWaiting = local.Count(job => JobScheduler.LaneFor(job.Kind) == WorkloadLane.NonVideo);
+        var evidenceWaiting = delivered.Count(job => job.Lane == WorkloadLane.Evidence);
+        var workers = remoteWorkersOn
+            ? await db.Workers.AsNoTracking()
+                .Where(worker => worker.RevokedAt == null && worker.DrainRequestedAt == null)
+                .Select(worker => new { worker.MaxConcurrency, worker.LastSeenAt })
+                .ToListAsync(cancellationToken)
+            : [];
+        var remoteCapacity = workers.Where(worker => WorkerLiveness.IsOnline(worker.LastSeenAt, now))
+            .Sum(worker => Math.Max(0, worker.MaxConcurrency));
+        var remoteActive = remoteWorkersOn
+            ? await db.Jobs.AsNoTracking().CountAsync(job => job.Status == JobStatus.Leased, cancellationToken)
+            : 0;
+        var finalisation = scope.ServiceProvider.GetRequiredService<ReplacementCoordinator>();
+        string? Reason(int waiting, int active, int capacity, string label) =>
+            waiting == 0 ? null : !decision.CanStart ? decision.BlockedReason
+            : capacity == 0 ? $"No extra {label} slots are configured. These jobs can use a free video slot."
+            : active >= capacity ? $"All {label} slots are busy."
+            : waitingReason ?? "Eligible jobs are being considered for the next dispatch.";
+        return
+        [
+            new("Video", running.Video, limits.Video, videoWaiting,
+                Reason(videoWaiting, running.Video, limits.Video, "video")),
+            new("NonVideo", running.NonVideo, limits.NonVideo, nonVideoWaiting,
+                Reason(nonVideoWaiting, running.NonVideo, limits.NonVideo, "non-video")),
+            new("Evidence", running.Evidence, limits.Evidence, evidenceWaiting,
+                Reason(evidenceWaiting, running.Evidence, limits.Evidence, "evidence validation")),
+            new("Finalization", finalisation.Active, ReplacementCoordinator.Capacity, finalisation.Waiting,
+                finalisation.Waiting > 0 ? "Both finalisation slots are busy; this source is waiting for a safe replacement turn." : null),
+            new("Workers", remoteActive, remoteCapacity, workerWaiting,
+                workerWaiting == 0 ? null : waitingReason ?? (remoteCapacity == 0 ? "No accepting worker is online."
+                    : remoteActive >= remoteCapacity ? "All worker slots are busy."
+                    : "Waiting for an eligible worker to claim these jobs."))
+        ];
     }
 
     private async Task<string?> DescribeWindowWaitAsync(CancellationToken cancellationToken)
@@ -3394,6 +3685,7 @@ public sealed class QueueDispatcher(
             .Where(job => job.Type == JobType.Normal
                 && (job.Status == JobStatus.Queued
                     || job.Status == JobStatus.AwaitingVerification
+                    || job.Status == JobStatus.AwaitingSizeReview
                     || job.Status == JobStatus.ReadyToReplace))
             .ToListAsync(cancellationToken);
         if (pending.Count == 0)
@@ -3712,4 +4004,7 @@ public sealed record QueueDispatchStatus(
     string WorkRoot,
     // Set when dispatch is ready but nothing starts because every queued job's library window is
     // shut (e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)"). Null otherwise.
-    string? WaitingReason);
+    string? WaitingReason,
+    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null);
+
+public sealed record WorkloadLaneStatus(string Lane, int Active, int Capacity, int Waiting, string? Reason);

@@ -6,6 +6,7 @@ public sealed class FailureClassifierTests
 {
     [Theory]
     [InlineData("Verification failed: Size saving", FailureCategory.SizeSaving)]
+    [InlineData("Compression ceiling: finished candidate was below the configured floor", FailureCategory.SizeSaving)]
     [InlineData("Verification failed: A/V sync", FailureCategory.Verification)]
     [InlineData("Could not find tag for codec none in stream #37", FailureCategory.ContainerIncompatibility)]
     [InlineData("Subtitle encoding currently only possible from text to text or bitmap to bitmap",

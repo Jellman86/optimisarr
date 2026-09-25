@@ -441,6 +441,8 @@ class Harness:
         if self.report.case("preflight", self.preflight)["status"] != "passed":
             return self.report.exit_code
         self.strict_worker_verification = strict_worker_verification
+        # Smoke deliberately exercises the server-verification protocol path; fleet defaults to
+        # strict worker evidence. Set either mode explicitly on the fresh test instance.
         self.configure(workerVerificationRequired=strict_worker_verification)
         self.report.environment["strictWorkerVerification"] = strict_worker_verification
         try:

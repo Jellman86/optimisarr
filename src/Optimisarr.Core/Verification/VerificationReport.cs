@@ -35,6 +35,15 @@ public sealed record VmafEvidence(
     string? Error,
     QualityScores? Scores);
 
+/// <summary>The probed colour tags on both files and the assignment's expected output domain.</summary>
+public sealed record ColourTags(string? Primaries, string? Transfer, string? Matrix, string? Range);
+
+public sealed record ColourEvidence(
+    ColourTags Source,
+    ColourTags Expected,
+    ColourTags Output,
+    bool ToneMapped);
+
 /// <summary>
 /// The result of evaluating every verification gate against a converted output.
 /// A report passes only when every check passes; a single failure blocks the job
@@ -43,7 +52,8 @@ public sealed record VmafEvidence(
 public sealed record VerificationReport(
     IReadOnlyList<VerificationCheck> Checks,
     VerificationContext? Context = null,
-    VmafEvidence? Vmaf = null)
+    VmafEvidence? Vmaf = null,
+    ColourEvidence? Colour = null)
 {
     public bool Passed => Checks.All(check => check.Outcome == CheckOutcome.Passed);
 }

@@ -70,6 +70,7 @@ async function mockSettings(page: Page) {
     if (path === '/api/jobs') return json(route, [])
     if (path === '/api/queue/status') return json(route, { runningJobs: 0, suspendedEncodeCount: 0 })
     if (path === '/api/settings') return json(route, settings)
+    if (path === '/api/diagnostics/capture') return json(route, null)
     if (path === '/api/settings/cleanup') return json(route, {
       retentionDays: 14, dryRunMode: true, failedOutputCount: 2, failedOutputBytes: 2_147_483_648,
       quarantinedOriginalCount: 1, quarantinedOriginalBytes: 4_294_967_296,
@@ -95,7 +96,7 @@ test('global settings use the same logical section flow as library configuration
     ['Media servers', ['Media servers']],
     ['Download managers', ['Download managers']],
     ['Notifications', ['Notifications']],
-    ['System', ['Appearance', 'Tools', 'Hardware acceleration', 'Encoders', 'Backup & restore', 'First-run setup']],
+    ['System', ['Appearance', 'Diagnostic capture', 'Tools', 'Hardware acceleration', 'Encoders', 'Backup & restore', 'First-run setup']],
   ])
 
   for (const [room, headings] of expectedRooms) {
@@ -109,9 +110,76 @@ test('global settings use the same logical section flow as library configuration
   await expect(page.getByRole('button', { name: 'Run setup again' })).toBeVisible()
 })
 
-test('strict sidecar verification is opt-in and saved with remote-worker settings', async ({ page }) => {
+test('advanced workload controls preview and save independent local capacity', async ({ page }) => {
   await mockSettings(page)
-  let current = { ...settings, remoteWorkersAvailable: true, workerVerificationRequired: false }
+  let saved: Record<string, unknown> | null = null
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() === 'PUT') {
+      saved = route.request().postDataJSON()
+      return json(route, saved)
+    }
+    return json(route, { ...settings, workloadConcurrencyMode: 'Automatic', nonVideoSlots: 0,
+      evidenceValidationSlots: 1, automaticNonVideoSlots: 1, automaticEvidenceValidationSlots: 2 })
+  })
+  await page.goto('/#/settings/encoding')
+  await page.getByText('Advanced workload lanes').click()
+  await expect(page.getByText('1 video · 1 extra audio/image · 2 evidence')).toBeVisible()
+  await page.getByLabel('Lane allocation').selectOption('Manual')
+  await page.getByLabel('Extra audio & image slots').fill('2')
+  await page.getByLabel('Evidence validation slots').fill('3')
+  await expect(page.getByText('1 video · 2 extra audio/image · 3 evidence')).toBeVisible()
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  expect(saved).toMatchObject({ workloadConcurrencyMode: 'Manual', nonVideoSlots: 2, evidenceValidationSlots: 3 })
+  await page.setViewportSize({ width: 375, height: 667 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('diagnostic capture is opt-in, can be stopped, and exports the selected job', async ({ page }) => {
+  await mockSettings(page)
+  const sessionId = '00000000-0000-4000-8000-000000000042'
+  let capture: Record<string, unknown> | null = null
+  let started: Record<string, unknown> | null = null
+  await page.route('**/api/diagnostics/capture**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/bundle')) {
+      expect(path).toContain(`/capture/${sessionId}/jobs/42/bundle`)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"manifest":{}}' })
+    }
+    if (path.endsWith('/stop')) {
+      capture = { ...capture, status: 'Stopped', stoppedAt: '2026-09-23T11:00:00Z' }
+      return json(route, capture)
+    }
+    if (route.request().method() === 'POST') {
+      started = route.request().postDataJSON()
+      capture = {
+        id: sessionId, status: 'Recording', startedAt: '2026-09-23T10:00:00Z',
+        expiresAt: '2026-09-23T11:00:00Z', stoppedAt: null,
+        scopedJobId: 42, includePaths: false, eventsStored: 0,
+        maximumEvents: 10000, eventLimitReached: false,
+      }
+      return json(route, capture, 201)
+    }
+    return json(route, capture)
+  })
+
+  await page.goto('/#/settings/system')
+  await expect(page.getByText('Enhanced diagnostics off')).toBeVisible()
+  await page.getByLabel('Capture duration').selectOption('1')
+  await page.getByLabel('Job ID (optional)').fill('42')
+  await page.getByRole('button', { name: 'Start capture' }).click()
+  await expect(page.getByText('Recording diagnostics')).toBeVisible()
+  expect(started).toEqual({ durationHours: 1, scopedJobId: 42, includePaths: false })
+
+  await page.getByRole('button', { name: 'Stop capture' }).click()
+  await expect(page.getByText('Enhanced diagnostics off')).toBeVisible()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download diagnostics' }).click()
+  expect((await download).suggestedFilename()).toContain(`optimisarr-diagnostics-42-${sessionId}`)
+})
+
+test('strict sidecar verification defaults on and an explicit opt-out is saved', async ({ page }) => {
+  await mockSettings(page)
+  let current = { ...settings, remoteWorkersAvailable: true, workerVerificationRequired: true }
   await page.route('**/api/settings', async route => {
     if (route.request().method() === 'PUT') current = route.request().postDataJSON()
     return json(route, current)
@@ -120,16 +188,16 @@ test('strict sidecar verification is opt-in and saved with remote-worker setting
   const strict = page.getByRole('checkbox', { name: 'Verify entirely on the sidecar', exact: true })
   await expect(strict).toHaveCount(0)
   await page.getByRole('checkbox', { name: 'Remote workers', exact: true }).check()
-  await expect(strict).not.toBeChecked()
-  await strict.check()
+  await expect(strict).toBeChecked()
+  await strict.uncheck()
   const saved = page.waitForResponse(response => response.url().endsWith('/api/settings')
     && response.request().method() === 'PUT')
   await page.getByRole('button', { name: /^Save/ }).click()
   await saved
-  expect(current.workerVerificationRequired).toBe(true)
+  expect(current.workerVerificationRequired).toBe(false)
   expect(current.remoteWorkersEnabled).toBe(true)
   await page.reload()
-  await expect(strict).toBeChecked()
+  await expect(strict).not.toBeChecked()
 })
 
 test('an edit survives walking to another room and back', async ({ page }) => {
@@ -231,7 +299,7 @@ test('settings and tool capability cards stay within a small mobile viewport', a
     expect(cardFit.right).toBeLessThanOrEqual(cardFit.mainRight)
   }
 
-  const refreshBox = await page.getByRole('button', { name: 'Refresh' }).boundingBox()
+  const refreshBox = await page.locator('#global-tools').getByRole('button', { name: 'Refresh' }).boundingBox()
   expect(refreshBox?.height).toBeGreaterThanOrEqual(44)
 })
 
@@ -280,6 +348,7 @@ test('information tooltips are translated, populated, and readable in every loca
     // by card position, because the card labels are translated and the order is not the point.
     for (const room of ['encoding', 'files']) {
       await page.goto(`/#/settings/${room}`)
+      if (room === 'encoding') await page.locator('.workload-details summary').click()
       const tooltips = page.locator('main [role="tooltip"]')
       expect(await tooltips.count()).toBeGreaterThan(0)
 

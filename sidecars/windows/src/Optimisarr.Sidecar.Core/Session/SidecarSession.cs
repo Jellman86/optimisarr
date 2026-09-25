@@ -52,7 +52,69 @@ public sealed class SidecarSession(
 {
     private int _paused;
     public bool IsPaused => Volatile.Read(ref _paused) != 0;
-    public void SetPaused(bool paused) => Interlocked.Exchange(ref _paused, paused ? 1 : 0);
+    public void SetPaused(bool paused)
+    {
+        if (ShutdownArmed) return;
+        Interlocked.Exchange(ref _paused, paused ? 1 : 0);
+    }
+
+    private int _shutdownArmed;
+    private readonly SemaphoreSlim _heartbeatWake = new(0, 1);
+    private int _pausedBeforeShutdown;
+    private long _drainedHeartbeatTicks;
+    private int _unacknowledgedResult;
+    private StoredPairing? _runningPairing;
+    private Capabilities.SidecarCapabilities? _runningCapabilities;
+    public bool ShutdownArmed => Volatile.Read(ref _shutdownArmed) != 0;
+    public int ActiveJobCount => Running;
+    public bool HasUnacknowledgedResult => Volatile.Read(ref _unacknowledgedResult) != 0;
+    public bool ShutdownReady => ShutdownArmed && Running == 0
+        && !HasUnacknowledgedResult
+        && Status.State == SidecarState.Connected
+        && new DateTime(Interlocked.Read(ref _drainedHeartbeatTicks), DateTimeKind.Utc) >= DateTime.UtcNow.AddSeconds(-35);
+
+    public void ArmShutdown()
+    {
+        if (Interlocked.Exchange(ref _shutdownArmed, 1) != 0) return;
+        _pausedBeforeShutdown = IsPaused ? 1 : 0;
+        Interlocked.Exchange(ref _drainedHeartbeatTicks, 0);
+        WakeHeartbeat();
+    }
+
+    public void CancelShutdown()
+    {
+        if (Interlocked.Exchange(ref _shutdownArmed, 0) == 0) return;
+        Interlocked.Exchange(ref _drainedHeartbeatTicks, 0);
+        Interlocked.Exchange(ref _paused, _pausedBeforeShutdown);
+        WakeHeartbeat();
+    }
+
+    private void WakeHeartbeat()
+    {
+        try { _heartbeatWake.Release(); }
+        catch (SemaphoreFullException) { }
+    }
+
+    /// <summary>A fresh server acknowledgement immediately before power-off, not a cached check-in.</summary>
+    public async Task<bool> ConfirmShutdownAsync(CancellationToken token)
+    {
+        var pairing = _runningPairing;
+        var capabilities = _runningCapabilities;
+        if (!ShutdownReady || pairing is null || capabilities is null) return false;
+        try
+        {
+            await client.HeartbeatAsync(pairing, capabilities with { MaxConcurrency = 0 }, load(), token);
+            Interlocked.Exchange(ref _drainedHeartbeatTicks, DateTime.UtcNow.Ticks);
+            return ShutdownArmed && Running == 0 && !HasUnacknowledgedResult;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { return false; }
+        catch (Exception error)
+        {
+            Interlocked.Exchange(ref _drainedHeartbeatTicks, 0);
+            Set(SidecarState.Unreachable, "Final shutdown check failed: " + error.Message);
+            return false;
+        }
+    }
 
     public string? ServerAddress { get; private set; }
 
@@ -98,13 +160,20 @@ public sealed class SidecarSession(
         // working, an encoder that used to open no longer does. Without this the server would keep
         // scheduling against whatever was true the day the two were introduced.
         var capabilities = await probe(cancellationToken);
+        _runningPairing = pairing;
+        _runningCapabilities = capabilities;
         var interval = TimeSpan.FromSeconds(30);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var beat = await client.HeartbeatAsync(pairing, capabilities, load(), cancellationToken);
+                var reportingDrain = ShutdownArmed;
+                var beat = await client.HeartbeatAsync(pairing,
+                    reportingDrain ? capabilities with { MaxConcurrency = 0 } : capabilities,
+                    load(), cancellationToken);
+                if (reportingDrain && ShutdownArmed)
+                    Interlocked.Exchange(ref _drainedHeartbeatTicks, DateTime.UtcNow.Ticks);
                 interval = beat.Interval;
                 Set(
                     SidecarState.Connected,
@@ -124,6 +193,7 @@ public sealed class SidecarSession(
                 while (runJob is not null
                     && !beat.Draining
                     && !IsPaused
+                    && !ShutdownArmed
                     && Running < capabilities.MaxConcurrency
                     && !cancellationToken.IsCancellationRequested)
                 {
@@ -134,9 +204,20 @@ public sealed class SidecarSession(
                     }
 
                     // A pause can arrive while the claim request is in flight.
-                    if (IsPaused)
+                    if (IsPaused || ShutdownArmed)
                     {
-                        await client.ReleaseAsync(pairing, assignment.LeaseId, cancellationToken);
+                        try
+                        {
+                            await client.ReleaseAsync(pairing, assignment.LeaseId, cancellationToken);
+                        }
+                        catch (Exception error)
+                        {
+                            // A claim can return after shutdown was armed. Until its hand-back
+                            // is acknowledged, the server may still believe we hold this lease.
+                            Interlocked.Exchange(ref _unacknowledgedResult, 1);
+                            Set(SidecarState.Faulted,
+                                $"Job {assignment.JobId}: hand-back was not acknowledged: {error.Message}");
+                        }
                         break;
                     }
                     Start(runJob, pairing, assignment, cancellationToken);
@@ -144,6 +225,7 @@ public sealed class SidecarSession(
             }
             catch (SidecarException exception) when (!exception.Recoverable)
             {
+                Interlocked.Exchange(ref _drainedHeartbeatTicks, 0);
                 // A revoked credential or a protocol the server will not speak. Beating on would be
                 // an endless run of refusals, and the stored secret is worthless either way.
                 store.Clear();
@@ -153,6 +235,7 @@ public sealed class SidecarSession(
             }
             catch (Exception exception) when (exception is SidecarException or HttpRequestException)
             {
+                Interlocked.Exchange(ref _drainedHeartbeatTicks, 0);
                 // The server is down, or restarting, or the feature is off for a moment. The
                 // credential is still believed good, so this recovers by itself.
                 Set(SidecarState.Unreachable, exception.Message);
@@ -164,6 +247,7 @@ public sealed class SidecarSession(
             }
             catch (Exception exception)
             {
+                Interlocked.Exchange(ref _drainedHeartbeatTicks, 0);
                 // Anything at all that was not foreseen. It keeps checking in rather than ending
                 // the loop, because ending it stops the whole service: the host is configured to
                 // stop when a background service throws, and nothing restarts it until a person
@@ -181,7 +265,11 @@ public sealed class SidecarSession(
 
             try
             {
-                await delay(interval, cancellationToken);
+                using var waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var timer = delay(interval, waiting.Token);
+                var wake = _heartbeatWake.WaitAsync(waiting.Token);
+                await await Task.WhenAny(timer, wake);
+                waiting.Cancel();
             }
             catch (OperationCanceledException)
             {
@@ -244,6 +332,7 @@ public sealed class SidecarSession(
                 }
                 catch (Exception exception)
                 {
+                    Interlocked.Exchange(ref _unacknowledgedResult, 1);
                     Finish($"Job {assignment.JobId}: {exception.Message}", assignment.JobId, faulted: true);
                 }
             },

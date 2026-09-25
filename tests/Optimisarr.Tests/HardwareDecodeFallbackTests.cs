@@ -50,6 +50,21 @@ public sealed class HardwareDecodeFallbackTests
         Assert.True(HardwareDecodeFallback.ShouldRetryAfterVerification(report, Floor));
     }
 
+    [Theory]
+    [InlineData("Perceptual quality (VMAF)")]
+    [InlineData("Decode health")]
+    public void A_failed_source_timeline_blocks_candidate_only_decode_retries(string candidateFailure)
+    {
+        var report = Report(lowestFrame: 0, checks:
+        [
+            ("Source video timeline", CheckOutcome.Failed),
+            (candidateFailure, CheckOutcome.Failed)
+        ]);
+
+        Assert.False(HardwareDecodeFallback.ShouldRetryAfterVerification(report, Floor));
+        Assert.Equal("Source video timeline", HardwareDecodeFallback.SourceFailureBlockingRetry(report));
+    }
+
     [Fact]
     public void A_weak_but_intact_encode_keeps_the_higher_quality_retry()
     {

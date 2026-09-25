@@ -29,34 +29,58 @@ public static class TimelineAlignmentProbe
     /// <summary>Offsets to try, in frames. Further out than one frame is a different file.</summary>
     public static IReadOnlyList<int> FramesToTry { get; } = [0, 1, -1];
 
-    public const double ProbeStartSeconds = 60;
-    public const double ProbeLeadSeconds = 1;
-    public const double ProbeSeconds = 2;
+    /// <summary>
+    /// How much of the window each offset is tried on. Five seconds is long enough to hold motion
+    /// or a cut, which is what tells a frame of misalignment apart; two seconds of a static shot
+    /// scored every offset alike and let noise choose.
+    /// </summary>
+    public const double ProbeSeconds = 5;
 
-    /// <summary>The arguments for one candidate offset's probe.</summary>
-    public static IReadOnlyList<string> Arguments(
-        string reference, string distorted, double shiftSeconds, string logPath)
+    /// <summary>
+    /// How much better than the unshifted timeline another offset must score to be chosen. A frame
+    /// of real misalignment costs tens of points; anything closer is the scene, not the timeline.
+    /// </summary>
+    public const double ChoiceMarginPoints = 2;
+
+    /// <summary>
+    /// The measurement itself, stopped after <paramref name="seconds"/> of output.
+    ///
+    /// <para>The probe must be the measurement's own graph. An earlier probe built its own — no
+    /// cadence grid, no lead correction, a different seek — and its best offset was one frame wrong
+    /// for the measurement that followed: a clean encode scoring 95 unshifted was failed at 9.</para>
+    /// </summary>
+    public static IReadOnlyList<string> Truncate(IReadOnlyList<string> measurement, double seconds)
     {
-        var lead = ProbeLeadSeconds.ToString("G", CultureInfo.InvariantCulture);
-        var length = ProbeSeconds.ToString("G", CultureInfo.InvariantCulture);
-        var start = ProbeStartSeconds.ToString("G", CultureInfo.InvariantCulture);
-        var offset = (shiftSeconds * 1_000_000).ToString("F6", CultureInfo.InvariantCulture);
-        var graph =
-            $"[0:v]settb=AVTB,setpts=PTS-{offset},trim=start={lead}:duration={length},"
-            + "settb=AVTB,setpts=PTS-STARTPTS,scale=320:240:flags=bilinear,format=yuv420p[dist];"
-            + $"[1:v]settb=AVTB,trim=start={lead}:duration={length},"
-            + "settb=AVTB,setpts=PTS-STARTPTS,scale=320:240:flags=bilinear,format=yuv420p[ref];"
-            + "[dist][ref]libvmaf=n_threads=4:n_subsample=1:"
-            + $"log_fmt=json:log_path={EscapeForFilterOption(logPath)}:shortest=1:repeatlast=0";
+        var length = seconds.ToString("G", CultureInfo.InvariantCulture);
+        var arguments = measurement.ToList();
+        var limit = arguments.LastIndexOf("-t");
+        if (limit >= 0 && limit + 1 < arguments.Count)
+        {
+            arguments[limit + 1] = length;
+            return arguments;
+        }
 
-        return
-        [
-            "-nostdin", "-v", "error",
-            "-ss", start, "-i", distorted,
-            "-ss", start, "-i", reference,
-            "-lavfi", graph,
-            "-t", length, "-f", "null", "-",
-        ];
+        var output = arguments.LastIndexOf("-f");
+        arguments.InsertRange(output >= 0 ? output : arguments.Count, ["-t", length]);
+        return arguments;
+    }
+
+    /// <summary>
+    /// The offset, in frames, whose probe matched best, or null when none could be scored. The
+    /// unshifted timeline keeps the window unless another offset beats it clearly.
+    /// </summary>
+    public static int? Choose(IReadOnlyList<(int Frames, double Mean)> scored)
+    {
+        if (scored.Count == 0)
+        {
+            return null;
+        }
+
+        var best = scored.MaxBy(entry => entry.Mean);
+        return best.Frames != 0
+            && scored.Any(entry => entry.Frames == 0 && best.Mean - entry.Mean < ChoiceMarginPoints)
+                ? 0
+                : best.Frames;
     }
 
     /// <summary>
@@ -104,9 +128,4 @@ public static class TimelineAlignmentProbe
     public static double? FrameSeconds(double? framesPerSecond) =>
         framesPerSecond is > 0 ? 1 / framesPerSecond.Value : null;
 
-    // A colon inside a filter option ends the option, so one in a path has to survive both the
-    // filtergraph parser and the option parser, which unescape it once each.
-    private static string EscapeForFilterOption(string path) =>
-        path.Replace("\\", "/", StringComparison.Ordinal)
-            .Replace(":", @"\\:", StringComparison.Ordinal);
 }

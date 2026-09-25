@@ -125,7 +125,7 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
 
   // The hero leads with the remote encode and names the machine.
   await expect(page.getByText('Now encoding on Mac Studio', { exact: true })).toBeVisible()
-  await expect(page.getByText('Returned from MacBook Air', { exact: true })).toBeVisible()
+  await expect(page.getByText('Waiting for container verdict · MacBook Air', { exact: true })).toBeVisible()
 
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working).toContainText('encoding on Mac Studio')
@@ -133,6 +133,73 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
   const rows = page.locator('tbody tr')
   await expect(rows.filter({ hasText: 'Chicago Fire' })).toHaveCount(0)
   await expect(rows.filter({ hasText: 'Severance' })).toContainText('waiting for a worker')
+})
+
+test('a software-decode retry shows its current worker and keeps the rejected Mac checks in history', async ({ page }) => {
+  const previous = {
+    number: 1, workerName: 'MacBook Air', videoEncoder: 'hevc_videotoolbox',
+    hardwareDecoder: 'videotoolbox', startedAt: '2026-09-20T22:08:00Z', endedAt: '2026-09-20T22:20:00Z',
+    verificationPassed: false, verificationReportJson: JSON.stringify({ checks: [{ name: 'Decode health', outcome: 'Failed', detail: 'Frame mismatch.' }] }),
+    verifiedAt: '2026-09-20T22:20:00Z', outputSizeBytes: 1234, outcome: 'Rejected', reason: 'HardwareDecodeCorruption',
+  }
+  const retried = {
+    ...job(8, 'AwaitingVerification', null), relativePath: 'Mad Men S02E06.mkv',
+    workerName: 'PICARD', videoEncoder: 'hevc_nvenc', executionAttempt: 2,
+    retryReason: 'SoftwareDecode', attemptHistoryJson: JSON.stringify([previous]),
+    outputSizeBytes: null, verifiedAt: null,
+  }
+  await mockWorkingQueue(page, { jobs: [retried] })
+  await page.goto('/#/queue')
+  const working = page.getByRole('region', { name: 'Working now' })
+  await expect(working).toContainText('Waiting for container verdict · PICARD')
+  await expect(working).toContainText('Retrying with software decode')
+  await working.getByRole('button', { name: 'View job' }).click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details).toContainText('Attempt 2')
+  await expect(details).toContainText('hevc_nvenc')
+  await expect(details).toContainText('The candidate from MacBook Air (hevc_videotoolbox) failed verification')
+  const attempts = details.getByRole('list', { name: 'Attempts' })
+  await expect(attempts).toContainText('Attempt 2 · Current attempt')
+  await expect(attempts).toContainText('Attempt 1 · Rejected candidate')
+  await expect(attempts).toContainText('Hardware decode corruption')
+  await expect(attempts).toContainText('PICARD · hevc_nvenc')
+  await expect(attempts).toContainText('MacBook Air · hevc_videotoolbox')
+  await expect(details.getByText('Frame mismatch.')).toBeHidden()
+  await attempts.getByText('Verification checks').click()
+  await expect(details.getByText('Frame mismatch.')).toBeVisible()
+})
+
+test('job detail downloads only a matching opt-in diagnostic capture', async ({ page }) => {
+  await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false), job(9, 'Failed', false)] })
+  let releaseLookup!: () => void
+  const lookup = new Promise<void>(resolve => { releaseLookup = resolve })
+  await page.route('**/api/diagnostics/capture', async route => {
+    await lookup
+    return json(route, {
+      id: 'capture-1', status: 'Recording', scopedJobId: 8, startedAt: '2026-09-20T22:00:00Z',
+      expiresAt: null, stoppedAt: null, includePaths: false, eventsStored: 4, maximumEvents: 10_000,
+      eventLimitReached: false,
+    })
+  })
+  await page.route('**/api/diagnostics/capture/capture-1/jobs/8/bundle', route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"jobId":8}' }))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const otherDetails = page.getByRole('dialog', { name: /Job details/ })
+  await expect(otherDetails.locator('.queue-diagnostic-action').getByRole('status')).toContainText('Loading…')
+  await expect(otherDetails.getByRole('button', { name: 'Open diagnostic settings' })).toHaveCount(0)
+  releaseLookup()
+  await expect(otherDetails.getByRole('button', { name: 'Download diagnostics' })).toHaveCount(0)
+  await otherDetails.getByRole('button', { name: 'Open diagnostic settings' }).click()
+  await expect(page).toHaveURL(/#\/settings\/system$/)
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-8').click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  const downloadButton = details.getByRole('button', { name: 'Download diagnostics' })
+  await expect(downloadButton).toBeVisible()
+  const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()])
+  expect(download.suggestedFilename()).toBe('optimisarr-diagnostics-8-capture-1.json')
 })
 
 const clearQueue = {
@@ -157,6 +224,44 @@ async function mockWorkingQueue(page: Page, fixture: { jobs: ReturnType<typeof j
     return route.fulfill({ status: 404, body: '{}' })
   })
 }
+
+test('a size preflight hold explains the estimate and requeues only after confirmation', async ({ page }) => {
+  let held = { ...job(19, 'AwaitingSizeReview', null), progress: 0,
+    errorMessage: 'Three video-only quality samples project video data at about 150% of the source file.' }
+  let approvals = 0
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { completed: true, completedStep: 5, stepCount: 5 })
+    if (path === '/api/jobs') return json(route, [held])
+    if (path === '/api/queue/status') return json(route, { ...clearQueue, runningJobs: 0 })
+    if (path === '/api/jobs/19/approve-size-preflight' && route.request().method() === 'POST') {
+      approvals += 1
+      held = { ...held, status: 'Queued', errorMessage: null }
+      return json(route, { id: 19, status: 'Queued' })
+    }
+    return route.fulfill({ status: 404, body: '{}' })
+  })
+  page.on('dialog', async dialog => {
+    expect(dialog.message()).toContain('Final size and quality gates still apply')
+    await dialog.accept()
+  })
+
+  await page.goto('/#/queue')
+  await page.locator('.queue-review-alert').click()
+  await page.locator('#queue-job-19').click()
+  await expect(page.locator('#queue-job-dialog').getByText('Full encode paused for size review')).toBeVisible()
+  await expect(page.getByText(/project video data at about 150%/)).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const dialogBox = await page.locator('#queue-job-dialog').boundingBox()
+  expect(dialogBox).not.toBeNull()
+  expect(dialogBox!.x).toBeGreaterThanOrEqual(0)
+  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(390)
+  await expect(page.getByRole('button', { name: 'Encode anyway' })).toBeVisible()
+  await page.getByRole('button', { name: 'Encode anyway' }).click()
+  await expect(page.getByText('Review size')).toHaveCount(0)
+  expect(approvals).toBe(1)
+})
 
 test('Now and next keeps working jobs separate and opens a keyboard-accessible job dialog', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [{ ...job(1, 'Transcoding', null), progress: .9999 }, job(2, 'Queued', null)] })
@@ -204,6 +309,50 @@ test('pausing local work leaves remote work and verification described accuratel
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Resume queue', exact: true }).click()
   await expect(working.getByText('Now encoding', { exact: true })).toBeVisible()
+})
+
+test('strict evidence and legacy media verification show distinct phases beside lane capacity', async ({ page }) => {
+  const strict = { ...job(10, 'Verifying', null), workerName: 'PICARD', sidecarVerification: true, progress: .3 }
+  const legacy = { ...job(11, 'Verifying', null), workerName: 'MacBook Air', sidecarVerification: false, progress: .4 }
+  await mockWorkingQueue(page, { jobs: [strict, legacy], queue: { workloadLanes: [
+    { lane: 'Video', active: 1, capacity: 1, waiting: 2, reason: 'All video slots are busy.' },
+    { lane: 'NonVideo', active: 0, capacity: 1, waiting: 1, reason: 'Checking library windows.' },
+    { lane: 'Evidence', active: 1, capacity: 2, waiting: 0, reason: null },
+    { lane: 'Finalization', active: 2, capacity: 2, waiting: 1, reason: 'Both finalisation slots are busy.' },
+    { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
+  ] } })
+  await page.goto('/#/queue')
+  const lanes = page.getByRole('region', { name: 'Execution lanes' })
+  await expect(lanes).toContainText('Video on container')
+  await expect(lanes).toContainText('Audio & images')
+  await expect(lanes).toContainText('All video slots are busy.')
+  await expect(lanes).toContainText('Safe replacement')
+  await expect(lanes).toContainText('Both finalisation slots are busy.')
+  const working = page.getByRole('region', { name: 'Working now' })
+  await expect(working).toContainText('Validating sidecar evidence')
+  await expect(working).toContainText('The container is not repeating FFmpeg media checks.')
+  await expect(working).toContainText('The container is verifying the media returned by MacBook Air.')
+  await working.getByRole('button', { name: 'View job' }).first().click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details).toContainText('Validating sidecar evidence')
+  await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('PICARD')
+  await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('This server')
+  await details.getByRole('button', { name: 'Close details' }).click()
+  await page.setViewportSize({ width: 375, height: 667 })
+  await expect(lanes).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('safe replacement remains visible as work and cannot be started twice', async ({ page }) => {
+  await mockWorkingQueue(page, { jobs: [{ ...job(12, 'ReadyToReplace', true), finalizing: true }] })
+  await page.goto('/#/queue')
+  const working = page.getByRole('region', { name: 'Working now' })
+  await expect(working).toContainText('Finalising replacement')
+  await expect(working).toContainText('The original is kept for rollback.')
+  await working.getByRole('button', { name: 'View job' }).click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details.locator('header .badge')).toHaveText('Finalising replacement')
+  await expect(details.getByRole('button', { name: 'Replace original' })).toHaveCount(0)
 })
 
 test('empty history filters retain controls and explain that work is still running', async ({ page }) => {

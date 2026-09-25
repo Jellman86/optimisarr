@@ -932,6 +932,46 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-0:t", args);
     }
 
+    [Theory]
+    [InlineData("/work/Movie.opt.mkv")]
+    [InlineData("/work/Movie.opt.mp4")]
+    public void Av1_nvenc_excludes_attached_pictures_without_dropping_the_primary_video(string outputPath)
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: "av1") with { OutputPath = outputPath }, videoEncoder: "av1_nvenc");
+
+        Assert.Contains(("-map", "0"), MapPairs(args));
+        Assert.Contains(("-map", "-0:v:disp:attached_pic"), MapPairs(args));
+        Assert.Equal("av1_nvenc", args[IndexOf(args, "-c:v:0") + 1]);
+        Assert.True(IndexOf(args, "0") < ((List<string>)args).IndexOf("-0:v:disp:attached_pic"));
+    }
+
+    [Fact]
+    public void A_video_remux_keeps_attached_pictures_in_matroska()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null));
+
+        Assert.DoesNotContain(("-map", "-0:v:disp:attached_pic"), MapPairs(args));
+    }
+
+    [Fact]
+    public void Av1_nvenc_does_not_pass_through_timestamps_for_a_constant_frame_rate_source()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "av1"), videoEncoder: "av1_nvenc");
+
+        Assert.DoesNotContain("-fps_mode", args);
+    }
+
+    [Fact]
+    public void Av1_nvenc_preserves_a_known_variable_frame_rate_source()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: "av1") with { SourceIsVariableFrameRate = true }, videoEncoder: "av1_nvenc");
+
+        Assert.Equal("passthrough", args[IndexOf(args, "-fps_mode") + 1]);
+        Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
+    }
+
     [Fact]
     public void Regenerates_timestamps_for_a_video_job_before_the_input()
     {

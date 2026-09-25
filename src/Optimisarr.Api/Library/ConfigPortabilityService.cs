@@ -219,6 +219,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 ?? legacyVerificationPolicy.RequireSubtitlesRetained;
             library.RequireSizeReduction = snapshot.RequireSizeReduction
                 ?? legacyVerificationPolicy.RequireSizeReduction;
+            library.MinimumSizeSavingPercent = snapshot.MinimumSizeSavingPercent;
+            library.MaximumSizeSavingPercent = snapshot.MaximumSizeSavingPercent;
             library.AudioLoudnessGateEnabled = snapshot.AudioLoudnessGateEnabled
                 ?? legacyVerificationPolicy.AudioLoudnessGateEnabled;
             library.MaxLoudnessDriftLufs = snapshot.MaxLoudnessDriftLufs
@@ -547,7 +549,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.VideoDownscaleHeight,
         library.CropBlackBars,
         library.MaxFrameRate,
-        library.WorkPlacement.ToString());
+        library.WorkPlacement.ToString(),
+        library.MinimumSizeSavingPercent,
+        library.MaximumSizeSavingPercent);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

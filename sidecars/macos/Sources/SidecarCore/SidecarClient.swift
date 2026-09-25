@@ -383,7 +383,7 @@ public struct SidecarClient: Sendable {
     /// scores, and says what it saw.
     public func reportAdaptiveProbe(
         serverAddress: String, credential: String, leaseId: String,
-        quality: Int, encodedBytes: Int64, logs: [String]
+        quality: Int, windowEncodedBytes: [Int64], logs: [String]
     ) async throws -> AdaptiveSearchDirection {
         var request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/quality-probe",
@@ -391,7 +391,10 @@ public struct SidecarClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "quality": quality,
-            "encodedBytes": encodedBytes,
+            // The total is what every server reads; the split is what lets a newer one say which
+            // scenes grew. A server that predates the split ignores it.
+            "encodedBytes": windowEncodedBytes.reduce(0, +),
+            "windowEncodedBytes": windowEncodedBytes,
             "logs": logs,
         ])
 
@@ -456,6 +459,28 @@ public struct SidecarClient: Sendable {
     public func release(serverAddress: String, credential: String, leaseId: String) async throws {
         let request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/release", credential: credential, method: "POST")
+        let (data, response) = try await perform(request)
+        try Self.checkLease(response.statusCode, data)
+    }
+
+    public func reportSizeBudgetExceeded(
+        serverAddress: String, credential: String, leaseId: String, observedBytes: Int64
+    ) async throws {
+        var request = try authorised(serverAddress,
+            "/api/workers/leases/\(leaseId)/size-budget-exceeded", credential: credential, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["observedBytes": observedBytes])
+        let (data, response) = try await perform(request)
+        try Self.checkLease(response.statusCode, data)
+    }
+
+    public func reportSizeBudgetUndershot(
+        serverAddress: String, credential: String, leaseId: String, observedBytes: Int64
+    ) async throws {
+        var request = try authorised(serverAddress,
+            "/api/workers/leases/\(leaseId)/size-budget-undershot", credential: credential, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["observedBytes": observedBytes])
         let (data, response) = try await perform(request)
         try Self.checkLease(response.statusCode, data)
     }

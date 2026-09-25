@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.2.15 — 2026-09-25
+
+### Changed
+
+- **The optional Stellar cube icon is now a deep field.** Its three photographic faces are replaced by a generated sky modelled on the Hubble Deep Field: spiral, elliptical, edge-on and irregular galaxies drift past with parallax, over nebula and dust, with temperature-coloured stars. At rest the sky drifts slowly. While work runs, the stars stream into the front corner and a comet traces the outline, then everything settles back to the exact resting frame. The cube now fills its frame, is lit from above with three distinct planes, and picks out its edges in the interface's cyan. The rail and favicons use a simpler drawing with a bold front-corner star that still reads in a 16 px tab. The icon no longer downloads about 380 KB of textures. Settings → System → Appearance keeps an existing Stellar choice, and Precession remains the default.
+
+### Fixed
+
+- Quality-search samples measured on Mac and Windows sidecars no longer score frames at 0. Worker sample measurements were planned without the source's frame rate, so VMAF compared some frames with the frame before them; clean samples on VideoToolbox, NVENC and libx265 alike showed zeros on every scene cut, and searches fell back to the library quality having learned nothing. Samples now use the source's frame rate, and a clip with no known rate is compared frame by frame (#269).
+- Final VMAF no longer fails good encodes with near-zero scores. Before each measured window, the server and both sidecars choose a one-frame timing correction; that choice was made with a separate two-second comparison that did not match the real measurement, so it often picked a correction that put the frames one apart. A clean libx265 encode scoring 94–96 was being failed at 21.5. The choice is now made by running the real measurement itself for five seconds at each offset, and the unshifted timing is kept unless another offset is clearly better (#269).
+- A delivered worker candidate is verified against the policy frozen when it was claimed, so editing library verification settings while it encodes cannot silently change the result.
+- Local, Mac and Windows encodes also check the finished file against their frozen size budget, catching final mux bytes that arrive after the last in-flight poll before quality measurement or upload.
+- An implausibly tiny source packet scan is reported as indeterminate when the source video stream's duration agrees with primary audio, even if a failed candidate has no usable output timeline. The original remains protected without falsely diagnosing it as corrupt.
+- Full video encodes with a required size reduction stop once their candidate exceeds the source-size budget. Sidecars report this as a terminal size-saving failure, so another worker cannot repeat the doomed encode; the original remains untouched.
+- Container and sidecar verification confirm a source picture packet scan once when it ends materially before primary audio, including moderate shortfalls, before attributing a failed timeline to the original.
+
+### Added
+
+- Adaptive VMAF quality samples now forecast the finished file's size before the full encode and hold a predicted size-gate miss for review. Each sample is compared with the source's own video bytes over the same scenes, so busy or quiet sampled minutes no longer skew the estimate, and copied audio and subtitles are counted. A sample that misses the VMAF target and still does not fit ends the search at once, because any quality that passes would be larger. Queue explains the estimate, including how each sampled scene compared, and offers an explicit "Encode anyway" action; approval reruns quality selection on the assigned encoder while final size and quality gates remain intact. This applies to container searches and to Mac and Windows sidecars, which now report bytes for each sample window; older sidecars still get a forecast from their total. Approving a job a worker's samples held no longer counts as that worker handing it back, so the job is offered again at once instead of after the ten-minute handback pause.
+- An optional per-library maximum allowed saving for video re-encodes. At 65%, a finished candidate below 35% of the source size fails before final full-file VMAF verification on the container or updated sidecars. The original is retained; blank leaves compression unrestricted. Minimum and maximum targets cannot conflict.
+- An optional per-library minimum useful saving for video re-encodes. A 10% target rejects outputs above 90% of the source size; the same frozen limit stops container and sidecar encodes early. Blank keeps the existing any-reduction rule, and compatibility work with size reduction disabled is unaffected.
+- Queue job details now show the active and rejected worker attempts as a clear timeline, with each prior verification report one click away. A job with a matching opt-in diagnostic capture can download its bundle directly from the detail view.
+- Mac and Windows sidecar tray controls can drain new assignments, finish held work and server acknowledgement, then shut down the host after a visible, cancelable 60-second countdown. Disconnects and unconfirmed lease results block shutdown; the request is not restored after a restart.
+- Independent, bounded queue lanes for media jobs, lightweight jobs, strict sidecar evidence checks, and safe replacement. Equal-priority libraries take turns, while Queue shows each lane's capacity, backlog, and wait reason; Settings → Advanced offers automatic or manual limits with an effective-capacity preview. Schedule now explains dispatch gates and each library's window in the same card layout as Libraries.
+- Windows Compact Monitor now shows a bounded frame from each active job's locally downloaded source, sampled only while the activity panel is open. Its fallback stays stable for unsupported or audio-only media, and per-job previews clear on completion or disconnect.
+- Opt-in diagnostic capture in Settings → System records bounded, structured job transitions and exports a secret-filtered job bundle with attempt, lease and verification summaries. Captures expire or can be stopped; ended evidence is cleaned up after 7 days, or 30 days when it contains a failure.
+- Repeatable Playwright UI layout audit across every main page and nested control room, seven viewport/text-size profiles, all nine locales on narrow screens, modal sizing, and card hover/focus behavior, with an optional WebKit pass for Safari rendering.
+
+### Fixed
+
+- Source and candidate packet-timeline scans now read ffprobe output incrementally, avoiding full packet-output buffering on long videos while preserving timestamp and truncated-tail checks.
+- Mac and Windows sidecars now animate the Precession cube's internal slices and reactive light when working, using compact antialiased frames from the application's renderer; the tray settles into the exact static mark, respects reduced motion, and stops its timer when idle.
+- Verification bounds full-decode errors and decoder threads, stops stalled decode/VMAF processes, and skips repeated full-file measurements once a local candidate fails decode health. Corrupt AV1 outputs remain failed with the original intact instead of driving prolonged verification I/O. The server's VMAF log path is escaped correctly on Windows.
+- Verification retries an implausibly short source packet scan once and, if it remains inconsistent with both audio and encoded-video spans, reports the source timeline as indeterminate and retains the original. Server and sidecar timestamp/frame-rate probes select moving video rather than attached artwork. Server, Mac and Windows quality measurements now align each VMAF sample against its own pictures, preventing a shift chosen near the start of a file from corrupting later quality scores.
+- Media-server and notification switches now span their Settings cards, advanced library quality controls wrap on small screens, and Dashboard metrics, worker details and the Personal quality check reflow when enlarged text reduces available space. The sidebar language menu stays hidden until it is correctly positioned.
+- Complete sidecar verification now defaults on for fresh settings stores; upgrades retain the prior worker-verification choice, and fleet acceptance exercises the strict mode by default.
+- Remote verification now uses each worker assignment's frozen colour-conversion plan, preserving SD SMPTE 170M output and reporting source, expected, and output colour tags including range.
+- A failed source video timeline now blocks software-decode and higher-quality retries that cannot repair the unchanged original, with the exact gate named in the job failure reason.
+- Remote software-decode retries now clear the rejected candidate's active verification and encoder details in one transition, preserve its checks as attempt history, and show the retry reason and worker handoff in Queue.
+- AV1 NVENC video re-encodes omit attached-picture streams that can corrupt the primary AV1 output, and use FFmpeg's default timestamps for constant-rate sources to avoid duplicate DTS values.
+
 ## 0.2.14 — 2026-09-19
 
 ### Added

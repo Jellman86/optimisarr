@@ -88,6 +88,8 @@ public static class Program
             null, LogLevel.Information);
 
         builder.Services.AddSingleton<WorkerMonitor>();
+        builder.Services.AddSingleton<HostShutdown>();
+        builder.Services.AddHostedService(services => services.GetRequiredService<HostShutdown>());
         builder.Services.AddHostedService<MonitorServer>();
         builder.Services.AddSingleton(services =>
         {
@@ -313,7 +315,9 @@ public static class Program
             scratch,
             loadSampler.Sample,
             reportJob,
-            observe: monitor is null ? null : monitor.Observe);
+            observe: monitor is null ? null : monitor.Observe,
+            wantsPreview: monitor is null ? null : () => monitor.WantsPreviews,
+            publishPreview: monitor is null ? null : (jobId, jpeg) => monitor.PublishPreview(jobId, jpeg));
 
         return new SidecarSession(
             client,

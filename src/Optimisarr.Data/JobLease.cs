@@ -53,6 +53,21 @@ public sealed class JobLease
     /// </summary>
     public string? OutputExtension { get; set; }
 
+    /// <summary>
+    /// Frozen maximum candidate size for this attempt. Null means the size-saving gate is off;
+    /// older workers may ignore it, but a reporting worker cannot invent a different limit.
+    /// </summary>
+    public long? MaxCandidateBytes { get; set; }
+
+    /// <summary>Frozen minimum final size for an optional maximum-compression gate.</summary>
+    public long? MinCandidateBytes { get; set; }
+
+    /// <summary>The partial candidate size observed when the frozen budget stopped this lease.</summary>
+    public long? SizeBudgetExceededAtBytes { get; set; }
+
+    /// <summary>The completed candidate size when it undershot the compression floor.</summary>
+    public long? SizeBudgetUndershotAtBytes { get; set; }
+
     /// <summary>Where the worker says it is, from its latest renewal. Null until it reports.</summary>
     public RemoteStage? Stage { get; set; }
 
@@ -96,6 +111,12 @@ public sealed class JobLease
     /// search brackets and every later candidate derives from this one.
     /// </summary>
     public int? AdaptiveAskedQuality { get; set; }
+
+    /// <summary>
+    /// Set when the control plane, not the worker, ended the lease. Such a release is not a
+    /// handback, so it neither pauses the job for this worker nor counts towards barring it.
+    /// </summary>
+    public LeaseEndReason? EndReason { get; set; }
 
     /// <summary>The source hash the worker says it measured against.</summary>
     public string? QualitySourceSha256 { get; set; }

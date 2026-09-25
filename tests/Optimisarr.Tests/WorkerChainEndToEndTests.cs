@@ -85,6 +85,9 @@ public sealed class WorkerChainEndToEndTests : IAsyncLifetime
         }
 
         payload["remoteWorkersEnabled"] = true;
+        // This fixture pairs protocol-1 workers. Do not depend on another test changing the
+        // fresh-install sidecar-only default in the shared host before this class runs.
+        payload["workerVerificationRequired"] = false;
         (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
     }
 
@@ -197,6 +200,48 @@ public sealed class WorkerChainEndToEndTests : IAsyncLifetime
         request.Headers.Add("X-Optimisarr-Source-Sha256", sourceHash);
         request.Headers.Add("X-Optimisarr-Candidate-Sha256", candidateHash);
         return await worker.SendAsync(request);
+    }
+
+    [Fact]
+    public async Task A_worker_claim_freezes_the_library_saving_target_with_its_verification_plan()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Chain-saving-target");
+        var jobId = await QueueAJob();
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var libraryId = await db.Jobs.Where(job => job.Id == jobId)
+                .Select(job => job.LibraryId).SingleAsync();
+            var library = await db.Libraries.SingleAsync(row => row.Id == libraryId);
+            library.MinimumSizeSavingPercent = 10;
+            library.MaximumSizeSavingPercent = 65;
+            await db.SaveChangesAsync();
+        }
+
+        var (leaseId, _, assignment) = await ClaimAndFetch(worker);
+        Assert.Equal(7372, assignment.GetProperty("maxCandidateBytes").GetInt64());
+        Assert.Equal(2868, assignment.GetProperty("minCandidateBytes").GetInt64());
+
+        using var changedScope = _api.Services.CreateScope();
+        var changedDb = changedScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var changedLibraryId = await changedDb.Jobs.Where(job => job.Id == jobId)
+            .Select(job => job.LibraryId).SingleAsync();
+        var changedLibrary = await changedDb.Libraries.SingleAsync(row => row.Id == changedLibraryId);
+        changedLibrary.MinimumSizeSavingPercent = 20;
+        changedLibrary.MaximumSizeSavingPercent = 50;
+        await changedDb.SaveChangesAsync();
+
+        var lease = await changedDb.JobLeases.AsNoTracking()
+            .SingleAsync(row => row.Id == Guid.Parse(leaseId));
+        using var frozen = JsonDocument.Parse(lease.VerificationWorkJson!);
+        Assert.Equal(10, frozen.RootElement.GetProperty("verificationPolicy")
+            .GetProperty("minimumSizeSavingPercent").GetDouble());
+        Assert.Equal(65, frozen.RootElement.GetProperty("verificationPolicy")
+            .GetProperty("maximumSizeSavingPercent").GetDouble());
+        Assert.Equal(7372, lease.MaxCandidateBytes);
+        Assert.Equal(2868, lease.MinCandidateBytes);
     }
 
     [Fact]

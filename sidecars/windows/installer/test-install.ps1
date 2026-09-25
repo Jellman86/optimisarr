@@ -24,6 +24,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Bundled runtime failed' }
     & (Join-Path $directory 'runtime\dotnet.exe') (Join-Path $directory 'Optimisarr.Sidecar.Tray.dll') --render-monitor (Join-Path $logRoot 'ui')
     if ($LASTEXITCODE -ne 0) { throw 'Installed native UI failed' }
+    foreach ($state in @('encoding', 'light-encoding', 'preview-fallback', 'two-jobs', 'light-two-jobs')) {
+        $image = Join-Path $logRoot "ui\$state.png"
+        if (!(Test-Path $image) -or (Get-Item $image).Length -lt 1000) { throw "Installed preview fixture missing: $state" }
+    }
     & (Join-Path $directory 'runtime\dotnet.exe') (Join-Path $directory 'Optimisarr.Sidecar.Tray.dll') --verify-popover
     if ($LASTEXITCODE -ne 0) { throw 'Installed popover lost its anchor' }
     # This is a test sentinel, never a real credential. The initial guard proves this directory is ours.

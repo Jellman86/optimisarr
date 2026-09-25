@@ -260,6 +260,15 @@ public static class FfmpegCommandBuilder
             args.Add("-0:d");
         }
 
+        if (!spec.VideoOnly && encoder == "av1_nvenc")
+        {
+            // Attached pictures are additional video streams. Copying one beside an AV1 NVENC
+            // encode has produced an output whose primary AV1 stream libdav1d cannot parse.
+            // Keep the real video and other mapped tracks, but drop only disposition-marked art.
+            args.Add("-map");
+            args.Add("-0:v:disp:attached_pic");
+        }
+
         // The tracks a kept-languages rule removes. The selection already guarantees at least
         // one audio track survives, and the verification gate re-checks the output against the
         // planned removal — this only translates the decided indexes into stream exclusions.
@@ -397,8 +406,13 @@ public static class FfmpegCommandBuilder
         //
         // A frame-rate target replaces the source cadence with a regular one through the fps
         // filter; asking the encoder to also preserve the original timing would contradict it.
-        if (encoder is not null && spec.TargetFrameRate is null)
+        if (encoder is not null && spec.TargetFrameRate is null
+            && (encoder != "av1_nvenc" || spec.SourceIsVariableFrameRate))
         {
+            // AV1 NVENC has emitted duplicate DTS for constant-rate H.264 with passthrough.
+            // Its default timestamp handling produced monotonic packets on that source. Keep
+            // passthrough for identified VFR sources and for other encoders, where dropping
+            // colliding frames has previously caused a real picture/quality regression.
             args.Add("-fps_mode");
             args.Add("passthrough");
 

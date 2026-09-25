@@ -9,6 +9,8 @@ using System.Text.Json;
 
 namespace Optimisarr.Api.Library;
 
+public enum WorkloadConcurrencyMode { Automatic, Manual }
+
 public sealed record QueueSettings(
     int MaxConcurrentJobs,
     long MinFreeDiskBytes,
@@ -22,7 +24,17 @@ public sealed record QueueSettings(
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays,
     bool RemoteWorkersEnabled = false,
-    bool WorkerVerificationRequired = false);
+    bool WorkerVerificationRequired = true,
+    WorkloadConcurrencyMode WorkloadConcurrencyMode = WorkloadConcurrencyMode.Automatic,
+    int NonVideoSlots = 0,
+    int EvidenceValidationSlots = 2)
+{
+    public WorkloadSlots EffectiveWorkloadSlots(int processors, long availableMemoryBytes) =>
+        WorkloadConcurrencyMode == WorkloadConcurrencyMode.Automatic
+            ? WorkloadSlots.Automatic(MaxConcurrentJobs, processors, availableMemoryBytes)
+            : new WorkloadSlots(Math.Max(1, MaxConcurrentJobs), Math.Clamp(NonVideoSlots, 0, 4),
+                Math.Clamp(EvidenceValidationSlots, 1, 4));
+}
 
 /// <summary>Reads and writes well-known application settings in the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? remoteWorkers = null)
@@ -68,6 +80,9 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
     public static readonly IReadOnlySet<string> PortableSettingKeys = new HashSet<string>
     {
         SettingKeys.MaxConcurrentJobs,
+        SettingKeys.WorkloadConcurrencyMode,
+        SettingKeys.NonVideoSlots,
+        SettingKeys.EvidenceValidationSlots,
         SettingKeys.MinFreeDiskBytes,
         SettingKeys.CpuThreadLimit,
         SettingKeys.LibraryScanIntervalHours,
@@ -121,17 +136,28 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             .FirstOrDefaultAsync(candidate => candidate.Key == SettingKeys.SetupState, cancellationToken);
         var existing = ParseSetupState(setting?.Value);
         var state = SetupState.Initialise(existing, databaseExistedBeforeStartup);
+        var initialValues = new Dictionary<string, string>();
         if (existing is null)
         {
-            var initialValues = new Dictionary<string, string>
-            {
-                [SettingKeys.SetupState] = JsonSerializer.Serialize(state)
-            };
+            initialValues[SettingKeys.SetupState] = JsonSerializer.Serialize(state);
             if (!databaseExistedBeforeStartup)
             {
                 initialValues[SettingKeys.DryRunMode] = bool.TrueString;
             }
+        }
 
+        // The old implicit value was false. An upgraded database may have no saved key at all,
+        // so materialise that old choice before the new true fallback can take effect.
+        if (!await db.AppSettings.AnyAsync(
+                candidate => candidate.Key == SettingKeys.WorkerVerificationRequired,
+                cancellationToken))
+        {
+            initialValues[SettingKeys.WorkerVerificationRequired] =
+                (!databaseExistedBeforeStartup).ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (initialValues.Count > 0)
+        {
             await UpsertManyAsync(initialValues, cancellationToken);
         }
 
@@ -158,6 +184,9 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
         var settings = await db.AppSettings
             .AsNoTracking()
             .Where(setting => setting.Key == SettingKeys.MaxConcurrentJobs
+                || setting.Key == SettingKeys.WorkloadConcurrencyMode
+                || setting.Key == SettingKeys.NonVideoSlots
+                || setting.Key == SettingKeys.EvidenceValidationSlots
                 || setting.Key == SettingKeys.MinFreeDiskBytes
                 || setting.Key == SettingKeys.CpuThreadLimit
                 || setting.Key == SettingKeys.LibraryScanIntervalHours
@@ -190,7 +219,10 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             // Off unless explicitly turned on. A fresh install, and any install that predates this
             // setting, has remote workers disabled.
             ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false),
-            ParseBool(settings.GetValueOrDefault(SettingKeys.WorkerVerificationRequired), fallback: false));
+            ParseBool(settings.GetValueOrDefault(SettingKeys.WorkerVerificationRequired), fallback: true),
+            ParseEnum(settings.GetValueOrDefault(SettingKeys.WorkloadConcurrencyMode), WorkloadConcurrencyMode.Automatic),
+            Math.Clamp(ParseInt(settings.GetValueOrDefault(SettingKeys.NonVideoSlots), fallback: 0, min: 0), 0, 4),
+            Math.Clamp(ParseInt(settings.GetValueOrDefault(SettingKeys.EvidenceValidationSlots), fallback: 2, min: 1), 1, 4));
     }
 
     /// <summary>
@@ -237,6 +269,9 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
         await UpsertManyAsync(new Dictionary<string, string>
         {
             [SettingKeys.MaxConcurrentJobs] = Math.Max(1, settings.MaxConcurrentJobs).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.WorkloadConcurrencyMode] = settings.WorkloadConcurrencyMode.ToString(),
+            [SettingKeys.NonVideoSlots] = Math.Clamp(settings.NonVideoSlots, 0, 4).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.EvidenceValidationSlots] = Math.Clamp(settings.EvidenceValidationSlots, 1, 4).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.MinFreeDiskBytes] = Math.Max(0, settings.MinFreeDiskBytes).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.CpuThreadLimit] = Math.Max(0, settings.CpuThreadLimit).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.LibraryScanIntervalHours] = Math.Max(1, settings.LibraryScanIntervalHours).ToString(CultureInfo.InvariantCulture),

@@ -6,6 +6,11 @@ import SidecarCore
 enum MenuBarIcon {
     static let artwork = loadArtwork(named: "BrandMark")
     static let lightArtwork = loadArtwork(named: "BrandMarkLight")
+    static let motionArtwork = loadArtwork(named: "BrandMotion")
+    static let lightMotionArtwork = loadArtwork(named: "BrandMotionLight")
+    static let darkFrames = frames(from: motionArtwork)
+    private static let lightFrames = frames(from: lightMotionArtwork)
+    static let frameCount = 88
 
     private static func loadArtwork(named name: String) -> NSImage {
         let url = resourceURL(named: name, applicationURL: Bundle.main.bundleURL,
@@ -35,20 +40,16 @@ enum MenuBarIcon {
         return nil
     }
 
-    static func image(for status: SidecarStatus, spin: Double = 0) -> NSImage {
+    static func image(for status: SidecarStatus, spin: Double = 0, reduceMotion: Bool? = nil) -> NSImage {
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if let frame = frameIndex(for: status, spin: spin,
+                                  reduceMotion: reduceMotion ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion), frame > 0 {
+            return (dark ? darkFrames : lightFrames)[frame]
+        }
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()
-        let mark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? artwork : lightArtwork
-        let turns = rotationTurns(for: status, spin: spin,
-                                  reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
-        NSGraphicsContext.current?.saveGraphicsState()
-        let transform = NSAffineTransform()
-        transform.translateX(by: 9, yBy: 9)
-        transform.rotate(byDegrees: turns * 360)
-        transform.translateX(by: -9, yBy: -9)
-        transform.concat()
+        let mark = dark ? artwork : lightArtwork
         mark.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
-        NSGraphicsContext.current?.restoreGraphicsState()
         switch status {
         case .connected, .working: break
         default:
@@ -62,8 +63,28 @@ enum MenuBarIcon {
         return image
     }
 
-    static func rotationTurns(for status: SidecarStatus, spin: Double, reduceMotion: Bool) -> Double {
-        guard !reduceMotion, case .working = status else { return 0 }
-        return spin.truncatingRemainder(dividingBy: 1)
+    static func frameIndex(for status: SidecarStatus, spin: Double, reduceMotion: Bool) -> Int? {
+        guard !reduceMotion, case .working = status else { return nil }
+        let phase = spin.truncatingRemainder(dividingBy: 1)
+        return min(frameCount - 1, Int(max(0, phase) * Double(frameCount) + 1e-6))
+    }
+
+    private static func frames(from sheet: NSImage) -> [NSImage] {
+        (0..<frameCount).map { frame in
+            NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+                let source = NSRect(x: CGFloat(frame % 11 * 48), y: CGFloat((7 - frame / 11) * 48),
+                                    width: 48, height: 48)
+                sheet.draw(in: rect, from: source, operation: .copy, fraction: 1)
+                return true
+            }
+        }
+    }
+
+    static func blend(from: NSImage, to: NSImage, progress: CGFloat) -> NSImage {
+        NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            from.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1 - progress)
+            to.draw(in: rect, from: .zero, operation: .sourceOver, fraction: progress)
+            return true
+        }
     }
 }

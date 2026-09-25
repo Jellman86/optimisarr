@@ -471,7 +471,31 @@ public sealed class ReplacementServiceTests : IDisposable
         var result = await ReplaceAsync(jobId, coordinator: coordinator);
 
         Assert.Equal(ReplacementResultKind.Success, result.Kind);
-        Assert.True(coordinator.TryBegin(jobId));   // the claim was freed for a later cycle
+        var mediaFileId = await new OptimisarrDbContext(_options).Jobs
+            .Where(job => job.Id == jobId).Select(job => job.MediaFileId).SingleAsync();
+        Assert.True(await coordinator.TryBeginAsync(jobId, mediaFileId, CancellationToken.None));
+        coordinator.End(jobId, mediaFileId);
+    }
+
+    [Fact]
+    public async Task Replacement_waits_when_another_job_is_mutating_the_same_source()
+    {
+        var (originalPath, outputPath) = WriteFiles("Shared.avi", "Shared.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var mediaFileId = await new OptimisarrDbContext(_options).Jobs
+            .Where(job => job.Id == jobId).Select(job => job.MediaFileId).SingleAsync();
+        var coordinator = new ReplacementCoordinator();
+        var otherJobId = jobId + 1000;
+        Assert.True(await coordinator.TryBeginAsync(otherJobId, mediaFileId, CancellationToken.None));
+
+        var held = await ReplaceAsync(jobId, coordinator: coordinator);
+        Assert.Equal(ReplacementResultKind.Invalid, held.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.Equal("NEW", File.ReadAllText(outputPath));
+
+        coordinator.End(otherJobId, mediaFileId);
+        Assert.Equal(ReplacementResultKind.Success,
+            (await ReplaceAsync(jobId, coordinator: coordinator)).Kind);
     }
 
     [Fact]

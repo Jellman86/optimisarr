@@ -52,6 +52,7 @@ builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 builder.Services.AddSingleton(new ReferenceFrameAlignmentProbe(ffprobe));
+builder.Services.AddSingleton<ISourceWindowBytesProbe>(new SourceWindowBytesProbe(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
 // different binary from the transcoding ffmpeg (e.g. jellyfin-ffmpeg). Point it via
 // OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH. A purpose-built CUDA variant may be
@@ -70,6 +71,7 @@ builder.Services.AddSingleton(new ImageMetadataService(Environment.GetEnvironmen
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
+builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
@@ -222,6 +224,8 @@ app.MapHealthEndpoints(adminToken, configDirectory);
 
 app.MapSystemEndpoints();
 
+app.MapDiagnosticCaptureEndpoints();
+
 app.MapLibraryEndpoints();
 
 app.MapCalibrationEndpoints();
@@ -273,7 +277,12 @@ internal sealed record SettingsDto(
     int ReplacementQuarantineRetentionDays,
     bool RemoteWorkersEnabled = false,
     bool RemoteWorkersAvailable = false,
-    bool WorkerVerificationRequired = false)
+    bool? WorkerVerificationRequired = null,
+    string? WorkloadConcurrencyMode = null,
+    int? NonVideoSlots = null,
+    int? EvidenceValidationSlots = null,
+    int? AutomaticNonVideoSlots = null,
+    int? AutomaticEvidenceValidationSlots = null)
 {
     public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
         settings.MaxConcurrentJobs,
@@ -288,7 +297,14 @@ internal sealed record SettingsDto(
         settings.ReplacementQuarantineRetentionDays,
         settings.RemoteWorkersEnabled,
         remoteWorkersAvailable,
-        settings.WorkerVerificationRequired);
+        settings.WorkerVerificationRequired,
+        settings.WorkloadConcurrencyMode.ToString(),
+        settings.NonVideoSlots,
+        settings.EvidenceValidationSlots,
+        WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).NonVideo,
+        WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).Evidence);
 }
 
 internal sealed record QueueStatusDto(
@@ -307,7 +323,8 @@ internal sealed record QueueStatusDto(
     bool HardwareAccelerated,
     long? FreeDiskBytes,
     string WorkRoot,
-    string? WaitingReason)
+    string? WaitingReason,
+    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null)
 {
     public static QueueStatusDto From(QueueDispatchStatus status) => new(
         status.CanStart,
@@ -325,7 +342,8 @@ internal sealed record QueueStatusDto(
         status.HardwareAccelerated,
         status.FreeDiskBytes,
         status.WorkRoot,
-        status.WaitingReason);
+        status.WaitingReason,
+        status.WorkloadLanes);
 }
 
 internal sealed record JellyfinConnectRequest(string? BaseUrl);
@@ -399,6 +417,8 @@ internal sealed record SaveLibraryRequest(
     bool? RequireAudioRetained = null,
     bool? RequireSubtitlesRetained = null,
     bool? RequireSizeReduction = null,
+    double? MinimumSizeSavingPercent = null,
+    double? MaximumSizeSavingPercent = null,
     bool? AudioLoudnessGateEnabled = null,
     double? MaxLoudnessDriftLufs = null,
     bool? AudioClippingGateEnabled = null,
@@ -472,6 +492,8 @@ internal sealed record LibraryDto(
     bool RequireAudioRetained,
     bool RequireSubtitlesRetained,
     bool RequireSizeReduction,
+    double? MinimumSizeSavingPercent,
+    double? MaximumSizeSavingPercent,
     bool AudioLoudnessGateEnabled,
     double MaxLoudnessDriftLufs,
     bool AudioClippingGateEnabled,
@@ -544,6 +566,8 @@ internal sealed record LibraryDto(
         library.RequireAudioRetained,
         library.RequireSubtitlesRetained,
         library.RequireSizeReduction,
+        library.MinimumSizeSavingPercent,
+        library.MaximumSizeSavingPercent,
         library.AudioLoudnessGateEnabled,
         library.MaxLoudnessDriftLufs,
         library.AudioClippingGateEnabled,

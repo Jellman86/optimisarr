@@ -137,10 +137,17 @@ internal sealed class FakeMeasuringTranscoder(
     /// <summary>How long an encode takes, so a test can outlast a lease renewal interval.</summary>
     public TimeSpan EncodeTakes { get; init; }
 
+    public long? SizeBudgetExceededAtBytes { get; init; }
+    public OutputSizeBudget? LastSizeBudget { get; private set; }
+
     public Task<TranscodeResult> RunAsync(
         string ffmpeg, IReadOnlyList<string> arguments,
-        IProgress<double>? encodedSeconds, CancellationToken cancellationToken)
+        IProgress<double>? encodedSeconds, CancellationToken cancellationToken,
+        OutputSizeBudget? sizeBudget = null)
     {
+        LastSizeBudget = sizeBudget;
+        if (sizeBudget is not null && SizeBudgetExceededAtBytes is { } observed)
+            return Task.FromResult(new TranscodeResult(-1, "Size saving budget exceeded.", observed));
         Arguments = arguments;
         AllRuns.Add(arguments);
         encodedSeconds?.Report(12.5);

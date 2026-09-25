@@ -16,6 +16,54 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.Empty(result.Errors);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(100)]
+    [InlineData(double.NaN)]
+    public void A_backup_cannot_import_an_invalid_minimum_saving_policy(double percent)
+    {
+        var library = new LibrarySnapshot(
+            "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+        { MinimumSizeSavingPercent = percent };
+        var result = ConfigSnapshotValidator.Validate(
+            Empty() with { Libraries = [library] }, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("minimum useful saving", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void A_backup_cannot_import_conflicting_saving_targets()
+    {
+        var library = new LibrarySnapshot(
+            "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+        { MinimumSizeSavingPercent = 70, MaximumSizeSavingPercent = 65 };
+        var result = ConfigSnapshotValidator.Validate(
+            Empty() with { Libraries = [library] }, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("cannot exceed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(100)]
+    [InlineData(double.NaN)]
+    public void A_backup_cannot_import_an_invalid_maximum_saving_policy(double percent)
+    {
+        var library = new LibrarySnapshot(
+            "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+        { MaximumSizeSavingPercent = percent };
+        var result = ConfigSnapshotValidator.Validate(
+            Empty() with { Libraries = [library] }, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("maximum allowed saving", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void A_newer_version_is_rejected()
     {

@@ -1,3 +1,5 @@
+using Optimisarr.Core.Queue;
+
 namespace Optimisarr.Core.Workers;
 
 /// <summary>
@@ -15,7 +17,11 @@ public sealed record RemoteQualityContract(
     string Sampling,
     double MinimumHarmonicMean,
     double MinimumMinimum,
-    IReadOnlyList<IReadOnlyList<string>> Commands)
+    IReadOnlyList<IReadOnlyList<string>> Commands,
+    // What the source spent on the sample windows, stored with the adaptive search's contract on
+    // the lease once measured so a search measures its source once, not once per candidate.
+    // Never sent to a worker; a final-candidate quality contract leaves it null.
+    SizeForecastBasis? SizeForecast = null)
 {
     public const string DistortedPlaceholder = "{{distorted}}";
     public const string ReferencePlaceholder = "{{reference}}";

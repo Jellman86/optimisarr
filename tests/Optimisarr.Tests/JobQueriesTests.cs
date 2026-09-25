@@ -34,13 +34,15 @@ public sealed class JobQueriesTests : IDisposable
         {
             Id = Guid.NewGuid(), JobId = job.Id, WorkerId = worker.Id,
             AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
-            State = LeaseState.Completed, Stage = RemoteStage.Delivering
+            State = LeaseState.Completed, Stage = RemoteStage.Delivering,
+            VerificationContractJson = "{}"
         });
         await db.SaveChangesAsync();
 
         var result = Assert.Single(await JobQueries.ListAsync(db, CancellationToken.None));
         Assert.Equal(worker.Name, result.WorkerName);
         Assert.Null(result.RemoteStage);
+        Assert.True(result.SidecarVerification);
     }
 
     public JobQueriesTests()
@@ -50,6 +52,41 @@ public sealed class JobQueriesTests : IDisposable
         _options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite(_connection).Options;
         using var db = new OptimisarrDbContext(_options);
         db.Database.EnsureCreated();
+    }
+
+    [Fact]
+    public async Task Restarted_dispatch_uses_the_latest_delivered_attempt_for_its_verification_lane()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            var worker = new Worker { Name = "Sidecar" };
+            db.AddRange(library, worker);
+            await db.SaveChangesAsync();
+            db.MediaFiles.AddRange(MediaFile(library.Id, 1), MediaFile(library.Id, 2));
+            await db.SaveChangesAsync();
+            var strict = Job(1, 0, DateTimeOffset.UtcNow);
+            var legacy = Job(2, 0, DateTimeOffset.UtcNow);
+            strict.Status = legacy.Status = JobStatus.AwaitingVerification;
+            db.Jobs.AddRange(strict, legacy);
+            await db.SaveChangesAsync();
+            var baseTime = DateTimeOffset.UtcNow.AddMinutes(-2);
+            db.JobLeases.AddRange(
+                new JobLease { Id = Guid.NewGuid(), JobId = 1, WorkerId = worker.Id,
+                    AcquiredAt = baseTime, ExpiresAt = baseTime.AddMinutes(1),
+                    State = LeaseState.Completed, VerificationContractJson = null },
+                new JobLease { Id = Guid.NewGuid(), JobId = 1, WorkerId = worker.Id,
+                    AcquiredAt = baseTime.AddMinutes(1), ExpiresAt = baseTime.AddMinutes(2),
+                    State = LeaseState.Completed, VerificationContractJson = "{}" },
+                new JobLease { Id = Guid.NewGuid(), JobId = 2, WorkerId = worker.Id,
+                    AcquiredAt = baseTime.AddMinutes(1), ExpiresAt = baseTime.AddMinutes(2),
+                    State = LeaseState.Completed });
+            await db.SaveChangesAsync();
+        }
+
+        await using var reopened = new OptimisarrDbContext(_options);
+        Assert.Equal([(1, WorkloadLane.Evidence), (2, WorkloadLane.Video)],
+            await QueueDispatcher.DeliveredWorkloadsAsync(reopened, CancellationToken.None));
     }
 
     // Regression: SQLite cannot ORDER BY a DateTimeOffset, so listing must order the
@@ -103,6 +140,69 @@ public sealed class JobQueriesTests : IDisposable
         var jobs = await JobQueries.ListAsync(readDb, CancellationToken.None);
 
         Assert.Equal("hevc_nvenc", Assert.Single(jobs).VideoEncoder);
+    }
+
+    [Fact]
+    public async Task A_rejected_remote_attempt_survives_restart_and_the_feed_shows_only_the_current_candidate()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+            var job = Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            job.Status = JobStatus.Verifying;
+            job.ExecutionAttempt = 1;
+            job.VideoEncoder = "hevc_videotoolbox";
+            job.VerificationPassed = false;
+            job.VerificationReportJson = "{\"checks\":[]}";
+            job.VerifiedAt = DateTimeOffset.UtcNow;
+            db.Jobs.Add(job);
+            JobAttemptHistory.RequeueAfterRejectedCandidate(job, "MacBook Air", "videotoolbox", DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync();
+        }
+
+        await using var reopened = new OptimisarrDbContext(_options);
+        var current = Assert.Single(await JobQueries.ListAsync(reopened, CancellationToken.None));
+        Assert.Null(current.VerificationPassed);
+        Assert.Null(current.VerificationReportJson);
+        Assert.Null(current.VerifiedAt);
+        Assert.Null(current.VideoEncoder);
+        Assert.Equal("SoftwareDecode", current.RetryReason);
+        Assert.Equal("MacBook Air", Assert.Single(JobAttemptHistory.Read(current.AttemptHistoryJson)).WorkerName);
+
+        var picard = new Worker { Name = "PICARD" };
+        reopened.Workers.Add(picard);
+        await reopened.SaveChangesAsync();
+        var claimed = await reopened.Jobs.SingleAsync();
+        claimed.Status = JobStatus.AwaitingVerification;
+        claimed.ExecutionAttempt += 1;
+        claimed.VideoEncoder = "hevc_nvenc";
+        reopened.JobLeases.Add(new JobLease
+        {
+            Id = Guid.NewGuid(), JobId = claimed.Id, WorkerId = picard.Id,
+            AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            State = LeaseState.Completed
+        });
+        await reopened.SaveChangesAsync();
+
+        var retried = Assert.Single(await JobQueries.ListAsync(reopened, CancellationToken.None));
+        Assert.Equal("PICARD", retried.WorkerName);
+        Assert.False(retried.SidecarVerification);
+        Assert.Equal("hevc_nvenc", retried.VideoEncoder);
+        Assert.Equal(2, retried.ExecutionAttempt);
+        Assert.Null(retried.VerificationPassed);
+        Assert.Equal("MacBook Air", Assert.Single(JobAttemptHistory.Read(retried.AttemptHistoryJson)).WorkerName);
+
+        claimed.Status = JobStatus.Verifying;
+        claimed.StartedAt = DateTimeOffset.UtcNow.AddMinutes(2);
+        claimed.VideoEncoder = "libx265";
+        await reopened.SaveChangesAsync();
+        var localRetry = Assert.Single(await JobQueries.ListAsync(reopened, CancellationToken.None));
+        Assert.Null(localRetry.WorkerName);
+        Assert.Equal("libx265", localRetry.VideoEncoder);
     }
 
     [Fact]

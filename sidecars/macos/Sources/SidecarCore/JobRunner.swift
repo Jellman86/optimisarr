@@ -30,6 +30,33 @@ public protocol TranscodeRunner: Sendable {
         _ arguments: [String],
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> (exitCode: Int32, stderr: String)
+
+    func run(
+        _ executable: URL,
+        _ arguments: [String],
+        sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String)
+}
+
+public struct OutputSizeBudget: Sendable, Equatable {
+    public let output: URL
+    public let maxBytes: Int64
+    public init(output: URL, maxBytes: Int64) { self.output = output; self.maxBytes = maxBytes }
+}
+
+public struct OutputSizeExceeded: Error, Sendable, Equatable {
+    public let observedBytes: Int64
+    public let maxBytes: Int64
+}
+
+public extension TranscodeRunner {
+    func run(
+        _ executable: URL, _ arguments: [String], sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String) {
+        try await run(executable, arguments, progress: progress)
+    }
 }
 
 public struct ProcessTranscodeRunner: TranscodeRunner {
@@ -141,6 +168,15 @@ public struct ProcessTranscodeRunner: TranscodeRunner {
         _ arguments: [String],
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> (exitCode: Int32, stderr: String) {
+        try await run(executable, arguments, sizeBudget: nil, progress: progress)
+    }
+
+    public func run(
+        _ executable: URL,
+        _ arguments: [String],
+        sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String) {
         let running = RunningProcess()
         running.process.executableURL = executable
         running.process.arguments = arguments
@@ -188,13 +224,33 @@ public struct ProcessTranscodeRunner: TranscodeRunner {
             throw error
         }
 
-        return try await withTaskCancellationHandler {
+        let budgetWatch: Task<Int64?, Never>? = sizeBudget.map { budget in
+            Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    if Task.isCancelled { return nil }
+                    guard running.process.isRunning,
+                          let number = try? FileManager.default.attributesOfItem(atPath: budget.output.path)[.size] as? NSNumber,
+                          number.int64Value > budget.maxBytes else { continue }
+                    running.process.terminate()
+                    return number.int64Value
+                }
+                return nil
+            }
+        }
+        defer { budgetWatch?.cancel() }
+        let result = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 running.waitFor { continuation.resume(with: $0) }
             }
         } onCancel: {
             running.process.terminate()
         }
+        budgetWatch?.cancel()
+        if let observed = await budgetWatch?.value, let sizeBudget {
+            throw OutputSizeExceeded(observedBytes: observed, maxBytes: sizeBudget.maxBytes)
+        }
+        return result
     }
 }
 
@@ -203,8 +259,14 @@ public enum JobOutcome: Sendable, Equatable {
     /// The candidate reached the server intact. Verification there decides what it is worth.
     case delivered(jobId: Int, bytes: Int64)
 
+    /// The server accepted a terminal failure for this attempt; it will not requeue it.
+    case failed(jobId: Int, reason: String)
+
     /// The job was handed back for the server to reassign, with the reason it could not be done.
     case released(jobId: Int, reason: String)
+
+    /// The hand-back could not be confirmed; a shutdown must wait rather than assume the lease ended.
+    case unconfirmed(jobId: Int, reason: String)
 
     /// The lease lapsed or was refused mid-job; the server has already moved on.
     case leaseLost(jobId: Int, reason: String)
@@ -616,7 +678,7 @@ public struct JobRunner: WorkExecutor {
                 if let held = try? await client.uploadOffset(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId) {
-                    offset = held ?? offset
+                    offset = held
                 }
             }
         }
@@ -662,7 +724,7 @@ public struct JobRunner: WorkExecutor {
         latest: LatestProgress,
         progress: @escaping @Sendable (JobProgress) -> Void,
         preview: @escaping @Sendable (Data) -> Void
-    ) async -> SearchOutcome {
+    ) async throws -> SearchOutcome {
         var step = first
         // The server bounds its own search at four candidates, but this machine should not depend
         // on that to stop: a bound only the other end enforces is not a bound. Twice the expected
@@ -697,12 +759,14 @@ public struct JobRunner: WorkExecutor {
                         step, assignment, ffmpeg: ffmpeg, source: source, scratch: scratch,
                         preview: preview)
                 }
+            } catch let problem as SidecarError where problem.endsTheLease {
+                throw problem
             } catch {
                 return .failed(reason:
                     "The lease could not be renewed while a candidate was being measured.")
             }
 
-            guard case let .measured(bytes, logs) = candidate else {
+            guard case let .measured(windowBytes, logs) = candidate else {
                 guard case let .failed(reason) = candidate else { return .failed(reason: "unreachable") }
                 SidecarLog.job.error(
                     "Job \(assignment.jobId): \(reason, privacy: .public)")
@@ -714,7 +778,9 @@ public struct JobRunner: WorkExecutor {
                 direction = try await client.reportAdaptiveProbe(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId,
-                    quality: step.quality, encodedBytes: bytes, logs: logs)
+                    quality: step.quality, windowEncodedBytes: windowBytes, logs: logs)
+            } catch let problem as SidecarError where problem.endsTheLease {
+                throw problem
             } catch {
                 return .failed(reason: "The measurement could not be reported: \(error).")
             }
@@ -756,7 +822,9 @@ public struct JobRunner: WorkExecutor {
     /// what ffmpeg said, and the scratch directory is deleted on the way out, so afterwards there
     /// is nothing left to look at.
     enum CandidateMeasurement {
-        case measured(bytes: Int64, logs: [String])
+        /// One byte count per sample window, in command order, so the server's size forecast can
+        /// compare each with the source's own bytes over the same scenes.
+        case measured(windowBytes: [Int64], logs: [String])
         case failed(String)
     }
 
@@ -817,7 +885,7 @@ public struct JobRunner: WorkExecutor {
                 """)
         }
 
-        var bytes: Int64 = 0
+        var windowBytes: [Int64] = []
         var logs: [String] = []
 
         for (index, sample) in commands.enumerated() {
@@ -862,7 +930,7 @@ public struct JobRunner: WorkExecutor {
                 return .failed("sample \(index + 1) at quality \(step.quality) encoded to nothing at all")
             }
 
-            bytes += size
+            windowBytes.append(size)
 
             // A sample begins at its own first picture, so there is no lead to remove — unlike a
             // finished candidate, where the window is a slice of a whole file.
@@ -897,7 +965,7 @@ public struct JobRunner: WorkExecutor {
             try? FileManager.default.removeItem(at: log)
         }
 
-        return .measured(bytes: bytes, logs: logs)
+        return .measured(windowBytes: windowBytes, logs: logs)
     }
 
     /// Runs each of the server's measurement commands and reads back its log. Nil means the
@@ -909,33 +977,24 @@ public struct JobRunner: WorkExecutor {
         var logs: [String] = []
         let commands = assignment.quality.commands.compactMap { try? MeasurementCommand.validate($0) }
         guard commands.count == assignment.quality.commands.count else { return nil }
-        // A sampled window pairs pictures by timestamp, so the server wants the candidate's extra
-        // lead over the source removed first. Only this machine has both files to measure it from.
-        var distortedShift: String?
-        if commands.contains(where: \.needsDistortedShift) {
-            // Measured rather than derived. The old arithmetic over container metadata answered
-            // zero for every file it was ever given, and could not have done better: two episodes
-            // of the same show, identical in every header field, need different corrections
-            // because different numbers of frames went missing in their encodes.
-            guard let measured = await TimelineAlignment.measure(
-                ffmpeg: ffmpeg, source: source, candidate: candidate,
-                frameSeconds: TimelineAlignment.frameSeconds(
-                    ffprobe: ffprobe, file: source, runner: leadProbe) ?? (1.0 / 25.0),
-                scratch: scratch, runner: runner)
-            else { return nil }
-            distortedShift = measured
-        }
-        // Logged because a measurement that comes back wrong is otherwise undiagnosable after the
-        // fact: the scratch directory is deleted on every exit path, so the command, the files it
-        // compared and the score it produced exist nowhere once the job ends. A window scoring near
-        // zero is the signature of the two timelines being misaligned rather than of a bad encode,
-        // and knowing which window, and what shift was applied, is the whole diagnosis.
-        SidecarLog.job.info("""
-            Job \(assignment.jobId): measuring \(commands.count) window(s), \
-            distorted shift \(distortedShift ?? "none", privacy: .public)
-            """)
+        let frameSeconds = commands.contains(where: \.needsDistortedShift)
+            ? await TimelineAlignment.frameSeconds(ffprobe: ffprobe, file: source, runner: leadProbe) ?? (1.0 / 25.0)
+            : nil
 
         for (index, command) in commands.enumerated() {
+            var distortedShift: String?
+            if command.needsDistortedShift {
+                guard let frameSeconds,
+                      let measured = await TimelineAlignment.measure(
+                          ffmpeg: ffmpeg, command: command, source: source, candidate: candidate,
+                          frameSeconds: frameSeconds, scratch: scratch, runner: runner)
+                else { return nil }
+                distortedShift = measured
+            }
+            SidecarLog.job.info("""
+                Job \(assignment.jobId): measuring window \(index + 1)/\(commands.count), \
+                distorted shift \(distortedShift ?? "none", privacy: .public)
+                """)
             let log = scratch.appendingPathComponent("vmaf-\(index).json", isDirectory: false)
             let materialised = command.materialise(
                 distorted: candidate, reference: source, log: log, distortedShift: distortedShift)
@@ -1039,7 +1098,7 @@ public struct JobRunner: WorkExecutor {
         // on another. The server chooses every candidate; this machine measures them.
         var encodeCommand = command
         if let first = assignment.search {
-            switch await runSearch(
+            switch try await runSearch(
                 first, assignment, pairing: pairing, ffmpeg: ffmpeg,
                 source: source, scratch: scratch, latest: latest, progress: progress,
                 preview: preview)
@@ -1053,34 +1112,67 @@ public struct JobRunner: WorkExecutor {
 
         let arguments = encodeCommand.materialise(input: source, output: candidate)
         latest.set(.encoding(encodedSeconds: 0))
-        let encode = try await whileRenewingLease(
-            assignment, pairing: pairing, progress: latest.get
-        ) {
-            try await runner.run(ffmpeg, arguments) { [previewSampler, wantsPreviews] seconds in
-                latest.set(.encoding(encodedSeconds: seconds))
-                progress(.encoding(encodedSeconds: seconds))
-                // Only while someone has the menu open, and never faster than the sampler's own
-                // interval: a frame grab is a whole process, and the encode is the job here.
-                guard let previewSampler else {
-                    Self.notePreviewsOff(jobId: assignment.jobId, because: "this build has no ffmpeg to grab one with")
-                    return
-                }
-                guard wantsPreviews() else {
-                    Self.notePreviewsOff(jobId: assignment.jobId, because: "nothing is watching")
-                    return
-                }
-                Task {
-                    if let frame = await previewSampler.frame(from: source, atSeconds: seconds) {
-                        preview(frame)
+        let encode: (exitCode: Int32, stderr: String)
+        do {
+            encode = try await whileRenewingLease(
+                assignment, pairing: pairing, progress: latest.get
+            ) {
+                try await runner.run(ffmpeg, arguments,
+                    sizeBudget: assignment.maxCandidateBytes.map { OutputSizeBudget(output: candidate, maxBytes: $0) }) {
+                    [previewSampler, wantsPreviews] seconds in
+                    latest.set(.encoding(encodedSeconds: seconds))
+                    progress(.encoding(encodedSeconds: seconds))
+                    // Only while someone has the menu open, and never faster than the sampler's own
+                    // interval: a frame grab is a whole process, and the encode is the job here.
+                    guard let previewSampler else {
+                        Self.notePreviewsOff(jobId: assignment.jobId, because: "this build has no ffmpeg to grab one with")
+                        return
+                    }
+                    guard wantsPreviews() else {
+                        Self.notePreviewsOff(jobId: assignment.jobId, because: "nothing is watching")
+                        return
+                    }
+                    Task {
+                        if let frame = await previewSampler.frame(from: source, atSeconds: seconds) {
+                            preview(frame)
+                        }
                     }
                 }
             }
+        } catch let exceeded as OutputSizeExceeded {
+            try await client.reportSizeBudgetExceeded(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, observedBytes: exceeded.observedBytes)
+            return .failed(jobId: assignment.jobId,
+                reason: "Size saving: candidate exceeded the \(exceeded.maxBytes)-byte budget; encoding stopped.")
         }
 
         guard encode.0 == 0 else {
             let detail = encode.1.trimmingCharacters(in: .whitespacesAndNewlines)
             return await release(assignment, pairing: pairing,
                 reason: "ffmpeg exited with code \(encode.0)." + (detail.isEmpty ? "" : " \(detail)"))
+        }
+
+        // The final mux can add bytes between the size monitor's last poll and FFmpeg's exit.
+        // Report that as the same terminal lease result before hashing or measuring quality.
+        if let maximum = assignment.maxCandidateBytes,
+           let size = (try? FileManager.default.attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value,
+           size > maximum {
+            try await client.reportSizeBudgetExceeded(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, observedBytes: size)
+            return .failed(jobId: assignment.jobId,
+                reason: "Size saving: finished candidate exceeded the \(maximum)-byte budget.")
+        }
+
+        if let minimum = assignment.minCandidateBytes,
+           let size = (try? FileManager.default.attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value,
+           size < minimum {
+            try await client.reportSizeBudgetUndershot(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, observedBytes: size)
+            return .failed(jobId: assignment.jobId,
+                reason: "Compression ceiling: finished candidate was below the \(minimum)-byte floor.")
         }
 
         let candidateHash = try Self.sha256(of: candidate)
@@ -1138,10 +1230,14 @@ public struct JobRunner: WorkExecutor {
     /// Hands the job back. Best effort: if the release itself fails the lease lapses on its own
     /// and the server reclaims the job then, so nothing is stranded either way.
     private func release(_ assignment: Assignment, pairing: StoredPairing, reason: String) async -> JobOutcome {
-        try? await client.release(
-            serverAddress: pairing.serverAddress, credential: pairing.credential,
-            leaseId: assignment.leaseId)
-        return .released(jobId: assignment.jobId, reason: reason)
+        do {
+            try await client.release(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId)
+            return .released(jobId: assignment.jobId, reason: reason)
+        } catch {
+            return .unconfirmed(jobId: assignment.jobId, reason: "\(reason) Hand-back was not acknowledged: \(error.localizedDescription)")
+        }
     }
 
     /// Streams the file through SHA-256 so a multi-gigabyte source is never held in memory.

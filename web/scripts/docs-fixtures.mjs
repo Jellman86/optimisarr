@@ -35,6 +35,11 @@ export const settings = {
   remoteWorkersEnabled: true,
   remoteWorkersAvailable: true,
   workerVerificationRequired: true,
+  workloadConcurrencyMode: 'Automatic',
+  nonVideoSlots: 0,
+  evidenceValidationSlots: 1,
+  automaticNonVideoSlots: 1,
+  automaticEvidenceValidationSlots: 2,
 }
 
 export const tools = [
@@ -119,7 +124,13 @@ export const jobs = files.slice(0, 6).map((file, i) => ({ id: file.id, mediaFile
   enqueuedAt: '2026-09-17T11:00:00Z', startedAt: i === 0 ? '2026-09-17T11:50:00Z' : null, finishedAt: [1,4].includes(i) ? when : null,
   clearable: i === 4 || i === 5, workerName: null, remoteStage: null, waitingForWorker: false,
 }))
-export const queue = { ...settings, canStart: true, blockedReason: null, manuallyPaused: false, manualPauseMode: 'inactive', runningEncodesSuspended: false, suspendedEncodeCount: 0, pauseFailedEncodeCount: 0, runningJobs: 1, hardwareAccelerated: true, freeDiskBytes: 680e9, workRoot: '/work', waitingReason: null }
+export const queue = { ...settings, canStart: true, blockedReason: null, manuallyPaused: false, manualPauseMode: 'inactive', runningEncodesSuspended: false, suspendedEncodeCount: 0, pauseFailedEncodeCount: 0, runningJobs: 1, hardwareAccelerated: true, freeDiskBytes: 680e9, workRoot: '/work', waitingReason: null,
+  workloadLanes: [
+    { lane: 'Video', active: 1, capacity: 1, waiting: 2, reason: 'All video slots are busy.' },
+    { lane: 'NonVideo', active: 0, capacity: 1, waiting: 0, reason: null },
+    { lane: 'Evidence', active: 0, capacity: 2, waiting: 0, reason: null },
+    { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
+  ] }
 export const stats = { bytesSaved: 184e9, originalBytes: 320e9, optimisedBytes: 136e9, filesOptimised: 84, averageSavingPercent: 57.5, inQuarantine: 3, quarantineReclaimableBytes: 28e9, queued: 2, running: 1, readyToReplace: 1, failed: 1, libraries: 4, enabledLibraries: 4, discoveredFiles: 478 }
 export const replacements = files.slice(0,3).map((f,i) => ({id:f.id,jobId:f.id,mediaFileId:f.id, originalPath:'/data/films/'+f.relativePath, finalPath:'/data/films/'+f.relativePath.replace('.mkv','.mp4'), quarantinePath:`/trash/job-${f.id}/${titles[i]}.mkv`, originalSizeBytes:f.sizeBytes,newSizeBytes:Math.round(f.sizeBytes*.38),crossFilesystem:false,status:'Replaced',replacedAt:when,rolledBackAt:null,purgedAt:null,mediaKind:'Video',verificationPassed:true,verificationReportJson:JSON.stringify({checks})}))
 export const candidates = files.map(f => ({ mediaFileId:f.id, libraryId:1, relativePath:f.relativePath,sizeBytes:f.sizeBytes,videoCodec:f.videoCodec,ruleProfile:'ConservativeHevc',eligible:f.id!==3,reason:f.id===3?'Already uses the target codec.':'Video qualifies for the library’s HEVC target.',mediaKind:'Video' }))

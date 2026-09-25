@@ -178,6 +178,8 @@ export type LibraryRules = {
   requireAudioRetained: boolean
   requireSubtitlesRetained: boolean
   requireSizeReduction: boolean
+  minimumSizeSavingPercent: number | null
+  maximumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
   audioClippingGateEnabled: boolean
@@ -287,6 +289,8 @@ export function newLibraryDefaults(): SaveLibrary {
     requireAudioRetained: true,
     requireSubtitlesRetained: false,
     requireSizeReduction: true,
+    minimumSizeSavingPercent: null,
+    maximumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
     audioClippingGateEnabled: false,
@@ -343,6 +347,19 @@ export type Settings = {
   /** Groundwork only in this release: the switch and the Workers tab exist only when the server
    * was started with OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true. */
   remoteWorkersAvailable: boolean
+  workloadConcurrencyMode: 'Automatic' | 'Manual'
+  nonVideoSlots: number
+  evidenceValidationSlots: number
+  automaticNonVideoSlots: number
+  automaticEvidenceValidationSlots: number
+}
+
+export type WorkloadLaneStatus = {
+  lane: 'Video' | 'NonVideo' | 'Evidence' | 'Finalization' | 'Workers'
+  active: number
+  capacity: number
+  waiting: number
+  reason: string | null
 }
 
 export type TimedCleanupPreview = {
@@ -404,6 +421,7 @@ export type QueueStatus = Settings & {
   // Set when dispatch is ready but nothing starts because every queued job's library auto-optimise
   // window is shut, e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)".
   waitingReason: string | null
+  workloadLanes?: WorkloadLaneStatus[]
 }
 
 export type Stats = {
@@ -605,6 +623,9 @@ export type Job = {
   enqueuedAt: string
   startedAt: string | null
   finishedAt: string | null
+  executionAttempt?: number
+  retryReason?: string | null
+  attemptHistoryJson?: string | null
   clearable: boolean
   /** The remote worker holding, or having delivered, this job; null for local work. */
   workerName: string | null
@@ -612,6 +633,27 @@ export type Job = {
   remoteStage: string | null
   /** A queued job its library keeps off this server until a worker takes it. */
   waitingForWorker: boolean
+  /** The current worker assignment completed the media checks; the container only validates evidence. */
+  sidecarVerification?: boolean
+  /** The verified output is currently being safely moved into place by the container. */
+  finalizing?: boolean
+}
+
+export type JobAttemptSnapshot = {
+  number: number
+  workerName: string | null
+  videoEncoder: string | null
+  hardwareDecoder: string | null
+  startedAt: string | null
+  endedAt: string
+  verificationPassed: boolean | null
+  verificationReportJson: string | null
+  verifiedAt: string | null
+  outputSizeBytes: number | null
+  outcome: string
+  reason: string
+  ffmpegArguments: string | null
+  processLog: string | null
 }
 
 export type EnqueueResult = {
@@ -899,6 +941,31 @@ export type BrowseResponse = {
   directories: { name: string; path: string }[]
 }
 
+export type DiagnosticCapture = {
+  id: string
+  startedAt: string
+  expiresAt: string | null
+  stoppedAt: string | null
+  scopedJobId: number | null
+  includePaths: boolean
+  eventsStored: number
+  maximumEvents: number
+  eventLimitReached: boolean
+  status: 'Recording' | 'Stopped' | 'Expired'
+}
+
+async function diagnosticBundle(sessionId: string, jobId: number): Promise<Blob> {
+  const response = await fetch(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}/jobs/${jobId}/bundle`, {
+    headers: authorizedHeaders(),
+  })
+  if (response.status === 401) handleAuthRequired()
+  if (!response.ok) {
+    const payload = tryParseJson(await response.text())
+    throw new Error(apiErrorMessage(payload, response.status))
+  }
+  return response.blob()
+}
+
 function authorizedHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers)
   const token = getAdminToken()
@@ -1009,6 +1076,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  diagnosticCapture: () => request<DiagnosticCapture | null>('/api/diagnostics/capture'),
+  startDiagnosticCapture: (body: { durationHours: number | null; scopedJobId: number | null; includePaths: boolean }) =>
+    request<DiagnosticCapture>('/api/diagnostics/capture', { method: 'POST', body: JSON.stringify(body) }),
+  stopDiagnosticCapture: (id: string) =>
+    request<DiagnosticCapture>(`/api/diagnostics/capture/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
+  diagnosticBundle,
   health: () => request<Health>('/api/health'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
   setup: () => request<SetupState>('/api/setup'),
@@ -1175,6 +1248,7 @@ export const api = {
     return response.text()
   },
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
+  approveSizePreflight: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/approve-size-preflight`, { method: 'POST' }),
   removeJob: (id: number) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
   retryJob: (id: number, higherQuality = false) =>
     request<{ id: number; status: string }>(`/api/jobs/${id}/retry?higherQuality=${higherQuality}`, { method: 'POST' }),

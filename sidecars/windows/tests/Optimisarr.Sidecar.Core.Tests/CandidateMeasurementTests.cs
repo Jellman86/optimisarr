@@ -120,18 +120,52 @@ public sealed class CandidateMeasurementTests : IDisposable
 
         await runner.RunAsync(Pairing(), Measured(), CancellationToken.None);
 
-        // Tried, not derived: one short probe per candidate offset, against the two real files.
-        // The arithmetic this replaced read the video stream's start less the container's, which
-        // is zero in every real container, so the correction was never once applied.
-        var probes = transcoder.AllRuns.Count(run =>
-            run.Any(a => a.Contains("scale=320:240", StringComparison.Ordinal)));
-        Assert.Equal(TimelineAlignment.FramesToTry.Count, probes);
+        // Tried, not derived: the server's own measurement, cut to a few seconds, once per
+        // candidate offset. A probe with a graph of its own chose offsets that were a frame wrong
+        // for the measurement that followed, and failed clean encodes at harmonic 9.
+        var probes = transcoder.AllRuns.Where(IsProbe).ToList();
+        Assert.Equal(TimelineAlignment.FramesToTry.Count, probes.Count);
+        Assert.All(probes, probe => Assert.Contains(probe, a => a.Contains("libvmaf", StringComparison.Ordinal)));
 
         var scoring = transcoder.AllRuns.Last(run => run.Any(a => a.Contains("libvmaf", StringComparison.Ordinal)));
         var filter = scoring.Single(a => a.Contains("libvmaf", StringComparison.Ordinal));
         // The token is gone, replaced by what the probes chose — here zero, the files being in step.
         Assert.DoesNotContain("{{distortedShift}}", filter, StringComparison.Ordinal);
         Assert.Contains("setpts=PTS-0*1000000", filter, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Each_sampled_window_gets_its_own_alignment_probe()
+    {
+        var (_, runner, transcoder) = Build();
+        var assignment = Measured();
+        IReadOnlyList<string> Command(string seek, string trim) =>
+        [
+            "-nostdin", "-v", "error", "-ss", seek, "-i", "{{distorted}}",
+            "-ss", seek, "-i", "{{reference}}", "-lavfi",
+            $"[0:v]setpts=PTS-{{{{distortedShift}}}}*1000000,trim=start={trim}:duration=40[d];"
+            + $"[1:v]trim=start={trim}:duration=40[r];[d][r]libvmaf=log_path={{{{log}}}}:shortest=1",
+            "-f", "null", "-"
+        ];
+        assignment = assignment with { Quality = assignment.Quality with
+        {
+            Commands = [Command("263.01275", "4.98725"), Command("1414.996917", "5.003083")]
+        } };
+
+        await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        // Each window is probed where it will be scored: a frame lost between windows moves the
+        // later one and not the earlier.
+        var probes = transcoder.AllRuns.Where(IsProbe).ToList();
+        Assert.Equal(2 * TimelineAlignment.FramesToTry.Count, probes.Count);
+        Assert.Equal("263.01275", probes[0][Array.IndexOf(probes[0].ToArray(), "-ss") + 1]);
+        Assert.Equal("1414.996917", probes[3][Array.IndexOf(probes[3].ToArray(), "-ss") + 1]);
+    }
+
+    private static bool IsProbe(IReadOnlyList<string> run)
+    {
+        var limit = run.ToList().LastIndexOf("-t");
+        return limit >= 0 && limit + 1 < run.Count && run[limit + 1] == "5";
     }
 
     [Fact]

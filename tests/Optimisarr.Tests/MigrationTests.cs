@@ -16,7 +16,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -37,7 +37,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -65,7 +65,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -93,7 +93,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -140,7 +140,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -193,7 +193,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -256,7 +256,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -315,7 +315,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -355,7 +355,7 @@ public sealed class MigrationTests : IDisposable
         // corrected "None" default actually reads back through the string converter.
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);

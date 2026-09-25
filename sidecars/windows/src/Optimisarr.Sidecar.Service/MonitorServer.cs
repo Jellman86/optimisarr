@@ -11,7 +11,7 @@ namespace Optimisarr.Sidecar.Service;
 
 /// <summary>Interactive local users may read status and pause claims, never submit paths or processes.</summary>
 [SupportedOSPlatform("windows")]
-public sealed class MonitorServer(SidecarSession session, WorkerMonitor monitor, ILogger<MonitorServer> logger) : BackgroundService
+public sealed class MonitorServer(SidecarSession session, WorkerMonitor monitor, HostShutdown shutdown, ILogger<MonitorServer> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -24,13 +24,18 @@ public sealed class MonitorServer(SidecarSession session, WorkerMonitor monitor,
                 await pipe.WaitForConnectionAsync(stoppingToken);
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(3));
-                await ExchangeAsync(pipe, session, () =>
+                await ExchangeAsync(pipe, session, command =>
                 {
-                    var (jobs, last) = monitor.Read();
+                    if (command == MonitorProtocol.ReadPreview) monitor.RequestPreviews();
+                    if (command == MonitorProtocol.EndPreview) monitor.EndPreviews();
+                    if (command == MonitorProtocol.ArmShutdown) shutdown.Arm();
+                    if (command == MonitorProtocol.CancelShutdown) shutdown.Cancel();
+                    var (jobs, last) = monitor.Read(command == MonitorProtocol.ReadPreview);
                     var status = session.Status;
+                    var ending = shutdown.Read();
                     var snapshot = new MonitorSnapshot(Environment.MachineName, status.State.ToString(), status.Detail,
                         session.IsPaused, MonitorProtocol.PublicServerAddress(session.ServerAddress), load.Sample(), Program.FreeScratchBytes(Program.ScratchDirectory()),
-                        jobs, last, SidecarBuild.Version);
+                        jobs, last, SidecarBuild.Version, ending.Armed, ending.Detail, ending.Seconds, ending.CanCancel);
                     return snapshot;
                 }, timeout.Token);
             }
@@ -56,7 +61,7 @@ public sealed class MonitorServer(SidecarSession session, WorkerMonitor monitor,
             PipeOptions.Asynchronous | PipeOptions.FirstPipeInstance, 1024, 65536, security);
     }
 
-    internal static async Task ExchangeAsync(Stream pipe, SidecarSession session, Func<MonitorSnapshot> snapshot, CancellationToken token)
+    internal static async Task ExchangeAsync(Stream pipe, SidecarSession session, Func<byte, MonitorSnapshot> snapshot, CancellationToken token)
     {
         var command = new byte[1];
         await pipe.ReadExactlyAsync(command, token);
@@ -65,9 +70,13 @@ public sealed class MonitorServer(SidecarSession session, WorkerMonitor monitor,
             case MonitorProtocol.Read: break;
             case MonitorProtocol.Pause: session.SetPaused(true); break;
             case MonitorProtocol.Resume: session.SetPaused(false); break;
+            case MonitorProtocol.ReadPreview:
+            case MonitorProtocol.EndPreview:
+            case MonitorProtocol.ArmShutdown:
+            case MonitorProtocol.CancelShutdown: break;
             default: return;
         }
-        var response = JsonSerializer.SerializeToUtf8Bytes(snapshot());
+        var response = JsonSerializer.SerializeToUtf8Bytes(snapshot(command[0]));
         if (response.Length > MonitorProtocol.MaximumResponseBytes) throw new InvalidDataException("Monitor response exceeded its bound.");
         await pipe.WriteAsync(BitConverter.GetBytes(response.Length), token);
         await pipe.WriteAsync(response, token);

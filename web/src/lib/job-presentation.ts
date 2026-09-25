@@ -1,7 +1,25 @@
-type JobState = { status: string; remoteStage?: string | null; progress?: number }
+type JobState = { status: string; remoteStage?: string | null; progress?: number; sidecarVerification?: boolean; finalizing?: boolean }
+
+export function localWorkloadCapacity(queue: { maxConcurrentJobs: number; workloadLanes?: { lane: string; capacity: number }[] }): number {
+  if (!queue.workloadLanes?.length) return queue.maxConcurrentJobs
+  return queue.workloadLanes
+    .filter(lane => ['Video', 'NonVideo', 'Evidence'].includes(lane.lane))
+    .reduce((total, lane) => total + lane.capacity, 0)
+}
+
+export function jobLocation(job: JobState): 'container' | 'worker' | 'transfer' {
+  if (job.status !== 'Leased') return 'container'
+  return job.remoteStage === 'FetchingSource' || job.remoteStage === 'Delivering' ? 'transfer' : 'worker'
+}
+
+export function verificationPhase(job: JobState): 'waiting' | 'evidence' | 'media' | null {
+  if (job.status === 'AwaitingVerification') return 'waiting'
+  if (job.status !== 'Verifying') return null
+  return job.sidecarVerification ? 'evidence' : 'media'
+}
 
 export function isWorkingJob(job: JobState): boolean {
-  return ['Probing', 'Transcoding', 'Verifying', 'Leased', 'AwaitingVerification'].includes(job.status)
+  return job.finalizing === true || ['Probing', 'Transcoding', 'Verifying', 'Leased', 'AwaitingVerification'].includes(job.status)
 }
 
 export function isJobSuspended(job: JobState, queue: { runningEncodesSuspended: boolean; manualPauseMode: string } | null): boolean {

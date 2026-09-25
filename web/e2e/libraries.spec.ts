@@ -14,6 +14,7 @@ const library = {
   vmafQualityGateEnabled: false, minVmafCatastrophicMin: null, clipVmafEnabled: null,
   vmafFrameSubsample: null, durationTolerancePercent: 1, requireAudioRetained: true,
   requireSubtitlesRetained: false, requireSizeReduction: true,
+  minimumSizeSavingPercent: null, maximumSizeSavingPercent: null,
   audioLoudnessGateEnabled: false, maxLoudnessDriftLufs: 1,
   audioClippingGateEnabled: false, maxTruePeakDbtp: 0,
   imageQualityGateEnabled: true, minimumImageSsim: 0.95, imageMetadataGateEnabled: true,
@@ -271,6 +272,34 @@ test('optional verification thresholds follow their switches on the advanced pag
   await expect(page.locator('#lib-loudness-drift')).toBeVisible()
   await loudness.uncheck()
   await expect(page.locator('#lib-loudness-drift')).toHaveCount(0)
+})
+
+test('minimum and maximum savings are optional, ordered, and saved with the library', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/verify/advanced')
+  const minimum = page.getByLabel('Minimum useful saving', { exact: true })
+  await expect(minimum).toBeVisible()
+  await expect(minimum).toHaveValue('')
+  await minimum.fill('0')
+  await expect(page.locator('#lib-verification-error')).toHaveText('Minimum useful saving must be above 0% and no more than 99%.')
+  await minimum.fill('10')
+  const maximum = page.getByLabel('Maximum allowed saving', { exact: true })
+  await expect(maximum).toHaveValue('')
+  await maximum.fill('5')
+  await expect(page.locator('#lib-verification-error')).toHaveText('Minimum useful saving cannot exceed maximum allowed saving.')
+  await maximum.fill('65')
+  await maximum.evaluate(element => element.scrollIntoView({ block: 'center' }))
+  const inputBounds = await maximum.boundingBox()
+  const actionsBounds = await page.locator('[data-library-actions]').boundingBox()
+  expect(inputBounds && actionsBounds && inputBounds.y + inputBounds.height < actionsBounds.y).toBe(true)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await maximum.evaluate(element => element.scrollIntoView({ block: 'center' }))
+  const mobileInput = await maximum.boundingBox()
+  const mobileActions = await page.locator('[data-library-actions]').boundingBox()
+  expect(mobileInput && mobileActions && mobileInput.y + mobileInput.height < mobileActions.y).toBe(true)
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ minimumSizeSavingPercent: 10, maximumSizeSavingPercent: 65 })
 })
 
 test('invalid settings stay discoverable after navigating away from their field', async ({ page }) => {

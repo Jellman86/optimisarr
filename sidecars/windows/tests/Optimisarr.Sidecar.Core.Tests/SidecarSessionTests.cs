@@ -17,16 +17,23 @@ public sealed class SidecarSessionTests
     {
         private int _index;
         public int Calls { get; private set; }
+        public List<int> HeartbeatCapacities { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Calls++;
+            if (request.RequestUri?.AbsolutePath.EndsWith("/heartbeat", StringComparison.Ordinal) == true)
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(
+                    await request.Content!.ReadAsStringAsync(cancellationToken));
+                HeartbeatCapacities.Add(document.RootElement.GetProperty("maxConcurrency").GetInt32());
+            }
             var (status, json) = replies[Math.Min(_index++, replies.Length - 1)];
-            return Task.FromResult(new HttpResponseMessage(status)
+            return new HttpResponseMessage(status)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            });
+            };
         }
     }
 
@@ -81,6 +88,40 @@ public sealed class SidecarSessionTests
         Assert.Equal(1, handler.Calls);
         session.SetPaused(false);
         Assert.False(session.IsPaused);
+    }
+
+    [Fact]
+    public async Task Shutdown_arm_reports_zero_capacity_and_cancel_restores_previous_pause()
+    {
+        var handler = new QueuedHandler((HttpStatusCode.OK, Beat));
+        var session = Session(handler, new InMemoryCredentialStore(
+            new StoredPairing("https://example.com", "secret", 7)), runJob: TakesAnyJob());
+        session.SetPaused(true);
+        session.ArmShutdown();
+        await session.RunAsync(CancellationToken.None);
+        Assert.True(session.ShutdownReady);
+        Assert.Equal([0], handler.HeartbeatCapacities);
+        Assert.Equal(1, handler.Calls);
+        session.CancelShutdown();
+        Assert.True(session.IsPaused);
+        await session.RunAsync(CancellationToken.None);
+        Assert.Equal([0, 1], handler.HeartbeatCapacities);
+    }
+
+    [Fact]
+    public async Task Final_shutdown_check_refuses_power_off_when_server_stops_answering()
+    {
+        var handler = new QueuedHandler((HttpStatusCode.OK, Beat),
+            (HttpStatusCode.ServiceUnavailable, "{}"));
+        var session = Session(handler, new InMemoryCredentialStore(
+            new StoredPairing("https://example.com", "secret", 7)));
+        session.ArmShutdown();
+        await session.RunAsync(CancellationToken.None);
+        Assert.True(session.ShutdownReady);
+        Assert.False(await session.ConfirmShutdownAsync(CancellationToken.None));
+        Assert.False(session.ShutdownReady);
+        Assert.Equal(SidecarState.Unreachable, session.Status.State);
+        Assert.Equal([0, 0], handler.HeartbeatCapacities);
     }
 
     [Fact]
@@ -324,6 +365,27 @@ public sealed class ConcurrentSidecarSessionTests
         await session.RunAsync(CancellationToken.None);
         Assert.False(ran);
         Assert.Equal(1, handler.Releases);
+    }
+
+    [Fact]
+    public async Task Shutdown_stays_blocked_when_an_in_flight_claim_cannot_be_handed_back()
+    {
+        var handler = new Handler((HttpStatusCode.OK, Beat), (HttpStatusCode.OK, Assignment(1)),
+            (HttpStatusCode.ServiceUnavailable, "{}"), (HttpStatusCode.OK, Beat));
+        var ran = false;
+        var session = Session(handler, 1, (_, assignment, _) =>
+        {
+            ran = true;
+            return Task.FromResult(new JobOutcome(assignment.JobId, true, "done"));
+        }, 2);
+        handler.BeforeClaimReply = session.ArmShutdown;
+
+        await session.RunAsync(CancellationToken.None);
+
+        Assert.False(ran);
+        Assert.Equal(1, handler.Releases);
+        Assert.True(session.HasUnacknowledgedResult);
+        Assert.False(session.ShutdownReady);
     }
 
     [Fact]

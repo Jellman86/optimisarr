@@ -1,6 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { jobPercent, jobStep, isWorkingJob, isJobSuspended } from './job-presentation.ts'
+import { jobPercent, jobStep, isWorkingJob, isJobSuspended, jobLocation, verificationPhase, localWorkloadCapacity } from './job-presentation.ts'
+
+test('location and verification route describe the current attempt', () => {
+  assert.equal(jobLocation({ status: 'Leased', remoteStage: 'Encoding' }), 'worker')
+  assert.equal(jobLocation({ status: 'Leased', remoteStage: 'Delivering' }), 'transfer')
+  assert.equal(jobLocation({ status: 'AwaitingVerification', sidecarVerification: true }), 'container')
+  assert.equal(verificationPhase({ status: 'AwaitingVerification', sidecarVerification: true }), 'waiting')
+  assert.equal(verificationPhase({ status: 'Verifying', sidecarVerification: true }), 'evidence')
+  assert.equal(verificationPhase({ status: 'Verifying', sidecarVerification: false }), 'media')
+})
 
 test('local and remote encodes never claim completion before the process exits', () => {
   assert.equal(jobPercent({ status: 'Transcoding', progress: .9999 }), 99)
@@ -25,6 +34,7 @@ test('stage markers distinguish adaptive preparation, delivery, verification and
   assert.equal(jobStep({ status: 'Completed' }), 4)
   assert.equal(jobStep({ status: 'Failed' }), null)
   assert.equal(isWorkingJob({ status: 'ReadyToReplace' }), false)
+  assert.equal(isWorkingJob({ status: 'ReadyToReplace', finalizing: true }), true)
 })
 
 test('only confirmed full suspension labels a local encode as paused', () => {
@@ -33,4 +43,13 @@ test('only confirmed full suspension labels a local encode as paused', () => {
   assert.equal(isJobSuspended({ status: 'Leased' }, status), false)
   assert.equal(isJobSuspended({ status: 'Verifying' }, status), false)
   assert.equal(isJobSuspended({ status: 'Transcoding' }, { ...status, manualPauseMode: 'partial' }), false)
+})
+
+test('local slot totals exclude workers and safe replacement capacity', () => {
+  assert.equal(localWorkloadCapacity({ maxConcurrentJobs: 1 }), 1)
+  assert.equal(localWorkloadCapacity({ maxConcurrentJobs: 1, workloadLanes: [
+    { lane: 'Video', capacity: 1 }, { lane: 'NonVideo', capacity: 1 },
+    { lane: 'Evidence', capacity: 2 }, { lane: 'Finalization', capacity: 2 },
+    { lane: 'Workers', capacity: 8 },
+  ] }), 4)
 })

@@ -37,6 +37,18 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_retains_video_colour_range_for_verification_evidence()
+    {
+        var result = MediaProbeService.Parse("""
+        { "streams": [ { "codec_type": "video", "codec_name": "h264",
+          "color_primaries": "smpte170m", "color_transfer": "smpte170m",
+          "color_space": "smpte170m", "color_range": "tv" } ] }
+        """, ".mkv");
+
+        Assert.Equal("tv", result.ColorRange);
+    }
+
+    [Fact]
     public void Parse_keeps_the_container_start_so_a_picture_lead_can_be_measured()
     {
         // Audio priming puts the container start 21 ms before the first picture. FFmpeg seeks and
@@ -98,6 +110,24 @@ public sealed class MediaProbeParseTests
             probe,
             new TimestampCheckResult(true, 0, null, 1405.112),
             fallbackDurationSeconds: 3892.171));
+    }
+
+    [Fact]
+    public void Packet_timeline_selects_the_same_moving_picture_stream_as_the_media_probe()
+    {
+        var probe = MediaProbeService.Parse("""
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "mjpeg", "disposition": { "attached_pic": 1 }, "duration": "0.08" },
+            { "codec_type": "video", "codec_name": "h264", "duration": "1279.24" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "1277.27" }
+          ],
+          "format": { "duration": "1279.24" }
+        }
+        """, ".mkv");
+
+        Assert.Equal("h264", probe.VideoCodec);
+        Assert.Equal("V:0", TimestampIntegrityCheck.MovingPictureStreamSpecifier);
     }
 
     [Fact]

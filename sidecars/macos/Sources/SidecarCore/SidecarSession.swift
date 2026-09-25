@@ -67,11 +67,7 @@ public final class SidecarSession: ObservableObject {
     /// which they were in every shipped build.
     @Published public internal(set) var cpu: Double?
 
-    /// Turns of the menu bar cube, advanced only while a job is running.
-    ///
-    /// A cube spinning about its body diagonal keeps exactly the hexagonal silhouette the mark
-    /// already has; only the three visible edges rotate. So this is the mark itself turning rather
-    /// than a different icon swapped in, which is what makes it read as "still the same app, busy".
+    /// Phase of the production Precession frame sequence, advanced only while a job is running.
     @Published public internal(set) var spin: Double = 0
 
     /// How many jobs this Mac takes at once. Chosen by the operator, reported to the server on
@@ -81,7 +77,81 @@ public final class SidecarSession: ObservableObject {
     @Published public private(set) var isPaused = false
 
     /// Pausing only gates new claims; lease renewal and work already held continue normally.
-    public func setPaused(_ paused: Bool) { isPaused = paused }
+    public func setPaused(_ paused: Bool) {
+        guard !shutdown.armed else { return }
+        isPaused = paused
+    }
+
+    @Published public private(set) var shutdown = ShutdownCountdown()
+    private var pausedBeforeShutdown = false
+    private var lastDrainedHeartbeat: Date?
+    private var unconfirmedResult = false
+    private var shutdownTask: Task<Void, Never>?
+    private let requestShutdown: @Sendable () async throws -> Void
+
+    public func armShutdown() {
+        guard isPaired, !shutdown.armed else { return }
+        pausedBeforeShutdown = isPaused
+        shutdown.arm()
+        lastDrainedHeartbeat = nil
+        // Cancel a pending claim/check-in and immediately report zero capacity to the server.
+        startHeartbeat()
+        shutdownTask = Task { [weak self] in
+            while let self, !Task.isCancelled, self.shutdown.armed {
+                await self.advanceShutdown()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    public func cancelShutdown() {
+        guard shutdown.canCancel else { return }
+        disarmShutdown(restartHeartbeat: true)
+    }
+
+    private func disarmShutdown(restartHeartbeat: Bool) {
+        shutdownTask?.cancel()
+        shutdownTask = nil
+        shutdown = ShutdownCountdown()
+        lastDrainedHeartbeat = nil
+        isPaused = pausedBeforeShutdown
+        if restartHeartbeat { startHeartbeat() }
+    }
+
+    private func advanceShutdown() async {
+        let ready = lastDrainedHeartbeat.map { Date().timeIntervalSince($0) < 35 } == true
+            && { if case .connected = status { return true }; return false }()
+        let unreachable: Bool
+        if case .unreachable = status { unreachable = true } else { unreachable = false }
+        guard shutdown.evaluate(at: Date(), ready: ready, activeJobs: jobTasks.count,
+                                unconfirmed: unconfirmedResult, serverUnreachable: unreachable) else { return }
+        guard let pairing else {
+            shutdown.deferShutdown("No pairing is available; shutdown is blocked.")
+            return
+        }
+        do {
+            _ = try await client.heartbeat(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                freeScratchBytes: max(0, scratchCapacity()), maxConcurrency: 0,
+                capabilities: capabilities, load: load.sample())
+        } catch {
+            if shutdown.armed {
+                lastDrainedHeartbeat = nil
+                let reason = "Final shutdown check failed: \(error.localizedDescription)"
+                status = .unreachable(reason: reason)
+                shutdown.deferShutdown("\(reason). Shutdown is blocked until check-ins recover.")
+            }
+            return
+        }
+        guard shutdown.armed, jobTasks.isEmpty, !unconfirmedResult else { return }
+        lastDrainedHeartbeat = Date()
+        guard shutdown.begin() else { return }
+        do {
+            try await requestShutdown()
+        } catch {
+            if shutdown.armed { shutdown.fail("macOS could not shut down: \(error.localizedDescription)") }
+        }
+    }
 
     public static let concurrencyRange = 1...4
 
@@ -139,7 +209,8 @@ public final class SidecarSession: ObservableObject {
         persistConcurrency: @escaping @Sendable (Int) -> Void = { UserDefaults.standard.set($0, forKey: "jobConcurrency") },
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-        }
+        },
+        requestShutdown: @escaping @Sendable () async throws -> Void = { try await SystemShutdown.request() }
     ) {
         self.client = client
         self.store = store
@@ -155,6 +226,7 @@ public final class SidecarSession: ObservableObject {
         self.jobConcurrency = Self.concurrencyRange.contains(jobConcurrency) ? jobConcurrency : 1
         self.persistConcurrency = persistConcurrency
         self.sleep = sleep
+        self.requestShutdown = requestShutdown
     }
 
     /// Changes how many jobs run at once. Takes effect on the next check-in; jobs already in
@@ -285,6 +357,7 @@ public final class SidecarSession: ObservableObject {
     /// Forgets the pairing locally. This does not revoke anything server-side: only an operator
     /// can do that, and pretending otherwise would overstate what this app controls.
     public func unpair() {
+        if shutdown.armed { disarmShutdown(restartHeartbeat: false) }
         heartbeatTask?.cancel()
         heartbeatTask = nil
         // Jobs in flight are stopped too: cancelling the tasks terminates ffmpeg and the runner
@@ -319,6 +392,10 @@ public final class SidecarSession: ObservableObject {
     /// the job go back to the queue anyway, two minutes later and with the server unsure why.
     /// Handing it back now is the same outcome, sooner and explained. Check-ins stop until wake.
     public func systemWillSleep() async {
+        if shutdown.armed {
+            lastDrainedHeartbeat = nil
+            _ = shutdown.evaluate(at: Date(), ready: false, activeJobs: jobTasks.count)
+        }
         heartbeatTask?.cancel()
         heartbeatTask = nil
         await stopWork(because: "This Mac went to sleep, so the job was handed back for another machine to take.")
@@ -337,6 +414,7 @@ public final class SidecarSession: ObservableObject {
     /// Called before the app exits. The heartbeat stops so the server sees a clean gap rather
     /// than a beat followed by silence, and any job is handed back rather than left to lapse.
     public func prepareToQuit() async {
+        if shutdown.armed { disarmShutdown(restartHeartbeat: false) }
         heartbeatTask?.cancel()
         heartbeatTask = nil
         await stopWork(because: "The sidecar was quit, so the job was handed back.")
@@ -373,24 +451,28 @@ public final class SidecarSession: ObservableObject {
 
             do {
                 capabilities.freeScratchBytes = max(0, scratchCapacity())
+                let reportingDrain = shutdown.armed
                 let beat = try await client.heartbeat(
                     serverAddress: pairing.serverAddress,
                     credential: pairing.credential,
                     freeScratchBytes: capabilities.freeScratchBytes,
-                    maxConcurrency: capabilities.maxConcurrency,
+                    maxConcurrency: reportingDrain ? 0 : capabilities.maxConcurrency,
                     capabilities: capabilities,
                     // So an idle Mac still says how busy it is. While a job runs, its lease
                     // renewals carry a fresher figure at a much shorter cadence.
                     load: load.sample())
 
                 interval = beat.heartbeatInterval
+                if reportingDrain && shutdown.armed { lastDrainedHeartbeat = Date() }
                 if jobTasks.isEmpty {
                     status = .connected(workerId: beat.workerId, lastCheckIn: Date())
                 }
-                if !beat.draining && !isPaused {
+                if !beat.draining && !isPaused && !shutdown.armed {
                     await claimUpToCapacity(pairing: pairing, workerId: beat.workerId)
                 }
             } catch SidecarError.credentialRejected {
+                if shutdown.armed { disarmShutdown(restartHeartbeat: false) }
+                lastDrainedHeartbeat = nil
                 // Terminal. Retrying cannot help, and holding a dead secret on disk serves no
                 // purpose, so drop it and tell the operator plainly.
                 try? store.clear()
@@ -398,12 +480,15 @@ public final class SidecarSession: ObservableObject {
                 status = .revoked
                 return
             } catch let SidecarError.remoteWorkersDisabled(reason) {
+                lastDrainedHeartbeat = nil
                 // Not terminal: an operator can switch the feature back on, and the credential is
                 // still valid, so keep checking in rather than unpairing.
                 status = .disabledOnServer(reason: reason)
             } catch let error as SidecarError {
+                lastDrainedHeartbeat = nil
                 status = .unreachable(reason: Self.describe(error).shortReason)
             } catch {
+                lastDrainedHeartbeat = nil
                 status = .unreachable(reason: error.localizedDescription)
             }
 
@@ -417,7 +502,7 @@ public final class SidecarSession: ObservableObject {
     private func claimUpToCapacity(pairing: StoredPairing, workerId: Int) async {
         guard let executor, capabilities.maxConcurrency > 0 else { return }
 
-        while !isPaused && jobTasks.count < capabilities.maxConcurrency {
+        while !isPaused && !shutdown.armed && jobTasks.count < capabilities.maxConcurrency {
             let assignment: Assignment?
             do {
                 assignment = try await client.claim(
@@ -428,9 +513,18 @@ public final class SidecarSession: ObservableObject {
                 return
             }
             guard let assignment, jobTasks[assignment.jobId] == nil else { return }
-            if isPaused {
-                try? await client.release(serverAddress: pairing.serverAddress,
-                                          credential: pairing.credential, leaseId: assignment.leaseId)
+            if isPaused || shutdown.armed {
+                do {
+                    try await client.release(serverAddress: pairing.serverAddress,
+                                             credential: pairing.credential, leaseId: assignment.leaseId)
+                } catch {
+                    // The claim may have returned after shutdown was armed. A failed hand-back
+                    // leaves a possibly held lease, so the countdown must stay blocked.
+                    let reason = "Job \(assignment.jobId): hand-back was not acknowledged: \(error.localizedDescription)"
+                    unconfirmedResult = true
+                    lastOutcome = .unconfirmed(jobId: assignment.jobId, reason: reason)
+                    status = .unreachable(reason: reason)
+                }
                 return
             }
 
@@ -515,7 +609,7 @@ public final class SidecarSession: ObservableObject {
     private var menuIsOpen = false
 
     /// How often the menu bar mark is redrawn while work is running.
-    private static let spinTicksPerSecond = 6.0
+    private static let spinTicksPerSecond = 10.0
 
     /// Starts or stops the short timer behind the menu bar's spin and the load figures.
     ///
@@ -536,33 +630,34 @@ public final class SidecarSession: ObservableObject {
         }
 
         uiTicker = Task { [weak self] in
-            // The spin wants a smooth cadence; the load figures want a coarse one. A busy fraction
-            // is measured between two readings of the kernel's tick counters, and six times a
+            // The icon wants a smooth cadence; the load figures want a coarse one. A busy fraction
+            // is measured between two readings of the kernel's tick counters, and ten times a
             // second is often too little time for them to move at all — which is precisely the
             // interval that cannot be answered, so the meters spent their lives blanking. Sampling
-            // once a second gives the counters something to say and costs six times less.
+            // once a second gives the counters something to say at a tenth of the icon cadence.
             let ticksPerSample = Int(Self.spinTicksPerSecond)
             var tick = 0
             while !Task.isCancelled {
                 guard let self else { return }
-                if tick % ticksPerSample == 0 {
+                let hasWork = !self.activeJobs.isEmpty
+                if !hasWork || tick % ticksPerSample == 0 {
                     self.uiDisplay.observe(self.uiLoad.sample())
                     self.cpu = self.uiDisplay.cpu
                     if let device = self.uiDisplay.gpu {
                         self.gpu = GpuUsage(device: device, memoryInUse: self.gpu?.memoryInUse ?? 0)
                     }
                 }
-                // A third of a turn per second, and only while something is actually running. The
+                // One motion cycle in 8.8 seconds, matching the web icon. The
                 // ticker also runs for the load meters whenever the menu is open, and turning the
                 // mark from that made an idle Mac look busy for exactly as long as somebody was
                 // looking at it — which is the one moment the mark has to be honest.
-                if self.activeJobs.isEmpty {
-                    self.spin = 0
+                if !hasWork {
+                    if self.spin != 0 { self.spin = 0 }
                 } else {
-                    self.spin += 1.0 / (3 * Self.spinTicksPerSecond)
+                    self.spin += 1.0 / (8.8 * Self.spinTicksPerSecond)
                 }
                 tick &+= 1
-                try? await Task.sleep(for: .milliseconds(Int(1000.0 / Self.spinTicksPerSecond)))
+                try? await Task.sleep(for: .milliseconds(hasWork ? Int(1000.0 / Self.spinTicksPerSecond) : 1000))
             }
         }
     }
@@ -579,6 +674,7 @@ public final class SidecarSession: ObservableObject {
 
     private func finish(_ outcome: JobOutcome, jobId: Int, workerId: Int) {
         lastOutcome = outcome
+        if case .unconfirmed = outcome { unconfirmedResult = true }
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
         setTickerRunning(!activeJobs.isEmpty || menuIsOpen)
@@ -668,7 +764,8 @@ public extension SidecarSession {
         transferRates: [Int: Double] = [:],
         filmStrips: [Int: FilmStrip] = [:],
         gpu: GpuUsage? = nil,
-        lastOutcome: JobOutcome? = nil
+        lastOutcome: JobOutcome? = nil,
+        shutdown: ShutdownCountdown = ShutdownCountdown()
     ) -> SidecarSession {
         let session = SidecarSession(prober: nil, executor: nil)
         session.isPosed = true
@@ -680,6 +777,7 @@ public extension SidecarSession {
         session.filmStrips = filmStrips
         session.gpu = gpu
         session.lastOutcome = lastOutcome
+        session.shutdown = shutdown
         return session
     }
 }

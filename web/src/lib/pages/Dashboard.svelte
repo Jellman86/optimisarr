@@ -10,6 +10,7 @@
     type Worker,
   } from '../api'
   import { dashboardState } from '../dashboard-state'
+  import { localWorkloadCapacity } from '../job-presentation'
   import { i18n, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
   import DashboardStatusBar from '../components/DashboardStatusBar.svelte'
@@ -136,7 +137,7 @@
   state={queueState}
   freeDiskBytes={queue?.freeDiskBytes ?? null}
   workRoot={queue?.workRoot ?? ''}
-  maxConcurrent={queue?.maxConcurrentJobs ?? null}
+  maxConcurrent={queue ? localWorkloadCapacity(queue) : null}
 />
 
 <InFlightPanel {jobs} state={queueState} />

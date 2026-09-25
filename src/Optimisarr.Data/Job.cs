@@ -37,7 +37,13 @@ public enum JobStatus
     /// and wait for the dispatcher to pick it up. Nothing about a candidate in this state is
     /// trusted yet: every local gate is still to run before it can become a replacement.
     /// </summary>
-    AwaitingVerification = 9
+    AwaitingVerification = 9,
+
+    /// <summary>
+    /// Quality samples predict that a full video encode would miss the required size saving by
+    /// a wide margin. No full candidate exists; the operator can approve one attempt anyway.
+    /// </summary>
+    AwaitingSizeReview = 10
 }
 
 /// <summary>
@@ -78,6 +84,15 @@ public sealed class Job
 
     /// <summary>How many times this job has been started; incremented on crash recovery.</summary>
     public int Attempt { get; set; }
+
+    /// <summary>Human-facing execution number, including both local starts and worker leases.</summary>
+    public int ExecutionAttempt { get; set; }
+
+    /// <summary>Durable snapshots of attempts superseded by a retry, serialised as JSON.</summary>
+    public string? AttemptHistoryJson { get; set; }
+
+    /// <summary>Why the current attempt was queued again; null for ordinary first attempts.</summary>
+    public string? RetryReason { get; set; }
 
     /// <summary>
     /// Why this job was enqueued — the eligibility reason computed at enqueue time
@@ -120,6 +135,13 @@ public sealed class Job
     /// silently reverting to the library baseline.
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
+
+    /// <summary>
+    /// The operator approved a full encode despite a sample-based size warning. The final size
+    /// and quality gates still apply; this only prevents the advisory preflight from holding the
+    /// same job again when it is requeued or recovered.
+    /// </summary>
+    public bool BypassSizePreflight { get; set; }
 
     /// <summary>
     /// The black-bar crop decided for this title as <c>width:height:x:y</c>, or <c>none</c> when

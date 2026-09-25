@@ -40,17 +40,54 @@ public sealed class TimelineAlignmentProbeTests
     }
 
     [Fact]
-    public void The_probe_moves_the_candidate_and_never_the_reference()
+    public void A_probe_is_the_real_measurement_cut_short()
     {
-        // The real measurement shifts the distorted input only, so the probe has to as well — an
-        // alignment chosen against a differently-built comparison is the alignment for a
-        // measurement nobody runs.
-        var arguments = TimelineAlignmentProbe.Arguments("ref.mkv", "dist.mp4", 0.04, "log.json");
-        var graph = arguments[arguments.ToList().IndexOf("-lavfi") + 1];
+        // The old probe built its own graph: no cadence grid, no lead correction, its own seek.
+        // "+1 frame is best" there meant "one frame off" in the measurement that followed, and a
+        // clean libx265 encode that scores 95 at shift 0 was failed at harmonic 9. Only the
+        // measurement's own graph can say which shift that graph needs.
+        string[] measurement = ["-ss", "2415.017333", "-i", "cand.mp4", "-ss", "2415.017333",
+            "-i", "src.mkv", "-lavfi", "[0:v]setpts=PTS-0.041708*1000000,trim=start=4.982667:duration=40[dist]",
+            "-t", "40", "-f", "null", "-"];
 
-        Assert.Contains("[0:v]settb=AVTB,setpts=PTS-40000.000000", graph);
-        Assert.Contains("[1:v]settb=AVTB,trim=start=1", graph);
-        Assert.Equal("dist.mp4", arguments[arguments.ToList().IndexOf("-i") + 1]);
+        var probe = TimelineAlignmentProbe.Truncate(measurement, TimelineAlignmentProbe.ProbeSeconds);
+
+        Assert.Equal(measurement.Length, probe.Count);
+        Assert.Equal(measurement[..^5], probe.Take(measurement.Length - 5));
+        Assert.Equal(["-t", "5", "-f", "null", "-"], probe.TakeLast(5));
+    }
+
+    [Fact]
+    public void A_full_file_measurement_is_cut_short_before_its_output()
+    {
+        string[] measurement = ["-i", "cand.mp4", "-i", "src.mkv", "-lavfi", "graph", "-f", "null", "-"];
+
+        Assert.Equal(
+            ["-i", "cand.mp4", "-i", "src.mkv", "-lavfi", "graph", "-t", "5", "-f", "null", "-"],
+            TimelineAlignmentProbe.Truncate(measurement, 5));
+    }
+
+    [Fact]
+    public void A_clearly_better_shift_wins()
+    {
+        // A frame off in the real graph costs tens of points on any motion or cut.
+        Assert.Equal(0, TimelineAlignmentProbe.Choose([(0, 96.2), (1, 19.7), (-1, 20.1)]));
+        Assert.Equal(1, TimelineAlignmentProbe.Choose([(0, 0.2), (1, 92.3), (-1, 0.3)]));
+        Assert.Equal(-1, TimelineAlignmentProbe.Choose([(1, 40), (-1, 91)]));
+    }
+
+    [Fact]
+    public void A_near_tie_keeps_the_unshifted_timeline()
+    {
+        // A static shot scores the same at every shift. Moving the whole window on noise from a
+        // few seconds of dialogue is how a good encode gets failed.
+        Assert.Equal(0, TimelineAlignmentProbe.Choose([(0, 95.1), (1, 96.4), (-1, 94.8)]));
+    }
+
+    [Fact]
+    public void Nothing_scored_chooses_nothing()
+    {
+        Assert.Null(TimelineAlignmentProbe.Choose([]));
     }
 
     [Fact]

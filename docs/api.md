@@ -194,6 +194,10 @@ exists in quarantine.
 | `GET` | `/api/ready` | Readiness check: database, writable paths, FFmpeg, and ffprobe are usable. |
 | `GET` | `/api/auth/status` | Authentication discovery: whether `OPTIMISARR_ADMIN_TOKEN` is configured. |
 | `GET` | `/api/diagnostics` | Admin support snapshot: version, environment, settings, library and integration summaries, stats, and the failure summary. Assembled from non-secret data only (no tokens, API keys, or webhook URLs). Protected by the admin token when one is set. |
+| `GET` | `/api/diagnostics/capture` | Latest opt-in capture session, or `null`. |
+| `POST` | `/api/diagnostics/capture` | Start a session with `durationHours` (`1`, `24`, `168`, or `null` for until stopped), optional `scopedJobId`, and `includePaths` (default `false`). Returns `409` if another session is active. |
+| `POST` | `/api/diagnostics/capture/{id}/stop` | Stop a session; its evidence remains downloadable until retention removes it. |
+| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. The manifest lists omissions and whether full paths were included. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
@@ -246,7 +250,12 @@ Settings fields include:
   "hardwareDecode": true,
   "hdrToneMapMode": "Software",
   "remoteWorkersEnabled": false,
-  "workerVerificationRequired": false,
+  "workerVerificationRequired": true,
+  "workloadConcurrencyMode": "Automatic",
+  "nonVideoSlots": 0,
+  "evidenceValidationSlots": 1,
+  "automaticNonVideoSlots": 0,
+  "automaticEvidenceValidationSlots": 1,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
@@ -255,7 +264,19 @@ Settings fields include:
 
 `remoteWorkersEnabled` enables the preview worker service when available.
 `workerVerificationRequired` requires complete worker verification for newly issued remote
-full-file video assignments; it defaults off and is separate from per-library work placement.
+full-file video assignments. It defaults on for new installations, while upgrades keep their
+previous choice, and is separate from per-library work placement.
+Older clients that omit this field from an update retain the installation's current choice.
+`workloadConcurrencyMode` is `Automatic` or `Manual`. In manual mode, `nonVideoSlots` (0–4)
+adds audio/image work beside the primary video limit, and `evidenceValidationSlots` (1–4)
+limits concurrent validation of strict sidecar evidence. Automatic mode computes those limits
+from the server's CPU and memory; the `automatic*Slots` response fields show that recommendation
+and are read-only. Older clients that omit the workload fields retain the current values.
+`GET /api/queue/status` includes `workloadLanes` with each lane's active, capacity, waiting,
+and reason values. Queued jobs enter lane waiting counts only inside their library window;
+delivered worker results always await a verdict. The Schedule view explains closed windows.
+A bounded finalisation lane covers replacement and
+rollback; worker slots remain controlled by the paired sidecars.
 `remoteWorkersAvailable` is returned as server capability information, not a toggle that can enable
 the feature without its environment flag. See [Remote Workers](#remote-workers) for the contract.
 
@@ -320,6 +341,8 @@ Create and update library bodies use the same shape. Common fields:
   "requireAudioRetained": true,
   "requireSubtitlesRetained": false,
   "requireSizeReduction": true,
+  "minimumSizeSavingPercent": null,
+  "maximumSizeSavingPercent": null,
   "audioLoudnessGateEnabled": false,
   "maxLoudnessDriftLufs": 1,
   "audioClippingGateEnabled": false,
@@ -338,6 +361,13 @@ Create and update library bodies use the same shape. Common fields:
   "autoReplace": false
 }
 ```
+
+`minimumSizeSavingPercent` and `maximumSizeSavingPercent` are optional video re-encode gates when
+size reduction is required. At 10% minimum and 65% maximum, a 1,000-byte source accepts a
+completed candidate from 350 through 900 bytes, inclusive. The minimum cannot exceed the maximum;
+null preserves the respective unbounded behavior. Compatibility jobs that disable size reduction
+ignore both. Current Mac and Windows sidecars reject a candidate below the final-size floor before
+final full-file VMAF verification or upload; the server also verifies the frozen policy before replacement.
 
 Use `/api/library-options` for valid enum values. Unknown or invalid values are
 rejected. `encoderPreset` retains its historical API name but new clients should store a portable
@@ -487,11 +517,12 @@ Verification reports are stored as JSON in `verificationReportJson`:
 }
 ```
 
-Each job row carries three remote-work fields: `workerName` (the sidecar holding, or having
+Each job row carries remote-work fields: `workerName` (the sidecar holding, or having
 delivered, the job; null for local work), `remoteStage` (`Claimed`, `FetchingSource`, `Encoding`
 or `Delivering` while leased, otherwise null), and `waitingForWorker` (a queued job its library's
 placement keeps off this server until a worker takes it, judged by the same rule the dispatcher
-applies).
+applies). `sidecarVerification` identifies an assignment whose media checks ran on the worker;
+`finalizing` is true only while this server is safely moving the verified output into place.
 
 ## Exclusions
 
@@ -615,7 +646,7 @@ those windows represent, fixed at claim and recorded on the lease. The worker re
 with both file hashes before delivering the candidate. The server parses and pools quality itself;
 it does not accept a worker-supplied pass/fail verdict.
 
-With `workerVerificationRequired: false` (the default), usable remote quality evidence avoids the
+With `workerVerificationRequired: false` (an explicit opt-out), usable remote quality evidence avoids the
 server's VMAF pass while the remaining verification media checks run on the server. Missing,
 mismatched, or insufficient quality evidence triggers a local VMAF measurement with the reason
 reported on the worker's card. Hardware decode is selected only when the worker proved it and it

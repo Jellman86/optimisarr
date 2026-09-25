@@ -4,6 +4,25 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("source and candidate timestamps select moving video, not attached artwork")
+    func selectsMovingPicture() {
+        #expect(FullVerification.movingPictureStreamSpecifier == "V:0")
+    }
+
+    @Test("short source picture evidence is confirmed before submission")
+    func confirmsShortSourcePicture() {
+        let video = VerificationTimestamps(measured: true, nonMonotonicCount: 0,
+            firstRegressionDetail: nil, lastPresentationSeconds: 2900.814)
+        let audio = VerificationTimestamps(measured: true, nonMonotonicCount: 0,
+            firstRegressionDetail: nil, lastPresentationSeconds: 3070.25)
+        let probe = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0"}]}"#
+        #expect(FullVerification.needsSourceVideoConfirmation(video: video, audio: audio, sourceProbe: probe))
+        #expect(!FullVerification.needsSourceVideoConfirmation(video: audio, audio: audio, sourceProbe: probe))
+        #expect(!FullVerification.needsSourceVideoConfirmation(video: video, audio: nil, sourceProbe: probe))
+        let offsetProbe = #"{"streams":[{"codec_type":"video","start_time":"0","disposition":{"attached_pic":1}},{"codec_type":"video","start_time":"60","disposition":{"attached_pic":0}},{"codec_type":"audio","start_time":"0"}]}"#
+        #expect(FullVerification.needsSourceVideoConfirmation(video: video, audio: video, sourceProbe: offsetProbe))
+    }
+
     @Test("null-muxer timing notes and their repeats are not corrupt pictures")
     func decodeDiagnostics() {
         let notes = "Application provided invalid, non monotonically increasing dts to muxer\nLast message repeated 17 times\n"

@@ -57,11 +57,27 @@ struct PackagedArtworkTests {
                                        resourceDirectory: nil) { expected } == expected)
     }
 
-    @Test func menuBarRotationOnlyAdvancesWhileWorkingAndMotionIsAllowed() {
+    @Test func menuBarFramesOnlyAdvanceWhileWorkingAndMotionIsAllowed() {
         let connected = SidecarStatus.connected(workerId: 1, lastCheckIn: .now)
         let working = SidecarStatus.working(jobId: 9, progress: .encoding(encodedSeconds: 12))
-        #expect(MenuBarIcon.rotationTurns(for: connected, spin: 0.35, reduceMotion: false) == 0)
-        #expect(abs(MenuBarIcon.rotationTurns(for: working, spin: 1.35, reduceMotion: false) - 0.35) < 0.000_001)
-        #expect(MenuBarIcon.rotationTurns(for: working, spin: 0.35, reduceMotion: true) == 0)
+        #expect(MenuBarIcon.frameIndex(for: connected, spin: 0.35, reduceMotion: false) == nil)
+        #expect(MenuBarIcon.frameIndex(for: working, spin: 0.35, reduceMotion: false) == 30)
+        #expect(MenuBarIcon.frameIndex(for: working, spin: 1.35, reduceMotion: false) == 30)
+        #expect(MenuBarIcon.frameIndex(for: working, spin: 0.35, reduceMotion: true) == nil)
+        #expect(MenuBarIcon.frameIndex(for: working, spin: 8.7 / 8.8, reduceMotion: false) == 87)
+    }
+
+    @Test func motionAtlasHasAllFramesForBothAppearances() {
+        for artwork in [MenuBarIcon.motionArtwork, MenuBarIcon.lightMotionArtwork] {
+            #expect(artwork.size == NSSize(width: 528, height: 384))
+        }
+    }
+
+    @Test func activeSliceFrameRendersDifferentlyFromTheClosedCube() {
+        let idle = MenuBarIcon.darkFrames[0]
+        let twisted = MenuBarIcon.darkFrames[32]
+        #expect(idle.size == NSSize(width: 18, height: 18))
+        #expect(twisted.size == idle.size)
+        #expect(twisted.tiffRepresentation != idle.tiffRepresentation)
     }
 }

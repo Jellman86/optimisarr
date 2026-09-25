@@ -48,10 +48,18 @@ saved as **Only on workers**. Keep remote workers enabled to enforce worker-only
 Automation windows, pause rules, capability requirements, and disk checks still apply. Audio-only,
 image, preview, and personal quality-check workflows retain their existing local paths.
 
+Queue shows separate capacity for video work, audio/images, sidecar evidence checks, safe
+replacement, and workers. A strict worker result waits for the container to validate its evidence;
+the container does not repeat media verification. **Settings → Encoding & queue → Advanced →
+Workload concurrency** shows the effective limits and lets you set extra lightweight lanes when
+the server has capacity. The primary video limit remains separate from each worker's advertised
+slots. Queue names the waiting lane and its reason when work cannot start yet.
+
 ## Require all verification on the sidecar
 
-Enable **Verify entirely on the sidecar** under **Settings → Files & safety → Remote workers**
-and save. This setting defaults off and applies to newly issued assignments. Updated sidecars
+**Verify entirely on the sidecar** is on by default for fresh installations once remote workers
+are enabled. Existing installations retain their saved or previous value. You can change it under
+**Settings → Files & safety → Remote workers**; changes apply to newly issued assignments. Updated sidecars
 negotiate protocol 2 on heartbeat; they do not need a new pairing. Older workers cannot claim an
 assignment that requires full verification.
 
@@ -68,7 +76,7 @@ media processing on workers. It does **not** make the server idle: scanning and 
 assignment/filter preparation, file transfers and hashing, database updates, policy evaluation,
 replacement, quarantine, and rollback remain on the container.
 
-With strict verification off, a worker can still return requested VMAF measurements to save the
+If you deliberately turn strict verification off, a worker can still return requested VMAF measurements to save the
 server that pass. The container repeats the remaining verification checks and measures VMAF
 itself if the returned quality evidence cannot be used.
 

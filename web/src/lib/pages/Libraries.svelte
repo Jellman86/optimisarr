@@ -223,6 +223,25 @@
   })
 
   const verificationError = $derived.by<string | null>(() => {
+    if (form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+      && form.minimumSizeSavingPercent != null
+      && (!Number.isFinite(Number(form.minimumSizeSavingPercent))
+        || Number(form.minimumSizeSavingPercent) <= 0
+        || Number(form.minimumSizeSavingPercent) > 99)) {
+      return i18n.m.settings.validation_minimum_saving
+    }
+    if (form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+      && form.maximumSizeSavingPercent != null
+      && (!Number.isFinite(Number(form.maximumSizeSavingPercent))
+        || Number(form.maximumSizeSavingPercent) <= 0
+        || Number(form.maximumSizeSavingPercent) > 99)) {
+      return i18n.m.settings.validation_maximum_saving
+    }
+    if (form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+      && form.minimumSizeSavingPercent != null && form.maximumSizeSavingPercent != null
+      && Number(form.minimumSizeSavingPercent) > Number(form.maximumSizeSavingPercent)) {
+      return i18n.m.settings.validation_saving_order
+    }
     if (!Number.isFinite(Number(form.durationTolerancePercent))
       || Number(form.durationTolerancePercent) < 0) {
       return i18n.m.settings.validation_duration
@@ -723,7 +742,7 @@
       'encode/video/advanced': ['targetVideoCodec', 'targetContainer', 'encoderPreset', 'qualityCrf', 'contentTune', 'maxBitrateKbps', 'minBitrateKbps', 'strongerAdaptiveQuantisation'],
       'encode/audio/advanced': ['audioBitrateKbps', 'videoAudioBitrateKbps', 'reencodeLossyAudio'],
       'encode/images/advanced': ['imageQuality', 'reencodeLossyImages'],
-      'verify/advanced': ['durationTolerancePercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
+      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
     }
     const keys = fields[target] ?? Object.entries(fields).filter(([key]) => key.startsWith(target + '/')).flatMap(([, fields]) => fields)
     return keys.filter(key => {
@@ -982,6 +1001,8 @@
         library.requireSubtitlesRetained ?? defaults.requireSubtitlesRetained,
       requireSizeReduction:
         library.requireSizeReduction ?? defaults.requireSizeReduction,
+      minimumSizeSavingPercent: library.minimumSizeSavingPercent ?? null,
+      maximumSizeSavingPercent: library.maximumSizeSavingPercent ?? null,
       audioLoudnessGateEnabled:
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
@@ -1070,6 +1091,10 @@
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
       durationTolerancePercent: Number(form.durationTolerancePercent),
+      minimumSizeSavingPercent: form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+        ? toNullableNumber(form.minimumSizeSavingPercent) : null,
+      maximumSizeSavingPercent: form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+        ? toNullableNumber(form.maximumSizeSavingPercent) : null,
       maxLoudnessDriftLufs: Number(form.maxLoudnessDriftLufs),
       maxTruePeakDbtp: Number(form.maxTruePeakDbtp),
       minimumImageSsim: Number(form.minimumImageSsim),
@@ -1639,7 +1664,7 @@
     title={i18n.m.settings.gates_title}
     description={i18n.m.libraries.verification_intro}
   >
-    <div class="grid gap-4 xl:grid-cols-2">
+    <div class="grid items-start gap-4 xl:grid-cols-2">
       <fieldset class="min-w-0 rounded-lg border border-line bg-panel p-4">
         <legend class="px-1 text-sm font-semibold text-ink-2">
           {i18n.m.settings.always_on}
@@ -1678,6 +1703,48 @@
           {/if}
           <Toggle bind:checked={form.requireSizeReduction} label={i18n.m.settings.require_smaller} hint={i18n.m.libraryWorkflow.size_hint} />
         </div>
+        {#if room === 'verify/advanced' && showVideoOptions && !isNoEncodeProfile}
+          <div class="mt-4 rounded-lg border border-line bg-raised/50 p-3.5">
+            <label class="label" for="lib-minimum-saving">
+              {i18n.m.settings.minimum_saving}
+              <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.minimum_saving })} text={i18n.m.settings.minimum_saving_tip} />
+            </label>
+            <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
+              <input
+                id="lib-minimum-saving"
+                aria-label={i18n.m.settings.minimum_saving}
+                aria-invalid={verificationError === i18n.m.settings.validation_minimum_saving}
+                aria-describedby="lib-verification-error"
+                class="input min-w-0 flex-1"
+                type="number" min="0.1" max="99" step="0.1"
+                disabled={!form.requireSizeReduction}
+                bind:value={form.minimumSizeSavingPercent}
+              />
+              <span class="flex-none text-sm text-ink-3">%</span>
+            </div>
+            <p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.settings.minimum_saving_tip}</p>
+            <div class="mt-4 border-t border-line pt-4">
+              <label class="label" for="lib-maximum-saving">
+                {i18n.m.settings.maximum_saving}
+                <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.maximum_saving })} text={i18n.m.settings.maximum_saving_tip} />
+              </label>
+              <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
+                <input
+                  id="lib-maximum-saving"
+                  aria-label={i18n.m.settings.maximum_saving}
+                  aria-invalid={verificationError === i18n.m.settings.validation_maximum_saving || verificationError === i18n.m.settings.validation_saving_order}
+                  aria-describedby="lib-verification-error"
+                  class="input min-w-0 flex-1"
+                  type="number" min="0.1" max="99" step="0.1"
+                  disabled={!form.requireSizeReduction}
+                  bind:value={form.maximumSizeSavingPercent}
+                />
+                <span class="flex-none text-sm text-ink-3">%</span>
+              </div>
+              <p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.settings.maximum_saving_tip}</p>
+            </div>
+          </div>
+        {/if}
       </fieldset>
 
       {#if showVideoOptions || showAudioOptions}
@@ -1913,7 +1980,7 @@
       <section class="space-y-4">
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <div class="mb-1 flex items-center justify-between">
+            <div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
               <label class="label mb-0" for="lib-priority">{i18n.m.libraries.queue_priority} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.queue_priority })} text={i18n.m.libraries.queue_priority_tip} /></label>
               <span class="badge tone-neutral">{priorityLabel(form.priority)}</span>
             </div>
@@ -2175,7 +2242,7 @@
         </div>
 
 {#if !isRemuxProfile}        <div class="mt-4">
-          <div class="mb-1 flex items-center justify-between">
+          <div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <label class="label mb-0" for="lib-crf">{i18n.m.libraries.quality_crf} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.quality_crf })} text={i18n.m.libraries.quality_crf_tip} /></label>
             <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
               <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
@@ -2183,11 +2250,11 @@
             </label>
           </div>
           {#if form.qualityCrf != null}
-            <div class="flex items-center gap-3">
+            <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
               <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="min-w-0 w-full accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
               <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-              <span class="badge w-10 justify-center tone-accent">{form.qualityCrf}</span>
+              <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.qualityCrf}</span>
             </div>
           {:else}
             <p class="text-xs text-ink-4">{i18n.m.libraries.using_preset_quality}</p>
@@ -2390,10 +2457,10 @@
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="space-y-4">
 
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div class="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
 
-          <div>
-            <div class="mb-1 flex items-center justify-between">
+          <div class="min-w-0">
+            <div class="mb-1 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
               <label class="label mb-0" for="lib-image-quality">{i18n.m.libraries.quality} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.quality })} text={i18n.m.libraries.image_quality_tip} /></label>
               <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
                 <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
@@ -2401,11 +2468,11 @@
               </label>
             </div>
             {#if form.imageQuality != null}
-              <div class="flex items-center gap-3">
+              <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
                 <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="flex-1 accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
+                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="min-w-0 w-full accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
                 <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-                <span class="badge w-10 justify-center tone-accent">{form.imageQuality}</span>
+                <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.imageQuality}</span>
               </div>
             {:else}
               <p class="text-xs text-ink-4">{i18n.m.libraries.using_default_80}</p>

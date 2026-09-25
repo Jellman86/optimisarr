@@ -20,7 +20,10 @@ public sealed class JobRunner(
     string scratchRoot,
     Func<MachineLoad?> load,
     Action<string>? report = null,
-    Action<MonitorJob>? observe = null)
+    Action<MonitorJob>? observe = null,
+    Func<bool>? wantsPreview = null,
+    Action<int, byte[]>? publishPreview = null,
+    IFramePreviewExtractor? previewExtractor = null)
 {
     public async Task<JobOutcome> RunAsync(
         StoredPairing pairing, Assignment assignment, CancellationToken cancellationToken)
@@ -33,6 +36,11 @@ public sealed class JobRunner(
         var source = Path.Combine(scratch, "source");
         var candidatePrefix = Path.Combine(scratch, "candidate");
         var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
+        using var previewLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var previews = wantsPreview is not null && publishPreview is not null
+            ? new JobPreviewSampler(ffmpegPath, previewExtractor ?? new FfmpegFramePreviewExtractor(),
+                wantsPreview, jpeg => publishPreview(assignment.JobId, jpeg))
+            : null;
 
         try
         {
@@ -53,6 +61,8 @@ public sealed class JobRunner(
                         "The source did not arrive intact (hash mismatch), so it was not encoded.");
                 }
             }
+
+            if (previews is not null) _ = previews.TrySampleAsync(source, 0, previewLifetime.Token);
 
             // The per-title quality search, when the server sent one. It runs here, on the encoder
             // that will do the real encode, because a quality proven by measuring one encoder means
@@ -88,7 +98,20 @@ public sealed class JobRunner(
             var result = await WhileRenewing(
                 pairing, assignment, RemoteStage.Encoding, () => encoded, cancellationToken,
                 token => transcoder.RunAsync(
-                    ffmpegPath, arguments, new Progress<double>(seconds => encoded = seconds), token));
+                    ffmpegPath, arguments, new Progress<double>(seconds =>
+                    {
+                        encoded = seconds;
+                        if (previews is not null) _ = previews.TrySampleAsync(source, seconds, token);
+                    }), token, assignment.MaxCandidateBytes is { } maximum
+                        ? new OutputSizeBudget(candidate, maximum) : null));
+
+            if (result.SizeBudgetExceededAtBytes is { } observed)
+            {
+                await client.ReportSizeBudgetExceededAsync(
+                    pairing, assignment.LeaseId, observed, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false,
+                    $"Size saving: candidate exceeded the {assignment.MaxCandidateBytes:n0}-byte budget; the job was stopped.");
+            }
 
             if (!result.Succeeded)
             {
@@ -102,6 +125,24 @@ public sealed class JobRunner(
                 await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false,
                     "FFmpeg reported success but produced no candidate file.");
+            }
+
+            // The last mux write may happen after the monitor's final poll. Reject before hashing,
+            // VMAF or upload, using the same lease-bound terminal outcome as an in-flight stop.
+            var finalBytes = new FileInfo(candidate).Length;
+            if (assignment.MaxCandidateBytes is { } finalMaximum && finalBytes > finalMaximum)
+            {
+                await client.ReportSizeBudgetExceededAsync(
+                    pairing, assignment.LeaseId, finalBytes, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false,
+                    $"Size saving: finished candidate exceeded the {finalMaximum:n0}-byte budget.");
+            }
+            if (assignment.MinCandidateBytes is { } finalMinimum && finalBytes < finalMinimum)
+            {
+                await client.ReportSizeBudgetUndershotAsync(
+                    pairing, assignment.LeaseId, finalBytes, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false,
+                    $"Compression ceiling: finished candidate was below the {finalMinimum:n0}-byte floor.");
             }
 
             // The server's own measurement, run here and returned as the raw logs. Measuring is the
@@ -169,6 +210,8 @@ public sealed class JobRunner(
         }
         finally
         {
+            previewLifetime.Cancel();
+            if (previews is not null) await previews.WaitForIdleAsync();
             // Never left behind. A worker that kept every source it was ever sent would fill a disk
             // in a weekend, and nothing here is of any use once the job has ended.
             TryDelete(scratch);
@@ -232,7 +275,7 @@ public sealed class JobRunner(
             {
                 direction = await client.ReportAdaptiveProbeAsync(
                     pairing, assignment.LeaseId, step.Quality,
-                    measured.Bytes, measured.Logs!, cancellationToken);
+                    measured.WindowBytes!, measured.Logs!, cancellationToken);
             }
             catch (SidecarException exception)
             {
@@ -285,38 +328,35 @@ public sealed class JobRunner(
     {
         var commands = assignment.Quality.Commands;
 
-        // A sampled window pairs pictures by timestamp, so the server wants the candidate's extra
-        // lead over the source taken off first. Only this machine holds both files.
-        string? distortedShift = null;
-        if (commands.Any(command => command.Any(argument =>
-                argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal))))
-        {
-            // Measured rather than derived. The old arithmetic over container metadata answered
-            // zero for every file it was ever given, and could not have done better: two episodes
-            // of the same show, identical in every header field, need different corrections
-            // because different numbers of frames went missing in their encodes.
-            var frameSeconds = await ProbeFrameSecondsAsync(source, cancellationToken) ?? 1d / 25;
-            var measured = await TimelineAlignment.MeasureAsync(
-                transcoder, ffmpegPath, source, candidate, frameSeconds, scratch, cancellationToken);
-            if (measured is null)
-            {
-                report?.Invoke(
-                    $"Job {assignment.JobId}: the candidate could not be aligned against the source,"
-                    + (assignment.FullVerification is null
-                        ? " so the server will score this itself"
-                        : " so strict verification will fail this job without server fallback"));
-                return null;
-            }
-
-            distortedShift = measured;
-        }
-
-        report?.Invoke(
-            $"Job {assignment.JobId}: measuring {commands.Count} window(s), distorted shift {distortedShift ?? "none"}");
+        // A dropped frame can change alignment later in the file. Each sampled window must
+        // measure its own shift against the pictures it will score.
+        var frameSeconds = commands.Any(command => command.Any(argument =>
+                argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)))
+            ? await ProbeFrameSecondsAsync(source, cancellationToken) ?? 1d / 25
+            : (double?)null;
 
         var logs = new List<string>(commands.Count);
         for (var index = 0; index < commands.Count; index++)
         {
+            string? distortedShift = null;
+            if (commands[index].Any(argument =>
+                argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)))
+            {
+                distortedShift = await TimelineAlignment.MeasureAsync(
+                    transcoder, ffmpegPath, commands[index], source, candidate, frameSeconds!.Value,
+                    scratch, cancellationToken);
+                if (distortedShift is null)
+                {
+                    report?.Invoke($"Job {assignment.JobId}: window {index} could not be aligned; "
+                        + (assignment.FullVerification is null
+                            ? "the server will score this itself"
+                            : "strict verification will fail without server fallback"));
+                    return null;
+                }
+            }
+
+            report?.Invoke($"Job {assignment.JobId}: measuring window {index + 1}/{commands.Count}, "
+                + $"distorted shift {distortedShift ?? "none"}");
             if (MeasurementCommand.Refuse(commands[index]) is { } refused)
             {
                 report?.Invoke(
@@ -412,12 +452,16 @@ public sealed class JobRunner(
     /// ever offered with exactly that line and nothing else to go on.</para>
     /// </summary>
     private readonly record struct CandidateMeasurement(
-        long Bytes, IReadOnlyList<string>? Logs, string? Reason)
+        IReadOnlyList<long>? WindowBytes, IReadOnlyList<string>? Logs, string? Reason)
     {
-        public static CandidateMeasurement Failed(string reason) => new(0, null, reason);
+        public static CandidateMeasurement Failed(string reason) => new(null, null, reason);
 
-        public static CandidateMeasurement Ok(long bytes, IReadOnlyList<string> logs) =>
-            new(bytes, logs, null);
+        /// <summary>
+        /// One byte count per sample window, in command order, so the server's size forecast can
+        /// compare each with the source's own bytes over the same scenes.
+        /// </summary>
+        public static CandidateMeasurement Ok(IReadOnlyList<long> windowBytes, IReadOnlyList<string> logs) =>
+            new(windowBytes, logs, null);
 
         public bool Measured => Reason is null;
     }
@@ -436,7 +480,7 @@ public sealed class JobRunner(
                 + $"{step.Measurement.Commands.Count} command(s) to score them with.");
         }
 
-        long bytes = 0;
+        var windowBytes = new List<long>(step.SampleCommands.Count);
         var logs = new List<string>(step.SampleCommands.Count);
 
         for (var index = 0; index < step.SampleCommands.Count; index++)
@@ -472,7 +516,7 @@ public sealed class JobRunner(
                     $"Sample {index + 1} at quality {step.Quality} encoded to nothing at all.");
             }
 
-            bytes += new FileInfo(sample).Length;
+            windowBytes.Add(new FileInfo(sample).Length);
 
             // A sample begins at its own first picture, so there is no lead to remove — unlike a
             // finished candidate, where the measured window is a slice of a whole file.
@@ -519,7 +563,7 @@ public sealed class JobRunner(
             TryDeleteFile(log);
         }
 
-        return CandidateMeasurement.Ok(bytes, logs);
+        return CandidateMeasurement.Ok(windowBytes, logs);
     }
 
     private static void TryDeleteFile(string path)

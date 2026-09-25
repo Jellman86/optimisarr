@@ -119,4 +119,25 @@ public sealed class DecodeIntegrityParserTests
 
         Assert.Equal(1, integrity.ErrorCount);
     }
+
+    [Fact]
+    public void Streaming_accumulator_matches_batch_parser_and_can_stop_after_many_real_errors()
+    {
+        var lines = new[]
+        {
+            "[null @ 0x1] non monotonically increasing dts to muxer",
+            "Last message repeated 30 times",
+            "[av1 @ 0x2] Error parsing OBU data",
+            "Last message repeated 98 times",
+            "[av1 @ 0x2] No sequence header available"
+        };
+        var accumulator = new DecodeIntegrityAccumulator();
+        foreach (var line in lines)
+        {
+            accumulator.AddLine(line);
+        }
+
+        Assert.Equal(DecodeIntegrityParser.Parse(string.Join('\n', lines)), accumulator.Result);
+        Assert.True(accumulator.Result.ErrorCount >= DecodeHealthCheck.MaximumUsefulDecodeErrors);
+    }
 }

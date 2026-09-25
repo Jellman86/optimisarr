@@ -28,7 +28,16 @@ installations upgraded from an older release never see the wizard automatically.
 without deleting or resetting any configuration, use **Settings → System → First-run setup → Run
 setup again**.
 
-![Encoding settings showing concurrent jobs, CPU limits, hardware selection, and scan interval](../images/optimisarr-settings-general-dark.png)
+![Encoding settings showing primary media slots and advanced workload lanes](../images/optimisarr-settings-general-dark.png)
+
+**Settings → Encoding → Queue** sets the primary media slots for video encoding and full
+container verification. Open **Advanced workload lanes** to choose **Automatic** or **Manual**.
+Automatic conservatively reserves an extra audio/image slot on servers with sufficient CPU and
+memory, and one or two slots for validating strict sidecar evidence. Manual lets you set 0–4 extra
+audio/image slots and 1–4 evidence slots; the effective capacity preview shows the result before
+you save. At zero extra audio/image slots, those jobs can still use a free primary slot. Worker
+capacity is independent of these local slots. The Queue page shows each lane's active capacity,
+waiting work, and the current reason for a wait.
 
 ## Admin token
 
@@ -55,15 +64,15 @@ did before and logs a warning at startup.
 
 ## Remote workers
 
-Windows and macOS sidecars can encode video, measure VMAF, and optionally perform the full
+Windows and macOS sidecars can encode video, measure VMAF, and perform the full
 verification workload. They remain an opt-in preview behind
 `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`. Enable **Remote workers** in
 **Settings → Files & safety**, then pair and manage machines in **Settings → Remote workers**.
 
 Work placement is per library: **Libraries → Configure → Choose files → Advanced eligibility →
 Where this library's work may run**. Choose **Here or on a worker**, **Only on this server**,
-**Prefer a worker**, or **Only on workers**. To require worker verification too, enable
-**Verify entirely on the sidecar** in **Settings → Files & safety → Remote workers**.
+**Prefer a worker**, or **Only on workers**. **Verify entirely on the sidecar** defaults on for
+new installations; existing settings are preserved. You can change it in **Settings → Files & safety → Remote workers**.
 
 See [Remote workers and sidecars](remote-workers.md) for installation, the ten-minute preference
 window, strict verification, and the work that remains on the container.
@@ -93,7 +102,7 @@ the former global policy into each existing library so behaviour does not change
 | Control | Behaviour |
 |---|---|
 | Library scan interval | Rescans every enabled library at the configured interval (one hour by default), the only scheduling control in global settings. Scanning also runs once at startup. |
-| Concurrent jobs | Bounds parallel encodes. |
+| Primary media slots | Bounds video encodes and full container media verification. Audio/image work can use a free slot. Advanced workload lanes provide independent extra audio/image and strict sidecar-evidence capacity. |
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
 | Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
@@ -101,7 +110,8 @@ the former global policy into each existing library so behaviour does not change
 | HDR tone-map engine | Software is the compatible default. Hardware uses Intel QSV or VA-API for a freshly confirmed non-Dolby-Vision HDR10/PQ source under an existing **Tone-map to SDR** library rule when hardware decoding is active, and retries once with software if that path fails. HLG, Dolby Vision, unknown transfer metadata, VMAF-gated work, and disposable comparisons retain the software transform. |
 
 There is no global processing window: *when* work runs is set per library (see
-below). Jobs you queue manually run whenever the queue can start one.
+below). Manually queued jobs in a library with auto-optimise enabled also obey its
+window; libraries without auto-optimise have no window.
 
 ![Library Advanced encoding page with breadcrumbs, codec and container overrides, encoder effort, and bitrate controls](../images/optimisarr-library-advanced-encoding-dark.png)
 
@@ -300,6 +310,12 @@ without auto-optimise have no window, so their manually queued jobs run at any
 time. Scanning/probing is independent and global (see the scan interval above),
 and Queue dispatch still obeys concurrency, activity-pause, and disk-safety
 controls. A start time equal to the end time means the window is open all day.
+
+The **Schedule** view shows each library's window, whether it is currently open,
+and why new work is waiting. It distinguishes an operator pause from other dispatch
+gates and links each library to its configuration.
+
+![Schedule view with queue dispatch reason and per-library automation windows](../images/optimisarr-schedule-dark.png)
 
 **Auto-replace** is disabled by default. When enabled for a library, a job that
 passes every verification gate is replaced automatically. The original is still

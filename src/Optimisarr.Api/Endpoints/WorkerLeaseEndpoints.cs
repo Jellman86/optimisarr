@@ -7,6 +7,7 @@ using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
@@ -42,7 +43,12 @@ internal sealed record AssignmentDto(
     /// at. Null when the quality is already settled and the encode can start immediately.
     /// </summary>
     AdaptiveSearchStepDto? Search = null,
-    RemoteVerificationContract? FullVerification = null);
+    RemoteVerificationContract? FullVerification = null,
+    long? MaxCandidateBytes = null,
+    long? MinCandidateBytes = null);
+
+internal sealed record SizeBudgetExceededRequest(long ObservedBytes);
+internal sealed record SizeBudgetUndershotRequest(long ObservedBytes);
 
 /// <summary>
 /// One candidate of the per-title quality search, on the wire.
@@ -126,7 +132,13 @@ internal sealed record QualityEvidenceRequest(
 internal sealed record AdaptiveProbeRequest(
     int Quality,
     long EncodedBytes,
-    IReadOnlyList<string> Logs);
+    IReadOnlyList<string> Logs,
+    /// <summary>
+    /// The same bytes split by window, in command order, so the size forecast can say which
+    /// scenes grew. Optional for workers that predate it; when sent it must add up to
+    /// <c>encodedBytes</c>.
+    /// </summary>
+    IReadOnlyList<long>? WindowEncodedBytes = null);
 
 /// <summary>
 /// Measure this next, or stop searching and encode at this quality. Never both.
@@ -262,7 +274,9 @@ internal static class WorkerLeaseEndpoints
             // candidate: the shortlist is 25 jobs and this runs on every check-in from every worker.
             var handbacks = await db.JobLeases
                 .AsNoTracking()
-                .Where(lease => shortlist.Contains(lease.JobId) && lease.State == LeaseState.Released)
+                .Where(lease => shortlist.Contains(lease.JobId)
+                    && lease.State == LeaseState.Released
+                    && lease.EndReason == null)
                 .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
                 .ToListAsync(cancellationToken);
             // Distinct workers, not refusals: see HandbackPolicy.MaxRefusingWorkers. One machine
@@ -357,6 +371,14 @@ internal static class WorkerLeaseEndpoints
                 }
 
                 var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
+                var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
+                    job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                    job.Type is JobType.Preview or JobType.Calibration,
+                    assignment.Verification.MinimumSizeSavingPercent);
+                var minCandidateBytes = SizeBudget.MinCandidateBytes(
+                    job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                    job.Type is JobType.Preview or JobType.Calibration,
+                    assignment.Verification.MaximumSizeSavingPercent);
 
                 db.JobLeases.Add(new JobLease
                 {
@@ -369,6 +391,8 @@ internal static class WorkerLeaseEndpoints
                     // Bound to the lease so delivery names the candidate by the contract, not by
                     // the source; the replacement's final extension comes from that name.
                     OutputExtension = assignment.OutputExtension,
+                    MaxCandidateBytes = maxCandidateBytes,
+                    MinCandidateBytes = minCandidateBytes,
                     HardwareDecoder = assignment.HardwareDecoder,
                     // What the worker was asked to measure, fixed now so the evidence it returns is
                     // judged against this, not against a policy that may have changed since.
@@ -388,10 +412,26 @@ internal static class WorkerLeaseEndpoints
 
                 // The exclusion that matters: off the queue, so this machine will not also run it.
                 job.Status = JobStatus.Leased;
+                job.ExecutionAttempt += 1;
+                job.Progress = 0;
+                job.StartedAt = now;
+                job.FinishedAt = null;
+                job.UpdatedAt = now;
+                job.ErrorMessage = null;
+                job.FailureCategory = null;
+                job.ProcessLog = null;
+                job.WorkOutputPath = null;
+                job.OutputSizeBytes = null;
+                job.VerificationPassed = null;
+                job.VerificationReportJson = null;
+                job.VerifiedAt = null;
                 // The queue shows these for every job. For a remote job they must be what the
                 // worker will actually run, not whatever this server last ran for it.
                 job.VideoEncoder = assignment.VideoEncoder;
                 job.FfmpegArguments = string.Join(' ', assignment.Arguments);
+                job.RequestedVideoQuality = assignment.RequestedVideoQuality;
+                job.EffectiveVideoQuality = assignment.EffectiveVideoQuality;
+                job.VideoQualityMode = assignment.VideoQualityMode;
 
                 try
                 {
@@ -430,7 +470,9 @@ internal static class WorkerLeaseEndpoints
                         assignment.Quality?.Commands ?? [],
                         assignment.Quality?.Sampling ?? "None"),
                     AdaptiveSearchWire.From(assignment.Search, policy),
-                    assignment.FullVerification));
+                    assignment.FullVerification,
+                    maxCandidateBytes,
+                    minCandidateBytes));
             }
 
             return Results.NoContent();
@@ -525,6 +567,7 @@ internal static class WorkerLeaseEndpoints
             SettingsStore settings,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            IHubContext<JobsHub> hub,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
@@ -586,8 +629,8 @@ internal static class WorkerLeaseEndpoints
             // job's own work rather than being reconstructed here, because an approximate policy
             // would leave out the catastrophic floor and a different baseline would bracket around
             // a different number.
-            if (await dispatcher.GetSearchContextAsync(lease.JobId, cancellationToken)
-                is not var (policy, baseline))
+            if (await dispatcher.GetSearchContextAsync(lease.JobId, worker.ToCapabilities(), cancellationToken)
+                is not var (policy, baseline, bypassSizePreflight))
             {
                 return ApiErrors.Conflict("worker.search.notRequested",
                     "This job can no longer be read, so its search cannot continue.");
@@ -599,7 +642,8 @@ internal static class WorkerLeaseEndpoints
 
             var progress = AdaptiveSearchCoordinator.Advance(
                 baseline, prior, asked, 
-                new AdaptiveSearchReport(request.Quality, request.EncodedBytes, request.Logs ?? []),
+                new AdaptiveSearchReport(
+                    request.Quality, request.EncodedBytes, request.Logs ?? [], request.WindowEncodedBytes),
                 contract,
                 policy);
             if (progress is null)
@@ -622,8 +666,49 @@ internal static class WorkerLeaseEndpoints
                 probe.EncodedBytes,
                 AdaptiveProbeReport.Describe(probe, policy));
 
+            // Measured once per search, on this machine's copy of the source, then kept with the
+            // search's contract so later candidates reuse it. Not at all when nothing would be
+            // judged by it: no size gate, or an operator already chose to encode anyway.
+            var sizeForecast = contract.SizeForecast
+                ?? (lease.MaxCandidateBytes is null || bypassSizePreflight
+                    ? null
+                    : await dispatcher.MeasureSizeForecastBasisAsync(
+                        lease.JobId, worker.ToCapabilities(), cancellationToken));
+            var sizeReview = SizePreflight.Review(
+                sizeForecast,
+                progress.Probes,
+                probe,
+                progress.Decision,
+                lease.MaxCandidateBytes,
+                bypassSizePreflight);
+            if (sizeReview.ShouldHold && lease.Job is { Status: JobStatus.Leased } heldJob)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var release = lease.ToDomain().Release(worker.Id, now);
+                if (release.Outcome != LeaseOutcome.Released)
+                {
+                    return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
+                }
+                lease.AdaptiveAskedQuality = null;
+                lease.Apply(release.Lease, now);
+                lease.EndReason = LeaseEndReason.HeldForSizeReview;
+                heldJob.Status = JobStatus.AwaitingSizeReview;
+                heldJob.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                heldJob.Progress = 0;
+                heldJob.ErrorMessage = sizeReview.Reason;
+                heldJob.UpdatedAt = now;
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogInformation(
+                    "Job {JobId}: worker quality search held the full encode for size review; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
+                    heldJob.Id, sizeReview.VideoRatio, sizeReview.ProjectedBytes);
+                dispatcher.Wake();
+                await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+                return ApiErrors.Conflict("worker.search.sizeReview", sizeReview.Reason!);
+            }
+
             if (progress.Decision.Complete)
             {
+                QueueDispatcher.LogSizeForecast(logger, lease.JobId, sizeReview);
                 lease.AdaptiveAskedQuality = null;
                 // Recorded on the job, exactly as a local search records it. Without this the
                 // server would not know what the worker is encoding at: the value would exist only
@@ -642,11 +727,8 @@ internal static class WorkerLeaseEndpoints
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
                     forceStrictVerification: lease.VerificationContractJson is not null);
 
-                if (lease.VerificationContractJson is not null)
-                {
-                    lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
-                    await db.SaveChangesAsync(cancellationToken);
-                }
+                lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
+                await db.SaveChangesAsync(cancellationToken);
                 return Results.Ok(new AdaptiveProbeDirectionDto(
                     null,
                     progress.Decision.SelectedQuality,
@@ -672,11 +754,8 @@ internal static class WorkerLeaseEndpoints
                 var fallback = await dispatcher.PrepareRemoteWorkAsync(
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
                     forceStrictVerification: lease.VerificationContractJson is not null);
-                if (lease.VerificationContractJson is not null)
-                {
-                    lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
-                    await db.SaveChangesAsync(cancellationToken);
-                }
+                lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
+                await db.SaveChangesAsync(cancellationToken);
                 return Results.Ok(new AdaptiveProbeDirectionDto(
                     null,
                     progress.Decision.SelectedQuality,
@@ -685,7 +764,8 @@ internal static class WorkerLeaseEndpoints
             }
 
             lease.AdaptiveAskedQuality = next.Quality;
-            lease.AdaptiveContractJson = JsonSerializer.Serialize(next.Measurement, EvidenceJson);
+            lease.AdaptiveContractJson = JsonSerializer.Serialize(
+                next.Measurement with { SizeForecast = sizeForecast }, EvidenceJson);
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(new AdaptiveProbeDirectionDto(
@@ -805,6 +885,103 @@ internal static class WorkerLeaseEndpoints
         .Produces<ApiError>(StatusCodes.Status403Forbidden)
         .Produces<ApiError>(StatusCodes.Status409Conflict);
 
+        app.MapPost("/api/workers/leases/{leaseId:guid}/size-budget-exceeded", async (
+            Guid leaseId,
+            SizeBudgetExceededRequest request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            IHubContext<JobsHub> hub,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Release(workerId, now),
+                (stored, job, _) =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    stored.SizeBudgetExceededAtBytes = request.ObservedBytes;
+                    job.Status = JobStatus.Failed;
+                    job.ErrorMessage = $"Size saving: candidate grew to {request.ObservedBytes:n0} bytes, exceeding this attempt's byte budget.";
+                    job.FailureCategory = FailureCategory.SizeSaving;
+                    job.FinishedAt = now;
+                    job.UpdatedAt = now;
+                },
+                _ => Results.NoContent(),
+                validate: stored => stored.MaxCandidateBytes is not { } maximum
+                    || request.ObservedBytes <= maximum
+                    || stored.Job?.Status != JobStatus.Leased
+                        ? Results.BadRequest(new ApiError("worker.sizeBudget.invalid",
+                            "This lease has no exceeded candidate-size budget."))
+                        : null,
+                afterApply: async (context, _, job) =>
+                    await QueueDispatcher.ApplyFailureTrackingAsync(context, job, JobStatus.Failed,
+                        ImmediateAutoExclusionReason.SizeSaving),
+                alreadyHandled: (stored, workerId) =>
+                    stored.WorkerId == workerId
+                    && stored.State == LeaseState.Released
+                    && stored.SizeBudgetExceededAtBytes == request.ObservedBytes
+                    && stored.Job?.Status == JobStatus.Failed
+                        ? Results.NoContent() : null);
+            if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status204NoContent })
+                await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+            return result;
+        })
+        .WithName("ReportSizeBudgetExceeded")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
+        app.MapPost("/api/workers/leases/{leaseId:guid}/size-budget-undershot", async (
+            Guid leaseId,
+            SizeBudgetUndershotRequest request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            IHubContext<JobsHub> hub,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Release(workerId, now),
+                (stored, job, _) =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    stored.SizeBudgetUndershotAtBytes = request.ObservedBytes;
+                    job.Status = JobStatus.Failed;
+                    job.ErrorMessage = $"Compression ceiling: finished candidate was {request.ObservedBytes:n0} bytes, below the {stored.MinCandidateBytes:n0}-byte floor.";
+                    job.FailureCategory = FailureCategory.SizeSaving;
+                    job.FinishedAt = now;
+                    job.UpdatedAt = now;
+                },
+                _ => Results.NoContent(),
+                validate: stored => stored.MinCandidateBytes is not { } minimum
+                    || request.ObservedBytes >= minimum
+                    || request.ObservedBytes < 0
+                    || stored.Job?.Status != JobStatus.Leased
+                        ? Results.BadRequest(new ApiError("worker.sizeBudget.invalid",
+                            "This lease has no undershot candidate-size floor."))
+                        : null,
+                afterApply: async (context, _, job) =>
+                    await QueueDispatcher.ApplyFailureTrackingAsync(context, job, JobStatus.Failed,
+                        ImmediateAutoExclusionReason.SizeSaving),
+                alreadyHandled: (stored, workerId) =>
+                    stored.WorkerId == workerId
+                    && stored.State == LeaseState.Released
+                    && stored.SizeBudgetUndershotAtBytes == request.ObservedBytes
+                    && stored.Job?.Status == JobStatus.Failed
+                        ? Results.NoContent() : null);
+            if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status204NoContent })
+                await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+            return result;
+        })
+        .WithName("ReportSizeBudgetUndershot")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         app.MapPost("/api/workers/leases/{leaseId:guid}/release", async (
             Guid leaseId,
             HttpRequest http,
@@ -845,7 +1022,10 @@ internal static class WorkerLeaseEndpoints
         Func<WorkerLease, IResult> success,
         // Runs only once the lease operation has succeeded, so a refused or lapsed renewal records
         // nothing about the machine that sent it.
-        Action<Worker>? applyToWorker = null)
+        Action<Worker>? applyToWorker = null,
+        Func<JobLease, IResult?>? validate = null,
+        Func<OptimisarrDbContext, JobLease, Job, Task>? afterApply = null,
+        Func<JobLease, int, IResult?>? alreadyHandled = null)
     {
         if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
         {
@@ -868,6 +1048,11 @@ internal static class WorkerLeaseEndpoints
             return ApiErrors.NotFound("worker.lease.notFound", $"No lease with id {leaseId}.");
         }
 
+        if (alreadyHandled?.Invoke(stored, worker.Id) is { } repeated)
+        {
+            return repeated;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var result = operation(stored.ToDomain(), worker.Id, now);
 
@@ -888,10 +1073,16 @@ internal static class WorkerLeaseEndpoints
                 return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
         }
 
+        if (validate?.Invoke(stored) is { } invalid)
+        {
+            return invalid;
+        }
+
         stored.Apply(result.Lease, now);
         if (stored.Job is not null)
         {
             applyToJob(stored, stored.Job, result.Outcome);
+            if (afterApply is not null) await afterApply(db, stored, stored.Job);
         }
         // The authenticated worker, not `stored.Worker`: that navigation is not included by the
         // query above, so reaching through it would have compiled, run, and silently recorded

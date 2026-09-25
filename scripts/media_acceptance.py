@@ -25,6 +25,10 @@ def free_port():
         return sock.getsockname()[1]
 
 
+def strict_worker_verification_for_run(tier: str, server_verification: bool) -> bool:
+    return tier == "fleet" and not server_verification
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True, help="New, empty run directory (never an existing library)")
@@ -34,7 +38,9 @@ def main():
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--vmaf", help="Independent reference FFmpeg with libvmaf (native mode)")
-    parser.add_argument("--sidecar-verification", action="store_true", help="Require all remote verification on upgraded sidecars; never fall back to server tools")
+    verification = parser.add_mutually_exclusive_group()
+    verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
+    verification.add_argument("--server-verification", action="store_true", help="Explicitly test the legacy server-verification mode")
     parser.add_argument("--tier", choices=("smoke", "fleet"), default="smoke")
     parser.add_argument("--corpus", type=Path, help="Checksum-locked corpus.json produced by acceptance_corpus.py")
     parser.add_argument("--expected-worker", action="append", default=[])
@@ -55,6 +61,8 @@ def main():
         parser.error("Fixture duration must be 8–600 seconds and soak cycles 0–1000")
     if args.sidecar_verification and args.tier != "fleet":
         parser.error("--sidecar-verification requires --tier fleet")
+    if args.server_verification and args.tier != "fleet":
+        parser.error("--server-verification requires --tier fleet")
     if args.expected_worker and args.tier != "fleet":
         parser.error("--expected-worker requires --tier fleet")
     if args.worker_command and args.tier != "fleet":
@@ -155,7 +163,9 @@ def main():
             raise Blocked("Owned test server did not recover after abrupt restart")
 
         harness = Harness(api, tools, root, report, timeout=args.timeout, restart=restart)
-        return harness.run(tier=args.tier, strict_worker_verification=args.sidecar_verification, corpus=corpus, expected_workers=args.expected_worker,
+        return harness.run(tier=args.tier,
+                           strict_worker_verification=strict_worker_verification_for_run(args.tier, args.server_verification),
+                           corpus=corpus, expected_workers=args.expected_worker,
                            local_encoders=args.local_encoder, variants=args.fixture_variant,
                            soak_cycles=args.soak_cycles, fixture_seconds=args.fixture_seconds)
     except KeyboardInterrupt:

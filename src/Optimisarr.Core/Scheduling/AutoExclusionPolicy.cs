@@ -19,6 +19,7 @@ public enum ImmediateAutoExclusionReason
 public static class AutoExclusionPolicy
 {
     private const string SizeSavingCheckName = "Size saving";
+    private const string CompressionCeilingCheckName = "Compression ceiling";
 
     /// <summary>
     /// Default number of non-deterministic terminal failures before a file is auto-excluded.
@@ -45,10 +46,8 @@ public static class AutoExclusionPolicy
         int? effectiveQuality)
     {
         var failed = report.Checks.Where(check => check.Outcome == CheckOutcome.Failed).ToList();
-        if (failed.Any(check => string.Equals(
-                check.Name,
-                SizeSavingCheckName,
-                StringComparison.Ordinal)))
+        if (failed.Any(check => string.Equals(check.Name, SizeSavingCheckName, StringComparison.Ordinal)
+                || string.Equals(check.Name, CompressionCeilingCheckName, StringComparison.Ordinal)))
         {
             return ImmediateAutoExclusionReason.SizeSaving;
         }

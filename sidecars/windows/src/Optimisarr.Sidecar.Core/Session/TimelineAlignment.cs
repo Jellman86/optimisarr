@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Sidecar.Core.Session;
 
@@ -38,45 +39,56 @@ public static class TimelineAlignment
     /// not misaligned, it is a different file.</summary>
     public static IReadOnlyList<int> FramesToTry { get; } = [0, 1, -1];
 
-    /// <summary>Far enough in to be past titles and black, short enough that three cost a second.</summary>
-    public const double ProbeStartSeconds = 60;
-    public const double ProbeLeadSeconds = 1;
-    public const double ProbeSeconds = 2;
+    /// <summary>
+    /// Seconds of the window each offset is tried on: long enough to hold motion or a cut, which
+    /// is what separates a frame of misalignment from a good match. Two seconds of a static shot
+    /// scored every offset alike.
+    /// </summary>
+    public const double ProbeSeconds = 5;
 
     /// <summary>
-    /// The shift to hand the server's measurement commands, written the way it writes seconds, or
-    /// null when no probe could be scored at all.
+    /// How far another offset must beat the unshifted timeline to be chosen. A frame of real
+    /// misalignment costs tens of points; anything closer is the scene, not the timeline.
+    /// </summary>
+    public const double ChoiceMarginPoints = 2;
+
+    /// <summary>
+    /// The shift to hand the server's measurement command, written the way it writes seconds, or
+    /// null when no offset could be scored at all.
+    ///
+    /// <para>Each offset is tried with that command itself, cut to <see cref="ProbeSeconds"/>. An
+    /// earlier probe built its own graph — no cadence grid, no lead correction, a different seek —
+    /// and the offset it liked was a frame wrong for the measurement that followed, failing clean
+    /// encodes at harmonic 9.</para>
     /// </summary>
     public static async Task<string?> MeasureAsync(
         ITranscoder transcoder,
         string ffmpegPath,
+        IReadOnlyList<string> command,
         string source,
         string candidate,
         double frameSeconds,
         string scratch,
         CancellationToken cancellationToken)
     {
-        double? bestShift = null;
-        var bestScore = double.NegativeInfinity;
-
+        var scored = new List<(int Frames, double Mean)>(FramesToTry.Count);
         foreach (var frames in FramesToTry)
         {
-            var shift = frames * frameSeconds;
             var log = Path.Combine(scratch, $"align-{frames}.json");
             try
             {
-                var run = await transcoder.RunAsync(
-                    ffmpegPath, Arguments(source, candidate, shift, log), null, cancellationToken);
+                var probe = Truncate(
+                    MeasurementPlaceholders.Resolve(command, candidate, source, log, Shift(frames, frameSeconds)),
+                    ProbeSeconds);
+                var run = await transcoder.RunAsync(ffmpegPath, probe, null, cancellationToken);
                 if (!run.Succeeded || !File.Exists(log))
                 {
                     continue;
                 }
 
-                if (MeanScore(await File.ReadAllTextAsync(log, cancellationToken)) is { } score
-                    && score > bestScore)
+                if (MeanScore(await File.ReadAllTextAsync(log, cancellationToken)) is { } mean)
                 {
-                    bestScore = score;
-                    bestShift = shift;
+                    scored.Add((frames, mean));
                 }
             }
             finally
@@ -85,37 +97,48 @@ public static class TimelineAlignment
             }
         }
 
-        return bestShift is { } chosen ? TimelineLead.Shift(0, -chosen) : null;
+        return Choose(scored) is { } chosen ? Shift(chosen, frameSeconds) : null;
     }
 
     /// <summary>
-    /// The probe: the same pairing the real measurement does, on a short window at a small size.
-    /// Same shape deliberately — an alignment chosen by a differently-built comparison would be
-    /// the alignment for a measurement nobody runs.
+    /// The measurement stopped after <paramref name="seconds"/> of output: its own limit replaced,
+    /// or one added before the output when it has none.
     /// </summary>
-    public static IReadOnlyList<string> Arguments(
-        string source, string candidate, double shift, string log)
+    public static IReadOnlyList<string> Truncate(IReadOnlyList<string> measurement, double seconds)
     {
-        var lead = ProbeLeadSeconds.ToString("G", CultureInfo.InvariantCulture);
-        var length = ProbeSeconds.ToString("G", CultureInfo.InvariantCulture);
-        var offset = (shift * 1_000_000).ToString("F6", CultureInfo.InvariantCulture);
-        var graph =
-            $"[0:v]settb=AVTB,setpts=PTS-{offset},trim=start={lead}:duration={length},"
-            + "settb=AVTB,setpts=PTS-STARTPTS,scale=320:240:flags=bilinear,format=yuv420p[dist];"
-            + $"[1:v]settb=AVTB,trim=start={lead}:duration={length},"
-            + "settb=AVTB,setpts=PTS-STARTPTS,scale=320:240:flags=bilinear,format=yuv420p[ref];"
-            + "[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=4:n_subsample=1:"
-            + $"log_fmt=json:log_path={FilterPath.ForFilterOption(log)}:shortest=1:repeatlast=0";
+        var length = seconds.ToString("G", CultureInfo.InvariantCulture);
+        var arguments = measurement.ToList();
+        var limit = arguments.LastIndexOf("-t");
+        if (limit >= 0 && limit + 1 < arguments.Count)
+        {
+            arguments[limit + 1] = length;
+            return arguments;
+        }
 
-        return
-        [
-            "-nostdin", "-v", "error",
-            "-ss", ProbeStartSeconds.ToString("G", CultureInfo.InvariantCulture), "-i", candidate,
-            "-ss", ProbeStartSeconds.ToString("G", CultureInfo.InvariantCulture), "-i", source,
-            "-lavfi", graph,
-            "-t", length, "-f", "null", "-",
-        ];
+        var output = arguments.LastIndexOf("-f");
+        arguments.InsertRange(output >= 0 ? output : arguments.Count, ["-t", length]);
+        return arguments;
     }
+
+    /// <summary>
+    /// The offset, in frames, whose probe matched best, or null when none could be scored. The
+    /// unshifted timeline keeps the window unless another offset beats it clearly.
+    /// </summary>
+    public static int? Choose(IReadOnlyList<(int Frames, double Mean)> scored)
+    {
+        if (scored.Count == 0)
+        {
+            return null;
+        }
+
+        var best = scored.MaxBy(entry => entry.Mean);
+        return best.Frames != 0
+            && scored.Any(entry => entry.Frames == 0 && best.Mean - entry.Mean < ChoiceMarginPoints)
+                ? 0
+                : best.Frames;
+    }
+
+    private static string Shift(int frames, double frameSeconds) => TimelineLead.Shift(0, -frames * frameSeconds);
 
     /// <summary>
     /// The mean of a probe's frame scores. The mean rather than the harmonic mean on purpose: this
@@ -170,7 +193,7 @@ public static class TimelineAlignment
     /// <summary>What to ask ffprobe for, to learn how long a picture lasts.</summary>
     public static IReadOnlyList<string> FrameRateArguments(string file) =>
     [
-        "-v", "error", "-select_streams", "v:0",
+        "-v", "error", "-select_streams", TimestampIntegrityCheck.MovingPictureStreamSpecifier,
         "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", file,
     ];
 }

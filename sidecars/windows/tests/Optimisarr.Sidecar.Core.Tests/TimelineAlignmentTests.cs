@@ -47,6 +47,13 @@ public sealed class TimelineAlignmentTests
         Assert.Equal(1 / 23.976, TimelineAlignment.FrameSeconds("24000/1001")!.Value, 6);
     }
 
+    [Fact]
+    public void Frame_rate_probe_ignores_attached_artwork()
+    {
+        var arguments = TimelineAlignment.FrameRateArguments("source.mkv");
+        Assert.Equal("V:0", arguments[Array.IndexOf(arguments.ToArray(), "-select_streams") + 1]);
+    }
+
     [Theory]
     [InlineData("0/0")]
     [InlineData("25")]
@@ -58,18 +65,25 @@ public sealed class TimelineAlignmentTests
     }
 
     [Fact]
-    public void The_probe_moves_the_candidate_and_never_the_source()
+    public void A_probe_is_the_real_measurement_cut_short()
     {
-        // The server's own measurement shifts the distorted input only, so the probe has to as
-        // well — an alignment chosen against a differently-built comparison is the alignment for a
-        // measurement nobody runs.
-        var arguments = TimelineAlignment.Arguments("src.mkv", "cand.mp4", 0.04, "log.json");
-        var graph = arguments[arguments.ToList().IndexOf("-lavfi") + 1];
+        string[] command = ["-ss", "263.01275", "-i", "cand.mp4", "-lavfi", "graph", "-t", "40", "-f", "null", "-"];
 
-        Assert.Contains("[0:v]settb=AVTB,setpts=PTS-40000.000000", graph);
-        Assert.Contains("[1:v]settb=AVTB,trim=start=1", graph);
-        // The candidate is the first input, as it is in the real command.
-        Assert.Equal("cand.mp4", arguments[arguments.ToList().IndexOf("-i") + 1]);
+        Assert.Equal(["-ss", "263.01275", "-i", "cand.mp4", "-lavfi", "graph", "-t", "5", "-f", "null", "-"],
+            TimelineAlignment.Truncate(command, TimelineAlignment.ProbeSeconds));
+        // A full-file measurement has no limit of its own, so one is added before the output.
+        Assert.Equal(["-i", "cand.mp4", "-lavfi", "graph", "-t", "5", "-f", "null", "-"],
+            TimelineAlignment.Truncate(["-i", "cand.mp4", "-lavfi", "graph", "-f", "null", "-"], 5));
+    }
+
+    [Fact]
+    public void A_clearly_better_offset_wins_and_a_near_tie_keeps_the_unshifted_timeline()
+    {
+        Assert.Equal(0, TimelineAlignment.Choose([(0, 96.2), (1, 19.7), (-1, 20.1)]));
+        Assert.Equal(1, TimelineAlignment.Choose([(0, 0.2), (1, 92.3), (-1, 0.3)]));
+        // A static shot scores alike at every shift; noise must not move the whole window.
+        Assert.Equal(0, TimelineAlignment.Choose([(0, 95.1), (1, 96.4), (-1, 94.8)]));
+        Assert.Null(TimelineAlignment.Choose([]));
     }
 
     [Fact]
@@ -77,6 +91,8 @@ public sealed class TimelineAlignmentTests
     {
         // Two workers that aligned differently would be reporting measurements of different things.
         Assert.Equal([0, 1, -1], TimelineAlignment.FramesToTry);
+        Assert.Equal(5, TimelineAlignment.ProbeSeconds);
+        Assert.Equal(2, TimelineAlignment.ChoiceMarginPoints);
     }
 
     private static double VmafMean(string json) => TimelineAlignment.MeanScore(json)!.Value;

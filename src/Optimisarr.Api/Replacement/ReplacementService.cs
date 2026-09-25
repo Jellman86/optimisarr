@@ -181,14 +181,21 @@ public sealed class ReplacementService
 
     public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)
     {
-        // Only one replacement may act on a job at a time. A job becomes replaceable the instant it
+        // Only one replacement may act on a source at a time. A job becomes replaceable the instant it
         // reaches ReadyToReplace, where the post-verify auto-replace, the reconcile sweep, and a
         // manual replace can all target it at once; overlapping runs corrupt each other's moves and
         // destroy the verified output (the original is still safely restored). The loser of the claim
         // backs off and lets the winner finish.
-        if (!_coordinator.TryBegin(jobId))
+        var mediaFileId = await _db.Jobs.AsNoTracking().Where(job => job.Id == jobId)
+            .Select(job => (int?)job.MediaFileId).FirstOrDefaultAsync(cancellationToken);
+        if (mediaFileId is null)
         {
-            return ReplacementActionResult.Invalid($"A replacement for job {jobId} is already in progress.");
+            return ReplacementActionResult.NotFound($"No job with id {jobId}.");
+        }
+        if (!await _coordinator.TryBeginAsync(jobId, mediaFileId.Value, cancellationToken))
+        {
+            return ReplacementActionResult.Invalid(
+                $"A replacement or rollback for job {jobId} or its source is already in progress.");
         }
 
         try
@@ -197,7 +204,7 @@ public sealed class ReplacementService
         }
         finally
         {
-            _coordinator.End(jobId);
+            _coordinator.End(jobId, mediaFileId.Value);
         }
     }
 
@@ -482,7 +489,7 @@ public sealed class ReplacementService
             return ReplacementActionResult.NotFound($"No replacement with id {replacementId}.");
         }
 
-        if (!_coordinator.TryBegin(replacement.JobId))
+        if (!await _coordinator.TryBeginAsync(replacement.JobId, replacement.MediaFileId, cancellationToken))
         {
             return ReplacementActionResult.Invalid(
                 $"A replacement or rollback for job {replacement.JobId} is already in progress.");
@@ -494,7 +501,7 @@ public sealed class ReplacementService
         }
         finally
         {
-            _coordinator.End(replacement.JobId);
+            _coordinator.End(replacement.JobId, replacement.MediaFileId);
         }
     }
 

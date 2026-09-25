@@ -161,10 +161,13 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var deliveredFile: Data?
     private(set) var deliveredHeaders: [String: String] = [:]
     private(set) var released = false
+    private(set) var sizeBudgetFailed = false
+    private(set) var sizeBudgetUndershot = false
     private(set) var renewals = 0
     private(set) var qualityReport: [String: Any]?
     /// What the search answers, in order: the worker is told what to measure next until told to stop.
     var probeAnswers: [[String: Any]] = []
+    var probeStatus = 200
     private(set) var probeReports: [[String: Any]] = []
     private(set) var renewalsWhenProbed: [Int] = []
     private(set) var qualityReportedBeforeDelivery = false
@@ -223,6 +226,14 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
                 released = true
                 return (Data(), response(request, 204))
             }
+            if path.hasSuffix("/size-budget-exceeded") {
+                sizeBudgetFailed = true
+                return (Data(), response(request, 204))
+            }
+            if path.hasSuffix("/size-budget-undershot") {
+                sizeBudgetUndershot = true
+                return (Data(), response(request, 204))
+            }
             if path.hasSuffix("/result/offset") {
                 guard resumable else { return (Data(), response(request, 404)) }
                 return (Data("{\"bytes\":\(staged.count)}".utf8), response(request, 200))
@@ -257,6 +268,10 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             if path.hasSuffix("/quality-probe") {
                 let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
                 probeReports.append(body ?? [:])
+                if probeStatus != 200 {
+                    return (Data(#"{"error":"The full encode is held for size review."}"#.utf8),
+                            response(request, probeStatus))
+                }
                 // How many renewals had arrived by the time this candidate was reported. A total
                 // taken at the end of the job cannot tell a search that renewed from one that did
                 // not, because the encode that follows renews either way.
@@ -572,6 +587,17 @@ struct FakeTranscodeRunner: TranscodeRunner, @unchecked Sendable {
     var recorder: ArgumentRecorder?
 
     var measurementExitCode: Int32 = 0
+    var sizeBudgetExceededAtBytes: Int64?
+
+    func run(
+        _ executable: URL, _ arguments: [String], sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String) {
+        if let sizeBudget, let observed = sizeBudgetExceededAtBytes {
+            throw OutputSizeExceeded(observedBytes: observed, maxBytes: sizeBudget.maxBytes)
+        }
+        return try await run(executable, arguments, progress: progress)
+    }
 
     func run(
         _ executable: URL, _ arguments: [String], progress: @escaping @Sendable (Double) -> Void
@@ -617,7 +643,8 @@ private let measurementCommand: [String] = [
 
 private func assignment(
     renewWithinSeconds: Int = 30, measure: Bool = false, sourceBytes: Int64 = 4_096,
-    commands: [[String]] = [measurementCommand]
+    commands: [[String]] = [measurementCommand], maxCandidateBytes: Int64? = nil,
+    minCandidateBytes: Int64? = nil
 ) -> Assignment {
     Assignment(
         leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: sourceBytes,
@@ -626,7 +653,8 @@ private func assignment(
         quality: QualityRequirement(
             measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
             minimumHarmonicMean: 93, minimumMinimum: 80,
-            commands: measure ? commands : [], sampling: "Full file"))
+            commands: measure ? commands : [], sampling: "Full file"),
+        maxCandidateBytes: maxCandidateBytes, minCandidateBytes: minCandidateBytes)
 }
 
 @Suite("Scratch capacity")
@@ -665,6 +693,72 @@ private func scratch() -> URL {
 
 @Suite("Job runner")
 struct JobRunnerTests {
+    @Test("an oversized candidate is reported as terminal instead of handed to another worker")
+    func sizeBudgetStopsJob() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let root = scratch()
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(sizeBudgetExceededAtBytes: 4_096),
+            scratchRoot: root,
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(maxCandidateBytes: 4_095), pairing: pairing) { _ in }
+
+        guard case let .failed(jobId, reason) = outcome else {
+            Issue.record("expected a terminal size failure, got \(outcome)")
+            return
+        }
+        #expect(jobId == 12)
+        #expect(reason.contains("Size saving"))
+        #expect(server.sizeBudgetFailed)
+        #expect(!server.released)
+        #expect(server.deliveredFile == nil)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("job-12").path))
+    }
+
+    @Test("a successful encode whose final mux exceeds its budget is rejected before quality work")
+    func finalMuxSizeBudgetStopsJob() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let root = scratch()
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: root,
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(maxCandidateBytes: 14), pairing: pairing) { _ in }
+
+        guard case let .failed(_, reason) = outcome else {
+            Issue.record("expected a terminal size failure, got \(outcome)")
+            return
+        }
+        #expect(reason.contains("Size saving"))
+        #expect(server.sizeBudgetFailed)
+        #expect(!server.released)
+        #expect(server.deliveredFile == nil)
+    }
+
+    @Test("an over-compressed final candidate fails before quality work or delivery")
+    func finalCompressionCeilingStopsJob() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(), scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(minCandidateBytes: 16), pairing: pairing) { _ in }
+
+        guard case let .failed(_, reason) = outcome else {
+            Issue.record("expected a terminal compression failure, got \(outcome)")
+            return
+        }
+        #expect(reason.contains("Compression ceiling"))
+        #expect(server.sizeBudgetUndershot)
+        #expect(!server.released)
+        #expect(server.deliveredFile == nil)
+    }
+
     @Test("a healthy job fetches, encodes, hashes and delivers, then leaves no scratch behind")
     func deliversAndCleansUp() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
@@ -1159,6 +1253,20 @@ struct MeasurementCommandTests {
 
 @Suite("Measurement in the job flow")
 struct MeasurementFlowTests {
+    /// The output limit a command ran with: 5 for an alignment probe, 40 for a window.
+    static func limit(of arguments: [String]) -> String? {
+        arguments.firstIndex(of: "-t").map { arguments[$0 + 1] }
+    }
+
+    /// The candidate shift substituted into a command's filter graph.
+    static func shift(in arguments: [String]) -> String? {
+        guard let graph = arguments.first(where: { $0.contains("setpts=PTS-") }),
+              let start = graph.range(of: "setpts=PTS-")?.upperBound,
+              let end = graph[start...].range(of: "*1000000")?.lowerBound
+        else { return nil }
+        return String(graph[start..<end])
+    }
+
     @Test("a gated job measures after encoding and reports the logs, bound to both hashes, before delivering")
     func reportsBeforeDelivery() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
@@ -1202,16 +1310,49 @@ struct MeasurementFlowTests {
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
         let report = try #require(server.qualityReport)
         #expect((report["logs"] as? [String])?.count == 1)
-        // Tried, not derived: one short probe per candidate offset, against the two real files.
-        // The arithmetic this replaced read the video stream's start less the container's, which
-        // is zero in every real container, so the correction was never once applied.
-        let probes = recorder.all.filter { $0.contains { $0.contains("scale=320:240") } }
+        // Tried, not derived: the server's own measurement, cut to a few seconds, once per
+        // candidate offset. A probe with a graph of its own chose offsets that were a frame wrong
+        // for the measurement that followed, and failed clean encodes at harmonic 9.
+        let probes = recorder.all.filter { Self.limit(of: $0) == "5" }
         #expect(probes.count == TimelineAlignment.framesToTry.count)
+        #expect(probes.allSatisfy { $0[5] == "113.008875" && $0[13].contains(",fps=fps=23.976023976023978:start_time=0,trim=") })
+        // One frame either way at the fake source's 25 fps.
+        #expect(probes.map { Self.shift(in: $0) } == ["0", "0.04", "-0.04"])
 
-        let measurement = try #require(
-            recorder.all.last { $0.contains("-lavfi") && !$0.contains { $0.contains("scale=320:240") } })
+        let measurement = try #require(recorder.all.last { Self.limit(of: $0) == "40" })
         // Every offset scores alike against this fake, so the one that changes nothing wins.
         #expect(measurement[13].contains("setpts=PTS-0*1000000,fps="))
+    }
+
+    @Test("each quality window probes its own picture alignment")
+    func alignsEachQualityWindow() async throws {
+        var second = shiftedMeasurementCommand
+        second = second.map {
+            $0.replacingOccurrences(of: "113.008875", with: "1414.996917")
+                .replacingOccurrences(of: "4.991125", with: "5.003083")
+        }
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let recorder = ArgumentRecorder()
+        var fake = FakeTranscodeRunner()
+        fake.recorder = recorder
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            ffprobe: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: fake, leadProbe: FakeLeadProbe(), scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            assignment(measure: true, commands: [shiftedMeasurementCommand, second]),
+            pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        // Each window is probed where it will be scored, because a frame lost between windows
+        // moves the later one and not the earlier.
+        let probes = recorder.all.filter { Self.limit(of: $0) == "5" }
+        #expect(probes.count == 2 * TimelineAlignment.framesToTry.count)
+        #expect(probes[0][probes[0].firstIndex(of: "-ss")! + 1] == "113.008875")
+        #expect(probes[3][probes[3].firstIndex(of: "-ss")! + 1] == "1414.996917")
     }
 
     @Test("a sampled measurement whose alignment cannot be scored reports nothing")
@@ -1379,6 +1520,14 @@ struct AdaptiveSearchWorkLoopTests {
         #expect(server.probeReports.map { $0["quality"] as? Int } == [24, 30])
         // Bytes come from the samples this machine actually encoded, never invented.
         #expect(server.probeReports.allSatisfy { ($0["encodedBytes"] as? Int ?? 0) > 0 })
+        // Split by window too, so the server's size forecast can say which scenes grew. The split
+        // covers every sample and adds up to the total, or the server would refuse the report.
+        #expect(server.probeReports.allSatisfy { report in
+            guard let split = report["windowEncodedBytes"] as? [Int] else { return false }
+            // The fixture's step has one sample window.
+            return split.count == 1 && split.allSatisfy { $0 > 0 }
+                && split.reduce(0, +) == report["encodedBytes"] as? Int
+        })
         // And the job still completes, encoded with the command the search settled on rather than
         // the one the assignment arrived carrying.
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
@@ -1402,6 +1551,26 @@ struct AdaptiveSearchWorkLoopTests {
         #expect(server.released)
         #expect(server.deliveredFile == nil)
         if case .released = outcome {} else { Issue.record("expected the job to be handed back") }
+    }
+
+    @Test("size review from the server stops a worker before the full encode")
+    func sizeReviewStopsBeforeEncode() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
+        server.probeStatus = 409
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            Self.searching(Self.step(quality: 24)), pairing: pairing) { _ in }
+
+        #expect(server.probeReports.count == 1)
+        #expect(server.deliveredFile == nil)
+        #expect(!server.released)
+        if case .leaseLost = outcome {} else { Issue.record("expected size review to end the lease, got \(outcome)") }
     }
 
     @Test("the lease is renewed while a candidate is being measured")
@@ -1449,6 +1618,37 @@ struct AdaptiveSearchWorkLoopTests {
 
         #expect(Date().timeIntervalSince(started) < 4)
         #expect(server.deliveredFile == nil)
-        if case .released = outcome {} else { Issue.record("expected the job to be handed back, got \(outcome)") }
+        // A 409 means the server has already revoked the lease. There is nothing left to
+        // release; timing must not turn that explicit loss into a handback expectation.
+        if case .leaseLost = outcome {} else { Issue.record("expected the expired lease to be reported, got \(outcome)") }
+    }
+}
+
+@Suite("Timeline alignment choice")
+struct TimelineAlignmentChoiceTests {
+    @Test("a probe is the measurement itself, stopped after a few seconds")
+    func truncatesTheRealCommand() {
+        let command = ["-ss", "113.008875", "-i", "cand.mp4", "-lavfi", "graph", "-t", "40", "-f", "null", "-"]
+        #expect(TimelineAlignment.truncate(command, seconds: 5)
+            == ["-ss", "113.008875", "-i", "cand.mp4", "-lavfi", "graph", "-t", "5", "-f", "null", "-"])
+        // A full-file measurement has no limit of its own, so one is added before the output.
+        #expect(TimelineAlignment.truncate(["-i", "cand.mp4", "-lavfi", "graph", "-f", "null", "-"], seconds: 5)
+            == ["-i", "cand.mp4", "-lavfi", "graph", "-t", "5", "-f", "null", "-"])
+    }
+
+    @Test("a clearly better offset wins, and a near tie keeps the unshifted timeline")
+    func choosesWithAMargin() {
+        #expect(TimelineAlignment.choose([(0, 96.2), (1, 19.7), (-1, 20.1)]) == 0)
+        #expect(TimelineAlignment.choose([(0, 0.2), (1, 92.3), (-1, 0.3)]) == 1)
+        // A static shot scores alike at every shift; noise must not move the whole window.
+        #expect(TimelineAlignment.choose([(0, 95.1), (1, 96.4), (-1, 94.8)]) == 0)
+        #expect(TimelineAlignment.choose([]) == nil)
+    }
+
+    @Test("both sidecars and the server try the same offsets for the same time")
+    func sameOffsetsEverywhere() {
+        #expect(TimelineAlignment.framesToTry == [0, 1, -1])
+        #expect(TimelineAlignment.probeSeconds == 5)
+        #expect(TimelineAlignment.choiceMarginPoints == 2)
     }
 }
