@@ -17,8 +17,11 @@ for (const dark of [true, false])
     const suffix = `${dark ? 'dark' : 'light'}-${working ? 'excited' : 'steady'}`
     const still = renderer.render(motion, dark, 288) as unknown as Canvas
     await writeFile(new URL(`${suffix}.webp`, destination), still.toBuffer('image/webp', 88))
-    // Tabs get the small-size drawing (planes, edges, front star), not a shrunken photograph.
-    const favicon = renderer.render(motion, dark, 64, 'minimal') as unknown as Canvas
+    // The tab shows the sidebar's drawing, shrunk, as Precession's favicons do.
+    const favicon = createCanvas(64, 64)
+    const context = favicon.getContext('2d')
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(still, 0, 0, 64, 64)
     await writeFile(new URL(`favicon-${suffix}.png`, destination), favicon.toBuffer('image/png'))
   }
 renderer.destroy()

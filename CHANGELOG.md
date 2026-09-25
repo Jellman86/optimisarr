@@ -4,6 +4,7 @@
 
 ### Changed
 
+- The Stellar cube is now the same size in its frame as the Precession cube, so switching icon styles in Settings no longer makes the mark jump in size. Its browser-tab favicon is now the same galaxy cube as the sidebar, shrunk, rather than a separate simplified drawing.
 - The Mac sidecar now bundles libvmaf 3.2.1 (was 3.0.0), matching the container's and the Windows sidecar's VMAF library. Quality scores don't change: on 30 real sample clips, the current VMAF model scores identically on both versions. This makes the newer VMAF v1 models available everywhere for the study in #114; Optimisarr still uses the current model.
 
 ### Fixed
