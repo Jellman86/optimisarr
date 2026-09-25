@@ -155,6 +155,7 @@ using (var scope = app.Services.CreateScope())
 
     // One-time: re-probe files left as Unknown by databases predating media-kind classification.
     await MediaKindBackfill.ResetUnknownProbedFilesAsync(db, CancellationToken.None);
+    await JobSourceSizeBackfill.FillFromReportsAsync(db, CancellationToken.None);
 
     // Replacement and rollback intent is recorded before the first filesystem move. Reconcile any
     // interrupted operation before queue workers start so no job can race its own recovery.

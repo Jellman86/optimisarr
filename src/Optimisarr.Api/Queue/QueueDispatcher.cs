@@ -3252,6 +3252,7 @@ public sealed class QueueDispatcher(
 
         await WithJobAsync(jobId, job =>
         {
+            job.SourceSizeBytes = outcome.SourceSizeBytes;
             job.OutputSizeBytes = outcome.OutputSizeBytes;
             job.VerificationReportJson = reportJson;
             job.VerificationPassed = outcome.Report.Passed;

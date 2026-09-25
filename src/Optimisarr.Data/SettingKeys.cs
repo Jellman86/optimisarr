@@ -49,6 +49,9 @@ public static class SettingKeys
     /// </summary>
     public const string MediaKindBackfillDone = "maintenance.mediaKindBackfillV1Done";
 
+    /// <summary>Set once jobs verified before <c>Job.SourceSizeBytes</c> existed have had it filled from their reports.</summary>
+    public const string JobSourceSizeBackfillDone = "maintenance.jobSourceSizeBackfillV1Done";
+
     /// <summary>Allowed output duration drift, as a percentage of original duration.</summary>
     public const string VerificationDurationTolerancePercent = "verification.durationTolerancePercent";
 

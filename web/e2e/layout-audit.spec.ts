@@ -80,6 +80,15 @@ async function mockApp(page: Page) {
     if (path === '/api/stats') return json(route, fixtures.stats)
     if (path === '/api/jobs') return json(route, fixtures.jobs)
     if (path === '/api/jobs/failures') return json(route, [])
+    if (path === '/api/results') return json(route, [
+      { jobId: 41, mediaFileId: 7, relativePath: 'Show/Season 1/Show - S01E02 - A Long Episode Title WEBDL-1080p.mkv', libraryId: 1, libraryName: 'TV', sourceSizeBytes: 1_282_683_553, outputSizeBytes: 368_922_428, vmafHarmonicMean: 91.3, videoEncoder: 'hevc_qsv', workerName: null, finishedAt: '2026-09-25T04:02:48Z' },
+      { jobId: 40, mediaFileId: 8, relativePath: 'Film (2009)/Film (2009) Bluray-1080p.mkv', libraryId: 2, libraryName: 'Film', sourceSizeBytes: 1_229_000_000, outputSizeBytes: 793_000_000, vmafHarmonicMean: 92.3, videoEncoder: 'hevc_videotoolbox', workerName: 'Mac mini', finishedAt: '2026-09-24T09:00:00Z' },
+    ])
+    if (path === '/api/results/daily') return json(route, Array.from({ length: 30 }, (_, index) => ({
+      date: new Date(Date.UTC(2026, 7, 27 + index)).toISOString().slice(0, 10),
+      bytesSaved: index % 4 === 0 ? 0 : (index % 7 + 1) * 250_000_000,
+      files: index % 4 === 0 ? 0 : index % 7 + 1,
+    })))
     if (path === '/api/queue/status') return json(route, fixtures.queue)
     if (path === '/api/libraries') return json(route, fixtures.libraries)
     if (path === '/api/library-options') return json(route, fixtures.options)
@@ -226,8 +235,8 @@ for (const viewport of viewports) {
       }
       const layout = await measure(page)
       if (viewport.name === 'large text' && name === 'dashboard') {
-        const columns = await page.locator('.telemetry-grid').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)
-        expect(columns, 'dashboard metrics reflow at 200% text').toBeLessThanOrEqual(2)
+        const columns = await page.locator('.dashboard-grid').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)
+        expect(columns, 'dashboard panels reflow at 200% text').toBeLessThanOrEqual(2)
       }
       if (viewport.name === 'large text' && name === 'settings workers') {
         const columns = await page.locator('.worker-details').first().evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)

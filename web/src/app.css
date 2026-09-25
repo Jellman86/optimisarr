@@ -215,6 +215,16 @@ html.dark {
   color-scheme: dark;
 }
 
+/* Large displays sit further from the eye. Every size in the app is in rem, so one step of the
+   root size scales text, controls and spacing together instead of leaving a 2560 px screen
+   with laptop-sized type. */
+@media (min-width: 2200px) {
+  html { font-size: 17px; }
+}
+@media (min-width: 3000px) {
+  html { font-size: 18px; }
+}
+
 body {
   margin: 0;
 }
@@ -281,6 +291,18 @@ p {
    of control primitives: one focus ring, one accent (cyan) reserved for the
    primary action and "on" states, ink for everything else. */
 @layer components {
+  /* The page's frame inside the tray. Lists and dashboards use the whole width; forms keep a
+     readable measure (see layout.ts). The status strip opens every page. */
+  .page-frame {
+    @apply w-full;
+  }
+  .page-frame-reading {
+    @apply mx-auto max-w-6xl;
+  }
+  .page-frame > .status-strip {
+    @apply mb-6;
+  }
+
   /* Page furniture. Every page opens the same way. */
   .page-title {
     @apply text-2xl font-bold tracking-tight text-ink;
