@@ -127,6 +127,31 @@ public sealed class SidecarClientTests
         Assert.Equal(0.87, sent.RootElement.GetProperty("gpuBusyFraction").GetDouble());
     }
 
+    [Theory]
+    [InlineData("https://github.com/Jellman86/optimisarr/releases/tag/v0.2.16", true)]
+    [InlineData("http://github.com/Jellman86/optimisarr/releases/tag/v0.2.16", false)]
+    [InlineData("https://example.com/Jellman86/optimisarr/releases/tag/v0.2.16", false)]
+    [InlineData("https://github.com/someone/else/releases/tag/v0.2.16", false)]
+    [InlineData("file:///C:/Windows/System32/cmd.exe", false)]
+    public async Task A_check_in_carries_only_the_projects_own_release_page(string url, bool accepted)
+    {
+        // The tray opens this in a browser. A server, or anything answering as one, must not be
+        // able to send that browser anywhere but the project's releases.
+        var body = "{\"workerId\":7,\"protocolVersion\":2,\"serverTimeUtc\":\"2026-09-14T20:00:00Z\","
+            + "\"heartbeatIntervalSeconds\":30,\"draining\":false,\"updateVersion\":\"0.2.16\",\"updateUrl\":\"" + url + "\"}";
+        var (client, _) = Client(HttpStatusCode.OK, body);
+
+        var result = await client.HeartbeatAsync(
+            new StoredPairing("https://optimisarr.example.com", "secret", 7), Capabilities(), null);
+
+        Assert.Equal(accepted, result.Update is not null);
+        if (accepted)
+        {
+            Assert.Equal("0.2.16", result.Update!.Version);
+            Assert.Equal(url, result.Update.ReleasePage.AbsoluteUri);
+        }
+    }
+
     [Fact]
     public async Task Load_that_could_not_be_measured_is_left_out_rather_than_sent_as_zero()
     {

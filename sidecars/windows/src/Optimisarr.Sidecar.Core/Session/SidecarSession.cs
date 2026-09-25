@@ -52,6 +52,9 @@ public sealed class SidecarSession(
 {
     private int _paused;
     public bool IsPaused => Volatile.Read(ref _paused) != 0;
+
+    /// <summary>A newer release the server says to install, from the latest check-in; null while current.</summary>
+    public SidecarUpdate? AvailableUpdate { get; private set; }
     public void SetPaused(bool paused)
     {
         if (ShutdownArmed) return;
@@ -175,6 +178,7 @@ public sealed class SidecarSession(
                 if (reportingDrain && ShutdownArmed)
                     Interlocked.Exchange(ref _drainedHeartbeatTicks, DateTime.UtcNow.Ticks);
                 interval = beat.Interval;
+                AvailableUpdate = beat.Update;
                 Set(
                     SidecarState.Connected,
                     beat.Draining

@@ -1665,6 +1665,8 @@ export const en = {
     platform_line: '{os} · {arch} · protocol {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Sidecar version not reported',
+    update_available: 'Update available: this sidecar runs {current}, the server is on {latest}. Older sidecars can fail good encodes.',
+    update_open_release: 'Open release page',
     cpu_label: 'CPU',
     gpu_label: 'GPU',
     gpu_hint: 'GPU utilisation only. A hardware encode may run on a separate media engine that reports nothing here, so this can read low while the machine is busy.',

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Workers;
@@ -42,7 +43,22 @@ internal sealed record WorkerDto(
     IReadOnlyList<WorkerJobDto> ActiveJobs,
     /// <summary>The most recent thing the server refused or discarded from this worker; null if nothing yet.</summary>
     string? LastProblem,
-    DateTimeOffset? LastProblemAt);
+    DateTimeOffset? LastProblemAt,
+    /// <summary>Whether this sidecar is behind the server's release, and where that release is.</summary>
+    WorkerUpdateDto Update);
+
+/// <summary>
+/// <paramref name="State"/> is "unknown", "current", "updateAvailable" or "newer".
+/// <paramref name="ReleaseUrl"/> is set only for "updateAvailable": the release page for the
+/// server's version, which carries the matching Mac and Windows downloads.
+/// </summary>
+internal sealed record WorkerUpdateDto(string State, string? LatestVersion, string? ReleaseUrl)
+{
+    public static WorkerUpdateDto From(SidecarUpdateStatus status) => new(
+        JsonNamingPolicy.CamelCase.ConvertName(status.State.ToString()),
+        status.LatestVersion,
+        status.ReleaseUrl);
+}
 
 /// <summary>One job a worker holds. Stage is "Claimed" until the worker first says otherwise.</summary>
 internal sealed record WorkerJobDto(int JobId, string? RelativePath, string Stage, double Progress);
@@ -126,7 +142,13 @@ internal sealed record HeartbeatResponse(
     DateTimeOffset ServerTimeUtc,
     int HeartbeatIntervalSeconds,
     /// <summary>True while an operator has asked the worker to finish what it holds and take no more.</summary>
-    bool Draining);
+    bool Draining,
+    /// <summary>
+    /// The server's release when this sidecar is older than it, with the page to download it from.
+    /// Both null otherwise. Sidecars never update themselves; this is so they can say so.
+    /// </summary>
+    string? UpdateVersion = null,
+    string? UpdateUrl = null);
 
 internal static class WorkerEndpoints
 {
@@ -318,12 +340,15 @@ internal static class WorkerEndpoints
 
             await db.SaveChangesAsync(cancellationToken);
 
+            var update = SidecarUpdateCheck.Assess(ServerVersion, worker.SidecarVersion);
             return Results.Ok(new HeartbeatResponse(
                 worker.Id,
                 worker.ProtocolVersion,
                 worker.LastSeenAt.Value,
                 (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
-                worker.DrainRequestedAt is not null));
+                worker.DrainRequestedAt is not null,
+                update.ReleaseUrl is null ? null : update.LatestVersion,
+                update.ReleaseUrl));
         })
         .WithName("WorkerHeartbeat")
         .Produces<HeartbeatResponse>()
@@ -568,7 +593,11 @@ internal static class WorkerEndpoints
         activeJobs.Count,
         activeJobs,
         worker.LastProblem,
-        worker.LastProblemAt);
+        worker.LastProblemAt,
+        WorkerUpdateDto.From(SidecarUpdateCheck.Assess(ServerVersion, worker.SidecarVersion)));
+
+    /// <summary>The server's own release, as /api/health reports it.</summary>
+    private static readonly string? ServerVersion = typeof(Program).Assembly.GetName().Version?.ToString();
 
     /// <summary>
     /// Accepts a capability name, case-insensitively. An absent value means the worker claims no

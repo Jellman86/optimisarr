@@ -6,6 +6,22 @@
 
 - **The interface now uses the whole screen.** Dashboards, lists and media reviews widen with the display instead of stopping at 1,152 px, and text steps up slightly on 2200 px and wider screens. Settings and library forms keep a readable width, and card grids such as Libraries and Schedule add columns as the screen widens. A status strip at the top of every page shows the queue's state, free working space, and a Pause/Resume control, so the queue can be paused from anywhere. The sidebar's brand sits beside the name, so navigation starts higher on laptops.
 - **The Dashboard is laid out as a control room.** Total space saved leads, beside what is in flight and what needs you. A chart shows space saved per day for the last 30 days, and a Recent results table lists each finished file's size before and after, the saving, its VMAF score, the encoder and where it ran. The panels reflow from one column on a phone to two on a laptop and three rows across a large display. Jobs now record their source size when verified; jobs verified earlier are filled in once from their reports at startup.
+- The Mac sidecar now bundles libvmaf 3.2.1 (was 3.0.0), matching the container's and the Windows sidecar's VMAF library. Quality scores don't change: on 30 real sample clips, the current VMAF model scores identically on both versions. This makes the newer VMAF v1 models available everywhere for the study in #114; Optimisarr still uses the current model.
+
+### Fixed
+
+- Quality-search samples no longer score a good window near zero when the source's container starts slightly before its picture. The comparison cut the original a few milliseconds later than the sample was cut, so on some titles every frame in a window was compared with the next one. It happened on the server and on sidecars, and could send a search back to the library's default quality. The original is now cut at exactly the instant the sample was (#269).
+
+### Added
+
+- A VMAF model study harness for developers (`tools/Optimisarr.VmafStudy`). It encodes sample windows across a quality ladder with Optimisarr's own commands and scores each clip under the current model and a candidate model such as VMAF v1, then reports how today's gates would translate. This is groundwork for evaluating VMAF v1 (#114); nothing changes for users (see docs/development/vmaf-model-study.md).
+
+### Added
+
+- Sidecars now show when they are behind the server. The server compares each worker's version on check-in. An older Mac or Windows sidecar shows **Update available** in its menu or tray with an **Open release page** button, and its card under Settings → Workers says the same with a link to the matching release. Sidecars still never update themselves; installing stays your choice. Current sidecars, newer ones, and ones that don't report a version show nothing, and links only ever point at the project's own GitHub releases (#276).
+
+### Changed
+
 - Sources whose picture stops well before their audio are now caught before encoding. Verification always rejected them, but only after a full encode (and, on a worker, a full download and upload). A quick read of the file's last 30 seconds spots them, the verifier's own full scans confirm it, and the job fails at once with the Source video timeline gate named. The original is untouched. Sources that look normal pay only that quick read, and results are cached per file (#241).
 
 ## 0.2.15 — 2026-09-25

@@ -207,6 +207,57 @@ public sealed class WorkerHeartbeatEndpointTests
     }
 
     [Fact]
+    public async Task A_sidecar_behind_the_servers_release_is_told_where_to_get_it()
+    {
+        // An older Mac sidecar went on failing good encodes overnight with a bug its own source had
+        // already fixed, and nothing said it was behind. Now its check-in says so, with the release
+        // page for the server's version, and the worker list shows the same.
+        await EnableRemoteWorkers();
+        var admin = Admin();
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+        using var paired = await _api.CreateClient().PostAsJsonAsync(
+            "/api/workers/pair", PairBodyWith(code, "Behind", "0.0.9 (1)"));
+        paired.EnsureSuccessStatusCode();
+        var pairing = await paired.Content.ReadFromJsonAsync<JsonElement>();
+        var workerId = pairing.GetProperty("workerId").GetInt32();
+        var worker = _api.CreateClient();
+        worker.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", pairing.GetProperty("credential").GetString()!);
+        var server = typeof(Program).Assembly.GetName().Version!;
+        var release = $"{server.Major}.{server.Minor}.{server.Build}";
+
+        using var behind = await worker.PostAsJsonAsync("/api/workers/heartbeat", Beat());
+        var told = await behind.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(release, told.GetProperty("updateVersion").GetString());
+        Assert.Equal($"https://github.com/Jellman86/optimisarr/releases/tag/v{release}",
+            told.GetProperty("updateUrl").GetString());
+        var listed = await WorkerRow(admin, workerId);
+        Assert.Equal("updateAvailable", listed.GetProperty("update").GetProperty("state").GetString());
+        Assert.Equal(told.GetProperty("updateUrl").GetString(),
+            listed.GetProperty("update").GetProperty("releaseUrl").GetString());
+
+        // Once it is on the server's release, it hears nothing more.
+        using var current = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 1024L,
+            maxConcurrency = 2,
+            sidecarVersion = $"{release} (12)",
+        });
+        var quiet = await current.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, quiet.GetProperty("updateUrl").ValueKind);
+        Assert.Equal("current", (await WorkerRow(admin, workerId)).GetProperty("update").GetProperty("state").GetString());
+    }
+
+    private static async Task<JsonElement> WorkerRow(HttpClient admin, int workerId)
+    {
+        using var listed = await admin.GetAsync("/api/workers");
+        return (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray()
+            .Single(w => w.GetProperty("id").GetInt32() == workerId);
+    }
+
+    [Fact]
     public async Task A_sidecar_that_reports_no_build_pairs_and_reads_as_empty()
     {
         await EnableRemoteWorkers();

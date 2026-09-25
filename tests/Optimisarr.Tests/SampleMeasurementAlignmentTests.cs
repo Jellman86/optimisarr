@@ -51,6 +51,29 @@ public sealed class SampleMeasurementAlignmentTests
     }
 
     [Fact]
+    public void A_clip_reference_is_cut_exactly_where_the_sample_encoder_cut()
+    {
+        // SpongeBob S13E01, late window: the container starts at -0.021 s, so the grid snap meant
+        // for whole files moved the reference cut to 5.00525 s after its seek. A picture sits in
+        // that 5 ms gap, so the reference began one frame after the sample did and every later
+        // pair was a frame apart: harmonic 4.3 for a clip that scores 97.7 when cut alike. The
+        // sample encoder cuts at the first picture at or after the window start, so the reference
+        // must use the same instant, unsnapped.
+        var context = Sample(cutClip: true) with
+        {
+            ReferenceStartSeconds = 1230,
+            ReferenceDurationSeconds = 1389.674,
+            ReferenceContainerLeadSeconds = 0.021,
+        };
+
+        var command = QualityScoreCommandBuilder.Build("clip.mkv", "source.mkv", "log.json", context, threads: 8);
+        var arguments = command.Arguments.ToList();
+
+        Assert.Equal("1225", arguments[arguments.LastIndexOf("-ss") + 1]);
+        Assert.Contains("trim=start=5:duration=40", ReferenceBranch(context));
+    }
+
+    [Fact]
     public void A_whole_file_candidate_keeps_the_ordering_it_was_tuned_with()
     {
         // Both of its streams are seeked and trimmed alike, so whatever the cadence filter does to

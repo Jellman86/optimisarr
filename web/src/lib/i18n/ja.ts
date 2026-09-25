@@ -1472,6 +1472,8 @@ export const ja: Messages = {
     platform_line: '{os} · {arch} · プロトコル {version}',
     sidecar_version: 'サイドカー {version}',
     sidecar_version_unknown: 'サイドカーのバージョンは未報告',
+    update_available: '更新があります: このサイドカーは {current}、サーバーは {latest} です。古いサイドカーは正常なエンコードを失敗扱いにすることがあります。',
+    update_open_release: 'リリースページを開く',
     cpu_label: 'CPU',
     gpu_label: 'GPU',
     gpu_hint: 'GPU使用率のみ。ハードウェアエンコードはここに現れない専用メディアエンジンで動作することがあり、マシンが忙しくても低く表示される場合があります。',

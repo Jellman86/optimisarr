@@ -19,6 +19,7 @@ COPY src/Optimisarr.Api/Optimisarr.Api.csproj src/Optimisarr.Api/
 COPY src/Optimisarr.Core/Optimisarr.Core.csproj src/Optimisarr.Core/
 COPY src/Optimisarr.Data/Optimisarr.Data.csproj src/Optimisarr.Data/
 COPY tests/Optimisarr.Tests/Optimisarr.Tests.csproj tests/Optimisarr.Tests/
+COPY tools/Optimisarr.VmafStudy/Optimisarr.VmafStudy.csproj tools/Optimisarr.VmafStudy/
 RUN dotnet restore
 COPY . .
 COPY --from=web-build /src/src/Optimisarr.Api/wwwroot/ src/Optimisarr.Api/wwwroot/

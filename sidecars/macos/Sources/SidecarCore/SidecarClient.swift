@@ -85,6 +85,31 @@ public struct HeartbeatResult: Sendable, Equatable {
     /// The operator asked this machine to finish what it holds and take no more. Absent from an
     /// older server's response, which reads as not draining.
     public let draining: Bool
+    /// The server's release when this sidecar is older than it. Nil when current, or when the
+    /// server is older than the one that started saying so.
+    public let update: SidecarUpdate?
+}
+
+/// A newer release the server says this sidecar should install.
+///
+/// This Mac never updates itself. An older sidecar can fail good work while looking healthy, so it
+/// says so in its menu and offers the release page; installing stays the person's decision.
+public struct SidecarUpdate: Sendable, Equatable {
+    public let version: String
+    public let releasePage: URL
+
+    /// Only the project's own release pages over HTTPS. The menu opens this in a browser, and a
+    /// server — or anything answering as one — must not be able to send that browser elsewhere.
+    public init?(version: String?, url: String?) {
+        guard let version, !version.isEmpty, version.count <= 32,
+              let url, let parsed = URL(string: url),
+              parsed.scheme == "https", parsed.host == "github.com",
+              parsed.path.hasPrefix("/Jellman86/optimisarr/releases/"),
+              !parsed.path.contains("..")
+        else { return nil }
+        self.version = version
+        self.releasePage = parsed
+    }
 }
 
 /// Performs HTTP so the client can be tested without a network. Bodies that may be gigabytes —
@@ -289,7 +314,9 @@ public struct SidecarClient: Sendable {
                 // malformed response would otherwise become a tight polling loop against the
                 // server.
                 heartbeatInterval: TimeInterval(max(5, seconds)),
-                draining: body["draining"] as? Bool ?? false
+                draining: body["draining"] as? Bool ?? false,
+                update: SidecarUpdate(
+                    version: body["updateVersion"] as? String, url: body["updateUrl"] as? String)
             )
         case 401:
             // Unknown or revoked. Either way this credential is finished and the app must stop

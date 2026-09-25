@@ -29,7 +29,30 @@ public sealed record HeartbeatResult(
     int WorkerId,
     int ProtocolVersion,
     TimeSpan Interval,
-    bool Draining);
+    bool Draining,
+    SidecarUpdate? Update = null);
+
+/// <summary>
+/// A newer release the server says this sidecar should install. This PC never updates itself: an
+/// older sidecar can fail good work while looking healthy, so the tray says so and offers the
+/// release page, and installing stays the person's decision.
+/// </summary>
+public sealed record SidecarUpdate(string Version, Uri ReleasePage)
+{
+    /// <summary>
+    /// Only the project's own release pages over HTTPS. The tray opens this in a browser, and a
+    /// server — or anything answering as one — must not be able to send that browser elsewhere.
+    /// </summary>
+    public static SidecarUpdate? TryCreate(string? version, string? url) =>
+        !string.IsNullOrWhiteSpace(version) && version.Length <= 32
+        && Uri.TryCreate(url, UriKind.Absolute, out var page)
+        && page.Scheme == Uri.UriSchemeHttps
+        && page.Host == "github.com"
+        && page.AbsolutePath.StartsWith("/Jellman86/optimisarr/releases/", StringComparison.Ordinal)
+        && !page.AbsolutePath.Contains("..", StringComparison.Ordinal)
+            ? new SidecarUpdate(version, page)
+            : null;
+}
 
 /// <summary>
 /// The HTTP half of the worker protocol: redeem a PIN, then check in.
@@ -163,7 +186,8 @@ public sealed class SidecarClient(HttpClient http)
                     payload.WorkerId,
                     payload.ProtocolVersion,
                     TimeSpan.FromSeconds(Math.Max(5, payload.HeartbeatIntervalSeconds)),
-                    payload.Draining);
+                    payload.Draining,
+                    SidecarUpdate.TryCreate(payload.UpdateVersion, payload.UpdateUrl));
 
             case HttpStatusCode.Unauthorized:
                 // Covers absent, malformed, unknown and revoked credentials alike. Only pairing
@@ -402,7 +426,9 @@ public sealed class SidecarClient(HttpClient http)
         int ProtocolVersion,
         DateTimeOffset ServerTimeUtc,
         int HeartbeatIntervalSeconds,
-        bool Draining);
+        bool Draining,
+        string? UpdateVersion = null,
+        string? UpdateUrl = null);
 
     /// <summary>
     /// The server's machine-readable errors carry a human sentence in <c>error</c>. Surfacing that

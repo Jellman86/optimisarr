@@ -831,6 +831,18 @@ export type Worker = {
   /** The most recent thing the server refused or discarded from this worker; null if nothing yet. */
   lastProblem: string | null
   lastProblemAt: string | null
+  /** Whether this sidecar is behind the server's release, and where to get that release. */
+  update?: WorkerUpdate
+}
+
+/**
+ * `releaseUrl` is set only for `updateAvailable`: the release page for the server's version, which
+ * carries the matching Mac and Windows downloads. Sidecars never update themselves.
+ */
+export type WorkerUpdate = {
+  state: 'unknown' | 'current' | 'updateAvailable' | 'newer'
+  latestVersion: string | null
+  releaseUrl: string | null
 }
 
 export type WorkerJob = {

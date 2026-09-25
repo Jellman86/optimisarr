@@ -7,7 +7,7 @@ public sealed record MonitorSnapshot(
     string Machine, string State, string Detail, bool Paused, string? ServerAddress,
     MachineLoad? Load, long? FreeBytes, IReadOnlyList<MonitorJob> Jobs, string? LastOutcome,
     string Version, bool ShutdownArmed = false, string? ShutdownDetail = null, int? ShutdownSeconds = null,
-    bool ShutdownCanCancel = true);
+    bool ShutdownCanCancel = true, string? UpdateVersion = null, string? UpdateUrl = null);
 
 public static class MonitorProtocol
 {

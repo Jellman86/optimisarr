@@ -1472,6 +1472,8 @@ export const pt: Messages = {
     platform_line: '{os} · {arch} · protocolo {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Versão do sidecar não informada',
+    update_available: 'Atualização disponível: este sidecar usa {current} e o servidor {latest}. Sidecars antigos podem rejeitar codificações boas.',
+    update_open_release: 'Abrir página da versão',
     cpu_label: 'CPU',
     gpu_label: 'GPU',
     gpu_hint: 'Apenas uso da GPU. Uma codificação por hardware pode rodar num motor de mídia separado que não reporta aqui, então este valor pode ficar baixo mesmo com a máquina ocupada.',

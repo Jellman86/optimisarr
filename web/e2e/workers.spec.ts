@@ -48,6 +48,8 @@ const workers = [
     drainRequestedAt: null, heldLeases: 0, activeJobs: [],
     lastProblem: 'Its lease on The Bear S04E02.mkv lapsed after 2 minutes of silence; the job went back to the queue.',
     lastProblemAt: iso(86_400_000 * 2),
+    sidecarVersion: '0.2.14+d211f33',
+    update: { state: 'updateAvailable', latestVersion: '0.2.15', releaseUrl: 'https://github.com/Jellman86/optimisarr/releases/tag/v0.2.15' },
   },
 ]
 
@@ -115,6 +117,21 @@ test('each paired sidecar is a card that says what it can do, what it is doing, 
   await expect(office).toContainText('2 days ago')
   await expect(office).toContainText('lapsed after 2 minutes of silence')
   await expect(office.getByRole('button', { name: 'Stop taking work' })).toBeVisible()
+})
+
+test('a sidecar behind the server says so and links to the matching release', async ({ page }) => {
+  await mockWorkers(page)
+  await page.goto('/#/settings')
+  await page.getByRole('button', { name: /^Remote workers/ }).click()
+
+  const cards = page.locator('[data-testid="worker-card"]')
+  await expect(cards.nth(2).getByTestId('worker-update')).toContainText('this sidecar runs 0.2.14+d211f33, the server is on 0.2.15')
+  const link = cards.nth(2).getByRole('link', { name: 'Open release page' })
+  await expect(link).toHaveAttribute('href', 'https://github.com/Jellman86/optimisarr/releases/tag/v0.2.15')
+  await expect(link).toHaveAttribute('target', '_blank')
+  // Current and unreported sidecars say nothing: a false warning teaches people to ignore it.
+  await expect(cards.nth(0).getByTestId('worker-update')).toHaveCount(0)
+  await expect(cards.nth(1).getByTestId('worker-update')).toHaveCount(0)
 })
 
 test('an offline sidecar can be removed from the list, a working one cannot', async ({ page }) => {
