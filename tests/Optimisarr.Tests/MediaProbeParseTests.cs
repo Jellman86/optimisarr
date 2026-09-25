@@ -37,6 +37,40 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_retains_video_colour_range_for_verification_evidence()
+    {
+        var result = MediaProbeService.Parse("""
+        { "streams": [ { "codec_type": "video", "codec_name": "h264",
+          "color_primaries": "smpte170m", "color_transfer": "smpte170m",
+          "color_space": "smpte170m", "color_range": "tv" } ] }
+        """, ".mkv");
+
+        Assert.Equal("tv", result.ColorRange);
+    }
+
+    [Fact]
+    public void Parse_keeps_the_container_start_so_a_picture_lead_can_be_measured()
+    {
+        // Audio priming puts the container start 21 ms before the first picture. FFmpeg seeks and
+        // timestamps relative to that container start, so the lead matters for frame alignment.
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080, "start_time": "0.000000" },
+            { "codec_type": "audio", "codec_name": "aac", "start_time": "-0.021000" }
+          ],
+          "format": { "format_name": "matroska,webm", "duration": "1389.674000", "start_time": "-0.021000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.Equal(0.0, result.VideoStartSeconds);
+        Assert.Equal(-0.021, result.ContainerStartSeconds);
+        Assert.Null(MediaProbeService.Parse(SampleJson).ContainerStartSeconds);
+    }
+
+    [Fact]
     public void Parse_retains_the_average_video_frame_rate_for_frame_aligned_quality_measurement()
     {
         const string json = """
@@ -76,6 +110,24 @@ public sealed class MediaProbeParseTests
             probe,
             new TimestampCheckResult(true, 0, null, 1405.112),
             fallbackDurationSeconds: 3892.171));
+    }
+
+    [Fact]
+    public void Packet_timeline_selects_the_same_moving_picture_stream_as_the_media_probe()
+    {
+        var probe = MediaProbeService.Parse("""
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "mjpeg", "disposition": { "attached_pic": 1 }, "duration": "0.08" },
+            { "codec_type": "video", "codec_name": "h264", "duration": "1279.24" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "1277.27" }
+          ],
+          "format": { "duration": "1279.24" }
+        }
+        """, ".mkv");
+
+        Assert.Equal("h264", probe.VideoCodec);
+        Assert.Equal("V:0", TimestampIntegrityCheck.MovingPictureStreamSpecifier);
     }
 
     [Fact]
@@ -465,6 +517,43 @@ public sealed class MediaProbeParseTests
         Assert.Equal("Example Album", result.FormatTags["ALBUM"]);
         Assert.Equal("Example lyrics", result.FormatTags["lyrics"]);
         Assert.False(result.FormatTags.ContainsKey("empty"));
+    }
+
+    [Fact]
+    public void Parse_takes_the_frame_count_from_the_matroska_statistics_tag_when_nb_frames_is_absent()
+    {
+        // mkvmerge writes the muxer's exact count as a language-suffixed tag; Matroska never fills
+        // nb_frames. A count derived from the nominal rate instead can overrun the progress bar.
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080,
+            "r_frame_rate": "24000/1001", "avg_frame_rate": "24000/1001",
+            "tags": { "NUMBER_OF_FRAMES-eng": "61873", "language": "eng" }
+          }],
+          "format": { "format_name": "matroska,webm", "duration": "2580.5" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(61_873, result.FrameCount);
+    }
+
+    [Fact]
+    public void Parse_prefers_nb_frames_over_the_matroska_tag_when_both_are_present()
+    {
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080,
+            "nb_frames": "100", "tags": { "NUMBER_OF_FRAMES": "200" }
+          }],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        Assert.Equal(100, MediaProbeService.Parse(json, ".mkv").FrameCount);
     }
 
     [Fact]

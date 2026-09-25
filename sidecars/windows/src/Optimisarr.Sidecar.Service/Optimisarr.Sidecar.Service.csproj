@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Optimisarr.Sidecar.Core\Optimisarr.Sidecar.Core.csproj" />
+    <InternalsVisibleTo Include="Optimisarr.Sidecar.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!--
+      No apphost, so the build produces a managed .dll and no .exe of its own.
+
+      Smart App Control is on by default on Windows 11, and it judges an executable by reputation.
+      A freshly built, unsigned apphost has none, so it is refused outright: the service would not
+      start at all, with only "%%4551" in the system log to say why. Every rebuild produces a new
+      unknown file, so this is not something that settles down. Signing would fix it and needs a
+      certificate this project does not have.
+
+      Run through `dotnet`, which is Microsoft-signed and trusted, and the managed assembly it
+      loads is not held to the same reputation test. The cost is that the .NET runtime becomes a
+      prerequisite rather than something the sidecar could carry itself.
+    -->
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+</Project>

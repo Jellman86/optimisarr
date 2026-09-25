@@ -1,11 +1,13 @@
 <script lang="ts">
   import { theme, layout, router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
+  import { counts } from '../stores/counts.svelte'
   import { api } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
   import BrandMark from './BrandMark.svelte'
   import Icon from './Icon.svelte'
   import LanguageSelect from './LanguageSelect.svelte'
+  import NowEncoding from './NowEncoding.svelte'
 
   const gitHash = typeof __GIT_HASH__ === 'string' ? __GIT_HASH__ : 'unknown'
 
@@ -17,6 +19,29 @@
   })
   // "0.2.0.0" -> "v0.2.0" for display.
   let versionLabel = $derived(version ? `v${version.split('.').slice(0, 3).join('.')}` : null)
+
+  $effect(() => counts.start())
+
+  /**
+   * A figure beside an entry, for the two entries that can ask something of you: the queue
+   * while it has work, and quarantine while originals are waiting on a decision.
+   *
+   * The others deliberately carry nothing. A count on every row is seven numbers competing for
+   * attention and five of them never change, which leaves a reader with no idea which of them
+   * they were supposed to look at. Null means either nothing to report or nothing known yet —
+   * an unanswered poll must never read as zero.
+   */
+  function badge(path: string): string | null {
+    const value = path === '/quarantine' ? counts.quarantine : path === '/queue' ? counts.queued : null
+    return value == null || value === 0 ? null : value.toLocaleString()
+  }
+
+  // Built here rather than in the template: Svelte trims the leading space out of an inline
+  // {#if} block, which renders "3/ 14".
+  function queueActivityLabel(): string {
+    const queued = badge('/queue')
+    return queued ? `${activity.activeJobs} / ${queued}` : `${activity.activeJobs}`
+  }
 
   type NavItem = { path: string; label: string; icon: string; enabled: boolean }
 
@@ -52,35 +77,51 @@
   }
 </script>
 
-<!-- Off-canvas drawer below md (fixed, slides in over a backdrop); a static in-flow rail
-     at md+ that can collapse to icons. -->
+<!-- Off-canvas drawer below md (fixed, slides in over a backdrop). At md+ it is an island: a
+     raised card floating on the ground beside the page's tray, its own height, with the
+     collapse-to-icons rail still available. -->
 <aside
-  class="fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-slate-200 bg-white/95 backdrop-blur transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-700 dark:bg-slate-900/95 {layout.mobileOpen
-    ? 'translate-x-0'
-    : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 md:rounded-[18px] md:transition-[width] {layout.mobileOpen
+ ? 'translate-x-0'
+ : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
-  <!-- Brand: large centered mark that scales between collapsed and expanded. -->
+  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+  <div class="flex min-h-full flex-col">
+  <!-- A calm identity above the operational navigation; activity animates the chosen mark. -->
   <button
-    class="flex flex-col items-center gap-3 border-b border-slate-200 p-4 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700"
+    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 pt-5 pb-3' : 'pt-5 pb-1'}"
+    aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
       layout.closeMobile()
     }}
   >
     <BrandMark
-      sizes={railCollapsed ? '48px' : '144px'}
-      class="flex-shrink-0 drop-shadow-[0_0_18px_rgba(34,211,238,0.32)] transition-all duration-200 {railCollapsed ? 'h-12 w-12' : 'h-36 w-36'}"
+      class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-32 w-32'}"
     />
+
     {#if !railCollapsed}
-      <div class="leading-tight">
-        <div class="font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400">{i18n.m.app.tagline}</div>
-      </div>
+      <!-- Keep the contact shadow clear of the wordmark. -->
+      <span
+        class="relative -mt-2 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
+      >Optimisarr</span>
     {/if}
   </button>
 
+  {#if !railCollapsed}
+    <!-- The running version and the build it came from, under the name rather than in the foot:
+         they are the first thing anyone is asked for when something looks wrong. -->
+    <a
+      href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="mx-auto mb-2 rounded px-1 text-center font-mono text-[10.5px] text-ink-4 transition-colors hover:text-accent focus-ring"
+      title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
+    >{versionLabel ? `${versionLabel} · ${gitHash}` : `build ${gitHash}`}</a>
+  {/if}
+
   <!-- Nav -->
-  <nav class="flex-1 space-y-1 overflow-y-auto p-2">
+  <nav class="space-y-1 px-2.5 pt-3 pb-2">
     {#each navItems as item}
       {@const showActivity = item.path === '/queue' && activity.activeJobs > 0}
       <button
@@ -100,56 +141,43 @@
           <path stroke-linecap="round" stroke-linejoin="round" d={item.icon} />
         </svg>
         {#if !railCollapsed}
-          <span class="flex-1">{item.label}</span>
+          <span class="truncate">{item.label}</span>
           {#if !item.enabled}
-            <span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.nav.soon}</span>
+            <span class="badge ml-auto tone-muted">{i18n.m.nav.soon}</span>
+          {:else if !showActivity && badge(item.path)}
+            <span class="nav-badge">{badge(item.path)}</span>
           {/if}
           {#if showActivity}
             <!-- A throbbing GPU chip means the GPU is doing the work; a snail means it's grinding
                  on the CPU. The count shows how many jobs are running. -->
             <span
-              class="flex animate-pulse items-center gap-1 {activity.hardwareActive ? 'text-cyan-500' : 'text-amber-500'}"
+              class="ml-auto flex animate-pulse items-center gap-1 {activity.hardwareActive ? 'text-accent' : 'text-warn'}"
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
-              <span class="text-xs tabular-nums">{activity.activeJobs}</span>
+              <span class="font-mono text-[10.5px] tabular-nums">{queueActivityLabel()}</span>
             </span>
           {/if}
         {:else if showActivity}
           <!-- Collapsed rail: a small throbbing dot, GPU-cyan or CPU-amber. -->
           <span
             class="absolute right-1 top-1 h-2 w-2 animate-pulse rounded-full {activity.hardwareActive ? 'bg-cyan-500' : 'bg-amber-500'}"
-            title={activity.hardwareActive ? 'Encoding on GPU' : 'Encoding on CPU'}
+            title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
           ></span>
         {/if}
       </button>
     {/each}
   </nav>
 
-  <!-- Running version + the build's git hash -->
-  <a
-    href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
-    target="_blank"
-    rel="noopener noreferrer"
-    class="border-t border-slate-200 px-2 py-1.5 text-center font-mono text-[10px] text-slate-400 transition-colors hover:text-cyan-600 dark:border-slate-700 dark:text-slate-500 dark:hover:text-cyan-400"
-    title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
-  >
-    {railCollapsed
-      ? (versionLabel ?? gitHash.slice(0, 4))
-      : versionLabel
-        ? `${versionLabel} · ${gitHash}`
-        : `build ${gitHash}`}
-  </a>
+  <!-- Whatever is left between the navigation and the foot belongs to the work in progress. -->
+  <div class="min-h-0 flex-1"></div>
+  <NowEncoding collapsed={railCollapsed} />
 
-  <!-- Language selector (hidden on the collapsed icon rail) -->
-  {#if !railCollapsed}
-    <div class="border-t border-slate-200 p-2 dark:border-slate-700">
-      <LanguageSelect />
-    </div>
-  {/if}
+  </div>
+  </div>
 
-  <!-- Footer: theme + collapse -->
-  <div class="flex items-center gap-1 border-t border-slate-200 p-2 dark:border-slate-700 {railCollapsed ? 'flex-col' : 'justify-between'}">
+  <!-- One foot: theme, language, collapse. Three ghost buttons, no strips, no rules. -->
+  <div class="flex shrink-0 items-center gap-1 px-2.5 pt-2 pb-3.5 {railCollapsed ? 'flex-col' : 'justify-between'}">
     <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme}>
       {#if theme.isDark}
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
@@ -157,6 +185,7 @@
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.4 15.4A9 9 0 018.6 3.6 9 9 0 1020.4 15.4z" /></svg>
       {/if}
     </button>
+    <LanguageSelect compact opensUp />
     <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={i18n.m.nav.collapse_sidebar} aria-label={i18n.m.nav.collapse_sidebar}>
       <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />

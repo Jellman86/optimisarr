@@ -30,7 +30,7 @@ internal static class SettingsEndpoints
             CancellationToken cancellationToken) =>
         {
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue));
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable));
         })
         .WithName("GetSettings");
 
@@ -39,7 +39,9 @@ internal static class SettingsEndpoints
             SettingsStore settings,
             CancellationToken cancellationToken) =>
         {
-            if (!SettingsRequestParser.TryParse(request, out var parsed, out var error))
+            var current = await settings.GetQueueSettingsAsync(cancellationToken);
+            if (!SettingsRequestParser.TryParse(request, settings.RemoteWorkersAvailable, out var parsed, out var error,
+                    current.WorkerVerificationRequired, current))
             {
                 return ApiErrors.BadRequest(error!.Code, error.Message);
             }
@@ -47,7 +49,7 @@ internal static class SettingsEndpoints
             await settings.SetQueueSettingsAsync(parsed, cancellationToken);
 
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue));
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable));
         })
         .WithName("UpdateSettings");
 

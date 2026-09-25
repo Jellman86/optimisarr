@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using Optimisarr.Api;
 using Optimisarr.Api.Diagnostics;
 using Optimisarr.Api.Endpoints;
@@ -10,6 +11,7 @@ using Optimisarr.Api.Metrics;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Api.Workers;
 using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
@@ -240,6 +242,7 @@ internal static class MediaAndQueueEndpoints
         // unaffected); the pre-paging total is returned in the X-Total-Count header.
         app.MapGet("/api/jobs", async (
             string? status,
+            bool? live,
             int? libraryId,
             string? category,
             DateTimeOffset? since,
@@ -248,6 +251,9 @@ internal static class MediaAndQueueEndpoints
             int? pageSize,
             HttpResponse response,
             OptimisarrDbContext db,
+            SettingsStore settingsStore,
+            RemoteWorkersFeature remoteWorkers,
+            ReplacementCoordinator replacementCoordinator,
             CancellationToken cancellationToken) =>
         {
             JobStatus? wantedStatus = null;
@@ -274,19 +280,23 @@ internal static class MediaAndQueueEndpoints
                 wantedCategory = parsed;
             }
 
+            var queueSettings = await settingsStore.GetQueueSettingsAsync(cancellationToken);
+            var availability = await WorkerAvailability.ResolveAsync(
+                db, queueSettings.RemoteWorkersEnabled, remoteWorkers, DateTimeOffset.UtcNow, cancellationToken);
             var result = await JobQueries.QueryAsync(db, new JobQuery
             {
                 Status = wantedStatus,
+                Live = live ?? false,
                 LibraryId = libraryId,
                 Category = wantedCategory,
                 Since = since,
                 Until = until,
                 Page = page ?? 1,
                 PageSize = pageSize ?? 0
-            }, cancellationToken);
+            }, cancellationToken, availability);
 
             response.Headers["X-Total-Count"] = result.Total.ToString();
-            return Results.Ok(result.Items);
+            return Results.Ok(result.Items.Select(job => job with { Finalizing = replacementCoordinator.IsActive(job.Id) }));
         })
         .WithName("ListJobs");
 
@@ -449,6 +459,44 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("CancelJob");
 
+        // Operator approval permits a full encode despite the sample-size forecast. The
+        // adaptive search is repeated on the worker that actually receives the queued job;
+        // its selected quality is encoder-specific. Final size and quality gates remain active.
+        app.MapPost("/api/jobs/{id:int}/approve-size-preflight", async (
+            int id,
+            OptimisarrDbContext db,
+            QueueDispatcher dispatcher,
+            IHubContext<JobsHub> hub,
+            CancellationToken cancellationToken) =>
+        {
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
+            if (job is null)
+            {
+                return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
+            }
+
+            if (job.Status != JobStatus.AwaitingSizeReview)
+            {
+                return ApiErrors.BadRequest("job.sizePreflight.invalidState",
+                    $"Job {id} is {job.Status} and is not awaiting size review.",
+                    new { id, status = job.Status.ToString() });
+            }
+
+            job.BypassSizePreflight = true;
+            job.AdaptiveVideoQuality = null;
+            job.ErrorMessage = null;
+            job.Progress = 0;
+            job.Status = JobStatus.Queued;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            dispatcher.Wake();
+            await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+            return Results.Ok(new { id = job.Id, status = job.Status.ToString() });
+        })
+        .WithName("ApproveSizePreflight");
+
         // Removes a cancelled or failed job so an operator can reset it and enqueue it again.
         // Completed replacements are deliberately excluded: their job record protects rollback state.
         app.MapDelete("/api/jobs/{id:int}", async (
@@ -517,6 +565,9 @@ internal static class MediaAndQueueEndpoints
             job.ErrorMessage = null;
             job.FailureCategory = null;
             job.ProcessLog = null;
+            // A retry must re-evaluate the samples against the current settings and whichever
+            // encoder claims the job. Reusing the old selected quality also skips size preflight.
+            job.AdaptiveVideoQuality = null;
             if (higherQuality)
             {
                 job.QualityRetryCount += 1;

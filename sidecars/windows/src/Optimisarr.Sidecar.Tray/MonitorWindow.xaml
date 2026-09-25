@@ -1,0 +1,183 @@
+<Window x:Class="Optimisarr.Sidecar.Tray.MonitorWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Optimisarr.Sidecar.Tray"
+ Title="Optimisarr Sidecar" Width="410" SizeToContent="Height" MaxHeight="720" WindowStyle="None" ResizeMode="NoResize"
+ ShowInTaskbar="False" Topmost="False" AllowsTransparency="True" Background="Transparent" Foreground="{DynamicResource Ink}" FontFamily="Segoe UI" FontSize="13">
+ <Window.Resources>
+  <SolidColorBrush x:Key="Ground" Color="#101A2C"/><SolidColorBrush x:Key="Surface" Color="#18253B"/>
+  <SolidColorBrush x:Key="Raised" Color="#203149"/><SolidColorBrush x:Key="Line" Color="#34455F"/>
+  <SolidColorBrush x:Key="Ink" Color="#EFF4FC"/><SolidColorBrush x:Key="Muted" Color="#B0BDD1"/><SolidColorBrush x:Key="Accent" Color="#7BD8D1"/>
+  <BooleanToVisibilityConverter x:Key="BoolVisibility"/>
+  <local:PreviewImageConverter x:Key="PreviewImage"/>
+  <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+  <Style TargetType="Button">
+   <Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="Background" Value="{DynamicResource Surface}"/>
+   <Setter Property="BorderBrush" Value="{DynamicResource Line}"/><Setter Property="Padding" Value="12,9"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="ButtonFace" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonFace" Property="Background" Value="{DynamicResource Raised}"/><Setter TargetName="ButtonFace" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonFace" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="ButtonFace" Property="BorderThickness" Value="2"/></Trigger>
+     <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="TextBox"><Setter Property="Background" Value="{DynamicResource Ground}"/><Setter Property="Foreground" Value="{DynamicResource Ink}"/><Setter Property="BorderBrush" Value="{DynamicResource Line}"/><Setter Property="Padding" Value="9"/></Style>
+  <Style TargetType="ScrollBar">
+   <Setter Property="Width" Value="9"/>
+   <Setter Property="Background" Value="{DynamicResource Ground}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+    <Grid Background="{TemplateBinding Background}">
+     <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="2,0">
+      <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0"/></Track.DecreaseRepeatButton>
+      <Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border x:Name="Grip" Background="{DynamicResource Line}" CornerRadius="3"/><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+      <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0"/></Track.IncreaseRepeatButton>
+     </Track>
+    </Grid>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="ProgressBar">
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
+    <Border x:Name="PART_Track" Background="{DynamicResource Line}" CornerRadius="2" ClipToBounds="True">
+     <Grid x:Name="PART_Indicator" HorizontalAlignment="Left">
+      <Border x:Name="SweepBar" Background="{DynamicResource Accent}" HorizontalAlignment="Left" Width="70" CornerRadius="2">
+       <Border.RenderTransform><TranslateTransform/></Border.RenderTransform>
+      </Border>
+     </Grid>
+    </Border>
+    <ControlTemplate.Triggers><Trigger Property="IsIndeterminate" Value="True">
+     <Setter TargetName="SweepBar" Property="Width" Value="70"/>
+     <Trigger.EnterActions><BeginStoryboard x:Name="Sweep"><Storyboard><DoubleAnimation Storyboard.TargetName="SweepBar" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" From="0" To="230" Duration="0:0:1.6" AutoReverse="True" RepeatBehavior="Forever"/></Storyboard></BeginStoryboard></Trigger.EnterActions>
+     <Trigger.ExitActions><StopStoryboard BeginStoryboardName="Sweep"/></Trigger.ExitActions>
+    </Trigger></ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="Expander">
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Expander">
+    <StackPanel>
+     <ToggleButton x:Name="ExpandButton" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{DynamicResource Ink}" Cursor="Hand" HorizontalContentAlignment="Left">
+      <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+       <Border x:Name="FocusBorder" BorderBrush="Transparent" BorderThickness="1" Padding="0,5">
+        <StackPanel Orientation="Horizontal"><TextBlock x:Name="Arrow" Text="›" FontSize="20" Width="20" RenderTransformOrigin="0.4,0.5"><TextBlock.RenderTransform><RotateTransform/></TextBlock.RenderTransform></TextBlock><ContentPresenter VerticalAlignment="Center"/></StackPanel>
+       </Border>
+       <ControlTemplate.Triggers>
+        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Arrow" Property="RenderTransform"><Setter.Value><RotateTransform Angle="90"/></Setter.Value></Setter></Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FocusBorder" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+       </ControlTemplate.Triggers>
+      </ControlTemplate></ToggleButton.Template>
+      <ContentPresenter Content="{TemplateBinding Header}"/>
+     </ToggleButton>
+     <ContentPresenter x:Name="ExpandedBody" Visibility="Collapsed"/>
+    </StackPanel>
+    <ControlTemplate.Triggers><Trigger Property="IsExpanded" Value="True"><Setter TargetName="ExpandedBody" Property="Visibility" Value="Visible"/></Trigger></ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="Card" TargetType="Border">
+   <Setter Property="CornerRadius" Value="12"/><Setter Property="Padding" Value="16"/><Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+   <Setter Property="Background" Value="{DynamicResource CardFill}"/>
+   <Setter Property="Effect"><Setter.Value><DropShadowEffect BlurRadius="12" ShadowDepth="4" Opacity="0.18"/></Setter.Value></Setter>
+   <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Effect"><Setter.Value><DropShadowEffect BlurRadius="20" ShadowDepth="7" Opacity="0.28"/></Setter.Value></Setter></Trigger></Style.Triggers>
+  </Style>
+ </Window.Resources>
+ <Border Background="{DynamicResource Ground}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="14" Margin="8">
+ <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.3"/></Border.Effect>
+ <DockPanel>
+  <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="20,18">
+   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="42"/></Grid.ColumnDefinitions>
+    <Image x:Name="BrandImage" Source="Resources/BrandMark.png" Width="34" Height="34" HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="HighQuality"/>
+    <StackPanel Grid.Column="1"><TextBlock Text="Optimisarr" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{Binding Machine}" Foreground="{DynamicResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/></StackPanel>
+    <TextBlock Grid.Column="2" Text="{Binding State}" Foreground="{DynamicResource Accent}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0"/>
+    <Button Grid.Column="3" Content="&#xE713;" FontFamily="Segoe MDL2 Assets" Padding="8" ToolTip="Preferences" AutomationProperties.Name="Preferences" Click="Preferences_Click"/>
+   </Grid>
+  </Border>
+  <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="20,12">
+   <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <Button Content="Diagnostics" HorizontalAlignment="Left" Padding="8,5" Click="Diagnostics_Click"/>
+    <Button Grid.Column="1" Content="•••" Padding="9,5" ToolTip="More actions" AutomationProperties.Name="More actions" Click="More_Click">
+     <Button.ContextMenu><ContextMenu><MenuItem Header="Open Optimisarr" Click="OpenServer_Click"/><MenuItem Header="Quit tray — keep worker running" Click="Quit_Click"/></ContextMenu></Button.ContextMenu>
+    </Button>
+   </Grid>
+  </Border>
+  <ScrollViewer x:Name="BodyScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="565">
+   <Grid Margin="20">
+    <StackPanel x:Name="ActivityPage">
+     <Border Style="{StaticResource Card}" Margin="0,0,0,14" Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVisibility}}" AutomationProperties.Name="Update available"><StackPanel>
+      <TextBlock Text="Update available" FontWeight="SemiBold"/>
+      <TextBlock Text="{Binding UpdateText}" Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,8"/>
+      <Button Content="Open release page" HorizontalAlignment="Left" Padding="8,5" Click="OpenRelease_Click"/>
+     </StackPanel></Border>
+     <Border Style="{StaticResource Card}"><StackPanel>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="112"/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <Border Width="100" Height="64" CornerRadius="7" Background="{DynamicResource Ground}" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" ClipToBounds="True">
+        <Grid>
+         <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="19" Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
+          <TextBlock Text="{Binding PreviewLabel}" FontSize="8" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+         </StackPanel>
+         <Image Source="{Binding Preview, Converter={StaticResource PreviewImage}}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Current media preview"/>
+        </Grid>
+       </Border>
+       <StackPanel Grid.Column="1"><TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" ToolTip="{Binding Title}" MaxHeight="65" TextTrimming="CharacterEllipsis"/>
+       <TextBlock Text="{Binding Stage}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,6,0,0"/></StackPanel>
+      </Grid>
+      <ProgressBar x:Name="WorkProgress" IsIndeterminate="True" Height="4" Margin="0,16,0,2" Foreground="{DynamicResource Accent}" Visibility="{Binding Working, Converter={StaticResource BoolVisibility}}"/>
+     </StackPanel></Border>
+     <UniformGrid Columns="3" Margin="0,22,0,20">
+      <StackPanel><TextBlock Text="{Binding Cpu}" FontSize="20"/><TextBlock Text="CPU load" Foreground="{DynamicResource Muted}" FontSize="11"/></StackPanel>
+      <StackPanel><TextBlock Text="{Binding Gpu}" FontSize="20"/><TextBlock Text="GPU load" Foreground="{DynamicResource Muted}" FontSize="11" ToolTip="Unavailable readings are shown as a dash, not zero."/></StackPanel>
+      <StackPanel><TextBlock Text="{Binding Free}" FontSize="20"/><TextBlock Text="Free space" Foreground="{DynamicResource Muted}" FontSize="11"/></StackPanel>
+     </UniformGrid>
+     <Expander x:Name="ProcessingDetails" Header="Processing details" Foreground="{DynamicResource Ink}" IsExpanded="False">
+      <StackPanel Margin="0,12,0,0">
+       <ItemsControl ItemsSource="{Binding JobRows}" Margin="0,0,0,8">
+        <ItemsControl.ItemTemplate><DataTemplate>
+         <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <Border Width="56" Height="36" CornerRadius="5" BorderBrush="{DynamicResource Line}" BorderThickness="1" Background="{DynamicResource Ground}" HorizontalAlignment="Left" ClipToBounds="True">
+           <Grid><TextBlock Text="NO FRAME" FontSize="7" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Image Source="{Binding PreviewJpeg, Converter={StaticResource PreviewImage}}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+           </Grid>
+          </Border>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+           <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Title}"/>
+           <TextBlock Text="{Binding Caption}" FontSize="10" Foreground="{DynamicResource Muted}"/>
+          </StackPanel>
+         </Grid>
+        </DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
+       <TextBlock Text="Receive → encode → verify when requested → return" Foreground="{DynamicResource Muted}" FontSize="12"/>
+       <TextBlock Text="{Binding Last}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,12,0,0"/>
+      </StackPanel>
+     </Expander>
+     <Border Background="{DynamicResource Ground}" Padding="0,16"><TextBlock Text="Previews stay on this PC. Verification follows your server’s policy." Foreground="{DynamicResource Muted}" FontSize="12"/></Border>
+     <TextBlock Text="✓  New assignments stopped" Foreground="{DynamicResource Accent}" FontWeight="SemiBold" Margin="0,0,0,12" Visibility="{Binding ShutdownArmed, Converter={StaticResource BoolVisibility}}"/>
+     <Button Content="{Binding PauseLabel}" IsEnabled="{Binding CanPause}" Visibility="{Binding ShowPause, Converter={StaticResource BoolVisibility}}" Click="Pause_Click"/>
+     <Border Style="{StaticResource Card}" Margin="0,12,0,0"><StackPanel>
+      <TextBlock Text="AFTER CURRENT WORK" Foreground="{DynamicResource Accent}" FontSize="10" FontWeight="SemiBold"/>
+      <TextBlock Text="{Binding ShutdownDetail}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,7,0,10"/>
+      <Button Content="{Binding ShutdownLabel}" IsEnabled="{Binding CanArmShutdown}" Click="Shutdown_Click" ToolTip="No new jobs are taken while shutdown is armed. The countdown can be canceled."/>
+     </StackPanel></Border>
+     <TextBlock Text="{Binding Note}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,12,0,0"/>
+    </StackPanel>
+    <StackPanel x:Name="PreferencesPage" Visibility="Collapsed">
+     <Button Content="‹  Back to activity" HorizontalAlignment="Left" Click="Back_Click"/>
+     <TextBlock Text="Preferences" FontSize="20" FontWeight="SemiBold" Margin="0,20,0,12"/>
+     <TextBlock Text="The worker runs in the background, even when this tray client is closed." Foreground="{DynamicResource Muted}"/>
+     <Button Content="Pair this PC…" Click="Pair_Click" Margin="0,20,0,8" ToolTip="Administrator permission is needed to save machine-wide pairing and start the service."/>
+     <Button Content="Start worker…" Click="Start_Click" Margin="0,0,0,16"/>
+     <CheckBox x:Name="LoginToggle" Content="Open tray at sign-in" Foreground="{DynamicResource Ink}" Checked="Login_Changed" Unchecked="Login_Changed"/>
+     <TextBlock Text="The worker itself starts with Windows. Pairing and service changes use Windows administrator approval." Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,16,0,0"/>
+     <TextBlock x:Name="ActionMessage" Foreground="{DynamicResource Accent}" Margin="0,16,0,0"/>
+    </StackPanel>
+    <StackPanel x:Name="DiagnosticsPage" Visibility="Collapsed">
+     <Button Content="‹  Back to activity" HorizontalAlignment="Left" Click="Back_Click"/>
+     <TextBlock Text="Connection &amp; diagnostics" FontSize="20" FontWeight="SemiBold" Margin="0,20,0,16"/>
+     <TextBlock Text="Server" Foreground="{DynamicResource Muted}"/><TextBlock Text="{Binding Server}" Margin="0,4,0,14"/>
+     <TextBlock Text="Worker version" Foreground="{DynamicResource Muted}"/><TextBlock Text="{Binding Version}" Margin="0,4,0,14"/>
+     <TextBlock Text="{Binding ConnectionDetail}" Margin="0,0,0,16"/>
+     <TextBlock Text="Only the server decides whether to replace media. Local readings never claim that a verification gate has passed." Foreground="{DynamicResource Muted}"/>
+     <Button Content="Open Windows Event Viewer" Click="Events_Click" Margin="0,20,0,0"/>
+    </StackPanel>
+   </Grid>
+  </ScrollViewer>
+ </DockPanel>
+ </Border>
+</Window>

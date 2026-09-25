@@ -34,6 +34,123 @@
         ],
         "type": "object"
       },
+      "AdaptiveProbeDirectionDto": {
+        "properties": {
+          "arguments": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "nextStep": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdaptiveSearchStepDto"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "selectedQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "nextStep",
+          "selectedQuality",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "AdaptiveProbeRequest": {
+        "properties": {
+          "encodedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "logs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "quality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "windowEncodedBytes": {
+            "items": {
+              "format": "int64",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "quality",
+          "encodedBytes",
+          "logs"
+        ],
+        "type": "object"
+      },
+      "AdaptiveSearchStepDto": {
+        "properties": {
+          "measurement": {
+            "$ref": "#/components/schemas/QualityRequirementDto"
+          },
+          "quality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "sampleCommands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "quality",
+          "sampleCommands",
+          "measurement"
+        ],
+        "type": "object"
+      },
       "ApiError": {
         "properties": {
           "args": {},
@@ -92,6 +209,16 @@
             "format": "date-time",
             "type": "string"
           },
+          "fullVerification": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteVerificationContract"
+              }
+            ]
+          },
           "jobId": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -103,6 +230,24 @@
           "leaseId": {
             "format": "uuid",
             "type": "string"
+          },
+          "maxCandidateBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "minCandidateBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
           },
           "outputExtension": {
             "type": "string"
@@ -118,6 +263,16 @@
               "string"
             ]
           },
+          "search": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdaptiveSearchStepDto"
+              }
+            ]
+          },
           "sourceBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -125,6 +280,9 @@
               "integer",
               "string"
             ]
+          },
+          "title": {
+            "type": "string"
           },
           "videoEncoder": {
             "type": "string"
@@ -136,6 +294,7 @@
         "required": [
           "leaseId",
           "jobId",
+          "title",
           "sourceBytes",
           "videoEncoder",
           "vmaf",
@@ -310,6 +469,33 @@
         ],
         "type": "object"
       },
+      "DecodeHealthResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errorCount": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "healthy": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "healthy",
+          "error"
+        ],
+        "type": "object"
+      },
       "ExcludeRequest": {
         "properties": {
           "mediaFileId": {
@@ -435,6 +621,24 @@
       },
       "HeartbeatRequest": {
         "properties": {
+          "audioEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "cpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "freeScratchBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -443,11 +647,68 @@
               "string"
             ]
           },
+          "gpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "hardwareDecoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "maxConcurrency": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
+              "string"
+            ]
+          },
+          "protocolMaximum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "protocolMinimum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "sidecarVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "vmaf": {
+            "type": [
+              "null",
               "string"
             ]
           }
@@ -460,6 +721,9 @@
       },
       "HeartbeatResponse": {
         "properties": {
+          "draining": {
+            "type": "boolean"
+          },
           "heartbeatIntervalSeconds": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -480,6 +744,18 @@
             "format": "date-time",
             "type": "string"
           },
+          "updateUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "updateVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "workerId": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -493,7 +769,8 @@
           "workerId",
           "protocolVersion",
           "serverTimeUtc",
-          "heartbeatIntervalSeconds"
+          "heartbeatIntervalSeconds",
+          "draining"
         ],
         "type": "object"
       },
@@ -743,6 +1020,15 @@
               "string"
             ]
           },
+          "maximumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "mediaType": {
             "type": "string"
           },
@@ -792,6 +1078,15 @@
             ]
           },
           "minimumImageSsim": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumSizeSavingPercent": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -949,6 +1244,12 @@
               "null",
               "boolean"
             ]
+          },
+          "workPlacement": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         },
         "required": [
@@ -968,6 +1269,44 @@
           "encoderPreset",
           "moveOnComplete",
           "targetFolder"
+        ],
+        "type": "object"
+      },
+      "LoudnessResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "integratedLufs": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "truePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "integratedLufs",
+          "truePeakDbtp",
+          "error"
         ],
         "type": "object"
       },
@@ -1014,6 +1353,15 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "audioEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
             ]
           },
           "code": {
@@ -1075,6 +1423,12 @@
               "string"
             ]
           },
+          "sidecarVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "videoEncoders": {
             "items": {
               "type": "string"
@@ -1099,6 +1453,7 @@
           "protocolMinimum",
           "protocolMaximum",
           "videoEncoders",
+          "audioEncoders",
           "hardwareDecoders",
           "vmaf",
           "freeScratchBytes",
@@ -1174,10 +1529,93 @@
         ],
         "type": "object"
       },
+      "QualityEvidenceAcceptedDto": {
+        "properties": {
+          "frameCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "leaseId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "vmafFifthPercentile": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "vmafHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "vmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "leaseId",
+          "vmafHarmonicMean",
+          "vmafFifthPercentile",
+          "vmafMin",
+          "frameCount"
+        ],
+        "type": "object"
+      },
+      "QualityEvidenceRequest": {
+        "properties": {
+          "candidateSha256": {
+            "type": "string"
+          },
+          "logs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceSha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceSha256",
+          "candidateSha256",
+          "logs"
+        ],
+        "type": "object"
+      },
       "QualityRequirementDto": {
         "properties": {
           "clipVmaf": {
             "type": "boolean"
+          },
+          "commands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
           },
           "frameSubsample": {
             "format": "int32",
@@ -1208,6 +1646,9 @@
           },
           "model": {
             "type": "string"
+          },
+          "sampling": {
+            "type": "string"
           }
         },
         "required": [
@@ -1216,7 +1657,9 @@
           "frameSubsample",
           "clipVmaf",
           "minimumHarmonicMean",
-          "minimumMinimum"
+          "minimumMinimum",
+          "commands",
+          "sampling"
         ],
         "type": "object"
       },
@@ -1311,6 +1754,15 @@
           },
           "workRoot": {
             "type": "string"
+          },
+          "workloadLanes": {
+            "items": {
+              "$ref": "#/components/schemas/WorkloadLaneStatus"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           }
         },
         "required": [
@@ -1331,6 +1783,167 @@
           "workRoot",
           "waitingReason"
         ],
+        "type": "object"
+      },
+      "RemoteVerificationContract": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "measureAudio": {
+            "type": "boolean"
+          },
+          "version": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "measureAudio"
+        ],
+        "type": "object"
+      },
+      "RemoteVerificationEvidence": {
+        "properties": {
+          "candidateLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "candidateProbe": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "candidateSha256": {
+            "type": "string"
+          },
+          "candidateVideo": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampCheckResult"
+              }
+            ]
+          },
+          "contractId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "decode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DecodeHealthResult"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceAudio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampCheckResult"
+              }
+            ]
+          },
+          "sourceLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "sourceProbe": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceSha256": {
+            "type": "string"
+          },
+          "sourceVideo": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampCheckResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contractId",
+          "sourceSha256",
+          "candidateSha256"
+        ],
+        "type": "object"
+      },
+      "RenewRequest": {
+        "properties": {
+          "cpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "encodedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "gpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "stage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
         "type": "object"
       },
       "ResultAcceptedDto": {
@@ -1661,6 +2274,15 @@
               "string"
             ]
           },
+          "maximumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "mediaType": {
             "type": [
               "null",
@@ -1713,6 +2335,15 @@
             ]
           },
           "minimumImageSsim": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumSizeSavingPercent": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -1900,6 +2531,12 @@
               "null",
               "boolean"
             ]
+          },
+          "workPlacement": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         },
         "required": [
@@ -2016,6 +2653,24 @@
       },
       "SettingsDto": {
         "properties": {
+          "automaticEvidenceValidationSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "automaticNonVideoSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "cpuThreadLimit": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2029,6 +2684,15 @@
           },
           "encoderMode": {
             "type": "string"
+          },
+          "evidenceValidationSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
           },
           "hardwareDecode": {
             "type": "boolean"
@@ -2063,6 +2727,19 @@
               "string"
             ]
           },
+          "nonVideoSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "remoteWorkersAvailable": {
+            "default": false,
+            "type": "boolean"
+          },
           "remoteWorkersEnabled": {
             "default": false,
             "type": "boolean"
@@ -2075,6 +2752,18 @@
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
+              "string"
+            ]
+          },
+          "workerVerificationRequired": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "workloadConcurrencyMode": {
+            "type": [
+              "null",
               "string"
             ]
           }
@@ -2132,6 +2821,38 @@
         ],
         "type": "object"
       },
+      "SizeBudgetExceededRequest": {
+        "properties": {
+          "observedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "observedBytes"
+        ],
+        "type": "object"
+      },
+      "SizeBudgetUndershotRequest": {
+        "properties": {
+          "observedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "observedBytes"
+        ],
+        "type": "object"
+      },
       "StartCalibrationRequest": {
         "properties": {
           "diagnosticsEnabled": {
@@ -2157,6 +2878,37 @@
         },
         "required": [
           "mediaFileId"
+        ],
+        "type": "object"
+      },
+      "StartDiagnosticCaptureRequest": {
+        "properties": {
+          "durationHours": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "includePaths": {
+            "default": false,
+            "type": "boolean"
+          },
+          "scopedJobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "durationHours",
+          "scopedJobId"
         ],
         "type": "object"
       },
@@ -2265,10 +3017,91 @@
         ],
         "type": "object"
       },
+      "TimestampCheckResult": {
+        "properties": {
+          "firstRegressionDetail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastPresentationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "nonMonotonicCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "nonMonotonicCount",
+          "firstRegressionDetail",
+          "lastPresentationSeconds"
+        ],
+        "type": "object"
+      },
+      "UploadOffsetDto": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "bytes"
+        ],
+        "type": "object"
+      },
       "WorkerDto": {
         "properties": {
+          "activeJobs": {
+            "items": {
+              "$ref": "#/components/schemas/WorkerJobDto"
+            },
+            "type": "array"
+          },
           "architecture": {
             "type": "string"
+          },
+          "audioEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "drainRequestedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "freeScratchBytes": {
             "format": "int64",
@@ -2278,11 +3111,28 @@
               "string"
             ]
           },
+          "gpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "hardwareDecoders": {
             "items": {
               "type": "string"
             },
             "type": "array"
+          },
+          "heldLeases": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
           },
           "id": {
             "format": "int32",
@@ -2292,7 +3142,27 @@
               "string"
             ]
           },
+          "lastProblem": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastProblemAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "lastSeenAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "loadReportedAt": {
             "format": "date-time",
             "type": [
               "null",
@@ -2335,6 +3205,12 @@
               "string"
             ]
           },
+          "sidecarVersion": {
+            "type": "string"
+          },
+          "update": {
+            "$ref": "#/components/schemas/WorkerUpdateDto"
+          },
           "videoEncoders": {
             "items": {
               "type": "string"
@@ -2351,15 +3227,132 @@
           "operatingSystem",
           "architecture",
           "protocolVersion",
+          "sidecarVersion",
           "videoEncoders",
+          "audioEncoders",
           "hardwareDecoders",
           "vmaf",
           "freeScratchBytes",
           "maxConcurrency",
+          "cpuBusyFraction",
+          "gpuBusyFraction",
+          "loadReportedAt",
           "pairedAt",
           "lastSeenAt",
           "revokedAt",
-          "online"
+          "online",
+          "drainRequestedAt",
+          "heldLeases",
+          "activeJobs",
+          "lastProblem",
+          "lastProblemAt",
+          "update"
+        ],
+        "type": "object"
+      },
+      "WorkerJobDto": {
+        "properties": {
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "progress": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "relativePath",
+          "stage",
+          "progress"
+        ],
+        "type": "object"
+      },
+      "WorkerUpdateDto": {
+        "properties": {
+          "latestVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "releaseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "latestVersion",
+          "releaseUrl"
+        ],
+        "type": "object"
+      },
+      "WorkloadLaneStatus": {
+        "properties": {
+          "active": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "capacity": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "lane": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "waiting": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "lane",
+          "active",
+          "capacity",
+          "waiting",
+          "reason"
         ],
         "type": "object"
       }
@@ -2368,7 +3361,7 @@
   "info": {
     "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
     "title": "Optimisarr API",
-    "version": "0.2.11.0"
+    "version": "0.2.15.0"
   },
   "openapi": "3.1.1",
   "paths": {
@@ -2983,6 +3976,110 @@
         ]
       }
     },
+    "/api/diagnostics/capture": {
+      "get": {
+        "operationId": "GetDiagnosticCapture",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      },
+      "post": {
+        "operationId": "StartDiagnosticCapture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartDiagnosticCaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/capture/{id}/jobs/{jobId}/bundle": {
+      "get": {
+        "operationId": "DownloadJobDiagnostics",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/capture/{id}/stop": {
+      "post": {
+        "operationId": "StopDiagnosticCapture",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/exclusions": {
       "get": {
         "operationId": "ListExclusions",
@@ -3184,6 +4281,13 @@
           },
           {
             "in": "query",
+            "name": "live",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "libraryId",
             "schema": {
               "format": "int32",
@@ -3362,6 +4466,34 @@
     "/api/jobs/{id}": {
       "delete": {
         "operationId": "RemoveResettableJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Queue"
+        ]
+      }
+    },
+    "/api/jobs/{id}/approve-size-preflight": {
+      "post": {
+        "operationId": "ApproveSizePreflight",
         "parameters": [
           {
             "in": "path",
@@ -4903,6 +6035,178 @@
         ]
       }
     },
+    "/api/workers/leases/{leaseId}/quality": {
+      "post": {
+        "operationId": "ReportQualityEvidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualityEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityEvidenceAcceptedDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/quality-probe": {
+      "post": {
+        "operationId": "ReportAdaptiveProbe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdaptiveProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdaptiveProbeDirectionDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
     "/api/workers/leases/{leaseId}/release": {
       "post": {
         "operationId": "ReleaseLease",
@@ -4948,6 +6252,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RenewRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -4958,6 +6278,16 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "401": {
             "content": {
@@ -4976,6 +6306,77 @@
       }
     },
     "/api/workers/leases/{leaseId}/result": {
+      "patch": {
+        "operationId": "AppendResultChunk",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Optimisarr-Offset",
+            "schema": {
+              "format": "int64",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadOffsetDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      },
       "post": {
         "operationId": "DeliverResult",
         "parameters": [
@@ -5016,6 +6417,246 @@
         ]
       }
     },
+    "/api/workers/leases/{leaseId}/result/complete": {
+      "post": {
+        "operationId": "CompleteResultUpload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultAcceptedDto"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/result/offset": {
+      "get": {
+        "operationId": "ResultUploadOffset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadOffsetDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/size-budget-exceeded": {
+      "post": {
+        "operationId": "ReportSizeBudgetExceeded",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SizeBudgetExceededRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/size-budget-undershot": {
+      "post": {
+        "operationId": "ReportSizeBudgetUndershot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SizeBudgetUndershotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
     "/api/workers/leases/{leaseId}/source": {
       "get": {
         "operationId": "FetchLeaseSource",
@@ -5040,6 +6681,40 @@
               }
             },
             "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/verification": {
+      "post": {
+        "operationId": "ReportWorkerVerification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteVerificationEvidence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         },
         "tags": [
@@ -5166,6 +6841,152 @@
           },
           "401": {
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/{id}/drain": {
+      "delete": {
+        "operationId": "ResumeWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      },
+      "post": {
+        "operationId": "DrainWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/{id}/forget": {
+      "post": {
+        "operationId": "ForgetWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "tags": [

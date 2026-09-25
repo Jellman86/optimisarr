@@ -1,0 +1,129 @@
+name: macOS sidecar release
+
+# Builds, signs, notarises and staples the macOS sidecar, then attaches it to the Release.
+#
+# Separate from CI because it needs secrets CI must never have, and because it should run only for
+# a tag someone deliberately pushed. CI still builds and tests the sidecar on every pull request.
+on:
+  push:
+    tags:
+      - 'sidecar-v*'
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version matching the existing tag selected in Use workflow from'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, notarise and publish
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Work out the version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: python3 scripts/sidecar_release_version.py
+
+      - name: Test the tagged sidecar
+        working-directory: sidecars/macos
+        run: swift test
+
+      # Building x264, x265, libvmaf and ffmpeg from source takes the best part of an hour, so it
+      # is cached against the tags the build script pins. BUILD-INFO.txt records exactly what went
+      # in, and the key changes whenever the script does.
+      - name: Cache the bundled FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: sidecars/macos/vendor
+          key: sidecar-ffmpeg-${{ runner.arch }}-${{ hashFiles('sidecars/macos/scripts/build-ffmpeg.sh') }}
+
+      # libvmaf builds with meson and ninja, neither of which a macOS runner carries. x264, x265 and
+      # ffmpeg need only what is already there, which is why the build got as far as libvmaf before
+      # failing with "meson: command not found".
+      - name: Install the FFmpeg build tools
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: brew install meson ninja
+
+      - name: Build FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        working-directory: sidecars/macos
+        run: ./scripts/build-ffmpeg.sh
+
+      # A throwaway keychain, unlocked only for this job. Importing into the runner's login
+      # keychain would leave the certificate behind for whatever runs next.
+      - name: Import the signing certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.SIDECAR_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.SIDECAR_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" \
+            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # Without this, codesign blocks on a GUI prompt no one is there to answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/certificate.p12"
+
+          # -v lists only identities macOS considers valid. A Developer ID certificate is valid
+          # only if its issuing intermediate is present, so a missing chain shows up here as an
+          # empty result rather than an error. Left unchecked the identity would be empty, and the
+          # build would quietly produce an ad-hoc bundle that Apple then refuses to notarise.
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No valid Developer ID Application identity after importing the certificate."
+            echo "Identities present in the keychain, with why each was rejected:"
+            security find-identity -p codesigning "$KEYCHAIN" || true
+            echo "CSSMERR_TP_NOT_TRUSTED means the issuing intermediate is missing from this runner."
+            exit 1
+          fi
+          echo "Signing identity: $IDENTITY"
+          echo "SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      # dmgbuild writes the disk image's window layout directly, without scripting Finder, which
+      # times out on a runner with no logged-in session.
+      - name: Install dmgbuild
+        run: pipx install dmgbuild || pip3 install --break-system-packages dmgbuild
+
+      - name: Build, sign, notarise and staple
+        working-directory: sidecars/macos
+        env:
+          NOTARY_KEY_ID: ${{ secrets.SIDECAR_NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.SIDECAR_NOTARY_ISSUER }}
+          NOTARY_KEY_P8: ${{ secrets.SIDECAR_NOTARY_KEY_P8 }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          NOTARY_KEY="$RUNNER_TEMP/notary.p8" ./scripts/release-app.sh "${{ steps.version.outputs.value }}"
+          rm -f "$RUNNER_TEMP/notary.p8"
+
+      - name: Attach it to the Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.dmg
+            sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.zip
+            sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.*.sha256
+            sidecars/macos/build/release-sources/*.tar
+            sidecars/macos/build/release-sources/*.tar.sha256
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          draft: true
+          make_latest: false

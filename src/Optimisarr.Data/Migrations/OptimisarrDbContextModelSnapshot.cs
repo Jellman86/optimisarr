@@ -15,7 +15,7 @@ namespace Optimisarr.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
             modelBuilder.Entity("Optimisarr.Data.ActivityWatcher", b =>
                 {
@@ -116,6 +116,85 @@ namespace Optimisarr.Data.Migrations
                     b.ToTable("ArrConnections");
                 });
 
+            modelBuilder.Entity("Optimisarr.Data.DiagnosticCaptureSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("EventLimitReached")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("EventsStored")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IncludePaths")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ScopedJobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("StoppedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartedAt");
+
+                    b.ToTable("DiagnosticCaptureSessions");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DiagnosticEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CurrentStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("JobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("WorkerId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId", "JobId", "Id");
+
+                    b.ToTable("DiagnosticEvents");
+                });
+
             modelBuilder.Entity("Optimisarr.Data.Exclusion", b =>
                 {
                     b.Property<int>("Id")
@@ -168,6 +247,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int>("Attempt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AttemptHistoryJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("BypassSizePreflight")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("CalibrationClipSeconds")
                         .HasColumnType("INTEGER");
 
@@ -196,6 +281,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ExecutionAttempt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("FailureCategory")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -216,6 +304,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<long?>("OutputSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PreferSoftwareDecode")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Priority")
@@ -242,6 +333,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<int?>("RequestedVideoQuality")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("RetryReason")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("SourceSha256")
                         .HasColumnType("TEXT");
@@ -305,19 +399,85 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset>("AcquiredAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("AdaptiveAskedQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AdaptiveContractJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdaptiveProbesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeliveredSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("EncodedSeconds")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("EndReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("HardwareDecoder")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("JobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("MaxCandidateBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("MinCandidateBytes")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("OutputExtension")
                         .HasMaxLength(8)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("QualityCandidateSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualityContractJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualityScoresJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualitySourceSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("SizeBudgetExceededAtBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("SizeBudgetUndershotAtBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Stage")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationContractJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationEvidenceJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationWorkJson")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("WorkerId")
@@ -446,6 +606,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<double>("MaxTruePeakDbtp")
                         .HasColumnType("REAL");
 
+                    b.Property<double?>("MaximumSizeSavingPercent")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -467,6 +630,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<double>("MinimumImageSsim")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MinimumSizeSavingPercent")
                         .HasColumnType("REAL");
 
                     b.Property<bool>("MoveOnComplete")
@@ -562,6 +728,11 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<bool?>("VmafQualityGateEnabled")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("WorkPlacement")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -819,19 +990,42 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AudioEncoders")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("CpuBusyFraction")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("CredentialFingerprint")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("DrainRequestedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("FreeScratchBytes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<double?>("GpuBusyFraction")
+                        .HasColumnType("REAL");
 
                     b.Property<string>("HardwareDecoders")
                         .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LastProblem")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastProblemAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LoadReportedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("MaxConcurrency")
@@ -856,6 +1050,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SidecarVersion")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("VideoEncoders")
                         .IsRequired()
                         .HasMaxLength(1024)
@@ -872,6 +1070,15 @@ namespace Optimisarr.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Workers");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DiagnosticEvent", b =>
+                {
+                    b.HasOne("Optimisarr.Data.DiagnosticCaptureSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Optimisarr.Data.Job", b =>

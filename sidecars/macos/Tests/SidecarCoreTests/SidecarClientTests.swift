@@ -158,6 +158,77 @@ struct HeartbeatTests {
 
         #expect(transport.lastRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
         #expect(result.heartbeatInterval == 30)
+        // An older server says nothing about draining, which reads as not draining.
+        #expect(result.draining == false)
+    }
+
+    @Test("a check-in from a server on a newer release carries the page to update from")
+    func carriesUpdate() async throws {
+        let transport = StubTransport(status: 200, json: [
+            "workerId": 3, "protocolVersion": 2, "heartbeatIntervalSeconds": 30,
+            "updateVersion": "0.2.16",
+            "updateUrl": "https://github.com/Jellman86/optimisarr/releases/tag/v0.2.16",
+        ])
+
+        let result = try await SidecarClient(transport: transport).heartbeat(
+            serverAddress: "localhost:8787", credential: "secret", freeScratchBytes: 0, maxConcurrency: 0)
+
+        #expect(result.update?.version == "0.2.16")
+        #expect(result.update?.releasePage.absoluteString
+            == "https://github.com/Jellman86/optimisarr/releases/tag/v0.2.16")
+    }
+
+    @Test("an update link to anywhere but the project's releases is ignored")
+    func refusesForeignUpdateLinks() async throws {
+        // The menu opens this in a browser. A server, or anything pretending to be one, must not be
+        // able to make that browser go somewhere else.
+        for url in ["http://github.com/Jellman86/optimisarr/releases/tag/v0.2.16",
+                    "https://example.com/Jellman86/optimisarr/releases/tag/v0.2.16",
+                    "https://github.com/someone/else/releases/tag/v0.2.16",
+                    "https://github.com/Jellman86/optimisarr/releases/../../evil"] {
+            let transport = StubTransport(status: 200, json: [
+                "workerId": 3, "protocolVersion": 2, "heartbeatIntervalSeconds": 30,
+                "updateVersion": "0.2.16", "updateUrl": url,
+            ])
+            let result = try await SidecarClient(transport: transport).heartbeat(
+                serverAddress: "localhost:8787", credential: "secret", freeScratchBytes: 0, maxConcurrency: 0)
+            #expect(result.update == nil, "accepted \(url)")
+        }
+    }
+
+    @Test("a current sidecar, or an older server, hears of no update")
+    func noUpdate() async throws {
+        let transport = StubTransport(status: 200, json: [
+            "workerId": 3, "protocolVersion": 2, "heartbeatIntervalSeconds": 30,
+        ])
+        let result = try await SidecarClient(transport: transport).heartbeat(
+            serverAddress: "localhost:8787", credential: "secret", freeScratchBytes: 0, maxConcurrency: 0)
+        #expect(result.update == nil)
+    }
+
+    @Test("a renewal says where the job is, in the server's names")
+    func renewCarriesProgress() async throws {
+        let transport = StubTransport(status: 200)
+
+        try await SidecarClient(transport: transport).renew(
+            serverAddress: "localhost:8787", credential: "secret", leaseId: "lease-1",
+            progress: .encoding(encodedSeconds: 42.5))
+
+        let body = try #require(transport.lastRequest?.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["stage"] as? String == "Encoding")
+        #expect(json["encodedSeconds"] as? Double == 42.5)
+        #expect(transport.lastRequest?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    }
+
+    @Test("a renewal with nothing to report sends no body, as older sidecars did")
+    func renewWithoutProgress() async throws {
+        let transport = StubTransport(status: 200)
+
+        try await SidecarClient(transport: transport).renew(
+            serverAddress: "localhost:8787", credential: "secret", leaseId: "lease-1")
+
+        #expect(transport.lastRequest?.httpBody == nil)
     }
 
     @Test("a revoked credential is reported distinctly so the app can stop using it")

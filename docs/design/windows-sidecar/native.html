@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compact Monitor · current native clients</title>
+<style>
+*{box-sizing:border-box}body{background:#0b1322;color:#eef4ff;font:15px/1.6 system-ui;margin:0;padding:32px}main{max-width:980px;margin:auto}h1{font-size:28px;margin:8px 0}p{color:#b0bdd1;max-width:800px}.controls{display:flex;flex-wrap:wrap;gap:24px;margin:24px 0}nav{display:flex;gap:8px}button,a{color:#8cddd5}button{font:inherit;border:1px solid #40536c;border-radius:8px;padding:8px 14px;background:#18253b;cursor:pointer}button:focus-visible{outline:3px solid #7bd8d1}button[aria-pressed=true]{border-color:#7bd8d1;background:#22374b}section{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}article{min-width:0}h2{font-size:18px;margin:0 0 12px}img{width:100%;height:auto;display:block}small{color:#91a4bd}footer{margin-top:30px}@media(max-width:700px){body{padding:20px}section{grid-template-columns:1fr}}
+</style>
+<main>
+<small>OPTIMISARR SIDECARS · CURRENT NATIVE VIEWS</small>
+<h1>Compact Monitor, on both desktops.</h1>
+<p>Actual WPF and AppKit renders from the current application, with the Precession icon, rounded panels and each platform’s shipped controls. Screenshots use fabricated dummy media created for documentation, invented machine names and example server addresses. No copyrighted media material is used.</p>
+<div class="controls">
+<nav aria-label="Appearance"><button aria-pressed="true" data-theme="dark">Dark</button><button aria-pressed="false" data-theme="light">Light</button></nav>
+<nav aria-label="Panel view"><button aria-pressed="true" data-view="encoding">Activity</button><button aria-pressed="false" data-view="details">Processing details</button><button aria-pressed="false" data-view="preferences">Preferences</button></nav>
+</div>
+<p id="description">Activity shows the current stage and resource readings. The animated encode indicator is not a percentage or completion estimate.</p>
+<section>
+<article><h2>Windows tray</h2><img id="windows" src="../../images/optimisarr-sidecar-windows-encoding.png" alt="Dark Windows Compact Monitor showing a fabricated Prism Field frame preview, CPU and GPU readings, and pause control"><p>The Windows service works independently of the tray. The panel samples a small frame from the local source while viewed, with a labelled fallback for unsupported media.</p></article>
+<article><h2>Mac menu bar</h2><img id="mac" src="../../images/optimisarr-sidecar-macos-encoding.png" alt="Dark Mac Compact Monitor showing the fabricated Prism Field encoding job, held-job count, and concurrency controls"><p>The Mac panel retains frame previews and one-to-four-job controls. macOS GPU readings do not report VideoToolbox media-engine usage.</p></article>
+</section>
+<footer><p>These fixtures never pair with a server or run media jobs. Native placement tests separately verify the Mac menu-bar anchor and Windows working-area anchor through resizing and navigation. See the <a href="README.md">implementation notes</a> and <a href="../../../sidecars/windows/installer/README.md">Windows installer guide</a>.</p><p><a href="index.html">Historical design studies — proposed controls, not shipped UI</a></p></footer>
+</main>
+<script>
+let theme='dark',view='encoding';
+const descriptions={encoding:'Activity shows the current stage, a local frame preview when available, and resource readings. The animated encode indicator is not a percentage or completion estimate.',details:'Processing details expands the technical readout. Windows keeps each frame with its job; the Mac image is a focused crop of the disclosure. Each panel scrolls when details exceed its compact height.',preferences:'Preferences stays inside each native panel. Mac controls work location and login behavior; Windows provides pairing, worker start and per-user tray sign-in.'};
+const information={encoding:'fabricated Prism Field encoding job, resource readings and pause controls',details:'expanded Processing details for the fabricated Prism Field job and the receive, encode, verify and return stages',preferences:'Preferences with work location and login controls on Mac, or pairing, worker start and tray sign-in on Windows'};
+function update(){for(const [id,platform] of [['windows','windows'],['mac','macos']]){const image=document.getElementById(id);image.src=`../../images/optimisarr-sidecar-${platform}-${theme==='light'?'light-':''}${view}.png`;const detail=view==='preferences'?(id==='mac'?'Preferences with work location and login controls':'Preferences with pairing, worker start and tray sign-in controls'):information[view];image.alt=`${theme==='light'?'Light':'Dark'} ${id==='mac'?'Mac':'Windows'} native Compact Monitor showing ${detail}`;}document.getElementById('description').textContent=descriptions[view];document.querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===theme)));document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));}
+document.querySelectorAll('[data-theme]').forEach(b=>b.addEventListener('click',()=>{theme=b.dataset.theme;update();}));document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;update();}));
+</script>
+</html>

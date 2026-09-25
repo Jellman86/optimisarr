@@ -64,7 +64,7 @@ public sealed class AutoExcludeFailureTrackingTests : IDisposable
     }
 
     [Theory]
-    [InlineData(ImmediateAutoExclusionReason.SizeSaving, "size-saving gate")]
+    [InlineData(ImmediateAutoExclusionReason.SizeSaving, "size gate")]
     [InlineData(ImmediateAutoExclusionReason.VmafAfterHigherQualityRetry, "higher-quality retry")]
     [InlineData(ImmediateAutoExclusionReason.VmafAtMaximumQuality, "maximum encoder quality")]
     public async Task A_deterministic_terminal_failure_is_auto_excluded_immediately(

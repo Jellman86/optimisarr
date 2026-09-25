@@ -7,22 +7,26 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && npm run check:locales && npm run test:setup",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && npm run check:locales && npm run test:unit",
     "check:locales": "node scripts/check-locales.mjs",
-    "test:setup": "node --test src/lib/setup-library-readiness.test.ts",
-    "test:e2e": "playwright test"
+    "test:unit": "node --test 'src/lib/**/*.test.ts'",
+    "test:e2e": "playwright test",
+    "audit:ui": "playwright test e2e/layout-audit.spec.ts",
+    "audit:ui:webkit": "playwright test -c playwright.webkit-audit.config.ts",
+    "brand:assets": "node scripts/render-stellar-assets.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@napi-rs/canvas": "1.0.9",
+    "@playwright/test": "^1.63.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tsconfig/svelte": "^5.0.8",
-    "@types/node": "^26.4.0",
-    "svelte": "^5.56.10",
+    "@types/node": "^26.6.1",
+    "svelte": "^5.57.0",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.1",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.11"

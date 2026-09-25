@@ -5,8 +5,14 @@ function createTheme() {
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
   let dark = $state(stored ? stored === 'dark' : prefersDark)
 
+  // The browser chrome (iOS Safari's toolbar, Android's status bar) takes the page ground so
+  // the app never sits in a differently coloured frame. Read from the stylesheet rather than
+  // repeated here, so the ground has exactly one definition.
   function apply() {
-    document.documentElement.classList.toggle('dark', dark)
+    const root = document.documentElement
+    root.classList.toggle('dark', dark)
+    const ground = getComputedStyle(root).getPropertyValue('--ground').trim()
+    if (ground) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', ground)
   }
   apply()
 

@@ -56,7 +56,8 @@ public sealed class FfmpegProgressProtocolParser
                     _elapsedTimestampSeconds ?? _elapsedMicroseconds,
                     _fps,
                     _speed,
-                    _frame);
+                    _frame,
+                    IsFinal: value == "end");
                 Reset();
                 return sample;
         }

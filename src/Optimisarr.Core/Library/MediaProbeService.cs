@@ -43,7 +43,12 @@ public sealed record MediaProbeResult(
     bool? IsVariableFrameRate,
     string? VideoProfile,
     string? Error,
-    double? VideoFrameRate = null)
+    double? VideoFrameRate = null,
+    // Where the container itself begins: the earliest timestamp of any stream. FFmpeg seeks and
+    // reports timestamps relative to this, so the video's start alone does not say where a picture
+    // will appear in a filter graph. Null when ffprobe did not report it.
+    double? ContainerStartSeconds = null,
+    string? ColorRange = null)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
@@ -132,7 +137,7 @@ public sealed class MediaProbeService : IMediaProbeService
         }
     }
 
-    internal static MediaProbeResult Parse(string json, string? extension = null)
+    public static MediaProbeResult Parse(string json, string? extension = null)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -141,6 +146,7 @@ public sealed class MediaProbeService : IMediaProbeService
         double? duration = null;
         string? optimisedMarker = null;
         int? formatBitrateKbps = null;
+        double? containerStart = null;
         var formatTags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (root.TryGetProperty("format", out var format))
@@ -151,6 +157,7 @@ public sealed class MediaProbeService : IMediaProbeService
             }
 
             formatBitrateKbps = ReadBitrateKbps(format);
+            containerStart = ReadStartTime(format);
 
             if (format.TryGetProperty("duration", out var durationElement) &&
                 durationElement.ValueKind == JsonValueKind.String &&
@@ -191,6 +198,7 @@ public sealed class MediaProbeService : IMediaProbeService
         string? colorPrimaries = null;
         string? colorTransfer = null;
         string? colorSpace = null;
+        string? colorRange = null;
         double? videoStart = null;
         double? audioStart = null;
         string? pixelFormat = null;
@@ -244,11 +252,17 @@ public sealed class MediaProbeService : IMediaProbeService
                         {
                             frameCount = frames;
                         }
+                        // Matroska never fills nb_frames, but files written by mkvmerge carry the
+                        // muxer's own count as a statistics tag, which is exact where a count
+                        // derived from a nominal frame rate can be off by enough to run the
+                        // progress bar past its end.
+                        frameCount ??= ReadMatroskaFrameCount(stream);
                         isHdr = IsHdrVideoStream(stream);
                         isDolbyVision = IsDolbyVisionStream(stream);
                         colorPrimaries = ReadString(stream, "color_primaries");
                         colorTransfer = ReadString(stream, "color_transfer");
                         colorSpace = ReadString(stream, "color_space");
+                        colorRange = ReadString(stream, "color_range");
                         pixelFormat = ReadString(stream, "pix_fmt");
                         bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
                         isVariableFrameRate = DetectVariableFrameRate(stream);
@@ -342,7 +356,9 @@ public sealed class MediaProbeService : IMediaProbeService
             isVariableFrameRate,
             videoProfile,
             null,
-            videoFrameRate);
+            videoFrameRate,
+            containerStart,
+            colorRange);
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still
@@ -591,6 +607,29 @@ public sealed class MediaProbeService : IMediaProbeService
 
     // Containers tag streams with ISO 639 codes in any case; normalise to lower case so
     // language comparisons are stable. A blank tag means the language is unknown.
+    // The tag is NUMBER_OF_FRAMES, often with a language suffix (NUMBER_OF_FRAMES-eng), and is
+    // a string like every ffprobe tag. The first parseable one wins.
+    private static int? ReadMatroskaFrameCount(JsonElement stream)
+    {
+        if (!stream.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var tag in tags.EnumerateObject())
+        {
+            if (tag.Name.StartsWith("NUMBER_OF_FRAMES", StringComparison.OrdinalIgnoreCase)
+                && tag.Value.ValueKind == JsonValueKind.String
+                && int.TryParse(tag.Value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames)
+                && frames > 0)
+            {
+                return frames;
+            }
+        }
+
+        return null;
+    }
+
     private static string? ReadLanguageTag(JsonElement stream)
     {
         if (!stream.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Object)

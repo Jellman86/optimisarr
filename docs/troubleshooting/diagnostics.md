@@ -15,7 +15,7 @@ docker compose logs --tail=200 optimisarr
 work. Check the reported path ownership/mount, database, or missing tool before
 placing jobs in the queue. Docker's health check uses this readiness endpoint.
 
-Use **Settings → Tools** to verify the required FFmpeg/ffprobe executables, the optional
+Use **Settings → System → Tools** to verify the required FFmpeg/ffprobe executables, the optional
 `libvmaf` measurement capability, and the actual encoder test result. For a failed job,
 open Queue details and read the FFmpeg error and verification report before retrying.
 The Queue **Failures** tab and `GET /api/jobs/failures` also include failed preview and personal
@@ -26,7 +26,33 @@ diagnostic row until **Clear errored** is used.
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
-![Settings Tools tab showing FFmpeg, ffprobe, hardware devices, and encoder availability](../images/optimisarr-settings-tools-dark.png)
+![System Tools card showing FFmpeg, VMAF, and ffprobe availability and executable paths](../images/optimisarr-settings-tools-dark.png)
+
+## Collect a job diagnostic bundle
+
+Open **Settings → System → Diagnostic capture** before reproducing a problem. Choose
+**1 hour**, **24 hours**, **7 days**, or **Until stopped**. Enter a job ID to limit
+the capture to one job; leaving it empty records job transitions across the
+queue. **Include full media paths in the export** is off by default. Start the
+capture, reproduce the issue, then select **Stop capture**. Enter the job ID
+under **Job ID to export** and select **Download diagnostics**. The JSON file
+contains the selected job's server-held state transitions, attempt summaries,
+worker leases, and verification summaries.
+
+The capture is off until you start it. Each session records at most 10,000
+enhanced events. Ended sessions and their events are removed after seven days;
+sessions containing a recorded failure remain for 30 days. An **Until stopped**
+session stays active across restarts until you stop it. You can still download
+a stopped session until retention removes it. The export omits raw FFmpeg logs,
+commands, stored credential fields and media content. Sidecar-local diagnostic logs are not
+yet collected; the bundle's manifest names that omission. If you opt in to
+full paths, review the file before sharing it publicly.
+Bundles also bound historical attempts, worker leases and verification check
+summaries; the manifest reports when older records were omitted.
+
+This is an administrative feature. Protect remote access to the UI/API with an
+authenticated reverse proxy or the admin token. A bundle may still reveal
+technical information about your server and media policy, even without paths.
 
 ## Common causes
 
@@ -35,7 +61,7 @@ No copyrighted material is used.
 | `/api/ready` returns `503` | Read the JSON reason first. It usually points to an unwritable `/config`, `/work`, or `/trash` mount, a database migration/open failure, or missing FFmpeg/ffprobe. Fix readiness before queueing jobs. |
 | Library cannot scan | Container path exists below `/data`; PUID/PGID can read it. |
 | Replace fails / "cannot write" | The library folder must be writable by PUID/PGID. Optimisarr checks access when you add or save a library and again during scans; check the reported error and the mount ownership. |
-| Replace/approve says dry-run mode is enabled | Dry-run mode is on under **Settings → General → Replacement and cleanup**. Jobs can still transcode and verify, but originals and quarantined originals are not moved or purged until dry-run is disabled. Expired failed `/work` outputs can still be cleaned because originals are untouched. |
+| Replace/approve says dry-run mode is enabled | Dry-run mode is on under **Settings → Files & safety → Replacement and cleanup**. Jobs can still transcode and verify, but originals and quarantined originals are not moved or purged until dry-run is disabled. Expired failed `/work` outputs can still be cleaned because originals are untouched. |
 | Jobs do not start | A library's auto-optimise window being closed (its jobs only run in-window), the concurrency limit, activity pause, or free `/work` space. The Queue shows a reason when a backlog is waiting on a window. |
 | `/work` keeps growing | Set **Cleanup retention** above `0` and save. The panel shows what is currently reclaimable; **Clean up now** runs the same policy after confirmation. The startup/six-hour sweep also removes expired failed outputs while preserving their job reports and logs. Active and ready-to-replace outputs are never removed. |
 | GPU mode unavailable | Device mapping/NVIDIA toolkit, group permissions, then Tools test encode. |

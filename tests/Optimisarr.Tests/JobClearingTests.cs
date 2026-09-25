@@ -16,6 +16,15 @@ public sealed class JobClearingTests
             Attempt = 1,
             ErrorMessage = "Verification failed: Perceptual quality (VMAF)",
             FailureCategory = FailureCategory.Verification,
+            VideoEncoder = "old_encoder",
+            RequestedVideoQuality = 22,
+            EffectiveVideoQuality = 31,
+            VideoQualityMode = "CQ",
+            FfmpegArguments = "old command",
+            VerificationPassed = false,
+            VerificationReportJson = "{\"checks\":[]}",
+            VerifiedAt = DateTimeOffset.UtcNow,
+            OutputSizeBytes = 1234,
         };
         var now = DateTimeOffset.UtcNow;
 
@@ -26,6 +35,81 @@ public sealed class JobClearingTests
         Assert.Equal(now, job.StartedAt);
         Assert.Null(job.ErrorMessage);
         Assert.Null(job.FailureCategory);
+        Assert.Null(job.VideoEncoder);
+        Assert.Null(job.RequestedVideoQuality);
+        Assert.Null(job.EffectiveVideoQuality);
+        Assert.Null(job.VideoQualityMode);
+        Assert.Null(job.FfmpegArguments);
+        Assert.Null(job.VerificationPassed);
+        Assert.Null(job.VerificationReportJson);
+        Assert.Null(job.VerifiedAt);
+        Assert.Null(job.OutputSizeBytes);
+    }
+
+    [Fact]
+    public void A_rejected_remote_candidate_is_archived_before_its_active_result_is_cleared()
+    {
+        var verified = new DateTimeOffset(2026, 9, 20, 22, 20, 0, TimeSpan.Zero);
+        var job = new Job
+        {
+            Status = JobStatus.Verifying,
+            ExecutionAttempt = 1,
+            StartedAt = verified.AddMinutes(-12),
+            FinishedAt = verified,
+            VideoEncoder = "hevc_videotoolbox",
+            RequestedVideoQuality = 24,
+            EffectiveVideoQuality = 40,
+            VideoQualityMode = "CQ",
+            FfmpegArguments = "-c:v hevc_videotoolbox",
+            WorkOutputPath = "/work/rejected.mkv",
+            OutputSizeBytes = 1234,
+            VerificationPassed = false,
+            VerificationReportJson = "{\"checks\":[{\"name\":\"Decode health\",\"outcome\":\"Failed\"}]}",
+            VerifiedAt = verified,
+            ProcessLog = "old encoder log"
+        };
+
+        JobAttemptHistory.RequeueAfterRejectedCandidate(
+            job, "Scott's MacBook Air", "videotoolbox", verified.AddMinutes(1));
+
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.True(job.PreferSoftwareDecode);
+        Assert.Null(job.VerificationPassed);
+        Assert.Null(job.VerificationReportJson);
+        Assert.Null(job.VerifiedAt);
+        Assert.Null(job.OutputSizeBytes);
+        Assert.Null(job.VideoEncoder);
+        Assert.Null(job.RequestedVideoQuality);
+        Assert.Null(job.EffectiveVideoQuality);
+        Assert.Null(job.VideoQualityMode);
+        Assert.Null(job.FfmpegArguments);
+        Assert.Null(job.WorkOutputPath);
+        Assert.Null(job.ProcessLog);
+        Assert.Null(job.StartedAt);
+        Assert.Null(job.FinishedAt);
+        Assert.Equal("SoftwareDecode", job.RetryReason);
+
+        var previous = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+        Assert.Equal(1, previous.Number);
+        Assert.Equal("Scott's MacBook Air", previous.WorkerName);
+        Assert.Equal("hevc_videotoolbox", previous.VideoEncoder);
+        Assert.Equal("videotoolbox", previous.HardwareDecoder);
+        Assert.Equal(false, previous.VerificationPassed);
+        Assert.Equal(1234, previous.OutputSizeBytes);
+        Assert.Contains("Decode health", previous.VerificationReportJson);
+        Assert.Equal(verified, previous.VerifiedAt);
+        Assert.Equal("-c:v hevc_videotoolbox", previous.FfmpegArguments);
+        Assert.Equal("old encoder log", previous.ProcessLog);
+    }
+
+    [Fact]
+    public void Starting_a_calibration_candidate_keeps_its_requested_quality()
+    {
+        var job = new Job { Type = JobType.Calibration, RequestedVideoQuality = 27 };
+
+        QueueDispatcher.PrepareForAttempt(job, DateTimeOffset.UtcNow);
+
+        Assert.Equal(27, job.RequestedVideoQuality);
     }
 
     private static readonly HashSet<int> NoLiveRollbacks = new();

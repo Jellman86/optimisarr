@@ -1,3 +1,4 @@
+using Optimisarr.Api.Workers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -14,6 +15,7 @@ using Optimisarr.Api.Security;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
@@ -62,11 +64,16 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("POST", "/api/jobs/replace-ready")]
     [InlineData("POST", "/api/jobs/1/cancel")]
     [InlineData("POST", "/api/jobs/1/retry")]
+    [InlineData("POST", "/api/jobs/1/approve-size-preflight")]
     [InlineData("DELETE", "/api/jobs/1")]
     [InlineData("POST", "/api/jobs/1/replace")]
     [InlineData("POST", "/api/replacements/1/rollback")]
     [InlineData("POST", "/api/replacements/1/approve")]
     [InlineData("GET", "/api/diagnostics")]       // admin support snapshot
+    [InlineData("GET", "/api/diagnostics/capture")]
+    [InlineData("POST", "/api/diagnostics/capture")]
+    [InlineData("POST", "/api/diagnostics/capture/00000000-0000-0000-0000-000000000000/stop")]
+    [InlineData("GET", "/api/diagnostics/capture/00000000-0000-0000-0000-000000000000/jobs/1/bundle")]
     // Worker administration stays behind the token; only the pairing exchange itself is open,
     // and that one carries the PIN as its own credential.
     [InlineData("POST", "/api/workers/pairing-code")]
@@ -80,6 +87,172 @@ public sealed class AdminTokenAuthEndpointTests
             .SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Approval_requeues_only_a_held_normal_job_and_keeps_final_gates()
+    {
+        int jobId;
+        int mediaId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                Path = Path.Combine(_api.LibraryDirectory, $"size-review-{Guid.NewGuid():N}.mkv"),
+                RelativePath = "size-review.mkv"
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaId = media.Id;
+            var job = new Job
+            {
+                MediaFileId = media.Id,
+                Status = JobStatus.AwaitingSizeReview,
+                AdaptiveVideoQuality = 22,
+                ErrorMessage = "Sample estimate suggests a large output."
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        try
+        {
+            using var client = _api.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+            using var approved = await client.PostAsync($"/api/jobs/{jobId}/approve-size-preflight", null);
+            Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
+            using var repeated = await client.PostAsync($"/api/jobs/{jobId}/approve-size-preflight", null);
+            Assert.Equal(HttpStatusCode.BadRequest, repeated.StatusCode);
+
+            using var check = _api.Services.CreateScope();
+            var persisted = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.Single(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Queued, persisted.Status);
+            Assert.True(persisted.BypassSizePreflight);
+            Assert.Null(persisted.AdaptiveVideoQuality);
+            Assert.Null(persisted.ErrorMessage);
+        }
+        finally
+        {
+            using var cleanup = _api.Services.CreateScope();
+            var db = cleanup.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Jobs.Remove(db.Jobs.Single(j => j.Id == jobId));
+            db.MediaFiles.Remove(db.MediaFiles.Single(m => m.Id == mediaId));
+            await db.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Retrying_a_failed_job_repeats_adaptive_selection_and_size_preflight()
+    {
+        int jobId;
+        int mediaId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                Path = Path.Combine(_api.LibraryDirectory, $"size-retry-{Guid.NewGuid():N}.mkv"),
+                RelativePath = "size-retry.mkv"
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaId = media.Id;
+            var job = new Job
+            {
+                MediaFileId = mediaId,
+                Status = JobStatus.Failed,
+                AdaptiveVideoQuality = 22,
+                ErrorMessage = "Output exceeded its size budget."
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        try
+        {
+            using var client = _api.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+            using var response = await client.PostAsync($"/api/jobs/{jobId}/retry", null);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var check = _api.Services.CreateScope();
+            var persisted = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.Single(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Queued, persisted.Status);
+            Assert.Null(persisted.AdaptiveVideoQuality);
+        }
+        finally
+        {
+            using var cleanup = _api.Services.CreateScope();
+            var db = cleanup.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Jobs.Remove(db.Jobs.Single(j => j.Id == jobId));
+            db.MediaFiles.Remove(db.MediaFiles.Single(m => m.Id == mediaId));
+            await db.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Admin_can_start_stop_and_download_a_scoped_diagnostic_capture()
+    {
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using (var unspecified = await client.PostAsJsonAsync("/api/diagnostics/capture",
+            new { scopedJobId = (int?)null, includePaths = false }))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, unspecified.StatusCode);
+        }
+        int jobId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                Path = Path.Combine(_api.LibraryDirectory, $"diagnostic-{Guid.NewGuid():N}.mkv"),
+                RelativePath = "private-diagnostic-title.mkv"
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            var job = new Job { MediaFileId = media.Id, Status = JobStatus.Queued };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        using var started = await client.PostAsJsonAsync("/api/diagnostics/capture", new
+        {
+            durationHours = 1, scopedJobId = jobId, includePaths = false
+        });
+        Assert.Equal(HttpStatusCode.Created, started.StatusCode);
+        var session = JsonNode.Parse(await started.Content.ReadAsStringAsync())!;
+        var id = session["id"]!.GetValue<string>();
+        Assert.Equal("Recording", session["status"]!.GetValue<string>());
+        using (var duplicate = await client.PostAsJsonAsync("/api/diagnostics/capture", new
+        {
+            durationHours = 1, scopedJobId = jobId, includePaths = false
+        }))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        }
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = db.Jobs.Single(candidate => candidate.Id == jobId);
+            job.Status = JobStatus.Verifying;
+            await db.SaveChangesAsync();
+        }
+
+        using var stopped = await client.PostAsync($"/api/diagnostics/capture/{id}/stop", null);
+        Assert.Equal(HttpStatusCode.OK, stopped.StatusCode);
+        using var downloaded = await client.GetAsync(
+            $"/api/diagnostics/capture/{id}/jobs/{jobId}/bundle");
+        Assert.Equal(HttpStatusCode.OK, downloaded.StatusCode);
+        Assert.Equal("application/json", downloaded.Content.Headers.ContentType?.MediaType);
+        var bundle = await downloaded.Content.ReadAsStringAsync();
+        Assert.Contains("Verifying", bundle);
+        Assert.DoesNotContain("private-diagnostic-title", bundle);
     }
 
     [Theory]
@@ -926,6 +1099,8 @@ public sealed class AdminTokenAuthEndpointTests
             Directory.CreateDirectory(LibraryDirectory);
             Environment.SetEnvironmentVariable(AdminTokenAuth.EnvironmentVariable, Token);
             Environment.SetEnvironmentVariable("OPTIMISARR_CONFIG_DIR", _configDir);
+            // The worker tests exercise the preview; the availability tests turn it off per host.
+            Environment.SetEnvironmentVariable(RemoteWorkersFeature.EnvironmentVariable, "true");
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -949,9 +1124,54 @@ public sealed class AdminTokenAuthEndpointTests
                 {
                     services.Remove(probe);
                 }
+                foreach (var windowBytes in services
+                    .Where(service => service.ServiceType == typeof(ISourceWindowBytesProbe))
+                    .ToList())
+                {
+                    services.Remove(windowBytes);
+                }
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
                 services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
+                services.AddSingleton<ISourceWindowBytesProbe, FixedSourceWindowBytes>();
+                foreach (var preflight in services
+                    .Where(service => service.ServiceType == typeof(ISourceTimelinePreflight))
+                    .ToList())
+                {
+                    services.Remove(preflight);
+                }
+                services.AddSingleton<ISourceTimelinePreflight, NamedShortPicturePreflight>();
             });
+        }
+
+        /// <summary>A source file with this name reports a picture stream that stops well short of its audio.</summary>
+        public const string ShortPictureFileName = "short-picture.mkv";
+
+        private sealed class NamedShortPicturePreflight : ISourceTimelinePreflight
+        {
+            public Task<SourceTimelineVerdict> CheckAsync(string path, CancellationToken cancellationToken) =>
+                Task.FromResult(Path.GetFileName(path) == ShortPictureFileName
+                    ? SourceTimelineJudge.Confirm(2900.814, 0, 3070.25, 0, 2900.814)
+                    : SourceTimelineVerdict.Clear);
+        }
+
+        /// <summary>
+        /// Every sample window of every source spent 100 MB on its picture and nothing else, so a
+        /// test states a sample's size relative to the source by what it reports: 300 MB across
+        /// three windows is exactly the source's own size over the same scenes.
+        /// </summary>
+        public sealed class FixedSourceWindowBytes : ISourceWindowBytesProbe
+        {
+            public const long VideoBytesPerWindow = 100_000_000;
+
+            public Task<IReadOnlyList<IReadOnlyList<SampledStreamBytes>>?> MeasureAsync(
+                string path,
+                IReadOnlyList<VmafWindow> windows,
+                double? containerStartSeconds,
+                CancellationToken cancellationToken) =>
+                Task.FromResult<IReadOnlyList<IReadOnlyList<SampledStreamBytes>>?>(windows
+                    .Select(_ => (IReadOnlyList<SampledStreamBytes>)
+                        [new SampledStreamBytes("video", 0, true, VideoBytesPerWindow)])
+                    .ToList());
         }
 
         private sealed class FixedCalibrationRandomizer : ICalibrationRandomizer
@@ -974,6 +1194,8 @@ public sealed class AdminTokenAuthEndpointTests
                           "height": 1080,
                           "pix_fmt": "{{(tenBit ? "yuv420p10le" : "yuv420p")}}",
                           "bits_per_raw_sample": "{{(tenBit ? "10" : "8")}}",
+                          "r_frame_rate": "24000/1001",
+                          "avg_frame_rate": "24000/1001",
                           "tags": { "DURATION": "00:05:00.000000000" }
                         },
                         { "codec_type": "audio", "codec_name": "aac" }

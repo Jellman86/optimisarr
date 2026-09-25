@@ -128,6 +128,8 @@ export type HardwareCapability = {
   error: string | null
 }
 
+export type WorkPlacement = 'Anywhere' | 'LocalOnly' | 'PreferWorker' | 'WorkerOnly'
+
 export type LibraryRules = {
   priority: number
   minFileSizeBytes: number | null
@@ -176,6 +178,8 @@ export type LibraryRules = {
   requireAudioRetained: boolean
   requireSubtitlesRetained: boolean
   requireSizeReduction: boolean
+  minimumSizeSavingPercent: number | null
+  maximumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
   audioClippingGateEnabled: boolean
@@ -184,6 +188,8 @@ export type LibraryRules = {
   minimumImageSsim: number
   imageMetadataGateEnabled: boolean
   videoQualityStrategy: 'Fixed' | 'AdaptiveVmaf'
+  /** Where this library's video re-encodes may run once remote workers are on. Ignored while they are off. */
+  workPlacement: WorkPlacement
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string
@@ -283,6 +289,8 @@ export function newLibraryDefaults(): SaveLibrary {
     requireAudioRetained: true,
     requireSubtitlesRetained: false,
     requireSizeReduction: true,
+    minimumSizeSavingPercent: null,
+    maximumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
     audioClippingGateEnabled: false,
@@ -291,6 +299,7 @@ export function newLibraryDefaults(): SaveLibrary {
     minimumImageSsim: 0.95,
     imageMetadataGateEnabled: true,
     videoQualityStrategy: 'AdaptiveVmaf',
+    workPlacement: 'Anywhere',
     autoEnqueueEnabled: false,
     autoEnqueueWindowStart: '00:00',
     autoEnqueueWindowEnd: '00:00',
@@ -334,6 +343,23 @@ export type Settings = {
   replacementQuarantineRetentionDays: number
   /** Opt-in. Off by default: one container stays the complete, uncomplicated way to run this. */
   remoteWorkersEnabled: boolean
+  workerVerificationRequired: boolean
+  /** Groundwork only in this release: the switch and the Workers tab exist only when the server
+   * was started with OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true. */
+  remoteWorkersAvailable: boolean
+  workloadConcurrencyMode: 'Automatic' | 'Manual'
+  nonVideoSlots: number
+  evidenceValidationSlots: number
+  automaticNonVideoSlots: number
+  automaticEvidenceValidationSlots: number
+}
+
+export type WorkloadLaneStatus = {
+  lane: 'Video' | 'NonVideo' | 'Evidence' | 'Finalization' | 'Workers'
+  active: number
+  capacity: number
+  waiting: number
+  reason: string | null
 }
 
 export type TimedCleanupPreview = {
@@ -395,6 +421,7 @@ export type QueueStatus = Settings & {
   // Set when dispatch is ready but nothing starts because every queued job's library auto-optimise
   // window is shut, e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)".
   waitingReason: string | null
+  workloadLanes?: WorkloadLaneStatus[]
 }
 
 export type Stats = {
@@ -596,7 +623,37 @@ export type Job = {
   enqueuedAt: string
   startedAt: string | null
   finishedAt: string | null
+  executionAttempt?: number
+  retryReason?: string | null
+  attemptHistoryJson?: string | null
   clearable: boolean
+  /** The remote worker holding, or having delivered, this job; null for local work. */
+  workerName: string | null
+  /** Where that worker last said it was (Claimed, FetchingSource, Encoding, Delivering); null unless leased. */
+  remoteStage: string | null
+  /** A queued job its library keeps off this server until a worker takes it. */
+  waitingForWorker: boolean
+  /** The current worker assignment completed the media checks; the container only validates evidence. */
+  sidecarVerification?: boolean
+  /** The verified output is currently being safely moved into place by the container. */
+  finalizing?: boolean
+}
+
+export type JobAttemptSnapshot = {
+  number: number
+  workerName: string | null
+  videoEncoder: string | null
+  hardwareDecoder: string | null
+  startedAt: string | null
+  endedAt: string
+  verificationPassed: boolean | null
+  verificationReportJson: string | null
+  verifiedAt: string | null
+  outputSizeBytes: number | null
+  outcome: string
+  reason: string
+  ffmpegArguments: string | null
+  processLog: string | null
 }
 
 export type EnqueueResult = {
@@ -723,7 +780,20 @@ export type Worker = {
   operatingSystem: string
   architecture: string
   protocolVersion: number
+  /** The sidecar's own build, as it reported it. Empty when it reports none. */
+  sidecarVersion: string
+  /** How busy the machine last said it was, 0-1. Null when it has not said — never assume zero. */
+  cpuBusyFraction: number | null
+  /**
+   * Accelerator utilisation, 0-1, or null. Low does not mean unused: a dedicated media engine,
+   * Apple silicon's VideoToolbox encoder among them, does not appear here at all.
+   */
+  gpuBusyFraction: number | null
+  /** When those were reported, so a stale reading is not drawn as current. */
+  loadReportedAt: string | null
   videoEncoders: string[]
+  /** Audio encoders the worker proved. A job that re-encodes audio is only offered to a worker naming its encoder. */
+  audioEncoders: string[]
   hardwareDecoders: string[]
   vmaf: VmafCapability
   freeScratchBytes: number
@@ -733,6 +803,35 @@ export type Worker = {
   revokedAt: string | null
   /** Computed by the server from its own liveness rule, so the UI never invents a second one. */
   online: boolean
+  /** When an operator asked the worker to finish what it holds and take no more; null while it takes work. */
+  drainRequestedAt: string | null
+  /** Leases the worker holds right now: what a drain is waiting on. */
+  heldLeases: number
+  /** The jobs behind those leases, with where the worker says it is on each. */
+  activeJobs: WorkerJob[]
+  /** The most recent thing the server refused or discarded from this worker; null if nothing yet. */
+  lastProblem: string | null
+  lastProblemAt: string | null
+  /** Whether this sidecar is behind the server's release, and where to get that release. */
+  update?: WorkerUpdate
+}
+
+/**
+ * `releaseUrl` is set only for `updateAvailable`: the release page for the server's version, which
+ * carries the matching Mac and Windows downloads. Sidecars never update themselves.
+ */
+export type WorkerUpdate = {
+  state: 'unknown' | 'current' | 'updateAvailable' | 'newer'
+  latestVersion: string | null
+  releaseUrl: string | null
+}
+
+export type WorkerJob = {
+  jobId: number
+  relativePath: string | null
+  /** "Claimed" until the worker first reports, then FetchingSource | Encoding | Delivering. */
+  stage: string
+  progress: number
 }
 
 export type WorkerPairingCode = {
@@ -854,6 +953,31 @@ export type BrowseResponse = {
   directories: { name: string; path: string }[]
 }
 
+export type DiagnosticCapture = {
+  id: string
+  startedAt: string
+  expiresAt: string | null
+  stoppedAt: string | null
+  scopedJobId: number | null
+  includePaths: boolean
+  eventsStored: number
+  maximumEvents: number
+  eventLimitReached: boolean
+  status: 'Recording' | 'Stopped' | 'Expired'
+}
+
+async function diagnosticBundle(sessionId: string, jobId: number): Promise<Blob> {
+  const response = await fetch(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}/jobs/${jobId}/bundle`, {
+    headers: authorizedHeaders(),
+  })
+  if (response.status === 401) handleAuthRequired()
+  if (!response.ok) {
+    const payload = tryParseJson(await response.text())
+    throw new Error(apiErrorMessage(payload, response.status))
+  }
+  return response.blob()
+}
+
 function authorizedHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers)
   const token = getAdminToken()
@@ -964,6 +1088,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  diagnosticCapture: () => request<DiagnosticCapture | null>('/api/diagnostics/capture'),
+  startDiagnosticCapture: (body: { durationHours: number | null; scopedJobId: number | null; includePaths: boolean }) =>
+    request<DiagnosticCapture>('/api/diagnostics/capture', { method: 'POST', body: JSON.stringify(body) }),
+  stopDiagnosticCapture: (id: string) =>
+    request<DiagnosticCapture>(`/api/diagnostics/capture/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
+  diagnosticBundle,
   health: () => request<Health>('/api/health'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
   setup: () => request<SetupState>('/api/setup'),
@@ -1087,6 +1217,10 @@ export const api = {
 
   workers: () => request<Worker[]>('/api/workers'),
   revokeWorker: (id: number) => request<void>(`/api/workers/${id}`, { method: 'DELETE' }),
+  /** Removes the record entirely. Revoking keeps it for the audit trail; this is for an orphan. */
+  forgetWorker: (id: number) => request<void>(`/api/workers/${id}/forget`, { method: 'POST' }),
+  drainWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'POST' }),
+  resumeWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'DELETE' }),
   issueWorkerPairingCode: () =>
     request<WorkerPairingCode>('/api/workers/pairing-code', { method: 'POST' }),
   /** Null when no code is currently on screen — the ordinary resting state, not an error. */
@@ -1114,6 +1248,8 @@ export const api = {
     request<ConnectionTestResult>('/api/connect/test', { method: 'POST', body: JSON.stringify(body) }),
 
   jobs: () => request<Job[]>('/api/jobs'),
+  /** Only jobs with work outstanding. The unfiltered call returns the entire job history. */
+  liveJobs: () => request<Job[]>('/api/jobs?live=true'),
   jobFailures: () => request<FailureGroup[]>('/api/jobs/failures'),
   // The captured ffmpeg log is plain text, and 404s when a job has none — return null rather than throw.
   jobLog: async (id: number): Promise<string | null> => {
@@ -1124,6 +1260,7 @@ export const api = {
     return response.text()
   },
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
+  approveSizePreflight: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/approve-size-preflight`, { method: 'POST' }),
   removeJob: (id: number) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
   retryJob: (id: number, higherQuality = false) =>
     request<{ id: number; status: string }>(`/api/jobs/${id}/retry?higherQuality=${higherQuality}`, { method: 'POST' }),

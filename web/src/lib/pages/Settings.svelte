@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import {
     api,
     type Settings,
@@ -18,7 +19,9 @@
   import { formatSize } from '../format'
   // `t` is aliased to `tr` here because this component already uses `t`/`c`/`w` as local
   // names for notification-target, connection, and watcher records.
-  import { i18n, t as tr } from '../i18n/i18n.svelte'
+  import { i18n, plural, t as tr } from '../i18n/i18n.svelte'
+  import { brand } from '../stores/brand.svelte'
+  import { parseBrandStyle } from '../brand-style'
   import { router } from '../stores/ui.svelte'
   import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -28,32 +31,64 @@
   import ConfigSection from '../components/ConfigSection.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
   import WorkersPanel from '../components/WorkersPanel.svelte'
+  import DiagnosticCapturePanel from '../components/DiagnosticCapturePanel.svelte'
 
-  // Settings is split into tabs so each concern is found quickly and Tools lives here
-  // rather than in its own sidebar entry. The General tab holds the core settings the
-  // single "Save settings" button persists together; the rest manage their own records.
-  type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'workers' | 'backup'
-  // A visit to the old /tools route lands on Settings with the Tools tab open.
-  let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
+  // Settings is a set of rooms rather than a strip of tabs. The landing page is a grid of
+  // cards, one per room, and each card reports what that room is currently set to — so
+  // "is Plex still connected?" and "is anything reclaimable?" are answered without opening
+  // anything. Opening a room gives that section the page to itself.
+  //
+  // A tab strip could not do the reporting, and its numbered sections implied a sequence
+  // that never existed: nobody configures their encoder before their notifications because
+  // it happens to be numbered lower.
+  type RoomKey = 'encoding' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
 
-  function selectTab(key: TabKey) {
-    activeTab = key
-    requestAnimationFrame(() => {
-      const tab = document.getElementById(`settings-tab-${key}`)
-      tab?.focus()
-      tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    })
+  const ROOM_ICONS: Record<RoomKey, string> = {
+    encoding: 'gpu', files: 'shield-check', servers: 'tv', downloads: 'download',
+    notifications: 'bell', workers: 'server', system: 'sliders',
   }
 
-  function handleTabKeydown(event: KeyboardEvent, index: number) {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-    event.preventDefault()
-    const nextIndex = event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? tabs.length - 1
-        : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-    selectTab(tabs[nextIndex].key)
+  const ROOM_PATHS: Record<RoomKey, string> = {
+    encoding: 'encoding',
+    files: 'files',
+    servers: 'media-servers',
+    downloads: 'download-managers',
+    notifications: 'notifications',
+    workers: 'workers',
+    system: 'system',
+  }
+
+  function roomFromPath(path: string): RoomKey | null {
+    // The old /tools route, and anything linking to it, lands in the room that absorbed it.
+    if (path.startsWith('/tools')) return 'system'
+    const tail = path.replace(/^\/settings\/?/, '')
+    if (!tail) return null
+    const match = (Object.entries(ROOM_PATHS) as [RoomKey, string][]).find(([, slug]) => slug === tail)
+    return match ? match[0] : null
+  }
+
+  let openRoom = $derived(roomFromPath(router.path))
+
+  let focusAfterNavigation = $state<string | null>(null)
+
+  $effect(() => {
+    const room = openRoom
+    const target = focusAfterNavigation
+    if (!target || (target === 'room-heading' ? !room : room !== null)) return
+    void tick().then(() => {
+      document.getElementById(target)?.focus()
+      focusAfterNavigation = null
+    })
+  })
+
+  function openRoomAt(key: RoomKey) {
+    focusAfterNavigation = 'room-heading'
+    router.go(`/settings/${ROOM_PATHS[key]}`)
+  }
+
+  function closeRoom() {
+    focusAfterNavigation = openRoom ? `settings-room-${openRoom}` : null
+    router.go('/settings')
   }
 
   const notificationTypes: NotificationType[] = ['Webhook', 'Discord', 'Telegram', 'Ntfy', 'Apprise']
@@ -405,21 +440,152 @@
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     remoteWorkersEnabled: false,
+    workerVerificationRequired: true,
+    remoteWorkersAvailable: false,
+    workloadConcurrencyMode: 'Automatic',
+    nonVideoSlots: 0,
+    evidenceValidationSlots: 1,
+    automaticNonVideoSlots: 0,
+    automaticEvidenceValidationSlots: 1,
     replacementQuarantineRetentionDays: 0,
   })
 
-  let tabs: { key: TabKey; label: string }[] = $derived([
-    { key: 'general', label: i18n.m.settings.tab_general },
-    { key: 'connections', label: i18n.m.settings.tab_connections },
-    { key: 'notifications', label: i18n.m.settings.tab_notifications },
-    { key: 'tools', label: i18n.m.settings.tab_tools },
-    // Only once opted in: a default single-container install should not have to wonder what a
-    // remote worker is.
-    ...(settings.remoteWorkersEnabled ? [{ key: 'workers' as TabKey, label: i18n.m.settings.tab_workers }] : []),
-    { key: 'backup', label: i18n.m.settings.tab_backup },
+  // The values as the server last confirmed them. Everything the form binds to is a draft
+  // over the top of this, which is what lets a row say "was 14 days", lets one field be put
+  // back on its own, and lets the save bar count what it is about to write.
+  //
+  // It has to be a separate snapshot rather than a re-fetch: walking from Encoding to Files
+  // and back must not lose an edit, and re-reading the server to find out what changed would
+  // do exactly that.
+  let savedSettings = $state<Settings | null>(null)
+  let savedMinFreeDiskGiB = $state('10')
+  let minFreeDiskGiB = $state('10')
+
+  /** Which settings belong to which room, so a card can count its own unsaved edits. */
+  const ROOM_FIELDS: Partial<Record<RoomKey, (keyof Settings)[]>> = {
+    encoding: ['maxConcurrentJobs', 'workloadConcurrencyMode', 'nonVideoSlots', 'evidenceValidationSlots', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
+    files: ['dryRunMode', 'remoteWorkersEnabled', 'workerVerificationRequired', 'replacementAllowCrossFilesystem', 'replacementQuarantineRetentionDays'],
+  }
+
+  function sameValue(a: unknown, b: unknown): boolean {
+    // Number inputs hand back strings, so 5 and '5' are the same answer typed twice.
+    if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b)
+    return a === b
+  }
+
+  let changedFields = $derived.by(() => {
+    if (!savedSettings) return new Set<string>()
+    const out = new Set<string>()
+    for (const key of Object.keys(settings) as (keyof Settings)[]) {
+      if (!sameValue(settings[key], savedSettings[key])) out.add(key)
+    }
+    // Free disk is edited in GiB and stored in bytes, so it is compared in the unit it is typed in.
+    if (minFreeDiskGiB !== savedMinFreeDiskGiB) out.add('minFreeDiskBytes')
+    return out
+  })
+
+  let changedCount = $derived(changedFields.size)
+
+  function roomChangedCount(key: RoomKey): number {
+    const fields = ROOM_FIELDS[key]
+    if (!fields) return 0
+    let n = fields.filter((f) => changedFields.has(f)).length
+    if (key === 'files' && changedFields.has('minFreeDiskBytes')) n += 1
+    return n
+  }
+
+  /** True while this field is holding an unsaved edit — the row lights up and offers a way back. */
+  function isChanged(field: keyof Settings | 'minFreeDiskBytes'): boolean {
+    return changedFields.has(field)
+  }
+
+  function revert(field: keyof Settings | 'minFreeDiskBytes') {
+    if (!savedSettings) return
+    if (field === 'minFreeDiskBytes') {
+      minFreeDiskGiB = savedMinFreeDiskGiB
+      return
+    }
+    settings = { ...settings, [field]: savedSettings[field] }
+  }
+
+  function discardAll() {
+    if (!savedSettings) return
+    settings = { ...savedSettings }
+    minFreeDiskGiB = savedMinFreeDiskGiB
+    message = null
+    error = null
+  }
+
+  /** What each card says about its own section without being opened. */
+  let rooms = $derived([
+    {
+      key: 'encoding' as RoomKey,
+      title: i18n.m.settings.room_encoding,
+      description: i18n.m.settings.room_encoding_desc,
+      state: tr(i18n.m.settings.room_encoding_state, {
+        jobs: settings.maxConcurrentJobs,
+        encoder: settings.encoderMode,
+        hours: settings.libraryScanIntervalHours,
+      }),
+    },
+    {
+      key: 'files' as RoomKey,
+      title: i18n.m.settings.room_files,
+      description: i18n.m.settings.room_files_desc,
+      state: settings.dryRunMode
+        ? i18n.m.settings.room_files_state_dry_run
+        : tr(i18n.m.settings.room_files_state, {
+            size: formatSize(gibToBytes(minFreeDiskGiB)),
+            days: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
+          }),
+    },
+    {
+      key: 'servers' as RoomKey,
+      title: i18n.m.settings.room_servers,
+      description: i18n.m.settings.room_servers_desc,
+      state: watchers.length
+        ? watchers.map((w) => w.name).join(', ')
+        : i18n.m.settings.room_none_connected,
+    },
+    {
+      key: 'downloads' as RoomKey,
+      title: i18n.m.settings.room_downloads,
+      description: i18n.m.settings.room_downloads_desc,
+      state: arrs.length ? arrs.map((c) => c.name).join(', ') : i18n.m.settings.room_none_connected,
+    },
+    {
+      key: 'notifications' as RoomKey,
+      title: i18n.m.settings.room_notifications,
+      description: i18n.m.settings.room_notifications_desc,
+      state: targets.length
+        ? targets.map((n) => n.name).join(', ')
+        : i18n.m.settings.room_none_configured,
+    },
+    // Only once opted in, and only where the server offers the preview at all: a default
+    // single-container install should not have to wonder what a remote worker is.
+    ...(settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
+      ? [{
+          key: 'workers' as RoomKey,
+          title: i18n.m.settings.room_workers,
+          description: i18n.m.settings.room_workers_desc,
+          state: i18n.m.settings.room_workers_state,
+        }]
+      : []),
+    {
+      key: 'system' as RoomKey,
+      title: i18n.m.settings.room_system,
+      description: i18n.m.settings.room_system_desc,
+      state: i18n.m.settings.room_system_state,
+    },
   ])
 
-  let minFreeDiskGiB = $state('10')
+  const roomGroups = $derived([
+    { id: 'processing', title: i18n.m.settings.group_processing, rooms: rooms.filter(r => r.key === 'encoding' || r.key === 'files') },
+    { id: 'connections', title: i18n.m.settings.group_connections, rooms: rooms.filter(r => r.key !== 'encoding' && r.key !== 'files') },
+  ])
+
+  let currentRoom = $derived(openRoom ? rooms.find((r) => r.key === openRoom) ?? null : null)
+
   let loading = $state(true)
   let saving = $state(false)
   let error = $state<string | null>(null)
@@ -437,6 +603,22 @@
     void loadArrs()
   })
 
+  // Rooms are only safe because the draft outlives them. That holds while you stay inside
+  // Settings — but leaving for another page unmounts this component, so an unsaved edit would
+  // vanish without a word. The guard asks first.
+  //
+  // It has to let Settings' own rooms through: all in-app navigation funnels through the hash,
+  // so walking from Encoding to Files looks exactly like leaving unless the destination is
+  // checked. By the time a guard runs the hash already holds where we are going.
+  function confirmLeavingUnsaved(): boolean {
+    if (changedCount === 0) return true
+    const destination = window.location.hash.replace(/^#/, '')
+    if (destination.startsWith('/settings')) return true
+    return confirm(i18n.m.settings.confirm_discard)
+  }
+
+  $effect(() => router.guardLeave(confirmLeavingUnsaved))
+
   async function load() {
     loading = true
     error = null
@@ -451,6 +633,8 @@
       const loaded = await api.settings()
       settings = { ...settings, ...loaded }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
+      savedSettings = { ...settings }
+      savedMinFreeDiskGiB = minFreeDiskGiB
       await loadCleanupPreview()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.settings.error_load
@@ -467,6 +651,8 @@
       const saved = await api.saveSettings({
         ...settings,
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
+        nonVideoSlots: Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)),
+        evidenceValidationSlots: Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)),
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
         libraryScanIntervalHours: Math.max(1, Number(settings.libraryScanIntervalHours) || 1),
         replacementQuarantineRetentionDays: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
@@ -474,6 +660,8 @@
       })
       settings = { ...settings, ...saved }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
+      savedSettings = { ...settings }
+      savedMinFreeDiskGiB = minFreeDiskGiB
       message = i18n.m.settings.saved
       await loadCleanupPreview()
     } catch (err) {
@@ -608,10 +796,22 @@
   }
 </script>
 
-<header class="mb-6">
+{#snippet wasChanged(field: keyof Settings | 'minFreeDiskBytes', previous: string)}
+  {#if isChanged(field)}
+    <span class="mt-1 block font-mono text-[10.5px] font-normal normal-case tracking-normal text-accent">
+      {tr(i18n.m.settings.was_value, { value: previous })}
+      <button type="button" class="underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
+        {i18n.m.settings.put_back}
+      </button>
+    </span>
+  {/if}
+{/snippet}
+
+<div class="settings-layout">
+<header class="settings-page-header">
   <div class="min-w-0">
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
+    <h1 class="page-title">{i18n.m.nav.settings}</h1>
+    <p class="page-subtitle">{i18n.m.settings.subtitle}</p>
   </div>
 </header>
 
@@ -620,52 +820,108 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+  <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else}
-  <div
-    class="no-scrollbar mb-5 flex max-w-full gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700"
-    role="tablist"
-    aria-label={i18n.m.nav.settings}
-  >
-    {#each tabs as tab, index}
-      <button
-        id={`settings-tab-${tab.key}`}
-        role="tab"
-        aria-selected={activeTab === tab.key}
-        aria-controls={`settings-panel-${tab.key}`}
-        tabindex={activeTab === tab.key ? 0 : -1}
-        class="-mb-px min-h-11 flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
-          ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-          : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-        onclick={() => selectTab(tab.key)}
-        onkeydown={(event) => handleTabKeydown(event, index)}
-      >
-        {tab.label}
+  {#if !openRoom}
+    <div class="settings-overview">
+      {#each roomGroups as group (group.id)}
+        <section aria-labelledby={`settings-${group.id}-heading`}>
+          <h2 id={`settings-${group.id}-heading`} class="settings-group-title">{group.title}</h2>
+          <div class="settings-room-grid">
+            {#each group.rooms as room (room.key)}
+              <button
+                type="button"
+                id={`settings-room-${room.key}`}
+                class="settings-room card card-interactive focus-ring"
+                onclick={() => openRoomAt(room.key)}
+              >
+                <span class="settings-room-symbols" aria-hidden="true">
+                  <Icon name={ROOM_ICONS[room.key]} class="h-5 w-5 text-accent" />
+                  <Icon name="arrow-up-right" class="h-4 w-4 text-ink-4" />
+                </span>
+                <span class="flex items-start justify-between gap-3">
+                  <span class="settings-room-title">{room.title}</span>
+                  {#if roomChangedCount(room.key) > 0}
+                    <span class="badge tone-accent font-mono" data-room-changes title={i18n.m.settings.unsaved_here}>
+                      {roomChangedCount(room.key)}
+                    </span>
+                  {/if}
+                </span>
+                <span class="settings-room-description">{room.description}</span>
+                <span class="settings-room-state">{room.state}</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/each}
+    </div>
+  {:else}
+    <div class="settings-room-heading">
+      <button type="button" class="btn btn-ghost -ml-2 mb-5 px-2 text-xs" onclick={closeRoom}>
+        <Icon name="arrow-left" /> {i18n.m.settings.all_settings}
       </button>
-    {/each}
-  </div>
+      <div class="flex items-start gap-3.5">
+        <span class="settings-heading-icon" aria-hidden="true"><Icon name={ROOM_ICONS[openRoom]} class="h-5 w-5" /></span>
+        <div class="min-w-0">
+          <h2 id="room-heading" tabindex="-1" class="text-xl font-semibold tracking-tight text-ink outline-none">
+            {currentRoom?.title ?? i18n.m.nav.settings}
+          </h2>
+          {#if currentRoom?.description}
+            <p class="mt-1 max-w-2xl text-sm leading-relaxed text-ink-3">{currentRoom.description}</p>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
 
-  {#if activeTab === 'general'}
-  <div
-    id="settings-panel-general"
-    role="tabpanel"
-    aria-labelledby="settings-tab-general"
-    class="min-w-0 space-y-5"
-  >
+  <div class="settings-detail" class:settings-detail-open={openRoom !== null}>
+
+  {#if openRoom === 'encoding'}
+  <div class="min-w-0 space-y-5">
   <ConfigSection
-    step={1}
     id="global-workload"
     title={i18n.m.nav.queue}
     description={i18n.m.settings.queue_desc}
   >
-    <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      <div>
-        <label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label>
+    <div class="settings-fields">
+      <div class="settings-field {isChanged('maxConcurrentJobs') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label><p>{i18n.m.settings.concurrency_hint}</p></div>
         <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
+        {@render wasChanged('maxConcurrentJobs', String(savedSettings?.maxConcurrentJobs ?? ''))}
       </div>
 
-      <div>
-        <label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label>
+      <details class="workload-details">
+        <summary class="focus-ring">{i18n.m.settings.workload_advanced}</summary>
+        <p class="workload-intro">{i18n.m.settings.workload_intro}</p>
+        <div class="settings-field {isChanged('workloadConcurrencyMode') ? 'settings-field-changed' : ''}">
+          <div class="settings-field-label"><label class="label" for="workload-mode">{i18n.m.settings.workload_mode} <InfoTip text={i18n.m.settings.workload_mode_tip} /></label><p>{i18n.m.settings.workload_mode_hint}</p></div>
+          <select id="workload-mode" class="input" bind:value={settings.workloadConcurrencyMode}>
+            <option value="Automatic">{i18n.m.settings.workload_automatic}</option>
+            <option value="Manual">{i18n.m.settings.workload_manual}</option>
+          </select>
+          {@render wasChanged('workloadConcurrencyMode', String(savedSettings?.workloadConcurrencyMode ?? ''))}
+        </div>
+        {#if settings.workloadConcurrencyMode === 'Manual'}
+          <div class="settings-field {isChanged('nonVideoSlots') ? 'settings-field-changed' : ''}">
+            <div class="settings-field-label"><label class="label" for="non-video-slots">{i18n.m.settings.workload_nonvideo} <InfoTip text={i18n.m.settings.workload_nonvideo_tip} /></label><p>{i18n.m.settings.workload_nonvideo_hint}</p></div>
+            <input id="non-video-slots" class="input" type="number" min="0" max="4" step="1" bind:value={settings.nonVideoSlots} />
+            {@render wasChanged('nonVideoSlots', String(savedSettings?.nonVideoSlots ?? ''))}
+          </div>
+          <div class="settings-field {isChanged('evidenceValidationSlots') ? 'settings-field-changed' : ''}">
+            <div class="settings-field-label"><label class="label" for="evidence-slots">{i18n.m.settings.workload_evidence} <InfoTip text={i18n.m.settings.workload_evidence_tip} /></label><p>{i18n.m.settings.workload_evidence_hint}</p></div>
+            <input id="evidence-slots" class="input" type="number" min="1" max="4" step="1" bind:value={settings.evidenceValidationSlots} />
+            {@render wasChanged('evidenceValidationSlots', String(savedSettings?.evidenceValidationSlots ?? ''))}
+          </div>
+        {/if}
+        <div class="workload-preview" aria-live="polite">
+          <span>{i18n.m.settings.workload_effective}</span>
+          <strong>{tr(i18n.m.settings.workload_preview, { video: Math.max(1, Number(settings.maxConcurrentJobs) || 1), nonvideo: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticNonVideoSlots : Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)), evidence: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticEvidenceValidationSlots : Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)) })}</strong>
+          <small>{i18n.m.settings.workload_preview_note}</small>
+        </div>
+      </details>
+
+      <div class="settings-field {isChanged('encoderMode') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label><p>{i18n.m.settings.encoder_hint}</p></div>
         <select id="encoder-mode" class="input" bind:value={settings.encoderMode}>
           <option value="Auto">Auto</option>
           <option value="Cpu">CPU</option>
@@ -673,31 +929,27 @@
           <option value="IntelQsv">Intel QSV</option>
           <option value="Vaapi">VAAPI</option>
         </select>
+        {@render wasChanged('encoderMode', String(savedSettings?.encoderMode ?? ''))}
       </div>
 
-      <div>
-        <label class="label" for="cpu-threads">{i18n.m.settings.cpu_threads} <InfoTip text={i18n.m.settings.cpu_threads_tip} /></label>
+      <div class="settings-field {isChanged('cpuThreadLimit') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="cpu-threads">{i18n.m.settings.cpu_threads} <InfoTip text={i18n.m.settings.cpu_threads_tip} /></label><p>{i18n.m.settings.threads_hint}</p></div>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
+        {@render wasChanged('cpuThreadLimit', String(savedSettings?.cpuThreadLimit ?? ''))}
       </div>
 
-      <div>
-        <label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label>
+      <div class="settings-field {isChanged('libraryScanIntervalHours') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label><p>{i18n.m.settings.scan_hint}</p></div>
         <div class="flex min-w-0 items-center gap-2">
           <input id="scan-interval" class="input min-w-0 flex-1" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
-          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
+          <span class="flex-none text-sm text-ink-3">{i18n.m.settings.hours}</span>
         </div>
+        {@render wasChanged('libraryScanIntervalHours', String(savedSettings?.libraryScanIntervalHours ?? ''))}
       </div>
 
-      <div>
-        <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
-        <div class="flex min-w-0 items-center gap-2">
-          <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
-          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
-        </div>
-      </div>
     </div>
 
-    <div class="mt-5 grid gap-5 border-t border-slate-200 pt-5 dark:border-slate-800 sm:grid-cols-2">
+    <div class="settings-video-fields">
       <Toggle
         bind:checked={settings.hardwareDecode}
         label={i18n.m.settings.hardware_decode}
@@ -713,55 +965,80 @@
           <option value="Hardware">{i18n.m.settings.hdr_tone_map_hardware}</option>
         </select>
       </div>
-      <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-        {i18n.m.settings.auto_run_before}<button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
+      <p class="text-xs text-ink-3">
+        {i18n.m.settings.auto_run_before}<button class="text-accent hover:underline" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
       </p>
     </div>
   </ConfigSection>
+  </div>
+  {/if}
 
+  {#if openRoom === 'files'}
+  <div class="min-w-0 space-y-5">
   <ConfigSection
-    step={2}
     id="global-replacement"
     title={i18n.m.settings.replacement_title}
     description={i18n.m.settings.replacement_desc}
   >
-    <div class="max-w-2xl">
+    <div>
       <Toggle
         bind:checked={settings.dryRunMode}
         label={i18n.m.settings.dry_run}
         hint={i18n.m.settings.dry_run_hint}
       />
     </div>
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.remoteWorkersEnabled}
-        label={i18n.m.settings.remote_workers}
-        hint={i18n.m.settings.remote_workers_hint}
-      />
-    </div>
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+    {#if settings.remoteWorkersAvailable}
+      <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
+      <div class="mt-5 border-t border-line pt-5">
+        <Toggle
+          bind:checked={settings.remoteWorkersEnabled}
+          label={i18n.m.settings.remote_workers}
+          hint={i18n.m.settings.remote_workers_hint}
+        />
+        {#if settings.remoteWorkersEnabled}
+          <div class="mt-5 border-t border-line pt-5">
+            <Toggle
+              bind:checked={settings.workerVerificationRequired}
+              label={i18n.m.settings.worker_verification}
+              hint={i18n.m.settings.worker_verification_hint}
+            />
+          </div>
+        {/if}
+      </div>
+    {/if}
+    <div class="mt-5 border-t border-line pt-5">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}
         label={i18n.m.settings.cross_fs}
         hint={i18n.m.settings.cross_fs_hint}
       />
     </div>
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 border-t border-line pt-5">
+      <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'settings-field-changed' : ''}">
+        <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
+        <div class="flex min-w-0 items-center gap-2">
+          <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
+          <span class="flex-none text-sm text-ink-3">{i18n.m.settings.gib}</span>
+        </div>
+        {@render wasChanged('minFreeDiskBytes', savedMinFreeDiskGiB)}
+      </div>
+    </div>
+    <div class="mt-5 border-t border-line pt-5">
       <label class="label" for="cleanup-retention">{i18n.m.settings.cleanup_retention} <InfoTip text={i18n.m.settings.cleanup_retention_tip} /></label>
       <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
         <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
-        <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
+        <span class="flex-none text-sm text-ink-3">{i18n.m.settings.days}</span>
       </div>
 
-      <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50" aria-live="polite">
+      <div class="mt-3 rounded-lg border border-line bg-sunken p-3" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_reclaimable}</p>
+            <p class="text-xs font-medium text-ink-3">{i18n.m.settings.cleanup_reclaimable}</p>
             {#if cleanupLoading}
-              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_calculating}</p>
+              <p class="mt-1 text-sm text-ink-3">{i18n.m.settings.cleanup_calculating}</p>
             {:else if cleanupPreview}
-              <p class="mt-0.5 text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{formatSize(cleanupPreview.totalBytes)}</p>
-              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p class="mt-0.5 text-xl font-semibold tabular-nums text-ink">{formatSize(cleanupPreview.totalBytes)}</p>
+              <p class="mt-1 text-xs text-ink-3">
                 {tr(i18n.m.settings.cleanup_breakdown, {
                   failedCount: cleanupPreview.failedOutputCount,
                   failedSpace: formatSize(cleanupPreview.failedOutputBytes),
@@ -781,77 +1058,66 @@
         </div>
 
         {#if cleanupPreview?.retentionDays === 0}
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_indefinite}</p>
+          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_indefinite}</p>
         {:else if cleanupPreview && cleanupPreview.totalCount === 0}
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_none}</p>
+          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_none}</p>
         {/if}
         {#if cleanupPolicyHasUnsavedChanges()}
-          <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">{i18n.m.settings.cleanup_save_first}</p>
+          <p class="mt-2 text-xs text-warn">{i18n.m.settings.cleanup_save_first}</p>
         {/if}
         {#if cleanupPreview?.dryRunMode}
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_dry_run}</p>
+          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_dry_run}</p>
         {/if}
-        {#if cleanupError}<p class="mt-2 text-xs text-red-600 dark:text-red-400">{cleanupError}</p>{/if}
-        {#if cleanupMessage}<p class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{cleanupMessage}</p>{/if}
+        {#if cleanupError}<p class="mt-2 text-xs text-bad">{cleanupError}</p>{/if}
+        {#if cleanupMessage}<p class="mt-2 text-xs text-ok">{cleanupMessage}</p>{/if}
       </div>
     </div>
   </ConfigSection>
 
-  <div class="card flex flex-wrap items-center gap-3 p-4 sm:p-5" data-settings-actions>
-    <button class="btn btn-primary min-h-11" onclick={save} disabled={saving}>{saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}</button>
-    {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
-    <span class="text-xs text-slate-400">{i18n.m.settings.save_note}</span>
-  </div>
   </div>
   {/if}
 
-  {#if activeTab === 'connections'}
-  <div
-    id="settings-panel-connections"
-    role="tabpanel"
-    aria-labelledby="settings-tab-connections"
-    class="min-w-0 space-y-5"
-  >
+  {#if openRoom === 'servers'}
+  <div class="min-w-0 space-y-5">
     <!-- Media servers (Plex/Jellyfin/Emby): playback-aware pause + post-replacement re-scan. -->
     <ConfigSection
-      step={1}
       id="global-media-servers"
       title={i18n.m.settings.media_servers}
       description={i18n.m.settings.media_servers_summary}
     >
-      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-ink-3">
         {i18n.m.settings.media_servers_desc}
       </p>
 
       {#if watcherError}
-        <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{watcherError}</div>
+        <div class="callout tone-bad mb-3">{watcherError}</div>
       {/if}
 
       {#if watchers.length > 0}
-        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        <ul class="mb-4 divide-y divide-line-soft">
           {#each watchers as w (w.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
+              <span class="badge tone-neutral">{w.type}</span>
               <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</div>
-                <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
+                <div class="truncate text-sm font-medium text-ink-2">{w.name}</div>
+                <div class="truncate font-mono text-[11px] text-ink-4" title={w.baseUrl}>{w.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
-                {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
-                {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
+                {#if !w.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+                {#if w.refreshOnReplace}<span class="badge tone-ok" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
+                {#if !w.hasToken}<span class="badge tone-warn" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.media_servers_empty}</p>
+        <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.media_servers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+      <div class="rounded-lg border border-line p-4">
+        <h3 class="mb-3 text-sm font-semibold text-ink-2">
           {editingId === null ? i18n.m.settings.add_media_server : i18n.m.settings.edit_media_server}
         </h3>
         <div class="grid gap-3 sm:grid-cols-2">
@@ -869,7 +1135,7 @@
             <label class="label" for="watcher-url">{i18n.m.settings.base_url}</label>
             <input id="watcher-url" class="input" placeholder="http://192.168.1.10:32400" bind:value={watcherDraft.baseUrl} />
             {#if watcherDraft.type === 'Plex'}
-              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.plex_pick_hint}</p>
+              <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.plex_pick_hint}</p>
             {/if}
           </div>
           <div>
@@ -895,24 +1161,24 @@
               {/if}
             </div>
             {#if connectMessage}
-              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{connectMessage}</p>
+              <p class="mt-2 text-xs text-ink-3">{connectMessage}</p>
             {/if}
             {#if jellyfinCode}
-              <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
+              <p class="mt-1 font-mono text-lg tracking-widest text-accent">{jellyfinCode}</p>
             {/if}
             {#if plexServers && plexServers.length}
-              <ul class="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+              <ul class="mt-2 divide-y divide-line-soft rounded-md border border-line divide-line">
                 {#each plexServers as server}
                   <li>
                     <button
-                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-lit"
                       onclick={() => selectPlexServer(server)}
                     >
                       <span class="min-w-0">
-                        <span class="font-medium text-slate-700 dark:text-slate-200">{server.name}</span>
-                        <span class="block truncate font-mono text-[11px] text-slate-400">{server.uri}</span>
+                        <span class="font-medium text-ink-2">{server.name}</span>
+                        <span class="block truncate font-mono text-[11px] text-ink-4">{server.uri}</span>
                       </span>
-                      <span class="badge flex-shrink-0 {server.local ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
+                      <span class="badge flex-shrink-0 {server.local ? 'tone-ok' : 'bg-raised text-ink-3'}">
                         {server.local ? i18n.m.settings.badge_local : i18n.m.settings.badge_remote}
                       </span>
                     </button>
@@ -922,12 +1188,12 @@
             {/if}
           </div>
         </div>
-        <div class="mt-3 grid max-w-2xl gap-3">
+        <div class="mt-3 grid gap-3">
           <Toggle bind:checked={watcherDraft.enabled} label={i18n.m.settings.pause_streaming} hint={i18n.m.settings.pause_streaming_hint} />
           <Toggle bind:checked={watcherDraft.refreshOnReplace} label={i18n.m.settings.refresh_replace} hint={i18n.m.settings.refresh_replace_hint} />
         </div>
         {#if testResult}
-          <p class="mt-3 text-sm {testResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">
+          <p class="mt-3 text-sm {testResult.ok ? 'text-ok' : 'text-bad'}">
             {#if testResult.ok}
               {tr(i18n.m.settings.test_ok, { name: testResult.serverName ?? '' })}{testResult.version ? tr(i18n.m.settings.test_ok_version, { version: testResult.version }) : ''}
             {:else}
@@ -953,46 +1219,49 @@
         </div>
       </div>
     </ConfigSection>
+  </div>
+  {/if}
 
+  {#if openRoom === 'downloads'}
+  <div class="min-w-0 space-y-5">
     <!-- Download managers (Sonarr/Radarr): hold files back while an import is in progress. -->
     <ConfigSection
-      step={2}
       id="global-download-managers"
       title={i18n.m.settings.download_managers}
       description={i18n.m.settings.download_managers_summary}
     >
-      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-ink-3">
         {i18n.m.settings.download_managers_desc}
       </p>
 
       {#if arrError}
-        <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{arrError}</div>
+        <div class="callout tone-bad mb-3">{arrError}</div>
       {/if}
 
       {#if arrs.length > 0}
-        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        <ul class="mb-4 divide-y divide-line-soft">
           {#each arrs as c (c.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
+              <span class="badge tone-neutral">{c.type}</span>
               <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</div>
-                <div class="truncate font-mono text-[11px] text-slate-400" title={c.baseUrl}>{c.baseUrl}</div>
+                <div class="truncate text-sm font-medium text-ink-2">{c.name}</div>
+                <div class="truncate font-mono text-[11px] text-ink-4" title={c.baseUrl}>{c.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
-                {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
+                {#if !c.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+                {#if !c.hasApiKey}<span class="badge tone-warn" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.download_managers_empty}</p>
+        <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.download_managers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+      <div class="rounded-lg border border-line p-4">
+        <h3 class="mb-3 text-sm font-semibold text-ink-2">
           {editingArrId === null ? i18n.m.settings.add_download_manager : i18n.m.settings.edit_download_manager}
         </h3>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1037,56 +1306,52 @@
   </div>
   {/if}
 
-  {#if activeTab === 'notifications'}
+  {#if openRoom === 'notifications'}
   <div
-    id="settings-panel-notifications"
-    role="tabpanel"
-    aria-labelledby="settings-tab-notifications"
     class="min-w-0"
   >
   <ConfigSection
-    step={1}
     id="global-notifications"
-    title={i18n.m.settings.tab_notifications}
+    title={i18n.m.settings.room_notifications}
     description={i18n.m.settings.notifications_desc}
   >
 
     {#if targetError}
-      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{targetError}</div>
+      <div class="callout tone-bad mb-3">{targetError}</div>
     {/if}
     {#if targetMessage}
-      <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400" aria-live="polite">{targetMessage}</div>
+      <div class="callout tone-ok mb-3" aria-live="polite">{targetMessage}</div>
     {/if}
 
     {#if targets.length > 0}
-      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+      <ul class="mb-4 divide-y divide-line-soft">
         {#each targets as t (t.id)}
           <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t.type}</span>
+            <span class="badge tone-neutral">{t.type}</span>
             <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{t.name}</div>
-              <div class="truncate font-mono text-[11px] text-slate-400" title={t.url}>{t.url}</div>
+              <div class="truncate text-sm font-medium text-ink-2">{t.name}</div>
+              <div class="truncate font-mono text-[11px] text-ink-4" title={t.url}>{t.url}</div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
-              {#if t.type === 'Telegram' && !t.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_no_token}</span>{/if}
-              {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.settings.badge_replaced}</span>{/if}
-              {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_failed}</span>{/if}
+              {#if !t.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+              {#if t.type === 'Telegram' && !t.hasToken}<span class="badge tone-warn">{i18n.m.settings.badge_no_token}</span>{/if}
+              {#if t.notifyOnReplacement}<span class="badge tone-ok">{i18n.m.settings.badge_replaced}</span>{/if}
+              {#if t.notifyOnFailure}<span class="badge tone-warn">{i18n.m.settings.badge_failed}</span>{/if}
               <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => testTarget(t)} disabled={testingTargetId !== null}>
                 {testingTargetId === t.id ? i18n.m.settings.testing : i18n.m.settings.send_test}
               </button>
               <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
-              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
+              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
             </div>
           </li>
         {/each}
       </ul>
     {:else}
-      <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.targets_empty}</p>
+      <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.targets_empty}</p>
     {/if}
 
-    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-      <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+    <div class="rounded-lg border border-line p-4">
+      <h3 class="mb-3 text-sm font-semibold text-ink-2">
         {editingTargetId === null ? i18n.m.settings.add_target : i18n.m.settings.edit_target}
       </h3>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1113,15 +1378,15 @@
             bind:value={targetDraft.url}
           />
           {#if targetDraft.type === 'Discord'}
-            <p class="mt-1 text-[11px] text-slate-400">{i18n.m.settings.discord_hint}</p>
+            <p class="mt-1 text-[11px] text-ink-4">{i18n.m.settings.discord_hint}</p>
           {:else if targetDraft.type === 'Telegram'}
-            <p class="mt-1 text-[11px] text-slate-400">{i18n.m.settings.telegram_hint}</p>
+            <p class="mt-1 text-[11px] text-ink-4">{i18n.m.settings.telegram_hint}</p>
           {/if}
         </div>
         <div>
           <label class="label" for="target-token">
             {targetDraft.type === 'Telegram' ? i18n.m.settings.bot_token : i18n.m.settings.token}
-            {#if targetDraft.type !== 'Telegram'}<span class="text-slate-400">{i18n.m.settings.optional}</span>{/if}
+            {#if targetDraft.type !== 'Telegram'}<span class="text-ink-4">{i18n.m.settings.optional}</span>{/if}
           </label>
           <input
             id="target-token"
@@ -1133,7 +1398,7 @@
           />
         </div>
       </div>
-      <div class="mt-3 grid max-w-2xl gap-3">
+      <div class="mt-3 grid gap-3">
         <Toggle bind:checked={targetDraft.enabled} label={i18n.m.settings.enabled} />
         <Toggle bind:checked={targetDraft.notifyOnReplacement} label={i18n.m.settings.notify_replaced} />
         <Toggle bind:checked={targetDraft.notifyOnFailure} label={i18n.m.settings.notify_failed} />
@@ -1151,50 +1416,50 @@
   </div>
   {/if}
 
-  {#if activeTab === 'tools'}
+  {#if openRoom === 'system'}
+    <ConfigSection id="appearance" title={i18n.m.settings.appearance_title} description={i18n.m.settings.appearance_desc}>
+      <div class="max-w-sm">
+        <label for="brand-style" class="label">{i18n.m.settings.brand_style}</label>
+        <select id="brand-style" class="input" value={brand.style} onchange={(event) => brand.set(parseBrandStyle(event.currentTarget.value))}>
+          <option value="precession">{i18n.m.settings.brand_precession}</option>
+          <option value="stellar">{i18n.m.settings.brand_stellar}</option>
+        </select>
+      </div>
+    </ConfigSection>
+    <DiagnosticCapturePanel />
     <div
-      id="settings-panel-tools"
-      role="tabpanel"
-      aria-labelledby="settings-tab-tools"
-      class="min-w-0"
+        class="min-w-0"
     >
       <ToolsPanel />
     </div>
   {/if}
 
-  {#if activeTab === 'workers'}
+  {#if openRoom === 'workers'}
     <div
-      id="settings-panel-workers"
-      role="tabpanel"
-      aria-labelledby="settings-tab-workers"
-      class="min-w-0"
+        class="min-w-0"
     >
       <WorkersPanel />
     </div>
   {/if}
 
-  {#if activeTab === 'backup'}
+  {#if openRoom === 'system'}
   <div
-    id="settings-panel-backup"
-    role="tabpanel"
-    aria-labelledby="settings-tab-backup"
     class="min-w-0 space-y-5"
   >
   <ConfigSection
-    step={1}
     id="global-backup"
     title={i18n.m.settings.backup_title}
     description={i18n.m.settings.backup_summary}
   >
-    <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+    <p class="mb-4 max-w-4xl text-sm leading-relaxed text-ink-3">
       {i18n.m.settings.backup_desc}
     </p>
 
     {#if backupError}
-      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{backupError}</div>
+      <div class="callout tone-bad mb-3">{backupError}</div>
     {/if}
     {#if backupMessage}
-      <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">{backupMessage}</div>
+      <div class="callout tone-ok mb-3">{backupMessage}</div>
     {/if}
 
     <div class="flex flex-wrap items-center gap-3">
@@ -1208,7 +1473,6 @@
   </ConfigSection>
 
   <ConfigSection
-    step={2}
     id="global-first-run"
     title={i18n.m.settings.restart_setup_title}
     description={i18n.m.settings.restart_setup_desc}
@@ -1220,4 +1484,94 @@
   </ConfigSection>
   </div>
   {/if}
+
+  </div>
+
+  {#if changedCount > 0 || message}
+    <div
+      class="settings-savebar sticky bottom-0 z-10 mt-6 flex flex-wrap items-center gap-3 p-4"
+      data-settings-actions
+    >
+      {#if changedCount > 0}
+        <span class="text-sm font-semibold text-ink">
+          {plural(changedCount, i18n.m.settings.unsaved_changes_one, i18n.m.settings.unsaved_changes_other)}
+        </span>
+      {/if}
+      {#if message}<span class="text-sm text-ok" role="status">{message}</span>{/if}
+      <span class="flex-1"></span>
+      {#if changedCount > 0}
+        <button class="btn btn-ghost min-h-11" onclick={discardAll} disabled={saving}>
+          {i18n.m.settings.discard}
+        </button>
+        <button class="btn btn-primary min-h-11" onclick={save} disabled={saving}>
+          {saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}
+        </button>
+      {/if}
+    </div>
+  {/if}
 {/if}
+
+</div>
+
+<style>
+  .settings-layout { width: 100%; min-width: 0; }
+  .settings-page-header { margin-bottom: 2rem; }
+  .settings-overview { display: grid; gap: 1.75rem; }
+  .settings-group-title {
+    margin-bottom: .875rem; color: var(--ink-3); font-size: .6875rem; font-weight: 600;
+    letter-spacing: .11em; text-transform: uppercase;
+  }
+  .settings-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .settings-room {
+    display: flex; min-width: 0; min-height: 11rem; flex-direction: column; gap: .5rem;
+    padding: 1.375rem; text-align: left;
+  }
+  .settings-room-symbols { display: flex; align-items: center; justify-content: space-between; margin-bottom: .65rem; }
+  .settings-room-title { color: var(--ink); font-size: .9375rem; font-weight: 600; letter-spacing: -.015em; }
+  .settings-room-description { color: var(--ink-3); font-size: .8125rem; line-height: 1.55; }
+  .settings-room-state { margin-top: auto; padding-top: .875rem; color: var(--ink-2); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+  .settings-room-heading { margin-bottom: 1.75rem; }
+  .settings-heading-icon {
+    display: flex; flex: none; align-items: center; justify-content: center;
+    width: 2.75rem; height: 2.75rem; border-radius: .75rem; color: var(--accent); background: var(--sunken);
+  }
+  .settings-detail-open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; width: 100%; }
+  .settings-fields { display: grid; }
+  .settings-field {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); align-items: center;
+    min-width: 0; column-gap: 1.5rem; padding: 1rem 0; border-bottom: 1px solid var(--divide-soft);
+  }
+  .settings-field:first-child { padding-top: 0; }
+  .settings-field:last-child { border-bottom: 0; padding-bottom: 0; }
+  .settings-field > span { grid-column: 2; }
+  .settings-field-label p { margin-top: .3rem; color: var(--ink-3); font-size: .75rem; line-height: 1.5; }
+  .settings-detail :global(.label) { text-transform: none; letter-spacing: 0; font-size: .8125rem; font-weight: 500; color: var(--ink-2); }
+  .settings-detail :global(.input) { min-height: 2.75rem; }
+
+  .settings-field .input { min-height: 2.75rem; }
+  .settings-field :global(.label) { margin-bottom: 0; }
+  .settings-field-changed { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .settings-video-fields {
+    display: grid; gap: 1.5rem;
+    margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--divide);
+  }
+  .workload-details { border-top: 1px solid var(--divide-soft); margin-top: 1rem; padding-top: 1rem; }
+  .workload-details summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: .8125rem; font-weight: 600; border-radius: .375rem; padding: .5rem; margin-left: -.5rem; }
+  .workload-details summary:hover { background: var(--lit); }
+  .workload-intro { color: var(--ink-3); font-size: .75rem; line-height: 1.6; margin: .5rem 0 1rem; }
+  .workload-preview { display: grid; gap: .35rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }
+  .workload-preview span, .workload-preview small { color: var(--ink-3); font-size: .75rem; }
+  .workload-preview strong { color: var(--ink); font-size: .875rem; font-weight: 600; }
+  .settings-video-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); gap: 1.5rem; align-items: center; }
+  .settings-savebar {
+    border-radius: .875rem; background: var(--raised); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+  }
+  @media (max-width: 639px) {
+    .settings-page-header { margin-bottom: 1.5rem; }
+    .settings-room-grid, .settings-field, .settings-video-fields > div { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+    .settings-field > span { grid-column: 1; }
+    .settings-room { min-height: 10rem; padding: 1.125rem; }
+    .settings-room-heading { margin-bottom: 1.25rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { .settings-room { transition: none; } }
+</style>

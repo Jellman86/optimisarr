@@ -219,6 +219,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 ?? legacyVerificationPolicy.RequireSubtitlesRetained;
             library.RequireSizeReduction = snapshot.RequireSizeReduction
                 ?? legacyVerificationPolicy.RequireSizeReduction;
+            library.MinimumSizeSavingPercent = snapshot.MinimumSizeSavingPercent;
+            library.MaximumSizeSavingPercent = snapshot.MaximumSizeSavingPercent;
             library.AudioLoudnessGateEnabled = snapshot.AudioLoudnessGateEnabled
                 ?? legacyVerificationPolicy.AudioLoudnessGateEnabled;
             library.MaxLoudnessDriftLufs = snapshot.MaxLoudnessDriftLufs
@@ -234,6 +236,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.ImageMetadataGateEnabled = snapshot.ImageMetadataGateEnabled
                 ?? legacyVerificationPolicy.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = ParseEnum<VideoQualityStrategy>(snapshot.VideoQualityStrategy);
+            library.WorkPlacement = snapshot.WorkPlacement is null
+                ? WorkPlacement.Anywhere
+                : ParseEnum<WorkPlacement>(snapshot.WorkPlacement);
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
             library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
@@ -543,7 +548,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MinBitrateKbps,
         library.VideoDownscaleHeight,
         library.CropBlackBars,
-        library.MaxFrameRate);
+        library.MaxFrameRate,
+        library.WorkPlacement.ToString(),
+        library.MinimumSizeSavingPercent,
+        library.MaximumSizeSavingPercent);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

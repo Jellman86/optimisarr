@@ -59,7 +59,7 @@
 
   <div class="card overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
+      <thead class="border-b border-line text-left text-xs uppercase text-ink-3">
         <tr>
           <th class="px-4 py-3">{i18n.m.shared.col_status}</th>
           <th class="px-4 py-3">{i18n.m.shared.col_file}</th>
@@ -71,14 +71,14 @@
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+      <tbody class="divide-y divide-line-soft">
         {#each pagedVisible as candidate (candidate.mediaFileId)}
-          <tr class="text-slate-700 dark:text-slate-300">
+          <tr class="text-ink-2">
             <td class="px-4 py-2">
               {#if candidate.eligible}
-                <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.shared.eligible}</span>
+                <span class="badge tone-ok">{i18n.m.shared.eligible}</span>
               {:else}
-                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.shared.skipped}</span>
+                <span class="badge tone-muted">{i18n.m.shared.skipped}</span>
               {/if}
             </td>
             <td class="px-4 py-2">
@@ -86,21 +86,21 @@
                 <Thumbnail mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
                 <span class="max-w-[44vw] truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
                   {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
-                    <span class="badge mr-1 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{candidate.mediaKind === 'Audio' ? i18n.m.shared.media_audio : i18n.m.shared.media_image}</span>
+                    <span class="badge mr-1 tone-muted">{candidate.mediaKind === 'Audio' ? i18n.m.shared.media_audio : i18n.m.shared.media_image}</span>
                   {/if}{candidate.relativePath}
                 </span>
               </div>
             </td>
             <td class="hidden px-4 py-2 sm:table-cell">{formatSize(candidate.sizeBytes)}</td>
             <td class="hidden px-4 py-2 md:table-cell">
-              {candidate.codec ?? '—'}{#if candidate.isHdr}<span class="badge ml-1 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">HDR</span>{/if}
+              {candidate.codec ?? '—'}{#if candidate.isHdr}<span class="badge ml-1 tone-warn">HDR</span>{/if}
             </td>
             <!-- The rule profile is a video preset; it is meaningless for audio/image files,
                  which are governed by their own audio/image rules. -->
             {#if !scoped}
               <td class="hidden px-4 py-2 text-xs lg:table-cell">{candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image' ? '—' : candidate.profile}</td>
             {/if}
-            <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{candidate.reason}</td>
+            <td class="px-4 py-2 text-xs text-ink-3">{candidate.reason}</td>
             <td class="px-4 py-2 text-right">
               {#if candidate.eligible}
                 <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>
@@ -120,7 +120,7 @@
       onClose={() => (previewing = null)}
     />
   {/if}
-  <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+  <div class="mt-2 flex items-center justify-between text-xs text-ink-4">
     <span>
       {#if visible.length > 0}
         {visible.length === candidates.length
@@ -139,7 +139,7 @@
     {/if}
   </div>
 {:else}
-  <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
+  <div class="card p-8 text-center text-ink-3">
     {i18n.m.shared.candidates_empty}
   </div>
 {/if}

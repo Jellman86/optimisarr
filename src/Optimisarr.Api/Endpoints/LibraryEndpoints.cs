@@ -153,6 +153,8 @@ internal static class LibraryEndpoints
                 RequireAudioRetained = parsed.RequireAudioRetained,
                 RequireSubtitlesRetained = parsed.RequireSubtitlesRetained,
                 RequireSizeReduction = parsed.RequireSizeReduction,
+                MinimumSizeSavingPercent = parsed.MinimumSizeSavingPercent,
+                MaximumSizeSavingPercent = parsed.MaximumSizeSavingPercent,
                 AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled,
                 MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs,
                 AudioClippingGateEnabled = parsed.AudioClippingGateEnabled,
@@ -161,6 +163,7 @@ internal static class LibraryEndpoints
                 MinimumImageSsim = parsed.MinimumImageSsim,
                 ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled,
                 VideoQualityStrategy = parsed.VideoQualityStrategy,
+                WorkPlacement = parsed.WorkPlacement,
                 AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
                 AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
                 AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd,
@@ -247,6 +250,8 @@ internal static class LibraryEndpoints
             library.RequireAudioRetained = parsed.RequireAudioRetained;
             library.RequireSubtitlesRetained = parsed.RequireSubtitlesRetained;
             library.RequireSizeReduction = parsed.RequireSizeReduction;
+            library.MinimumSizeSavingPercent = parsed.MinimumSizeSavingPercent;
+            library.MaximumSizeSavingPercent = parsed.MaximumSizeSavingPercent;
             library.AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled;
             library.MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs;
             library.AudioClippingGateEnabled = parsed.AudioClippingGateEnabled;
@@ -255,6 +260,7 @@ internal static class LibraryEndpoints
             library.MinimumImageSsim = parsed.MinimumImageSsim;
             library.ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = parsed.VideoQualityStrategy;
+            library.WorkPlacement = parsed.WorkPlacement;
             library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
             library.AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd;

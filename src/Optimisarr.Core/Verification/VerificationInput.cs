@@ -48,6 +48,8 @@ public sealed record VerificationInput(
     string? OutputColorTransfer = null,
     string? OriginalColorSpace = null,
     string? OutputColorSpace = null,
+    string? OriginalColorRange = null,
+    string? OutputColorRange = null,
     double? OriginalVideoStartSeconds = null,
     double? OriginalAudioStartSeconds = null,
     double? OutputVideoStartSeconds = null,
@@ -121,4 +123,5 @@ public sealed record VerificationInput(
     IReadOnlyList<string?>? ExpectedSubtitleLanguages = null,
     IReadOnlyList<string?>? OutputSubtitleLanguages = null,
     IReadOnlyList<string?>? ExpectedAudioCodecs = null,
-    IReadOnlyList<string?>? OutputAudioCodecs = null);
+    IReadOnlyList<string?>? OutputAudioCodecs = null,
+    bool SourceTimelineIndeterminate = false);

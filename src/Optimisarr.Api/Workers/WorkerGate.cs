@@ -16,6 +16,15 @@ internal static class WorkerGate
         SettingsStore settings,
         CancellationToken cancellationToken)
     {
+        if (!settings.RemoteWorkersAvailable)
+        {
+            return Results.Json(
+                new ApiError("workers.unavailable",
+                    "Remote workers are groundwork in this release, not a feature. "
+                    + $"Set {RemoteWorkersFeature.EnvironmentVariable}=true to try the preview."),
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var queue = await settings.GetQueueSettingsAsync(cancellationToken);
         if (queue.RemoteWorkersEnabled)
         {

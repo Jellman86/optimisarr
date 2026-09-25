@@ -22,12 +22,25 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Strict_worker_verification_defaults_on_and_explicit_opt_out_round_trips()
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db);
+        var original = await store.GetQueueSettingsAsync(CancellationToken.None);
+        Assert.True(original.WorkerVerificationRequired);
+        await store.SetQueueSettingsAsync(original with { WorkerVerificationRequired = false }, CancellationToken.None);
+        Assert.False((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
+    }
+
+    [Fact]
     public async Task Queue_settings_have_conservative_defaults()
     {
         await using var db = CreateDb();
         var settings = await new SettingsStore(db).GetQueueSettingsAsync(CancellationToken.None);
 
         Assert.Equal(1, settings.MaxConcurrentJobs);
+        Assert.Equal(WorkloadConcurrencyMode.Automatic, settings.WorkloadConcurrencyMode);
+        Assert.Equal(new WorkloadSlots(1, 0, 1), settings.EffectiveWorkloadSlots(2, 4L << 30));
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
         Assert.Equal(1, settings.LibraryScanIntervalHours);
@@ -87,13 +100,18 @@ public sealed class SettingsStoreTests : IDisposable
                     VmafFrameSubsample: 4),
                 ReplacementAllowCrossFilesystem: true,
                 DryRunMode: true,
-                ReplacementQuarantineRetentionDays: 30), CancellationToken.None);
+                ReplacementQuarantineRetentionDays: 30,
+                WorkloadConcurrencyMode: WorkloadConcurrencyMode.Manual,
+                NonVideoSlots: 1,
+                EvidenceValidationSlots: 3), CancellationToken.None);
         }
 
         await using var readDb = CreateDb();
         var settings = await new SettingsStore(readDb).GetQueueSettingsAsync(CancellationToken.None);
 
         Assert.Equal(2, settings.MaxConcurrentJobs);
+        Assert.Equal(WorkloadConcurrencyMode.Manual, settings.WorkloadConcurrencyMode);
+        Assert.Equal(new WorkloadSlots(2, 1, 3), settings.EffectiveWorkloadSlots(2, 4L << 30));
         Assert.Equal(50L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(2, settings.CpuThreadLimit);
         Assert.Equal(6, settings.LibraryScanIntervalHours);
@@ -176,14 +194,19 @@ public sealed class SettingsStoreTests : IDisposable
                 CancellationToken.None);
             Assert.Equal(SetupState.Pending, state);
             Assert.True((await new SettingsStore(freshDb).GetQueueSettingsAsync(CancellationToken.None)).DryRunMode);
+            Assert.True((await new SettingsStore(freshDb).GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
         }
 
         await using (var retainedDb = CreateDb())
         {
+            var previousDefault = await retainedDb.AppSettings.FindAsync(SettingKeys.WorkerVerificationRequired);
+            retainedDb.AppSettings.Remove(previousDefault!);
+            await retainedDb.SaveChangesAsync();
             var retained = await new SettingsStore(retainedDb).InitialiseSetupStateAsync(
                 databaseExistedBeforeStartup: true,
                 CancellationToken.None);
             Assert.Equal(SetupState.Pending, retained);
+            Assert.False((await new SettingsStore(retainedDb).GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
         }
 
         await using (var upgradeDb = CreateDb())
@@ -195,7 +218,26 @@ public sealed class SettingsStoreTests : IDisposable
                 CancellationToken.None);
             Assert.Equal(SetupState.CompletedUpgrade, upgrade);
             Assert.False((await new SettingsStore(upgradeDb).GetQueueSettingsAsync(CancellationToken.None)).DryRunMode);
+            Assert.False((await new SettingsStore(upgradeDb).GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
         }
+    }
+
+    [Fact]
+    public async Task Upgrade_keeps_a_saved_verification_choice_and_export_import_round_trips_it()
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db);
+        await store.SetQueueSettingsAsync((await store.GetQueueSettingsAsync(CancellationToken.None))
+            with { WorkerVerificationRequired = false }, CancellationToken.None);
+        await store.InitialiseSetupStateAsync(databaseExistedBeforeStartup: true, CancellationToken.None);
+        Assert.False((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
+
+        var exported = await store.ExportSettingsAsync(CancellationToken.None);
+        Assert.Equal(bool.FalseString, exported[SettingKeys.WorkerVerificationRequired]);
+        await store.SetQueueSettingsAsync((await store.GetQueueSettingsAsync(CancellationToken.None))
+            with { WorkerVerificationRequired = true }, CancellationToken.None);
+        await store.ImportSettingsAsync(exported, CancellationToken.None);
+        Assert.False((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
     }
 
     [Fact]

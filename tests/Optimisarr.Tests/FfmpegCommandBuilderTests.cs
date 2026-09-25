@@ -322,7 +322,7 @@ public sealed class FfmpegCommandBuilderTests
     {
         var args = FfmpegCommandBuilder.Build(Reencode() with { SourceIsVariableFrameRate = true });
 
-        Assert.Equal("vfr", args[IndexOf(args, "-fps_mode") + 1]);
+        Assert.Equal("passthrough", args[IndexOf(args, "-fps_mode") + 1]);
         Assert.DoesNotContain("-filter:v:0", args);
     }
 
@@ -379,7 +379,9 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-maxrate", args);
         Assert.DoesNotContain("-init_hw_device", args);
         Assert.DoesNotContain("-vaapi_device", args);
-        Assert.DoesNotContain("-hwaccel", args);
+        // Its decoder is the one hardware option it does take, and only as a plain -hwaccel: no
+        // device, no pinned output format, no upload filter.
+        Assert.DoesNotContain("-hwaccel_output_format", args);
         Assert.DoesNotContain("hwupload", string.Join(" ", args));
     }
 
@@ -553,6 +555,30 @@ public sealed class FfmpegCommandBuilderTests
         // The encoder is still QSV with its constant-quality knob.
         Assert.Equal("hevc_qsv", args[IndexOf(args, "-c:v:0") + 1]);
         Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
+    }
+
+    [Fact]
+    public void Videotoolbox_hardware_decode_adds_hwaccel_but_leaves_frames_in_system_memory()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_videotoolbox", hardwareDecode: true);
+
+        // Decoded by VideoToolbox, before -i; no output format, so ffmpeg downloads the frames
+        // and every software filter still works. That is the whole reason the option is safe.
+        var hwaccelIndex = IndexOf(args, "-hwaccel");
+        Assert.Equal("videotoolbox", args[hwaccelIndex + 1]);
+        Assert.True(hwaccelIndex < IndexOf(args, "-i"));
+        Assert.DoesNotContain("-hwaccel_output_format", args);
+        Assert.Equal("hevc_videotoolbox", args[IndexOf(args, "-c:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Videotoolbox_without_hardware_decode_names_no_hwaccel()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_videotoolbox", hardwareDecode: false);
+
+        Assert.DoesNotContain("-hwaccel", args);
     }
 
     [Fact]
@@ -906,6 +932,46 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-0:t", args);
     }
 
+    [Theory]
+    [InlineData("/work/Movie.opt.mkv")]
+    [InlineData("/work/Movie.opt.mp4")]
+    public void Av1_nvenc_excludes_attached_pictures_without_dropping_the_primary_video(string outputPath)
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: "av1") with { OutputPath = outputPath }, videoEncoder: "av1_nvenc");
+
+        Assert.Contains(("-map", "0"), MapPairs(args));
+        Assert.Contains(("-map", "-0:v:disp:attached_pic"), MapPairs(args));
+        Assert.Equal("av1_nvenc", args[IndexOf(args, "-c:v:0") + 1]);
+        Assert.True(IndexOf(args, "0") < ((List<string>)args).IndexOf("-0:v:disp:attached_pic"));
+    }
+
+    [Fact]
+    public void A_video_remux_keeps_attached_pictures_in_matroska()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null));
+
+        Assert.DoesNotContain(("-map", "-0:v:disp:attached_pic"), MapPairs(args));
+    }
+
+    [Fact]
+    public void Av1_nvenc_does_not_pass_through_timestamps_for_a_constant_frame_rate_source()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "av1"), videoEncoder: "av1_nvenc");
+
+        Assert.DoesNotContain("-fps_mode", args);
+    }
+
+    [Fact]
+    public void Av1_nvenc_preserves_a_known_variable_frame_rate_source()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: "av1") with { SourceIsVariableFrameRate = true }, videoEncoder: "av1_nvenc");
+
+        Assert.Equal("passthrough", args[IndexOf(args, "-fps_mode") + 1]);
+        Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
+    }
+
     [Fact]
     public void Regenerates_timestamps_for_a_video_job_before_the_input()
     {
@@ -961,16 +1027,40 @@ public sealed class FfmpegCommandBuilderTests
         });
 
         var index = IndexOf(args, "-fps_mode");
-        Assert.Equal("vfr", args[index + 1]);
+        Assert.Equal("passthrough", args[index + 1]);
         Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
     }
 
     [Fact]
-    public void Does_not_retime_a_cfr_or_unknown_source()
+    public void Keeps_every_frame_even_when_the_source_looks_constant()
     {
-        Assert.DoesNotContain("-fps_mode",
-            FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" }));
-        Assert.DoesNotContain("-enc_time_base:v:0", FfmpegCommandBuilder.Build(Reencode()));
+        // This used to assert the opposite, and that is what let the bug through. FFmpeg's default
+        // frame-rate handling drops frames whose timestamps collide, and it does that on sources
+        // ffprobe is perfectly happy to call constant: a VC-1 WEBRip declaring 25/1 for both
+        // avg_frame_rate and r_frame_rate lost eight frames in its first two hundred seconds.
+        //
+        // The dangerous source is the one that looks regular and is not, so the rule cannot be
+        // conditional on having noticed.
+        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" });
+
+        Assert.Equal("passthrough", args[IndexOf(args, "-fps_mode") + 1]);
+        // The demux timebase stays for a source known to be variable; a source that looks regular
+        // needs nothing beyond keeping its frames.
+        Assert.DoesNotContain("-enc_time_base:v:0", args);
+    }
+
+    [Fact]
+    public void Dropping_frames_is_what_made_an_encode_unmeasurable()
+    {
+        // Recorded here because the cost was not obvious. Once the candidate has fewer frames than
+        // the source, frame N of one is no longer frame N of the other, and every windowed VMAF
+        // comparison comes apart: the same pair measured 9.4 against the source and 81 against a
+        // reference cut the same lossy way. Whole seasons failed verification on quality that was
+        // never the problem, and the frames were gone from the library besides.
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        Assert.Contains("-fps_mode", args);
+        Assert.Equal("passthrough", args[IndexOf(args, "-fps_mode") + 1]);
     }
 
     [Fact]

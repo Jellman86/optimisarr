@@ -63,7 +63,7 @@
 </script>
 
 <div class="mb-4 flex items-center justify-between">
-  <p class="text-sm text-slate-500 dark:text-slate-400">
+  <p class="text-sm text-ink-3">
     {#if !loading && totalFailures > 0}
       {plural(totalFailures, i18n.m.shared.failures_summary_one, i18n.m.shared.failures_summary_other, totalFailures.toLocaleString())}
     {:else}
@@ -81,49 +81,49 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+  <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else if groups.length === 0}
   <EmptyState icon="check" title={i18n.m.shared.failures_empty_title} hint={i18n.m.shared.failures_empty_hint} />
 {:else}
   <div class="space-y-4">
     {#each groups as group (group.category)}
       <div class="card overflow-hidden">
-        <div class="flex items-start gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
-          <Icon name="warning" class="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+        <div class="flex items-start gap-3 border-b border-line-soft p-4 border-line">
+          <Icon name="warning" class="mt-0.5 h-5 w-5 flex-shrink-0 text-bad" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <h3 class="font-medium text-slate-800 dark:text-slate-100">{jobFailureDescription(group.category, i18n.m, group.description)}</h3>
-              <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">{group.count}</span>
+              <h3 class="font-medium text-ink">{jobFailureDescription(group.category, i18n.m, group.description)}</h3>
+              <span class="badge tone-bad">{group.count}</span>
             </div>
-            <p class="text-xs text-slate-400 dark:text-slate-500">{group.category}</p>
+            <p class="text-xs text-ink-4">{group.category}</p>
           </div>
         </div>
 
-        <ul class="divide-y divide-slate-100 dark:divide-slate-800">
+        <ul class="divide-y divide-line-soft">
           {#each group.samples as sample (sample.jobId)}
             <li class="px-4 py-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
-                  <div class="truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={sample.relativePath ?? ''}>
+                  <div class="truncate font-mono text-xs text-ink-2" title={sample.relativePath ?? ''}>
                     {fileName(sample.relativePath)}
                   </div>
                   {#if sample.jobType !== 'Normal'}
-                    <span class="badge mt-1 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                    <span class="badge mt-1 tone-warn">
                       {sample.jobType === 'Calibration' ? 'Personal quality check' : 'Preview comparison'}
                     </span>
                   {/if}
                   {#if sample.errorMessage}
-                    <details class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    <details class="mt-1 text-xs text-ink-3">
                       <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
-                      <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-red-600 dark:text-red-400">{sample.errorMessage}</p>
+                      <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-bad">{sample.errorMessage}</p>
                     </details>
                   {/if}
                   {#if sample.verificationChecks.length > 0}
-                    <dl class="mt-2 space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs dark:border-red-900 dark:bg-red-950/30">
+                    <dl class="callout tone-bad mt-2 space-y-2 p-3 text-xs">
                       {#each sample.verificationChecks as check}
                         <div>
-                          <dt class="font-semibold text-red-800 dark:text-red-300">{check.name}</dt>
-                          <dd class="mt-0.5 break-words text-red-700 dark:text-red-400">{check.detail}</dd>
+                          <dt class="font-semibold text-bad-strong">{check.name}</dt>
+                          <dd class="mt-0.5 break-words text-bad">{check.detail}</dd>
                         </div>
                       {/each}
                     </dl>
@@ -141,11 +141,11 @@
               {#if openLogJobId === sample.jobId}
                 <div class="mt-2">
                   {#if logLoadingId === sample.jobId}
-                    <p class="text-xs text-slate-400">{i18n.m.shared.loading_log}</p>
+                    <p class="text-xs text-ink-4">{i18n.m.shared.loading_log}</p>
                   {:else if logs[sample.jobId]}
-                    <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">{logs[sample.jobId]}</pre>
+                    <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-[11px] leading-relaxed text-ink-2">{logs[sample.jobId]}</pre>
                   {:else}
-                    <p class="text-xs text-slate-400">{i18n.m.shared.no_log}</p>
+                    <p class="text-xs text-ink-4">{i18n.m.shared.no_log}</p>
                   {/if}
                 </div>
               {/if}
@@ -154,7 +154,7 @@
         </ul>
 
         {#if group.count > group.samples.length}
-          <div class="border-t border-slate-100 px-4 py-2 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
+          <div class="border-t border-line-soft px-4 py-2 text-xs text-ink-4 border-line">
             {t(i18n.m.shared.failures_showing, { shown: group.samples.length, total: group.count })}
           </div>
         {/if}

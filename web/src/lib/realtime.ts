@@ -11,6 +11,9 @@ export type JobProgress = {
   fps: number | null
   speed: number | null
   etaSeconds: number | null
+  // True once ffmpeg has written its final progress block: the output is complete and only the
+  // process exit remains, so there is nothing left to estimate.
+  finishing?: boolean
 }
 
 export type SystemMetrics = {

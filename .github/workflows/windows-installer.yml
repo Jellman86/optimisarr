@@ -1,0 +1,63 @@
+name: Windows sidecar installer
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'sidecars/windows/**'
+      - '.github/workflows/windows-installer.yml'
+      - 'src/Optimisarr.Core/**'
+      - 'Directory.Build.props'
+      - 'scripts/sidecar_release_version.py'
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        run: python scripts/sidecar_release_version.py
+      - run: dotnet build sidecars/windows/Optimisarr.Sidecar.slnx -c Release -warnaserror
+      - run: dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build
+      - run: ./sidecars/windows/installer/build.ps1
+      - run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-sidecar-unsigned-preview
+          path: |
+            sidecars/windows/artifacts/*.msi
+            sidecars/windows/artifacts/*.sha256
+            ${{ runner.temp }}/optimisarr-install-test-*/**
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-sidecar-unsigned-preview
+          path: artifacts
+      - name: Attach tested Windows preview to the draft release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            artifacts/**/*.msi
+            artifacts/**/*.msi.sha256
+          fail_on_unmatched_files: true
+          draft: true
+          make_latest: false

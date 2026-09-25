@@ -72,6 +72,42 @@ jobs:
             RENDER_GID=107 docker compose -f "$file" config --quiet
           done
 
+  macos-sidecar:
+    name: macOS sidecar build & test
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: sidecars/macos
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift test
+      - run: swift build --configuration release
+
+  windows-sidecar:
+    name: Windows sidecar build & test
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: sidecars/windows
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      # The core has no Windows-only dependencies on purpose, but it is built here anyway: this is
+      # the platform it ships on, and a Windows-only compile error should fail on a Windows runner
+      # rather than on someone's machine.
+      - run: dotnet build Optimisarr.Sidecar.slnx --configuration Release -warnaserror
+      - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
+      - name: Verify native popover anchoring
+        run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --verify-popover
+      - name: Render native tray states
+        run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --render-monitor artifacts/ui
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-sidecar-ui
+          path: sidecars/windows/artifacts/ui/*.png
+
   docker:
     name: Docker image, smoke, and publish
     needs: [backend, frontend, docs]
@@ -119,6 +155,24 @@ jobs:
         run: |
           first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
           bash scripts/ci_container_smoke.sh "$first_tag"
+
+      - name: Accept real media through the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-acceptance" --tier smoke
+
+      - name: Retain media acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: media-acceptance
+          path: |
+            ${{ runner.temp }}/optimisarr-acceptance/report/
+            ${{ runner.temp }}/optimisarr-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-acceptance/image.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Push image tags
         if: github.event_name != 'pull_request'

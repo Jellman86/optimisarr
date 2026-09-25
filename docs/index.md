@@ -15,6 +15,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Choose a personal quality setting](usage/personal-quality-check.md) - run a blind video, audio, or image comparison for one library.
 - [Safe replacement and rollback](operations/safe-replacement.md) - what has to pass before an original is moved, and how rollback works.
 - [Configuration and scheduling](setup/configuration.md) - queue limits, verification gates, per-library automation, exclusions, and backup.
+- [Remote workers and sidecars](setup/remote-workers.md) - install and pair Mac/Windows workers, choose placement, and require worker verification.
 - [Hardware acceleration](setup/hardware-acceleration.md)
 - [Run the NVIDIA quality comparison](setup/nvenc-quality-comparison.md) - create an anonymous NVENC benchmark report without changing the supplied clips.
 - [Running behind a reverse proxy](setup/reverse-proxy.md)
@@ -34,6 +35,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Troubleshooting](troubleshooting/diagnostics.md) - health/readiness, stalled jobs, failed verification, GPU detection, and stale UI.
 - [Known issues](../KNOWN_ISSUES.md) - reproducible problems still present in the current release.
 - [Security policy](../SECURITY.md)
+- [Code signing policy](../CODE_SIGNING_POLICY.md) - signed Windows release scope, approvals, privacy and verification.
 - [Support](../SUPPORT.md)
 - [Contributing](development/contributing.md)
 - [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.
@@ -51,6 +53,6 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 
 ## A note on screenshots
 
-All media titles, files, and library contents shown in screenshots throughout
-this documentation are fabricated dummy data created solely for demonstration.
-No copyrighted material is used.
+Screenshots use fabricated dummy media created for documentation. No copyrighted material is
+used. They are captured from the current local UI with original artwork and simulated API responses.
+See [Screenshot capture](images/README.md) for the repeatable capture command and coverage.

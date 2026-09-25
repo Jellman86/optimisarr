@@ -55,7 +55,9 @@ public sealed record VerificationPolicy(
     bool ImageMetadataGateEnabled = false,
     bool ClipVmafEnabled = false,
     int VmafFrameSubsample = 1,
-    bool MeasureVmaf = false)
+    bool MeasureVmaf = false,
+    double? MinimumSizeSavingPercent = null,
+    double? MaximumSizeSavingPercent = null)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,

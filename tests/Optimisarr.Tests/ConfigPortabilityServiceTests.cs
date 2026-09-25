@@ -69,7 +69,8 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 SkipSourceCodecs = "av1, vp9",
                 ContentTune = Optimisarr.Core.Queue.ContentTune.Animation,
                 MaxBitrateKbps = 6000,
-                StrongerAdaptiveQuantisation = true
+                StrongerAdaptiveQuantisation = true,
+                WorkPlacement = Optimisarr.Core.Queue.WorkPlacement.WorkerOnly
             });
             await db.SaveChangesAsync();
         }
@@ -82,6 +83,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal("Animation", exported.ContentTune);
         Assert.Equal(6000, exported.MaxBitrateKbps);
         Assert.True(exported.StrongerAdaptiveQuantisation);
+        Assert.Equal("WorkerOnly", exported.WorkPlacement);
 
         // Import it back over a wiped database and the library must come out the same.
         await using (var db = new OptimisarrDbContext(_options))
@@ -100,6 +102,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
             Assert.Equal(Optimisarr.Core.Queue.ContentTune.Animation, restored.ContentTune);
             Assert.Equal(6000, restored.MaxBitrateKbps);
             Assert.True(restored.StrongerAdaptiveQuantisation);
+            Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.WorkerOnly, restored.WorkPlacement);
         }
     }
 
@@ -124,6 +127,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(Optimisarr.Core.Queue.ContentTune.None, restored.ContentTune);
         Assert.Null(restored.MaxBitrateKbps);
         Assert.False(restored.StrongerAdaptiveQuantisation);
+        Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, restored.WorkPlacement);
     }
 
     [Fact]
@@ -450,6 +454,8 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 RequireAudioRetained = false,
                 RequireSubtitlesRetained = true,
                 RequireSizeReduction = false,
+                MinimumSizeSavingPercent = 10,
+                MaximumSizeSavingPercent = 65,
                 AudioLoudnessGateEnabled = true,
                 MaxLoudnessDriftLufs = 0.5,
                 AudioClippingGateEnabled = true,
@@ -506,6 +512,8 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.False(library.RequireAudioRetained);
         Assert.True(library.RequireSubtitlesRetained);
         Assert.False(library.RequireSizeReduction);
+        Assert.Equal(10, library.MinimumSizeSavingPercent);
+        Assert.Equal(65, library.MaximumSizeSavingPercent);
         Assert.True(library.AudioLoudnessGateEnabled);
         Assert.Equal(0.5, library.MaxLoudnessDriftLufs);
         Assert.True(library.AudioClippingGateEnabled);

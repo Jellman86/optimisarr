@@ -1,3 +1,4 @@
+using Optimisarr.Api.Workers;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
@@ -7,6 +8,8 @@ using System.Globalization;
 using System.Text.Json;
 
 namespace Optimisarr.Api.Library;
+
+public enum WorkloadConcurrencyMode { Automatic, Manual }
 
 public sealed record QueueSettings(
     int MaxConcurrentJobs,
@@ -20,11 +23,28 @@ public sealed record QueueSettings(
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays,
-    bool RemoteWorkersEnabled = false);
+    bool RemoteWorkersEnabled = false,
+    bool WorkerVerificationRequired = true,
+    WorkloadConcurrencyMode WorkloadConcurrencyMode = WorkloadConcurrencyMode.Automatic,
+    int NonVideoSlots = 0,
+    int EvidenceValidationSlots = 2)
+{
+    public WorkloadSlots EffectiveWorkloadSlots(int processors, long availableMemoryBytes) =>
+        WorkloadConcurrencyMode == WorkloadConcurrencyMode.Automatic
+            ? WorkloadSlots.Automatic(MaxConcurrentJobs, processors, availableMemoryBytes)
+            : new WorkloadSlots(Math.Max(1, MaxConcurrentJobs), Math.Clamp(NonVideoSlots, 0, 4),
+                Math.Clamp(EvidenceValidationSlots, 1, 4));
+}
 
 /// <summary>Reads and writes well-known application settings in the database.</summary>
-public sealed class SettingsStore(OptimisarrDbContext db)
+public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? remoteWorkers = null)
 {
+    /// <summary>
+    /// Whether this deployment offers remote workers at all. The stored switch decides whether an
+    /// operator has turned them on; this decides whether the switch exists.
+    /// </summary>
+    public bool RemoteWorkersAvailable => remoteWorkers?.Available ?? false;
+
     private static readonly string[] LegacyVerificationSettingKeys =
     [
         "verification.qualityGateEnabled",
@@ -60,6 +80,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
     public static readonly IReadOnlySet<string> PortableSettingKeys = new HashSet<string>
     {
         SettingKeys.MaxConcurrentJobs,
+        SettingKeys.WorkloadConcurrencyMode,
+        SettingKeys.NonVideoSlots,
+        SettingKeys.EvidenceValidationSlots,
         SettingKeys.MinFreeDiskBytes,
         SettingKeys.CpuThreadLimit,
         SettingKeys.LibraryScanIntervalHours,
@@ -69,7 +92,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.DryRunMode,
         SettingKeys.ReplacementQuarantineRetentionDays,
-        SettingKeys.RemoteWorkersEnabled
+        SettingKeys.RemoteWorkersEnabled,
+        SettingKeys.WorkerVerificationRequired
     };
 
     /// <summary>
@@ -112,17 +136,28 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             .FirstOrDefaultAsync(candidate => candidate.Key == SettingKeys.SetupState, cancellationToken);
         var existing = ParseSetupState(setting?.Value);
         var state = SetupState.Initialise(existing, databaseExistedBeforeStartup);
+        var initialValues = new Dictionary<string, string>();
         if (existing is null)
         {
-            var initialValues = new Dictionary<string, string>
-            {
-                [SettingKeys.SetupState] = JsonSerializer.Serialize(state)
-            };
+            initialValues[SettingKeys.SetupState] = JsonSerializer.Serialize(state);
             if (!databaseExistedBeforeStartup)
             {
                 initialValues[SettingKeys.DryRunMode] = bool.TrueString;
             }
+        }
 
+        // The old implicit value was false. An upgraded database may have no saved key at all,
+        // so materialise that old choice before the new true fallback can take effect.
+        if (!await db.AppSettings.AnyAsync(
+                candidate => candidate.Key == SettingKeys.WorkerVerificationRequired,
+                cancellationToken))
+        {
+            initialValues[SettingKeys.WorkerVerificationRequired] =
+                (!databaseExistedBeforeStartup).ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (initialValues.Count > 0)
+        {
             await UpsertManyAsync(initialValues, cancellationToken);
         }
 
@@ -149,6 +184,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         var settings = await db.AppSettings
             .AsNoTracking()
             .Where(setting => setting.Key == SettingKeys.MaxConcurrentJobs
+                || setting.Key == SettingKeys.WorkloadConcurrencyMode
+                || setting.Key == SettingKeys.NonVideoSlots
+                || setting.Key == SettingKeys.EvidenceValidationSlots
                 || setting.Key == SettingKeys.MinFreeDiskBytes
                 || setting.Key == SettingKeys.CpuThreadLimit
                 || setting.Key == SettingKeys.LibraryScanIntervalHours
@@ -158,7 +196,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.DryRunMode
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays
-                || setting.Key == SettingKeys.RemoteWorkersEnabled)
+                || setting.Key == SettingKeys.RemoteWorkersEnabled
+                || setting.Key == SettingKeys.WorkerVerificationRequired)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
 
         return new QueueSettings(
@@ -179,7 +218,11 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0),
             // Off unless explicitly turned on. A fresh install, and any install that predates this
             // setting, has remote workers disabled.
-            ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false));
+            ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false),
+            ParseBool(settings.GetValueOrDefault(SettingKeys.WorkerVerificationRequired), fallback: true),
+            ParseEnum(settings.GetValueOrDefault(SettingKeys.WorkloadConcurrencyMode), WorkloadConcurrencyMode.Automatic),
+            Math.Clamp(ParseInt(settings.GetValueOrDefault(SettingKeys.NonVideoSlots), fallback: 0, min: 0), 0, 4),
+            Math.Clamp(ParseInt(settings.GetValueOrDefault(SettingKeys.EvidenceValidationSlots), fallback: 2, min: 1), 1, 4));
     }
 
     /// <summary>
@@ -226,6 +269,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         await UpsertManyAsync(new Dictionary<string, string>
         {
             [SettingKeys.MaxConcurrentJobs] = Math.Max(1, settings.MaxConcurrentJobs).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.WorkloadConcurrencyMode] = settings.WorkloadConcurrencyMode.ToString(),
+            [SettingKeys.NonVideoSlots] = Math.Clamp(settings.NonVideoSlots, 0, 4).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.EvidenceValidationSlots] = Math.Clamp(settings.EvidenceValidationSlots, 1, 4).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.MinFreeDiskBytes] = Math.Max(0, settings.MinFreeDiskBytes).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.CpuThreadLimit] = Math.Max(0, settings.CpuThreadLimit).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.LibraryScanIntervalHours] = Math.Max(1, settings.LibraryScanIntervalHours).ToString(CultureInfo.InvariantCulture),
@@ -239,7 +285,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.ReplacementQuarantineRetentionDays] =
                 Math.Max(0, settings.ReplacementQuarantineRetentionDays).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.RemoteWorkersEnabled] =
-                settings.RemoteWorkersEnabled.ToString(CultureInfo.InvariantCulture)
+                settings.RemoteWorkersEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.WorkerVerificationRequired] = settings.WorkerVerificationRequired.ToString(CultureInfo.InvariantCulture)
         }, cancellationToken);
     }
 

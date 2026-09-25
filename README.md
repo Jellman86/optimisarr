@@ -1,5 +1,10 @@
 <p align="center">
-  <img src="web/public/favicon-192.png" alt="Optimisarr app icon" width="192">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="sidecars/macos/Sources/OptimisarrSidecar/Resources/BrandMarkLight.png">
+    <source media="(prefers-reduced-motion: reduce)" srcset="sidecars/macos/Resources/AppIcon.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/optimisarr-precession-working-light.gif">
+    <img src="docs/images/optimisarr-precession-working-dark.gif" alt="Animated Optimisarr Precession cube application icon" width="192" height="192">
+  </picture>
 </p>
 <h1 align="center">Optimisarr</h1>
 <p align="center"><strong>Safe, verified FFmpeg transcoding for self-hosted media libraries.</strong></p>
@@ -31,6 +36,7 @@ for rollback rather than deleted immediately.
 - Run one Docker container on a homelab, Unraid-style server, or other
   self-hosted setup.
 - Pause processing while Plex, Jellyfin, or Emby has active streams.
+- Send video encoding and optional strict verification to paired Mac and Windows workers.
 
 <p align="center">
   <img src="docs/images/optimisarr-queue-dark.png" alt="Optimisarr Queue in dark mode, showing active GPU transcoding" width="100%">
@@ -39,7 +45,20 @@ for rollback rather than deleted immediately.
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [personal quality check](docs/usage/personal-quality-check.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [known issues](KNOWN_ISSUES.md), [glossary](docs/glossary.md), and [API reference](docs/api.md).
+Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [personal quality check](docs/usage/personal-quality-check.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [known issues](KNOWN_ISSUES.md), [glossary](docs/glossary.md), [Code signing policy](CODE_SIGNING_POLICY.md), and [API reference](docs/api.md).
+
+## Remote workers
+
+Keep the container as the coordinator and use the [Mac menu-bar app](sidecars/macos/README.md)
+or [Windows tray app](sidecars/windows/README.md) for video encoding. Both show live work,
+resource readings and pause controls. Each library chooses whether to use the server, prefer a
+worker, or wait for workers only. Optional strict worker verification also moves media checks
+to compatible sidecars; scheduling, file transfer and safe replacement remain on the server.
+
+See [worker setup and placement](docs/setup/remote-workers.md) and the
+[release downloads](https://github.com/Jellman86/optimisarr/releases). The Mac download is signed
+and notarised. Windows MSI downloads are currently unsigned previews, clearly labelled in their
+release notes.
 
 ## Project status
 
@@ -62,8 +81,9 @@ no support SLA or promise of a release schedule.
   health checks verify database access, required writable paths, and media tools.
 - Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Queue,
   Quarantine, Schedule, Settings; Tools live under Settings). Verification reports
-  are available from Queue and Quarantine detail sheets.
-- Queue resource controls: max concurrent jobs, CPU thread limits, and a free
+  are available in the Queue job dialog and the full-page Quarantine review.
+- Queue resource controls: primary media slots, optional parallel audio/image and
+  sidecar-evidence lanes, CPU thread limits, and a free
   work-disk safety pause. The only global scheduling setting is the library scan
   interval; *when* work runs is set per library (see auto-optimise below).
 - Per-library **auto-optimise** windows continuously queue newly eligible files;

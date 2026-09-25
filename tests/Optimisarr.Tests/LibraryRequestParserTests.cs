@@ -97,6 +97,42 @@ public sealed class LibraryRequestParserTests
     }
 
     [Fact]
+    public void An_omitted_work_placement_means_anywhere()
+    {
+        // A client that predates the choice must keep placing work exactly as it did.
+        var ok = LibraryRequestParser.TryParse(Request(), out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, parsed.WorkPlacement);
+    }
+
+    [Theory]
+    [InlineData("WorkerOnly", Optimisarr.Core.Queue.WorkPlacement.WorkerOnly)]
+    [InlineData("preferworker", Optimisarr.Core.Queue.WorkPlacement.PreferWorker)]
+    [InlineData("LocalOnly", Optimisarr.Core.Queue.WorkPlacement.LocalOnly)]
+    public void A_named_work_placement_is_accepted_whatever_its_casing(
+        string placement, Optimisarr.Core.Queue.WorkPlacement expected)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { WorkPlacement = placement }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(expected, parsed.WorkPlacement);
+    }
+
+    [Theory]
+    [InlineData("7")]
+    [InlineData("Cloud")]
+    public void An_unknown_work_placement_is_refused(string placement)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { WorkPlacement = placement }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("work placement", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void A_bitrate_floor_above_the_cap_is_refused()
     {
         // An inverted window is impossible to honour. Refused at the boundary so an operator sees
@@ -339,9 +375,59 @@ public sealed class LibraryRequestParserTests
         Assert.Equal(VerificationPolicy.Default.RequireAudioRetained, parsed.RequireAudioRetained);
         Assert.Equal(VerificationPolicy.Default.RequireSubtitlesRetained, parsed.RequireSubtitlesRetained);
         Assert.Equal(VerificationPolicy.Default.RequireSizeReduction, parsed.RequireSizeReduction);
+        Assert.Null(parsed.MinimumSizeSavingPercent);
+        Assert.Null(parsed.MaximumSizeSavingPercent);
         Assert.Equal(VerificationPolicy.Default.ImageQualityGateEnabled, parsed.ImageQualityGateEnabled);
         Assert.Equal(VerificationPolicy.Default.MinimumImageSsim, parsed.MinimumImageSsim);
         Assert.Equal(VerificationPolicy.Default.ImageMetadataGateEnabled, parsed.ImageMetadataGateEnabled);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(99.1)]
+    [InlineData(double.NaN)]
+    public void Invalid_minimum_useful_saving_is_rejected(double percent)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = percent }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("minimum useful saving", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Minimum_useful_saving_is_preserved_as_an_optional_library_policy()
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = 10 }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(10, parsed.MinimumSizeSavingPercent);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(99.1)]
+    [InlineData(double.NaN)]
+    public void Invalid_maximum_saving_is_rejected(double percent)
+    {
+        Assert.False(LibraryRequestParser.TryParse(
+            Request() with { MaximumSizeSavingPercent = percent }, out _, out var error));
+        Assert.Contains("maximum allowed saving", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Maximum_saving_must_not_conflict_with_the_minimum_target()
+    {
+        Assert.False(LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = 70, MaximumSizeSavingPercent = 65 },
+            out _, out var error));
+        Assert.Contains("cannot exceed", error, StringComparison.OrdinalIgnoreCase);
+        Assert.True(LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = 10, MaximumSizeSavingPercent = 65 },
+            out var parsed, out error), error);
+        Assert.Equal(65, parsed.MaximumSizeSavingPercent);
     }
 
     [Theory]

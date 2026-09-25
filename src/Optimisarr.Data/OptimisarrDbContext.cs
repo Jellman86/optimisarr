@@ -4,6 +4,44 @@ namespace Optimisarr.Data;
 
 public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options) : DbContext(options)
 {
+    private static readonly SemaphoreSlim DiagnosticTransitionGate = new(1, 1);
+
+    public override async Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        ChangeTracker.DetectChanges();
+        var transitions = ChangeTracker.Entries<Job>()
+            .Where(entry => entry.State == EntityState.Modified
+                && entry.Property(job => job.Status).IsModified)
+            .Select(entry => (entry.Entity, Previous: entry.Property(job => job.Status).OriginalValue))
+            .Where(entry => entry.Entity.Status != entry.Previous)
+            .ToArray();
+        if (transitions.Length == 0)
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
+        // The event cap is read before insertion. Hold the gate through the write so concurrent
+        // transitions in this host cannot both reserve the final event slot.
+        await DiagnosticTransitionGate.WaitAsync(cancellationToken);
+        try
+        {
+            var nowUtc = DateTimeOffset.UtcNow;
+            foreach (var (job, previous) in transitions)
+            {
+                await DiagnosticEventCapture.AppendJobTransitionAsync(
+                    this, job, previous, nowUtc, cancellationToken);
+            }
+
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        finally
+        {
+            DiagnosticTransitionGate.Release();
+        }
+    }
+
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     public DbSet<Library> Libraries => Set<Library>();
@@ -26,6 +64,10 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<JobLease> JobLeases => Set<JobLease>();
 
+    public DbSet<DiagnosticCaptureSession> DiagnosticCaptureSessions => Set<DiagnosticCaptureSession>();
+
+    public DbSet<DiagnosticEvent> DiagnosticEvents => Set<DiagnosticEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -33,6 +75,25 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(setting => setting.Key);
             entity.Property(setting => setting.Key).HasMaxLength(160);
             entity.Property(setting => setting.Value).IsRequired();
+        });
+
+        modelBuilder.Entity<DiagnosticCaptureSession>(entity =>
+        {
+            entity.HasKey(session => session.Id);
+            entity.HasIndex(session => session.StartedAt);
+        });
+
+        modelBuilder.Entity<DiagnosticEvent>(entity =>
+        {
+            entity.HasKey(entry => entry.Id);
+            entity.Property(entry => entry.ReasonCode).IsRequired().HasMaxLength(64);
+            entity.Property(entry => entry.PreviousStatus).HasMaxLength(32);
+            entity.Property(entry => entry.CurrentStatus).IsRequired().HasMaxLength(32);
+            entity.HasIndex(entry => new { entry.SessionId, entry.JobId, entry.Id });
+            entity.HasOne<DiagnosticCaptureSession>()
+                .WithMany()
+                .HasForeignKey(entry => entry.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Library>(entity =>
@@ -46,6 +107,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.HdrHandling).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.ImageDownscaleMode).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.ContentTune).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.WorkPlacement).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.TargetVideoCodec).HasMaxLength(64);
             entity.Property(library => library.TargetContainer).HasMaxLength(32);
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
@@ -176,6 +238,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(worker => worker.Vmaf).HasConversion<string>().HasMaxLength(32);
             // A SHA-256 hex fingerprint is always 64 characters; the credential itself is never stored.
             entity.Property(worker => worker.CredentialFingerprint).HasMaxLength(64);
+            entity.Property(worker => worker.LastProblem).HasMaxLength(512);
             // Every authenticated worker call arrives with a credential and no id, so the
             // fingerprint is the lookup key. Unique because two workers must never share one.
             entity.HasIndex(worker => worker.CredentialFingerprint).IsUnique();
@@ -186,6 +249,12 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(lease => lease.Id);
             entity.Property(lease => lease.State).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
+            entity.Property(lease => lease.Stage).HasConversion<string>().HasMaxLength(32);
+            entity.Property(lease => lease.EndReason).HasConversion<string>().HasMaxLength(32);
+            entity.Property(lease => lease.QualitySourceSha256).HasMaxLength(64);
+            entity.Property(lease => lease.QualityCandidateSha256).HasMaxLength(64);
+            entity.Property(lease => lease.DeliveredSha256).HasMaxLength(64);
+            entity.Property(lease => lease.HardwareDecoder).HasMaxLength(32);
 
             // Removing a job removes its leases; a lease without a job claims nothing.
             entity.HasOne(lease => lease.Job)

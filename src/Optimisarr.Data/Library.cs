@@ -153,6 +153,14 @@ public sealed class Library
     /// </summary>
     public VideoQualityStrategy VideoQualityStrategy { get; set; } = VideoQualityStrategy.Fixed;
 
+    /// <summary>
+    /// Where this library's video re-encodes may run once remote workers are on. Anywhere (the
+    /// default, and the value every existing library upgrades to) lets whichever machine is free
+    /// first take the job. Verification and replacement always happen on this server whatever the
+    /// placement says, and the choice is ignored while remote workers are switched off.
+    /// </summary>
+    public WorkPlacement WorkPlacement { get; set; } = WorkPlacement.Anywhere;
+
     /// <summary>Portable encoder effort; recognised legacy presets remain valid until changed. Null uses the encoder default.</summary>
     public string? EncoderPreset { get; set; }
 
@@ -260,6 +268,12 @@ public sealed class Library
 
     /// <summary>Whether the encoded output must be smaller than its source.</summary>
     public bool RequireSizeReduction { get; set; } = true;
+
+    /// <summary>Optional minimum useful saving for a video re-encode, in percent of source bytes.</summary>
+    public double? MinimumSizeSavingPercent { get; set; }
+
+    /// <summary>Optional maximum allowed saving for a video re-encode, in percent of source bytes.</summary>
+    public double? MaximumSizeSavingPercent { get; set; }
 
     /// <summary>Whether EBU R128 integrated-loudness drift is measured and bounded.</summary>
     public bool AudioLoudnessGateEnabled { get; set; }

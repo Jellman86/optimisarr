@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Workers;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Queue;
@@ -32,7 +34,20 @@ public sealed record JobDto(
     DateTimeOffset EnqueuedAt,
     DateTimeOffset? StartedAt,
     DateTimeOffset? FinishedAt,
-    bool Clearable);
+    bool Clearable,
+    int ExecutionAttempt,
+    string? RetryReason,
+    string? AttemptHistoryJson,
+    /// <summary>The remote worker holding, or having delivered, this job; null for local work.</summary>
+    string? WorkerName = null,
+    /// <summary>Where that worker last said it was: Claimed, FetchingSource, Encoding, Delivering. Null unless leased.</summary>
+    string? RemoteStage = null,
+    /// <summary>A queued job its library's placement keeps off this server until a worker takes it.</summary>
+    bool WaitingForWorker = false,
+    /// <summary>The current worker assignment supplied a strict verification contract.</summary>
+    bool SidecarVerification = false,
+    /// <summary>Safe replacement is currently moving this job's verified output into place.</summary>
+    bool Finalizing = false);
 
 public static class JobQueries
 {
@@ -54,6 +69,24 @@ public static class JobQueries
         (await QueryAsync(db, new JobQuery { Status = status }, cancellationToken)).Items;
 
     /// <summary>
+    /// The statuses a job passes through while work on it is outstanding.
+    ///
+    /// <see cref="JobStatus.Queued"/> is excluded on purpose: a queued job is waiting for a slot,
+    /// not in progress, and on a real library there are thousands of them. Terminal states
+    /// (<see cref="JobStatus.Completed"/>, <see cref="JobStatus.Failed"/>,
+    /// <see cref="JobStatus.Cancelled"/>) and <see cref="JobStatus.ReadyToReplace"/> — which is
+    /// finished work awaiting a decision, not work underway — are excluded for the same reason.
+    /// </summary>
+    private static readonly JobStatus[] InProgressStatuses =
+    [
+        JobStatus.Probing,
+        JobStatus.Transcoding,
+        JobStatus.Verifying,
+        JobStatus.Leased,
+        JobStatus.AwaitingVerification
+    ];
+
+    /// <summary>
     /// Filtered, optionally paged job query for the queue feed and diagnostics. SQL-translatable
     /// filters (status, library, failure category) run in the database; the date filter, ordering, and
     /// paging run in memory because SQLite cannot translate an ORDER BY or comparison over a
@@ -63,7 +96,8 @@ public static class JobQueries
     public static async Task<JobQueryResult> QueryAsync(
         OptimisarrDbContext db,
         JobQuery filter,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        WorkerAvailability? availability = null)
     {
         var liveRollbackJobIds = (await db.Replacements
                 .AsNoTracking()
@@ -76,6 +110,11 @@ public static class JobQueries
             .AsNoTracking()
             // Previews are throwaway settings comparisons, surfaced in their own UI, not the queue.
             .Where(job => job.Type == JobType.Normal);
+
+        if (filter.Live)
+        {
+            query = query.Where(job => InProgressStatuses.Contains(job.Status));
+        }
 
         if (filter.Status is { } status)
         {
@@ -115,15 +154,25 @@ public static class JobQueries
                 job.EnqueuedAt,
                 job.StartedAt,
                 job.FinishedAt,
-                false))
+                false,
+                job.ExecutionAttempt,
+                job.RetryReason,
+                job.AttemptHistoryJson))
             .ToListAsync(cancellationToken);
+
+        var remote = await RemoteFactsAsync(db, jobs, cancellationToken);
+        var waiting = await WaitingForWorkerAsync(db, jobs, availability, cancellationToken);
 
         var ordered = jobs
             .Select(job => job with
             {
                 Clearable = JobClearing.IsClearable(
                     new Job { Id = job.Id, Status = Enum.Parse<JobStatus>(job.Status) },
-                    liveRollbackJobIds)
+                    liveRollbackJobIds),
+                WorkerName = remote.GetValueOrDefault(job.Id).WorkerName,
+                RemoteStage = remote.GetValueOrDefault(job.Id).Stage,
+                WaitingForWorker = waiting.Contains(job.Id),
+                SidecarVerification = remote.GetValueOrDefault(job.Id).SidecarVerification,
             })
             // A job's effective time is when it finished, or when it was enqueued if it hasn't.
             .Where(job => WithinRange(job.FinishedAt ?? job.EnqueuedAt, filter.Since, filter.Until))
@@ -136,6 +185,98 @@ public static class JobQueries
             : ordered;
 
         return new JobQueryResult(page, ordered.Count);
+    }
+
+    /// <summary>
+    /// Which worker a remote job is on, or came back from, and where it said it was. Only the
+    /// statuses a lease can put a job in are looked up, so a large local-only queue costs nothing
+    /// here. The latest lease wins: a job reclaimed from a vanished worker and taken by another
+    /// names the one that actually holds it.
+    /// </summary>
+    private static async Task<Dictionary<int, (string? WorkerName, string? Stage, bool SidecarVerification)>> RemoteFactsAsync(
+        OptimisarrDbContext db,
+        IReadOnlyList<JobDto> jobs,
+        CancellationToken cancellationToken)
+    {
+        var remoteIds = jobs
+            .Where(job => job.Status is nameof(JobStatus.Leased) or nameof(JobStatus.AwaitingVerification)
+                or nameof(JobStatus.Verifying) or nameof(JobStatus.ReadyToReplace) or nameof(JobStatus.Completed)
+                or nameof(JobStatus.Failed))
+            .Select(job => job.Id)
+            .ToList();
+        if (remoteIds.Count == 0)
+        {
+            return [];
+        }
+
+        var leases = await db.JobLeases
+            .AsNoTracking()
+            .Where(lease => remoteIds.Contains(lease.JobId)
+                && (lease.State == LeaseState.Held || lease.State == LeaseState.Completed))
+            .Select(lease => new
+            {
+                lease.JobId,
+                lease.AcquiredAt,
+                lease.State,
+                lease.Stage,
+                SidecarVerification = lease.VerificationContractJson != null,
+                WorkerName = lease.Worker != null ? lease.Worker.Name : null,
+            })
+            .ToListAsync(cancellationToken);
+
+        var startedAt = jobs.ToDictionary(job => job.Id, job => job.StartedAt);
+        return leases
+            // A completed lease belongs to the current attempt only if it was acquired when
+            // that attempt began. Otherwise a later local retry would be labelled with an older
+            // worker even though its encoder and verification are this server's.
+            .Where(lease => startedAt[lease.JobId] is not { } start
+                || lease.AcquiredAt >= start.AddSeconds(-1))
+            .GroupBy(lease => lease.JobId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var latest = group.OrderByDescending(lease => lease.AcquiredAt).First();
+                    // A stage only means something while the lease is held; a delivered job is
+                    // back in this server's hands and its row says so through its status.
+                    var stage = latest.State == LeaseState.Held ? latest.Stage?.ToString() ?? "Claimed" : null;
+                    return (latest.WorkerName, stage, latest.SidecarVerification);
+                });
+    }
+
+    /// <summary>
+    /// The queued jobs this server is holding back for a worker, judged by the same rule the
+    /// dispatcher applies, so a row never says "waiting" for a job the dispatcher would start.
+    /// </summary>
+    private static async Task<HashSet<int>> WaitingForWorkerAsync(
+        OptimisarrDbContext db,
+        IReadOnlyList<JobDto> jobs,
+        WorkerAvailability? availability,
+        CancellationToken cancellationToken)
+    {
+        if (availability is not { RemoteWorkersOn: true })
+        {
+            return [];
+        }
+
+        var queued = jobs.Where(job => job.Status == nameof(JobStatus.Queued) && job.LibraryId is not null).ToList();
+        if (queued.Count == 0)
+        {
+            return [];
+        }
+
+        var placements = await db.Libraries
+            .AsNoTracking()
+            .Select(library => new { library.Id, library.WorkPlacement })
+            .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        return queued
+            .Where(job => placements.TryGetValue(job.LibraryId!.Value, out var placement)
+                && !WorkPlacementPolicy.MayRunLocally(
+                    placement, availability.RemoteWorkersOn, availability.AWorkerCouldTakeWork, job.EnqueuedAt, now))
+            .Select(job => job.Id)
+            .ToHashSet();
     }
 
     private static bool WithinRange(DateTimeOffset value, DateTimeOffset? since, DateTimeOffset? until) =>
@@ -253,6 +394,13 @@ public sealed record FailureGroupDto(
 public sealed record JobQuery
 {
     public JobStatus? Status { get; init; }
+
+    /// <summary>
+    /// Restrict to jobs with work outstanding — see <c>JobQueries.InProgressStatuses</c>. Combines
+    /// with the other filters rather than replacing them.
+    /// </summary>
+    public bool Live { get; init; }
+
     public int? LibraryId { get; init; }
     public FailureCategory? Category { get; init; }
     public DateTimeOffset? Since { get; init; }

@@ -52,7 +52,36 @@ public sealed record QualityMeasurementContext(
     // How a capped encode thinned its frames, so the reference is thinned by the same index rule
     // before any timestamp handling. Decimating by nearest timestamp instead can keep different
     // frames than the encode kept, and then the comparison is of neighbours, not of the same frame.
-    Queue.FrameRateDecimation? ReferenceDecimation = null);
+    Queue.FrameRateDecimation? ReferenceDecimation = null,
+    // How far into its own container each file's first picture sits (video start minus container
+    // start). FFmpeg seeks and stamps frames relative to the container start, which is the earliest
+    // stream, so two files whose pictures match frame for frame still present them at different
+    // instants when one carries audio priming the other does not. Half a frame of that is enough
+    // for the cadence filter to round the same picture into neighbouring slots and then score frame
+    // N against frame N+1. The reference's lead places the seek on its frame grid; the difference
+    // between the two leads is taken off the distorted timeline before rounding.
+    double? ReferenceContainerLeadSeconds = null,
+    double? DistortedContainerLeadSeconds = null,
+    // A remote worker measures the candidate's lead itself once it has encoded, so the server
+    // hands it this token to substitute rather than a number.
+    string? DistortedShiftToken = null,
+    // True when the distorted stream is a clip cut out of the source rather than an encode of the
+    // whole of it — the sample a per-title quality search measures.
+    //
+    // It changes where the reference's cadence filter goes, and that is not a detail. `fps` resamples
+    // onto a fixed grid, and a source whose frame timestamps are not perfectly regular gains
+    // duplicated frames or loses frames as it does so. Running it before the window is cut therefore
+    // changes *which* source frames fall inside the window, while the clip it is being compared
+    // against was cut by a plain seek that did no such thing — so the reference window ends up
+    // holding frames the encoder never saw. Measured on a real episode, that scored a 40-second
+    // sample at a harmonic mean of 6.45 whose true score was 95.52: every candidate a search tried
+    // "missed" the gate, and every search fell back to the library's own quality having learned
+    // nothing. Cutting the window first and normalising the cadence afterwards scores it at 95.52,
+    // frame for frame identical to comparing two identically cut clips.
+    //
+    // A whole-file candidate is not affected: there both streams are seeked and trimmed the same
+    // way, so whatever the cadence filter does to one it does to the other.
+    bool DistortedIsCutClip = false);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -151,18 +180,26 @@ public static class QualityScoreCommandBuilder
         var pixelFormat = context.ReferenceIsHdr && !context.HdrConvertedToSdr
             ? "yuv420p10le"
             : "yuv420p";
-        var distortedInputStart = InputSeek(context.DistortedStartSeconds, context.MeasureDurationSeconds);
-        var referenceInputStart = InputSeek(context.ReferenceStartSeconds, context.MeasureDurationSeconds);
+        var distortedInputStart = InputSeek(
+            context.DistortedStartSeconds, context.MeasureDurationSeconds,
+            context.ReferenceFrameRate, context.ReferenceContainerLeadSeconds);
+        var referenceInputStart = InputSeek(
+            context.ReferenceStartSeconds, context.MeasureDurationSeconds,
+            context.ReferenceFrameRate, context.ReferenceContainerLeadSeconds);
         var distortedTimeline = TimelinePreparation(
             context.DistortedStartSeconds,
             distortedInputStart,
             context.MeasureDurationSeconds,
-            context.ReferenceFrameRate);
+            context.ReferenceFrameRate,
+            DistortedShift(context),
+            context.DistortedIsCutClip);
         var referenceTimeline = TimelinePreparation(
             context.ReferenceStartSeconds,
             referenceInputStart,
             context.MeasureDurationSeconds,
-            context.ReferenceFrameRate);
+            context.ReferenceFrameRate,
+            shift: null,
+            context.DistortedIsCutClip);
         var normalise = $"{scale},format={pixelFormat}";
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
@@ -173,10 +210,11 @@ public static class QualityScoreCommandBuilder
             referencePreparation = $"{Queue.CropPlanner.Filter(referenceCrop)},{referencePreparation}";
         }
         var boundedThreads = Math.Max(1, threads);
+        var escapedLogPath = FfmpegFilterOptionPath.Escape(logPath);
         var filter = acceleration == VmafAcceleration.Cuda
             ? BuildCudaFilter(
                 context,
-                logPath,
+                escapedLogPath,
                 model,
                 boundedThreads,
                 distortedTimeline,
@@ -185,7 +223,7 @@ public static class QualityScoreCommandBuilder
                 referenceDecimation,
                 normalise,
                 referencePreparation,
-                logPath,
+                escapedLogPath,
                 model,
                 boundedThreads,
                 context.FrameSubsample,
@@ -208,10 +246,11 @@ public static class QualityScoreCommandBuilder
         if (distortedInputStart is > 0)
         {
             arguments.Add("-ss");
-            arguments.Add(distortedInputStart.Value.ToString());
+            arguments.Add(FormatSeconds(distortedInputStart.Value));
         }
         AppendInputAcceleration(arguments, acceleration);
         // libvmaf requires distorted first and reference second.
+        arguments.AddRange(["-threads", boundedThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.Add("-i");
         arguments.Add(distortedPath);
         // Preview outputs begin at zero after an accurate decode seek into the source. Seek the
@@ -220,9 +259,10 @@ public static class QualityScoreCommandBuilder
         if (referenceInputStart is > 0)
         {
             arguments.Add("-ss");
-            arguments.Add(referenceInputStart.Value.ToString());
+            arguments.Add(FormatSeconds(referenceInputStart.Value));
         }
         AppendInputAcceleration(arguments, acceleration);
+        arguments.AddRange(["-threads", boundedThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.Add("-i");
         arguments.Add(referencePath);
         arguments.AddRange(["-lavfi", filter]);
@@ -281,18 +321,62 @@ public static class QualityScoreCommandBuilder
             $"log_fmt=json:log_path={logPath}:shortest=1:repeatlast=0";
     }
 
-    private static int? InputSeek(int? windowStartSeconds, int? windowDurationSeconds) =>
-        windowStartSeconds is not { } start
-            ? null
-            : windowDurationSeconds is > 0
-                ? Math.Max(0, start - SampleSeekPrerollSeconds)
-                : start;
+    private static double? InputSeek(
+        int? windowStartSeconds,
+        int? windowDurationSeconds,
+        double? referenceFrameRate,
+        double? referenceContainerLeadSeconds)
+    {
+        if (windowStartSeconds is not { } start)
+        {
+            return null;
+        }
+        if (windowDurationSeconds is not > 0)
+        {
+            return start;
+        }
+        var target = Math.Max(0, start - SampleSeekPrerollSeconds);
+        if (target == 0 || referenceFrameRate is not { } frameRate || referenceContainerLeadSeconds is not { } lead)
+        {
+            return target;
+        }
+        // A whole-second target usually falls between two reference pictures, leaving every retained
+        // picture some fraction of a frame from a cadence slot centre; at half a frame the rounding
+        // is a tie, and the half-millisecond of container timestamp rounding decides it differently
+        // for each input. Seeking to the nearest picture instant instead puts the pictures on the
+        // slot centres, where nothing that small can move them.
+        var frameSeconds = 1 / frameRate;
+        var snapped = Math.Round((target - lead) / frameSeconds) * frameSeconds + lead;
+        return Math.Round(Math.Max(0, snapped), 6);
+    }
+
+    // The distorted timeline shift: how much later than the reference the candidate presents the
+    // same picture, as a filter expression value. Nothing when there is nothing to remove.
+    private static string? DistortedShift(QualityMeasurementContext context)
+    {
+        if (context.DistortedShiftToken is { Length: > 0 } token)
+        {
+            return token;
+        }
+        if (context.DistortedContainerLeadSeconds is not { } distorted
+            || context.ReferenceContainerLeadSeconds is not { } reference)
+        {
+            return null;
+        }
+        var shift = Math.Round(distorted - reference, 6);
+        return Math.Abs(shift) < 0.0005 ? null : FormatSeconds(shift);
+    }
+
+    private static string FormatSeconds(double seconds) =>
+        seconds.ToString("0.######", CultureInfo.InvariantCulture);
 
     private static string TimelinePreparation(
         int? windowStartSeconds,
-        int? inputStartSeconds,
+        double? inputStartSeconds,
         int? windowDurationSeconds,
-        double? referenceFrameRate)
+        double? referenceFrameRate,
+        string? shift,
+        bool cutClip)
     {
         // An input seek leaves each decoder's first retained PTS relative to the common
         // pre-roll target. Different GOP layouts can therefore begin at different positive PTS
@@ -301,15 +385,48 @@ public static class QualityScoreCommandBuilder
         // their container origins first. The final reset leaves libvmaf with zero-based timelines.
         const string origin = "settb=AVTB,setpts=PTS-STARTPTS";
         var inputTimeline = inputStartSeconds is > 0 ? "settb=AVTB" : origin;
+        // A seeked input keeps its container-relative timestamps until fps has rounded them, so
+        // this is where the candidate's extra lead over the reference has to come off. A rebased
+        // (unseeked) timeline has already discarded both origins and needs no shift.
+        // settb=AVTB has just put the timestamps in microseconds, so the shift in seconds is scaled
+        // rather than divided by TB: a remote worker refuses any filter value containing a slash,
+        // since that is how a path would smuggle itself in, and the expression need not use one.
+        var lead = shift is not null && inputStartSeconds is > 0
+            ? $"setpts=PTS-{shift}*1000000,"
+            : string.Empty;
         var cadence = referenceFrameRate is { } frameRate
             ? $"fps=fps={frameRate.ToString("G17", CultureInfo.InvariantCulture)}:start_time=0,"
             : string.Empty;
         var alignment = windowStartSeconds is { } start && windowDurationSeconds is > 0
-            ? $"trim=start={start - (inputStartSeconds ?? 0)}:duration={windowDurationSeconds.Value},"
+            ? $"trim=start={FormatSeconds(start - (inputStartSeconds ?? 0))}:duration={windowDurationSeconds.Value},"
             : string.Empty;
-        return cadence.Length == 0 && alignment.Length == 0
-            ? origin
-            : $"{inputTimeline},{cadence}{alignment}{origin}";
+        if (cadence.Length == 0 && alignment.Length == 0)
+        {
+            // The clip's own side of a cut-clip comparison: renumbered like the reference below
+            // when there is no shared rate, so the two are paired frame by frame.
+            return cutClip ? $"{origin},setpts=N" : origin;
+        }
+
+        // Against an independently cut clip the window is taken first and the cadence normalised
+        // afterwards. See QualityMeasurementContext.DistortedIsCutClip: resampling before the cut
+        // moves which source frames the window holds, and the clip on the other side was produced
+        // by a plain seek that moved nothing.
+        if (!cutClip || alignment.Length == 0)
+        {
+            return $"{inputTimeline},{lead}{cadence}{alignment}{origin}";
+        }
+
+        // The cadence goes last here, and only when there is one. Appending it unconditionally
+        // left a trailing comma on every source whose frame rate the probe did not report, which
+        // became an empty element once the caller joined the next filter on: FFmpeg answers
+        // "No such filter: ''" and refuses the whole graph, so every per-title search on such a
+        // source failed at its first scoring pass.
+        // With no rate to share, the two cut clips are paired frame by frame. libvmaf pairs each
+        // frame with the latest one of the other stream at or before its timestamp, and a clip
+        // timed in exact 1001/24000 steps sits up to 0.4 ms behind a source stored in milliseconds,
+        // so pairing on raw timestamps met a third of the frames with their predecessors.
+        var cut = $"{inputTimeline},{lead}{alignment}{origin}";
+        return cadence.Length == 0 ? $"{cut},setpts=N" : $"{cut},{cadence.TrimEnd(',')}";
     }
 
     private static string DescribePreprocessing(

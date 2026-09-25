@@ -194,6 +194,10 @@ exists in quarantine.
 | `GET` | `/api/ready` | Readiness check: database, writable paths, FFmpeg, and ffprobe are usable. |
 | `GET` | `/api/auth/status` | Authentication discovery: whether `OPTIMISARR_ADMIN_TOKEN` is configured. |
 | `GET` | `/api/diagnostics` | Admin support snapshot: version, environment, settings, library and integration summaries, stats, and the failure summary. Assembled from non-secret data only (no tokens, API keys, or webhook URLs). Protected by the admin token when one is set. |
+| `GET` | `/api/diagnostics/capture` | Latest opt-in capture session, or `null`. |
+| `POST` | `/api/diagnostics/capture` | Start a session with `durationHours` (`1`, `24`, `168`, or `null` for until stopped), optional `scopedJobId`, and `includePaths` (default `false`). Returns `409` if another session is active. |
+| `POST` | `/api/diagnostics/capture/{id}/stop` | Stop a session; its evidence remains downloadable until retention removes it. |
+| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. The manifest lists omissions and whether full paths were included. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
@@ -245,11 +249,36 @@ Settings fields include:
   "encoderMode": "Auto",
   "hardwareDecode": true,
   "hdrToneMapMode": "Software",
+  "remoteWorkersEnabled": false,
+  "workerVerificationRequired": true,
+  "workloadConcurrencyMode": "Automatic",
+  "nonVideoSlots": 0,
+  "evidenceValidationSlots": 1,
+  "automaticNonVideoSlots": 0,
+  "automaticEvidenceValidationSlots": 1,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
 }
 ```
+
+`remoteWorkersEnabled` enables the preview worker service when available.
+`workerVerificationRequired` requires complete worker verification for newly issued remote
+full-file video assignments. It defaults on for new installations, while upgrades keep their
+previous choice, and is separate from per-library work placement.
+Older clients that omit this field from an update retain the installation's current choice.
+`workloadConcurrencyMode` is `Automatic` or `Manual`. In manual mode, `nonVideoSlots` (0–4)
+adds audio/image work beside the primary video limit, and `evidenceValidationSlots` (1–4)
+limits concurrent validation of strict sidecar evidence. Automatic mode computes those limits
+from the server's CPU and memory; the `automatic*Slots` response fields show that recommendation
+and are read-only. Older clients that omit the workload fields retain the current values.
+`GET /api/queue/status` includes `workloadLanes` with each lane's active, capacity, waiting,
+and reason values. Queued jobs enter lane waiting counts only inside their library window;
+delivered worker results always await a verdict. The Schedule view explains closed windows.
+A bounded finalisation lane covers replacement and
+rollback; worker slots remain controlled by the paired sidecars.
+`remoteWorkersAvailable` is returned as server capability information, not a toggle that can enable
+the feature without its environment flag. See [Remote Workers](#remote-workers) for the contract.
 
 `replacementQuarantineRetentionDays` retains its historical wire name for API and
 configuration-backup compatibility. It is the general cleanup-retention window:
@@ -300,6 +329,7 @@ Create and update library bodies use the same shape. Common fields:
   "hdrHandling": null,
   "qualityCrf": null,
   "videoQualityStrategy": "Fixed",
+  "workPlacement": "Anywhere",
   "encoderPreset": "balanced",
   "vmafQualityGateEnabled": false,
   "minVmafHarmonicMean": 93,
@@ -311,6 +341,8 @@ Create and update library bodies use the same shape. Common fields:
   "requireAudioRetained": true,
   "requireSubtitlesRetained": false,
   "requireSizeReduction": true,
+  "minimumSizeSavingPercent": null,
+  "maximumSizeSavingPercent": null,
   "audioLoudnessGateEnabled": false,
   "maxLoudnessDriftLufs": 1,
   "audioClippingGateEnabled": false,
@@ -330,6 +362,13 @@ Create and update library bodies use the same shape. Common fields:
 }
 ```
 
+`minimumSizeSavingPercent` and `maximumSizeSavingPercent` are optional video re-encode gates when
+size reduction is required. At 10% minimum and 65% maximum, a 1,000-byte source accepts a
+completed candidate from 350 through 900 bytes, inclusive. The minimum cannot exceed the maximum;
+null preserves the respective unbounded behavior. Compatibility jobs that disable size reduction
+ignore both. Current Mac and Windows sidecars reject a candidate below the final-size floor before
+final full-file VMAF verification or upload; the server also verifies the frozen policy before replacement.
+
 Use `/api/library-options` for valid enum values. Unknown or invalid values are
 rejected. `encoderPreset` retains its historical API name but new clients should store a portable
 encoder effort: `quick`, `balanced`, `efficient`, or `null` for the encoder default. Former
@@ -341,7 +380,9 @@ the Visually lossless 93/80/50 floors, representative-window scoring, and every-
 An explicitly disabled VMAF gate keeps the omitted strategy on Fixed, as do non-video and remux-only
 libraries. An explicitly supplied `AdaptiveVmaf` is accepted only when
 `vmafQualityGateEnabled` is `true`; invalid combinations return `400` rather than silently changing
-the requested policy.
+the requested policy. `workPlacement` accepts `Anywhere` (the default when omitted), `LocalOnly`,
+`PreferWorker`, or `WorkerOnly`, and says where the library's video re-encodes may run once remote
+workers are switched on; it is stored but has no effect while they are off.
 
 Verification fields are owned by each library. The API accepts the complete shape for every media
 type, but the UI shows only applicable controls: video can configure subtitle retention and VMAF,
@@ -476,6 +517,13 @@ Verification reports are stored as JSON in `verificationReportJson`:
 }
 ```
 
+Each job row carries remote-work fields: `workerName` (the sidecar holding, or having
+delivered, the job; null for local work), `remoteStage` (`Claimed`, `FetchingSource`, `Encoding`
+or `Delivering` while leased, otherwise null), and `waitingForWorker` (a queued job its library's
+placement keeps off this server until a worker takes it, judged by the same rule the dispatcher
+applies). `sidecarVerification` identifies an assignment whose media checks ran on the worker;
+`finalizing` is true only while this server is safely moving the verified output into place.
+
 ## Exclusions
 
 | Method | Endpoint | Purpose |
@@ -528,14 +576,19 @@ with this server's URL. The code lives five minutes, redeems once, and is destro
 guesses rather than throttled, so a code short enough to retype is safe on its attempt budget rather
 than its length.
 
-`POST /api/workers/pair` is the **only** worker route reachable without the admin token — a pairing
-sidecar holds the PIN and nothing else, so that route authenticates itself. It is inert unless an
-operator has just issued a code, and returns nothing without the correct one. Every other worker
-route stays behind the admin token.
+`POST /api/workers/pair` authenticates with the one-time PIN and does not require the admin token.
+Heartbeat, claim, and `/api/workers/leases/...` routes authenticate with the paired worker's bearer
+credential. They do not require or grant access to the admin token. Operator routes such as issuing
+pairing codes, listing machines, drain/resume, revocation, and forgetting a worker use the configured
+admin authentication.
 
 The credential is returned exactly once, in the pairing response. Optimisarr stores only its SHA-256
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
 outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
+
+Remote workers are a preview: the whole surface exists only when the container starts with
+`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`; without it every route below answers `403` with code
+`workers.unavailable`, and `PUT /api/settings` refuses `remoteWorkersEnabled: true` with `400`.
 
 Remote workers are opt-in. While the `workers.remoteEnabled` setting is off — the default, and the
 value any upgrade inherits — `POST /api/workers/pairing-code`, `POST /api/workers/pair`, and
@@ -555,27 +608,62 @@ different numbers on purpose: declaring a worker offline on one missed beat woul
 flap on a single dropped packet. The control plane stamps the last-seen time from its own clock, so
 a sidecar with a wrong clock cannot claim to be alive, and the heartbeat response carries the
 interval so a sidecar paces itself from the server rather than hard-coding a value that could drift
-out of step with the threshold.
+out of step with the threshold. The response also says whether the worker is `draining`, so a
+sidecar learns of a drain on its next check-in rather than at the end of its job.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/workers/pairing-code` | Issue a pairing PIN, replacing any previous one. |
 | `GET` | `/api/workers/pairing-code` | Read the PIN currently on screen. `204` when none is live — the resting state, not an error. |
 | `DELETE` | `/api/workers/pairing-code` | Withdraw the active PIN. |
-| `POST` | `/api/workers/pair` | Redeem a PIN and register a sidecar. Open route; the PIN is the credential. Returns the worker credential once. |
-| `POST` | `/api/workers/heartbeat` | A paired sidecar checks in and reports free scratch space and current concurrency. Open route; authenticated by the worker credential as `Authorization: Bearer`, not the admin token. `401` when the credential is absent, unknown, or revoked. |
-| `GET` | `/api/workers` | List paired workers with an `online` flag the server computes from its own liveness rule. Never returns credential fingerprints. |
+| `POST` | `/api/workers/pair` | Redeem a PIN and register a sidecar. Open route; the PIN is the credential. Returns the worker credential once. Optional `sidecarVersion` records the build the sidecar is running. |
+| `POST` | `/api/workers/heartbeat` | A paired sidecar checks in and reports free scratch space and current concurrency. Open route; authenticated by the worker credential as `Authorization: Bearer`, not the admin token. `401` when the credential is absent, unknown, or revoked. Optional `sidecarVersion` refreshes the recorded build; omitting it leaves the last one reported, so an older sidecar cannot blank it. Optional `cpuBusyFraction` and `gpuBusyFraction` (0-1) record how busy the machine is; each is independent, omitting one leaves the last reading, and a value outside 0-1 is dropped rather than clamped. |
+| `GET` | `/api/workers` | List paired workers with an `online` flag the server computes from its own liveness rule, `activeJobs` (each with `stage` and `progress`), `sidecarVersion` — the build the machine reports running, empty when it reports none — `cpuBusyFraction` and `gpuBusyFraction` (0-1, null when the worker has not said or is offline; GPU is utilisation only and reads low when a hardware encode runs on a separate media engine) — and `lastProblem`, the most recent thing the server refused or discarded from that worker: a lapsed lease, a candidate from the wrong source or with the wrong hash, a delivered candidate that failed verification. Never returns credential fingerprints. |
 | `DELETE` | `/api/workers/{id}` | Revoke a worker. Clears its credential and drains it; keeps the record. |
+| `POST` | `/api/workers/{id}/drain` | Ask a worker to finish what it holds and take no more. Its leases still renew and deliver; only new claims are refused. Idempotent; returns the worker row with `drainRequestedAt` set and `heldLeases`, the jobs the drain is waiting on. |
+| `DELETE` | `/api/workers/{id}/drain` | Resume a drained worker. `409 worker.revoked` for a revoked worker, which can only come back by pairing again. |
+| `POST` | `/api/workers/{id}/forget` | Remove a worker record and its lease history. Admin authentication; `409 worker.stillWorking` while it holds any job. Unlike revocation, this removes the displayed record. |
 | `POST` | `/api/workers/claim` | Ask for work. Returns one assignment, or `204` when nothing matches the worker's proved capabilities — the ordinary answer, not an error. Worker credential. |
-| `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. `403` if the lease belongs to another worker, `409` once it has lapsed. |
+| `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. Optional body `{ "stage": "FetchingSource" \| "Encoding" \| "Measuring" \| "Delivering", "encodedSeconds": 123.4 }` says where the worker is, and optional `cpuBusyFraction`/`gpuBusyFraction` say how busy its machine is; the server scales encoded seconds against the source duration into the job's progress and pushes it over `jobProgress`. `400 worker.lease.stageInvalid` for an unknown stage, `403` if the lease belongs to another worker, `409` once it has lapsed. |
+| `POST` | `/api/workers/leases/{leaseId}/quality-probe` | Report an assigned adaptive sample's quality, encoded size and VMAF logs. Worker credential. The server advances the bounded search and returns the next step or the selected quality and final encode arguments; the worker does not select its own final quality. |
+| `POST` | `/api/workers/leases/{leaseId}/quality` | Report the libvmaf JSON logs for the commands the assignment carried, with `sourceSha256` and `candidateSha256`. The server parses and pools them itself and stores the result on the lease; `400 worker.quality.windowCount` / `worker.quality.logInvalid`, `409 worker.quality.notRequested` when the assignment asked for no measurement, `409 worker.quality.sourceMismatch` for another source. Evidence is used at verification only if the candidate then delivered carries the same hash. |
+| `POST` | `/api/workers/leases/{leaseId}/verification` | Submit full verification evidence for the lease's contract, bound to source and candidate hashes. Worker credential. A matching retry is idempotent; a different second report returns `409 worker.verification.alreadyRecorded`. A wrong contract or hash returns `409`. Negative/incomplete evidence is retained so strict verification can fail the job without local fallback. |
 | `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |
-| `POST` | `/api/workers/leases/{leaseId}/result` | Deliver the encoded candidate. Requires `X-Optimisarr-Source-Sha256` and `X-Optimisarr-Candidate-Sha256`; `202` when accepted, `409` when the source does not match, the upload does not match its declared hash, or the lease is no longer held. |
+| `GET` | `/api/workers/leases/{leaseId}/result/offset` | How many bytes of a resumable delivery the server holds for this lease (`bytes`). Zero before the first chunk. |
+| `PATCH` | `/api/workers/leases/{leaseId}/result` | Append one chunk at `X-Optimisarr-Offset`. `409 worker.result.offsetMismatch` with the real `bytes` when the offsets disagree, so the worker resumes from the truth. Staged by lease, so a resumed upload can only continue its own transfer. |
+| `POST` | `/api/workers/leases/{leaseId}/result/complete` | Finish a chunked delivery with the two hash headers and no body. The assembled file is hashed and accepted, or refused and discarded, exactly as a whole upload; `409 worker.result.nothingStaged` when no chunk arrived. |
+| `POST` | `/api/workers/leases/{leaseId}/result` | Deliver the encoded candidate in one request. Requires `X-Optimisarr-Source-Sha256` and `X-Optimisarr-Candidate-Sha256`; `202` when accepted, `409` when the source does not match, the upload does not match its declared hash, or the lease is no longer held. |
 | `GET` | `/api/workers/leases/{leaseId}/source` | Stream the source for a held lease. Supports `Range` for resumable transfer, and returns `X-Optimisarr-Source-Sha256` so the worker can verify what it received. |
 
 A delivered candidate is written to the same work directory a local transcode would have used, and
-the job moves to `Verifying` — never to `ReadyToReplace`. Verification has not run at that point, and
-a candidate produced elsewhere earns nothing until every local gate has been repeated against it.
-Nothing about delivering a result touches the original.
+the job moves to `AwaitingVerification` — never directly to `ReadyToReplace`. The server must still
+evaluate all required gates before replacement is possible. Delivering a result never touches the
+original.
+
+The assignment's `quality` block carries the server's libvmaf command per measurement window
+(`commands`, with `{{distorted}}`, `{{reference}}` and `{{log}}` placeholders) and the `sampling`
+those windows represent, fixed at claim and recorded on the lease. The worker returns the raw logs
+with both file hashes before delivering the candidate. The server parses and pools quality itself;
+it does not accept a worker-supplied pass/fail verdict.
+
+With `workerVerificationRequired: false` (an explicit opt-out), usable remote quality evidence avoids the
+server's VMAF pass while the remaining verification media checks run on the server. Missing,
+mismatched, or insufficient quality evidence triggers a local VMAF measurement with the reason
+reported on the worker's card. Hardware decode is selected only when the worker proved it and it
+matches the encoder family; decoder-corruption recovery uses software decode.
+
+With `workerVerificationRequired: true`, new full-file video assignments carry a `fullVerification`
+contract and require protocol 2. The worker posts both probes, full candidate decode health,
+source/candidate video timestamps, source audio timestamps, and any requested audio measurements
+to `/verification`, as well as VMAF logs to `/quality` when required. The server validates contract
+and file identity and applies the frozen verification policy. Missing or invalid evidence fails the
+job without launching local verification media tools. Existing leases retain their assigned mode;
+updated sidecars renegotiate protocol on heartbeat without re-pairing.
+
+This setting does not select work placement: use library `workPlacement: "WorkerOnly"` as well to
+prevent local video encoding while remote workers are enabled. Scanning, initial probes,
+assignment preparation, transfers/hashing, persistence, policy evaluation, replacement, and rollback
+remain server responsibilities. See [Remote workers](setup/remote-workers.md) for the UI controls.
 
 Checks run in an order chosen for what each protects: authenticate first, so nothing about a lease
 is revealed to a caller with no claim on it; then prove the claim is still held, which covers both

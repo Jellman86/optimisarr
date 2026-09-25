@@ -27,6 +27,8 @@ public sealed class QualityScoreService(
     string? ffmpegCommand = null,
     string? cudaFfmpegCommand = null)
 {
+    private static readonly TimeSpan MeasurementProgressTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan AlignmentProbeTimeout = TimeSpan.FromMinutes(2);
     // VMAF needs an ffmpeg built with libvmaf, which may differ from the transcoding
     // binary; the composition layer can point this at one (e.g. jellyfin-ffmpeg).
     private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
@@ -50,6 +52,9 @@ public sealed class QualityScoreService(
             return QualityResult.Failed($"Output file does not exist: {distortedPath}");
         }
 
+        string executableFor(VmafAcceleration acceleration) =>
+            acceleration == VmafAcceleration.Cuda ? _cudaFfmpeg : _ffmpeg;
+
         // A unique log path with no special characters keeps the filtergraph valid.
         var logPath = Path.Combine(Path.GetTempPath(), $"optimisarr-vmaf-{Guid.NewGuid():N}.json");
         try
@@ -68,15 +73,29 @@ public sealed class QualityScoreService(
             }
 
             var effectiveContext = context with { Acceleration = requestedAcceleration };
+
+            // Measured rather than derived, and measured here because only this side holds both
+            // files. The shift the builder would otherwise compute comes from the containers'
+            // headers, which say the same thing for a pair that needs a correction and a pair that
+            // is destroyed by one. A worker that supplied its own token has already done this.
+            if (effectiveContext.DistortedShiftToken is null or { Length: 0 })
+            {
+                var chosen = await ChooseAlignmentAsync(
+                    executableFor(requestedAcceleration), referencePath, distortedPath,
+                    effectiveContext, threads, cancellationToken);
+                if (chosen is not null)
+                {
+                    effectiveContext = effectiveContext with { DistortedShiftToken = chosen };
+                }
+            }
+
             var command = BuildCommand(
                 distortedPath,
                 referencePath,
                 logPath,
                 effectiveContext,
                 threads);
-            var executable = requestedAcceleration == VmafAcceleration.Cuda
-                ? _cudaFfmpeg
-                : _ffmpeg;
+            var executable = executableFor(requestedAcceleration);
             var result = await RunMeasurementAsync(
                 executable,
                 command,
@@ -155,28 +174,35 @@ public sealed class QualityScoreService(
         {
             using var process = CreateProcess(executable, command.Arguments);
             process.Start();
-
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            using var stalled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            stalled.CancelAfter(MeasurementProgressTimeout);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(stalled.Token);
             // When clip-VMAF caps the measurement, progress is a fraction of the clip, not the file.
             var measuredSeconds = (double?)context.MeasureDurationSeconds ?? context.ReferenceDurationSeconds;
             var stderrTask = ReadStderrWithProgressAsync(
                 process.StandardError,
                 measuredSeconds,
                 progress,
-                cancellationToken);
+                stalled.Token,
+                () => stalled.CancelAfter(MeasurementProgressTimeout));
 
             try
             {
-                await process.WaitForExitAsync(cancellationToken);
+                await process.WaitForExitAsync(stalled.Token);
+                await stdoutTask;
+                stderr = await stderrTask;
             }
             catch (OperationCanceledException)
             {
                 KillQuietly(process);
-                throw;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                return QualityResult.Failed(
+                    $"FFmpeg made no VMAF progress for {MeasurementProgressTimeout.TotalMinutes:0} minutes; measurement stopped to protect the host.");
             }
 
-            await stdoutTask;
-            stderr = await stderrTask;
             exitCode = process.ExitCode;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
@@ -212,6 +238,84 @@ public sealed class QualityScoreService(
             : QualityResult.Ok(scores) with { Acceleration = context.Acceleration };
     }
 
+    /// <summary>
+    /// Runs the measurement itself, cut short, at each offset and returns the one that matched
+    /// best, or null when none could be scored — in which case the builder falls back to what the
+    /// containers claim, which is what it always did.
+    /// </summary>
+    private static async Task<string?> ChooseAlignmentAsync(
+        string executable,
+        string referencePath,
+        string distortedPath,
+        QualityMeasurementContext context,
+        int threads,
+        CancellationToken cancellationToken)
+    {
+        if (TimelineAlignmentProbe.FrameSeconds(context.ReferenceFrameRate) is not { } frameSeconds)
+        {
+            return null;
+        }
+
+        var scored = new List<(int Frames, double Mean)>(TimelineAlignmentProbe.FramesToTry.Count);
+        foreach (var frames in TimelineAlignmentProbe.FramesToTry)
+        {
+            var log = Path.Combine(Path.GetTempPath(), $"optimisarr-align-{Guid.NewGuid():N}.json");
+            try
+            {
+                var measurement = BuildCommand(
+                    distortedPath,
+                    referencePath,
+                    log,
+                    context with { DistortedShiftToken = TimelineAlignmentProbe.Format(frames * frameSeconds) },
+                    threads);
+                using var probeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                probeTimeout.CancelAfter(AlignmentProbeTimeout);
+                using var process = CreateProcess(
+                    executable,
+                    TimelineAlignmentProbe.Truncate(measurement.Arguments, TimelineAlignmentProbe.ProbeSeconds));
+                process.Start();
+                var stderr = process.StandardError.ReadToEndAsync(probeTimeout.Token);
+                try
+                {
+                    await process.WaitForExitAsync(probeTimeout.Token);
+                    await stderr;
+                }
+                catch (OperationCanceledException)
+                {
+                    KillQuietly(process);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    return null;
+                }
+
+                if (process.ExitCode != 0 || !File.Exists(log))
+                {
+                    continue;
+                }
+
+                if (TimelineAlignmentProbe.MeanScore(await File.ReadAllTextAsync(log, cancellationToken)) is { } mean)
+                {
+                    scored.Add((frames, mean));
+                }
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+            {
+                // An alignment that cannot be probed is not a verification that cannot be run.
+                return null;
+            }
+            finally
+            {
+                DeleteQuietly(log);
+            }
+        }
+
+        return TimelineAlignmentProbe.Choose(scored) is { } chosen
+            ? TimelineAlignmentProbe.Format(chosen * frameSeconds)
+            : null;
+    }
+
     private static async Task<bool> HasFilterAsync(
         string executable,
         string filter,
@@ -219,22 +323,28 @@ public sealed class QualityScoreService(
     {
         try
         {
+            using var filterTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            filterTimeout.CancelAfter(AlignmentProbeTimeout);
             using var process = CreateProcess(executable, ["-hide_banner", "-filters"]);
             process.Start();
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(filterTimeout.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(filterTimeout.Token);
             try
             {
-                await process.WaitForExitAsync(cancellationToken);
+                await process.WaitForExitAsync(filterTimeout.Token);
+                var stdout = await stdoutTask;
+                await stderrTask;
+                return process.ExitCode == 0 && FfmpegFilterParser.Contains(stdout, filter);
             }
             catch (OperationCanceledException)
             {
                 KillQuietly(process);
-                throw;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                return false;
             }
-            var stdout = await stdoutTask;
-            await stderrTask;
-            return process.ExitCode == 0 && FfmpegFilterParser.Contains(stdout, filter);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
@@ -269,10 +379,12 @@ public sealed class QualityScoreService(
         StreamReader reader,
         double? durationSeconds,
         IProgress<double>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action onProgress)
     {
         var builder = new StringBuilder();
         var lastReported = 0.0;
+        var lastElapsed = -1.0;
 
         string? line;
         while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
@@ -280,6 +392,11 @@ public sealed class QualityScoreService(
             var sample = FfmpegProgressParser.Parse(line);
             if (sample.ElapsedSeconds is { } elapsed)
             {
+                if (elapsed > lastElapsed)
+                {
+                    lastElapsed = elapsed;
+                    onProgress();
+                }
                 if (progress is not null && durationSeconds is > 0)
                 {
                     var fraction = Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999);

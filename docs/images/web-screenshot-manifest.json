@@ -1,0 +1,64 @@
+{
+  "description": "Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.",
+  "command": "cd web && node scripts/capture-docs.mjs",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "mobileViewport": {
+    "width": 390,
+    "height": 1000
+  },
+  "reviewViewport": {
+    "width": 1440,
+    "height": 1500
+  },
+  "qualityViewport": {
+    "width": 1440,
+    "height": 1250
+  },
+  "images": [
+    "optimisarr-dashboard-dark.png",
+    "optimisarr-dashboard-main-dark.png",
+    "optimisarr-dashboard-savings-dark.png",
+    "optimisarr-libraries-dark.png",
+    "optimisarr-libraries-main-dark.png",
+    "optimisarr-library-configure-dark.png",
+    "optimisarr-library-choose-files-dark.png",
+    "optimisarr-library-advanced-eligibility-dark.png",
+    "optimisarr-library-encode-dark.png",
+    "optimisarr-library-advanced-encoding-dark.png",
+    "optimisarr-library-advanced-verification-dark.png",
+    "optimisarr-library-automation-dark.png",
+    "optimisarr-library-candidates-dark.png",
+    "optimisarr-library-excluded-dark.png",
+    "optimisarr-inventory-dark.png",
+    "optimisarr-inventory-main-dark.png",
+    "optimisarr-inventory-detail-dark.png",
+    "optimisarr-queue-dark.png",
+    "optimisarr-queue-main-dark.png",
+    "optimisarr-queue-working-job-dark.png",
+    "optimisarr-queue-detail-dark.png",
+    "optimisarr-queue-mobile-dark.png",
+    "optimisarr-schedule-dark.png",
+    "optimisarr-quarantine-dark.png",
+    "optimisarr-quarantine-main-dark.png",
+    "optimisarr-quarantine-review-dark.png",
+    "optimisarr-quarantine-verification-dark.png",
+    "optimisarr-settings-dark.png",
+    "optimisarr-settings-general-dark.png",
+    "optimisarr-settings-files-dark.png",
+    "optimisarr-settings-connections-dark.png",
+    "optimisarr-settings-downloads-dark.png",
+    "optimisarr-settings-notifications-dark.png",
+    "optimisarr-settings-workers-dark.png",
+    "optimisarr-settings-system-dark.png",
+    "optimisarr-settings-tools-dark.png",
+    "optimisarr-tools-dark.png",
+    "optimisarr-settings-hardware-dark.png",
+    "optimisarr-settings-backup-dark.png",
+    "optimisarr-personal-quality-check-dark.png",
+    "optimisarr-personal-quality-video-dark.png",
+    "optimisarr-personal-quality-image-dark.png"
+  ]
+}

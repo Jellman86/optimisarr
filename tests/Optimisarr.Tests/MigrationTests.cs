@@ -16,7 +16,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -26,6 +26,9 @@ public sealed class MigrationTests : IDisposable
 
         db.AppSettings.Add(new AppSetting { Key = "migration.smoke", Value = "ok" });
         await db.SaveChangesAsync();
+        var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+        await db.Database.MigrateAsync();
+        Assert.Equal(applied, (await db.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.Equal("ok", (await db.AppSettings.SingleAsync()).Value);
     }
 
@@ -34,7 +37,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -62,7 +65,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -90,7 +93,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -137,7 +140,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -190,7 +193,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -253,7 +256,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -312,7 +315,7 @@ public sealed class MigrationTests : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -352,7 +355,7 @@ public sealed class MigrationTests : IDisposable
         // corrected "None" default actually reads back through the string converter.
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={_dbPath}")
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
             .Options;
 
         await using var db = new OptimisarrDbContext(options);
@@ -383,6 +386,8 @@ public sealed class MigrationTests : IDisposable
         Assert.Null(films.VideoDownscaleHeight);
         Assert.False(films.CropBlackBars);
         Assert.Null(films.MaxFrameRate);
+        // And placement arrives as "anywhere": exactly how jobs were placed before the choice.
+        Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, films.WorkPlacement);
     }
 
     public void Dispose()

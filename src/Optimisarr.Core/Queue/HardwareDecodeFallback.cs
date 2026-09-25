@@ -1,3 +1,5 @@
+using Optimisarr.Core.Verification;
+
 namespace Optimisarr.Core.Queue;
 
 /// <summary>
@@ -29,6 +31,57 @@ public static class HardwareDecodeFallback
     /// True when <paramref name="ffmpegStderr"/> looks like a hardware decode/hwaccel setup
     /// failure that a software-decode retry could recover from.
     /// </summary>
+    public const string DecodeHealthCheckName = "Decode health";
+    private const string VmafCheckName = "Perceptual quality (VMAF)";
+    public const string SourceVideoTimelineCheckName = VerificationEvaluator.SourceVideoTimelineCheckName;
+
+    /// <summary>
+    /// A candidate-only retry cannot repair a gate measured on the unchanged original. Keep this
+    /// decision separate from the corruption signature so the operator can see which source check
+    /// prevented an otherwise plausible software-decode retry.
+    /// </summary>
+    public static string? SourceFailureBlockingRetry(VerificationReport report) =>
+        report.Checks.FirstOrDefault(check => check.Outcome == CheckOutcome.Failed
+            && check.Name == SourceVideoTimelineCheckName)?.Name;
+
+    /// <summary>
+    /// The context note carried by the second verification, so the report says why the encode
+    /// was repeated rather than leaving two encodes and one result to be reconciled by hand.
+    /// </summary>
+    public const string SoftwareDecodeRetryReason =
+        "Re-encoded with software decode: the hardware-decoded output failed verification with the "
+        + "signature of decoder corruption (frames scoring near zero, or decode errors), which the "
+        + "encoder cannot fix at any quality.";
+
+    /// <summary>
+    /// True when a hardware-decoded output failed verification in the way a corrupt decode fails,
+    /// not the way a merely weak encode fails: the output has decode errors, or single frames score
+    /// below the catastrophic floor. Intel QSV was observed to decode certain H.264 streams into
+    /// broken frames on two different hosts while software decode of the same stream was clean; a
+    /// higher-quality retry of a corrupt decode only wastes a second encode, so this is asked first.
+    /// A weak encode whose worst frame is still above the floor keeps the higher-quality retry.
+    /// </summary>
+    public static bool ShouldRetryAfterVerification(VerificationReport report, double catastrophicFloor)
+    {
+        if (report.Passed || SourceFailureBlockingRetry(report) is not null)
+        {
+            return false;
+        }
+
+        var failed = report.Checks
+            .Where(check => check.Outcome == CheckOutcome.Failed)
+            .Select(check => check.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        if (failed.Contains(DecodeHealthCheckName))
+        {
+            return true;
+        }
+
+        return failed.Contains(VmafCheckName)
+            && report.Vmaf is { Measured: true, Scores.VmafMin: { } lowestFrame }
+            && lowestFrame < catastrophicFloor;
+    }
+
     public static bool ShouldRetryInSoftware(string? ffmpegStderr)
     {
         if (string.IsNullOrWhiteSpace(ffmpegStderr))

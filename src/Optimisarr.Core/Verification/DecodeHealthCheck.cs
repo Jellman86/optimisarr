@@ -12,14 +12,15 @@ public sealed record DecodeHealthResult(bool Healthy, string? Error, int ErrorCo
 /// <summary>
 /// Runs a full software decode of a file and reports how many decode errors FFmpeg
 /// hit. <c>-f null -</c> decodes every frame without writing an output, and at
-/// <c>-v error</c> FFmpeg prints one line per corrupt frame or packet read error;
-/// the pure <see cref="DecodeIntegrityParser"/> tallies them so a clean file scores
-/// zero and a damaged one reports the true count across the whole file (rather than
-/// stopping at the first error). FFmpeg is invoked through an explicit argument
-/// list, never a shell string.
+/// <c>-v error</c> FFmpeg prints one line per corrupt frame or packet read error.
+/// A clean file is decoded in full; a candidate with many errors is stopped once
+/// the failure is conclusive, so corrupt media cannot keep the host busy indefinitely.
+/// FFmpeg is invoked through an explicit argument list, never a shell string.
 /// </summary>
 public sealed class DecodeHealthCheck
 {
+    public const int MaximumUsefulDecodeErrors = 100;
+    private static readonly TimeSpan DecodeProgressTimeout = TimeSpan.FromMinutes(5);
     private readonly string _ffmpeg;
 
     public DecodeHealthCheck(string? ffmpegCommand = null)
@@ -34,7 +35,7 @@ public sealed class DecodeHealthCheck
             return DecodeHealthResult.Unhealthy($"File does not exist: {path}");
         }
 
-        string stderr;
+        DecodeIntegrity integrity;
         int exitCode;
 
         try
@@ -47,7 +48,11 @@ public sealed class DecodeHealthCheck
                 {
                     "-nostdin",
                     "-v", "error",
+                    "-nostats",
+                    "-progress", "pipe:1",
+                    "-threads", "4",
                     "-i", path,
+                    "-map", "0:V?", "-map", "0:a?",
                     "-f", "null",
                     "-"
                 },
@@ -58,22 +63,27 @@ public sealed class DecodeHealthCheck
             };
 
             process.Start();
-
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            using var stalled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            stalled.CancelAfter(DecodeProgressTimeout);
+            var stdoutTask = ReadProgressAsync(process.StandardOutput, stalled, stalled.Token);
+            var stderrTask = ReadDecodeErrorsAsync(process.StandardError, process, stalled.Token);
 
             try
             {
-                await process.WaitForExitAsync(cancellationToken);
+                await process.WaitForExitAsync(stalled.Token);
+                await stdoutTask;
+                integrity = await stderrTask;
             }
             catch (OperationCanceledException)
             {
                 KillQuietly(process);
-                throw;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                return DecodeHealthResult.Unhealthy(
+                    $"FFmpeg made no decode progress for {DecodeProgressTimeout.TotalMinutes:0} minutes; verification stopped to protect the host.");
             }
-
-            await stdoutTask;
-            stderr = await stderrTask;
             exitCode = process.ExitCode;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
@@ -83,7 +93,6 @@ public sealed class DecodeHealthCheck
 
         // A non-zero exit is a hard decode failure; otherwise the stderr lines (at
         // -v error, one per corrupt frame/packet) are the decode-error tally.
-        var integrity = DecodeIntegrityParser.Parse(stderr);
         if (exitCode != 0 && integrity.ErrorCount == 0)
         {
             return DecodeHealthResult.Unhealthy($"ffmpeg decode exited with code {exitCode}");
@@ -91,7 +100,53 @@ public sealed class DecodeHealthCheck
 
         return integrity.ErrorCount == 0
             ? DecodeHealthResult.Ok
-            : DecodeHealthResult.Unhealthy(integrity.FirstError!, integrity.ErrorCount);
+            : DecodeHealthResult.Unhealthy(
+                integrity.ErrorCount >= MaximumUsefulDecodeErrors
+                    ? $"At least {integrity.ErrorCount} decode errors; stopped checking this corrupt candidate. First: {integrity.FirstError}"
+                    : integrity.FirstError!,
+                integrity.ErrorCount);
+    }
+
+    private static async Task ReadProgressAsync(
+        StreamReader reader,
+        CancellationTokenSource stalled,
+        CancellationToken cancellationToken)
+    {
+        TimeSpan? lastMediaTime = null;
+        string? line;
+        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
+        {
+            if (!line.StartsWith("out_time=", StringComparison.Ordinal)
+                || !TimeSpan.TryParse(line.AsSpan("out_time=".Length),
+                    System.Globalization.CultureInfo.InvariantCulture, out var mediaTime)
+                || lastMediaTime is { } previous && mediaTime <= previous)
+            {
+                continue;
+            }
+
+            lastMediaTime = mediaTime;
+            stalled.CancelAfter(DecodeProgressTimeout);
+        }
+    }
+
+    private static async Task<DecodeIntegrity> ReadDecodeErrorsAsync(
+        StreamReader reader,
+        Process process,
+        CancellationToken cancellationToken)
+    {
+        var errors = new DecodeIntegrityAccumulator();
+        string? line;
+        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
+        {
+            errors.AddLine(line);
+            if (errors.Result.ErrorCount >= MaximumUsefulDecodeErrors)
+            {
+                KillQuietly(process);
+                break;
+            }
+        }
+
+        return errors.Result;
     }
 
     private static void KillQuietly(Process process)

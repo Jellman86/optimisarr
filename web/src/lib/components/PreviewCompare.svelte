@@ -9,6 +9,8 @@
   import VerificationChecks from './VerificationChecks.svelte'
   import MediaCompare from './MediaCompare.svelte'
   import Icon from './Icon.svelte'
+  import Thumbnail from './Thumbnail.svelte'
+  import { modal } from '../modal'
   import { i18n, t } from '../i18n/i18n.svelte'
 
   let { mediaFileId, mediaKind, relativePath, onClose }: {
@@ -36,35 +38,45 @@
     try {
       const { jobId: id } = await api.createPreview(mediaFileId)
       jobId = id
+      if (closed) { discardPreview(); return }
       void poll()
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.shared.preview_start_error
+      if (!closed) error = err instanceof Error ? err.message : i18n.m.shared.preview_start_error
     }
   }
 
   async function poll() {
     if (closed || jobId === null) return
     try {
-      preview = await api.getPreview(jobId)
+      const result = await api.getPreview(jobId)
+      if (closed) return
+      preview = result
       if (!TERMINAL.includes(preview.status)) {
         timer = setTimeout(poll, 1500)
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.shared.preview_load_error
+      if (!closed) error = err instanceof Error ? err.message : i18n.m.shared.preview_load_error
     }
+  }
+
+  function discardPreview() {
+    if (jobId === null) return
+    const id = jobId
+    jobId = null
+    void api.deletePreview(id).catch(() => {})
   }
 
   function close() {
     closed = true
     if (timer) clearTimeout(timer)
-    if (jobId !== null) void api.deletePreview(jobId).catch(() => {})
+    discardPreview()
     onClose()
   }
 
   onDestroy(() => {
     closed = true
     if (timer) clearTimeout(timer)
-    if (jobId !== null) void api.deletePreview(jobId).catch(() => {})
+    discardPreview()
   })
 
   let checks = $derived(parseChecks(preview?.verificationReportJson ?? null))
@@ -122,47 +134,35 @@
 
 {#if minimized}
   <!-- Collapsed: a small floating widget, so the rest of the UI is usable while the preview runs. -->
-  <div class="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+  <div class="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-line bg-panel p-3 shadow-lg">
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
-        <div class="truncate text-xs font-semibold text-slate-700 dark:text-slate-200" title={title}>{title}</div>
-        <div class="text-[11px] text-slate-400">{t(i18n.m.shared.preview_status, { status: statusLabel })}</div>
+        <div class="truncate text-xs font-semibold text-ink-2" title={title}>{title}</div>
+        <div class="text-[11px] text-ink-3">{t(i18n.m.shared.preview_status, { status: statusLabel })}</div>
       </div>
       <button class="btn btn-ghost flex-shrink-0 px-2 py-1" onclick={() => (minimized = false)} title={i18n.m.shared.expand} aria-label={i18n.m.shared.expand}>
         <Icon name="chevron" class="h-4 w-4 rotate-180" />
       </button>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-red-600 dark:text-red-400" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-bad" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
         <Icon name="x" class="h-4 w-4" />
       </button>
     </div>
     {#if error}
-      <p class="mt-2 text-[11px] text-red-600 dark:text-red-400">{error}</p>
+      <p class="mt-2 text-[11px] text-bad">{error}</p>
     {:else if isRunning || !preview}
       <div class="progress-track mt-2"><div class="progress-indeterminate"></div></div>
     {:else if preview.status === 'Completed'}
-      <p class="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">{i18n.m.shared.ready_expand}</p>
+      <p class="mt-2 text-[11px] text-ok">{i18n.m.shared.ready_expand}</p>
     {/if}
   </div>
 {:else}
-<div
-  class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-  role="button"
-  tabindex="0"
-  onclick={() => (minimized = true)}
-  onkeydown={(e) => e.key === 'Escape' && (minimized = true)}
->
-  <div
-    class="card max-h-[90vh] w-full max-w-4xl overflow-y-auto p-5"
-    role="dialog"
-    tabindex="-1"
-    onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => e.stopPropagation()}
-  >
-    <div class="mb-4 flex items-start justify-between gap-3">
-      <div class="min-w-0">
-        <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">{i18n.m.shared.preview_optimisation}</div>
-        <h2 class="truncate text-lg font-semibold" title={title}>{title}</h2>
-        <p class="truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={relativePath}>{relativePath}</p>
+<dialog class="app-modal preview-dialog" use:modal={() => (minimized = true)} aria-label={`${i18n.m.shared.preview_optimisation}: ${title}`}>
+    <div class="preview-heading">
+      <div class="preview-poster"><Thumbnail {mediaFileId} size="md" /></div>
+      <div class="min-w-0 flex-1">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-accent">{i18n.m.shared.preview_optimisation}</div>
+        <h2 class="line-clamp-2 break-words text-lg font-semibold" title={title}>{title}</h2>
+        <p class="line-clamp-2 break-all font-mono text-xs text-ink-3" title={relativePath}>{relativePath}</p>
       </div>
       <div class="flex flex-shrink-0 items-center gap-1">
         <button class="btn btn-ghost px-2" onclick={() => (minimized = true)} title={i18n.m.shared.minimise_preview} aria-label={i18n.m.shared.minimise}>
@@ -174,10 +174,11 @@
       </div>
     </div>
 
+    <div class="preview-body">
     {#if error}
-      <div class="card border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-300">{error}</div>
+      <div class="card tone-bad p-3 text-sm">{error}</div>
     {:else if !preview || isRunning}
-      <div class="flex flex-col items-center gap-3 py-10 text-slate-500 dark:text-slate-400">
+      <div class="flex flex-col items-center gap-3 py-10 text-ink-3">
         <div class="progress-track w-64"><div class="progress-indeterminate"></div></div>
         <p class="text-sm">
           {#if !preview || preview.status === 'Queued'}{i18n.m.shared.queuing_preview}
@@ -193,7 +194,7 @@
       </div>
     {:else}
       {#if preview.status === 'Failed'}
-        <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
+        <div class="card mb-4 tone-warn p-3 text-sm">
           {t(i18n.m.shared.preview_failed, { error: preview.errorMessage ?? i18n.m.shared.unknown_error })}
         </div>
       {/if}
@@ -218,7 +219,7 @@
             comparisonDurationSeconds={preview.clipDurationSeconds}
           />
           {#if preview.clipped}
-            <p class="mt-2 text-xs text-slate-400">
+            <p class="mt-2 text-xs text-ink-3">
               {t(i18n.m.shared.sample_note, { seconds: Math.round(preview.encoded?.durationSeconds ?? 0) })}
             </p>
           {/if}
@@ -228,30 +229,30 @@
       <!-- Stats comparison -->
       <div class="card mb-4 overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
+          <thead class="border-b border-line text-left text-xs uppercase text-ink-3">
             <tr><th class="px-4 py-2"></th><th class="px-4 py-2">{i18n.m.shared.original}</th><th class="px-4 py-2">{i18n.m.shared.encoded}</th></tr>
           </thead>
-          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody class="divide-y divide-line-soft">
             <tr>
-              <td class="px-4 py-2 text-slate-500">{i18n.m.shared.col_size}</td>
+              <td class="px-4 py-2 text-ink-3">{i18n.m.shared.col_size}</td>
               <td class="px-4 py-2">{preview.original?.sizeBytes != null ? formatSize(preview.original.sizeBytes) : '—'}</td>
               <td class="px-4 py-2">
                 {preview.encoded?.sizeBytes != null ? formatSize(preview.encoded.sizeBytes) : '—'}
                 {#if preview.savingPercent != null}
-                  <span class="badge ml-1 {preview.savingPercent >= 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'}">
+                  <span class="badge ml-1 {preview.savingPercent >= 0 ? 'tone-ok' : 'tone-bad'}">
                     {preview.clipped ? '≈' : ''}{preview.savingPercent >= 0 ? '−' : '+'}{Math.abs(preview.savingPercent)}%
                   </span>
                 {/if}
               </td>
             </tr>
-            <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.container}</td><td class="px-4 py-2">{preview.original?.container ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.container ?? '—'}</td></tr>
+            <tr><td class="px-4 py-2 text-ink-3">{i18n.m.shared.container}</td><td class="px-4 py-2">{preview.original?.container ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.container ?? '—'}</td></tr>
             {#if mediaKind !== 'Audio'}
-              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.video_codec}</td><td class="px-4 py-2">{preview.original?.videoCodec ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.videoCodec ?? '—'}</td></tr>
-              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.resolution}</td><td class="px-4 py-2">{resolution(preview.original)}</td><td class="px-4 py-2">{resolution(preview.encoded)}</td></tr>
+              <tr><td class="px-4 py-2 text-ink-3">{i18n.m.shared.video_codec}</td><td class="px-4 py-2">{preview.original?.videoCodec ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.videoCodec ?? '—'}</td></tr>
+              <tr><td class="px-4 py-2 text-ink-3">{i18n.m.shared.resolution}</td><td class="px-4 py-2">{resolution(preview.original)}</td><td class="px-4 py-2">{resolution(preview.encoded)}</td></tr>
             {/if}
             {#if mediaKind !== 'Image'}
-              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.duration}</td><td class="px-4 py-2">{formatDuration(preview.original?.durationSeconds ?? null)}</td><td class="px-4 py-2">{formatDuration(preview.encoded?.durationSeconds ?? null)}</td></tr>
-              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.audio}</td><td class="px-4 py-2">{audio(preview.original)}</td><td class="px-4 py-2">{audio(preview.encoded)}</td></tr>
+              <tr><td class="px-4 py-2 text-ink-3">{i18n.m.shared.duration}</td><td class="px-4 py-2">{formatDuration(preview.original?.durationSeconds ?? null)}</td><td class="px-4 py-2">{formatDuration(preview.encoded?.durationSeconds ?? null)}</td></tr>
+              <tr><td class="px-4 py-2 text-ink-3">{i18n.m.shared.audio}</td><td class="px-4 py-2">{audio(preview.original)}</td><td class="px-4 py-2">{audio(preview.encoded)}</td></tr>
             {/if}
           </tbody>
         </table>
@@ -259,13 +260,22 @@
 
       {#if checks}
         <div>
-          <div class="mb-2 text-xs font-medium uppercase text-slate-500 dark:text-slate-400">
+          <div class="mb-2 text-xs font-medium uppercase text-ink-3">
             {preview.verificationPassed ? i18n.m.shared.verification_passed : i18n.m.shared.verification_failed}{preview.clipped ? ` · ${i18n.m.shared.segment_only}` : ''}
           </div>
           <VerificationChecks {checks} />
         </div>
       {/if}
     {/if}
-  </div>
-</div>
+    </div>
+</dialog>
 {/if}
+
+
+<style>
+  .preview-dialog { width: 60rem; grid-template-rows: auto minmax(0, 1fr); }
+  .preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem; background: var(--raised); }
+  .preview-body { overflow-y: auto; overscroll-behavior: contain; padding: 1.5rem; min-height: 0; }
+  @media(max-width: 639px) { .preview-heading { padding: 1rem; gap: .625rem; }.preview-body { padding: 1rem; }.preview-poster { display: none; } }
+  @media(max-height: 540px) { .preview-poster { display: none; }.preview-heading { padding: .75rem 1rem; } }
+</style>

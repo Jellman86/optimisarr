@@ -1,436 +1,182 @@
 <script lang="ts">
+  import { onDestroy, tick } from 'svelte'
   import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type Library, type MediaFile } from '../api'
-  import { formatSize, formatDuration } from '../format'
+  import { formatSize } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
-  import BottomSheet from '../components/BottomSheet.svelte'
+  import Icon from '../components/Icon.svelte'
+  import InventoryDetail from '../components/InventoryDetail.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
 
   let libraries = $state<Library[]>([])
-  // One page of inventory rows from the server, plus the filtered total and per-filter tallies.
   let rows = $state<InventoryRow[]>([])
   let total = $state(0)
   let counts = $state<InventoryCounts>({ all: 0, eligible: 0, skipped: 0, unprobed: 0 })
-  // The page's files and a verdict lookup, derived so the existing table markup keeps working.
-  let files = $derived(rows.map((row) => row.file))
-  let verdicts = $derived(
-    Object.fromEntries(
-      rows
-        .filter((row) => row.eligible !== null)
-        .map((row) => [row.file.id, { eligible: row.eligible as boolean, reason: row.reason ?? '' }]),
-    ),
-  )
   let selectedLibrary = $state<number | 'all'>('all')
   let show = $state<InventoryFilter>('all')
   let page = $state(1)
   const pageSize = 50
-  let selectedId = $state<number | null>(null)
-  // Whether the detail sheet is showing its full content (true) or just the header strip (false).
-  let sheetExpanded = $state(true)
-  // The file open in the original-vs-encoded preview, if any.
+  let selected = $state<InventoryRow | null>(null)
   let previewing = $state<MediaFile | null>(null)
+  let previewSource = $state<InventoryRow | null>(null)
   let error = $state<string | null>(null)
+  let libraryError = $state<string | null>(null)
+  let probeError = $state<string | null>(null)
+  let probeMessage = $state<string | null>(null)
   let probingId = $state<number | null>(null)
   let loading = $state(true)
+  let requestId = 0
+  let disposed = false
 
-  // The detail sheet's measured height, so the table can subtract it to stay fully scrollable.
-  let sheetHeight = $state(0)
-
-  $effect(() => {
-    void loadLibraries()
-  })
-
-  // Filtering, counting, and paging are server-side, so reload a page whenever the library, the
-  // filter, or the page changes.
-  $effect(() => {
-    void loadInventory(selectedLibrary, show, page)
-  })
+  $effect(() => { void loadLibraries() })
+  $effect(() => { void loadInventory(selectedLibrary, show, page) })
+  onDestroy(() => { disposed = true; requestId++ })
 
   async function loadLibraries() {
-    try {
-      libraries = await api.libraries()
-    } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries
-    }
+    try { libraries = await api.libraries() }
+    catch (err) { if (!disposed) libraryError = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries }
   }
 
   async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number) {
+    // A slow response from a previous filter must never replace the current selection.
+    const request = ++requestId
     loading = true
     error = null
     try {
-      const result = await api.inventory({
-        libraryId: library === 'all' ? undefined : library,
-        show: filter,
-        page: pageNumber,
-        pageSize,
-      })
+      const result = await api.inventory({ libraryId: library === 'all' ? undefined : library, show: filter, page: pageNumber, pageSize })
+      if (request !== requestId || disposed) return
+      const lastPage = Math.max(1, Math.ceil(result.total / pageSize))
+      if (pageNumber > lastPage) { page = lastPage; return }
       rows = result.items
       total = result.total
       counts = result.counts
+      if (selected) selected = result.items.find(row => row.file.id === selected?.file.id) ?? null
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.inventory.error_load
+      if (request === requestId && !disposed) error = err instanceof Error ? err.message : i18n.m.inventory.error_load
     } finally {
-      loading = false
+      if (request === requestId && !disposed) loading = false
     }
   }
 
   async function probe(file: MediaFile) {
+    if (probingId !== null) return
     probingId = file.id
-    error = null
+    probeError = null
+    probeMessage = null
     try {
-      await api.probe(file.id)
-      // A freshly probed file now has a verdict — reload the current page to pick it up.
+      const updated = await api.probe(file.id)
+      if (selected?.file.id === file.id) selected = { ...selected, file: updated }
+      if (disposed) return
       await loadInventory(selectedLibrary, show, page)
+      if (!disposed) {
+        if (error) probeError = error
+        else probeMessage = i18n.m.inventory.probe_complete
+      }
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.inventory.error_probe
+      if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
     } finally {
-      probingId = null
+      if (!disposed) probingId = null
     }
   }
 
-  function resolution(file: MediaFile) {
-    return file.width && file.height ? `${file.width}×${file.height}` : '—'
-  }
-
-  // The leaf filename; the full relative path is shown in the detail sheet instead of the list.
-  function fileName(path: string): string {
-    const i = path.lastIndexOf('/')
-    return i >= 0 ? path.slice(i + 1) : path
-  }
-
-  // The detail sheet's faded poster backdrop; reset its "no artwork" flag whenever the selection changes.
-  let backdropFailed = $state(false)
-  $effect(() => {
-    selectedId
-    backdropFailed = false
-  })
-
+  function fileName(path: string) { return path.split(/[\\/]/).pop() || path }
+  function libraryName(file: MediaFile) { return libraries.find(l => l.id === file.libraryId)?.name ?? i18n.m.inventory.library_label }
   function selectLibrary(event: Event) {
-    selectedLibrary =
-      (event.currentTarget as HTMLSelectElement).value === 'all'
-        ? 'all'
-        : Number((event.currentTarget as HTMLSelectElement).value)
+    const value = (event.currentTarget as HTMLSelectElement).value
+    selectedLibrary = value === 'all' ? 'all' : Number(value)
     page = 1
-    selectedId = null
+    selected = null
   }
-
-  function selectFilter(value: typeof show) {
-    show = value
-    page = 1
-    selectedId = null
+  function selectFilter(value: InventoryFilter) { show = value; page = 1; selected = null }
+  function selectRow(row: InventoryRow) { selected = row; probeError = null; probeMessage = null }
+  async function closeDetails() {
+    const id = selected?.file.id
+    selected = null
+    await tick()
+    if (id !== undefined) document.getElementById(`inventory-file-${id}`)?.focus()
   }
-
-  function goToPage(nextPage: number) {
-    page = Math.max(1, Math.min(nextPage, pageCount))
-    selectedId = null
+  function startPreview() {
+    if (!selected) return
+    previewSource = selected
+    previewing = selected.file
+    selected = null
   }
-
-  // Toggle: clicking the active row again dismisses the detail sheet.
-  // Opening a new row always starts expanded so the details are immediately visible.
-  function selectRow(id: number) {
-    if (selectedId === id) {
-      selectedId = null
-    } else {
-      selectedId = id
-      sheetExpanded = true
-    }
+  function closePreview() {
+    previewing = null
+    if (!selected && previewSource) selected = rows.find(row => row.file.id === previewSource?.file.id) ?? null
+    previewSource = null
   }
-
-  function dismissSheet() {
-    selectedId = null
-  }
-
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && selectedId !== null) dismissSheet()
-  }
-
-  let eligibleCount = $derived(counts.eligible)
-  let skippedCount = $derived(counts.skipped)
-  let unprobedCount = $derived(counts.unprobed)
+  function goToPage(next: number) { page = Math.max(1, Math.min(next, pageCount)); selected = null }
   let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)))
   let pageStart = $derived((Math.min(page, pageCount) - 1) * pageSize)
-  // The server already filtered and paged; the page's files are exactly what to render.
-  let paged = $derived(files)
-  // No auto-selection: selectedFile is null until the user clicks a row.
-  let selectedFile = $derived(
-    selectedId !== null ? (paged.find((file) => file.id === selectedId) ?? null) : null,
-  )
-  let selectedVerdict = $derived(selectedFile ? verdicts[selectedFile.id] : undefined)
+  let filters = $derived([
+    { key: 'all' as InventoryFilter, label: t(i18n.m.inventory.filter_all, { count: counts.all.toLocaleString() }) },
+    { key: 'eligible' as InventoryFilter, label: t(i18n.m.inventory.filter_eligible, { count: counts.eligible.toLocaleString() }) },
+    { key: 'skipped' as InventoryFilter, label: t(i18n.m.inventory.filter_skipped, { count: counts.skipped.toLocaleString() }) },
+    { key: 'unprobed' as InventoryFilter, label: t(i18n.m.inventory.filter_unprobed, { count: counts.unprobed.toLocaleString() }) },
+  ])
 </script>
 
-<svelte:window onkeydown={onKeydown} />
-
-<header class="mb-4 flex flex-wrap items-end justify-between gap-4">
-  <div>
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.inventory}</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">
-      {i18n.m.inventory.subtitle}
-    </p>
+<div class="inventory-layout">
+  <header class="inventory-heading">
+    <div><h1 class="page-title">{i18n.m.nav.inventory}</h1><p class="page-subtitle">{i18n.m.inventory.subtitle}</p></div>
+    <div class="inventory-library"><label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label><select id="lib-filter" class="input" value={selectedLibrary} onchange={selectLibrary}><option value="all">{i18n.m.inventory.all_libraries}</option>{#each libraries as library}<option value={library.id}>{library.name}</option>{/each}</select></div>
+  </header>
+  {#if libraryError}<Banner kind="error" class="mb-4">{libraryError}</Banner>{/if}
+  {#if error}<Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={() => loadInventory(selectedLibrary, show, page)}>{i18n.m.setup.retry}</button></Banner>{/if}
+  {#if probeError && !selected}<Banner kind="error" class="mb-4">{probeError}</Banner>{/if}
+  {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
+  <div class="inventory-toolbar">
+    <div class="inventory-filters">{#each filters as filter}<button class="focus-ring" class:filter-active={show === filter.key} aria-pressed={show === filter.key} onclick={() => selectFilter(filter.key)}>{filter.label}</button>{/each}</div>
+    <span class="inventory-loading" role="status">{loading ? i18n.m.common.loading_short : ''}</span>
   </div>
-  <div>
-    <label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label>
-    <select id="lib-filter" class="input min-w-48" value={selectedLibrary} onchange={selectLibrary}>
-      <option value="all">{i18n.m.inventory.all_libraries}</option>
-      {#each libraries as library}<option value={library.id}>{library.name}</option>{/each}
-    </select>
-  </div>
-</header>
-
-{#if error}
-  <Banner kind="error" class="mb-4">{error}</Banner>
-{/if}
-
-{#if loading}
-  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
-{:else if counts.all > 0}
-  <!-- Filter tabs and pagination on the same row so both are always visible. -->
-  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-    <div class="flex flex-wrap gap-2">
-      <button
-        class="btn px-3 py-1 text-xs"
-        class:btn-primary={show === 'all'}
-        onclick={() => selectFilter('all')}
-      >
-        {t(i18n.m.inventory.filter_all, { count: counts.all.toLocaleString() })}
-      </button>
-      <button
-        class="btn px-3 py-1 text-xs"
-        class:btn-primary={show === 'eligible'}
-        onclick={() => selectFilter('eligible')}
-      >
-        {t(i18n.m.inventory.filter_eligible, { count: eligibleCount.toLocaleString() })}
-      </button>
-      <button
-        class="btn px-3 py-1 text-xs"
-        class:btn-primary={show === 'skipped'}
-        onclick={() => selectFilter('skipped')}
-      >
-        {t(i18n.m.inventory.filter_skipped, { count: skippedCount.toLocaleString() })}
-      </button>
-      <button
-        class="btn px-3 py-1 text-xs"
-        class:btn-primary={show === 'unprobed'}
-        onclick={() => selectFilter('unprobed')}
-      >
-        {t(i18n.m.inventory.filter_unprobed, { count: unprobedCount.toLocaleString() })}
-      </button>
-    </div>
-
-    <!-- Compact pagination: always visible above the table. -->
-    <div class="flex items-center gap-2 text-xs text-slate-400">
-      <span>
-        {t(i18n.m.inventory.range, {
-          start: total === 0 ? '0' : (pageStart + 1).toLocaleString(),
-          end: Math.min(pageStart + pageSize, total).toLocaleString(),
-          total: total.toLocaleString(),
-        })}
-      </span>
-      <button
-        class="btn px-2 py-1 text-xs"
-        onclick={() => goToPage(page - 1)}
-        disabled={page <= 1}
-        aria-label={i18n.m.inventory.prev_page}
-      >
-        ‹
-      </button>
-      <span>{t(i18n.m.inventory.page_of, { page: Math.min(page, pageCount), count: pageCount })}</span>
-      <button
-        class="btn px-2 py-1 text-xs"
-        onclick={() => goToPage(page + 1)}
-        disabled={page >= pageCount}
-        aria-label={i18n.m.inventory.next_page}
-      >
-        ›
-      </button>
-    </div>
-  </div>
-
-  <!-- Table scrolls within a fixed-height container so the page itself never needs to scroll.
-       The sticky thead keeps column headers visible as the body scrolls.
-       When the detail sheet is open its measured height is subtracted so the table shrinks to
-       keep all rows reachable above the panel. -->
-  <div class="card overflow-hidden">
-    <div
-      class="overflow-y-auto"
-      style="max-height: calc(100dvh - 11rem - {selectedFile ? `${sheetHeight}px` : '0px'}); transition: max-height 0.3s ease-out;"
-    >
-      <table class="w-full text-sm">
-        <thead
-          class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
-        >
-          <tr>
-            <th class="px-4 py-3">{i18n.m.inventory.col_optimise}</th>
-            <th class="px-4 py-3">{i18n.m.inventory.col_file}</th>
-            <th class="hidden px-4 py-3 lg:table-cell">{i18n.m.inventory.col_kind}</th>
-            <th class="px-4 py-3">{i18n.m.inventory.col_size}</th>
-            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.inventory.col_video}</th>
-            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.inventory.col_resolution}</th>
+  <div class="inventory-surface" aria-busy={loading}>
+    {#if rows.length}
+      <table class="inventory-table">
+        <thead><tr><th scope="col">{i18n.m.inventory.col_file}</th><th scope="col" class="size-column">{i18n.m.inventory.col_size}</th><th scope="col" class="format-column">{i18n.m.inventory.col_format}</th><th scope="col">{i18n.m.inventory.rule_verdict}</th></tr></thead>
+        <tbody>{#each rows as row (row.file.id)}{@const file = row.file}
+          <tr class:selected-row={selected?.file.id === file.id}>
+            <td><button id={`inventory-file-${file.id}`} class="inventory-file focus-ring" onclick={() => selectRow(row)}>
+              <Thumbnail mediaFileId={file.id} />
+              <span class="inventory-file-name"><span class="inventory-file-title">{fileName(file.relativePath)}</span><span class="inventory-file-meta">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'} · {file.mediaKind}{/if}<span class="mobile-size"> · {formatSize(file.sizeBytes)}</span></span></span>
+            </button></td>
+            <td class="size-column inventory-size">{formatSize(file.sizeBytes)}</td>
+            <td class="format-column"><span class="inventory-codec">{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="inventory-resolution">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>
+            <td><span class="inventory-verdict" class:verdict-eligible={row.eligible === true} class:verdict-unprobed={row.eligible === null}>{row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped}</span></td>
           </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-          {#each paged as file (file.id)}
-            {@const verdict = verdicts[file.id]}
-            <tr
-              class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedFile?.id ===
-              file.id
-                ? 'bg-sky-50 dark:bg-sky-950/30'
-                : ''}"
-              onclick={() => selectRow(file.id)}
-            >
-              <td class="px-4 py-2">
-                {#if verdict?.eligible}
-                  <span
-                    class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-                    >{i18n.m.inventory.badge_eligible}</span
-                  >
-                {:else if verdict}
-                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                    >{i18n.m.inventory.badge_skipped}</span
-                  >
-                {:else}
-                  <span
-                    class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
-                    title={i18n.m.inventory.unprobed_title}>{i18n.m.inventory.badge_unprobed}</span
-                  >
-                {/if}
-              </td>
-              <td class="px-4 py-2">
-                <div class="flex items-center gap-3">
-                  <Thumbnail mediaFileId={file.id} alt={file.relativePath} />
-                  <span class="max-w-[50vw] truncate text-xs sm:max-w-xs" title={file.relativePath}>
-                    {fileName(file.relativePath)}
-                  </span>
-                </div>
-              </td>
-              <td class="hidden px-4 py-2 lg:table-cell">
-                {#if file.mediaKind && file.mediaKind !== 'Unknown'}
-                  <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                    >{file.mediaKind}</span
-                  >
-                {:else}
-                  <span class="text-slate-400">—</span>
-                {/if}
-              </td>
-              <td class="px-4 py-2">{formatSize(file.sizeBytes)}</td>
-              <td class="hidden px-4 py-2 sm:table-cell">{file.videoCodec ?? '—'}</td>
-              <td class="hidden px-4 py-2 sm:table-cell">{resolution(file)}</td>
-            </tr>
-          {/each}
-        </tbody>
+        {/each}</tbody>
       </table>
-    </div>
+    {:else if !loading && !error}
+      <div class="inventory-empty"><Icon name="film" class="h-7 w-7 text-ink-4" /><p>{counts.all > 0 ? i18n.m.inventory.empty_filter : i18n.m.inventory.empty}</p></div>
+    {:else}<div class="inventory-empty">{loading ? i18n.m.common.loading_short : i18n.m.inventory.error_load}</div>{/if}
   </div>
-{:else}
-  <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
-    {i18n.m.inventory.empty}
-  </div>
+  {#if total > 0}
+    <footer class="inventory-pagination">
+      <span>{t(i18n.m.inventory.range, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + pageSize, total).toLocaleString(), total: total.toLocaleString() })}</span>
+      <div><button class="btn btn-ghost" onclick={() => goToPage(page - 1)} disabled={page <= 1 || loading} aria-label={i18n.m.inventory.prev_page}><Icon name="arrow-left" /></button><span>{t(i18n.m.inventory.page_of, { page: Math.min(page, pageCount), count: pageCount })}</span><button class="btn btn-ghost" onclick={() => goToPage(page + 1)} disabled={page >= pageCount || loading} aria-label={i18n.m.inventory.next_page}><Icon name="arrow-right" /></button></div>
+    </footer>
+  {/if}
+</div>
+
+{#if selected}
+  {#key selected.file.id}
+    <InventoryDetail row={selected} libraryName={libraryName(selected.file)} probing={probingId === selected.file.id} error={probeError} onclose={closeDetails} onprobe={() => { if (selected) void probe(selected.file) }} onpreview={startPreview} />
+  {/key}
 {/if}
-
-<!-- Detail bottom sheet: slides into view on row selection. -->
-<BottomSheet open={selectedFile !== null} bind:expanded={sheetExpanded} bind:height={sheetHeight} onclose={dismissSheet}>
-  {#snippet backdrop()}
-    <!-- A faded, blurred poster spanning the whole sheet, like the Queue hero; silent if none. -->
-    {#if selectedFile && !backdropFailed}
-      <img
-        src="/api/media/{selectedFile.id}/thumbnail"
-        alt=""
-        class="h-full w-full scale-105 object-cover opacity-25 blur-[3px] dark:opacity-30"
-        onerror={() => (backdropFailed = true)}
-      />
-      <!-- Readable on the left, where the labels sit; the poster shows through on the right —
-           the same directional fade as the Queue hero. -->
-      <div class="absolute inset-0 bg-gradient-to-r from-white/90 via-white/50 to-white/20 dark:from-slate-900/90 dark:via-slate-900/50 dark:to-slate-900/20"></div>
-    {/if}
-  {/snippet}
-  {#snippet header()}
-    <p class="truncate text-sm font-medium text-slate-800 dark:text-slate-100" title={selectedFile?.relativePath ?? ''}>
-      {fileName(selectedFile?.relativePath ?? '')}
-    </p>
-    <p class="break-all font-mono text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
-      {selectedFile?.relativePath ?? ''}
-    </p>
-  {/snippet}
-  {#snippet children()}
-    {#if selectedFile}
-      <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-          <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_status}</dt>
-            <dd>{selectedFile.status}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_size}</dt>
-            <dd>{formatSize(selectedFile.sizeBytes)}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_container}</dt>
-            <dd>{selectedFile.container ?? '—'}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_video}</dt>
-            <dd>{selectedFile.videoCodec ?? '—'} {resolution(selectedFile)}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_audio}</dt>
-            <dd class="text-right">
-              {selectedFile.audioCodecs ?? '—'}{selectedFile.audioTrackCount
-                ? t(i18n.m.inventory.audio_tracks, { count: selectedFile.audioTrackCount })
-                : ''}
-              {#if selectedFile.audioLanguages}
-                <span class="block text-xs text-slate-400">{selectedFile.audioLanguages}</span>
-              {/if}
-            </dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_subtitles}</dt>
-            <dd>{selectedFile.subtitleTrackCount ?? '—'}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_duration}</dt>
-            <dd>{formatDuration(selectedFile.durationSeconds)}</dd>
-          </div>
-        </dl>
-
-        <div class="mt-4 border-t border-slate-100 pt-4 text-sm dark:border-slate-800">
-          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{i18n.m.inventory.rule_verdict}</p>
-          <p class="mt-2 text-slate-600 dark:text-slate-300">
-            {selectedVerdict?.reason ?? i18n.m.inventory.verdict_probe_hint}
-          </p>
-        </div>
-
-        {#if selectedFile.probeError}
-          <p class="mt-3 text-xs text-red-600" title={selectedFile.probeError}>
-            {t(i18n.m.inventory.probe_failed, { error: selectedFile.probeError })}
-          </p>
-        {/if}
-
-        <div class="mt-4 flex flex-wrap gap-2">
-          <button
-            class="btn px-3 py-1 text-xs"
-            onclick={() => { if (selectedFile) probe(selectedFile) }}
-            disabled={probingId === selectedFile.id}
-          >
-            {probingId === selectedFile.id
-              ? i18n.m.inventory.probing
-              : selectedFile.status === 'Discovered'
-                ? i18n.m.inventory.probe
-                : i18n.m.inventory.reprobe}
-          </button>
-          {#if selectedVerdict?.eligible}
-            <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = selectedFile)}>
-              {i18n.m.inventory.preview}
-            </button>
-          {/if}
-        </div>
-    {/if}
-  {/snippet}
-</BottomSheet>
-
 {#if previewing}
-  <PreviewCompare
-    mediaFileId={previewing.id}
-    mediaKind={previewing.mediaKind ?? 'Video'}
-    relativePath={previewing.relativePath}
-    onClose={() => (previewing = null)}
-  />
+  {#key previewing.id}
+    <PreviewCompare mediaFileId={previewing.id} mediaKind={previewing.mediaKind ?? 'Video'} relativePath={previewing.relativePath} onClose={closePreview} />
+  {/key}
 {/if}
+
+<style>
+  .inventory-layout { max-width: 72rem; margin-inline: auto; }
+  .inventory-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
+  .inventory-heading > div:first-child { flex: 1; min-width: 16rem; }.inventory-library { min-width: 12rem; }.inventory-library .label { text-transform: none; letter-spacing: 0; font-size: .75rem; }
+  .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-filters { display: flex; flex-wrap: wrap; gap: .375rem; }.inventory-filters button { padding: .625rem .875rem; border-radius: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-filters button:hover { color: var(--ink); background: var(--lit); }.inventory-filters button.filter-active { color: var(--ink); background: var(--raised); box-shadow: var(--lift-1); }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
+  .inventory-surface { background: var(--panel); border-radius: .875rem; box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); overflow: clip; }.inventory-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.inventory-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.inventory-table th:first-child { width: 47%; }.inventory-table th:nth-child(2) { width: 13%; }.inventory-table th:nth-child(3) { width: 21%; }.inventory-table th:last-child { width: 19%; }.inventory-table td { padding: .875rem 1rem; border-top: 1px solid var(--divide-soft); font-size: .8125rem; color: var(--ink-2); vertical-align: middle; }.inventory-table tr:hover td, .inventory-table tr.selected-row td { background: var(--lit); }
+  .inventory-file { display: flex; align-items: center; gap: .875rem; text-align: left; width: 100%; min-width: 0; border-radius: .375rem; }.inventory-file-name { min-width: 0; }.inventory-file-title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font-size: .8125rem; font-weight: 500; line-height: 1.5; }.inventory-file:hover .inventory-file-title { color: var(--accent); }.inventory-file-meta { display: block; margin-top: .375rem; color: var(--ink-3); font-size: .6875rem; }.inventory-size { font-variant-numeric: tabular-nums; white-space: nowrap; }.inventory-codec { overflow-wrap: anywhere; }.inventory-resolution { display: block; color: var(--ink-3); font-size: .6875rem; margin-top: .25rem; }.inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ok); }.verdict-unprobed { color: var(--warn); }.mobile-size { display: none; }
+  .inventory-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-3); font-size: .875rem; display: grid; justify-items: center; gap: 1rem; }.inventory-pagination { margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--ink-3); font-size: .75rem; }.inventory-pagination > div { display: flex; align-items: center; gap: .625rem; }.inventory-pagination .btn { min-width: 2.5rem; min-height: 2.5rem; }
+  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.inventory-filters { gap: .125rem; }.inventory-filters button { padding: .75rem .625rem; }.format-column,.size-column { display: none; }.inventory-table th:first-child { width: 72%; }.inventory-table th:last-child { width: 28%; }.inventory-table td,.inventory-table th { padding: .875rem .75rem; }.inventory-file { gap: .625rem; }.inventory-file-title { font-size: .75rem; }.inventory-verdict { font-size: .6875rem; gap: .375rem; }.mobile-size { display: inline; } }
+</style>
