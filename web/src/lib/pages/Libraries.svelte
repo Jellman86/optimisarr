@@ -2629,11 +2629,11 @@
     {/if}
   {/if}
 {:else if libraries.length > 0}
-  <!-- One card per library, two to a row. Each leads with the number that matters (how many
+  <!-- One card per library, as many to a row as fit at a readable width. Each leads with the number that matters (how many
        files) and a plain-words status; preset, schedule and path follow as a short list. Scan is
        the only button — enqueue, configure and delete sit in the menu so the destructive action
        never competes with the primary one. -->
-  <div class="grid gap-4 md:grid-cols-2">
+  <div class="grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,34rem),1fr))]">
     {#each libraries as library (library.id)}
       {@const summary = summaries[library.id]}
       {@const a = access[library.id]}

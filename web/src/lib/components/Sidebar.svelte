@@ -87,24 +87,19 @@
 >
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
   <div class="flex min-h-full flex-col">
-  <!-- A calm identity above the operational navigation; activity animates the chosen mark. -->
+  <!-- A calm identity above the operational navigation; activity animates the chosen mark. Beside
+       the name rather than above it, so the navigation starts high on a laptop screen. -->
   <button
-    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 pt-5 pb-3' : 'pt-5 pb-1'}"
+    class="flex w-full items-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'justify-center px-2 pt-5 pb-3' : 'gap-3 px-4 pt-5 pb-0.5'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
       layout.closeMobile()
     }}
   >
-    <BrandMark
-      class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-32 w-32'}"
-    />
-
+    <BrandMark class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-14 w-14'}" />
     {#if !railCollapsed}
-      <!-- Keep the contact shadow clear of the wordmark. -->
-      <span
-        class="relative -mt-2 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
-      >Optimisarr</span>
+      <span class="text-[18px] font-bold tracking-tight text-ink">Optimisarr</span>
     {/if}
   </button>
 
@@ -115,7 +110,7 @@
       href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
       target="_blank"
       rel="noopener noreferrer"
-      class="mx-auto mb-2 rounded px-1 text-center font-mono text-[10.5px] text-ink-4 transition-colors hover:text-accent focus-ring"
+      class="mb-2 ml-[5rem] mr-3 self-start rounded px-1 font-mono text-[10.5px] text-ink-4 transition-colors hover:text-accent focus-ring"
       title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
     >{versionLabel ? `${versionLabel} · ${gitHash}` : `build ${gitHash}`}</a>
   {/if}

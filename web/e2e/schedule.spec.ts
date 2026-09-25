@@ -8,7 +8,7 @@ test('schedule explains the dispatch gate and each library window without mislab
       : path === '/api/queue/status' ? {
         canStart: false, manuallyPaused: false, blockedReason: 'Work disk below the configured minimum.',
         waitingReason: null, runningJobs: 3, maxConcurrentJobs: 1,
-        libraryScanIntervalHours: 6, freeDiskBytes: 1024 ** 3,
+        freeDiskBytes: 1024 ** 3,
         workloadLanes: [
           { lane: 'Video', capacity: 1, active: 1, waiting: 1 },
           { lane: 'NonVideo', capacity: 1, active: 1, waiting: 0 },
@@ -17,6 +17,8 @@ test('schedule explains the dispatch gate and each library window without mislab
           { lane: 'Workers', capacity: 8, active: 1, waiting: 0 },
         ],
       }
+      // The scan interval is a setting; the queue status does not repeat it.
+      : path === '/api/settings' ? { libraryScanIntervalHours: 6 }
       : path === '/api/libraries' ? [
         { id: 4, name: 'Films', enabled: true, autoEnqueueEnabled: true,
           autoEnqueueWindowStart: '00:00', autoEnqueueWindowEnd: '00:00',
@@ -38,6 +40,7 @@ test('schedule explains the dispatch gate and each library window without mislab
   await expect(dispatch).not.toContainText('Paused')
   await expect(dispatch).toContainText('Work disk below the configured minimum.')
   await expect(dispatch).toContainText('3 / 4')
+  await expect(dispatch).toContainText('Every 6h')
   const windows = page.getByRole('region', { name: 'Auto-optimise windows' })
   await expect(windows.locator('article')).toHaveCount(3)
   await expect(windows.locator('article').filter({ hasText: 'Films' })).toContainText('In window')

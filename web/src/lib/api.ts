@@ -1,4 +1,5 @@
 // Typed client for the Optimisarr API. All HTTP lives here, not in components.
+import type { DailySaving } from './savings-chart'
 import { i18n, t } from './i18n/i18n.svelte'
 
 const ADMIN_TOKEN_KEY = 'optimisarr.adminToken'
@@ -404,7 +405,8 @@ export type ConfigImportResult = {
   settingsApplied: number
 }
 
-export type QueueStatus = Settings & {
+// Only the settings the server actually repeats in /api/queue/status; the rest live in /api/settings.
+export type QueueStatus = Pick<Settings, 'maxConcurrentJobs' | 'minFreeDiskBytes' | 'cpuThreadLimit' | 'encoderMode'> & {
   canStart: boolean
   blockedReason: string | null
   // True only for the operator's durable pause; automatic playback/disk gates never set this.
@@ -463,6 +465,23 @@ export type VerificationContext = {
   minimumVmafFifthPercentile: number
   minimumVmafCatastrophicMin: number
 }
+
+// One finished, verified optimisation with its before and after sizes (Dashboard recent results).
+export type OptimisationResult = {
+  jobId: number
+  mediaFileId: number
+  relativePath: string | null
+  libraryId: number | null
+  libraryName: string | null
+  sourceSizeBytes: number
+  outputSizeBytes: number
+  vmafHarmonicMean: number | null
+  videoEncoder: string | null
+  workerName: string | null
+  finishedAt: string
+}
+
+export type { DailySaving } from './savings-chart'
 
 export type MediaSideStats = {
   sizeBytes: number | null
@@ -1272,6 +1291,10 @@ export const api = {
     request<Replacement>(`/api/replacements/${id}/approve`, { method: 'POST' }),
   clearReplacements: () => request<{ cleared: number }>('/api/replacements/clear', { method: 'POST' }),
   stats: () => request<Stats>('/api/stats'),
+  results: (take = 12) => request<OptimisationResult[]>(`/api/results?take=${take}`),
+  // The browser's own offset, so a file finished after local midnight counts on the right day.
+  dailySavings: (days = 30) =>
+    request<DailySaving[]>(`/api/results/daily?days=${days}&utcOffsetMinutes=${-new Date().getTimezoneOffset()}`),
   // Reset the persistent lifetime "total space saved" tally; returns the freshly zeroed figures.
   clearStats: () => request<Stats>('/api/stats/clear', { method: 'POST' }),
 }

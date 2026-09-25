@@ -4,6 +4,8 @@
 
 ### Changed
 
+- **The interface now uses the whole screen.** Dashboards, lists and media reviews widen with the display instead of stopping at 1,152 px, and text steps up slightly on 2200 px and wider screens. Settings and library forms keep a readable width, and card grids such as Libraries and Schedule add columns as the screen widens. A status strip at the top of every page shows the queue's state, free working space, and a Pause/Resume control, so the queue can be paused from anywhere. The sidebar's brand sits beside the name, so navigation starts higher on laptops.
+- **The Dashboard is laid out as a control room.** Total space saved leads, beside what is in flight and what needs you. A chart shows space saved per day for the last 30 days, and a Recent results table lists each finished file's size before and after, the saving, its VMAF score, the encoder and where it ran. The panels reflow from one column on a phone to two on a laptop and three rows across a large display. Jobs now record their source size when verified; jobs verified earlier are filled in once from their reports at startup.
 - Sources whose picture stops well before their audio are now caught before encoding. Verification always rejected them, but only after a full encode (and, on a worker, a full download and upload). A quick read of the file's last 30 seconds spots them, the verifier's own full scans confirm it, and the job fails at once with the Source video timeline gate named. The original is untouched. Sources that look normal pay only that quick read, and results are cached per file (#241).
 
 ## 0.2.15 — 2026-09-25
@@ -14,6 +16,7 @@
 
 ### Fixed
 
+- Schedule showed the scan interval as "Every undefinedh". It now reads the interval from settings, where it lives.
 - Quality-search samples measured on Mac and Windows sidecars no longer score frames at 0. Worker sample measurements were planned without the source's frame rate, so VMAF compared some frames with the frame before them; clean samples on VideoToolbox, NVENC and libx265 alike showed zeros on every scene cut, and searches fell back to the library quality having learned nothing. Samples now use the source's frame rate, and a clip with no known rate is compared frame by frame (#269).
 - Final VMAF no longer fails good encodes with near-zero scores. Before each measured window, the server and both sidecars choose a one-frame timing correction; that choice was made with a separate two-second comparison that did not match the real measurement, so it often picked a correction that put the frames one apart. A clean libx265 encode scoring 94–96 was being failed at 21.5. The choice is now made by running the real measurement itself for five seconds at each offset, and the unshifted timing is kept unless another offset is clearly better (#269).
 - A delivered worker candidate is verified against the policy frozen when it was claimed, so editing library verification settings while it encodes cannot silently change the result.

@@ -52,7 +52,8 @@ public sealed record VerificationOutcome(
     VerificationReport Report,
     long OutputSizeBytes,
     string? VmafSampling = null,
-    double ReferenceStartSeconds = 0);
+    double ReferenceStartSeconds = 0,
+    long? SourceSizeBytes = null);
 
 /// <summary>The disposable clip window used to build a preview or calibration reference.</summary>
 public sealed record VerificationClip(
@@ -423,7 +424,8 @@ public sealed class VerificationService(
                 VerificationEvaluator.Evaluate(input, policy),
                 outputSize,
                 vmafSampling,
-                preparedReference.PresentationOffsetSeconds);
+                preparedReference.PresentationOffsetSeconds,
+                reference.SizeBytes);
         }
         finally
         {

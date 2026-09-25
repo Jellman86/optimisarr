@@ -210,6 +210,9 @@ public sealed class Job
 
     // --- Verification (Phase 4: populated once the output has been verified) ---
 
+    /// <summary>Size of the source the output was judged against, recorded at verification time.</summary>
+    public long? SourceSizeBytes { get; set; }
+
     /// <summary>Size of the produced output in bytes, recorded at verification time.</summary>
     public long? OutputSizeBytes { get; set; }
 
