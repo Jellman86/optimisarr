@@ -324,6 +324,16 @@ internal static class WorkerLeaseEndpoints
                     continue;
                 }
 
+                // A source whose own picture stops well short of its audio fails verification
+                // whatever encodes it. Checked here, where a worker would otherwise download it and
+                // spend the whole encode first; cached per source, so each poll costs nothing more.
+                if (job.Type == JobType.Normal
+                    && job.MediaFile.MediaKind == MediaKind.Video
+                    && await dispatcher.HeldBySourceTimelineAsync(job.Id, job.MediaFile.Path, cancellationToken))
+                {
+                    continue;
+                }
+
                 // The same preparation local dispatch runs, with the encoder chosen from what this
                 // worker proved. A refusal is ordinary — an adaptive library, a remux, an encoder
                 // the worker lacks — and is logged rather than surfaced, since the worker's answer
