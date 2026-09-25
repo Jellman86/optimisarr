@@ -50,7 +50,10 @@ builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 // Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
-builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
+var timestampIntegrity = new TimestampIntegrityCheck(ffprobe);
+builder.Services.AddSingleton(timestampIntegrity);
+builder.Services.AddSingleton<ISourceTimelinePreflight>(
+    new SourceTimelinePreflight(mediaProbe, timestampIntegrity, ffprobe));
 builder.Services.AddSingleton(new ReferenceFrameAlignmentProbe(ffprobe));
 builder.Services.AddSingleton<ISourceWindowBytesProbe>(new SourceWindowBytesProbe(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Sources whose picture stops well before their audio are now caught before encoding. Verification always rejected them, but only after a full encode (and, on a worker, a full download and upload). A quick read of the file's last 30 seconds spots them, the verifier's own full scans confirm it, and the job fails at once with the Source video timeline gate named. The original is untouched. Sources that look normal pay only that quick read, and results are cached per file (#241).
+
 ## 0.2.15 — 2026-09-25
 
 ### Changed

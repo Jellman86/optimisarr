@@ -128,7 +128,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         RuleProfile profile = RuleProfile.ConservativeHevc,
         WorkPlacement placement = WorkPlacement.Anywhere,
         bool qualityGate = false,
-        string? videoAudioCodec = null)
+        string? videoAudioCodec = null,
+        string fileName = "film.mkv")
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -148,7 +149,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         _createdLibraries.Add(library.Id);
 
         Directory.CreateDirectory(library.Path);
-        var sourcePath = Path.Combine(library.Path, "film.mkv");
+        var sourcePath = Path.Combine(library.Path, fileName);
         // Real bytes on disk: the source route streams and hashes the actual file, so a row
         // pointing at nothing would only exercise the missing-file path.
         await File.WriteAllBytesAsync(sourcePath, SourceBytes);
@@ -157,7 +158,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         {
             LibraryId = library.Id,
             Path = sourcePath,
-            RelativePath = "film.mkv",
+            RelativePath = fileName,
             SizeBytes = SourceBytes.Length,
             // The inventory's picture facts, as a scan would have recorded them: the assignment
             // names its VMAF model from the size, and a re-encode needs a video to re-encode.
@@ -1140,6 +1141,28 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.True(search.GetProperty("measure").GetBoolean());
         Assert.True(search.GetProperty("frameSubsample").GetInt32() > 0);
         Assert.Equal(JsonValueKind.False, search.GetProperty("clipVmaf").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_source_whose_picture_stops_short_is_failed_before_a_worker_is_sent_it()
+    {
+        // Verification rejects every encode of such a source, so offering it would have a worker
+        // download it and spend the whole encode first. The job fails with the gate named, and the
+        // worker is offered the next job instead.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Preflighted");
+        var shortJob = await QueueAJob(fileName: AdminTokenAuthEndpointTests.TokenedApi.ShortPictureFileName);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>()
+            .Jobs.SingleAsync(j => j.Id == shortJob);
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Contains("Source video timeline", job.ErrorMessage);
+        Assert.Equal(Optimisarr.Core.Queue.FailureCategory.Verification,
+            Optimisarr.Core.Queue.FailureClassifier.Classify(job.ErrorMessage));
     }
 
     [Fact]
