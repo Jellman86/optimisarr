@@ -35,6 +35,21 @@ internal static class StatsEndpoints
         })
         .WithName("GetStats");
 
+        // The newest verified optimisations with their before and after sizes, for the Dashboard.
+        app.MapGet("/api/results", async (int? take, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+            Results.Ok(await ResultsQueries.RecentAsync(db, take ?? 12, cancellationToken)))
+        .WithName("ListRecentResults");
+
+        // Space saved per local day. utcOffsetMinutes is the viewer's offset (UK summer time: 60),
+        // so a file finished just after midnight lands on the day the viewer lived it.
+        app.MapGet("/api/results/daily", async (
+            int? days, int? utcOffsetMinutes, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+        {
+            var offset = TimeSpan.FromMinutes(Math.Clamp(utcOffsetMinutes ?? 0, -14 * 60, 14 * 60));
+            return Results.Ok(await ResultsQueries.DailyAsync(db, days ?? 30, DateTimeOffset.UtcNow, offset, cancellationToken));
+        })
+        .WithName("ListDailySavings");
+
         // Admin-only support snapshot: version, environment, settings, library and integration summaries,
         // stats, and the failure summary — assembled from non-secret data only (no provider tokens, API keys,
         // or webhook URLs). It is under /api, so the admin-token middleware protects it when a token is set.

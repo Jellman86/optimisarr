@@ -45,7 +45,7 @@
   let total = $derived(active.length + 1)
 </script>
 
-<div class="card">
+<div class="card h-full">
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.fleet}</span>
     {#if workersAvailable}
@@ -105,7 +105,7 @@
           {#if worker.lastProblem}
             <!-- The server's most recent objection to this worker. Without it, a machine quietly
                  refusing every job is invisible until someone goes looking for it. -->
-            <div class="mt-1 text-xs text-warn">{worker.lastProblem}</div>
+            <div class="mt-1 line-clamp-2 text-xs text-warn" title={worker.lastProblem}>{worker.lastProblem}</div>
           {/if}
         </div>
         <div class="font-mono text-[10px] text-ink-2">

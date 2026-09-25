@@ -57,7 +57,7 @@
   let hidden = $derived(Math.max(0, jobs.length - MAX_ROWS))
 </script>
 
-<div class="card mb-4">
+<div class="card h-full">
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.in_flight}</span>
     <span class="ml-auto font-mono text-xs text-ink-3">

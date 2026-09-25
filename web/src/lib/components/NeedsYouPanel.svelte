@@ -23,7 +23,7 @@
   let nothingWaiting = $derived(ready === 0 && quarantined === 0 && failed === 0)
 </script>
 
-<div class="card">
+<div class="card h-full">
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.needs_you}</span>
   </div>

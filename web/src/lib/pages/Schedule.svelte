@@ -12,6 +12,9 @@
   let loading = $state(true)
   let now = $state(new Date())
 
+  // A setting, not queue state: /api/queue/status does not repeat it.
+  let scanIntervalHours = $state<number | null>(null)
+
   $effect(() => {
     void load()
     const timer = setInterval(() => {
@@ -23,9 +26,10 @@
 
   async function refresh() {
     try {
-      const [nextStatus, nextLibraries] = await Promise.all([api.queueStatus(), api.libraries()])
+      const [nextStatus, nextLibraries, nextSettings] = await Promise.all([api.queueStatus(), api.libraries(), api.settings()])
       queueStatus = nextStatus
       libraries = nextLibraries
+      scanIntervalHours = nextSettings.libraryScanIntervalHours
       error = null
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.schedule.error_load
@@ -99,7 +103,7 @@
     <p class="schedule-dispatch-reason" class:blocked={!queueStatus.canStart}>{dispatchExplanation}</p>
     <dl class="schedule-metrics">
       <div><dt>{i18n.m.schedule.running_jobs}</dt><dd>{queueStatus.runningJobs} / {localWorkloadCapacity(queueStatus)}</dd></div>
-      <div><dt>{i18n.m.schedule.scan_interval}</dt><dd>{t(i18n.m.schedule.every_hours, { hours: queueStatus.libraryScanIntervalHours })}</dd></div>
+      <div><dt>{i18n.m.schedule.scan_interval}</dt><dd>{scanIntervalHours != null ? t(i18n.m.schedule.every_hours, { hours: scanIntervalHours }) : '—'}</dd></div>
       <div><dt>{i18n.m.schedule.work_disk_free}</dt><dd>{queueStatus.freeDiskBytes === null ? i18n.m.common.unknown : formatSize(queueStatus.freeDiskBytes)}</dd></div>
     </dl>
   </section>
@@ -155,7 +159,7 @@
   .schedule-section-head { align-items: center; margin-bottom: 1rem; }
   .schedule-section-head h2 { color: var(--ink); font-size: 1rem; font-weight: 650; }
   .schedule-section-head p { color: var(--ink-3); font-size: .8125rem; line-height: 1.5; margin-top: .25rem; max-width: 55rem; }
-  .schedule-library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .schedule-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 34rem), 1fr)); gap: 1rem; }
   .schedule-library { min-width: 0; display: flex; flex-direction: column; transition: transform 180ms ease, box-shadow 180ms ease; }
   .schedule-library:hover, .schedule-library:focus-within { transform: translateY(-2px); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge); }
   .schedule-library-head { align-items: center; flex-wrap: wrap; }
@@ -169,7 +173,6 @@
   .schedule-library-facts dd { color: var(--ink-2); font-size: .8125rem; margin-top: .3rem; overflow-wrap: anywhere; }
   .schedule-configure { align-self: flex-end; display: inline-flex; align-items: center; gap: .5rem; color: var(--accent); font-size: .8125rem; font-weight: 600; min-height: 2.75rem; margin-top: auto; padding-top: .875rem; }
   .schedule-configure:hover { text-decoration: underline; }
-  @media (max-width: 760px) { .schedule-library-grid { grid-template-columns: 1fr; } }
   @media (max-width: 560px) { .schedule-metrics { grid-template-columns: 1fr; }.schedule-dispatch-head, .schedule-section-head { flex-wrap: wrap; } }
   @media (prefers-reduced-motion: reduce) { .schedule-library { transition: none; }.schedule-library:hover, .schedule-library:focus-within { transform: none; } }
 </style>
