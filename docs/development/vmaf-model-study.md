@@ -26,7 +26,11 @@ It writes:
   and frame count;
 - `report.md`, with a fitted line between the models for each metric, each current gate restated
   on the candidate model (through the line, and as the score that keeps the same share of windows
-  passing), how many windows keep the same verdict, and a per-source table.
+  passing), how many windows keep the same verdict, the shift by source, and a per-source table.
+
+Read the shift by source first. In the first pilot, VMAF v1 scored live action about 2 to 4 points
+lower than v0.6.1 and animation about 2 points higher, so the pooled line looked like no change
+while about one window in six would still have changed verdict at a gate of 90.
 
 HDR sources are skipped: the v1.0.16 models are SDR models.
 
@@ -58,7 +62,8 @@ dotnet run --project tools/Optimisarr.VmafStudy -c Release -- \
 Options: `--qualities 18,22,26,30,34` (the CRF ladder), `--encoder libx265` (or `libx264`,
 `libsvtav1`, `hevc_videotoolbox`…), `--preset medium`, and `--model-hd` / `--model-uhd` to compare
 a different candidate model. Encoded clips are kept and reused, so a second run with another
-model only re-measures.
+model only re-measures. `--out DIR --report-from DIR/scores.csv` rebuilds the report from an
+earlier run without measuring anything.
 
 ## What makes a study good enough to switch models
 

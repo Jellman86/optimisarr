@@ -20,6 +20,15 @@ if (options is null)
 }
 
 Directory.CreateDirectory(options.Output);
+if (options.ReportFrom is { } existing)
+{
+    // Restates the report from an earlier run's scores without measuring anything again.
+    var measured = StudyRow.Parse(await File.ReadAllTextAsync(existing));
+    await File.WriteAllTextAsync(Path.Combine(options.Output, "report.md"), StudyReport.Markdown(measured, options));
+    Console.WriteLine($"Wrote a report for {measured.Count} measurements to {options.Output}");
+    return 0;
+}
+
 var clips = Path.Combine(options.Output, "clips");
 Directory.CreateDirectory(clips);
 var probe = new MediaProbeService(options.Ffprobe);
@@ -109,7 +118,7 @@ static async Task<bool> RunAsync(string executable, IReadOnlyList<string> argume
 
 internal sealed record StudyOptions(
     string Ffmpeg, string Ffprobe, string Output, IReadOnlyList<string> Sources, IReadOnlyList<int> Qualities,
-    string Codec, string Encoder, string Preset, string? CandidateHd, string? CandidateUhd)
+    string Codec, string Encoder, string Preset, string? CandidateHd, string? CandidateUhd, string? ReportFrom)
 {
     public const string DefaultCandidateHd = "vmaf_v1.0.16_3d0h";
     public const string DefaultCandidateUhd = "vmaf_v1.0.16_1d5h_2160";
@@ -124,6 +133,7 @@ internal sealed record StudyOptions(
           --preset NAME        default medium
           --model-hd NAME      candidate model for HD, default vmaf_v1.0.16_3d0h
           --model-uhd NAME     candidate model for UHD, default vmaf_v1.0.16_1d5h_2160
+          --report-from CSV    rebuild report.md from an earlier scores.csv; no sources needed
         """;
 
     public string CandidateModelFor(int width, int height) =>
@@ -131,7 +141,7 @@ internal sealed record StudyOptions(
 
     public static StudyOptions? Parse(string[] args)
     {
-        string? ffmpeg = null, ffprobe = null, output = null, hd = null, uhd = null;
+        string? ffmpeg = null, ffprobe = null, output = null, hd = null, uhd = null, reportFrom = null;
         string encoder = "libx265", preset = "medium";
         IReadOnlyList<int> qualities = [18, 22, 26, 30, 34];
         var sources = new List<string>();
@@ -148,14 +158,19 @@ internal sealed record StudyOptions(
                 case "--preset": preset = Next(); break;
                 case "--model-hd": hd = Next(); break;
                 case "--model-uhd": uhd = Next(); break;
+                case "--report-from": reportFrom = Next(); break;
                 default: sources.Add(args[i]); break;
             }
         }
         var codec = encoder.Contains("264", StringComparison.Ordinal) ? "h264"
             : encoder.Contains("av1", StringComparison.Ordinal) ? "av1" : "hevc";
+        if (reportFrom is not null && output is not null)
+        {
+            return new StudyOptions(ffmpeg ?? "", ffprobe ?? "", output, sources, qualities, codec, encoder, preset, hd, uhd, reportFrom);
+        }
         return ffmpeg is null || ffprobe is null || output is null || sources.Count == 0
             ? null
-            : new StudyOptions(ffmpeg, ffprobe, output, sources, qualities, codec, encoder, preset, hd, uhd);
+            : new StudyOptions(ffmpeg, ffprobe, output, sources, qualities, codec, encoder, preset, hd, uhd, null);
     }
 }
 
@@ -174,6 +189,41 @@ internal sealed record StudyRow(
                 row.Frames?.ToString(CultureInfo.InvariantCulture) ?? "", Quote(row.Error ?? "")));
         }
         return text.ToString();
+    }
+
+    /// <summary>Reads back what <see cref="Csv"/> wrote.</summary>
+    public static List<StudyRow> Parse(string csv)
+    {
+        var rows = new List<StudyRow>();
+        foreach (var line in csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1))
+        {
+            var f = Fields(line.TrimEnd('\r'));
+            if (f.Count < 12) continue;
+            static double? D(string v) => double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
+            rows.Add(new StudyRow(f[0], int.Parse(f[1], CultureInfo.InvariantCulture), f[2],
+                int.Parse(f[3], CultureInfo.InvariantCulture), long.Parse(f[4], CultureInfo.InvariantCulture), f[5],
+                D(f[6]), D(f[7]), D(f[8]), D(f[9]),
+                int.TryParse(f[10], NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames) ? frames : null,
+                f[11].Length == 0 ? null : f[11]));
+        }
+        return rows;
+    }
+
+    private static List<string> Fields(string line)
+    {
+        var fields = new List<string>();
+        var current = new StringBuilder();
+        var quoted = false;
+        for (var i = 0; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (quoted && c == '"' && i + 1 < line.Length && line[i + 1] == '"') { current.Append('"'); i++; }
+            else if (c == '"') quoted = !quoted;
+            else if (c == ',' && !quoted) { fields.Add(current.ToString()); current.Clear(); }
+            else current.Append(c);
+        }
+        fields.Add(current.ToString());
+        return fields;
     }
 
     private static string Number(double? value) => value?.ToString("0.###", CultureInfo.InvariantCulture) ?? "";
@@ -197,7 +247,7 @@ internal static class StudyReport
         text.AppendLine(CultureInfo.InvariantCulture, $"{sources.Count} source(s), encoder `{options.Encoder}` preset `{options.Preset}`, qualities {string.Join(", ", options.Qualities)}, three 40-second sample windows each, measured with Optimisarr's own sample graph.\n");
 
         var models = rows.Select(row => row.Model).Distinct().ToList();
-        foreach (var candidate in models.Where(model => !model.StartsWith("vmaf_v0", StringComparison.Ordinal) && !model.StartsWith("vmaf_4k_v0", StringComparison.Ordinal)))
+        foreach (var candidate in models.Where(model => !IsCurrent(model)))
         {
             text.AppendLine(CultureInfo.InvariantCulture, $"## {candidate} against vmaf_v0.6.1\n");
             foreach (var (name, score, gates) in Metrics)
@@ -221,6 +271,27 @@ internal static class StudyReport
             }
         }
 
+        text.AppendLine("## Shift by source (harmonic mean, candidate minus current)\n");
+        text.AppendLine("A single fitted line can hide opposite shifts on different kinds of content. If these differ in sign, no one conversion of the gates is safe.\n");
+        text.AppendLine("| source | windows | mean shift | range |");
+        text.AppendLine("|---|---|---|---|");
+        foreach (var source in rows.Select(row => row.Source).Distinct())
+        {
+            var shifts = rows
+                .Where(row => row.Source == source && row.Harmonic is not null && !IsCurrent(row.Model))
+                .Select(row => (row, baseline: rows.FirstOrDefault(other => other.Source == row.Source && other.Quality == row.Quality
+                    && other.Window == row.Window && IsCurrent(other.Model) && other.Harmonic is not null)))
+                .Where(pair => pair.baseline is not null)
+                .Select(pair => pair.row.Harmonic!.Value - pair.baseline!.Harmonic!.Value)
+                .ToList();
+            if (shifts.Count > 0)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture,
+                    $"| {source} | {shifts.Count} | {shifts.Average():+0.00;−0.00} | {shifts.Min():+0.00;−0.00} to {shifts.Max():+0.00;−0.00} |");
+            }
+        }
+        text.AppendLine();
+
         text.AppendLine("## Per source and quality (harmonic mean, both models)\n");
         text.AppendLine("| source | quality | bytes | " + string.Join(" | ", models) + " |");
         text.AppendLine("|---|---|---|" + string.Concat(models.Select(_ => "---|")));
@@ -242,6 +313,9 @@ internal static class StudyReport
         }
         return text.ToString();
     }
+
+    private static bool IsCurrent(string model) =>
+        model == QualityScoreCommandBuilder.HdModelVersion || model == QualityScoreCommandBuilder.UhdModelVersion;
 
     private static List<PairedScore> Pairs(IReadOnlyList<StudyRow> rows, string candidate, Func<StudyRow, double?> score) =>
         rows.Where(row => row.Model == candidate && score(row) is not null)
