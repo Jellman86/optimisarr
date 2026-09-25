@@ -81,7 +81,10 @@ public sealed record QualityMeasurementContext(
     //
     // A whole-file candidate is not affected: there both streams are seeked and trimmed the same
     // way, so whatever the cadence filter does to one it does to the other.
-    bool DistortedIsCutClip = false);
+    bool DistortedIsCutClip = false,
+    // A VMAF model chosen by the caller instead of the automatic HD/4K choice. Only the model
+    // study uses it, to score the same windows under two models; verification never sets it.
+    string? ModelVersion = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -109,6 +112,16 @@ public static class QualityScoreCommandBuilder
     /// </summary>
     public static string ModelVersionFor(int referenceWidth, int referenceHeight) =>
         referenceWidth >= 3840 || referenceHeight >= 2160 ? UhdModelVersion : HdModelVersion;
+
+    /// <summary>
+    /// A model name goes into the filter graph verbatim, where a colon or bracket would start a new
+    /// option or filter. Only libvmaf's own naming — vmaf_ then letters, digits, dots, underscores —
+    /// is accepted.
+    /// </summary>
+    private static string ValidatedModelName(string model) =>
+        System.Text.RegularExpressions.Regex.IsMatch(model, "^vmaf_[a-z0-9._]+$") && !model.Contains("..", StringComparison.Ordinal)
+            ? model
+            : throw new ArgumentException($"'{model}' is not a VMAF model name.", nameof(model));
     private const int SampleSeekPrerollSeconds = 5;
     private const string DefaultRenderDevice = "/dev/dri/renderD128";
 
@@ -163,7 +176,9 @@ public static class QualityScoreCommandBuilder
         var referenceWidth = context.ReferenceCrop?.Width ?? context.ReferenceWidth;
         var referenceHeight = context.ReferenceCrop?.Height ?? context.ReferenceHeight;
 
-        var model = ModelVersionFor(referenceWidth, referenceHeight);
+        var model = context.ModelVersion is { } chosen
+            ? ValidatedModelName(chosen)
+            : ModelVersionFor(referenceWidth, referenceHeight);
         var colourPreprocessing = context.ReferenceIsHdr
             ? context.HdrConvertedToSdr
                 ? "HDR reference tone-mapped to SDR"
