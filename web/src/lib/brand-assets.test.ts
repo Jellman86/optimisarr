@@ -11,8 +11,3 @@ test('theme and activity stills stay within the immediate icon budget', () => {
   }
 })
 
-
-test('stellar textures stay within the lazy-loaded artwork budget', () => {
-  const total = ['blue', 'pink', 'gold'].reduce((sum, name) => sum + statSync(new URL(`./assets/stellar/${name}-scene.jpg`, import.meta.url)).size, 0)
-  assert.ok(total < 400_000)
-})

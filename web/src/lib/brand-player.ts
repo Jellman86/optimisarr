@@ -114,13 +114,9 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
     preparing = true
     try {
       if (stellar) {
-        const [{ createStellarRenderer }, { stellarTextures }] = await Promise.all([
-          import('./stellar-renderer'), import('./stellar-textures'),
-        ])
+        const { createStellarRenderer } = await import('./stellar-renderer')
         if (!available() || reduced.matches) return
-        const scenes = await Promise.all(stellarTextures.map(loadImage))
-        if (!available() || reduced.matches) return
-        const engine = createStellarRenderer(scenes)
+        const engine = createStellarRenderer()
         renderer = { render: (dark, size) => engine.render(stellar, dark, size), destroy: () => engine.destroy() }
       } else {
         const { createBrandRenderer } = await import('./brand-renderer')
