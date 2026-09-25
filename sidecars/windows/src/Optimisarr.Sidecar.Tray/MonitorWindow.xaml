@@ -100,6 +100,11 @@
   <ScrollViewer x:Name="BodyScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="565">
    <Grid Margin="20">
     <StackPanel x:Name="ActivityPage">
+     <Border Style="{StaticResource Card}" Margin="0,0,0,14" Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVisibility}}" AutomationProperties.Name="Update available"><StackPanel>
+      <TextBlock Text="Update available" FontWeight="SemiBold"/>
+      <TextBlock Text="{Binding UpdateText}" Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,8"/>
+      <Button Content="Open release page" HorizontalAlignment="Left" Padding="8,5" Click="OpenRelease_Click"/>
+     </StackPanel></Border>
      <Border Style="{StaticResource Card}"><StackPanel>
       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="112"/><ColumnDefinition/></Grid.ColumnDefinitions>
        <Border Width="100" Height="64" CornerRadius="7" Background="{DynamicResource Ground}" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" ClipToBounds="True">

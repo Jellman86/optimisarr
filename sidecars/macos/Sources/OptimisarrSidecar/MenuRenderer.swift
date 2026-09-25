@@ -61,6 +61,11 @@ enum MenuRenderer {
             ("connected-idle", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()),
                 lastOutcome: .delivered(jobId: 5845, bytes: 394_256_442))),
+            ("update-available", .posed(
+                status: .connected(workerId: 1, lastCheckIn: Date()),
+                availableUpdate: SidecarUpdate(
+                    version: "0.2.16",
+                    url: "https://github.com/Jellman86/optimisarr/releases/tag/v0.2.16"))),
             ("shutdown-countdown", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()), shutdown: shutdown)),
             ("receiving", .posed(

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Sidecars now show when they are behind the server. The server compares each worker's version on check-in. An older Mac or Windows sidecar shows **Update available** in its menu or tray with an **Open release page** button, and its card under Settings → Workers says the same with a link to the matching release. Sidecars still never update themselves; installing stays your choice. Current sidecars, newer ones, and ones that don't report a version show nothing, and links only ever point at the project's own GitHub releases (#276).
+
 ### Changed
 
 - Sources whose picture stops well before their audio are now caught before encoding. Verification always rejected them, but only after a full encode (and, on a worker, a full download and upload). A quick read of the file's last 30 seconds spots them, the verifier's own full scans confirm it, and the job fails at once with the Source video timeline gate named. The original is untouched. Sources that look normal pay only that quick read, and results are cached per file (#241).

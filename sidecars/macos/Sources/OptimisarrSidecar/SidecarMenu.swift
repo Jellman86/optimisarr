@@ -60,6 +60,7 @@ struct SidecarMenu: View {
                                 .foregroundStyle(Instrument.alarm)
                         }
                     } else {
+                        if let update = session.availableUpdate { updateNotice(update) }
                         switch session.status {
                         case .unpaired, .pairingFailed, .revoked: pairingForm
                         default: pairedDetail
@@ -406,6 +407,22 @@ struct SidecarMenu: View {
         case let .released(jobId, _), let .leaseLost(jobId, _), let .unconfirmed(jobId, _):
             return "#\(jobId) · handed back"
         }
+    }
+
+    // MARK: - Update
+
+    /// Said plainly and first: an outdated sidecar can fail good encodes while every light is green.
+    private func updateNotice(_ update: SidecarUpdate) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Update available", systemImage: "arrow.down.circle")
+                .font(.callout.weight(.semibold))
+            Text("The server is on \(update.version) and this sidecar is older. Older sidecars can fail good encodes.")
+                .font(.caption).foregroundStyle(Instrument.dim)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Open release page") { NSWorkspace.shared.open(update.releasePage) }
+                .font(.caption)
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Footer

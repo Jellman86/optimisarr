@@ -1508,6 +1508,8 @@ export const de: Messages = {
     platform_line: '{os} · {arch} · Protokoll {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Sidecar-Version nicht gemeldet',
+    update_available: 'Update verfügbar: Dieser Sidecar läuft mit {current}, der Server mit {latest}. Ältere Sidecars können gute Kodierungen ablehnen.',
+    update_open_release: 'Release-Seite öffnen',
     cpu_label: 'CPU',
     gpu_label: 'GPU',
     gpu_hint: 'Nur GPU-Auslastung. Eine Hardware-Kodierung kann auf einer separaten Medien-Engine laufen, die hier nichts meldet — der Wert kann also niedrig sein, obwohl die Maschine ausgelastet ist.',

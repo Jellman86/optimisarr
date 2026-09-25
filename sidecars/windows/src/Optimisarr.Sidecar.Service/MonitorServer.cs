@@ -35,7 +35,8 @@ public sealed class MonitorServer(SidecarSession session, WorkerMonitor monitor,
                     var ending = shutdown.Read();
                     var snapshot = new MonitorSnapshot(Environment.MachineName, status.State.ToString(), status.Detail,
                         session.IsPaused, MonitorProtocol.PublicServerAddress(session.ServerAddress), load.Sample(), Program.FreeScratchBytes(Program.ScratchDirectory()),
-                        jobs, last, SidecarBuild.Version, ending.Armed, ending.Detail, ending.Seconds, ending.CanCancel);
+                        jobs, last, SidecarBuild.Version, ending.Armed, ending.Detail, ending.Seconds, ending.CanCancel,
+                        session.AvailableUpdate?.Version, session.AvailableUpdate?.ReleasePage.AbsoluteUri);
                     return snapshot;
                 }, timeout.Token);
             }
