@@ -183,9 +183,13 @@ public static class QualityScoreCommandBuilder
         var distortedInputStart = InputSeek(
             context.DistortedStartSeconds, context.MeasureDurationSeconds,
             context.ReferenceFrameRate, context.ReferenceContainerLeadSeconds);
+        // A cut clip's reference must hold exactly the pictures the sample encoder cut: the first at
+        // or after the window start. Snapping the seek to the frame grid moves that instant by up
+        // to half a frame, and a picture inside the gap then shifts every pair by one.
         var referenceInputStart = InputSeek(
             context.ReferenceStartSeconds, context.MeasureDurationSeconds,
-            context.ReferenceFrameRate, context.ReferenceContainerLeadSeconds);
+            context.ReferenceFrameRate,
+            context.DistortedIsCutClip ? null : context.ReferenceContainerLeadSeconds);
         var distortedTimeline = TimelinePreparation(
             context.DistortedStartSeconds,
             distortedInputStart,

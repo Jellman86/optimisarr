@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Quality-search samples no longer score a good window near zero when the source's container starts slightly before its picture. The comparison cut the original a few milliseconds later than the sample was cut, so on some titles every frame in a window was compared with the next one. It happened on the server and on sidecars, and could send a search back to the library's default quality. The original is now cut at exactly the instant the sample was (#269).
+
 ### Added
 
 - Sidecars now show when they are behind the server. The server compares each worker's version on check-in. An older Mac or Windows sidecar shows **Update available** in its menu or tray with an **Open release page** button, and its card under Settings → Workers says the same with a link to the matching release. Sidecars still never update themselves; installing stays your choice. Current sidecars, newer ones, and ones that don't report a version show nothing, and links only ever point at the project's own GitHub releases (#276).
