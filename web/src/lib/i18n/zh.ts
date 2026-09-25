@@ -1453,6 +1453,8 @@ export const zh: Messages = {
     platform_line: '{os} · {arch} · 协议 {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: '未报告 Sidecar 版本',
+    update_available: '有可用更新：此 Sidecar 为 {current}，服务器为 {latest}。旧版 Sidecar 可能会误判正常的编码。',
+    update_open_release: '打开发布页面',
     cpu_label: 'CPU',
     gpu_label: 'GPU',
     gpu_hint: '仅为 GPU 使用率。硬件编码可能运行在此处不上报的独立媒体引擎上，因此机器繁忙时该数值仍可能很低。',

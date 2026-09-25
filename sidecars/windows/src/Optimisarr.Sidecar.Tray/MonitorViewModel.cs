@@ -39,6 +39,14 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
     public string Last => Available ? Snapshot?.LastOutcome ?? "No jobs completed since the worker started." : "";
     public string Server => Available ? Snapshot?.ServerAddress ?? "Not paired" : "Unavailable";
     public string Version => Snapshot?.Version ?? "Unavailable";
+    /// <summary>The release page, re-checked here: the tray opens it, so it must be the project's own.</summary>
+    public Uri? UpdateReleasePage => Available
+        ? SidecarUpdate.TryCreate(Snapshot!.UpdateVersion, Snapshot.UpdateUrl)?.ReleasePage
+        : null;
+    public bool UpdateAvailable => UpdateReleasePage is not null;
+    public string UpdateText => UpdateAvailable
+        ? $"The server is on {Snapshot!.UpdateVersion} and this worker is older. Older sidecars can fail good encodes."
+        : "";
     public string ConnectionDetail => Available ? Snapshot!.Detail : error ?? "Connecting to the local worker…";
     public bool Working => Available && Snapshot!.Jobs.Count > 0;
     public IReadOnlyList<MonitorJob> Jobs => Available ? Snapshot!.Jobs : [];

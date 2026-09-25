@@ -75,6 +75,8 @@ public final class SidecarSession: ObservableObject {
     @Published public private(set) var jobConcurrency: Int
 
     @Published public private(set) var isPaused = false
+    /// A newer release the server says to install, from the latest check-in; nil while current.
+    @Published public internal(set) var availableUpdate: SidecarUpdate?
 
     /// Pausing only gates new claims; lease renewal and work already held continue normally.
     public func setPaused(_ paused: Bool) {
@@ -463,6 +465,7 @@ public final class SidecarSession: ObservableObject {
                     load: load.sample())
 
                 interval = beat.heartbeatInterval
+                availableUpdate = beat.update
                 if reportingDrain && shutdown.armed { lastDrainedHeartbeat = Date() }
                 if jobTasks.isEmpty {
                     status = .connected(workerId: beat.workerId, lastCheckIn: Date())
@@ -765,7 +768,8 @@ public extension SidecarSession {
         filmStrips: [Int: FilmStrip] = [:],
         gpu: GpuUsage? = nil,
         lastOutcome: JobOutcome? = nil,
-        shutdown: ShutdownCountdown = ShutdownCountdown()
+        shutdown: ShutdownCountdown = ShutdownCountdown(),
+        availableUpdate: SidecarUpdate? = nil
     ) -> SidecarSession {
         let session = SidecarSession(prober: nil, executor: nil)
         session.isPosed = true
@@ -778,6 +782,7 @@ public extension SidecarSession {
         session.gpu = gpu
         session.lastOutcome = lastOutcome
         session.shutdown = shutdown
+        session.availableUpdate = availableUpdate
         return session
     }
 }

@@ -744,6 +744,18 @@
             "format": "date-time",
             "type": "string"
           },
+          "updateUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "updateVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "workerId": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -3196,6 +3208,9 @@
           "sidecarVersion": {
             "type": "string"
           },
+          "update": {
+            "$ref": "#/components/schemas/WorkerUpdateDto"
+          },
           "videoEncoders": {
             "items": {
               "type": "string"
@@ -3230,7 +3245,8 @@
           "heldLeases",
           "activeJobs",
           "lastProblem",
-          "lastProblemAt"
+          "lastProblemAt",
+          "update"
         ],
         "type": "object"
       },
@@ -3267,6 +3283,31 @@
           "relativePath",
           "stage",
           "progress"
+        ],
+        "type": "object"
+      },
+      "WorkerUpdateDto": {
+        "properties": {
+          "latestVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "releaseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "latestVersion",
+          "releaseUrl"
         ],
         "type": "object"
       },

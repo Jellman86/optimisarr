@@ -315,6 +315,15 @@
               <span class="badge flex-shrink-0 {status(worker).classes}">{status(worker).label}</span>
             </div>
 
+            <!-- Sidecars do not update themselves, and one left behind can fail good work while
+                 looking healthy. Said here with the release to install; installing stays a choice. -->
+            {#if worker.update?.state === 'updateAvailable' && worker.update.releaseUrl}
+              <div class="callout tone-warn flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs" data-testid="worker-update">
+                <span>{t(i18n.m.workers.update_available, { current: worker.sidecarVersion, latest: worker.update.latestVersion ?? '' })}</span>
+                <a class="btn btn-ghost min-h-9 px-2 py-1 text-xs" href={worker.update.releaseUrl} target="_blank" rel="noopener noreferrer">{i18n.m.workers.update_open_release}</a>
+              </div>
+            {/if}
+
             <!-- What it proved, not what its platform implies: the same list the claim route matches on. -->
             <div class="flex flex-wrap gap-1.5 text-xs">
               {#each worker.videoEncoders as encoder (encoder)}
