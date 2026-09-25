@@ -30,7 +30,11 @@ X265_TAG="${X265_TAG:-4.2}"
 # Silicon, M5 included — 27 encoders are advertised and not one is AV1 — so software is the only
 # way to encode AV1 here.
 SVTAV1_TAG="${SVTAV1_TAG:-v4.2.0}"
-VMAF_TAG="${VMAF_TAG:-v3.0.0}"
+# v3.2.1: the first libvmaf with the VMAF v1 models built in, matching the container's measurement
+# FFmpeg (libvmaf 3.2.0) and the Windows sidecar's. vmaf_v0.6.1 scores are unchanged by the move —
+# measured on 30 real sample clips, 3.0.0 and 3.2.1 agree to within 0.001 on every metric — so no
+# gate or calibration shifts. Adopting the v1 models is a separate decision (see #114).
+VMAF_TAG="${VMAF_TAG:-v3.2.1}"
 DAV1D_TAG="${DAV1D_TAG:-1.5.3}"
 # n7.1.2, not n7.1. The libx265 wrapper in the base n7.1 tag guards the multi-layer encoder API
 # with `#if X265_BUILD >= 210` and no upper bound. x265 reverted that API at build 213, so a

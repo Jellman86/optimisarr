@@ -36,14 +36,15 @@ HDR sources are skipped: the v1.0.16 models are SDR models.
 
 ## Running it
 
-It needs an FFmpeg built against libvmaf 3.2 or later, which compiles the v1.0.16 models in. On a
-Mac, the sidecar's build script produces one without touching the sidecar's bundled binary if it is
-run from a copy of the script outside the repository:
+It needs an FFmpeg built against libvmaf 3.2 or later, which compiles the v1.0.16 models in. The
+container's measurement FFmpeg and both sidecars' FFmpeg already are (libvmaf 3.2.x), so the Mac
+sidecar's own binary works. To build one without touching the sidecar's bundled binary, run a copy
+of its build script outside the repository:
 
 ```bash
 mkdir -p /tmp/vmaf-study/scripts
 cp sidecars/macos/scripts/build-ffmpeg.sh /tmp/vmaf-study/scripts/
-(cd /tmp/vmaf-study && VMAF_TAG=v3.2.1 bash scripts/build-ffmpeg.sh)
+(cd /tmp/vmaf-study && bash scripts/build-ffmpeg.sh)
 ```
 
 The copy stops at its final bundle check, which looks for a repository script; the binaries in
