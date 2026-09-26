@@ -228,12 +228,17 @@ language: {
     state: "Estado",
     state_reason: "Motivo",
     state_encoding: "CODIFICANDO",
+    state_workers: "EN WORKERS",
+    state_workers_local_held: "Este servidor: {reason}",
+    state_workers_local_paused: "Este servidor está en pausa. Los trabajos que ya están en workers siguen en marcha.",
     state_paused: "EN PAUSA",
     state_blocked: "EN ESPERA",
     state_waiting: "ESPERANDO",
     state_idle: "INACTIVO",
-    state_unexplained: "NO ARRANCA",
+    state_unexplained: "NADA EN CURSO",
+    state_unexplained_detail: "Hay trabajos en cola y nada los retiene, pero ninguno ha empezado. Abre la cola para ver el estado de cada trabajo.",
     slots: "Ranuras",
+    worker_slots: "Workers",
     free_on: "Libre en {path}",
 
     // In flight
