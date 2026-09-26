@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- The sidebar language menu no longer opens partly off the left of the screen when it is opened while the sidebar is still collapsing. It now follows the sidebar until the animation ends.
+
 ## 0.2.16 — 2026-09-26
 
 ### Changed

@@ -427,6 +427,23 @@ test('sidebar language menu fits its labels in expanded and collapsed rails', as
   }
 })
 
+test('the language menu stays on screen when opened while the sidebar is still collapsing', async ({ page }) => {
+  // Regression: the menu measured its place once, on open, relative to the rail. Opened while the
+  // rail was still narrowing, it rode the rail's left edge off the screen. Slow CI runners caught
+  // it; a long transition makes the race certain here.
+  await mockSettings(page)
+  await page.goto('/#/settings/system')
+  await page.addStyleTag({ content: '.app-rail { transition-duration: 1500ms !important; }' })
+  await page.getByRole('button', { name: 'Collapse sidebar' }).click()
+  await page.getByRole('button', { name: 'Language: English' }).click()
+  const menu = page.getByRole('listbox', { name: 'Language' })
+  await expect(menu).toBeVisible()
+  await page.waitForTimeout(1700)
+  const bounds = await menu.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+})
+
 test('system panels keep a consistent gap before backup and first-run setup', async ({ page }) => {
   await mockSettings(page)
   await page.goto('/#/settings/system')
