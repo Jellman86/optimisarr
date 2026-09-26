@@ -116,7 +116,12 @@ internal sealed record QualityRequirementDto(
     /// </summary>
     IReadOnlyList<IReadOnlyList<string>> Commands,
     /// <summary>How the windows sample the file, for the report.</summary>
-    string Sampling);
+    string Sampling,
+    /// <summary>
+    /// The same windows measured frame by frame, used instead of <c>Commands</c> when the worker
+    /// finds its candidate holds exactly as many frames as the source. Null when not offered.
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<string>>? FramePairedCommands = null);
 
 /// <summary>The libvmaf logs a worker returns, one per command it was sent, bound to both hashes.</summary>
 internal sealed record QualityEvidenceRequest(
@@ -478,7 +483,8 @@ internal static class WorkerLeaseEndpoints
                         policy.MinimumVmafHarmonicMean,
                         policy.MinimumVmafMin,
                         assignment.Quality?.Commands ?? [],
-                        assignment.Quality?.Sampling ?? "None"),
+                        assignment.Quality?.Sampling ?? "None",
+                        assignment.Quality?.FramePairedCommands),
                     AdaptiveSearchWire.From(assignment.Search, policy),
                     assignment.FullVerification,
                     maxCandidateBytes,

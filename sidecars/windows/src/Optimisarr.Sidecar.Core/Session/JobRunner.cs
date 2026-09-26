@@ -1,3 +1,5 @@
+using Optimisarr.Core.Verification;
+
 namespace Optimisarr.Sidecar.Core.Session;
 
 /// <summary>How a job ended, in the terms the operator and the server both care about.</summary>
@@ -326,7 +328,7 @@ public sealed class JobRunner(
         string candidate,
         CancellationToken cancellationToken)
     {
-        var commands = assignment.Quality.Commands;
+        var commands = await ChooseCommandsAsync(assignment, source, candidate, cancellationToken);
 
         // A dropped frame can change alignment later in the file. Each sampled window must
         // measure its own shift against the pictures it will score.
@@ -404,7 +406,41 @@ public sealed class JobRunner(
         return logs;
     }
 
-    /// <summary>The video's start relative to its container, from ffprobe beside this FFmpeg.</summary>
+    /// <summary>
+    /// The frame-by-frame windows when the candidate holds exactly the source's frames, otherwise
+    /// the timestamp-paired ones. An encode can keep every frame and still stamp stretches of them a
+    /// frame early; pairing on timestamps then compares each picture with its neighbour (#269). A
+    /// count that cannot be read keeps the timestamp pairing every older server asked for.
+    /// </summary>
+    private async Task<IReadOnlyList<IReadOnlyList<string>>> ChooseCommandsAsync(
+        Assignment assignment, string source, string candidate, CancellationToken cancellationToken)
+    {
+        if (assignment.Quality.FramePairedCommands is not { Count: > 0 } framePaired
+            || framePaired.Count != assignment.Quality.Commands.Count)
+        {
+            return assignment.Quality.Commands;
+        }
+
+        var sourceFrames = await CountFramesAsync(source, cancellationToken);
+        var candidateFrames = await CountFramesAsync(candidate, cancellationToken);
+        var paired = FramePairing.Applies(sourceFrames, candidateFrames);
+        report?.Invoke($"Job {assignment.JobId}: {candidateFrames?.ToString() ?? "unknown"} candidate frames, "
+            + $"{sourceFrames?.ToString() ?? "unknown"} source frames; pairing "
+            + (paired ? "frames by number" : "by timestamp"));
+        return paired ? framePaired : assignment.Quality.Commands;
+    }
+
+    private async Task<int?> CountFramesAsync(string file, CancellationToken cancellationToken)
+    {
+        if (FfprobeBeside(ffmpegPath) is not { } probe)
+        {
+            return null;
+        }
+
+        var result = await transcoder.ProbeAsync(probe, FramePairing.CountArguments(file), cancellationToken);
+        return result.ExitCode == 0 ? FramePairing.ParseCount(result.Output) : null;
+    }
+
     /// <summary>How long one picture of this file lasts, or null when ffprobe cannot say.</summary>
     private async Task<double?> ProbeFrameSecondsAsync(string file, CancellationToken cancellationToken)
     {

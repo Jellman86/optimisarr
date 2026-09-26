@@ -43,7 +43,12 @@ internal static class RemoteQualityPlanner
             ? "Full file"
             : "Three 40-second samples (early, middle and late)";
 
+        // Numbering frames needs a rate to number them by and a window to number them in, and a
+        // capped encode's thinned reference is judged by its own index rule instead.
+        var pairable = referenceFrameRate is not null && decimation is null
+            && !(windows.Count == 1 && windows[0] == VmafWindow.Full);
         var commands = new List<IReadOnlyList<string>>(windows.Count);
+        var framePaired = pairable ? new List<IReadOnlyList<string>>(windows.Count) : null;
         foreach (var window in windows)
         {
             var context = new QualityMeasurementContext(
@@ -69,6 +74,12 @@ internal static class RemoteQualityPlanner
                 context,
                 WorkerThreads);
             commands.Add(command.Arguments);
+            framePaired?.Add(QualityScoreCommandBuilder.Build(
+                RemoteQualityContract.DistortedPlaceholder,
+                RemoteQualityContract.ReferencePlaceholder,
+                RemoteQualityContract.LogPlaceholder,
+                context with { PairFramesByNumber = true },
+                WorkerThreads).Arguments);
         }
 
         var model = QualityScoreCommandBuilder.ModelVersionFor(
@@ -79,6 +90,7 @@ internal static class RemoteQualityPlanner
             sampling,
             policy.MinimumVmafHarmonicMean,
             policy.MinimumVmafMin,
-            commands);
+            commands,
+            FramePairedCommands: framePaired);
     }
 }

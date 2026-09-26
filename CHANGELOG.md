@@ -11,6 +11,7 @@
 
 ### Fixed
 
+- Verification no longer fails a good encode whose timestamps drift by a frame partway through. Some encodes keep every frame of the source but stamp stretches of them one frame early, so the quality check compared each picture with its neighbour and scored a clean encode far below its real quality. When the encode has exactly as many frames as the original, each sampled window now compares frame for frame; otherwise it measures as before. This applies on the server and on both sidecars, and needs updated sidecars to take effect there (#269).
 - Quality-search samples no longer score a good window near zero when the source's container starts slightly before its picture. The comparison cut the original a few milliseconds later than the sample was cut, so on some titles every frame in a window was compared with the next one. It happened on the server and on sidecars, and could send a search back to the library's default quality. The original is now cut at exactly the instant the sample was (#269).
 
 ### Added

@@ -84,7 +84,11 @@ public sealed record QualityMeasurementContext(
     bool DistortedIsCutClip = false,
     // A VMAF model chosen by the caller instead of the automatic HD/4K choice. Only the model
     // study uses it, to score the same windows under two models; verification never sets it.
-    string? ModelVersion = null);
+    string? ModelVersion = null,
+    // True when both files hold the same number of frames, so each sampled window compares frame
+    // k with frame k instead of rounding timestamps onto a cadence grid. See FramePairing. It needs
+    // a frame rate and a window, and a cut clip keeps its own pairing.
+    bool PairFramesByNumber = false);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -184,11 +188,18 @@ public static class QualityScoreCommandBuilder
                 ? "HDR reference tone-mapped to SDR"
                 : "HDR (matching transfer characteristics)"
             : "SDR";
+        var pairFrames = context.PairFramesByNumber
+            && !context.DistortedIsCutClip
+            && context.ReferenceFrameRate is not null
+            && context.ReferenceStartSeconds is not null
+            && context.DistortedStartSeconds is not null
+            && context.MeasureDurationSeconds is > 0;
         var preprocessing = DescribePreprocessing(
             colourPreprocessing,
             acceleration,
             context.FrameSubsample,
-            context.ReferenceFrameRate);
+            context.ReferenceFrameRate,
+            pairFrames);
         var scale =
             $"scale={referenceWidth}:{referenceHeight}:" +
             "flags=bicubic:in_range=auto:out_range=tv";
@@ -205,20 +216,36 @@ public static class QualityScoreCommandBuilder
             context.ReferenceStartSeconds, context.MeasureDurationSeconds,
             context.ReferenceFrameRate,
             context.DistortedIsCutClip ? null : context.ReferenceContainerLeadSeconds);
-        var distortedTimeline = TimelinePreparation(
-            context.DistortedStartSeconds,
-            distortedInputStart,
-            context.MeasureDurationSeconds,
-            context.ReferenceFrameRate,
-            DistortedShift(context),
-            context.DistortedIsCutClip);
-        var referenceTimeline = TimelinePreparation(
-            context.ReferenceStartSeconds,
-            referenceInputStart,
-            context.MeasureDurationSeconds,
-            context.ReferenceFrameRate,
-            shift: null,
-            context.DistortedIsCutClip);
+        var distortedTimeline = pairFrames
+            ? FramePairedTimeline(
+                context.DistortedStartSeconds!.Value,
+                distortedInputStart,
+                context.MeasureDurationSeconds!.Value,
+                context.ReferenceFrameRate!.Value,
+                ContainerLeadShift(context),
+                context.DistortedShiftToken is { Length: > 0 } token ? token : null)
+            : TimelinePreparation(
+                context.DistortedStartSeconds,
+                distortedInputStart,
+                context.MeasureDurationSeconds,
+                context.ReferenceFrameRate,
+                DistortedShift(context),
+                context.DistortedIsCutClip);
+        var referenceTimeline = pairFrames
+            ? FramePairedTimeline(
+                context.ReferenceStartSeconds!.Value,
+                referenceInputStart,
+                context.MeasureDurationSeconds!.Value,
+                context.ReferenceFrameRate!.Value,
+                containerShift: null,
+                frameShift: null)
+            : TimelinePreparation(
+                context.ReferenceStartSeconds,
+                referenceInputStart,
+                context.MeasureDurationSeconds,
+                context.ReferenceFrameRate,
+                shift: null,
+                context.DistortedIsCutClip);
         var normalise = $"{scale},format={pixelFormat}";
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
@@ -377,6 +404,12 @@ public static class QualityScoreCommandBuilder
         {
             return token;
         }
+        return ContainerLeadShift(context);
+    }
+
+    // The part of that shift the containers' own starts account for, before any measured offset.
+    private static string? ContainerLeadShift(QualityMeasurementContext context)
+    {
         if (context.DistortedContainerLeadSeconds is not { } distorted
             || context.ReferenceContainerLeadSeconds is not { } reference)
         {
@@ -448,11 +481,54 @@ public static class QualityScoreCommandBuilder
         return cadence.Length == 0 ? $"{cut},setpts=N" : $"{cut},{cadence.TrimEnd(',')}";
     }
 
+    // Frames either side of the window kept for the candidate's offset to move into.
+    private const int FramePairingMargin = 2;
+
+    private static string FramePairedTimeline(
+        int windowStartSeconds,
+        double? inputStartSeconds,
+        int windowDurationSeconds,
+        double frameRate,
+        string? containerShift,
+        string? frameShift)
+    {
+        // Cut the window by time, with a margin, exactly as the timestamp path would pick it.
+        var frameSeconds = 1 / frameRate;
+        var margin = FramePairingMargin * frameSeconds;
+        var inputTimeline = inputStartSeconds is > 0 ? "settb=AVTB" : "settb=AVTB,setpts=PTS-STARTPTS";
+        var lead = containerShift is not null && inputStartSeconds is > 0
+            ? $"setpts=PTS-{containerShift}*1000000,"
+            : string.Empty;
+        var start = windowStartSeconds - (inputStartSeconds ?? 0) - margin;
+        var window = $"trim=start={FormatSeconds(start)}:duration={FormatSeconds(windowDurationSeconds + 2 * margin)}";
+
+        // Then number the frames on a whole-microsecond step. A step of 41708.33 µs rounds
+        // differently on each side once one of them has moved, and libvmaf pairs a frame with the
+        // other stream's latest frame at or before it, so a microsecond short met a third of the
+        // frames with their predecessors. An integer step keeps equal numbers on equal timestamps.
+        var step = (long)Math.Round(1_000_000 / frameRate);
+        var rate = frameRate.ToString("G17", CultureInfo.InvariantCulture);
+        // The measured offset is whole frames, and it is applied to the numbers rather than to the
+        // time. Where a candidate's timestamps skip a slot, moving it by a frame's worth of time
+        // selects the same first picture as not moving it, so the probe could never pick the
+        // offset it needed.
+        var numbering = frameShift is null
+            ? $"setpts=N*{step}"
+            : $"setpts=(N-round({frameShift}*{rate}))*{step}";
+
+        // Finally keep the same frame numbers on both sides, half a step clear of any frame.
+        var frames = (long)Math.Round(windowDurationSeconds * frameRate);
+        var keep = $"trim=start={FormatSeconds((FramePairingMargin - 0.5) * step / 1_000_000d)}"
+            + $":duration={FormatSeconds(frames * step / 1_000_000d)}";
+        return $"{inputTimeline},{lead}{window},settb=AVTB,setpts=PTS-STARTPTS,{numbering},{keep},setpts=PTS-STARTPTS";
+    }
+
     private static string DescribePreprocessing(
         string colourPreprocessing,
         VmafAcceleration acceleration,
         int frameSubsample,
-        double? referenceFrameRate)
+        double? referenceFrameRate,
+        bool pairFrames)
     {
         var hardware = acceleration switch
         {
@@ -462,7 +538,9 @@ public static class QualityScoreCommandBuilder
             _ => null
         };
         var cadence = referenceFrameRate is { } frameRate
-            ? $"{frameRate.ToString("0.###", CultureInfo.InvariantCulture)} fps aligned"
+            ? pairFrames
+                ? $"{frameRate.ToString("0.###", CultureInfo.InvariantCulture)} fps, frames paired by number"
+                : $"{frameRate.ToString("0.###", CultureInfo.InvariantCulture)} fps aligned"
             : null;
         var sampling = frameSubsample > 1 ? $"every {frameSubsample}th frame" : null;
         return string.Join(" · ", new[] { colourPreprocessing, hardware, cadence, sampling }
