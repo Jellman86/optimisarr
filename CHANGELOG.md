@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Settings is no longer narrower than the other pages. It uses the full width like the rest of the app, the overview adds columns on wide screens, and each setting keeps its label and control close together rather than spreading them across the screen.
+
 ### Changed
 
 - **The interface now uses the whole screen.** Dashboards, lists and media reviews widen with the display instead of stopping at 1,152 px, and text steps up slightly on 2200 px and wider screens. Settings and library forms keep a readable width, and card grids such as Libraries and Schedule add columns as the screen widens. A status strip at the top of every page shows the queue's state, free working space, and a Pause/Resume control, so the queue can be paused from anywhere. The sidebar's brand sits beside the name, so navigation starts higher on laptops.
