@@ -4,6 +4,7 @@ export type LeadCandidate = {
   remoteStage: string | null
   workerName: string | null
   progress: number
+  finalizing?: boolean
 }
 
 /**
@@ -20,4 +21,53 @@ export function pickLeadJob<T extends LeadCandidate>(jobs: readonly T[]): T | nu
   const local = encoding.filter((job) => !job.workerName)
   const pool = local.length > 0 ? local : encoding.length > 0 ? encoding : jobs
   return pool.reduce((best, job) => (job.progress > best.progress ? job : best))
+}
+
+export type LeadPhase =
+  | 'encoding'
+  | 'sending'
+  | 'returning'
+  | 'starting'
+  | 'probing'
+  | 'verifying'
+  | 'waiting'
+  | 'finalizing'
+
+/** What the lead job is doing, where, and which worker it came from or is on. */
+export type LeadActivity = {
+  phase: LeadPhase
+  place: 'server' | 'worker' | 'transfer'
+  /** The worker named on the job, which it keeps after handing its encode back. */
+  from: string | null
+}
+
+/**
+ * The sidebar's account of the lead job. A job keeps its worker's name after the worker returns
+ * the candidate, so the name alone said the Mac was encoding while the Mac sat idle and this
+ * server checked its result. Only a leased job is on a worker; everything else is here.
+ */
+export function leadActivity(job: LeadCandidate): LeadActivity {
+  const from = job.workerName
+  if (job.status === 'Leased') {
+    switch (job.remoteStage) {
+      case 'Encoding':
+        return { phase: 'encoding', place: 'worker', from }
+      case 'FetchingSource':
+        return { phase: 'sending', place: 'transfer', from }
+      case 'Delivering':
+        return { phase: 'returning', place: 'transfer', from }
+      default:
+        return { phase: 'starting', place: 'worker', from }
+    }
+  }
+  const phase: LeadPhase = job.finalizing
+    ? 'finalizing'
+    : job.status === 'Transcoding'
+      ? 'encoding'
+      : job.status === 'Probing'
+        ? 'probing'
+        : job.status === 'AwaitingVerification'
+          ? 'waiting'
+          : 'verifying'
+  return { phase, place: 'server', from }
 }
