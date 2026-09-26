@@ -182,7 +182,7 @@ export function paintGalaxySprites(makeCanvas: () => HTMLCanvasElement): GalaxyS
   return sprites
 }
 
-export interface Sky { canvas: HTMLCanvasElement; mean: Rgb }
+export interface Sky { canvas: HTMLCanvasElement }
 
 function paintNebula(makeCanvas: () => HTMLCanvasElement, face: FaceSky, axis: number) {
   // One wrapped texel of margin, so smoothing across the tile edge samples real neighbours.
@@ -191,7 +191,6 @@ function paintNebula(makeCanvas: () => HTMLCanvasElement, face: FaceSky, axis: n
   const ctx = canvas.getContext('2d')!
   const image = ctx.createImageData(M, M), data = image.data
   const warp = fractal(31 + axis), oxygen = fractal(57 + axis), second = fractal(83 + axis), dust = fractal(101 + axis)
-  const sum = [0, 0, 0]
   for (let j = -1; j <= N; j++)
     for (let i = -1; i <= N; i++) {
       const u = i / N, v = j / N, w = warp(u, v)
@@ -199,17 +198,16 @@ function paintNebula(makeCanvas: () => HTMLCanvasElement, face: FaceSky, axis: n
       const glow2 = (Math.max(0, second(v + 0.3 * w, u + 0.2 * w) - 0.45) / 0.55) ** 2
       // Only whole-number frequencies keep the tile periodic.
       const lane = Math.min(1, Math.max(0, (dust(2 * u + 0.2 * w, 2 * v) - 0.46) / 0.22))
-      const o = ((j + 1) * M + i + 1) * 4, inside = i >= 0 && j >= 0 && i < N && j < N
+      const o = ((j + 1) * M + i + 1) * 4
       for (let c = 0; c < 3; c++) {
         data[o + c] =
           (face.base[c] + face.oxygen[c] * face.oxygen[3] * glow1 * 1.6 + face.second[c] * face.second[3] * glow2 * 1.6) *
           (1 - face.dust * lane * 0.8)
-        if (inside) sum[c] += data[o + c]
       }
       data[o + 3] = 255
     }
   ctx.putImageData(image, 0, 0)
-  return { canvas, mean: sum.map((v) => Math.round(v / (N * N))) as unknown as Rgb }
+  return { canvas }
 }
 
 export function paintSkies(makeCanvas: () => HTMLCanvasElement, sprites: GalaxySprites): Sky[] {
@@ -259,7 +257,7 @@ export function paintSkies(makeCanvas: () => HTMLCanvasElement, sprites: GalaxyS
         if (brightness > 0.45) glow(ctx, x, y, 3 + brightness * 4, colour, [[0, 0.35 * brightness], [1, 0]])
       })
     }
-    return { canvas, mean: nebula.mean }
+    return { canvas }
   })
 }
 
