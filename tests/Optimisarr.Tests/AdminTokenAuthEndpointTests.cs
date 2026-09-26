@@ -1133,7 +1133,25 @@ public sealed class AdminTokenAuthEndpointTests
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
                 services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
                 services.AddSingleton<ISourceWindowBytesProbe, FixedSourceWindowBytes>();
+                foreach (var preflight in services
+                    .Where(service => service.ServiceType == typeof(ISourceTimelinePreflight))
+                    .ToList())
+                {
+                    services.Remove(preflight);
+                }
+                services.AddSingleton<ISourceTimelinePreflight, NamedShortPicturePreflight>();
             });
+        }
+
+        /// <summary>A source file with this name reports a picture stream that stops well short of its audio.</summary>
+        public const string ShortPictureFileName = "short-picture.mkv";
+
+        private sealed class NamedShortPicturePreflight : ISourceTimelinePreflight
+        {
+            public Task<SourceTimelineVerdict> CheckAsync(string path, CancellationToken cancellationToken) =>
+                Task.FromResult(Path.GetFileName(path) == ShortPictureFileName
+                    ? SourceTimelineJudge.Confirm(2900.814, 0, 3070.25, 0, 2900.814)
+                    : SourceTimelineVerdict.Clear);
         }
 
         /// <summary>

@@ -73,6 +73,26 @@ public sealed class MonitorTests
     }
 
     [Fact]
+    public void An_older_worker_says_so_and_offers_the_release_page()
+    {
+        var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
+        model.Update(new MonitorSnapshot("PC", "Connected", "Ready", false, "http://test", null, null, [], null, "0.2.14",
+            UpdateVersion: "0.2.15", UpdateUrl: "https://github.com/Jellman86/optimisarr/releases/tag/v0.2.15"));
+
+        Assert.True(model.UpdateAvailable);
+        Assert.Contains("0.2.15", model.UpdateText);
+        Assert.Equal("https://github.com/Jellman86/optimisarr/releases/tag/v0.2.15", model.UpdateReleasePage!.AbsoluteUri);
+
+        // A current worker, or a link that is not the project's releases, shows nothing.
+        model.Update(new MonitorSnapshot("PC", "Connected", "Ready", false, "http://test", null, null, [], null, "0.2.15"));
+        Assert.False(model.UpdateAvailable);
+        model.Update(new MonitorSnapshot("PC", "Connected", "Ready", false, "http://test", null, null, [], null, "0.2.14",
+            UpdateVersion: "0.2.15", UpdateUrl: "https://example.com/evil"));
+        Assert.False(model.UpdateAvailable);
+        Assert.Null(model.UpdateReleasePage);
+    }
+
+    [Fact]
     public void A_server_connection_failure_is_not_presented_as_ready_for_work()
     {
         var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();

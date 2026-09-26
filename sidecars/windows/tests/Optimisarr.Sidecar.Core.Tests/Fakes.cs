@@ -131,6 +131,9 @@ internal sealed class FakeMeasuringTranscoder(
     /// <summary>What a probe of a file's timeline answers with. Null makes the probe fail.</summary>
     public string? ProbeOutput { get; init; }
 
+    /// <summary>Answers a probe from its arguments instead, when set; null makes that probe fail.</summary>
+    public Func<IReadOnlyList<string>, string?>? AnswerProbe { get; init; }
+
     /// <summary>Exits cleanly having written nothing, as a broken encoder does.</summary>
     public bool ProducesNothing { get; init; }
 
@@ -190,6 +193,12 @@ internal sealed class FakeMeasuringTranscoder(
         string ffprobe, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         Probes.Add(arguments);
+        if (AnswerProbe is not null)
+        {
+            return Task.FromResult(AnswerProbe(arguments) is { } answer
+                ? new ProbeResult(0, answer)
+                : new ProbeResult(1, string.Empty));
+        }
         return Task.FromResult(ProbeOutput is null
             ? new ProbeResult(1, string.Empty)
             : new ProbeResult(0, ProbeOutput));

@@ -128,7 +128,8 @@ for (const colorScheme of ['dark', 'light'] as const) {
     for (const viewport of [{ width: 1600, height: 1000 }, { width: 375, height: 812 }, { width: 812, height: 375 }]) {
       await page.setViewportSize(viewport)
       const review = (await page.locator('[data-quarantine-review]').boundingBox())!
-      if (viewport.width === 1600) expect(review.width).toBe(1152)
+      // The comparison is a media page: on a wide screen it uses the width instead of a form's measure.
+      if (viewport.width === 1600) expect(review.width).toBeGreaterThan(1152)
       expect(review.x).toBeGreaterThanOrEqual(0)
       expect(review.x + review.width).toBeLessThanOrEqual(viewport.width)
       expect(await page.locator('main').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)

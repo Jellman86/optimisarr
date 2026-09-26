@@ -11,7 +11,10 @@ public sealed record TimestampCheckResult(
     bool Measured,
     int NonMonotonicCount,
     string? FirstRegressionDetail,
-    double? LastPresentationSeconds)
+    double? LastPresentationSeconds,
+    // How many packets carried a timestamp: the stream's frame count, read without decoding. Null
+    // from an older worker's evidence, which then keeps timestamp pairing. See FramePairing.
+    int? PacketCount = null)
 {
     public static TimestampCheckResult NotMeasured { get; } = new(false, 0, null, null);
 }
@@ -118,7 +121,8 @@ public sealed class TimestampIntegrityCheck
             true,
             integrity.NonMonotonicCount,
             integrity.FirstRegressionDetail,
-            integrity.LastPresentationSeconds);
+            integrity.LastPresentationSeconds,
+            integrity.TimestampCount);
     }
 
     private static void KillQuietly(Process process)

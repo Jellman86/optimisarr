@@ -79,6 +79,8 @@ type Fixture = {
   workersAvailable?: boolean
   failures?: unknown[]
   stats?: Record<string, unknown>
+  results?: unknown[]
+  daily?: unknown[]
 }
 
 async function mockDashboard(page: Page, fixture: Fixture = {}) {
@@ -104,6 +106,11 @@ async function mockDashboard(page: Page, fixture: Fixture = {}) {
       return json(route, { remoteWorkersAvailable: workersAvailable, remoteWorkersEnabled: workersAvailable })
     }
     if (path === '/api/workers') return json(route, fixture.workers ?? [])
+    if (path === '/api/results') return json(route, fixture.results ?? [])
+    if (path === '/api/results/daily') return json(route, fixture.daily ?? [])
+    if (path === '/api/queue/pause' && route.request().method() === 'POST') {
+      return json(route, { ...QUEUE_CLEAR, ...fixture.queue, manuallyPaused: true, manualPauseMode: 'suspended', canStart: false, blockedReason: 'Paused manually.' })
+    }
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
   })
   return seen
@@ -155,13 +162,36 @@ test('the sidebar does not call an unfinished encode complete', async ({ page })
   await expect(card).toContainText('99%')
 })
 
+test('a candidate a worker has returned is shown being checked here, not encoding on the worker', async ({ page }) => {
+  // Regression: the sidebar said "Now encoding · Scott's MacBook Air" while the Mac reported itself
+  // idle. The job keeps the worker's name after delivery; the work is this server's now.
+  await mockDashboard(page, {
+    jobs: [liveJob({ status: 'AwaitingVerification', workerName: "Scott's MacBook Air", videoEncoder: 'hevc_videotoolbox', progress: 0 })],
+  })
+  await page.goto('/#/settings')
+
+  const card = page.locator('aside').getByRole('link', { name: /Waiting to verify/ })
+  await expect(card).toContainText("On this server, from Scott's MacBook Air")
+  await expect(page.locator('aside').getByText('Now encoding')).toBeHidden()
+})
+
+test('an encode on a worker is placed on that worker', async ({ page }) => {
+  await mockDashboard(page, {
+    jobs: [liveJob({ status: 'Leased', remoteStage: 'Encoding', workerName: 'PICARD', videoEncoder: 'hevc_nvenc' })],
+  })
+  await page.goto('/#/settings')
+
+  const card = page.locator('aside').getByRole('link', { name: /Now encoding/ })
+  await expect(card).toContainText('On PICARD')
+})
+
 test('the dashboard asks only for jobs still being worked on', async ({ page }) => {
   // Regression: the unfiltered list is the entire job history — 1,773 rows on the server this
   // was checked against — and the dashboard re-reads it every fifteen seconds.
   const seen = await mockDashboard(page, { jobs: [] })
 
   await page.goto('/#/')
-  await expect(page.getByText('HOLDING', { exact: true }).or(page.getByText('NOT STARTING', { exact: true }))).toBeVisible()
+  await expect(page.getByText('HOLDING', { exact: true }).or(page.getByText('NOTHING RUNNING', { exact: true }))).toBeVisible()
 
   expect(seen.some((request) => request === '/api/jobs?live=true')).toBe(true)
   expect(seen.some((request) => request === '/api/jobs')).toBe(false)
@@ -196,7 +226,29 @@ test('a queue that should be running but is not is called out rather than drawn 
 
   await page.goto('/#/')
 
-  await expect(page.getByText('NOT STARTING', { exact: true })).toBeVisible()
+  await expect(page.getByText('NOTHING RUNNING', { exact: true })).toBeVisible()
+})
+
+test('a worker encoding while this server is held reads as work on workers, not a stall', async ({ page }) => {
+  // Regression: a sidecar was encoding while playback held the server, and the bar said the
+  // queue was not starting. The hold is still shown, as this server's reason.
+  await mockDashboard(page, {
+    queue: {
+      canStart: false,
+      blockedReason: 'Paused while Riker Plex is active (1 stream).',
+      workloadLanes: [
+        { lane: 'Video', active: 0, capacity: 1, waiting: 0, reason: null },
+        { lane: 'Workers', active: 1, capacity: 2, waiting: 0, reason: null },
+      ],
+    },
+  })
+
+  await page.goto('/#/')
+
+  const strip = page.getByRole('region', { name: 'State' })
+  await expect(strip.getByText('ON WORKERS', { exact: true })).toBeVisible()
+  await expect(strip.getByText('This server: Paused while Riker Plex is active (1 stream).')).toBeVisible()
+  await expect(strip.getByText('1 / 2', { exact: true })).toBeVisible()
 })
 
 test('an empty queue reads as idle, not as a problem', async ({ page }) => {
@@ -354,11 +406,11 @@ test('the application mark keeps transparency and reports the server state', asy
       border.push(d[i * 4 + 3], d[((el.height - 1) * el.width + i) * 4 + 3])
       border.push(d[(i * el.width) * 4 + 3], d[(i * el.width + el.width - 1) * 4 + 3])
     }
-    return { lit, clear, border }
+    return { lit, clear, border, area: el.width * el.height }
   })
   expect(painted.lit).toBeGreaterThan(50)
   expect(painted.border.every(alpha => alpha === 0)).toBe(true)
-  expect(painted.clear).toBeGreaterThan(288 * 288 * 0.3)
+  expect(painted.clear).toBeGreaterThan(painted.area * 0.3)
 })
 
 test('the collapsed rail keeps a name on the brand button', async ({ page }) => {
@@ -732,4 +784,36 @@ test('an unavailable stellar renderer leaves a themed still and a working favico
     const pixels = el.getContext('2d')!.getImageData(0, 0, el.width, el.height).data
     return pixels.some((v, i) => i % 4 === 3 && v > 0)
   })).toBe(true)
+})
+
+test('the status strip reports the queue on every page and pauses it from there', async ({ page }) => {
+  await mockDashboard(page, { stats: { queued: 0 } })
+  await page.goto('/#/libraries')
+
+  const strip = page.getByRole('region', { name: 'State' })
+  await expect(strip.getByText('IDLE', { exact: true })).toBeVisible()
+  await strip.getByRole('button', { name: 'Pause queue' }).click()
+  await expect(strip.getByText('PAUSED', { exact: true })).toBeVisible()
+  await expect(strip.getByRole('button', { name: 'Resume queue' })).toBeVisible()
+})
+
+test('recent results show each file before and after, with what it saved', async ({ page }) => {
+  await mockDashboard(page, {
+    results: [{
+      jobId: 41, mediaFileId: 7, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E07 - The Long Tide WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_282_683_553, outputSizeBytes: 368_922_428, vmafHarmonicMean: 91.31,
+      videoEncoder: 'hevc_qsv', workerName: null, finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }],
+    daily: [{ date: '2026-09-24', bytesSaved: 0, files: 0 }, { date: '2026-09-25', bytesSaved: 913_761_125, files: 1 }],
+  })
+  await page.goto('/#/')
+
+  const results = page.getByRole('region', { name: 'Recent results' })
+  // The release tags describe the copy, not the programme; the row reads as show, episode, title.
+  await expect(results.getByText('Harborlight', { exact: true })).toBeVisible()
+  await expect(results.getByText('The Long Tide')).toBeVisible()
+  await expect(results.getByText('1.2 GB → 352 MB')).toBeVisible()
+  await expect(results.getByText('−71%')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Saved per day' }).getByRole('img')).toHaveAccessibleName('Last 2 days: 871 MB saved')
 })

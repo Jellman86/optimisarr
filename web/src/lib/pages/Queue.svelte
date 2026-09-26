@@ -12,6 +12,7 @@
   import { jobFailureDescription } from '../i18n/jobErrors'
   import { router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
+  import { counts as shellStatus } from '../stores/counts.svelte'
   import Icon from '../components/Icon.svelte'
   import Banner from '../components/Banner.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
@@ -33,7 +34,6 @@
   let excludingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
   let clearingPending = $state(false)
-  let pauseBusy = $state(false)
   let filter = $state<'all' | 'active' | 'review' | 'completed' | 'failed' | 'verified' | 'verifyFailed'>('all')
   // Queue (live work) vs Failures (failed jobs grouped by reason, with the captured ffmpeg log).
   let activeTab = $state<'queue' | 'failures'>('queue')
@@ -68,6 +68,16 @@
       requestId++
       clearInterval(timer)
       void connection.stop()
+    }
+  })
+
+  // The status strip pauses and resumes the queue from any page; follow it at once rather than
+  // on the next poll, so the paused banner below never contradicts the strip above.
+  let seenRevision = shellStatus.revision
+  $effect(() => {
+    if (shellStatus.revision !== seenRevision) {
+      seenRevision = shellStatus.revision
+      void load()
     }
   })
 
@@ -118,22 +128,6 @@
   }
 
   // The endpoint returns the exact suspension outcome so unsupported/partial states stay honest.
-  async function togglePause() {
-    if (!queueStatus || pauseBusy) return
-    pauseBusy = true
-    try {
-      queueStatus = queueStatus.manuallyPaused ? await api.resumeQueue() : await api.pauseQueue()
-      requestId++
-      error = null
-    } catch (err) {
-      const message = err instanceof Error ? err.message : i18n.m.queue.error_pause
-      await load()
-      error = message
-    } finally {
-      pauseBusy = false
-    }
-  }
-
   async function stopAndRemove(job: Job) {
     if (!confirm(t(i18n.m.queue.confirm_remove, { name: jobName(job) }))) return
     removingId = job.id
@@ -510,12 +504,10 @@
 <div class="queue-layout">
   <header class="queue-heading">
     <div><h1 class="page-title">{i18n.m.nav.queue}</h1><p class="page-subtitle">{i18n.m.queue.subtitle}</p></div>
-    {#if queueStatus}<button class="btn" class:btn-primary={queueStatus.manuallyPaused} onclick={togglePause} disabled={pauseBusy} aria-busy={pauseBusy} title={queueStatus.manuallyPaused ? i18n.m.queue.resume_queue_title : i18n.m.queue.pause_queue_title}><Icon name={queueStatus.manuallyPaused ? 'play' : 'pause'} />{pauseBusy ? i18n.m.common.loading_short : queueStatus.manuallyPaused ? i18n.m.queue.resume_queue : i18n.m.queue.pause_queue}</button>{/if}
   </header>
   <div class="queue-tabs">
     <button class="focus-ring" aria-pressed={activeTab === 'queue'} onclick={() => (activeTab = 'queue')}>{i18n.m.nav.queue}{#if activeCount > 0}{' '}({activeCount}){/if}</button>
     <button class="focus-ring" aria-pressed={activeTab === 'failures'} onclick={() => (activeTab = 'failures')}>{i18n.m.queue.tab_failures}{#if failedCount > 0}{' '}({failedCount}){/if}</button>
-    {#if queueStatus?.freeDiskBytes != null}<span>{i18n.m.schedule.work_disk_free} <strong>{formatSize(queueStatus.freeDiskBytes)}</strong></span>{/if}
   </div>
   {#if activeTab === 'failures'}
     <FailuresPanel />
@@ -836,8 +828,8 @@
   .queue-review-alert span { min-width: 0; flex: 1; display: grid; gap: .25rem; }
   .queue-review-alert strong { color: var(--ink); font-size: .8125rem; }
   .queue-review-alert small { color: var(--ink-3); font-size: .75rem; line-height: 1.45; }
-  .queue-layout { max-width: 72rem; margin-inline: auto; }.queue-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }.queue-heading > div { flex: 1; min-width: 15rem; }.queue-heading .page-subtitle { max-width: 45rem; }
-  .queue-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--divide-soft); }.queue-tabs button { padding: .75rem 1rem; font-size: .8125rem; color: var(--ink-3); }.queue-tabs button[aria-pressed=true] { color: var(--accent); box-shadow: 0 2px 0 var(--accent); }.queue-tabs > span { margin-left: auto; color: var(--ink-3); font-size: .6875rem; padding: .5rem 0; }.queue-tabs strong { margin-left: .5rem; font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.queue-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }.queue-heading > div { flex: 1; min-width: 15rem; }.queue-heading .page-subtitle { max-width: 45rem; }
+  .queue-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--divide-soft); }.queue-tabs button { padding: .75rem 1rem; font-size: .8125rem; color: var(--ink-3); }.queue-tabs button[aria-pressed=true] { color: var(--accent); box-shadow: 0 2px 0 var(--accent); }
   .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
   .queue-lanes { margin-bottom: 1.5rem; }.queue-lanes-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .75rem; }.queue-lanes-heading h2 { font-size: .8125rem; font-weight: 600; color: var(--ink-2); }.queue-lanes-heading p { font-size: .6875rem; color: var(--ink-3); }.queue-lane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .625rem; }.queue-lane { min-width: 0; padding: .875rem 1rem; transition: transform .18s ease, box-shadow .18s ease; }.queue-lane:hover { transform: translateY(-2px); box-shadow: var(--lift-2); }.queue-lane-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; color: var(--ink-2); font-size: .75rem; }.queue-lane-head strong { flex: none; font-size: 1rem; color: var(--ink); font-variant-numeric: tabular-nums; }.queue-lane p { color: var(--ink-3); font-size: .6875rem; margin-top: .4rem; }.queue-lane small { display: block; color: var(--ink-3); font-size: .6875rem; line-height: 1.45; margin-top: .625rem; overflow-wrap: anywhere; }.queue-phase-note { margin-top: .75rem; font-size: .75rem; color: var(--ink-3); }
   .queue-execution-path { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }.queue-execution-path h3 { grid-column: 1/-1; margin: 0; font-size: .75rem; color: var(--ink-3); font-weight: 600; }.queue-execution-path div { min-width: 0; display: grid; gap: .25rem; font-size: .6875rem; color: var(--ink-3); }.queue-execution-path strong { color: var(--ink); font-size: .75rem; font-weight: 600; overflow-wrap: anywhere; }
@@ -883,7 +875,7 @@
   .queue-tools { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; }.queue-filters { display: flex; flex-wrap: wrap; gap: .25rem; }.queue-filters button { padding: .625rem .75rem; font-size: .75rem; color: var(--ink-3); border-radius: .5rem; }.queue-filters button[aria-pressed=true] { background: var(--raised); color: var(--ink); box-shadow: var(--lift-1); }.queue-bulk { display: flex; align-items: flex-start; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; }.queue-bulk .btn { font-size: .75rem; }.queue-management { font-size: .75rem; color: var(--ink-3); }.queue-management summary { padding: .75rem; cursor: pointer; border-radius: .5rem; }.queue-management > div { display: flex; flex-wrap: wrap; padding: .5rem; gap: .5rem; background: var(--panel); border-radius: .75rem; max-width: 100%; }
   .queue-table-surface { border-radius: .875rem; background: var(--panel); box-shadow: var(--lift-1); overflow: clip; }.queue-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.queue-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.queue-table th:first-child { width: 43%; }.queue-table th:nth-child(2) { width: 25%; }.queue-table th:nth-child(3) { width: 17%; }.queue-table th:last-child { width: 15%; }.queue-table td { padding: 1rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }.queue-table .badge { white-space: normal; }.queue-table tr:hover td,.queue-table .selected-row td { background: var(--lit); }.queue-file { display: flex; align-items: center; width: 100%; min-width: 0; gap: .875rem; text-align: left; border-radius: .375rem; }.queue-file > span { min-width: 0; }.queue-file strong { display: block; color: var(--ink); font-size: .8125rem; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }.queue-file:hover strong { color: var(--accent); }.queue-file small { display: block; font-size: .6875rem; margin-top: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }.queue-row-note { display: block; font-size: .6875rem; margin-top: .375rem; }.queue-verification { border-radius: .25rem; text-align: left; }.action-column .btn { font-size: .75rem; padding: .5rem .75rem; max-width: 100%; white-space: normal; }
   .queue-empty { padding: 2rem 1.5rem; background: var(--panel); border-radius: .875rem; text-align: center; font-size: .8125rem; color: var(--ink-3); }.queue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--ink-3); font-size: .75rem; }.queue-pagination > div { display: flex; align-items: center; gap: .5rem; }
-  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs > span { width: 100%; margin: 0; }.queue-tabs button { padding: .625rem .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 63%; }.queue-table th:nth-child(2) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-bulk { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
+  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs button { padding: .625rem .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 63%; }.queue-table th:nth-child(2) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-bulk { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
   @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
   @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; } }
   @media(max-width: 639px) {

@@ -162,6 +162,48 @@ public sealed class CandidateMeasurementTests : IDisposable
         Assert.Equal("1414.996917", probes[3][Array.IndexOf(probes[3].ToArray(), "-ss") + 1]);
     }
 
+    [Theory]
+    [InlineData("34046", "34046", true)]
+    [InlineData("34046", "34045", false)]
+    [InlineData("34046", null, false)]
+    public async Task Frames_are_paired_by_number_only_when_the_candidate_holds_every_source_frame(
+        string? sourceFrames, string? candidateFrames, bool paired)
+    {
+        // #269: a candidate with all its source's frames stamped stretches of them a frame early,
+        // and timestamp pairing scored it at 16. By number the same windows score 92-94. A lost
+        // frame moves every later number, so then the timestamps are the better guide.
+        var server = new FakeWorkerServer(SourceBytes, Sha256(SourceBytes));
+        var http = new HttpClient(server);
+        var transcoder = new FakeMeasuringTranscoder
+        {
+            WriteVmafLogs = true,
+            AnswerProbe = arguments => arguments.Contains("-count_packets")
+                ? arguments[^1].Contains("candidate", StringComparison.Ordinal) ? candidateFrames : sourceFrames
+                : "24000/1001",
+        };
+        var runner = new JobRunner(
+            new SidecarClient(http), new JobTransfer(http), transcoder, FfmpegBesideAProbe(), _scratch, () => null);
+        var assignment = Measured();
+        IReadOnlyList<string> Command(string pairing) =>
+        [
+            "-nostdin", "-v", "error", "-i", "{{distorted}}", "-i", "{{reference}}", "-lavfi",
+            $"[0:v]setpts=PTS-{{{{distortedShift}}}}*1000000,{pairing}[d];[1:v]null[r];[d][r]libvmaf=log_path={{{{log}}}}:shortest=1",
+            "-f", "null", "-"
+        ];
+        assignment = assignment with { Quality = assignment.Quality with
+        {
+            Commands = [Command("fps=fps=24")],
+            FramePairedCommands = [Command("setpts=N*41708")],
+        } };
+
+        await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        var scoring = transcoder.AllRuns.Last(run => run.Any(a => a.Contains("libvmaf", StringComparison.Ordinal)));
+        var filter = scoring.Single(a => a.Contains("libvmaf", StringComparison.Ordinal));
+        Assert.Contains(paired ? "setpts=N*41708" : "fps=fps=24", filter, StringComparison.Ordinal);
+        Assert.NotNull(server.QualityBody);
+    }
+
     private static bool IsProbe(IReadOnlyList<string> run)
     {
         var limit = run.ToList().LastIndexOf("-t");

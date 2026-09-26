@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { createCanvas, type Canvas } from '@napi-rs/canvas'
+import { createCanvas, loadImage, type Canvas } from '@napi-rs/canvas'
 import { createStellarRenderer, type StellarDetail } from './stellar-renderer.ts'
 import { createStellarMotion } from './stellar-motion.ts'
 
@@ -26,15 +26,16 @@ function faceLuminance(image: ReturnType<typeof pixels>, fx: number, fy: number)
   return values.sort((a, b) => a - b)[values.length >> 1]
 }
 // Face centres of the isometric cube as the renderer frames it.
-const TOP = [.5, .26], LEFT = [.29, .62], RIGHT = [.71, .62]
+const TOP = [.5, .325], LEFT = [.345, .59], RIGHT = [.655, .59]
 const resting = (overrides: Partial<{ time: number, activity: number, flow: number, drift: number }> = {}) =>
   ({ mode: 'rest' as const, time: 4, activity: 0, flow: 0, drift: .3, ...overrides })
 
 test('the cube is lit from above and all three planes stay separable as the sky travels', () => {
   const renderer = createStellarRenderer(makeCanvas)
   for (const dark of [true, false]) for (const drift of [0, 2, 5, 9]) {
-    for (const detail of ['full', 'minimal'] as StellarDetail[]) {
-      const image = pixels(renderer.render(resting({ drift }), dark, detail === 'full' ? 288 : 64, detail))
+    // 80 px is the smallest the app draws it: the collapsed rail's 40 px mark at 2x.
+    for (const detail of ['full', 'reduced'] as StellarDetail[]) {
+      const image = pixels(renderer.render(resting({ drift }), dark, detail === 'full' ? 288 : 80, detail))
       const [top, left, right] = [TOP, LEFT, RIGHT].map(([x, y]) => faceLuminance(image, x, y))
       const label = `${dark ? 'dark' : 'light'} ${detail} at drift ${drift}`
       assert.ok(top > left && left > right, `${label}: light falls from above (${top}, ${left}, ${right})`)
@@ -45,33 +46,27 @@ test('the cube is lit from above and all three planes stay separable as the sky 
   renderer.destroy()
 })
 
-test('the cube fills its frame instead of sharing it with a floor shadow', () => {
-  const renderer = createStellarRenderer(makeCanvas)
-  const { data, size } = pixels(renderer.render(resting(), false, 288))
-  let top = size, bottom = 0, left = size, right = 0
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (data[(y * size + x) * 4 + 3] > 200) {
-    top = Math.min(top, y); bottom = Math.max(bottom, y); left = Math.min(left, x); right = Math.max(right, x)
+// Both application marks occupy the same share of their frame, so switching styles in Settings
+// changes the picture, not the size of the thing in the sidebar.
+test('the cube occupies the same footprint as the Precession mark', async () => {
+  const bounds = (image: ReturnType<typeof pixels>) => {
+    const { data, size } = image
+    let top = size, bottom = 0, left = size, right = 0
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (data[(y * size + x) * 4 + 3] > 200) {
+      top = Math.min(top, y); bottom = Math.max(bottom, y); left = Math.min(left, x); right = Math.max(right, x)
+    }
+    return { height: (bottom - top) / size, width: (right - left) / size, centreX: (left + right) / 2 / size, centreY: (top + bottom) / 2 / size }
   }
-  assert.ok((bottom - top) / size >= .8, `solid height ${(bottom - top) / size}`)
-  assert.ok(Math.abs((left + right) / 2 - size / 2) < size * .02, 'the mark is centred horizontally')
-  renderer.destroy()
-})
-
-test('the front-corner star survives at favicon size in both themes', () => {
+  const precessionStill = await loadImage(new URL('../../public/brand/dark-steady.webp', import.meta.url).pathname)
+  const flat = createCanvas(precessionStill.width, precessionStill.height)
+  flat.getContext('2d').drawImage(precessionStill, 0, 0)
+  const precession = bounds(pixels(flat as unknown as CanvasImageSource))
   const renderer = createStellarRenderer(makeCanvas)
   for (const dark of [true, false]) {
-    const { data, size } = pixels(renderer.render(resting(), dark, 64, 'minimal'))
-    const lum = (x: number, y: number) => { const o = (y * size + x) * 4; return luminance(data[o], data[o + 1], data[o + 2]) }
-    const c = size >> 1
-    assert.ok(lum(c, c) > .75, 'a bright star marks the front corner')
-    // Spikes thick enough to survive the browser shrinking the icon to 16 px: a quarter of the
-    // way along each spike, the ray is still at least 2 px wide at 64 px. The corner sits on a
-    // pixel boundary, so count across the ray rather than around one pixel.
-    for (const [dx, dy] of [[1, 0], [0, -1]]) {
-      const x = c + dx * 7, y = c + dy * 7
-      const lit = [-2, -1, 0, 1, 2].filter((k) => lum(x + dy * k, y + dx * k) > .35).length
-      assert.ok(lit >= 2, `${dark ? 'dark' : 'light'}: spike ${dx ? 'right' : 'up'} is ${lit} px wide`)
-    }
+    const stellar = bounds(pixels(renderer.render(resting(), dark, 288)))
+    assert.ok(Math.abs(stellar.height - precession.height) < 0.03, `height ${stellar.height} vs Precession ${precession.height}`)
+    assert.ok(Math.abs(stellar.width - precession.width) < 0.03, `width ${stellar.width} vs Precession ${precession.width}`)
+    assert.ok(Math.abs(stellar.centreX - 0.5) < 0.02 && Math.abs(stellar.centreY - 0.5) < 0.02, 'the mark is centred')
   }
   renderer.destroy()
 })

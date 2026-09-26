@@ -1130,6 +1130,12 @@ public sealed class QueueDispatcher(
                         "Job {JobId}: skipped before encoding — {Reason}", jobId, decision.Reason);
                     return;
                 }
+
+                if (work.Value.Spec.Kind == MediaKind.Video
+                    && await HeldBySourceTimelineAsync(jobId, work.Value.Original.Path, cancellationToken))
+                {
+                    return;
+                }
             }
 
             var preparedWork = work.Value;
@@ -2467,6 +2473,28 @@ public sealed class QueueDispatcher(
     }
 
     /// <summary>
+    /// Fails a job before any encoding when its source's own picture ends so far short of its audio
+    /// that the Source video timeline gate must reject every encode of it (#241). True when the job
+    /// was failed. Everything else — a clear source, an unreadable one, an indeterminate scan — goes
+    /// on to be encoded and verified as before, so this can only save work, never withhold it.
+    /// </summary>
+    public async Task<bool> HeldBySourceTimelineAsync(int jobId, string sourcePath, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var verdict = await scope.ServiceProvider
+            .GetRequiredService<ISourceTimelinePreflight>()
+            .CheckAsync(sourcePath, cancellationToken);
+        if (!verdict.Short)
+        {
+            return false;
+        }
+
+        await CompleteAsync(jobId, JobStatus.Failed, error: verdict.Reason);
+        logger.LogInformation("Job {JobId}: {Reason}", jobId, verdict.Reason);
+        return true;
+    }
+
+    /// <summary>
     /// What the source itself spent on the sample windows, for the size forecast. Null, with the
     /// reason logged, when the windows cannot be read: the forecast then abstains and the final
     /// size gate is left to decide, exactly as before any forecast existed.
@@ -3224,6 +3252,7 @@ public sealed class QueueDispatcher(
 
         await WithJobAsync(jobId, job =>
         {
+            job.SourceSizeBytes = outcome.SourceSizeBytes;
             job.OutputSizeBytes = outcome.OutputSizeBytes;
             job.VerificationReportJson = reportJson;
             job.VerificationPassed = outcome.Report.Passed;

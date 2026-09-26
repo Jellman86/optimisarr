@@ -975,8 +975,9 @@ public struct JobRunner: WorkExecutor {
         _ assignment: Assignment, ffmpeg: URL, source: URL, candidate: URL, scratch: URL
     ) async -> [String]? {
         var logs: [String] = []
-        let commands = assignment.quality.commands.compactMap { try? MeasurementCommand.validate($0) }
-        guard commands.count == assignment.quality.commands.count else { return nil }
+        let asked = await chooseCommands(assignment, source: source, candidate: candidate)
+        let commands = asked.compactMap { try? MeasurementCommand.validate($0) }
+        guard commands.count == asked.count else { return nil }
         let frameSeconds = commands.contains(where: \.needsDistortedShift)
             ? await TimelineAlignment.frameSeconds(ffprobe: ffprobe, file: source, runner: leadProbe) ?? (1.0 / 25.0)
             : nil
@@ -1011,6 +1012,26 @@ public struct JobRunner: WorkExecutor {
             logs.append(contents)
         }
         return logs
+    }
+
+    /// The frame-by-frame windows when the candidate holds exactly the source's frames, otherwise
+    /// the timestamp-paired ones. A count that cannot be read keeps the timestamp pairing every
+    /// older server asked for.
+    private func chooseCommands(_ assignment: Assignment, source: URL, candidate: URL) async -> [[String]] {
+        let quality = assignment.quality
+        guard let framePaired = quality.framePairedCommands, !framePaired.isEmpty,
+              framePaired.count == quality.commands.count
+        else { return quality.commands }
+        let sourceFrames = await FramePairing.count(ffprobe: ffprobe, file: source, runner: leadProbe)
+        let candidateFrames = await FramePairing.count(ffprobe: ffprobe, file: candidate, runner: leadProbe)
+        let paired = FramePairing.applies(source: sourceFrames, candidate: candidateFrames)
+        let described = """
+            \(candidateFrames.map(String.init) ?? "unknown") candidate frames, \
+            \(sourceFrames.map(String.init) ?? "unknown") source frames; pairing \
+            \(paired ? "frames by number" : "by timestamp")
+            """
+        SidecarLog.job.info("Job \(assignment.jobId): \(described, privacy: .public)")
+        return paired ? framePaired : quality.commands
     }
 
     /// Roughly where in the title a sample window sits, for the preview to seek to.

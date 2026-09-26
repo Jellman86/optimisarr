@@ -3,14 +3,19 @@ import {
 } from './stellar-sky.ts'
 import type { StellarMotion } from './stellar-motion'
 
-export type StellarDetail = 'full' | 'reduced' | 'minimal'
+export type StellarDetail = 'full' | 'reduced'
 type StellarFrame = Pick<StellarMotion, 'time' | 'activity' | 'flow' | 'drift'>
 
-// Photographic detail only reads at sidebar size; the rail and favicons keep the planes,
-// edges and the front-corner star, which is what identifies the mark.
+// Photographic detail only reads at sidebar size; the rail keeps the planes, edges and the
+// front-corner star, which is what identifies the mark.
 export function stellarDetail(size: number): StellarDetail {
-  return size >= 192 ? 'full' : size >= 56 ? 'reduced' : 'minimal'
+  return size >= 192 ? 'full' : 'reduced'
 }
+
+// The cube's share of its frame, matched to the Precession mark so switching styles in Settings
+// changes the picture, not its size. Everything else drawn is sized relative to it.
+const FILL = 0.615
+const SCALE = FILL / 0.84
 
 // Projected cube axes for the fixed isometric pose, in screen space (y down).
 // The front corner (1, 1, 1) lands on the canvas centre.
@@ -56,7 +61,7 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
     ctx.closePath()
   }
 
-  function star(ctx: CanvasRenderingContext2D, x: number, y: number, reach: number, colour: Rgb, alpha: number, spikes: boolean, bold = false) {
+  function star(ctx: CanvasRenderingContext2D, x: number, y: number, reach: number, colour: Rgb, alpha: number, spikes: boolean) {
     const halo = ctx.createRadialGradient(x, y, 0, x, y, reach * 0.5)
     halo.addColorStop(0, `rgba(255,255,255,${alpha})`)
     halo.addColorStop(0.07, `rgba(255,255,255,${alpha * 0.9})`)
@@ -68,12 +73,11 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
     ctx.fill()
     if (!spikes) return
     // Tapering diffraction spikes, screen-aligned like every star in a single exposure.
-    // Bold spikes survive a browser shrinking the favicon to 16 px.
-    const width = Math.max(0.6, reach * (bold ? 0.075 : 0.028))
+    const width = Math.max(0.6, reach * 0.028)
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const ray = ctx.createLinearGradient(x, y, x + dx * reach, y + dy * reach)
       ray.addColorStop(0, `rgba(255,255,255,${alpha})`)
-      ray.addColorStop(bold ? 0.45 : 0.25, `rgba(${colour},${alpha * (bold ? 0.8 : 0.55)})`)
+      ray.addColorStop(0.25, `rgba(${colour},${alpha * 0.55})`)
       ray.addColorStop(1, `rgba(${colour},0)`)
       ctx.fillStyle = ray
       ctx.beginPath()
@@ -90,37 +94,29 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
     if (canvas.width !== size || canvas.height !== size) canvas.width = canvas.height = size
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Stellar graphics unavailable')
-    const S = size, act = motion.activity, textured = detail !== 'minimal'
-    const g = layout(S, textured ? 0.84 : 0.9)
+    const S = size, act = motion.activity, u = S * SCALE
+    const g = layout(S, FILL)
     ctx.clearRect(0, 0, S, S)
 
-    if (textured) {
-      ctx.save()
-      outline(ctx, g.rim)
-      if (dark) {
-        ctx.shadowColor = 'rgba(34,211,238,.4)'
-        ctx.shadowBlur = S * 0.08
-      } else {
-        ctx.shadowColor = 'rgba(8,47,73,.4)'
-        ctx.shadowBlur = S * 0.06
-        ctx.shadowOffsetY = S * 0.025
-      }
-      ctx.fillStyle = '#04121c'
-      ctx.fill()
-      ctx.restore()
+    ctx.save()
+    outline(ctx, g.rim)
+    if (dark) {
+      ctx.shadowColor = 'rgba(34,211,238,.4)'
+      ctx.shadowBlur = u * 0.08
+    } else {
+      ctx.shadowColor = 'rgba(8,47,73,.4)'
+      ctx.shadowBlur = u * 0.06
+      ctx.shadowOffsetY = u * 0.025
     }
+    ctx.fillStyle = '#04121c'
+    ctx.fill()
+    ctx.restore()
 
     for (const face of g.faces) {
       const sky = skies[face.axis]
       ctx.save()
       outline(ctx, face.corners)
       ctx.clip()
-      if (!textured) {
-        ctx.fillStyle = `rgb(${sky.mean.map((v) => Math.min(255, v * 1.25))})`
-        ctx.fillRect(0, 0, S, S)
-        ctx.restore()
-        continue
-      }
       // The far sky tiles seamlessly and travels slowest; nearer galaxies pass over it faster.
       const N = SKY_SIZE, [du, dv] = travelDirection(face.axis)
       const shift = (d: number) => ((((d * motion.drift * BACKGROUND_SPEED) % 1) + 1) % 1) * N
@@ -150,7 +146,7 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
       pool.addColorStop(1, 'rgba(0,3,10,0)')
       ctx.fillStyle = pool
       ctx.fillRect(0, 0, S, S)
-      const px = S / 256
+      const px = u / 256
       for (const st of stars[face.axis].slice(0, detail === 'full' ? 26 : 7)) {
         const progress = (st.phase + motion.flow) % 1
         // Home when idle; while working each star travels to the front corner at (1, 1).
@@ -175,8 +171,8 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
           ctx.stroke()
         }
         const enlarge = detail === 'reduced' ? 1.3 : 1
-        if (st.brightness > 0.6) star(ctx, x, y, S * (0.03 + 0.07 * st.brightness) * enlarge, st.colour, alpha, detail === 'full')
-        else if (st.brightness > 0.2) star(ctx, x, y, S * (0.018 + 0.03 * st.brightness) * enlarge * 1.1, st.colour, alpha, false)
+        if (st.brightness > 0.6) star(ctx, x, y, u * (0.03 + 0.07 * st.brightness) * enlarge, st.colour, alpha, detail === 'full')
+        else if (st.brightness > 0.2) star(ctx, x, y, u * (0.018 + 0.03 * st.brightness) * enlarge * 1.1, st.colour, alpha, false)
         else {
           const w = px * (1 + st.brightness * 2) * (detail === 'reduced' ? 1.5 : 1)
           ctx.globalAlpha = alpha
@@ -191,9 +187,9 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
     ctx.save()
     ctx.lineCap = ctx.lineJoin = 'round'
     ctx.strokeStyle = EDGE
-    const lineWidth = Math.max(1, S * (detail === 'full' ? 0.007 : detail === 'reduced' ? 0.013 : 0.032))
+    const lineWidth = Math.max(1, u * (detail === 'full' ? 0.007 : 0.013))
     // A wide faint pass under the crisp edge reads as light caught by the glass.
-    for (const [width, alpha] of textured ? [[lineWidth * 3.5, 0.18], [lineWidth, 1]] : [[lineWidth, 1]]) {
+    for (const [width, alpha] of [[lineWidth * 3.5, 0.18], [lineWidth, 1]]) {
       ctx.globalAlpha = alpha
       ctx.lineWidth = width
       outline(ctx, g.rim)
@@ -209,11 +205,11 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
     if (!dark) {
       outline(ctx, g.rim)
       ctx.strokeStyle = 'rgba(2,20,32,.6)'
-      ctx.lineWidth = Math.max(1, S * 0.005)
+      ctx.lineWidth = Math.max(1, u * 0.005)
       ctx.stroke()
     }
 
-    if (act > 0.01 && textured) {
+    if (act > 0.01) {
       // A comet traces the outline while work runs.
       const lengths = g.rim.map((p, i) => Math.hypot(g.rim[(i + 1) % 6][0] - p[0], g.rim[(i + 1) % 6][1] - p[1]))
       const total = lengths.reduce((a, b) => a + b)
@@ -234,14 +230,14 @@ export function createStellarRenderer(makeCanvas: () => HTMLCanvasElement = () =
         ctx.globalAlpha = act * (1 - i / 40) ** 1.6
         ctx.fillStyle = i < 3 ? '#ffffff' : `rgb(${HALO})`
         ctx.beginPath()
-        ctx.arc(x, y, Math.max(0.8, S * 0.012) * (1 - i / 60), 0, Math.PI * 2)
+        ctx.arc(x, y, Math.max(0.8, u * 0.012) * (1 - i / 60), 0, Math.PI * 2)
         ctx.fill()
       }
       ctx.globalAlpha = 1
     }
 
     const pulse = 1 + act * 0.2 * Math.sin(motion.time * 3.2) ** 2
-    star(ctx, g.front[0], g.front[1], S * (detail === 'full' ? 0.25 : detail === 'reduced' ? 0.34 : 0.42) * pulse, HALO, 1, true, !textured)
+    star(ctx, g.front[0], g.front[1], u * (detail === 'full' ? 0.25 : 0.34) * pulse, HALO, 1, true)
     ctx.restore()
     return canvas
   }

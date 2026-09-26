@@ -570,8 +570,14 @@ struct FakeLeadProbe: CommandRunner {
     var candidate = (container: "0.000000", video: "0.041000")
     var source = (container: "-0.021000", video: "0.000000")
     var exitCode: Int32 = 0
+    /// What a frame count answers for each file; nil makes that count fail.
+    var frames: (source: String?, candidate: String?) = (nil, nil)
 
     func run(_ executable: URL, _ arguments: [String]) async -> (exitCode: Int32, output: String) {
+        if arguments.contains("-count_packets") {
+            let count = arguments.last!.contains("candidate") ? frames.candidate : frames.source
+            return count.map { (0, $0) } ?? (1, "")
+        }
         let starts = arguments.last!.hasPrefix("/") && arguments.last!.contains("candidate") ? candidate : source
         return (exitCode, """
         {"streams":[{"codec_type":"video","start_time":"\(starts.video)"},{"codec_type":"audio","start_time":"-0.021000"}],
@@ -644,7 +650,7 @@ private let measurementCommand: [String] = [
 private func assignment(
     renewWithinSeconds: Int = 30, measure: Bool = false, sourceBytes: Int64 = 4_096,
     commands: [[String]] = [measurementCommand], maxCandidateBytes: Int64? = nil,
-    minCandidateBytes: Int64? = nil
+    minCandidateBytes: Int64? = nil, framePairedCommands: [[String]]? = nil
 ) -> Assignment {
     Assignment(
         leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: sourceBytes,
@@ -653,7 +659,8 @@ private func assignment(
         quality: QualityRequirement(
             measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
             minimumHarmonicMean: 93, minimumMinimum: 80,
-            commands: measure ? commands : [], sampling: "Full file"),
+            commands: measure ? commands : [], sampling: "Full file",
+            framePairedCommands: framePairedCommands),
         maxCandidateBytes: maxCandidateBytes, minCandidateBytes: minCandidateBytes)
 }
 
@@ -1322,6 +1329,39 @@ struct MeasurementFlowTests {
         let measurement = try #require(recorder.all.last { Self.limit(of: $0) == "40" })
         // Every offset scores alike against this fake, so the one that changes nothing wins.
         #expect(measurement[13].contains("setpts=PTS-0*1000000,fps="))
+    }
+
+    @Test("frames are paired by number only when the candidate holds every source frame",
+          arguments: [("34046", "34046", true), ("34046", "34045", false), ("34046", nil, false)])
+    func pairsFramesByNumber(sourceFrames: String, candidateFrames: String?, paired: Bool) async throws {
+        // #269: a candidate with all its source's frames stamped stretches of them a frame early,
+        // and timestamp pairing scored it at 16. By number the same windows score 92-94. A lost
+        // frame moves every later number, so then the timestamps are the better guide.
+        let byNumber = shiftedMeasurementCommand.map {
+            $0.replacingOccurrences(of: ",fps=fps=23.976023976023978:start_time=0,", with: ",setpts=N*41708,")
+        }
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let recorder = ArgumentRecorder()
+        var fake = FakeTranscodeRunner()
+        fake.recorder = recorder
+        var probe = FakeLeadProbe()
+        probe.frames = (sourceFrames, candidateFrames)
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            ffprobe: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: fake, leadProbe: probe, scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            assignment(measure: true, commands: [shiftedMeasurementCommand], framePairedCommands: [byNumber]),
+            pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(server.qualityReport != nil)
+        let measurement = try #require(recorder.all.last { Self.limit(of: $0) == "40" })
+        #expect(measurement[13].contains("setpts=N*41708") == paired)
+        #expect(measurement[13].contains("fps=fps=") == !paired)
     }
 
     @Test("each quality window probes its own picture alignment")

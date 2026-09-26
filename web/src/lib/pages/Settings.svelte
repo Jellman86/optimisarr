@@ -1521,7 +1521,9 @@
     margin-bottom: .875rem; color: var(--ink-3); font-size: .6875rem; font-weight: 600;
     letter-spacing: .11em; text-transform: uppercase;
   }
-  .settings-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  /* The page uses the full width like every other page, so the overview adds columns as the
+     screen widens instead of stretching two cards across it. */
+  .settings-room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
   .settings-room {
     display: flex; min-width: 0; min-height: 11rem; flex-direction: column; gap: .5rem;
     padding: 1.375rem; text-align: left;
@@ -1538,8 +1540,10 @@
   .settings-detail-open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; width: 100%; }
   .settings-fields { display: grid; }
   .settings-field {
-    display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); align-items: center;
-    min-width: 0; column-gap: 1.5rem; padding: 1rem 0; border-bottom: 1px solid var(--divide-soft);
+    /* Label and control stay a readable distance apart however wide the page is: the columns
+       stop growing and the row keeps to the left rather than spreading across the screen. */
+    display: grid; grid-template-columns: minmax(0, 40rem) minmax(10rem, 24rem); justify-content: start; align-items: center;
+    min-width: 0; column-gap: 2rem; padding: 1rem 0; border-bottom: 1px solid var(--divide-soft);
   }
   .settings-field:first-child { padding-top: 0; }
   .settings-field:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -1562,7 +1566,10 @@
   .workload-preview { display: grid; gap: .35rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }
   .workload-preview span, .workload-preview small { color: var(--ink-3); font-size: .75rem; }
   .workload-preview strong { color: var(--ink); font-size: .875rem; font-weight: 600; }
-  .settings-video-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); gap: 1.5rem; align-items: center; }
+  .settings-video-fields > div { display: grid; grid-template-columns: minmax(0, 40rem) minmax(10rem, 24rem); justify-content: start; gap: 2rem; align-items: center; }
+  /* A toggle spreads its label and switch across its row; keep it to the same span as the rows
+     above so the switch lines up with their controls instead of the page's far edge. */
+  .settings-video-fields > :global(label) { max-width: 66rem; }
   .settings-savebar {
     border-radius: .875rem; background: var(--raised); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
   }

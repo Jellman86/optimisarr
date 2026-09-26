@@ -97,11 +97,15 @@ public struct QualityRequirement: Sendable, Equatable {
     /// means nothing is to be measured here; an older server sends none.
     public let commands: [[String]]
     public let sampling: String
+    /// The same windows measured frame by frame, run instead of `commands` when this machine
+    /// counts exactly as many frames in its candidate as in the source. An older server sends none.
+    public let framePairedCommands: [[String]]?
 
     public init(
         measure: Bool, model: String, frameSubsample: Int, clipVmaf: Bool,
         minimumHarmonicMean: Double, minimumMinimum: Double,
-        commands: [[String]] = [], sampling: String = "None"
+        commands: [[String]] = [], sampling: String = "None",
+        framePairedCommands: [[String]]? = nil
     ) {
         self.measure = measure
         self.model = model
@@ -111,6 +115,7 @@ public struct QualityRequirement: Sendable, Equatable {
         self.minimumMinimum = minimumMinimum
         self.commands = commands
         self.sampling = sampling
+        self.framePairedCommands = framePairedCommands
     }
 
     init?(json: [String: Any]) {
@@ -126,7 +131,8 @@ public struct QualityRequirement: Sendable, Equatable {
             measure: measure, model: model, frameSubsample: frameSubsample, clipVmaf: clipVmaf,
             minimumHarmonicMean: harmonic, minimumMinimum: minimum,
             commands: json["commands"] as? [[String]] ?? [],
-            sampling: json["sampling"] as? String ?? "None")
+            sampling: json["sampling"] as? String ?? "None",
+            framePairedCommands: json["framePairedCommands"] as? [[String]])
     }
 
     /// The same contract as it arrives inside a search step, where three of the fields are not

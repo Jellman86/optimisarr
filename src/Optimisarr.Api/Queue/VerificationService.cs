@@ -52,7 +52,8 @@ public sealed record VerificationOutcome(
     VerificationReport Report,
     long OutputSizeBytes,
     string? VmafSampling = null,
-    double ReferenceStartSeconds = 0);
+    double ReferenceStartSeconds = 0,
+    long? SourceSizeBytes = null);
 
 /// <summary>The disposable clip window used to build a preview or calibration reference.</summary>
 public sealed record VerificationClip(
@@ -245,6 +246,11 @@ public sealed class VerificationService(
                         policy.VmafFrameSubsample,
                         vmafAcceleration,
                         policy,
+                        // Equal frame counts mean frame k of the candidate is frame k of the
+                        // source, whatever its timestamps say. A capped encode thins its
+                        // reference by its own index rule and keeps the timestamp path.
+                        clip is null && reference.FrameRate is null
+                            && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
                         progress,
                         cancellationToken));
                 }
@@ -423,7 +429,8 @@ public sealed class VerificationService(
                 VerificationEvaluator.Evaluate(input, policy),
                 outputSize,
                 vmafSampling,
-                preparedReference.PresentationOffsetSeconds);
+                preparedReference.PresentationOffsetSeconds,
+                reference.SizeBytes);
         }
         finally
         {
@@ -512,6 +519,7 @@ public sealed class VerificationService(
         int frameSubsample,
         VmafAcceleration acceleration,
         VerificationPolicy policy,
+        bool pairFramesByNumber,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
@@ -538,7 +546,8 @@ public sealed class VerificationService(
             ReferenceCrop: reference.Crop,
             ReferenceDecimation: reference.FrameRate,
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
-            DistortedContainerLeadSeconds: distortedContainerLeadSeconds);
+            DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
+            PairFramesByNumber: pairFramesByNumber);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

@@ -218,6 +218,10 @@ public partial class MonitorWindow : Window
         button.ContextMenu.PlacementTarget = button;
         button.ContextMenu.IsOpen = true;
     }
+    private void OpenRelease_Click(object sender, RoutedEventArgs e)
+    {
+        if (model.UpdateReleasePage is { } page) Open(page.AbsoluteUri);
+    }
     private void OpenServer_Click(object sender, RoutedEventArgs e)
     {
         if (MonitorProtocol.ServerUri(model.Snapshot?.ServerAddress) is { } uri) Open(uri.AbsoluteUri);

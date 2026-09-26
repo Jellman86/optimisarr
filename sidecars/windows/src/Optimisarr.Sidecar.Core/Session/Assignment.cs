@@ -91,7 +91,13 @@ public sealed record QualityRequirement(
     /// 2026-09-14, and it went unnoticed because nothing on this platform had ever read the
     /// field.</para>
     /// </summary>
-    IReadOnlyList<IReadOnlyList<string>> Commands);
+    IReadOnlyList<IReadOnlyList<string>> Commands,
+    /// <summary>
+    /// The same windows measured frame by frame, run instead of <see cref="Commands"/> when this
+    /// worker counts exactly as many frames in its candidate as in the source. Null from a server
+    /// that does not offer them. See <c>FramePairing</c>.
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<string>>? FramePairedCommands = null);
 
 /// <summary>Where a job has got to, as the server's lease renewal understands it.</summary>
 public enum RemoteStage

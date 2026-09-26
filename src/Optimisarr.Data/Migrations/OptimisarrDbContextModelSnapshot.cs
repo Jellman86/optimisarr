@@ -340,6 +340,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("SourceSha256")
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("SourceSizeBytes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("TEXT");
 

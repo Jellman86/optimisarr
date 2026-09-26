@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.16 — 2026-09-26
+
+### Changed
+
+- **The interface now uses the whole screen.** Dashboards, lists and media reviews widen with the display instead of stopping at 1,152 px, and text steps up slightly on 2200 px and wider screens. Library forms keep a readable width, and card grids such as Libraries and Schedule add columns as the screen widens. A status strip at the top of every page shows the queue's state, free working space, and a Pause/Resume control, so the queue can be paused from anywhere. The sidebar's brand sits beside the name, so navigation starts higher on laptops.
+- **The Dashboard is laid out as a control room.** Total space saved leads, beside what is in flight and what needs you. A chart shows space saved per day for the last 30 days, and a Recent results table lists each finished file's size before and after, the saving, its VMAF score, the encoder and where it ran. The panels reflow from one column on a phone to two on a laptop and three rows across a large display. Jobs now record their source size when verified; jobs verified earlier are filled in once from their reports at startup.
+- The Stellar cube is now the same size in its frame as the Precession cube, so switching icon styles in Settings no longer makes the mark jump in size. Its browser-tab favicon is now the same galaxy cube as the sidebar, shrunk, rather than a separate simplified drawing.
+- The Mac sidecar now bundles libvmaf 3.2.1 (was 3.0.0), matching the container's and the Windows sidecar's VMAF library. Quality scores don't change: on 30 real sample clips, the current VMAF model scores identically on both versions. This makes the newer VMAF v1 models available everywhere for the study in #114; Optimisarr still uses the current model.
+- Sources whose picture stops well before their audio are now caught before encoding. Verification always rejected them, but only after a full encode (and, on a worker, a full download and upload). A quick read of the file's last 30 seconds spots them, the verifier's own full scans confirm it, and the job fails at once with the Source video timeline gate named. The original is untouched. Sources that look normal pay only that quick read, and results are cached per file (#241).
+
+### Fixed
+
+- Settings is no longer narrower than the other pages. It uses the full width like the rest of the app, the overview adds columns on wide screens, and each setting keeps its label and control close together rather than spreading them across the screen.
+- The status strip no longer says the queue is **Not starting** while a sidecar is encoding. Work on workers now shows as **On workers**, with any hold on the server itself (a pause or playback) shown as the reason beside it, and a Workers count sits next to Slots. Jobs kept back for a worker show the reason they are waiting, and the rare case with work queued and no reason given now reads **Nothing running** with a pointer to the Queue.
+- The sidebar no longer says a job is encoding on a sidecar after the sidecar has handed it back. It now names what is actually happening — encoding, sending the source, returning the result, waiting to verify, verifying or finalising — and where: on this server (saying which sidecar the result came from), on a sidecar, or moving between the two. The machine is shown with an icon as a place ("On Scott's MacBook Air") rather than as a bare name.
+- The Saved per day chart is easier to read. It has gridlines at round sizes instead of a single peak label, weekly date marks ending at today, a dashed line for the daily average so one very large day reads as the outlier it is, and a readout of any day you point at (its date, size saved and file count). Days that saved nothing keep a small mark on the axis.
+- Quality-search samples no longer score a good window near zero when the source's container starts slightly before its picture. The comparison cut the original a few milliseconds later than the sample was cut, so on some titles every frame in a window was compared with the next one. It happened on the server and on sidecars, and could send a search back to the library's default quality. The original is now cut at exactly the instant the sample was (#269).
+- Verification no longer fails a good encode whose timestamps drift by a frame partway through. Some encodes keep every frame of the source but stamp stretches of them one frame early, so the quality check compared each picture with its neighbour and scored a clean encode far below its real quality. When the encode has exactly as many frames as the original, each sampled window now compares frame for frame; otherwise it measures as before. This applies on the server and on both sidecars, and needs updated sidecars to take effect there (#269).
+
+### Added
+
+- A VMAF model study harness for developers (`tools/Optimisarr.VmafStudy`). It encodes sample windows across a quality ladder with Optimisarr's own commands and scores each clip under the current model and a candidate model such as VMAF v1, then reports how today's gates would translate. This is groundwork for evaluating VMAF v1 (#114); nothing changes for users (see docs/development/vmaf-model-study.md).
+- Sidecars now show when they are behind the server. The server compares each worker's version on check-in. An older Mac or Windows sidecar shows **Update available** in its menu or tray with an **Open release page** button, and its card under Settings → Workers says the same with a link to the matching release. Sidecars still never update themselves; installing stays your choice. Current sidecars, newer ones, and ones that don't report a version show nothing, and links only ever point at the project's own GitHub releases (#276).
+
 ## 0.2.15 — 2026-09-25
 
 ### Changed
@@ -8,6 +32,7 @@
 
 ### Fixed
 
+- Schedule showed the scan interval as "Every undefinedh". It now reads the interval from settings, where it lives.
 - Quality-search samples measured on Mac and Windows sidecars no longer score frames at 0. Worker sample measurements were planned without the source's frame rate, so VMAF compared some frames with the frame before them; clean samples on VideoToolbox, NVENC and libx265 alike showed zeros on every scene cut, and searches fell back to the library quality having learned nothing. Samples now use the source's frame rate, and a clip with no known rate is compared frame by frame (#269).
 - Final VMAF no longer fails good encodes with near-zero scores. Before each measured window, the server and both sidecars choose a one-frame timing correction; that choice was made with a separate two-second comparison that did not match the real measurement, so it often picked a correction that put the frames one apart. A clean libx265 encode scoring 94–96 was being failed at 21.5. The choice is now made by running the real measurement itself for five seconds at each offset, and the unshifted timing is kept unless another offset is clearly better (#269).
 - A delivered worker candidate is verified against the policy frozen when it was claimed, so editing library verification settings while it encodes cannot silently change the result.
