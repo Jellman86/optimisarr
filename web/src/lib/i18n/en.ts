@@ -368,12 +368,17 @@ export const en = {
     state: "State",
     state_reason: "Reason",
     state_encoding: "ENCODING",
+    state_workers: "ON WORKERS",
+    state_workers_local_held: "This server: {reason}",
+    state_workers_local_paused: "This server is paused. Jobs already on workers keep running.",
     state_paused: "PAUSED",
     state_blocked: "HOLDING",
     state_waiting: "WAITING",
     state_idle: "IDLE",
-    state_unexplained: "NOT STARTING",
+    state_unexplained: "NOTHING RUNNING",
+    state_unexplained_detail: "Jobs are queued and nothing is holding them, but none has started. Open the Queue to see each job's status.",
     slots: "Slots",
+    worker_slots: "Workers",
     free_on: "Free on {path}",
 
     // In flight

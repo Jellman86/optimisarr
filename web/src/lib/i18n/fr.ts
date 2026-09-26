@@ -225,12 +225,17 @@ language: {
     state: "État",
     state_reason: "Raison",
     state_encoding: "ENCODAGE",
+    state_workers: "SUR LES WORKERS",
+    state_workers_local_held: "Ce serveur : {reason}",
+    state_workers_local_paused: "Ce serveur est en pause. Les tâches déjà sur les workers continuent.",
     state_paused: "EN PAUSE",
     state_blocked: "EN ATTENTE",
     state_waiting: "EN ATTENTE",
     state_idle: "INACTIF",
-    state_unexplained: "NE DÉMARRE PAS",
+    state_unexplained: "RIEN EN COURS",
+    state_unexplained_detail: "Des tâches sont en file et rien ne les retient, mais aucune n'a démarré. Ouvrez la file pour voir l'état de chaque tâche.",
     slots: "Emplacements",
+    worker_slots: "Workers",
     free_on: "Libre sur {path}",
 
     // In flight

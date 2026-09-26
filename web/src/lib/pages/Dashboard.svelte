@@ -11,7 +11,7 @@
     type ToolCheck,
     type Worker,
   } from '../api'
-  import { dashboardState } from '../dashboard-state'
+  import { dashboardStateFor } from '../dashboard-state'
   import { i18n, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
   import FleetPanel from '../components/FleetPanel.svelte'
@@ -123,15 +123,7 @@
 
   let queueState = $derived(
     queue
-      ? dashboardState({
-          canStart: queue.canStart,
-          blockedReason: queue.blockedReason,
-          manuallyPaused: queue.manuallyPaused,
-          manualPauseMode: queue.manualPauseMode,
-          waitingReason: queue.waitingReason,
-          runningJobs: queue.runningJobs,
-          queued: stats?.queued ?? 0,
-        })
+      ? dashboardStateFor(queue, stats?.queued ?? 0)
       : null,
   )
 </script>

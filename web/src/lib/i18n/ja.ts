@@ -223,12 +223,17 @@ export const ja: Messages = {
     state: "状態",
     state_reason: "理由",
     state_encoding: "エンコード中",
+    state_workers: "ワーカーで実行中",
+    state_workers_local_held: "このサーバー: {reason}",
+    state_workers_local_paused: "このサーバーは一時停止中です。ワーカー上のジョブは実行を続けます。",
     state_paused: "一時停止",
     state_blocked: "保留中",
     state_waiting: "待機中",
     state_idle: "アイドル",
-    state_unexplained: "開始しません",
+    state_unexplained: "実行なし",
+    state_unexplained_detail: "ジョブは待機中で妨げるものはありませんが、どれも開始していません。キューで各ジョブの状態を確認してください。",
     slots: "スロット",
+    worker_slots: "ワーカー",
     free_on: "{path} の空き",
 
     // In flight

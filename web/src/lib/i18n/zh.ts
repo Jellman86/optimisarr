@@ -223,12 +223,17 @@ export const zh: Messages = {
     state: "状态",
     state_reason: "原因",
     state_encoding: "正在编码",
+    state_workers: "在工作节点上",
+    state_workers_local_held: "本服务器：{reason}",
+    state_workers_local_paused: "本服务器已暂停。已在工作节点上的任务会继续运行。",
     state_paused: "已暂停",
     state_blocked: "暂缓",
     state_waiting: "等待中",
     state_idle: "空闲",
-    state_unexplained: "未启动",
+    state_unexplained: "无运行任务",
+    state_unexplained_detail: "有任务排队且没有任何限制，但没有任务开始。打开队列查看每个任务的状态。",
     slots: "槽位",
+    worker_slots: "工作节点",
     free_on: "{path} 可用",
 
     // In flight
