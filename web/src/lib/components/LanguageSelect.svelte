@@ -34,10 +34,20 @@
       trigger.focus()
     }
 
+    // Kept in place for as long as it is open, not just measured once. The menu hangs from the
+    // rail, and a rail still animating narrower after its collapse button carried a menu measured
+    // mid-animation past the left edge of the window. Re-measuring each frame is cheap for a menu
+    // that is open for a moment, and a no-op once nothing moves.
+    let frame = requestAnimationFrame(function follow() {
+      if (positioned) positionMenu()
+      frame = requestAnimationFrame(follow)
+    })
+
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     document.addEventListener('keydown', closeOnEscape)
     window.addEventListener('resize', positionMenu)
     return () => {
+      cancelAnimationFrame(frame)
       document.removeEventListener('pointerdown', closeOnOutsidePointer)
       document.removeEventListener('keydown', closeOnEscape)
       window.removeEventListener('resize', positionMenu)
