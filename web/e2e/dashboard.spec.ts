@@ -162,6 +162,29 @@ test('the sidebar does not call an unfinished encode complete', async ({ page })
   await expect(card).toContainText('99%')
 })
 
+test('a candidate a worker has returned is shown being checked here, not encoding on the worker', async ({ page }) => {
+  // Regression: the sidebar said "Now encoding · Scott's MacBook Air" while the Mac reported itself
+  // idle. The job keeps the worker's name after delivery; the work is this server's now.
+  await mockDashboard(page, {
+    jobs: [liveJob({ status: 'AwaitingVerification', workerName: "Scott's MacBook Air", videoEncoder: 'hevc_videotoolbox', progress: 0 })],
+  })
+  await page.goto('/#/settings')
+
+  const card = page.locator('aside').getByRole('link', { name: /Waiting to verify/ })
+  await expect(card).toContainText("On this server, from Scott's MacBook Air")
+  await expect(page.locator('aside').getByText('Now encoding')).toBeHidden()
+})
+
+test('an encode on a worker is placed on that worker', async ({ page }) => {
+  await mockDashboard(page, {
+    jobs: [liveJob({ status: 'Leased', remoteStage: 'Encoding', workerName: 'PICARD', videoEncoder: 'hevc_nvenc' })],
+  })
+  await page.goto('/#/settings')
+
+  const card = page.locator('aside').getByRole('link', { name: /Now encoding/ })
+  await expect(card).toContainText('On PICARD')
+})
+
 test('the dashboard asks only for jobs still being worked on', async ({ page }) => {
   // Regression: the unfiltered list is the entire job history — 1,773 rows on the server this
   // was checked against — and the dashboard re-reads it every fifteen seconds.

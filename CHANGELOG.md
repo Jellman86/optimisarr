@@ -11,6 +11,8 @@
 
 ### Fixed
 
+- The sidebar no longer says a job is encoding on a sidecar after the sidecar has handed it back. It now names what is actually happening — encoding, sending the source, returning the result, waiting to verify, verifying or finalising — and where: on this server (saying which sidecar the result came from), on a sidecar, or moving between the two. The machine is shown with an icon as a place ("On Scott's MacBook Air") rather than as a bare name.
+- The Saved per day chart is easier to read. It has gridlines at round sizes instead of a single peak label, weekly date marks ending at today, a dashed line for the daily average so one very large day reads as the outlier it is, and a readout of any day you point at (its date, size saved and file count). Days that saved nothing keep a small mark on the axis.
 - Quality-search samples no longer score a good window near zero when the source's container starts slightly before its picture. The comparison cut the original a few milliseconds later than the sample was cut, so on some titles every frame in a window was compared with the next one. It happened on the server and on sidecars, and could send a search back to the library's default quality. The original is now cut at exactly the instant the sample was (#269).
 
 ### Added
