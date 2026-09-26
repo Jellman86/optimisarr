@@ -234,12 +234,17 @@ export const pt: Messages = {
     state: "Estado",
     state_reason: "Motivo",
     state_encoding: "A CODIFICAR",
+    state_workers: "NOS WORKERS",
+    state_workers_local_held: "Este servidor: {reason}",
+    state_workers_local_paused: "Este servidor está em pausa. As tarefas já nos workers continuam.",
     state_paused: "EM PAUSA",
     state_blocked: "EM ESPERA",
     state_waiting: "A AGUARDAR",
     state_idle: "INATIVO",
-    state_unexplained: "NÃO ARRANCA",
+    state_unexplained: "NADA EM CURSO",
+    state_unexplained_detail: "Há tarefas na fila e nada as retém, mas nenhuma começou. Abra a fila para ver o estado de cada tarefa.",
     slots: "Lugares",
+    worker_slots: "Workers",
     free_on: "Livre em {path}",
 
     // In flight

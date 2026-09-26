@@ -234,12 +234,17 @@ export const ru: Messages = {
     state: "Состояние",
     state_reason: "Причина",
     state_encoding: "КОДИРОВАНИЕ",
+    state_workers: "НА ВОРКЕРАХ",
+    state_workers_local_held: "Этот сервер: {reason}",
+    state_workers_local_paused: "Этот сервер на паузе. Задачи, уже переданные воркерам, продолжаются.",
     state_paused: "ПРИОСТАНОВЛЕНО",
     state_blocked: "УДЕРЖАНИЕ",
     state_waiting: "ОЖИДАНИЕ",
     state_idle: "ПРОСТОЙ",
-    state_unexplained: "НЕ ЗАПУСКАЕТСЯ",
+    state_unexplained: "НИЧЕГО НЕ ИДЁТ",
+    state_unexplained_detail: "Задачи в очереди и ничто их не держит, но ни одна не началась. Откройте очередь, чтобы увидеть статус каждой задачи.",
     slots: "Слоты",
+    worker_slots: "Воркеры",
     free_on: "Свободно на {path}",
 
     // In flight
