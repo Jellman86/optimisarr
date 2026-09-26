@@ -36,5 +36,5 @@ public sealed class QualityScoreAggregatorTests
     }
 
     private static QualityScores Scores(double mean, double harmonic, double minimum, double fifth, int frames) =>
-        new(mean, harmonic, minimum, null, null, "vmaf_v0.6.1", "SDR", fifth, frames);
+        new(mean, harmonic, minimum, null, null, "vmaf_v1.0.16_3d0h", "SDR", fifth, frames);
 }

@@ -651,7 +651,7 @@ private func assignment(
         videoEncoder: "hevc_videotoolbox", renewWithinSeconds: renewWithinSeconds,
         arguments: serverCommand, outputExtension: "mp4",
         quality: QualityRequirement(
-            measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
+            measure: true, model: "vmaf_v1.0.16_3d0h", frameSubsample: 1, clipVmaf: false,
             minimumHarmonicMean: 93, minimumMinimum: 80,
             commands: measure ? commands : [], sampling: "Full file"),
         maxCandidateBytes: maxCandidateBytes, minCandidateBytes: minCandidateBytes)
@@ -1098,7 +1098,7 @@ struct SessionWorkLoopTests {
             "expiresUtc": "2026-09-04T10:00:00+00:00", "renewWithinSeconds": 30,
             "arguments": serverCommand, "outputExtension": "mp4",
             "quality": [
-                "measure": true, "model": "vmaf_v0.6.1", "frameSubsample": 1, "clipVmaf": false,
+                "measure": true, "model": "vmaf_v1.0.16_3d0h", "frameSubsample": 1, "clipVmaf": false,
                 "minimumHarmonicMean": 93.0, "minimumMinimum": 80.0,
             ],
         ]
