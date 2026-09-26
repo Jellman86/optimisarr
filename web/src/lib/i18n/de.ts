@@ -232,12 +232,17 @@ export const de: Messages = {
     state: "Zustand",
     state_reason: "Grund",
     state_encoding: "KODIERT",
+    state_workers: "AUF WORKERN",
+    state_workers_local_held: "Dieser Server: {reason}",
+    state_workers_local_paused: "Dieser Server ist pausiert. Aufträge, die schon auf Workern laufen, laufen weiter.",
     state_paused: "PAUSIERT",
     state_blocked: "ANGEHALTEN",
     state_waiting: "WARTET",
     state_idle: "INAKTIV",
-    state_unexplained: "STARTET NICHT",
+    state_unexplained: "NICHTS LÄUFT",
+    state_unexplained_detail: "Aufträge warten und nichts hält sie auf, aber keiner hat begonnen. Öffne die Warteschlange, um den Status jedes Auftrags zu sehen.",
     slots: "Plätze",
+    worker_slots: "Worker",
     free_on: "Frei auf {path}",
 
     // In flight

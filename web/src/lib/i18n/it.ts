@@ -223,12 +223,17 @@ dashboard: {
     state: "Stato",
     state_reason: "Motivo",
     state_encoding: "CODIFICA",
+    state_workers: "SUI WORKER",
+    state_workers_local_held: "Questo server: {reason}",
+    state_workers_local_paused: "Questo server è in pausa. I job già sui worker continuano.",
     state_paused: "IN PAUSA",
     state_blocked: "IN ATTESA",
     state_waiting: "IN ATTESA",
     state_idle: "INATTIVO",
-    state_unexplained: "NON PARTE",
+    state_unexplained: "NIENTE IN CORSO",
+    state_unexplained_detail: "Ci sono job in coda e niente li trattiene, ma nessuno è partito. Apri la coda per vedere lo stato di ogni job.",
     slots: "Slot",
+    worker_slots: "Worker",
     free_on: "Liberi su {path}",
 
     // In flight

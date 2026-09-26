@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dashboardState, type DashboardState } from '../dashboard-state'
+  import { dashboardStateFor, type DashboardState } from '../dashboard-state'
   import { formatSize } from '../format'
   import { localWorkloadCapacity } from '../job-presentation'
   import { i18n, t } from '../i18n/i18n.svelte'
@@ -8,23 +8,17 @@
 
   // The queue's state on every page, so the answer to "is it working?" is never a click away.
   let queue = $derived(counts.queue)
+  let workers = $derived(queue?.workloadLanes?.find((lane) => lane.lane === 'Workers') ?? null)
   let state = $derived<DashboardState | null>(
     queue
-      ? dashboardState({
-          canStart: queue.canStart,
-          blockedReason: queue.blockedReason,
-          manuallyPaused: queue.manuallyPaused,
-          manualPauseMode: queue.manualPauseMode,
-          waitingReason: queue.waitingReason,
-          runningJobs: queue.runningJobs,
-          queued: counts.stats?.queued ?? 0,
-        })
+      ? dashboardStateFor(queue, counts.stats?.queued ?? 0)
       : null,
   )
 
   // Each state names itself in words as well as colour, so the strip never depends on hue alone.
   const LABEL: Record<DashboardState['kind'], () => string> = {
     encoding: () => i18n.m.dashboard.state_encoding,
+    workers: () => i18n.m.dashboard.state_workers,
     paused: () => i18n.m.dashboard.state_paused,
     blocked: () => i18n.m.dashboard.state_blocked,
     waiting: () => i18n.m.dashboard.state_waiting,
@@ -35,6 +29,17 @@
   let tone = $derived(state?.severity === 'live' ? 'text-accent' : state?.severity === 'attention' ? 'text-bad' : 'text-ink')
   let capacity = $derived(queue ? localWorkloadCapacity(queue) : null)
   let slots = $derived(capacity ? `${queue?.runningJobs ?? 0} / ${capacity}` : `${queue?.runningJobs ?? 0}`)
+  // Only a server with workers shows their slots; one without them has nothing to count.
+  let workerSlots = $derived(workers && (workers.capacity > 0 || workers.active > 0) ? `${workers.active} / ${workers.capacity}` : null)
+  // While workers encode, a hold on this server is the explanation rather than the state, so say
+  // whose hold it is. A state with no reason of its own gets a plain sentence instead of nothing.
+  let detail = $derived(
+    !state ? null
+    : state.kind === 'workers' && state.localPaused ? i18n.m.dashboard.state_workers_local_paused
+    : state.kind === 'workers' && state.detail ? t(i18n.m.dashboard.state_workers_local_held, { reason: state.detail })
+    : state.kind === 'unexplained' ? i18n.m.dashboard.state_unexplained_detail
+    : state.detail,
+  )
 </script>
 
 <!-- A labelled region rather than a live one: it re-reads every fifteen seconds, and a region
@@ -50,8 +55,8 @@
     {/if}
     <span class="label mb-0">{i18n.m.dashboard.state}</span>
     <span class="font-mono text-sm font-medium {tone}">{state ? LABEL[state.kind]() : '—'}</span>
-    {#if state?.detail}
-      <span class="status-strip-reason" title={state.detail}>{state.detail}</span>
+    {#if detail}
+      <span class="status-strip-reason" title={detail}>{detail}</span>
     {/if}
   </div>
 
@@ -59,6 +64,13 @@
     <span class="label mb-0">{i18n.m.dashboard.slots}</span>
     <span class="font-mono text-sm font-medium tabular-nums text-ink">{slots}</span>
   </div>
+
+  {#if workerSlots}
+    <div class="status-strip-fact">
+      <span class="label mb-0">{i18n.m.dashboard.worker_slots}</span>
+      <span class="font-mono text-sm font-medium tabular-nums text-ink">{workerSlots}</span>
+    </div>
+  {/if}
 
   <div class="status-strip-fact">
     <span class="label mb-0">{i18n.m.nav.queue}</span>

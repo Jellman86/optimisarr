@@ -168,7 +168,7 @@ test('the dashboard asks only for jobs still being worked on', async ({ page }) 
   const seen = await mockDashboard(page, { jobs: [] })
 
   await page.goto('/#/')
-  await expect(page.getByText('HOLDING', { exact: true }).or(page.getByText('NOT STARTING', { exact: true }))).toBeVisible()
+  await expect(page.getByText('HOLDING', { exact: true }).or(page.getByText('NOTHING RUNNING', { exact: true }))).toBeVisible()
 
   expect(seen.some((request) => request === '/api/jobs?live=true')).toBe(true)
   expect(seen.some((request) => request === '/api/jobs')).toBe(false)
@@ -203,7 +203,29 @@ test('a queue that should be running but is not is called out rather than drawn 
 
   await page.goto('/#/')
 
-  await expect(page.getByText('NOT STARTING', { exact: true })).toBeVisible()
+  await expect(page.getByText('NOTHING RUNNING', { exact: true })).toBeVisible()
+})
+
+test('a worker encoding while this server is held reads as work on workers, not a stall', async ({ page }) => {
+  // Regression: a sidecar was encoding while playback held the server, and the bar said the
+  // queue was not starting. The hold is still shown, as this server's reason.
+  await mockDashboard(page, {
+    queue: {
+      canStart: false,
+      blockedReason: 'Paused while Riker Plex is active (1 stream).',
+      workloadLanes: [
+        { lane: 'Video', active: 0, capacity: 1, waiting: 0, reason: null },
+        { lane: 'Workers', active: 1, capacity: 2, waiting: 0, reason: null },
+      ],
+    },
+  })
+
+  await page.goto('/#/')
+
+  const strip = page.getByRole('region', { name: 'State' })
+  await expect(strip.getByText('ON WORKERS', { exact: true })).toBeVisible()
+  await expect(strip.getByText('This server: Paused while Riker Plex is active (1 stream).')).toBeVisible()
+  await expect(strip.getByText('1 / 2', { exact: true })).toBeVisible()
 })
 
 test('an empty queue reads as idle, not as a problem', async ({ page }) => {
