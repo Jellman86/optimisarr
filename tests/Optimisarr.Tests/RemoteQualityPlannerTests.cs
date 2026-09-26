@@ -48,4 +48,35 @@ public sealed class RemoteQualityPlannerTests
         Assert.Equal("113", first[first.ToList().IndexOf("-ss") + 1]);
         Assert.Contains(RemoteQualityContract.DistortedShiftPlaceholder, first[first.ToList().IndexOf("-lavfi") + 1]);
     }
+    [Fact]
+    public void Windows_are_also_offered_frame_by_frame_for_the_worker_to_choose_by_frame_count()
+    {
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = true, ClipVmafEnabled = true };
+
+        var contract = RemoteQualityPlanner.Plan(
+            policy, 1920, 1080, false, false, 1389.638, 24000d / 1001d, 0.021, null, null);
+
+        Assert.NotNull(contract!.FramePairedCommands);
+        Assert.Equal(contract.WindowCount, contract.FramePairedCommands!.Count);
+        var paired = contract.FramePairedCommands[0];
+        var filter = paired[paired.ToList().IndexOf("-lavfi") + 1];
+        Assert.DoesNotContain("fps=fps", filter);
+        Assert.Contains($"setpts=(N-round({RemoteQualityContract.DistortedShiftPlaceholder}*", filter);
+        // The same window: only the pairing differs.
+        Assert.Equal(
+            contract.Commands[0][contract.Commands[0].ToList().IndexOf("-ss") + 1],
+            paired[paired.ToList().IndexOf("-ss") + 1]);
+    }
+
+    [Fact]
+    public void No_frame_by_frame_measurement_is_offered_without_a_rate_or_for_a_capped_encode()
+    {
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = true, ClipVmafEnabled = true };
+
+        Assert.Null(RemoteQualityPlanner.Plan(
+            policy, 1920, 1080, false, false, 1389.638, null, 0.021, null, null)!.FramePairedCommands);
+        Assert.Null(RemoteQualityPlanner.Plan(
+            policy, 1920, 1080, false, false, 1389.638, 50, 0.021, null,
+            new Optimisarr.Core.Queue.FrameRateDecimation(50, 25, 2))!.FramePairedCommands);
+    }
 }

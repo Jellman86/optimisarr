@@ -21,7 +21,11 @@ public sealed record RemoteQualityContract(
     // What the source spent on the sample windows, stored with the adaptive search's contract on
     // the lease once measured so a search measures its source once, not once per candidate.
     // Never sent to a worker; a final-candidate quality contract leaves it null.
-    SizeForecastBasis? SizeForecast = null)
+    SizeForecastBasis? SizeForecast = null,
+    // The same windows measured frame by frame, for a worker whose candidate holds exactly as many
+    // frames as the source. The worker counts both and chooses; see FramePairing. Null when the
+    // source has no frame rate to number frames by, or is not measured in windows.
+    IReadOnlyList<IReadOnlyList<string>>? FramePairedCommands = null)
 {
     public const string DistortedPlaceholder = "{{distorted}}";
     public const string ReferencePlaceholder = "{{reference}}";
