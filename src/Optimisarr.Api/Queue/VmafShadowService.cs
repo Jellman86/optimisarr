@@ -74,8 +74,9 @@ public sealed class VmafShadowService(
             {
                 return Result("TimedOut", "The server research time budget expired; normal verification remains authoritative.");
             }
-            catch (Exception exception) when (exception is IOException or ArgumentException or InvalidOperationException
-                or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
+            // Research is deliberately isolated from the already evaluated gate report. Even an
+            // unexpected observer/tool error must not turn a verified candidate into a failed job.
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 return Result("Unavailable", $"Research measurement failed: {exception.Message}");
             }

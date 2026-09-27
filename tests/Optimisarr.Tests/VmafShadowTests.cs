@@ -38,12 +38,15 @@ public sealed class VmafShadowTests
         Assert.Equal(context, result.Context);
     }
 
-    [Fact]
-    public async Task Filesystem_failure_is_recorded_and_the_slot_is_reusable()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Filesystem_failure_is_recorded_and_the_slot_is_reusable(bool accessDenied)
     {
         var fail = true;
         using var service = new VmafShadowService(true, (_, _, context, _) =>
         {
+            if (fail && accessDenied) throw new UnauthorizedAccessException("Candidate access was revoked");
             if (fail) throw new IOException("Candidate became unreadable");
             return Task.FromResult(Score(context));
         });
