@@ -4,6 +4,9 @@
 
 ### Testing
 
+- VMAF model studies now measure v1 in 10-bit SDR with the encoded file’s actual CAMBI parameters, support separate encoding/scoring FFmpeg binaries, and validate thresholds against held-out sources. Production models and gates stay unchanged pending calibration.
+- Unattended VMAF studies fail on unavailable models and incomplete pairs, checkpoint partial evidence, and verify cached clips against source/tool/command fingerprints. Interrupted or corrupted encodes cannot be reused as successful samples.
+
 - Acceptance reports remain visibly unfinished, with a nonzero result and a JUnit error, until the complete run and cleanup finish. An interrupted artifact cannot look like a successful full suite.
 
 - macOS and Windows acceptance launchers now use the production session lifecycle, including reconnection after a server restart. Cleanup checks current revocations and attempts every settings/worker restoration even when another cleanup fails. Intel decode-retry fixtures leave enough size headroom to reach the intended quality rejection.

@@ -76,5 +76,5 @@ public static class VmafModelComparison
     /// windows clears it; <paramref name="sorted"/> is ascending.
     /// </summary>
     private static double SamePassingCount(IReadOnlyList<double> sorted, int passing) =>
-        passing <= 0 ? sorted[^1] : sorted[Math.Max(0, sorted.Count - passing)];
+        passing <= 0 ? Math.BitIncrement(sorted[^1]) : sorted[Math.Max(0, sorted.Count - passing)];
 }

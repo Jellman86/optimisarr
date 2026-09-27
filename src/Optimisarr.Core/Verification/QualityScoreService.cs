@@ -62,9 +62,7 @@ public sealed class QualityScoreService(
             // Keep measurement useful without monopolising a small home server. Four
             // libvmaf workers scale well while leaving capacity for the API and disk I/O.
             var threads = Math.Clamp(Environment.ProcessorCount, 1, 4);
-            var requestedAcceleration = context.ReferenceIsHdr
-                ? VmafAcceleration.None
-                : context.Acceleration;
+            var requestedAcceleration = QualityScoreCommandBuilder.EffectiveAcceleration(context);
 
             if (requestedAcceleration == VmafAcceleration.Cuda
                 && !await HasFilterAsync(_cudaFfmpeg, "libvmaf_cuda", cancellationToken))

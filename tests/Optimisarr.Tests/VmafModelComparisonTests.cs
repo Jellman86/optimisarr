@@ -52,14 +52,23 @@ public sealed class VmafModelComparisonTests
     }
 
     [Fact]
+    public void A_gate_with_no_passing_baseline_scores_does_not_accept_the_highest_candidate()
+    {
+        var pairs = Line(v => v - 10);
+        var comparison = VmafModelComparison.Compare(pairs, [101])!;
+        Assert.All(pairs, pair => Assert.True(pair.Candidate < comparison.Thresholds[0].RankEquivalent));
+    }
+
+    [Fact]
     public void A_chosen_model_replaces_the_automatic_one_in_the_graph()
     {
-        var context = new QualityMeasurementContext(1920, 1080, false, false, ModelVersion: "vmaf_v1.0.16_3d0h");
+        var context = new QualityMeasurementContext(1920, 1080, false, false, ModelVersion: "vmaf_v1.0.16_3d0h",
+            EncodedVideo: new(1920, 1080, 8));
 
         var command = QualityScoreCommandBuilder.Build("d.mkv", "r.mkv", "l.json", context, 4);
 
         Assert.Equal("vmaf_v1.0.16_3d0h", command.ModelVersion);
-        Assert.Contains("model=version=vmaf_v1.0.16_3d0h:", command.FilterGraph);
+        Assert.Contains("model='version=vmaf_v1.0.16_3d0h", command.FilterGraph);
         Assert.DoesNotContain("vmaf_v0.6.1", command.FilterGraph);
     }
 
