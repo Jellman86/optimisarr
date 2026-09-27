@@ -13,6 +13,24 @@ from acceptance.container_workers import ContainerWorkers
 
 
 class WorkerAvailabilityTests(unittest.TestCase):
+    def test_missing_docker_is_blocked_without_aborting_other_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Report(Path(directory) / "report")
+            workers = ContainerWorkers(Mock(), directory, "http://localhost:1234", "sidecar:test")
+            with patch("acceptance.container_workers.shutil.which", return_value=None):
+                workers.start([], report=report)
+            self.assertEqual(2, report.exit_code)
+            self.assertEqual([], workers.containers)
+
+    def test_one_cleanup_failure_does_not_leave_other_owned_containers_unattempted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workers = ContainerWorkers(Mock(), directory, "http://localhost:1234", "sidecar:test")
+            workers.containers = ["first", "second"]
+            with patch.object(workers, "remove", side_effect=[RuntimeError("first failed"), None]) as remove, \
+                    self.assertRaises(AssertionError):
+                workers.stop()
+            self.assertEqual(["first", "second"], [call.args[0] for call in remove.call_args_list])
+
     def test_container_pairs_without_putting_the_pin_in_command_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             api = Mock()

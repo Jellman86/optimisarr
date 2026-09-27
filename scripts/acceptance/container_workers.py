@@ -4,8 +4,9 @@ import os
 import secrets
 import re
 import subprocess
+import shutil
 
-from .core import command, require
+from .core import Blocked, command, require
 from .monitor import LinuxObserver
 from .workers import Workers, free_port
 
@@ -27,6 +28,14 @@ class ContainerWorkers(Workers):
         return args
 
     def discover(self, argv):
+        if not shutil.which("docker"):
+            raise Blocked("Docker CLI is unavailable for the requested worker image")
+        try:
+            platform = command(["docker", "info", "--format", "{{.OSType}}"], timeout=10).strip()
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            raise Blocked("Docker daemon is unavailable for the requested worker image") from exc
+        if platform != "linux":
+            raise Blocked("The worker image needs a Linux Docker daemon")
         name = "optimisarr-acceptance-discovery-" + secrets.token_hex(5)
         self.containers.append(name)
         try:
@@ -64,7 +73,7 @@ class ContainerWorkers(Workers):
             raise
         def files(job_id):
             # find /work succeeds even when completion removed the requested job directory.
-            output = command(["docker", "exec", container, "find", "/work", "-maxdepth", "2", "-type", "f",
+            output = command(["docker", "exec", container, "find", "/work", "-ignore_readdir_race", "-maxdepth", "2", "-type", "f",
                               "-path", f"/work/job-{job_id}/*", "-printf", "%f %s\n"])
             return [{"name": row.rsplit(" ", 1)[0], "bytes": int(row.rsplit(" ", 1)[1])}
                     for row in output.splitlines()]
