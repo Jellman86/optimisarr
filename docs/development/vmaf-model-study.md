@@ -68,6 +68,23 @@ earlier run without measuring anything.
 
 ## What makes a study good enough to switch models
 
+### Verify the source timeline first
+
+The September 2026 fleet investigation found VC-1 sources with decode timestamps but no
+presentation timestamps (#294). Encoding already uses `+genpts`; source packet verification must
+use it too. Otherwise one FFmpeg build can report no picture endpoint, while another reports an
+incomplete endpoint and falsely fails duration (#289). A retained 32,275-packet source/candidate
+pair differed by only 0.002 seconds after matching the input demuxing, despite its earlier 1.06%
+duration failure. Candidate timestamps are still measured without reconstruction.
+
+Resolve these measurement discrepancies before attributing a changed verdict to the VMAF model.
+Keep separate output directories for each encoder/preset/source set: the current study reuses
+encoded clips by source name, quality and window, so sharing one directory between encoder runs
+would compare the wrong cached clips. Reusing that directory for a different scoring model on
+the same encodes is intentional.
+
+### Coverage and acceptance
+
 - **Cover the quality range.** The ladder must include encodes that clearly pass and clearly fail
   today's gates, or the fitted line only describes the middle.
 - **Cover the library.** Animation, grain, dark scenes, SD, 720p, 1080p and UHD behave differently.

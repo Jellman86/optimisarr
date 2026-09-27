@@ -94,7 +94,7 @@ public struct FullVerification: Sendable {
             let decoded = try await runner.run(ffmpeg, ["-nostdin", "-xerror", "-v", "error", "-i", candidate.path,
                 "-map", "0:v?", "-map", "0:a?", "-f", "null", "-"]) { _ in }
             evidence.decode = Self.parseDecode(decoded.stderr, exitCode: decoded.exitCode)
-            evidence.sourceVideo = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "source-video")
+            evidence.sourceVideo = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "source-video", generateMissingPts: true)
             evidence.candidateVideo = try await timestamps(ffprobe, file: candidate, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "candidate-video")
             evidence.sourceAudio = try await timestamps(ffprobe, file: source, stream: "a:0", scratch: scratch, name: "source-audio")
             // Strict server verification consumes this evidence without re-reading media. Confirm
@@ -102,12 +102,17 @@ public struct FullVerification: Sendable {
             if Self.needsSourceVideoConfirmation(video: evidence.sourceVideo, audio: evidence.sourceAudio,
                 sourceProbe: evidence.sourceProbe) {
                 let confirmed = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier,
-                    scratch: scratch, name: "source-video-confirmation")
+                    scratch: scratch, name: "source-video-confirmation", generateMissingPts: true)
                 if confirmed.measured && confirmed.lastPresentationSeconds != nil { evidence.sourceVideo = confirmed }
             }
             if contract.measureAudio {
                 evidence.sourceLoudness = try await loudness(ffmpeg, file: source)
                 evidence.candidateLoudness = try await loudness(ffmpeg, file: candidate)
+            }
+            for (name, scan) in [("source-video", evidence.sourceVideo), ("candidate-video", evidence.candidateVideo)] {
+                guard let scan, scan.measured, let endpoint = scan.lastPresentationSeconds, endpoint.isFinite else {
+                    throw Failure("\(name): no complete presentation timestamp measurement was returned.")
+                }
             }
         } catch is CancellationError { throw CancellationError() }
           catch { evidence.error = "Full verification could not complete: \(error)" }
@@ -125,12 +130,16 @@ public struct FullVerification: Sendable {
         return try String(contentsOf: output, encoding: .utf8)
     }
 
-    private func timestamps(_ ffprobe: URL, file: URL, stream: String, scratch: URL, name: String) async throws -> VerificationTimestamps {
+    private func timestamps(_ ffprobe: URL, file: URL, stream: String, scratch: URL, name: String,
+                            generateMissingPts: Bool = false) async throws -> VerificationTimestamps {
         let output = scratch.appendingPathComponent("verification-\(name).csv")
         defer { try? FileManager.default.removeItem(at: output) }
-        let result = try await runner.run(ffprobe, ["-v", "error", "-select_streams", stream,
+        // VC-1 sources can carry only DTS. Match the encoder's input demuxing so their
+        // presentation span is measured; candidates must retain their own timestamps.
+        let inputFlags = generateMissingPts ? ["-fflags", "+genpts"] : []
+        let result = try await runner.run(ffprobe, inputFlags + ["-v", "error", "-select_streams", stream,
             "-show_entries", "packet=pts_time,dts_time,duration_time", "-of", "csv=p=0", "-o", output.path, file.path]) { _ in }
-        guard result.exitCode == 0 else { throw Failure("Timestamp probe failed: \(result.stderr)") }
+        guard result.exitCode == 0 else { throw Failure("\(name) timestamp probe failed (\(result.exitCode)): \(result.stderr)") }
         let handle = try FileHandle(forReadingFrom: output)
         defer { try? handle.close() }
         var accumulator = VerificationTimestampAccumulator()

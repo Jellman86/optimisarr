@@ -30,6 +30,8 @@
 
 ### Fixed
 
+- VC-1 sources that contain decode timestamps but omit presentation timestamps now use the same timestamp reconstruction during verification as during encoding. This fixes incomplete sidecar evidence and false duration drift on affected files across the main container, Mac, Windows and Linux workers. Candidate timestamp checks remain strict, and missing evidence identifies the affected stream.
+
 - Cancelling a remote job releases its lease atomically. Late claims cannot reclaim cancelled jobs, legacy orphan leases cannot keep renewing, and Windows/Linux workers stop retrying terminal upload refusals and clear their scratch files.
 - VAAPI encodes preserve 10-bit software-decoded frames in both the main container and sidecar, while SDR tone mapping retains its intended 8-bit output.
 - Windows GPU decode support follows negotiated protocol capabilities instead of the sidecar release number, enabling capable development builds while preserving compatibility with older workers.

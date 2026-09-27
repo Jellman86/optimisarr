@@ -147,7 +147,7 @@ public sealed class VerificationService(
             // video and can report source corruption separately. Disposable clips have their own
             // deliberately bounded/reference-offset timeline, so keep their established checks.
             var originalTimestampResult = remoteEvidence?.SourceVideo ?? (inspectFullFile && reference.Kind == MediaKind.Video && clip is null
-                ? await timestamps.CheckAsync(reference.Path, cancellationToken)
+                ? await timestamps.CheckSourceAsync(reference.Path, cancellationToken)
                 : TimestampCheckResult.NotMeasured);
             var originalAudioTimestampResult = remoteEvidence?.SourceAudio ?? (inspectFullFile && reference.Kind == MediaKind.Video
                 && originalProbe.AudioTrackCount > 0
@@ -173,7 +173,7 @@ public sealed class VerificationService(
                     originalAudioTimestampResult.LastPresentationSeconds is { } audioEnd
                         ? Math.Max(0, audioEnd - (originalProbe.AudioStartSeconds ?? 0)) : null))
             {
-                var rechecked = await timestamps.CheckAsync(reference.Path, cancellationToken);
+                var rechecked = await timestamps.CheckSourceAsync(reference.Path, cancellationToken);
                 if (rechecked.Measured && rechecked.LastPresentationSeconds is not null)
                 {
                     originalTimestampResult = rechecked;

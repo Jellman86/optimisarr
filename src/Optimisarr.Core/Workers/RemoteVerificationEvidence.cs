@@ -49,8 +49,13 @@ public static class RemoteVerificationEvidenceValidator
         if (evidence.Decode is null || evidence.Decode.ErrorCount < 0
             || (evidence.Decode.Healthy && (evidence.Decode.ErrorCount != 0 || evidence.Decode.Error is not null)))
             reasons.Add("A complete decode-health measurement is required.");
-        if (!TimestampValid(evidence.SourceVideo) || !TimestampValid(evidence.CandidateVideo))
-            reasons.Add("Complete source and candidate video timestamp measurements are required.");
+        foreach (var (name, scan) in new[] { ("source-video", evidence.SourceVideo), ("candidate-video", evidence.CandidateVideo) })
+        {
+            if (!TimestampValid(scan))
+                reasons.Add(scan is { Measured: true, LastPresentationSeconds: null }
+                    ? $"{name}: packet timestamps were read, but no presentation endpoint was available."
+                    : $"{name}: a complete, finite video timestamp measurement is required.");
+        }
         if (evidence.SourceAudio is null || (hasAudio && !TimestampValid(evidence.SourceAudio)))
             reasons.Add("The source audio timestamp check is missing or incomplete.");
         if (measureAudio && (!LoudnessValid(evidence.SourceLoudness) || !LoudnessValid(evidence.CandidateLoudness)))
