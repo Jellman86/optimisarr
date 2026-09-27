@@ -69,13 +69,15 @@ class Harness:
         return self.api.request("/api/settings", "PUT", settings)
 
     def select_worker(self, worker):
+        current_workers = {w["id"]: w for w in self.api.request("/api/workers")}
         if worker:
-            current = next((w for w in self.api.request("/api/workers") if w["id"] == worker["id"]), None)
+            current = current_workers.get(worker["id"])
             if not current or not current["online"] or current.get("revokedAt"):
                 raise Blocked(f"Required worker {worker['name']} is absent, offline or revoked")
         # Only on the fresh, isolated instance checked above. Never drain the production fleet.
         for known in self.workers:
-            if known["revokedAt"]:
+            current = current_workers.get(known["id"])
+            if not current or current.get("revokedAt"):
                 continue
             method = "DELETE" if worker and known["id"] == worker["id"] else "POST"
             self.api.request(f"/api/workers/{known['id']}/drain", method)
@@ -459,8 +461,9 @@ class Harness:
     def hardware_decode_rejection(self, encoder, fixture):
         name = f"local-{encoder}-decode-retry-rejection"
         compressed = self.root / "fixtures" / f"{encoder}-decode-source.mkv"
-        # Use a codec the GPU actually decodes, not the lossless FFV1 fixture transport format.
-        self.tools.encode(["-i", self.tools.path(fixture), "-c:v", "libx264", "-crf", "10",
+        # Leave enough size headroom to reach VMAF rejection and its software-decode retry.
+        # A CRF 10 source let Intel outputs hit the size guard first, testing the wrong gate.
+        self.tools.encode(["-i", self.tools.path(fixture), "-c:v", "libx264", "-crf", "1",
                            "-profile:v", "high", "-preset", "fast", "-c:a", "copy", self.tools.path(compressed)])
         return self.video(name, compressed, encoder, reject=True, hardware_decode=True)
 
@@ -504,15 +507,27 @@ class Harness:
             self.api.post(f"/api/jobs/{case['jobId']}/cancel")
 
     def restore(self):
-        # Cancellation is scoped to IDs created by this run, even after a partial failure.
-        for job in self.api.request("/api/jobs"):
+        errors = []
+        def attempt(action):
+            try:
+                return action()
+            except Exception as error:
+                errors.append(str(error))
+                return None
+
+        # Attempt every independent cleanup even if a previous request failed.
+        jobs = attempt(lambda: self.api.request("/api/jobs")) or []
+        for job in jobs:
             if job["id"] in self.job_ids and job["status"] not in TERMINAL:
-                self.api.post(f"/api/jobs/{job['id']}/cancel")
+                attempt(lambda: self.api.post(f"/api/jobs/{job['id']}/cancel"))
+        current = {w["id"]: w for w in (attempt(lambda: self.api.request("/api/workers")) or [])}
         for worker in self.workers:
-            if not worker["revokedAt"]:
-                self.api.request(f"/api/workers/{worker['id']}/drain",
-                                 "POST" if worker["drainRequestedAt"] else "DELETE")
-        self.api.request("/api/settings", "PUT", self.settings)
+            live = current.get(worker["id"])
+            if live and not live.get("revokedAt"):
+                attempt(lambda: self.api.request(f"/api/workers/{worker['id']}/drain",
+                        "POST" if worker["drainRequestedAt"] else "DELETE"))
+        attempt(lambda: self.api.request("/api/settings", "PUT", self.settings))
+        require(not errors, "Cleanup failed: " + "; ".join(errors))
 
     def run(self, *, tier="smoke", corpus=None, expected_workers=(), local_encoders=(), variants=None,
             soak_cycles=0, fixture_seconds=8, strict_worker_verification=False):

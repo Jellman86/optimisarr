@@ -211,7 +211,7 @@ def main():
                 (root / "server.log").write_text(command(["docker", "logs", container], include_stderr=True))
             finally:
                 subprocess.run(["docker", "rm", "-f", container], capture_output=True, timeout=30)
-        report.write()
+        report.finish()
         print(f"Report: {report.root / 'index.html'}", flush=True)
     return 130 if exit_code == 130 else report.exit_code
 

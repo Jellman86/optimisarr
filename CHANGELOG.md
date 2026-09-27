@@ -4,6 +4,10 @@
 
 ### Testing
 
+- Acceptance reports remain visibly unfinished, with a nonzero result and a JUnit error, until the complete run and cleanup finish. An interrupted artifact cannot look like a successful full suite.
+
+- macOS and Windows acceptance launchers now use the production session lifecycle, including reconnection after a server restart. Cleanup checks current revocations and attempts every settings/worker restoration even when another cleanup fails. Intel decode-retry fixtures leave enough size headroom to reach the intended quality rejection.
+
 - Native acceptance workers can use a separate RAM scratch directory while reports, logs and fixtures remain on durable storage.
 
 - Linux sidecar publication now requires paired real-media jobs in RAM, including verification, cancellation, reconnect and rollback. The harness checks live media/load information, actual RAM working files and cleanup.
@@ -25,6 +29,11 @@
 - Mac sidecar RAM storage now shares one budget across concurrent jobs and includes candidate limits, scratch allowance and filesystem overhead. Unbounded candidates and adaptive searches use disk. The monitor shows actual storage and explains fallbacks. Source downloads stream directly to working storage, with incomplete ranges rolled back on interruption or cancellation.
 
 ### Fixed
+
+- Cancelling a remote job releases its lease atomically. Late claims cannot reclaim cancelled jobs, legacy orphan leases cannot keep renewing, and Windows/Linux workers stop retrying terminal upload refusals and clear their scratch files.
+- VAAPI encodes preserve 10-bit software-decoded frames in both the main container and sidecar, while SDR tone mapping retains its intended 8-bit output.
+- Windows GPU decode support follows negotiated protocol capabilities instead of the sidecar release number, enabling capable development builds while preserving compatibility with older workers.
+- The Windows size-budget regression test runs without requiring PowerShell script-file execution or changing host policy.
 
 - Shared Windows/Linux job monitors receive progress during short encodes, without waiting for lease renewal. Main-container and Linux-sidecar telemetry share one unprivileged sampler; DRM engine-capacity fields no longer count as GPU busy time.
 

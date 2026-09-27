@@ -106,8 +106,10 @@ class Report:
         self.root.mkdir(parents=True, exist_ok=False)
         self.results = []
         self.environment = {}
+        self.completed = False
 
     def case(self, name, action):
+        self.completed = False
         start = time.monotonic()
         row = {"name": name, "status": "passed"}
         try:
@@ -122,17 +124,25 @@ class Report:
         print(f"{row['status'].upper():7} {name}: {row.get('detail', '')}", flush=True)
         return row
 
+    def finish(self):
+        self.completed = True
+        self.write()
+
     def write(self):
         failures = sum(r["status"] == "failed" for r in self.results)
         blocked = sum(r["status"] == "blocked" for r in self.results)
-        summary = {"status": "failed" if failures else "incomplete" if blocked or not self.results else "passed",
+        summary = {"status": "failed" if failures else "incomplete" if blocked or not self.results else "passed" if self.completed else "running",
+                   "completed": self.completed,
                    "passed": sum(r["status"] == "passed" for r in self.results),
                    "failed": failures, "blocked": blocked,
                    "scope": "Selected matrix only; omitted hosts and hardware are not certified"}
         save(self.root / "report.json", {"schemaVersion": 2, "summary": summary,
                                         "environment": self.environment, "results": self.results})
-        suite = ET.Element("testsuite", name="Optimisarr media acceptance", tests=str(len(self.results)),
-                           failures=str(failures), errors=str(blocked))
+        suite = ET.Element("testsuite", name="Optimisarr media acceptance", tests=str(len(self.results) + (0 if self.completed else 1)),
+                           failures=str(failures), errors=str(blocked + (0 if self.completed else 1)))
+        if not self.completed:
+            pending = ET.SubElement(suite, "testcase", name="run-completion")
+            ET.SubElement(pending, "error", message="Run has not finished")
         for row in self.results:
             case = ET.SubElement(suite, "testcase", name=row["name"], time=str(row["seconds"]))
             if row["status"] != "passed":
@@ -154,4 +164,4 @@ class Report:
     @property
     def exit_code(self):
         return 1 if any(r["status"] == "failed" for r in self.results) else (
-            2 if not self.results or any(r["status"] == "blocked" for r in self.results) else 0)
+            2 if not self.completed or not self.results or any(r["status"] == "blocked" for r in self.results) else 0)

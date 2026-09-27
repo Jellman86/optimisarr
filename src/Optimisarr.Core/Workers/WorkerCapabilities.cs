@@ -26,7 +26,8 @@ public sealed record WorkerCapabilities(
     VmafCapability Vmaf,
     long FreeScratchBytes,
     int MaxConcurrency,
-    string? SidecarVersion = null);
+    string? SidecarVersion = null,
+    int ProtocolVersion = 1);
 
 /// <summary>
 /// The fully resolved demands of one assignment. The control plane resolves these from the

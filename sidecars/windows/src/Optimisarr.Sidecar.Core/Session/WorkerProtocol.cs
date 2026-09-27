@@ -12,5 +12,6 @@ namespace Optimisarr.Sidecar.Core.Session;
 public static class WorkerProtocol
 {
     public const int Minimum = 1;
-    public const int Maximum = 2;
+    // Protocol 3 accepts the canonical CUDA/QSV/VAAPI GPU-surface command grammar.
+    public const int Maximum = 3;
 }

@@ -266,7 +266,7 @@ public sealed class JobTransfer(HttpClient http)
             // beginning — tens of gigabytes, over a question that was never answered.
             throw new SidecarException(
                 $"The server would not say how much of the candidate it holds (HTTP {(int)response.StatusCode}).",
-                recoverable: true);
+                recoverable: WorthAnotherAttempt(response.StatusCode));
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
