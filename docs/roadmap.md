@@ -17,7 +17,72 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it. The converse matters too: an entry left
   describing finished work as outstanding sends effort at an item that has none.
-- Status claims last verified against the repository: **2026-08-24**.
+- Status claims last verified against the repository: **2026-08-24** for the full audit. The
+  *Where things stand* section below and entries 9, 10 and 11 were re-verified on
+  **2026-09-27**.
+
+## Where things stand (2026-09-27)
+
+A handover for whoever picks this up next. Verify anything here against the code before acting on
+it; this section describes the state after the 0.2.16 release.
+
+**Release and fleet.** 0.2.16 is released (tag `v0.2.16`, release PR #290, sync-back #291) with a
+notarised Mac app, the unsigned Windows MSI preview and the container image. The control plane
+(Riker, `:dev` via Dockhand), the macOS sidecar and the Windows sidecar (PICARD) all run 0.2.16.
+`dev` carries one unreleased fix since then: the sidebar language menu staying on screen while the
+sidebar collapses (#292).
+
+**What 0.2.16 settled.** #269 (near-zero VMAF on sound candidates) is closed. It had four causes, all
+fixed on the server and both sidecars:
+
+1. the whole-file alignment shift was derived from container headers and never fired (#274);
+2. worker quality samples were measured without the source's frame rate (#275);
+3. cut-clip references were seeked to the frame grid rather than the sample's exact instant (#281);
+4. candidates that keep every frame but stamp stretches of them a frame early were paired by
+   timestamp; with equal frame counts they are now paired by frame number (#287). Record:
+   [`2026-09-26-vmaf-frame-number-pairing.md`](engineering/hardware-validation/2026-09-26-vmaf-frame-number-pairing.md).
+
+Two jobs that had failed at harmonic 16–39 passed live at 93.3 after the fix. Also in 0.2.16: a
+pre-encode source-timeline check (#279, closes #241), sidecar update notices (#280), libvmaf 3.2.1
+on the Mac sidecar (#283), the VMAF model study harness (#282), and the UI work in #286/#288
+(full-width Settings, a status strip that reports work on workers, a sidebar card that names the
+real stage and machine, a readable Saved per day chart). #244 was confirmed fixed by its reporter
+and closed.
+
+**Open, in suggested order:**
+
+1. **#289: outputs about 1% longer than their source fail the duration gate.** Seen on HEVC NVENC
+   encodes with `-fps_mode passthrough`. First establish whether the output is really longer or the
+   source duration is misleading (the issue lists the method).
+2. **#294: strict sidecar evidence missing timestamp scans.** Job 5942 failed with *Complete source
+   and candidate video timestamp measurements are required* after a 0.2.15 Mac encode. The server
+   refused it safely; find out why the Mac sent no usable scan. Its candidate was still on Riker on
+   2026-09-26.
+3. **#295: Windows MSI upgrade leaves the service stopped.** Documented behaviour (the installer
+   README says to use **Start worker** or reboot), but an already-paired PC could restart its own
+   service.
+4. **#293: Linux sidecar** as a container that runs the existing .NET sidecar core headless; the
+   issue holds the design.
+5. **#114: VMAF v1 model (external PR).** Blocked on the calibration study. The harness is
+   [`tools/Optimisarr.VmafStudy`](development/vmaf-model-study.md); a 60-clip pilot showed v1 moves
+   scores by content (live action −1.6 to −3.5, animation +1.9 to +2.4) and flips 11 of 60 verdicts
+   at a gate of 90, so switching models is a change of gate, not a drop-in upgrade.
+6. **#242: structured logging and diagnostic bundles** (enhancement).
+
+**Working notes.**
+
+- Everyday work branches from `dev` in a git worktree and returns by PR; see [`CLAUDE.md`](../CLAUDE.md).
+  Releases follow [`releasing.md`](development/releasing.md): release PR into `main`, annotated
+  tag, draft release filled by the sidecar workflows, publish, then the metadata sync-back into
+  `dev`. The release notes for 0.2.16 are a good template.
+- Merge only when every check is green. Repository auto-merge is off, and `gh pr merge --auto`
+  then merges at once instead of waiting.
+- `CHANGELOG.md` entries added by parallel PRs conflict when one merges first; resolve by
+  keeping both sides.
+- `docs/openapi.json` must be regenerated (`python3 scripts/check_openapi.py --update`) whenever a
+  DTO changes, including worker protocol records; CI fails otherwise.
+- The e2e suite is timing-sensitive on CI runners in places a fast machine never reaches; #292 is an
+  example. Reproduce such failures by slowing the relevant transition rather than re-running.
 
 ## Up next (priority order, updated 2026-08-24)
 
@@ -187,6 +252,12 @@ the replacement workflow is trustworthy.
      reference branch against it — rather than a speculative change to the path that guards every
      replacement.
 
+     **Update 2026-09-26:** the whole-file failures that followed turned out to be candidate
+     timestamp drift, not reference seating, and are fixed by pairing frames by number (#287). When
+     the candidate and source hold the same number of frames, windowed whole-file measurement no
+     longer uses the cadence grid at all. Candidates with unequal counts still go through `fps`, so
+     the question above remains open for them.
+
    - **Sampled-VMAF frame alignment: measured, not derived (2026-09-15).** Whole seasons were
      failing the quality gate with harmonic means in single figures while the encodes themselves
      were sound. Two causes, both now fixed and both recorded in full at
@@ -209,6 +280,12 @@ the replacement workflow is trustworthy.
      **Still open:** passthrough reduces frame loss without eliminating it — one frame lost in one
      fixture, six in another. The measurement is now honest about a candidate that lost frames; it
      does not stop them being lost.
+
+     **Resolved 2026-09-26 (#269 closed):** two more causes were found and fixed after this record —
+     cut-clip references seeked to the frame grid instead of the sample's exact instant (#281), and
+     candidates whose timestamps drift by a frame inside a window (#287). See *Where things stand*
+     above and the
+     [frame-number pairing record](engineering/hardware-validation/2026-09-26-vmaf-frame-number-pairing.md).
 
    - **Open: a path inside a filter description is not a path.** FFmpeg unescapes a filter
      description twice on the way in — once by the filtergraph parser, again by the filter's own
@@ -521,7 +598,14 @@ the replacement workflow is trustworthy.
 9. **Optional Windows and macOS sidecars for distributed transcoding: implemented as an opt-in
    preview behind `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`.**
 
-   **Current status, 2026-09-17:** both platforms run the Compact Monitor UI, worker-side adaptive
+   **Current status, 2026-09-27:** released in 0.2.16, which the control plane and both sidecars
+   run. Sidecars now show **Update available** when they are older than the server they are paired
+   to (#280). Worker-measured quality uses frame-number pairing when frame counts match, sent as
+   `framePairedCommands` beside `commands` (#287). A Linux sidecar is designed but not started
+   (#293). After a Windows MSI upgrade the service stays stopped until **Start worker** or a reboot
+   (#295).
+
+   **Status, 2026-09-17:** both platforms run the Compact Monitor UI, worker-side adaptive
    quality search and VMAF, and protocol-2 full verification without server media-tool
    fallback. Windows has an MSI-installed service/tray client with tested same-version preview
    upgrades; Mac has an anchored native popover and packaged media tools. Both use the Precession
@@ -885,6 +969,12 @@ the replacement workflow is trustworthy.
       duration, tail, stream, size, and configured final VMAF gates. The existing single
       higher-quality retry and fail-closed exclusion remain the backstop if the prediction does not
       hold for the complete title.
+    - **Status 2026-09-27.** Searches now select real qualities on the server and on both sidecars
+      rather than falling back to the library's own: the sample-alignment causes of #269 are fixed
+      (#275, #281), and live retries chose quality 23 from probes at 17, 23, 29 and 26 on
+      VideoToolbox. A size forecast from the same samples holds likely oversize encodes for review
+      before the full encode (0.2.15). The acceptance comparison below is still outstanding, so the
+      Experimental label stays.
     - **Prototype acceptance.** Compare total work, selected quality, size, VMAF, and repeatability
       against the fixed-setting path across CPU, QSV, NVENC, and VA-API evidence where hardware is
       available. Promote it from experimental only if the bounded search saves meaningful space or avoids failures without
@@ -896,6 +986,12 @@ the replacement workflow is trustworthy.
     commits behind a fix it needed and nothing on the page could have said so. YA-WAMF already
     solves the release half, and its design is worth reusing — but its privacy posture is not, and
     the difference matters more here than the mechanism does.
+
+    - **Status 2026-09-27: sidecar version skew shipped; the release check has not started.** The
+      network-free half landed in #280 and shipped in 0.2.16: the server compares each worker's
+      reported version with its own (`SidecarUpdateCheck`), and an older sidecar shows **Update
+      available** with a link to the matching release, as does its card under Settings → Workers.
+      Everything below about the opt-in release check against a hosted endpoint remains unbuilt.
 
     - **What YA-WAMF does, and which parts to take.** `backend/app/utils/version.py` keeps the
       comparison pure and free of I/O, so "is a newer release available?" is deterministic and
