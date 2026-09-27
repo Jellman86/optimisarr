@@ -47,6 +47,7 @@ def main():
     parser.add_argument("--expected-worker", action="append", default=[])
     worker_runtime = parser.add_mutually_exclusive_group()
     worker_runtime.add_argument("--worker-image", help="Linux sidecar image; disposable local Linux Docker daemons only")
+    parser.add_argument("--worker-scratch-root", type=Path, help="New native-worker scratch directory, separate from durable evidence")
     parser.add_argument("--require-worker-ram", action="store_true", help="Require observed Linux source/candidate RAM files and cleanup")
     worker_runtime.add_argument("--worker-command", help='JSON argument array for a local disposable worker, e.g. ["/path/AcceptanceWorker"]')
     parser.add_argument("--worker-encoder", action="append", default=[], help="Limit disposable worker discovery to these encoders")
@@ -73,6 +74,8 @@ def main():
         parser.error("Worker launchers require --tier fleet")
     if (args.worker_encoder or args.require_worker_ram) and not (args.worker_command or args.worker_image):
         parser.error("Worker encoder/RAM requirements need --worker-command or --worker-image")
+    if args.worker_scratch_root and not args.worker_command:
+        parser.error("--worker-scratch-root requires --worker-command")
     if args.timeout <= 0 or args.pairing_wait < 0:
         parser.error("Timeout must be positive and pairing wait non-negative")
     if args.corpus and not args.corpus.resolve().is_relative_to(args.root.resolve()):
@@ -80,6 +83,9 @@ def main():
         require(args.corpus.is_file(), "Corpus manifest does not exist")
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
+    scratch_root = args.worker_scratch_root.resolve() if args.worker_scratch_root else root
+    if args.worker_scratch_root:
+        scratch_root.mkdir(parents=True, exist_ok=False)
     for name in ("config", "data", "work", "trash", "fixtures"):
         (root / name).mkdir()
     report = Report(root / "report")
@@ -151,7 +157,7 @@ def main():
         if args.worker_command:
             argv = json.loads(args.worker_command)
             require(isinstance(argv, list) and argv and all(isinstance(x, str) for x in argv), "Worker command must be a JSON argument array")
-            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe, vmaf=args.vmaf, require_ram=args.require_worker_ram)
+            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe, vmaf=args.vmaf, require_ram=args.require_worker_ram, scratch_root=scratch_root)
             workers.start(argv, args.worker_encoder, report=report)
         corpus = args.corpus
         if corpus:

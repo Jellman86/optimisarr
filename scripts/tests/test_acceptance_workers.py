@@ -13,6 +13,14 @@ from acceptance.container_workers import ContainerWorkers
 
 
 class WorkerAvailabilityTests(unittest.TestCase):
+    def test_ram_scratch_is_separate_from_durable_configuration_and_reports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "durable"
+            scratch = Path(directory) / "ram"
+            workers = Workers(Mock(), root, "http://localhost:1234", "ffmpeg", "ffprobe", scratch_root=scratch)
+            self.assertEqual(str(scratch / "discovery"), workers.env["OPTIMISARR_SIDECAR_WORK"])
+            self.assertEqual(str(root / "discovery-config"), workers.env["OPTIMISARR_CONFIG_DIR"])
+
     def test_missing_docker_is_blocked_without_aborting_other_targets(self):
         with tempfile.TemporaryDirectory() as directory:
             report = Report(Path(directory) / "report")

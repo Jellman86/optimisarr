@@ -108,16 +108,18 @@ work, but does not yet assert a quantitative memory-leak or GPU-memory threshold
 
 ### Linux sidecar and RAM evidence
 
-Use the existing Linux worker executable with the native runner. Put the **entire new run root**
-on an operator-provisioned tmpfs (for example `/dev/shm/optimisarr-run-001`) and add
-`--require-worker-ram`. Pass the production FFmpeg/ffprobe and independent VMAF paths explicitly.
+Use the existing Linux worker executable with the native runner. Keep `--root` on durable storage and use `--worker-scratch-root`
+for a new directory on an operator-provisioned tmpfs. Add `--require-worker-ram` to require proof.
+Some hosts clear user-owned `/dev/shm` files when the last login session ends; keeping reports,
+configuration and fixtures outside tmpfs preserves the evidence. Pass the production FFmpeg/ffprobe and independent VMAF paths explicitly.
 The runner supplies isolated config, scratch, pairing and a private loopback dashboard port:
 
 ```bash
 python3 scripts/media_acceptance.py --native /build/server/Optimisarr.Api.dll \
   --worker-command '["dotnet", "/build/worker/Optimisarr.Sidecar.Linux.dll"]' \
   --ffmpeg /tools/ffmpeg --ffprobe /tools/ffprobe --vmaf /tools/ffmpeg-vmaf \
-  --tier fleet --root /dev/shm/optimisarr-run-001 --require-worker-ram \
+  --tier fleet --root /var/tmp/optimisarr-run-001 --require-worker-ram \
+  --worker-scratch-root /dev/shm/optimisarr-worker-001 \
   --local-encoder libx265 --worker-encoder hevc_qsv --worker-encoder hevc_vaapi
 ```
 

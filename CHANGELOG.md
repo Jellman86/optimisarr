@@ -4,6 +4,8 @@
 
 ### Testing
 
+- Native acceptance workers can use a separate RAM scratch directory while reports, logs and fixtures remain on durable storage.
+
 - Linux sidecar publication now requires paired real-media jobs in RAM, including verification, cancellation, reconnect and rollback. The harness checks live media/load information, actual RAM working files and cleanup.
 - Unavailable worker encoders no longer abort the remaining acceptance matrix. Missing targets remain blocked with a nonzero result; current worker availability is checked before and during jobs. Hardware-decode cases reject software fallback and independently check every output picture.
 
