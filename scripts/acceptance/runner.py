@@ -9,7 +9,7 @@ import shutil
 import time
 
 from .core import Blocked, inside, quality_failures, require, save, sha256
-from .media import compare_report
+from .media import compare_report, validate_shadow_report
 
 TERMINAL = {"ReadyToReplace", "Completed", "Failed", "Cancelled"}
 MODES = {"libx264": "Cpu", "libx265": "Cpu", "libsvtav1": "Cpu",
@@ -186,6 +186,8 @@ class Harness:
         if job["videoEncoder"] != encoder:
             raise Blocked(f"Requested coverage for {encoder}, scheduler selected {job['videoEncoder']}; not covered")
         verification = json.loads(job["verificationReportJson"] or "{}")
+        if getattr(self, "vmaf_shadow", False):
+            save(directory / "shadow-check.json", validate_shadow_report(verification))
         if worker and getattr(self, "strict_worker_verification", False):
             require(verification.get("context", {}).get("verificationLocation") == "Worker",
                     "Strict sidecar verification was not recorded; server fallback cannot satisfy this run")

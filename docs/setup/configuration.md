@@ -142,6 +142,11 @@ override the standard values unless supplying a complete, tested replacement too
 
 ## Per-library verification gates
 
+`OPTIMISARR_VMAF_SHADOW_SERVER=1` opts the main container into bounded paired v0/v1 research
+measurements. It adds server CPU work even for sidecar-verified candidates, with up to two minutes
+of extra finalisation per sampled job. Existing VMAF gates still decide replacements. It is off by
+default; see the [decision and evidence guide](../development/vmaf-shadow-decision.md) before enabling.
+
 The configuration page has four linked stages for every media type:
 **Choose files → Encode → Verify → Schedule & replace**. Open any stage directly from the overview
 or return with its breadcrumb; navigation keeps the current draft and **Save** saves all stages

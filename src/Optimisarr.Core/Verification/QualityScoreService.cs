@@ -9,6 +9,8 @@ namespace Optimisarr.Core.Verification;
 public sealed record QualityResult(bool Measured, QualityScores? Scores, string? Error)
 {
     public VmafAcceleration Acceleration { get; init; } = VmafAcceleration.None;
+    // Research pairs reuse the baseline's alignment instead of optimising each model separately.
+    public string? DistortedShiftToken { get; init; }
 
     public static QualityResult Ok(QualityScores scores) => new(true, scores, null);
 
@@ -104,7 +106,7 @@ public sealed class QualityScoreService(
 
             if (result.Measured || requestedAcceleration == VmafAcceleration.None)
             {
-                return result;
+                return result with { DistortedShiftToken = effectiveContext.DistortedShiftToken };
             }
 
             // Hardware decode is codec/profile/driver dependent, and CUDA VMAF also requires a
@@ -132,7 +134,7 @@ public sealed class QualityScoreService(
                     $"Accelerated VMAF failed ({result.Error}); software fallback failed: {fallback.Error}");
             }
 
-            return fallback;
+            return fallback with { DistortedShiftToken = fallbackContext.DistortedShiftToken };
         }
         catch (ArgumentException ex)
         {

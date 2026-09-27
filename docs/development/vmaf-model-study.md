@@ -1,5 +1,8 @@
 # VMAF model study
 
+Production remains on v0.6.1. The [shadow-scoring decision](vmaf-shadow-decision.md) records the
+September 2026 calibration result and the opt-in collection mode for real encoded candidates.
+
 Optimisarr's quality gates (harmonic mean, fifth percentile, catastrophic floor) and every
 calibration were tuned on Netflix's `vmaf_v0.6.1` model (`vmaf_4k_v0.6.1` for UHD). A different
 model scores the same pictures on its own scale. VMAF v1 (libvmaf 3.2.0 and later), for example,
