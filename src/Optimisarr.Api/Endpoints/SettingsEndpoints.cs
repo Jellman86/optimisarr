@@ -53,6 +53,29 @@ internal static class SettingsEndpoints
         })
         .WithName("UpdateSettings");
 
+        // Server-wide so every browser, and every paired sidecar's own page, shows the same mark.
+        app.MapGet("/api/settings/appearance", async (SettingsStore settings, CancellationToken cancellationToken) =>
+            Results.Ok(new AppearanceDto(BrandStyles.WireName(await settings.GetBrandStyleAsync(cancellationToken)))))
+        .WithName("GetAppearance")
+        .Produces<AppearanceDto>();
+
+        app.MapPut("/api/settings/appearance", async (
+            AppearanceDto request,
+            SettingsStore settings,
+            CancellationToken cancellationToken) =>
+        {
+            if (!BrandStyles.TryParse(request.BrandStyle, out var style))
+            {
+                return ApiErrors.BadRequest("settings.brandStyle.invalid", "Brand style must be precession or stellar.");
+            }
+
+            await settings.SetBrandStyleAsync(style, cancellationToken);
+            return Results.Ok(new AppearanceDto(BrandStyles.WireName(style)));
+        })
+        .WithName("UpdateAppearance")
+        .Produces<AppearanceDto>()
+        .Produces<ApiError>(StatusCodes.Status400BadRequest);
+
         app.MapGet("/api/settings/cleanup", async (
             TimedCleanupService cleanup,
             CancellationToken cancellationToken) =>
@@ -142,3 +165,5 @@ internal static class SettingsEndpoints
         .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 }
+
+internal sealed record AppearanceDto(string BrandStyle);

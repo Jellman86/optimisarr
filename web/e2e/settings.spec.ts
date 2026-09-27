@@ -491,3 +491,27 @@ test('settings child pages use the same content width as their overview', async 
     expect(Math.abs(body!.width - heading!.width), room).toBeLessThan(1)
   }
 })
+
+test('the application icon is the server’s choice, so sidecars can show it too', async ({ page }) => {
+  await mockSettings(page)
+  let stored = 'stellar'
+  const saved: string[] = []
+  await page.route('**/api/settings/appearance', async (route) => {
+    if (route.request().method() === 'PUT') {
+      stored = route.request().postDataJSON().brandStyle
+      saved.push(stored)
+    }
+    await route.fulfill({ json: { brandStyle: stored } })
+  })
+  await page.goto('/#/settings/system')
+  const select = page.getByLabel('Application icon')
+  await expect(select).toHaveValue('stellar')
+  await select.selectOption('precession')
+  await expect.poll(() => saved).toEqual(['precession'])
+  await expect(page.getByText('Could not save the icon on the server')).toHaveCount(0)
+
+  await page.unroute('**/api/settings/appearance')
+  await page.route('**/api/settings/appearance', route => route.fulfill({ status: 500, json: { error: 'down' } }))
+  await select.selectOption('stellar')
+  await expect(page.getByRole('alert')).toContainText('Could not save the icon on the server')
+})

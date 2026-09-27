@@ -1577,6 +1577,31 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Lease_artwork_is_only_for_the_worker_holding_the_lease()
+    {
+        // A sidecar's own page shows the poster of what it is working on. The worker still names
+        // nothing but its lease, so this cannot become a way to browse the library's artwork.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Poster holder");
+        var intruder = await PairCapableWorker("Poster intruder");
+        await QueueAJob();
+        var leaseId = (await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+
+        // No integration is configured here, so the holder's honest answer is "no artwork".
+        using var held = await worker.GetAsync($"/api/workers/leases/{leaseId}/artwork");
+        Assert.Equal(HttpStatusCode.NotFound, held.StatusCode);
+        using var stolen = await intruder.GetAsync($"/api/workers/leases/{leaseId}/artwork");
+        Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+        using var anonymous = await _api.CreateClient().GetAsync($"/api/workers/leases/{leaseId}/artwork");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        (await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { })).EnsureSuccessStatusCode();
+        using var afterRelease = await worker.GetAsync($"/api/workers/leases/{leaseId}/artwork");
+        Assert.Equal(HttpStatusCode.Conflict, afterRelease.StatusCode);
+    }
+
+    [Fact]
     public async Task A_released_lease_stops_granting_access_to_the_media()
     {
         // The lease is what bounds a worker's reach into the library. Giving the job back must end

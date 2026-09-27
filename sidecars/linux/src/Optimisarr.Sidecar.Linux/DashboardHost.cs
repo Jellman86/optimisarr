@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace Optimisarr.Sidecar.Linux;
 
+public sealed record PairRequest(string? Server, string? Code);
+
 public static class DashboardHost
 {
     public static WebApplication Create(WorkerDashboard dashboard, string? urls = null)
@@ -15,7 +17,7 @@ public static class DashboardHost
         {
             context.Response.Headers.CacheControl = "no-store";
             context.Response.Headers.XContentTypeOptions = "nosniff";
-            context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'";
+            context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none'";
             await next(context);
         });
         app.UseDefaultFiles();
@@ -28,6 +30,19 @@ public static class DashboardHost
         });
         app.MapGet("/api/sidecar/jobs/{id:int}/preview", (int id) =>
             dashboard.ReadPreview(id) is { } jpeg ? Results.File(jpeg, "image/jpeg") : Results.NotFound());
+        app.MapGet("/api/sidecar/jobs/{id:int}/artwork", (int id) =>
+            dashboard.ReadArtwork(id) is { } artwork ? Results.File(artwork.Bytes, artwork.ContentType) : Results.NotFound());
+        // The only write, and only while the worker has no credential. A JSON body already keeps a
+        // plain cross-site form out (415); the fetch-metadata check refuses scripted ones too.
+        app.MapPost("/api/sidecar/pair", async (PairRequest request, HttpContext context) =>
+        {
+            if (context.Request.Headers["Sec-Fetch-Site"] == "cross-site")
+                return Results.Json(new { error = "Pair this worker from its own page." }, statusCode: StatusCodes.Status403Forbidden);
+            var attempt = await dashboard.Pairing.SubmitAsync(request.Server, request.Code);
+            return attempt.Problem is null
+                ? Results.Ok(new { paired = true })
+                : Results.Json(new { error = attempt.Problem }, statusCode: attempt.StatusCode);
+        });
         return app;
     }
 }

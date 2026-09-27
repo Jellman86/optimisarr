@@ -56,6 +56,9 @@ public sealed class SidecarSession(
 
     /// <summary>A newer release the server says to install, from the latest check-in; null while current.</summary>
     public SidecarUpdate? AvailableUpdate { get; private set; }
+
+    /// <summary>The server's brand mark from the latest check-in; null until one says.</summary>
+    public string? BrandStyle { get; private set; }
     public void SetPaused(bool paused)
     {
         if (ShutdownArmed) return;
@@ -183,6 +186,7 @@ public sealed class SidecarSession(
                 ServerDraining = beat.Draining;
                 interval = beat.Interval;
                 AvailableUpdate = beat.Update;
+                BrandStyle = beat.BrandStyle ?? BrandStyle;
                 Set(
                     SidecarState.Connected,
                     beat.Draining

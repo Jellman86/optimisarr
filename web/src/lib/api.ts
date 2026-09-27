@@ -1204,6 +1204,9 @@ export const api = {
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  appearance: () => request<{ brandStyle: string }>('/api/settings/appearance'),
+  saveAppearance: (brandStyle: string) =>
+    request<{ brandStyle: string }>('/api/settings/appearance', { method: 'PUT', body: JSON.stringify({ brandStyle }) }),
   timedCleanupPreview: () => request<TimedCleanupPreview>('/api/settings/cleanup'),
   runTimedCleanup: (confirmedPreview: TimedCleanupPreview) =>
     request<TimedCleanupRunResult>('/api/settings/cleanup', {

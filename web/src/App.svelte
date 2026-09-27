@@ -4,6 +4,7 @@
   import { router, layout, theme } from './lib/stores/ui.svelte'
   import { activity } from './lib/stores/activity.svelte'
   import { favicon } from './lib/stores/favicon.svelte'
+  import { brand } from './lib/stores/brand.svelte'
   import { auth } from './lib/stores/auth.svelte'
   import { setup } from './lib/stores/setup.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
@@ -59,6 +60,7 @@
   $effect(() => {
     if (auth.canUseApp) {
       favicon.start()
+      void brand.sync()
       if (!setup.checked && !setup.loading) void setup.load().catch(() => {})
       else if (setup.checked && !setup.required) { activity.start() }
     }
