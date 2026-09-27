@@ -37,6 +37,8 @@ public struct RamDisk: Sendable {
         finished.enter()
         process.terminationHandler = { _ in finished.leave() }
         do { try process.run() } catch {
+            process.terminationHandler = nil
+            finished.leave()
             SidecarLog.storage.error("\(path, privacy: .public) could not be launched")
             return nil
         }
