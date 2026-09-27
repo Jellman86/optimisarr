@@ -123,9 +123,14 @@ class Report:
         return row
 
     def write(self):
-        save(self.root / "report.json", {"environment": self.environment, "results": self.results})
         failures = sum(r["status"] == "failed" for r in self.results)
         blocked = sum(r["status"] == "blocked" for r in self.results)
+        summary = {"status": "failed" if failures else "incomplete" if blocked or not self.results else "passed",
+                   "passed": sum(r["status"] == "passed" for r in self.results),
+                   "failed": failures, "blocked": blocked,
+                   "scope": "Selected matrix only; omitted hosts and hardware are not certified"}
+        save(self.root / "report.json", {"schemaVersion": 2, "summary": summary,
+                                        "environment": self.environment, "results": self.results})
         suite = ET.Element("testsuite", name="Optimisarr media acceptance", tests=str(len(self.results)),
                            failures=str(failures), errors=str(blocked))
         for row in self.results:
@@ -141,11 +146,12 @@ class Report:
             "<style>body{font:15px system-ui;background:#101827;color:#dee9f2;padding:2rem}"
             "table{border-collapse:collapse;width:100%}td,th{padding:1rem;text-align:left;border-bottom:1px solid #405066}"
             "pre{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#60d5ee}</style>"
-            f"<h1>Media acceptance</h1><p>{len(self.results)} cases · {failures} failures · {blocked} blocked</p>"
+            f"<h1>Media acceptance — {summary['status']}</h1><p>{len(self.results)} cases · {failures} failures · {blocked} blocked</p>"
+            "<p>Selected matrix only. A blocked target is missing coverage, never a pass.</p>"
             "<p><a href=report.json>Full evidence</a> · <a href=junit.xml>JUnit</a></p>"
             "<table><tr><th>Case</th><th>Result</th><th>Seconds</th><th>Evidence</th></tr>" + rows + "</table>")
 
     @property
     def exit_code(self):
         return 1 if any(r["status"] == "failed" for r in self.results) else (
-            2 if any(r["status"] == "blocked" for r in self.results) else 0)
+            2 if not self.results or any(r["status"] == "blocked" for r in self.results) else 0)

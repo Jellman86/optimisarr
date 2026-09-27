@@ -35,6 +35,7 @@ class Harness:
         self.prefix = "acceptance-" + self.root.name + "-"
         self.workers = []
         self.job_ids = set()
+        self.observers = {}
 
     def preflight(self):
         # Fresh instances only: names, empty databases and actual work-root correspondence all
@@ -68,8 +69,10 @@ class Harness:
         return self.api.request("/api/settings", "PUT", settings)
 
     def select_worker(self, worker):
-        if worker and (not worker["online"] or worker["revokedAt"]):
-            raise Blocked(f"Required worker {worker['name']} is offline or revoked")
+        if worker:
+            current = next((w for w in self.api.request("/api/workers") if w["id"] == worker["id"]), None)
+            if not current or not current["online"] or current.get("revokedAt"):
+                raise Blocked(f"Required worker {worker['name']} is absent, offline or revoked")
         # Only on the fresh, isolated instance checked above. Never drain the production fleet.
         for known in self.workers:
             if known["revokedAt"]:
@@ -120,15 +123,30 @@ class Harness:
         require(len(jobs) == 1, f"Expected one enqueued job, got {jobs}")
         self.job_ids.add(jobs[0]["id"])
         return {"libraryId": library_id, "jobId": jobs[0]["id"], "mediaId": files[0]["id"],
-                "source": source, "sourceSha256": sha256(source), "settings": body}
+                "source": source, "sourceSha256": sha256(source), "settings": body,
+                "workerId": worker["id"] if worker and "id" in worker else None}
 
     def wait_job(self, case):
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             job = next(j for j in self.api.request(f"/api/jobs?libraryId={case['libraryId']}") if j["id"] == case["jobId"])
+            if case.get("workerId"):
+                worker_name = next((w["name"] for w in self.workers if w["id"] == case["workerId"]), None)
+                observer = self.observers.get(worker_name)
+                if observer:
+                    try:
+                        observer.sample(case["jobId"])
+                    except Exception:
+                        self.api.post(f"/api/jobs/{case['jobId']}/cancel")
+                        raise
             if job["status"] in TERMINAL:
                 return job
-            time.sleep(.5)
+            if case.get("workerId"):
+                worker = next((w for w in self.api.request("/api/workers") if w["id"] == case["workerId"]), None)
+                if not worker or not worker["online"] or worker.get("revokedAt"):
+                    self.api.post(f"/api/jobs/{case['jobId']}/cancel")
+                    raise Blocked(f"Worker for job {case['jobId']} is absent, offline or revoked; cancellation requested")
+            time.sleep(.1 if case.get("workerId") else .5)
         self.api.post(f"/api/jobs/{case['jobId']}/cancel")
         raise Blocked(f"Job {case['jobId']} exceeded {self.timeout}s; cancellation requested")
 
@@ -140,8 +158,7 @@ class Harness:
 
     def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False):
         self.select_worker(worker)
-        if not worker:
-            self.configure(encoderMode=MODES[encoder], hardwareDecode=hardware_decode)
+        self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
         if (encoder.startswith("h264") or encoder == "libx264") and "ten-bit" in str(fixture):
             return self.create_job(name, fixture, encoder=encoder, worker=worker,
@@ -155,6 +172,13 @@ class Harness:
         save(directory / "case.json", {**case, "source": str(case["source"])})
         job = self.wait_job(case)
         save(directory / "job.json", job)
+        observer = self.observers.get(worker["name"]) if worker else None
+        if observer:
+            save(directory / "worker-samples.json", observer.samples.get(case["jobId"], []))
+            save(directory / "worker-monitor.json", observer.finish(case["jobId"], completed=job["status"] in ("ReadyToReplace", "Failed")))
+        if hardware_decode and not reject:
+            require(re.search(r"(?:^| )-hwaccel (qsv|vaapi|cuda|videotoolbox)(?: |$)", job["ffmpegArguments"] or ""),
+                    "GPU decode was requested but the delivered encode used software decoding")
         require(sha256(case["source"]) == case["sourceSha256"], "Original changed before replacement")
         require(job["workerName"] == (worker["name"] if worker else None), "Wrong worker executed job")
         if job["videoEncoder"] != encoder:
@@ -365,29 +389,44 @@ class Harness:
         self.replace_restore(case, candidate)
         return {"jobId": case["jobId"], "queueSurvivedAbruptRestart": True, "scores": scores, "restoredOriginal": True}
 
-    def cancel_running(self):
-        self.select_worker(None)
-        fixture = self.root / "fixtures" / "cancel-running.mkv"
+    def cancel_running(self, worker=None, encoder="libx265"):
+        self.select_worker(worker)
+        name = f"cancel-running-worker-{worker['id']}-{encoder}" if worker else "cancel-running"
+        fixture = self.root / "fixtures" / (name + ".mkv")
         self.tools.fixture(fixture, seconds=120)
-        case = self.create_job("cancel-running", fixture, overrides={"encoderPreset": "slow"})
-        deadline = time.monotonic() + 30
+        case = self.create_job(name, fixture, worker=worker, encoder=encoder, overrides={"encoderPreset": "slow" if encoder in ("libx264", "libx265") else None})
+        deadline = time.monotonic() + min(self.timeout, 120)
         while time.monotonic() < deadline:
             job = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")[0]
-            if job["status"] == "Transcoding":
+            observer = self.observers.get(worker["name"]) if worker else None
+            observed = observer.sample(case["jobId"]) if observer else None
+            encoding_observed = bool(observed and observed.get("job") and observed["job"]["stage"] == "Encoding")
+            if job["status"] == "Transcoding" or encoding_observed or (worker and not observer and job["status"] == "Leased"):
                 break
             if job["status"] in TERMINAL:
                 raise Blocked("Encode finished before active cancellation could be exercised")
             time.sleep(.02)
         else:
-            raise Blocked("No running encode observed for cancellation")
+            self.api.post(f"/api/jobs/{case['jobId']}/cancel")
+            raise Blocked("No running encode observed for cancellation; cancellation requested")
         self.api.post(f"/api/jobs/{case['jobId']}/cancel")
         require(self.wait_job(case)["status"] == "Cancelled", "Running cancellation failed")
         deadline = time.monotonic() + 15
         while self.api.request("/api/queue/status")["runningJobs"] and time.monotonic() < deadline:
             time.sleep(.1)
         require(self.api.request("/api/queue/status")["runningJobs"] == 0, "Cancelled encode still occupies a slot")
+        if worker:
+            require(job["workerName"] == worker["name"], "Cancellation targeted a different worker")
+            observer = self.observers.get(worker["name"])
+            if observer:
+                save(self.report.root / (name + ".json"), observer.finish(case["jobId"], completed=False))
+            deadline = time.monotonic() + 20
+            while next(w for w in self.api.request("/api/workers") if w["id"] == worker["id"])["heldLeases"]:
+                require(time.monotonic() < deadline, "Cancelled worker retained its lease")
+                time.sleep(.2)
         require(sha256(case["source"]) == case["sourceSha256"], "Cancelled encode altered its original")
-        return {"jobId": case["jobId"], "cancelledWhileTranscoding": True, "slotReleased": True, "originalUnchanged": True}
+        return {"jobId": case["jobId"], "cancelledWhileTranscoding": not worker or encoding_observed,
+                "remoteStage": job.get("remoteStage"), "slotReleased": True, "originalUnchanged": True}
 
     def concurrent(self):
         self.select_worker(None)
@@ -424,6 +463,45 @@ class Harness:
         self.tools.encode(["-i", self.tools.path(fixture), "-c:v", "libx264", "-crf", "10",
                            "-profile:v", "high", "-preset", "fast", "-c:a", "copy", self.tools.path(compressed)])
         return self.video(name, compressed, encoder, reject=True, hardware_decode=True)
+
+    def worker_gpu_decode(self, worker, encoder, fixture):
+        decoder = {"qsv": "qsv", "vaapi": "vaapi", "nvenc": "cuda", "videotoolbox": "videotoolbox"}.get(encoder.rsplit("_", 1)[-1])
+        if not decoder or decoder not in worker.get("hardwareDecoders", []):
+            raise Blocked(f"{worker['name']} did not prove {decoder or 'a GPU'} decoding")
+        name = f"worker-{worker['id']}-{encoder}-gpu-decode"
+        source = self.root / "fixtures" / (name + ".mkv")
+        self.tools.encode(["-i", self.tools.path(fixture), "-c:v", "libx264", "-crf", "1",
+                           "-pix_fmt", "yuv420p", "-c:a", "copy", self.tools.path(source)])
+        return self.video(name, source, encoder, worker, hardware_decode=True)
+
+    def reconnect_workers(self):
+        if not self.restart:
+            raise Blocked("This runner cannot restart its owned server")
+        active = [w for w in self.api.request("/api/workers") if w["online"] and not w["revokedAt"]]
+        if not active:
+            raise Blocked("No online workers to exercise reconnect")
+        self.restart()
+        deadline = time.monotonic() + 120
+        while True:
+            current = self.api.request("/api/workers")
+            missing = [w["name"] for w in active if not any(x["id"] == w["id"] and x["online"]
+                       and x["lastSeenAt"] > w["lastSeenAt"] for x in current)]
+            if not missing:
+                return {"reconnectedWorkers": [w["name"] for w in active], "identitiesPreserved": True}
+            require(time.monotonic() < deadline, "Workers failed to reconnect: " + ", ".join(missing))
+            time.sleep(.5)
+
+    def unavailable_worker(self, worker, fixture):
+        self.select_worker(None)  # All real workers drained; worker-only jobs must stay queued.
+        case = self.create_job(f"unavailable-worker-{worker['id']}", fixture, worker=worker)
+        try:
+            time.sleep(2)
+            job = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")[0]
+            require(job["status"] == "Queued" and job["waitingForWorker"], "Worker-only job fell back to local encoding")
+            require(sha256(case["source"]) == case["sourceSha256"], "Unavailable-worker wait changed source")
+            return {"remainedQueued": True, "originalUnchanged": True}
+        finally:
+            self.api.post(f"/api/jobs/{case['jobId']}/cancel")
 
     def restore(self):
         # Cancellation is scoped to IDs created by this run, even after a partial failure.
@@ -502,15 +580,20 @@ class Harness:
                 if not any(not w["revokedAt"] for w in self.workers):
                     self.report.case("fleet-workers", lambda: (_ for _ in ()).throw(
                         Blocked("No workers paired; a local-only run cannot certify the fleet")))
+                self.report.case("workers-reconnect-after-server-restart", self.reconnect_workers)
                 for worker in self.workers:
                     if worker["revokedAt"]:
                         continue
+                    self.report.case(f"worker-{worker['id']}-unavailable-placement", lambda w=worker: self.unavailable_worker(w, primary))
                     if not worker["videoEncoders"]:
                         self.report.case(f"worker-{worker['id']}-capabilities", lambda w=worker: (_ for _ in ()).throw(Blocked(f"{w['name']} proved no video encoders")))
                     for encoder in worker["videoEncoders"]:
                         if encoder not in MODES:
                             self.report.case(f"worker-{worker['id']}-{encoder}", lambda e=encoder: (_ for _ in ()).throw(Blocked(f"No acceptance scenario for advertised encoder {e}")))
                             continue
+                        self.report.case(f"worker-{worker['id']}-{encoder}-running-cancel", lambda w=worker, e=encoder: self.cancel_running(w, e))
+                        if encoder.endswith(("_qsv", "_vaapi", "_nvenc", "_videotoolbox")):
+                            self.report.case(f"worker-{worker['id']}-{encoder}-gpu-decode", lambda w=worker, e=encoder: self.worker_gpu_decode(w, e, primary))
                         for variant, fixture in fixtures.items():
                             name = f"worker-{worker['id']}-{encoder}-{variant}"
                             self.report.case(name, lambda n=name, f=fixture, e=encoder, w=worker: self.video(n, f, e, w))
@@ -520,7 +603,7 @@ class Harness:
                         self.report.case(name, lambda n=name, e=encoder, w=worker: self.video(n, primary, e, w, reject=True))
                         name = f"worker-{worker['id']}-{encoder}-audio-gates"
                         self.report.case(name, lambda n=name, e=encoder, w=worker: self.video(n, primary, e, w, audio_gates=True))
-                for name in missing_workers(self.workers, expected_workers):
+                for name in missing_workers(self.api.request("/api/workers"), expected_workers):
                     self.report.case(f"required-worker-{name}", lambda n=name: (_ for _ in ()).throw(Blocked(f"{n} is absent, offline, revoked or has no proved encoder")))
             for cycle in range(soak_cycles):
                 for encoder in encoders:

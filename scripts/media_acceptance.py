@@ -18,6 +18,7 @@ from acceptance.core import Api, Blocked, Report, command, require, save
 from acceptance.media import Tools
 from acceptance.runner import Harness
 from acceptance.workers import Workers
+from acceptance.container_workers import ContainerWorkers
 
 def free_port():
     with socket.socket() as sock:
@@ -44,7 +45,11 @@ def main():
     parser.add_argument("--tier", choices=("smoke", "fleet"), default="smoke")
     parser.add_argument("--corpus", type=Path, help="Checksum-locked corpus.json produced by acceptance_corpus.py")
     parser.add_argument("--expected-worker", action="append", default=[])
-    parser.add_argument("--worker-command", help='JSON argument array for a local disposable worker, e.g. ["/path/AcceptanceWorker"]')
+    worker_runtime = parser.add_mutually_exclusive_group()
+    worker_runtime.add_argument("--worker-image", help="Linux sidecar image; disposable local Linux Docker daemons only")
+    parser.add_argument("--worker-scratch-root", type=Path, help="New native-worker scratch directory, separate from durable evidence")
+    parser.add_argument("--require-worker-ram", action="store_true", help="Require observed Linux source/candidate RAM files and cleanup")
+    worker_runtime.add_argument("--worker-command", help='JSON argument array for a local disposable worker, e.g. ["/path/AcceptanceWorker"]')
     parser.add_argument("--worker-encoder", action="append", default=[], help="Limit disposable worker discovery to these encoders")
     parser.add_argument("--local-encoder", action="append", default=[], help="Limit local encoding matrix (otherwise every available encoder)")
     parser.add_argument("--fixture-variant", action="append", choices=("sdr", "vfr", "offset", "ten-bit"))
@@ -65,13 +70,22 @@ def main():
         parser.error("--server-verification requires --tier fleet")
     if args.expected_worker and args.tier != "fleet":
         parser.error("--expected-worker requires --tier fleet")
-    if args.worker_command and args.tier != "fleet":
-        parser.error("--worker-command requires --tier fleet")
+    if (args.worker_command or args.worker_image) and args.tier != "fleet":
+        parser.error("Worker launchers require --tier fleet")
+    if (args.worker_encoder or args.require_worker_ram) and not (args.worker_command or args.worker_image):
+        parser.error("Worker encoder/RAM requirements need --worker-command or --worker-image")
+    if args.worker_scratch_root and not args.worker_command:
+        parser.error("--worker-scratch-root requires --worker-command")
+    if args.timeout <= 0 or args.pairing_wait < 0:
+        parser.error("Timeout must be positive and pairing wait non-negative")
     if args.corpus and not args.corpus.resolve().is_relative_to(args.root.resolve()):
         # Corpus imports are copied below before starting the server, never mounted from arbitrary paths.
         require(args.corpus.is_file(), "Corpus manifest does not exist")
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
+    scratch_root = args.worker_scratch_root.resolve() if args.worker_scratch_root else root
+    if args.worker_scratch_root:
+        scratch_root.mkdir(parents=True, exist_ok=False)
     for name in ("config", "data", "work", "trash", "fixtures"):
         (root / name).mkdir()
     report = Report(root / "report")
@@ -81,6 +95,7 @@ def main():
     api = Api(url, token)
     process, container, log, workers = None, None, None, None
     container_started = False
+    exit_code = None
     try:
         if not shutil.which("docker" if args.image else "dotnet"):
             raise Blocked("Docker CLI is unavailable" if args.image else "The .NET runtime is unavailable")
@@ -135,11 +150,15 @@ def main():
                 print(f"Test pairing PIN: {pin['code']} (do not put production sidecars on this instance)", flush=True)
                 for _ in range(min(60, max(1, int(deadline - time.monotonic())))):
                     time.sleep(1)
+        if args.worker_image:
+            require(sys.platform == "linux", "Worker containers require a disposable local Linux Docker daemon")
+            workers = ContainerWorkers(api, root, url, args.worker_image, devices=args.device, gpus=args.gpus)
+            workers.start([], args.worker_encoder, report=report)
         if args.worker_command:
             argv = json.loads(args.worker_command)
             require(isinstance(argv, list) and argv and all(isinstance(x, str) for x in argv), "Worker command must be a JSON argument array")
-            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe)
-            workers.start(argv, args.worker_encoder)
+            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe, vmaf=args.vmaf, require_ram=args.require_worker_ram, scratch_root=scratch_root)
+            workers.start(argv, args.worker_encoder, report=report)
         corpus = args.corpus
         if corpus:
             from acceptance.corpus import import_corpus
@@ -163,20 +182,21 @@ def main():
             raise Blocked("Owned test server did not recover after abrupt restart")
 
         harness = Harness(api, tools, root, report, timeout=args.timeout, restart=restart)
-        return harness.run(tier=args.tier,
+        harness.observers = workers.observers if workers else {}
+        exit_code = harness.run(tier=args.tier,
                            strict_worker_verification=strict_worker_verification_for_run(args.tier, args.server_verification),
                            corpus=corpus, expected_workers=args.expected_worker,
                            local_encoders=args.local_encoder, variants=args.fixture_variant,
                            soak_cycles=args.soak_cycles, fixture_seconds=args.fixture_seconds)
     except KeyboardInterrupt:
         report.case("interrupted", lambda: (_ for _ in ()).throw(Blocked("Run interrupted; isolated server stopped")))
-        return 130
+        exit_code = 130
     except Exception as exc:
         report.case("harness", lambda: (_ for _ in ()).throw(exc))
-        return report.exit_code
+        exit_code = report.exit_code
     finally:
         if workers:
-            workers.stop()
+            report.case("stop-disposable-workers", workers.stop)
         if process:
             os.killpg(process.pid, signal.SIGTERM) if process.poll() is None else None
             try:
@@ -193,6 +213,7 @@ def main():
                 subprocess.run(["docker", "rm", "-f", container], capture_output=True, timeout=30)
         report.write()
         print(f"Report: {report.root / 'index.html'}", flush=True)
+    return 130 if exit_code == 130 else report.exit_code
 
 
 if __name__ == "__main__":

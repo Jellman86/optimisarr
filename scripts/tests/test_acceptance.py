@@ -18,6 +18,13 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+    def test_empty_report_cannot_claim_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Report(Path(directory) / "report")
+            report.write()
+            self.assertEqual(2, report.exit_code)
+            self.assertEqual("incomplete", json.loads((report.root / "report.json").read_text())["summary"]["status"])
+
     def test_fleet_defaults_to_complete_sidecar_verification_with_explicit_opt_out(self):
         self.assertTrue(strict_worker_verification_for_run("fleet", server_verification=False))
         self.assertFalse(strict_worker_verification_for_run("fleet", server_verification=True))
