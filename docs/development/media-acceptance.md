@@ -193,7 +193,8 @@ OPTIMISARR_ACCEPTANCE_SCRATCH=/new/empty/worker-scratch
 ```
 
 It uses the actual `SidecarCore` capability prober, protocol client, transfer logic, VMAF measurement,
-adaptive search and job runner. Its credential exists only in memory; it never opens the app's
+adaptive search, job runner and production session lifecycle. Server restarts exercise the same
+reconnection and concurrent heartbeat behavior as the installed app. Its credential exists only in memory; it never opens the app's
 Keychain or preferences. The selected encoder must pass the production capability probe before
 pairing. Advertising that single proved encoder makes the ordinary scheduler deterministic.
 Start one process per encoder to cover every encoder on a physical host. Use unique names.
@@ -228,7 +229,7 @@ does not constitute Windows hardware evidence. Stop remote launchers after the r
 
 Remote verification defaults on for fresh installations. **Verify entirely on the sidecar** in
 **Settings → Files & safety → Remote workers** makes the control plane issue full-verification contracts only to
-protocol-2 sidecars. The sidecar performs both probes, a complete candidate decode, packet-timestamp
+sidecars using protocol 2 or newer. The sidecar performs both probes, a complete candidate decode, packet-timestamp
 checks and, when the library policy asks for them, loudness/true-peak measurements. Existing worker
 quality reports still carry VMAF evidence. Every report is bound to the lease contract, the source
 hash and the delivered candidate hash before the server evaluates it.

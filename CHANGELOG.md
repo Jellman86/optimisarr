@@ -4,6 +4,8 @@
 
 ### Testing
 
+- Acceptance reports remain visibly unfinished, with a nonzero result and a JUnit error, until the complete run and cleanup finish. An interrupted artifact cannot look like a successful full suite.
+
 - macOS and Windows acceptance launchers now use the production session lifecycle, including reconnection after a server restart. Cleanup checks current revocations and attempts every settings/worker restoration even when another cleanup fails. Intel decode-retry fixtures leave enough size headroom to reach the intended quality rejection.
 
 - Native acceptance workers can use a separate RAM scratch directory while reports, logs and fixtures remain on durable storage.

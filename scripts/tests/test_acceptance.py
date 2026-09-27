@@ -25,6 +25,22 @@ class AcceptanceTests(unittest.TestCase):
             self.assertEqual(2, report.exit_code)
             self.assertEqual("incomplete", json.loads((report.root / "report.json").read_text())["summary"]["status"])
 
+    def test_partial_success_cannot_be_mistaken_for_a_completed_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Report(Path(directory) / "report")
+            report.case("first test", lambda: {"passed": True})
+            self.assertEqual(2, report.exit_code)
+            summary = json.loads((report.root / "report.json").read_text())["summary"]
+            self.assertEqual("running", summary["status"])
+            self.assertFalse(summary["completed"])
+            self.assertIn("Run has not finished", (report.root / "junit.xml").read_text())
+            report.finish()
+            self.assertEqual(0, report.exit_code)
+            summary = json.loads((report.root / "report.json").read_text())["summary"]
+            self.assertEqual("passed", summary["status"])
+            self.assertTrue(summary["completed"])
+            self.assertNotIn("<error", (report.root / "junit.xml").read_text())
+
     def test_fleet_defaults_to_complete_sidecar_verification_with_explicit_opt_out(self):
         self.assertTrue(strict_worker_verification_for_run("fleet", server_verification=False))
         self.assertFalse(strict_worker_verification_for_run("fleet", server_verification=True))
