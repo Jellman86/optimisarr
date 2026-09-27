@@ -31,6 +31,8 @@
 
 ### Changed
 
+- Linux worker setup now has a dedicated guide covering browser pairing, media/load monitoring, persistent credentials, upgrades and proxy requirements. The Compose example starts CPU-only, with optional Intel acceleration and bounded RAM scratch.
+
 - Mac sidecar RAM storage now shares one budget across concurrent jobs and includes candidate limits, scratch allowance and filesystem overhead. Unbounded candidates and adaptive searches use disk. The monitor shows actual storage and explains fallbacks. Source downloads stream directly to working storage, with incomplete ranges rolled back on interruption or cancellation.
 
 ### Fixed

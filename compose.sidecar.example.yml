@@ -1,6 +1,6 @@
-# Deploy separately on the worker host, then open http://<host>:8788 and pair it with a
-# code from the server's Settings → Workers. Setting OPTIMISARR_SERVER and a code below
-# pairs without the page instead.
+# Linux worker preview: CPU-only by default. See docs/setup/linux-sidecar.md.
+# Deploy separately on the worker host, then open http://<host>:8788 on a trusted
+# network and pair with a code from Settings → Remote workers → Pair a sidecar.
 services:
   optimisarr-sidecar:
     image: ghcr.io/jellman86/optimisarr-sidecar:${SIDECAR_TAG:-dev}
@@ -18,11 +18,12 @@ services:
     volumes:
       - sidecar-config:/config
       - sidecar-work:/work
-    # Intel QSV / VAAPI. Remove for a CPU-only worker.
-    devices:
-      - /dev/dri:/dev/dri
+    # Optional Intel QSV / VAAPI: uncomment on a host with /dev/dri/renderD128.
+    # devices:
+    #   - /dev/dri:/dev/dri
     # Optional RAM scratch: replace the /work volume above with this bounded tmpfs.
-    # Leave enough RAM for FFmpeg and the host; exhausted scratch fails the job safely.
+    # Do not mount both a volume and tmpfs at /work. Match uid/gid to PUID/PGID.
+    # Leave enough RAM for FFmpeg and the host; there is no disk fallback.
     # tmpfs:
     #   - /work:size=8g,mode=0700,uid=1000,gid=1000
 volumes:

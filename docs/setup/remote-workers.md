@@ -1,7 +1,7 @@
 # Remote workers and sidecars
 
-Optimisarr can send video re-encodes to a paired Windows PC or Apple Silicon Mac. The container
-keeps the library, job history, and authority to replace or roll back files. Workers use their own
+Optimisarr can send video re-encodes to a paired Windows PC, Apple Silicon Mac or Linux container.
+The main server keeps the library, job history, and authority to replace or roll back files. Workers use their own
 scratch space and return candidates and measurements; they cannot modify your originals.
 
 Remote workers remain an opt-in preview. A single container is still the default installation.
@@ -17,6 +17,10 @@ Screenshots use fabricated dummy media created for documentation. No copyrighted
    can be used once, and is invalidated after five wrong guesses.
 5. Confirm the machine is online and has proved the encoder needed by your library. Advertised
    hardware is checked with real test encodes; the presence of a GPU alone does not qualify it.
+
+For Linux, use the [container setup guide](linux-sidecar.md): deploy its separate Compose stack,
+pair on port 8788, and monitor media, load and scratch space in the worker page. Worker controls
+remain on the main server.
 
 Use the [Mac installation guide](../../sidecars/macos/README.md) or the
 [Windows MSI guide](../../sidecars/windows/installer/README.md) for platform requirements,
@@ -42,6 +46,10 @@ Source downloads stream directly to working storage without a temporary download
 
 The Windows sidecar currently uses a disk folder (`C:\OptimisarrWork`, overridable with
 `OPTIMISARR_SIDECAR_WORK`). It does not create or manage RAM disks.
+
+The Linux container uses `/work`, backed by disk or an operator-mounted bounded tmpfs. It has no
+automatic disk fallback or shared RAM reservation manager; see
+[Linux RAM storage](linux-sidecar.md#optional-ram-working-storage).
 
 GPU encoding does not require RAM working storage. Windows can keep CUDA-decoded frames on the
 GPU for NVENC when no software picture filter is needed. Cropping, resizing and frame-rate changes
@@ -85,8 +93,8 @@ are enabled. Existing installations retain their saved or previous value. You ca
 **Settings → Files & safety → Remote workers**; changes apply to newly issued assignments. Updated sidecars
 negotiate protocol 2 or newer on heartbeat; they do not need a new pairing. Older workers cannot claim an
 assignment that requires full verification. Protocol 3 additionally enables GPU-surface decode commands
-for Windows workers that proved the matching hardware decoder. This is negotiated independently of
-the sidecar release number.
+for Windows and Linux workers that proved the matching hardware decoder. This is negotiated
+independently of the sidecar release number.
 
 ![Files and safety settings with Remote workers enabled and Verify entirely on the sidecar selected](../images/optimisarr-settings-files-dark.png)
 
@@ -112,8 +120,8 @@ itself if the returned quality evidence cannot be used.
   minutes without a heartbeat.
 - Check that the library is eligible, its automation window is open, and its placement permits a
   worker. A worker that cannot satisfy the encoder or verification contract receives no job.
-- Open **Diagnostics** in the sidecar for local connection or tool problems. Low media-engine
-  activity is not the same as low CPU/GPU activity; macOS does not report VideoToolbox engine use.
+- Open **Diagnostics** in the native sidecar, or the Linux worker page and container logs, for
+  local connection or tool problems. Low media-engine activity is not the same as low CPU/GPU activity; macOS does not report VideoToolbox engine use.
 - Compare the installed sidecar version with the release's requirements. For strict verification,
   update both the app and its bundled media tools using that platform's package.
 
