@@ -45,4 +45,16 @@ public sealed class VmafGateCalibrationTests
             .SelectMany(source => new[] { new CalibrationScore(source, 80, 98), new CalibrationScore(source, 95, 97) }).ToList();
         Assert.False(VmafGateCalibration.Validate(rows, 90)!.Passed);
     }
+
+    [Fact]
+    public void A_separating_gap_protects_against_normal_variation_in_held_out_failures()
+    {
+        CalibrationScore[] rows =
+        [
+            new("one", 80, 82), new("one", 95, 97),
+            new("two", 85, 87), new("two", 95, 97),
+            new("three", 88, 90), new("three", 95, 97)
+        ];
+        Assert.True(VmafGateCalibration.Validate(rows, 90)!.Passed);
+    }
 }

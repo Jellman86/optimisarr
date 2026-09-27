@@ -66,4 +66,15 @@ public sealed class VmafV1PreparationTests
         Assert.DoesNotContain("10le", command.FilterGraph);
         Assert.DoesNotContain("cambi", command.FilterGraph);
     }
+
+    [Fact]
+    public void Cut_clip_alignment_is_identical_for_each_model_and_needs_no_offset_search()
+    {
+        var context = Context with { ReferenceStartSeconds = 120, ReferenceDurationSeconds = 600,
+            MeasureDurationSeconds = 40, ReferenceFrameRate = 24, DistortedIsCutClip = true };
+        var automatic = QualityScoreCommandBuilder.Build("d", "r", "l", context, 4);
+        foreach (var shift in new[] { "0", "0.041667", "-0.041667" })
+            Assert.Equal(automatic.FilterGraph, QualityScoreCommandBuilder.Build("d", "r", "l",
+                context with { DistortedShiftToken = shift }, 4).FilterGraph);
+    }
 }

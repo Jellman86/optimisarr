@@ -145,7 +145,7 @@ internal static class StudyRunner
                             var result = await quality.MeasureAsync(source, clip, context with
                             {
                                 ReferenceStartSeconds = window.StartSeconds, MeasureDurationSeconds = window.DurationSeconds,
-                                DistortedIsCutClip = true, ModelVersion = model,
+                                DistortedIsCutClip = true, ModelVersion = model, DistortedShiftToken = "0",
                                 EncodedVideo = new(encoded.Width.Value, encoded.Height.Value, encodedDepth.Value)
                             }, cancellationToken);
                             var scores = result.Scores;

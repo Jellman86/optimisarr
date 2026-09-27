@@ -47,7 +47,13 @@ public static class VmafGateCalibration
     {
         var failures = scores.Where(s => s.Baseline < baselineThreshold).ToList();
         if (failures.Count == 0 || failures.Count == scores.Count) return null;
-        // Strictly above every observed failure, rounded upward to an operational 0.01-point gate.
-        return (Math.Floor(failures.Max(s => s.Candidate) * 100) + 1) / 100;
+        var highestFailure = failures.Max(s => s.Candidate);
+        var lowestPass = scores.Where(s => s.Baseline >= baselineThreshold).Min(s => s.Candidate);
+        // Centre a separating gap so normal variation in a held-out source does not immediately
+        // cross a threshold placed just 0.01 above the training maximum. If classes overlap,
+        // protect the observed failures; validation will expose the resulting rejected passes.
+        return lowestPass > highestFailure
+            ? Math.Ceiling((highestFailure + lowestPass) * 50) / 100
+            : (Math.Floor(highestFailure * 100) + 1) / 100;
     }
 }
