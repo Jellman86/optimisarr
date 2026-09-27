@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.17 — 2026-09-27
+
 ### Testing
 
 - Optional server VMAF research scores bounded samples under both v0 and v1 and records paired results separately in job reports. Existing gates remain authoritative. `OPTIMISARR_VMAF_SHADOW_SERVER=1` explicitly enables the extra server CPU work, including for sidecar-verified jobs; missing models, timeouts and skipped observations cannot change replacement verdicts. A JSONL exporter retains incomplete coverage for analysis.
@@ -47,7 +49,7 @@
 - Shared Windows/Linux job monitors receive progress during short encodes, without waiting for lease renewal. Main-container and Linux-sidecar telemetry share one unprivileged sampler; DRM engine-capacity fields no longer count as GPU busy time.
 
 - Intel GPU decoding reserves additional hardware frames and stops on decoding errors. Quark tests exposed a default frame pool running out while QSV/VAAPI encoders still held frames, producing truncated output despite a successful FFmpeg exit.
-- Remote QSV, VAAPI and NVIDIA workers can now receive GPU-resident decode commands for the H.264 8-bit 4:2:0 format their probes verify. Previously only VideoToolbox was selected for remote hardware decoding. Windows workers older than 0.2.17 retain software decode until their command validator is updated.
+- Remote QSV, VAAPI and NVIDIA workers can now receive GPU-resident decode commands for the H.264 8-bit 4:2:0 format their probes verify. Previously only VideoToolbox was selected for remote hardware decoding. Workers without the required protocol capabilities retain software decode until their command validator is updated.
 - The shared Windows/Linux worker now accepts the server's GPU surface and fixed device arguments. Hardware decode probes use an eight-bit 4:2:0 fixture so an unsupported test pixel format does not hide a working decoder.
 - Mac sidecar memory jobs no longer reject a writable RAM disk as having zero free space. RAM-disk setup also uses process termination callbacks to avoid intermittent 20-second waits after a command has already exited. Invalid source sizes are rejected before allocating storage. CI now checks real RAM-volume capacity and cleanup.
 - The sidebar language menu no longer opens partly off the left of the screen when it is opened while the sidebar is still collapsing. It now follows the sidebar until the animation ends.
