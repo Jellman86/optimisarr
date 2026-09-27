@@ -4,6 +4,49 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("DTS-only source packets get presentation times without repairing candidate evidence")
+    func sourceWithoutPresentationTimes() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let evidence = try await FullVerification(runner: TimestampFixtureRunner()).measure(
+            contract: FullVerificationContract(version: 1, id: "fixture", measureAudio: false),
+            ffmpeg: root, ffprobe: root, source: root.appendingPathComponent("source"),
+            candidate: root.appendingPathComponent("candidate"), scratch: root,
+            sourceHash: "source", candidateHash: "candidate")
+        #expect(evidence.sourceVideo?.lastPresentationSeconds == 0.12)
+        #expect(evidence.candidateVideo?.lastPresentationSeconds == 0.12)
+        #expect(evidence.error == nil)
+    }
+
+    @Test("missing candidate presentation times fail with a specific reason")
+    func candidateWithoutPresentationTimes() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let evidence = try await FullVerification(runner: TimestampFixtureRunner(candidateMissingPts: true)).measure(
+            contract: FullVerificationContract(version: 1, id: "fixture", measureAudio: false),
+            ffmpeg: root, ffprobe: root, source: root.appendingPathComponent("source"),
+            candidate: root.appendingPathComponent("candidate"), scratch: root,
+            sourceHash: "source", candidateHash: "candidate")
+        #expect(evidence.candidateVideo?.lastPresentationSeconds == nil)
+        #expect(evidence.error?.contains("candidate-video") == true)
+        #expect(evidence.error?.contains("presentation") == true)
+    }
+
+    @Test("an unreconstructable source remains a failed measurement")
+    func sourceWithoutAnyTimestamps() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let evidence = try await FullVerification(runner: TimestampFixtureRunner(sourceWithoutTimestamps: true)).measure(
+            contract: FullVerificationContract(version: 1, id: "fixture", measureAudio: false),
+            ffmpeg: root, ffprobe: root, source: root.appendingPathComponent("source"),
+            candidate: root.appendingPathComponent("candidate"), scratch: root,
+            sourceHash: "source", candidateHash: "candidate")
+        #expect(evidence.sourceVideo?.measured == false)
+        #expect(evidence.error?.contains("source-video") == true)
+    }
     @Test("source and candidate timestamps select moving video, not attached artwork")
     func selectsMovingPicture() {
         #expect(FullVerification.movingPictureStreamSpecifier == "V:0")
@@ -73,5 +116,32 @@ struct FullVerificationTests {
         #expect(evidence.error != nil)
         #expect(evidence.contractId == contract.id)
         #expect(evidence.decode == nil)
+    }
+}
+
+private struct TimestampFixtureRunner: TranscodeRunner {
+    var candidateMissingPts = false
+    var sourceWithoutTimestamps = false
+
+    func run(_ executable: URL, _ arguments: [String], progress: @escaping @Sendable (Double) -> Void)
+        async throws -> (exitCode: Int32, stderr: String) {
+        guard let outputIndex = arguments.firstIndex(of: "-o") else { return (0, "") }
+        let output = URL(fileURLWithPath: arguments[outputIndex + 1])
+        let content: String
+        if arguments.contains("-show_streams") {
+            content = #"{"streams":[{"codec_type":"video","start_time":"0"}],"format":{}}"#
+        } else if arguments.contains("a:0") {
+            content = ""
+        } else {
+            let source = arguments.last?.hasSuffix("/source") == true
+            // Captured shape of the VC-1 regression: decoding times exist, presentation times do not.
+            let missing = source || candidateMissingPts
+            content = source && sourceWithoutTimestamps ? "N/A,N/A,0.040000\n"
+                : missing && !arguments.contains("+genpts")
+                ? "N/A,0.000000,0.040000\nN/A,0.040000,0.040000\n"
+                : "0.040000,0.000000,0.040000\n0.080000,0.040000,0.040000\n"
+        }
+        try content.write(to: output, atomically: true, encoding: .utf8)
+        return (0, "")
     }
 }

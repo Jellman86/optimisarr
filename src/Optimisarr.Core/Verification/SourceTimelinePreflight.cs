@@ -222,7 +222,7 @@ public sealed class SourceTimelinePreflight(
             return SourceTimelineVerdict.Clear;
         }
 
-        var video = await timestamps.CheckAsync(path, cancellationToken);
+        var video = await timestamps.CheckSourceAsync(path, cancellationToken);
         var audio = await timestamps.CheckPrimaryAudioAsync(path, cancellationToken);
         return video.Measured && audio.Measured
             ? SourceTimelineJudge.Confirm(
@@ -243,6 +243,7 @@ public sealed class SourceTimelinePreflight(
             ArgumentList =
             {
                 "-v", "error",
+                "-fflags", "+genpts",
                 "-read_intervals", $"{from.ToString("0.###", CultureInfo.InvariantCulture)}%",
                 "-show_entries",
                 "stream=index,codec_type,start_time:stream_disposition=attached_pic:packet=stream_index,pts_time,duration_time",

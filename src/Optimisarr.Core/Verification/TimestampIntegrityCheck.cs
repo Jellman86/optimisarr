@@ -42,7 +42,11 @@ public sealed class TimestampIntegrityCheck
     }
 
     public async Task<TimestampCheckResult> CheckAsync(string path, CancellationToken cancellationToken)
-        => await CheckAsync(path, MovingPictureStreamSpecifier, cancellationToken);
+        => await CheckAsync(path, MovingPictureStreamSpecifier, false, cancellationToken);
+
+    /// <summary>Matches the encoder's source demuxing for inputs, such as VC-1, carrying only DTS.</summary>
+    public async Task<TimestampCheckResult> CheckSourceAsync(string path, CancellationToken cancellationToken)
+        => await CheckAsync(path, MovingPictureStreamSpecifier, true, cancellationToken);
 
     /// <summary>
     /// Reads the primary audio packet endpoint. This deliberately excludes subtitles and secondary
@@ -52,11 +56,19 @@ public sealed class TimestampIntegrityCheck
     public async Task<TimestampCheckResult> CheckPrimaryAudioAsync(
         string path,
         CancellationToken cancellationToken)
-        => await CheckAsync(path, "a:0", cancellationToken);
+        => await CheckAsync(path, "a:0", false, cancellationToken);
+
+    internal static IReadOnlyList<string> Arguments(string path, string streamSpecifier, bool generateMissingPts) =>
+    [
+        .. generateMissingPts ? new[] { "-fflags", "+genpts" } : [],
+        "-v", "error", "-select_streams", streamSpecifier,
+        "-show_entries", "packet=pts_time,dts_time,duration_time", "-of", "csv=p=0", path
+    ];
 
     private async Task<TimestampCheckResult> CheckAsync(
         string path,
         string streamSpecifier,
+        bool generateMissingPts,
         CancellationToken cancellationToken)
     {
         if (!File.Exists(path))
@@ -73,19 +85,13 @@ public sealed class TimestampIntegrityCheck
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _ffprobe,
-                ArgumentList =
-                {
-                    "-v", "error",
-                    "-select_streams", streamSpecifier,
-                    "-show_entries", "packet=pts_time,dts_time,duration_time",
-                    "-of", "csv=p=0",
-                    path
-                },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            foreach (var argument in Arguments(path, streamSpecifier, generateMissingPts))
+                process.StartInfo.ArgumentList.Add(argument);
 
             process.Start();
 
