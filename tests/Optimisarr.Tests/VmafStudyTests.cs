@@ -62,6 +62,17 @@ public sealed class VmafStudyTests
     }
 
     [Fact]
+    public void Renaming_the_same_source_does_not_create_independent_calibration_material()
+    {
+        var hash = new string('a', 64);
+        Assert.Equal(StudyIntegrity.SourceKey($"one.mkv [{hash}]"), StudyIntegrity.SourceKey($"renamed.mkv [{hash}]"));
+        var baseline = Row(StudyOptions.BaselineHd) with { Source = $"one.mkv [{hash}]" };
+        var candidate = Row(StudyOptions.DefaultCandidateHd) with { Source = baseline.Source };
+        Assert.False(StudyIntegrity.Complete([baseline, candidate,
+            baseline with { Source = $"renamed.mkv [{hash}]" }, candidate with { Source = $"renamed.mkv [{hash}]" }], 4));
+    }
+
+    [Fact]
     public void CSV_round_trips_multiline_errors_and_quoted_source_names()
     {
         var row = Row(StudyOptions.BaselineHd) with { Source = "title, \"episode\"", Error = "first line\nsecond, \"quoted\" line" };

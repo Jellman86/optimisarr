@@ -89,7 +89,7 @@ internal static class StudyReport
             foreach (var (name, score, gates) in Metrics)
             {
                 var paired = StudyIntegrity.Pairs(rows).Where(p => p.Candidate.Model == candidate)
-                    .Select(p => new CalibrationScore(p.Candidate.Source, score(p.Baseline)!.Value, score(p.Candidate)!.Value)).ToList();
+                    .Select(p => new CalibrationScore(StudyIntegrity.SourceKey(p.Candidate.Source), score(p.Baseline)!.Value, score(p.Candidate)!.Value)).ToList();
                 foreach (var gate in gates)
                 {
                     var validation = VmafGateCalibration.Validate(paired, gate);
