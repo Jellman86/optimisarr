@@ -1,11 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { formatSize as bytes } from './lib/format'
 
   type Snapshot = {
     name: string; state: string; serverAddress: string | null; scratchPath: string;
     storage: { kind: string; freeBytes: number; totalBytes: number }; concurrency: number;
     capabilities: { videoEncoders: string[]; hardwareDecoders: string[]; vmaf: string } | null;
-    jobs: { jobId: number; title: string; encoder: string; stage: string; encodedSeconds: number | null }[];
+    jobs: { jobId: number; title: string; encoder: string; stage: string; encodedSeconds: number | null;
+      sourceBytes: number | null; outputExtension: string | null; hardwareDecoder: string | null; previewRevision: number;
+      sourceMedia: { videoCodec: string | null; width: number | null; height: number | null; durationSeconds: number | null;
+        audioCodecs: string | null; pixelFormat: string | null } | null }[];
+    metrics: { cpuPercent: number | null; gpuPercent: number | null; gpuEngine: string | null; sampledAt: string } | null;
     lastOutcome: string | null; version: string;
   }
   let status = $state<Snapshot | null>(null)
@@ -15,7 +20,13 @@
   let request: AbortController | null = null
   let timer: ReturnType<typeof setTimeout>
   let disposed = false
-  const bytes = (value: number) => `${(value / 1024 ** 3).toFixed(1)} GiB`
+  const percent = (value: number | null | undefined) => value != null && Number.isFinite(value) ? `${Math.round(Math.max(0, Math.min(100, value)))}%` : '—'
+  const duration = (seconds: number | null | undefined) => {
+    if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return 'Unknown duration'
+    const total = Math.floor(seconds)
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+  }
+  const stages: Record<string, string> = { FetchingSource: 'Receiving source', Encoding: 'Encoding', Measuring: 'Quality & verification', Delivering: 'Returning candidate' }
   const states: Record<string, string> = {
     Draining: 'Finishing current work', Starting: 'Starting', Unpaired: 'Pairing required', Connected: 'Connected', Working: 'Working',
     Unreachable: 'Server unreachable', Faulted: 'Needs attention', Stopped: 'Worker stopped',
@@ -28,6 +39,7 @@
   })
   async function refresh() {
     clearTimeout(timer)
+    if (document.hidden) { timer = setTimeout(refresh, 2000); return }
     request?.abort()
     const controller = new AbortController()
     request = controller
@@ -41,7 +53,7 @@
     finally {
       clearTimeout(timeout)
       loading = false
-      if (!disposed) timer = setTimeout(refresh, 5000)
+      if (!disposed) timer = setTimeout(refresh, 2000)
     }
   }
   function toggleTheme() {
@@ -73,10 +85,39 @@
     {:else if loading}
       <section class="card" role="status">Loading worker status…</section>
     {:else if status}
+      <section class="load-grid" aria-label="Live utilization">
+        <div class="card load"><p class="eyebrow">Host CPU</p><p class="load-value">{percent(status.metrics?.cpuPercent)}</p><p class="muted">{status.metrics?.cpuPercent != null ? 'Across all host cores' : 'Waiting for a CPU sample'}</p></div>
+        <div class="card load"><p class="eyebrow">GPU use</p><p class="load-value">{percent(status.metrics?.gpuPercent)}</p><p class="muted">{status.metrics?.gpuPercent != null ? `${status.metrics.gpuEngine ?? 'GPU'} engine` : status.jobs.length ? 'Waiting for a readable GPU sample' : 'No active GPU sample'}</p></div>
+        <div class="card load"><p class="eyebrow">Working space</p><p class="load-value">{bytes(status.storage.freeBytes)}</p><p class="muted">Free in {status.storage.kind.toLowerCase()} · {status.concurrency} job {status.concurrency === 1 ? 'slot' : 'slots'}</p></div>
+      </section>
       <section class="card activity">
         <div class="section-title"><h2>Current work</h2><span class:healthy={['Connected', 'Working'].includes(status.state)} class="badge">{states[status.state] ?? status.state}</span></div>
         {#each status.jobs as job (job.jobId)}
-          <article class="job"><div><h3>{job.title}</h3><p class="muted">{job.stage} · {job.encoder}</p></div><span>{job.encodedSeconds !== null ? `${Math.floor(job.encodedSeconds)}s encoded` : `Job ${job.jobId}`}</span></article>
+          <article class="job">
+            <div class="preview">
+              {#if job.previewRevision > 0}<img src={`/api/sidecar/jobs/${job.jobId}/preview?v=${job.previewRevision}`} alt={`Preview of ${job.title}`} />{:else}<span>{job.stage === 'FetchingSource' ? 'Receiving media' : 'Waiting for frame'}</span>{/if}
+            </div>
+            <div class="job-body"><h3>{job.title}</h3><p class="muted">{stages[job.stage] ?? job.stage} · {job.encoder}</p>
+              <div class="media-facts">
+                {#if job.sourceMedia?.videoCodec}<span>{job.sourceMedia.videoCodec.toUpperCase()} source</span>{/if}
+                {#if job.sourceMedia?.width && job.sourceMedia.height}<span>{job.sourceMedia.width} × {job.sourceMedia.height}</span>{/if}
+                {#if job.sourceMedia?.durationSeconds}<span>{duration(job.sourceMedia.durationSeconds)}</span>{/if}
+                {#if job.sourceBytes}<span>{bytes(job.sourceBytes)}</span>{/if}
+                {#if job.sourceMedia?.pixelFormat}<span>{job.sourceMedia.pixelFormat}</span>{/if}
+                {#if job.sourceMedia?.audioCodecs}<span>Audio: {job.sourceMedia.audioCodecs}</span>{/if}
+                {#if job.outputExtension}<span>Output: {job.outputExtension.toUpperCase()}</span>{/if}
+                <span>{job.hardwareDecoder ? `GPU decode · ${job.hardwareDecoder}` : 'Software decode'}</span>
+              </div>
+              {#if job.stage === 'Encoding' && job.encodedSeconds != null}
+                {#if job.sourceMedia?.durationSeconds && job.sourceMedia.durationSeconds > 0}
+                  {@const progress = Math.max(0, Math.min(100, job.encodedSeconds / job.sourceMedia.durationSeconds * 100))}
+                  <progress max="100" value={progress} aria-label={`Encoding progress for ${job.title}`}></progress>
+                  <p class="muted">{Math.floor(progress)}% encoded <span aria-hidden="true">·</span> {duration(job.encodedSeconds)} / {duration(job.sourceMedia.durationSeconds)}</p>
+                {:else}<p class="muted">{Math.floor(job.encodedSeconds)}s encoded</p>{/if}
+              {/if}
+              <p class="job-id muted">Job {job.jobId}</p>
+            </div>
+          </article>
         {:else}
           <div class="empty"><h3>{status.state === 'Connected' ? 'Ready for work' : states[status.state] ?? status.state}</h3><p class="muted">{status.state === 'Connected' ? 'No active jobs. Scheduling and pause controls are on the main server.' : status.state === 'Draining' ? 'This worker is taking no new jobs. Resume it on the main server when ready.' : status.state === 'Starting' ? 'Checking the media tools and hardware before accepting jobs.' : 'Check this worker on the main server and review its container logs in Dockhand.'}</p></div>
         {/each}
@@ -89,12 +130,12 @@
         </section>
         <section class="card"><p class="eyebrow">Media hardware</p><h2>Proved capabilities</h2>
           {#if status.capabilities}
-            <dl><dt>Video encoders</dt><dd>{status.capabilities.videoEncoders.join(', ') || 'None available'}</dd><dt>Hardware decoders</dt><dd>{status.capabilities.hardwareDecoders.join(', ') || 'Software decoding'}</dd><dt>Quality verification</dt><dd>{status.capabilities.vmaf === 'Cpu' ? 'CPU VMAF' : status.capabilities.vmaf === 'Cuda' ? 'CUDA VMAF' : 'Unavailable'}</dd></dl>
+            <dl><dt>Video encoders</dt><dd>{status.capabilities.videoEncoders.join(', ') || 'None available'}</dd><dt>Hardware decoders</dt><dd>{status.capabilities.hardwareDecoders.join(', ') || 'Software decoding'}</dd><dt>Quality verification</dt><dd>{status.capabilities.vmaf === 'Cpu' ? 'CPU VMAF' : status.capabilities.vmaf === 'Cuda' ? 'CUDA VMAF' : '—'}</dd></dl>
             <p class="note">GPU decoding is used for compatible jobs when enabled on the main server. RAM working storage is independent of GPU frame memory.</p>
           {:else}<p class="muted">Running real encoding and decoding probes…</p>{/if}
         </section>
       </div>
-      <footer><span>{status.concurrency} concurrent {status.concurrency === 1 ? 'job' : 'jobs'} · v{status.version}</span><span>Refreshes every 5 seconds</span></footer>
+      <footer><span>{status.concurrency} concurrent {status.concurrency === 1 ? 'job' : 'jobs'} · v{status.version}</span><span>Refreshes every 2 seconds</span></footer>
     {/if}
   </main>
 </div>
@@ -114,13 +155,24 @@
   h3 { font-size: 17px; font-weight: 600; margin: 0 0 6px; overflow-wrap: anywhere; }
   .muted, footer { color: var(--ink-3); font-size: 14px; }
   .card { background: linear-gradient(180deg, var(--panel-hi), var(--panel)); box-shadow: var(--lift-2), inset 0 1px var(--edge); border-radius: 18px; padding: 24px; }
+  .load-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-bottom: 22px; }
+  .load { padding: 20px 24px; }
+  .load-value { font-size: clamp(22px, 3vw, 30px); letter-spacing: -.04em; font-weight: 600; margin: 8px 0 4px; }
+  .preview { aspect-ratio: 16 / 9; width: 220px; flex-shrink: 0; background: var(--sunken); border-radius: 10px; display: grid; place-items: center; overflow: hidden; color: var(--ink-3); font-size: 13px; }
+  .preview img { width: 100%; height: 100%; object-fit: contain; }
+  .job-body { flex: 1; min-width: 0; }
+  .media-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 16px 0; color: var(--ink-2); font-size: 13px; }
+  .job-id { margin-top: 12px; font-size: 12px; }
+  progress { width: 100%; height: 6px; border: 0; border-radius: 8px; background: var(--sunken); accent-color: var(--accent); margin: 4px 0 10px; overflow: hidden; }
+  progress::-webkit-progress-bar { background: var(--sunken); }
+  progress::-webkit-progress-value { background: var(--accent); }
+  progress::-moz-progress-bar { background: var(--accent); }
   .activity { margin-bottom: 22px; }
   .section-title h2 { margin: 0; }
   .badge { border-radius: 20px; background: var(--warn-soft); color: var(--warn-strong); padding: 5px 12px; font-size: 13px; font-weight: 600; }
   .badge.healthy { background: var(--ok-soft); color: var(--ok-strong); }
   .empty { padding: 30px 0 16px; }
   .job { padding: 24px 0 4px; align-items: flex-start; }
-  .job > span { color: var(--ink-3); font-size: 13px; flex-shrink: 0; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
   .metric { font-size: 30px; font-weight: 600; letter-spacing: -.04em; margin: 20px 0 8px; }
   .metric span { font-size: 15px; font-weight: 400; color: var(--ink-3); letter-spacing: normal; }
@@ -138,6 +190,6 @@
   .problem h2 { color: var(--bad); }
   .outcome { margin-top: 20px; }
   footer { padding: 24px 2px 0; font-size: 12px; flex-wrap: wrap; }
-  @media (max-width: 680px) { .shell { padding: 0 16px 24px; } .heading { align-items: flex-start; flex-direction: column; margin-top: 26px; } .grid { grid-template-columns: 1fr; } .card { padding: 20px; } .job { flex-direction: column; gap: 8px; } .theme { padding: 10px; } }
+  @media (max-width: 680px) { .shell { padding: 0 16px 24px; } .heading { align-items: flex-start; flex-direction: column; margin-top: 26px; } .grid { grid-template-columns: 1fr; } .load-grid { gap: 8px; } .load.card { padding: 16px 10px; } .load .eyebrow { font-size: 12px; } .load .muted { font-size: 12px; } .load-value { font-size: 20px; white-space: nowrap; } .preview { width: 100%; } .card { padding: 20px; } .job { flex-direction: column; gap: 8px; } .theme { padding: 10px; } }
   @media (prefers-reduced-motion: reduce) { .action, .theme { transition: none; } }
 </style>

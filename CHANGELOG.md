@@ -4,6 +4,8 @@
 
 ### Added
 
+- Linux sidecar monitoring now includes media previews, codec/resolution/duration, encoding progress, host CPU load and worker GPU use. Source metadata is shared by the server and worker without exposing server paths.
+
 - Added a focused Linux sidecar web dashboard with live job stages, proved GPU capabilities, and detected RAM/disk working storage. It uses the main app’s theme and links to server-side worker controls.
 - A preview Linux sidecar runs as a worker with persistent pairing, Intel QSV/VAAPI capability probes, bounded operator-mounted RAM scratch, graceful shutdown and a separate container image. It shares the Windows worker core and the server's FFmpeg/VMAF toolchain.
 
@@ -12,6 +14,8 @@
 - Mac sidecar RAM storage now shares one budget across concurrent jobs and includes candidate limits, scratch allowance and filesystem overhead. Unbounded candidates and adaptive searches use disk. The monitor shows actual storage and explains fallbacks. Source downloads stream directly to working storage, with incomplete ranges rolled back on interruption or cancellation.
 
 ### Fixed
+
+- Shared Windows/Linux job monitors receive progress during short encodes, without waiting for lease renewal. Main-container and Linux-sidecar telemetry share one unprivileged sampler; DRM engine-capacity fields no longer count as GPU busy time.
 
 - Intel GPU decoding reserves additional hardware frames and stops on decoding errors. Quark tests exposed a default frame pool running out while QSV/VAAPI encoders still held frames, producing truncated output despite a successful FFmpeg exit.
 - Remote QSV, VAAPI and NVIDIA workers can now receive GPU-resident decode commands for the H.264 8-bit 4:2:0 format their probes verify. Previously only VideoToolbox was selected for remote hardware decoding. Windows workers older than 0.2.17 retain software decode until their command validator is updated.

@@ -45,7 +45,8 @@ internal sealed record AssignmentDto(
     AdaptiveSearchStepDto? Search = null,
     RemoteVerificationContract? FullVerification = null,
     long? MaxCandidateBytes = null,
-    long? MinCandidateBytes = null);
+    long? MinCandidateBytes = null,
+    Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null);
 
 internal sealed record SizeBudgetExceededRequest(long ObservedBytes);
 internal sealed record SizeBudgetUndershotRequest(long ObservedBytes);
@@ -488,7 +489,10 @@ internal static class WorkerLeaseEndpoints
                     AdaptiveSearchWire.From(assignment.Search, policy),
                     assignment.FullVerification,
                     maxCandidateBytes,
-                    minCandidateBytes));
+                    minCandidateBytes,
+                    new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
+                        job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
+                        job.MediaFile.PixelFormat)));
             }
 
             return Results.NoContent();

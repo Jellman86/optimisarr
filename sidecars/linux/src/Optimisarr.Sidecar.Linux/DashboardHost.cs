@@ -21,7 +21,13 @@ public static class DashboardHost
         app.UseDefaultFiles();
         app.UseStaticFiles();
         app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
-        app.MapGet("/api/sidecar/status", () => dashboard.Snapshot(ScratchStorage.Read(dashboard.ScratchPath)));
+        app.MapGet("/api/sidecar/status", () =>
+        {
+            dashboard.Viewed();
+            return dashboard.Snapshot(ScratchStorage.Read(dashboard.ScratchPath));
+        });
+        app.MapGet("/api/sidecar/jobs/{id:int}/preview", (int id) =>
+            dashboard.ReadPreview(id) is { } jpeg ? Results.File(jpeg, "image/jpeg") : Results.NotFound());
         return app;
     }
 }

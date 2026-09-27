@@ -18,7 +18,7 @@ public sealed class DashboardTests
         Assert.DoesNotContain("secret", JsonSerializer.Serialize(active));
         view.Finish(42, true);
         Assert.Empty(view.Snapshot(new ScratchStorage("Disk", 100, 200)).Jobs);
-        Assert.Equal("Job 42 completed", view.Snapshot(new ScratchStorage("Disk", 100, 200)).LastOutcome);
+        Assert.Equal("Job 42 returned its result to the server", view.Snapshot(new ScratchStorage("Disk", 100, 200)).LastOutcome);
     }
 
     [Fact]
@@ -27,6 +27,23 @@ public sealed class DashboardTests
         var view = new WorkerDashboard("Quark", null, "/work", 1);
         view.Status(new SessionStatus(SidecarState.Connected, "connected"), draining: true);
         Assert.Equal("Draining", view.Snapshot(new ScratchStorage("RAM", 1, 2)).State);
+    }
+
+    [Fact]
+    public void Preview_is_bounded_and_a_late_callback_cannot_restore_a_finished_job()
+    {
+        var view = new WorkerDashboard("Quark", null, "/work", 1);
+        var job = new MonitorJob(42, "Clip", "hevc_qsv", RemoteStage.Encoding, 12);
+        view.Observe(job);
+        view.Preview(42, new byte[MonitorProtocol.MaximumPreviewBytes + 1]);
+        Assert.Null(view.ReadPreview(42));
+        view.Preview(42, [0xff, 0xd8, 0xff, 0xd9]);
+        Assert.NotNull(view.ReadPreview(42));
+        view.Finish(42, true);
+        view.Observe(job);
+        view.Preview(42, [0xff, 0xd8, 0xff, 0xd9]);
+        Assert.Null(view.ReadPreview(42));
+        Assert.Empty(view.Snapshot(new ScratchStorage("RAM", 1, 2)).Jobs);
     }
 
     [Fact]

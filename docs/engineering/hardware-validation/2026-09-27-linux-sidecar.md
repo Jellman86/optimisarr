@@ -106,3 +106,28 @@ Linux RAM work is a bounded operator-mounted tmpfs. It has no automatic disk
 fallback or the Mac app's shared RAM reservation manager. GPU surface storage
 is separate from source/candidate file storage, and neither removes FFmpeg's
 other memory requirements.
+
+## Linux web monitor acceptance
+
+The dedicated Svelte dashboard shares the main app's theme and brand assets. It
+shows current media, small preview frames, source codec/resolution/duration/audio,
+output encoder/container, GPU decode selection, encoding progress, RAM/disk working
+capacity, host CPU and worker GPU utilization. Worker administration stays on the
+main server. Optional source metadata is backwards compatible with older
+workers. No server paths or credentials are included.
+
+The main server and Linux host share the same unprivileged CPU/DRM/AMD/NVIDIA
+sampler. Regression coverage excludes DRM engine capacity from busy-time counters
+and verifies progress delivery during short Windows/Linux encodes. Missing
+telemetry is distinct from an idle reading. GPU readings require consecutive
+samples from a live GPU process.
+
+On Quark, an isolated 120-second H.264 source was encoded with QSV in RAM, fully
+verified by the worker, checked independently, and rolled back. The monitor
+captured source metadata and preview frames; 188 samples recorded CPU reaching
+83%. The fast encode ended between useful GPU samples. A second isolated job
+paced source reading with FFmpeg `-re` to span multiple sample intervals; all
+three acceptance checks passed, 133 monitor samples captured CPU reaching 54%
+and GPU engine utilization reaching 3.7%, with metadata and preview frames.
+The pacing wrapper was confined to the private test harness and is not shipped.
+No production media or services were modified by these tests.

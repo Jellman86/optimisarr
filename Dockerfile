@@ -42,6 +42,7 @@ COPY global.json Directory.Build.props ./
 COPY src/Optimisarr.Core/ src/Optimisarr.Core/
 COPY sidecars/windows/src/Optimisarr.Sidecar.Core/ sidecars/windows/src/Optimisarr.Sidecar.Core/
 COPY sidecars/linux/src/ sidecars/linux/src/
+COPY src/Optimisarr.Api/Metrics/LinuxSystemMetrics.cs src/Optimisarr.Api/Metrics/
 RUN dotnet publish sidecars/linux/src/Optimisarr.Sidecar.Linux --configuration Release \
     -p:UseAppHost=false -warnaserror --output /app/sidecar
 

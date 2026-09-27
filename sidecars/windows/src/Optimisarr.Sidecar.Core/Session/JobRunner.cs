@@ -101,9 +101,11 @@ public sealed class JobRunner(
             var result = await WhileRenewing(
                 pairing, assignment, RemoteStage.Encoding, () => encoded, cancellationToken,
                 token => transcoder.RunAsync(
-                    ffmpegPath, arguments, new Progress<double>(seconds =>
+                    ffmpegPath, arguments, new InlineProgress(seconds =>
                     {
                         encoded = seconds;
+                        observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title,
+                            assignment.VideoEncoder, RemoteStage.Encoding, seconds));
                         if (previews is not null) _ = previews.TrySampleAsync(source, seconds, token);
                     }), token, assignment.MaxCandidateBytes is { } maximum
                         ? new OutputSizeBudget(candidate, maximum) : null));
@@ -715,5 +717,11 @@ public sealed class JobRunner(
             // A file still held open by a process that has not quite exited. The next run's sweep
             // will get it; failing the job over tidying would be absurd.
         }
+    }
+    // Progress<T> queues callbacks after a short encode can already have finished. Keeping this
+    // small observer inline prevents stale encoding state arriving after verification or cleanup.
+    private sealed class InlineProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
     }
 }

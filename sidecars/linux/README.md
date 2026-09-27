@@ -79,14 +79,16 @@ and test media. Production library paths are never test fixtures.
 The container serves a read-only dashboard on port **8788**. It shares the main
 app’s Svelte tooling, theme tokens and brand assets, with a dedicated
 entry point that ships no server settings or library pages. It shows the worker
-connection, current job stages, proved encoders/decoders, CPU/CUDA VMAF support,
+connection, current job stages, proved encoders/decoders, CPU/CUDA VMAF support, live host CPU and worker GPU utilization,
 and the actual filesystem type and remaining working storage. RAM working files
 and GPU frame memory are shown as separate concepts.
 
 Pair, pause, resume and manage scheduling in the main server. The dashboard
-has no write API and exposes no pairing token, raw logs or media previews. Keep
+has no write API and exposes no pairing token or raw logs. It shows small media
+preview frames only while a viewer is polling; frames are bounded to 8 KiB and
+discarded when the job ends. Keep
 it on a trusted private network or behind an authenticated reverse proxy; job
-titles and worker information are visible to anyone who can reach it.
+titles, preview frames and worker information are visible to anyone who can reach it.
 
 `OPTIMISARR_WEB_ENABLED=true` enables the dashboard (the container default).
 Native acceptance runs leave it disabled unless explicitly enabled. Set
@@ -95,3 +97,11 @@ the container healthcheck still requires a recent successful server check-in.
 
 Build the dedicated UI with `cd web && npm run build:sidecar`. The main server
 build remains `npm run build`. Test both with the existing `npm run test:e2e`.
+
+Source media facts (codec, resolution, duration, audio and pixel format) are
+supplied by the main server as optional display metadata. Older servers still
+work but cannot provide those extra facts. Encoding percentage uses the known
+source duration; receiving, quality checks and returning the candidate remain
+separate stages. CPU is host-wide. Intel/AMD DRM GPU readings cover this worker's
+child processes, with device-wide AMD/NVIDIA counters as fallbacks; unavailable
+readings remain blank. The same sampler supplies the main container's telemetry.

@@ -48,7 +48,8 @@ public static class DrmFdinfoParser
             {
                 driver = ValueAfter(line, DriverKey).Trim();
             }
-            else if (line.StartsWith(EnginePrefix, StringComparison.Ordinal))
+            else if (line.StartsWith(EnginePrefix, StringComparison.Ordinal)
+                && !line.StartsWith("drm-engine-capacity-", StringComparison.Ordinal))
             {
                 var colon = line.IndexOf(':');
                 if (colon <= EnginePrefix.Length)

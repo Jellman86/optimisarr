@@ -30,6 +30,19 @@ public sealed class JobRunnerTests : IDisposable
     private static StoredPairing Pairing() => new("https://server.example.com", "secret", 7);
 
     [Fact]
+    public async Task Monitor_progress_arrives_before_a_short_encode_finishes_without_waiting_for_lease_renewal()
+    {
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source));
+        using var http = new HttpClient(server);
+        var observed = new List<MonitorJob>();
+        var runner = new JobRunner(new SidecarClient(http), new JobTransfer(http),
+            new FakeMeasuringTranscoder(), "ffmpeg.exe", _scratch, () => null, observe: observed.Add);
+        await runner.RunAsync(Pairing(), Assignment(), CancellationToken.None);
+        Assert.Contains(observed, job => job.Stage == RemoteStage.Encoding && job.EncodedSeconds == 12.5);
+    }
+
+    [Fact]
     public async Task A_command_naming_a_file_on_this_machine_is_refused_and_the_job_handed_back()
     {
         // The contract reaching the runner, not merely existing. As LocalSystem this would have

@@ -443,6 +443,11 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var media = assignment.GetProperty("sourceMedia");
+        Assert.Equal("h264", media.GetProperty("videoCodec").GetString());
+        Assert.Equal(1920, media.GetProperty("width").GetInt32());
+        Assert.Equal(1080, media.GetProperty("height").GetInt32());
+        Assert.Equal(100, media.GetProperty("durationSeconds").GetDouble());
         var arguments = assignment.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
 
         var row = await JobRow(jobId);
