@@ -14,6 +14,9 @@ class Workers:
         self.api, self.root, self.server = api, Path(root), server
         self.env = {**os.environ, "OPTIMISARR_FFMPEG": ffmpeg, "OPTIMISARR_FFPROBE": ffprobe,
                     "OPTIMISARR_ACCEPTANCE_SERVER": server,
+                    "OPTIMISARR_SERVER": server,
+                    "OPTIMISARR_CONFIG_DIR": str(self.root / "discovery-config"),
+                    "OPTIMISARR_SIDECAR_WORK": str(self.root / "discovery"),
                     "OPTIMISARR_ACCEPTANCE_SCRATCH": str(self.root / "discovery")}
         self.processes = []
 
@@ -33,6 +36,10 @@ class Workers:
             name = f"acceptance-{capabilities['operatingSystem']}-{encoder}"
             log = (self.root / (name + ".log")).open("w")
             env = {**self.env, "OPTIMISARR_ACCEPTANCE_PIN": pin, "OPTIMISARR_ACCEPTANCE_NAME": name,
+                   "OPTIMISARR_PAIRING_CODE": pin, "OPTIMISARR_WORKER_NAME": name,
+                   "OPTIMISARR_ENCODER": encoder,
+                   "OPTIMISARR_CONFIG_DIR": str(self.root / (name + "-config")),
+                   "OPTIMISARR_SIDECAR_WORK": str(self.root / name),
                    "OPTIMISARR_ACCEPTANCE_ENCODER": encoder,
                    "OPTIMISARR_ACCEPTANCE_SCRATCH": str(self.root / name)}
             process = subprocess.Popen(argv, env=env, stdout=log, stderr=subprocess.STDOUT,

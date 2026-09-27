@@ -16,10 +16,11 @@ public interface ICommandRunner
 /// the build fails on first open, and a laptop switches GPUs under you. Proving costs well under a
 /// second per encoder, once per service start.
 /// </summary>
-public sealed class CapabilityProber(ICommandRunner runner)
+public sealed class CapabilityProber(ICommandRunner runner, string platform = "windows",
+    string? measurementFfmpeg = null, bool linuxDevices = false)
 {
     /// <summary>Accelerators worth trying, in the order they are worth having.</summary>
-    private static readonly string[] DecodeAccelerators = ["cuda", "qsv", "d3d11va", "dxva2"];
+    private static readonly string[] DecodeAccelerators = ["cuda", "qsv", "d3d11va", "dxva2", "vaapi"];
 
     public async Task<SidecarCapabilities> ProbeAsync(
         string name,
@@ -30,19 +31,19 @@ public sealed class CapabilityProber(ICommandRunner runner)
     {
         if (ffmpeg is null)
         {
-            return SidecarCapabilities.Nothing(name);
+            return SidecarCapabilities.Nothing(name, platform);
         }
 
         var listing = await runner.RunAsync(ffmpeg, ["-hide_banner", "-encoders"], cancellationToken);
         if (listing.ExitCode != 0)
         {
-            return SidecarCapabilities.Nothing(name);
+            return SidecarCapabilities.Nothing(name, platform);
         }
 
         var video = new List<string>();
         foreach (var encoder in EncoderListParser.Parse(listing.Output))
         {
-            var probe = await runner.RunAsync(ffmpeg, ProbeCommands.VideoEncoder(encoder), cancellationToken);
+            var probe = await runner.RunAsync(ffmpeg, ProbeCommands.VideoEncoder(encoder, linuxDevices), cancellationToken);
             if (probe.ExitCode == 0)
             {
                 video.Add(encoder);
@@ -63,7 +64,7 @@ public sealed class CapabilityProber(ICommandRunner runner)
         // the server can never use only makes a healthy-looking worker that never takes anything.
         if (video.Count == 0)
         {
-            return SidecarCapabilities.Nothing(name) with { AudioEncoders = audio };
+            return SidecarCapabilities.Nothing(name, platform) with { AudioEncoders = audio };
         }
 
         var decoders = await ProveDecodersAsync(ffmpeg, video, cancellationToken);
@@ -71,7 +72,7 @@ public sealed class CapabilityProber(ICommandRunner runner)
 
         return new SidecarCapabilities(
             name,
-            OperatingSystem: "windows",
+            OperatingSystem: platform,
             Architecture: System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
             VideoEncoders: video,
             AudioEncoders: audio,
@@ -122,7 +123,7 @@ public sealed class CapabilityProber(ICommandRunner runner)
             foreach (var accelerator in advertised)
             {
                 var decoded = await runner.RunAsync(
-                    ffmpeg, ProbeCommands.HardwareDecodeDecodeStep(clip, accelerator), cancellationToken);
+                    ffmpeg, ProbeCommands.HardwareDecodeDecodeStep(clip, accelerator, linuxDevices), cancellationToken);
                 if (decoded.ExitCode == 0)
                 {
                     proved.Add(accelerator);
@@ -145,7 +146,8 @@ public sealed class CapabilityProber(ICommandRunner runner)
     private async Task<VmafCapability> ProveVmafAsync(
         string ffmpeg, IReadOnlyList<string> provedEncoders, CancellationToken cancellationToken)
     {
-        var filters = await runner.RunAsync(ffmpeg, ["-hide_banner", "-filters"], cancellationToken);
+        var measurement = measurementFfmpeg ?? ffmpeg;
+        var filters = await runner.RunAsync(measurement, ["-hide_banner", "-filters"], cancellationToken);
         if (filters.ExitCode != 0 || !filters.Output.Contains("libvmaf", StringComparison.Ordinal))
         {
             return VmafCapability.None;
@@ -165,14 +167,14 @@ public sealed class CapabilityProber(ICommandRunner runner)
 
             if (filters.Output.Contains("libvmaf_cuda", StringComparison.Ordinal))
             {
-                var cuda = await runner.RunAsync(ffmpeg, ProbeCommands.CudaVmaf(clip), cancellationToken);
+                var cuda = await runner.RunAsync(measurement, ProbeCommands.CudaVmaf(clip), cancellationToken);
                 if (cuda.ExitCode == 0)
                 {
                     return VmafCapability.Cuda;
                 }
             }
 
-            var cpu = await runner.RunAsync(ffmpeg, ProbeCommands.CpuVmaf(clip), cancellationToken);
+            var cpu = await runner.RunAsync(measurement, ProbeCommands.CpuVmaf(clip), cancellationToken);
             return cpu.ExitCode == 0 ? VmafCapability.Cpu : VmafCapability.None;
         }
         finally

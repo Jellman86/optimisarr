@@ -55,6 +55,9 @@ resource readings and pause controls. Each library chooses whether to use the se
 worker, or wait for workers only. Optional strict worker verification also moves media checks
 to compatible sidecars; scheduling, file transfer and safe replacement remain on the server.
 
+A [Linux container sidecar preview](sidecars/linux/README.md) provides the same headless
+worker protocol for Linux hosts, with Intel QSV/VAAPI probes and optional tmpfs scratch.
+
 See [worker setup and placement](docs/setup/remote-workers.md) and the
 [release downloads](https://github.com/Jellman86/optimisarr/releases). The Mac download is signed
 and notarised. Windows MSI downloads are currently unsigned previews, clearly labelled in their

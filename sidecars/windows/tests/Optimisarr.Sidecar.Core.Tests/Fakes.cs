@@ -123,6 +123,7 @@ internal sealed class FakeMeasuringTranscoder(
 {
     public IReadOnlyList<string>? Arguments { get; private set; }
     public List<IReadOnlyList<string>> AllRuns { get; } = [];
+    public List<string> Executables { get; } = [];
     public List<IReadOnlyList<string>> Probes { get; } = [];
 
     /// <summary>Written by any run whose arguments name a libvmaf log, so a measurement can succeed.</summary>
@@ -153,6 +154,7 @@ internal sealed class FakeMeasuringTranscoder(
             return Task.FromResult(new TranscodeResult(-1, "Size saving budget exceeded.", observed));
         Arguments = arguments;
         AllRuns.Add(arguments);
+        Executables.Add(ffmpeg);
         encodedSeconds?.Report(12.5);
 
         if (EncodeTakes > TimeSpan.Zero)

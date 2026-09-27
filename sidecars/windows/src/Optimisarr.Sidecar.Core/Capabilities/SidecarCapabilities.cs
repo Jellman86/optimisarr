@@ -25,9 +25,9 @@ public sealed record SidecarCapabilities(
     int MaxConcurrency)
 {
     /// <summary>What a machine with no FFmpeg reports: nothing, and no capacity to take work.</summary>
-    public static SidecarCapabilities Nothing(string name) => new(
+    public static SidecarCapabilities Nothing(string name, string platform = "windows") => new(
         name,
-        OperatingSystem: "windows",
+        OperatingSystem: platform,
         Architecture: System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
         VideoEncoders: [],
         AudioEncoders: [],

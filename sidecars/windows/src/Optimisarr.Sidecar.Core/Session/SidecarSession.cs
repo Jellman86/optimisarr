@@ -48,7 +48,7 @@ public sealed class SidecarSession(
     Func<MachineLoad?> load,
     Func<TimeSpan, CancellationToken, Task> delay,
     Action<SessionStatus>? report = null,
-    Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null)
+    Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null, Func<long>? availableScratchBytes = null)
 {
     private int _paused;
     public bool IsPaused => Volatile.Read(ref _paused) != 0;
@@ -171,6 +171,8 @@ public sealed class SidecarSession(
         {
             try
             {
+                if (availableScratchBytes is not null)
+                    capabilities = capabilities with { FreeScratchBytes = Math.Max(0, availableScratchBytes()) };
                 var reportingDrain = ShutdownArmed;
                 var beat = await client.HeartbeatAsync(pairing,
                     reportingDrain ? capabilities with { MaxConcurrency = 0 } : capabilities,

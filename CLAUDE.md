@@ -166,6 +166,19 @@ cd sidecars/macos && swift test        # macOS sidecar protocol and lifecycle su
 cd sidecars/macos && swift build -c release
 ```
 
+Linux sidecar and shared worker core:
+
+```bash
+dotnet build sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release -warnaserror
+dotnet test sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release --no-build
+dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release
+docker build --target sidecar-runtime -t optimisarr-sidecar:test .
+bash scripts/ci_linux_sidecar_smoke.sh optimisarr-sidecar:test
+```
+
+`.github/workflows/linux-sidecar.yml` runs those checks on Linux and publishes
+the separately tagged sidecar image only after its final-image smoke passes.
+
 The final-image gate also runs real application media workflows:
 
 ```bash

@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- A preview Linux sidecar runs as a headless worker with persistent pairing, Intel QSV/VAAPI capability probes, bounded operator-mounted RAM scratch, graceful shutdown and a separate container image. It shares the Windows worker core and the server's FFmpeg/VMAF toolchain.
+
 ### Fixed
 
+- The shared Windows/Linux worker now accepts the server's GPU surface and fixed device arguments. Hardware decode probes use an eight-bit 4:2:0 fixture so an unsupported test pixel format does not hide a working decoder.
 - The sidebar language menu no longer opens partly off the left of the screen when it is opened while the sidebar is still collapsing. It now follows the sidebar until the animation ends.
 
 ## 0.2.16 — 2026-09-26

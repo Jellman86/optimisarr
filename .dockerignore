@@ -9,6 +9,10 @@ config
 .env
 README.md
 docs
-# Sidecar apps are native clients built on their own platforms; they have no place
-# in the Linux container image, and the Dockerfile ends with a broad `COPY . .`.
-sidecars
+# Only the headless Linux host and its shared core belong in the image context.
+sidecars/macos
+sidecars/windows/tests
+sidecars/windows/src/Optimisarr.Sidecar.Service
+sidecars/windows/src/Optimisarr.Sidecar.Tray
+sidecars/windows/installer
+sidecars/linux/tests
