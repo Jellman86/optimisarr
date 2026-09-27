@@ -64,7 +64,7 @@ did before and logs a warning at startup.
 
 ## Remote workers
 
-Windows and macOS sidecars can encode video, measure VMAF, and perform the full
+Windows, macOS and Linux sidecars can encode video, measure VMAF, and perform the full
 verification workload. They remain an opt-in preview behind
 `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`. Enable **Remote workers** in
 **Settings → Files & safety**, then pair and manage machines in **Settings → Remote workers**.
@@ -75,7 +75,8 @@ Where this library's work may run**. Choose **Here or on a worker**, **Only on t
 new installations; existing settings are preserved. You can change it in **Settings → Files & safety → Remote workers**.
 
 See [Remote workers and sidecars](remote-workers.md) for installation, the ten-minute preference
-window, strict verification, and the work that remains on the container.
+window, strict verification, and the work that remains on the container. For a Linux worker,
+use the [Linux container setup guide](linux-sidecar.md).
 
 ## Library workflow
 

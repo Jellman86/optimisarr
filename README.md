@@ -36,7 +36,7 @@ for rollback rather than deleted immediately.
 - Run one Docker container on a homelab, Unraid-style server, or other
   self-hosted setup.
 - Pause processing while Plex, Jellyfin, or Emby has active streams.
-- Send video encoding and optional strict verification to paired Mac and Windows workers.
+- Send video encoding and optional strict verification to paired Mac, Windows and Linux workers.
 
 <p align="center">
   <img src="docs/images/optimisarr-queue-dark.png" alt="Optimisarr Queue in dark mode, showing active GPU transcoding" width="100%">
@@ -55,8 +55,8 @@ resource readings and pause controls. Each library chooses whether to use the se
 worker, or wait for workers only. Optional strict worker verification also moves media checks
 to compatible sidecars; scheduling, file transfer and safe replacement remain on the server.
 
-A [Linux container sidecar preview](sidecars/linux/README.md) provides the same headless
-worker protocol for Linux hosts, with Intel QSV/VAAPI probes and optional tmpfs scratch.
+A [Linux container sidecar preview](docs/setup/linux-sidecar.md) adds browser pairing and a
+live work/load dashboard, with CPU encoding, optional Intel QSV/VAAPI and bounded tmpfs scratch.
 
 See [worker setup and placement](docs/setup/remote-workers.md) and the
 [release downloads](https://github.com/Jellman86/optimisarr/releases). The Mac download is signed

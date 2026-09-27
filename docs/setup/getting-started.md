@@ -75,6 +75,12 @@ before enabling either one.
 
 For a page-by-page walkthrough with screenshots, see the [user workflow](../usage/workflow.md).
 
+## Add a worker
+
+To move eligible video encoding and verification to another machine, follow
+[remote worker setup](remote-workers.md). The [Linux container guide](linux-sidecar.md) includes
+CPU and Intel Compose options, browser pairing, live monitoring and optional RAM scratch.
+
 ## What to back up
 
 Back up `/config/optimisarr.db` for Optimisarr state and keep independent media
