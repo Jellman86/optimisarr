@@ -666,6 +666,22 @@ private func assignment(
 
 @Suite("Scratch capacity")
 struct ScratchCapacityTests {
+    @Test("invalid and overflowing source sizes are released before allocating scratch",
+          arguments: [Int64(0), -1, Int64.max])
+    func invalidSizeIsReleased(sourceBytes: Int64) async {
+        let server = FakeWorkerServer(sourceBytes: Data())
+        let root = scratch()
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(), scratchRoot: root,
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: Int64.max))
+        let outcome = await runner.execute(assignment(sourceBytes: sourceBytes), pairing: pairing) { _ in }
+        #expect(outcome == .released(jobId: 12, reason: "The assignment named an invalid source size."))
+        #expect(server.sourceDownloads == 0)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
     @Test("a job that no longer fits is handed back before its source is downloaded")
     func refusesBeforeDownload() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 100))

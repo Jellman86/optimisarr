@@ -24,10 +24,8 @@ public struct RamDisk: Sendable {
     /// has not finished in this long is wedged, and letting it block would hold the worker's only
     /// job slot for ever — which is exactly what happened on 2026-09-13, leaving a sidecar that
     /// checked in cheerfully and never asked for work again.
-    private static let stepTimeout: TimeInterval = 20
-
     /// Runs a command and returns its trimmed output, or nil if it failed or took too long.
-    private static func run(_ path: String, _ arguments: [String]) -> String? {
+    static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20) -> String? {
         let process = Process()
         let pipe = Pipe()
         pipe.sealFromOtherChildren()
@@ -35,6 +33,9 @@ public struct RamDisk: Sendable {
         process.arguments = arguments
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
+        let finished = DispatchGroup()
+        finished.enter()
+        process.terminationHandler = { _ in finished.leave() }
         do { try process.run() } catch {
             SidecarLog.storage.error("\(path, privacy: .public) could not be launched")
             return nil
@@ -42,18 +43,23 @@ public struct RamDisk: Sendable {
 
         // Read on another thread so a child that holds the pipe open cannot block the wait, and
         // wait with a deadline so nothing here can hang the job that called it.
-        let finished = DispatchSemaphore(value: 0)
+        // Foundation can strand waitUntilExit on a different thread from process.run,
+        // even after the child has exited. Its termination callback is independent of
+        // that thread's run loop. Wait for both exit and output without moving the wait.
         let box = OutputBox()
+        finished.enter()
         DispatchQueue.global(qos: .utility).async {
             box.data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            finished.signal()
+            finished.leave()
         }
 
-        guard finished.wait(timeout: .now() + stepTimeout) == .success else {
+        guard finished.wait(timeout: .now() + timeout) == .success else {
             SidecarLog.storage.error(
-                "\(path, privacy: .public) did not finish within \(Int(stepTimeout))s; giving up on it")
-            process.terminate()
+                "\(path, privacy: .public) did not finish within \(timeout)s; giving up on it")
+            if process.isRunning { process.terminate() }
+            if finished.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
             return nil
         }
 

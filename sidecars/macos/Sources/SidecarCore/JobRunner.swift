@@ -443,8 +443,14 @@ public struct JobRunner: WorkExecutor {
             guard parent != existing else { return nil }
             existing = parent
         }
-        let values = try? existing.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        return values?.volumeAvailableCapacityForImportantUsage
+        // HFS RAM volumes can report zero for the purgeable-space-aware API even while
+        // statfs reports writable space. Keep that estimate for APFS, but never let it hide
+        // free blocks on a RAM disk or another filesystem without purgeable-space support.
+        let important = try? existing.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        let filesystem = try? FileManager.default.attributesOfFileSystem(forPath: existing.path)
+        let free = (filesystem?[.systemFreeSize] as? NSNumber)?.int64Value
+        return [important?.volumeAvailableCapacityForImportantUsage, free]
+            .compactMap { $0 }.filter { $0 >= 0 }.max()
     }
 
     public func execute(
@@ -456,7 +462,11 @@ public struct JobRunner: WorkExecutor {
         // Where this job works, which the operator may have moved to another volume or to memory.
         // A RAM disk is made per job and sized to it, so an idle sidecar holds no memory at all,
         // and a job too large for the memory budget quietly runs on disk instead of being lost.
-        let required = assignment.sourceBytes + assignment.sourceBytes / 2
+        let size = assignment.sourceBytes.addingReportingOverflow(assignment.sourceBytes / 2)
+        guard assignment.sourceBytes > 0, !size.overflow else {
+            return await release(assignment, pairing: pairing, reason: "The assignment named an invalid source size.")
+        }
+        let required = size.partialValue
         let preference = settings.workLocation
         let budget = settings.memoryBudgetBytes
         // Logged before anything is created, so a step that never returns is visible as a job that
