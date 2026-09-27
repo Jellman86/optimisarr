@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Optimisarr.Core/Optimisarr.Core.csproj" />
+    <InternalsVisibleTo Include="Optimisarr.Tests" />
   </ItemGroup>
 
 </Project>

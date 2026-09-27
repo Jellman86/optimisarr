@@ -18,7 +18,9 @@ internal static class WorkerCapabilityMapping
         Split(worker.HardwareDecoders),
         worker.Vmaf,
         worker.FreeScratchBytes,
-        worker.MaxConcurrency);
+        worker.MaxConcurrency,
+        worker.SidecarVersion,
+        worker.ProtocolVersion);
 
     private static IReadOnlyList<string> Split(string value) =>
         string.IsNullOrWhiteSpace(value)

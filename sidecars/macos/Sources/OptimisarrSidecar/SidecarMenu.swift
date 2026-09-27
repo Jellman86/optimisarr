@@ -317,6 +317,14 @@ struct SidecarMenu: View {
             }
 
             }
+            if let storage = session.jobStorage[jobId] {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(storage.summary).font(.system(size: 12, weight: .medium))
+                    if let reason = storage.fallbackReason {
+                        Text(reason).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                    }
+                }.foregroundStyle(Instrument.dim).help(storage.path)
+            }
             Meter(value: progress.fraction, tint: Instrument.phosphor)
 
             HStack(spacing: 8) {

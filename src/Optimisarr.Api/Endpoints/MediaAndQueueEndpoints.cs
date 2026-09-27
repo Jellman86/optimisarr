@@ -21,6 +21,7 @@ using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Endpoints;
@@ -434,6 +435,7 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(
                 j => j.Id == id && j.Type == JobType.Normal,
                 cancellationToken);
@@ -450,7 +452,15 @@ internal static class MediaAndQueueEndpoints
             job.Status = JobStatus.Cancelled;
             job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
+            var leases = await db.JobLeases.Where(lease => lease.JobId == id && lease.State == LeaseState.Held)
+                .ToListAsync(cancellationToken);
+            foreach (var lease in leases)
+            {
+                lease.State = LeaseState.Released;
+                lease.EndedAt = job.FinishedAt;
+            }
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             // Stop the running ffmpeg, if this job is in flight.
             dispatcher.RequestCancel(job.Id);

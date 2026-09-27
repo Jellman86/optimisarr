@@ -96,6 +96,12 @@ services:
       - "traefik.http.services.optimisarr.loadbalancer.server.port=8787"
 ```
 
+## Linux worker traffic
+
+The Linux sidecar has a separate dashboard on port 8788. Worker-to-server traffic uses HTTP APIs
+and resumable media transfers. See [Linux connectivity and proxy requirements](linux-sidecar.md#connectivity-and-reverse-proxies)
+for dashboard access controls, worker authentication and upload limits.
+
 ## Subpath hosting
 
 Optimisarr expects to be served from the **root of its hostname** (e.g.

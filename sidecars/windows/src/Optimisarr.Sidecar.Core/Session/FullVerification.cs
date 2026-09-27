@@ -10,7 +10,7 @@ public static class FullVerification
 {
     public static async Task<RemoteVerificationEvidence> MeasureAsync(
         string ffmpeg, string source, string candidate, RemoteVerificationContract contract,
-        string sourceHash, string candidateHash, CancellationToken cancellationToken)
+        string sourceHash, string candidateHash, CancellationToken cancellationToken, string? measurementFfmpeg = null)
     {
         var evidence = new RemoteVerificationEvidence(contract.Id, sourceHash, candidateHash);
         try
@@ -19,11 +19,11 @@ public static class FullVerification
             var ffprobe = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!,
                 OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
             var timestamps = new TimestampIntegrityCheck(ffprobe);
-            var loudness = new LoudnessService(ffmpeg);
+            var loudness = new LoudnessService(measurementFfmpeg ?? ffmpeg);
             var sourceProbe = await ProbeAsync(ffprobe, source, cancellationToken);
             var candidateProbe = await ProbeAsync(ffprobe, candidate, cancellationToken);
             var decode = await new DecodeHealthCheck(ffmpeg).CheckAsync(candidate, cancellationToken);
-            var sourceVideo = await timestamps.CheckAsync(source, cancellationToken);
+            var sourceVideo = await timestamps.CheckSourceAsync(source, cancellationToken);
             var candidateVideo = await timestamps.CheckAsync(candidate, cancellationToken);
             var sourceAudio = await timestamps.CheckPrimaryAudioAsync(source, cancellationToken);
             var sourceStreams = MediaProbeService.Parse(sourceProbe);
@@ -35,11 +35,11 @@ public static class FullVerification
                     sourceAudio.LastPresentationSeconds is { } audioEnd
                         ? Math.Max(0, audioEnd - (sourceStreams.AudioStartSeconds ?? 0)) : null))
             {
-                var confirmed = await timestamps.CheckAsync(source, cancellationToken);
+                var confirmed = await timestamps.CheckSourceAsync(source, cancellationToken);
                 if (confirmed.Measured && confirmed.LastPresentationSeconds is not null)
                     sourceVideo = confirmed;
             }
-            return evidence with
+            var completed = evidence with
             {
                 SourceProbe = sourceProbe,
                 CandidateProbe = candidateProbe,
@@ -50,6 +50,8 @@ public static class FullVerification
                 SourceLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(source, cancellationToken) : null,
                 CandidateLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(candidate, cancellationToken) : null
             };
+            var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio);
+            return completed with { Error = missing.Count == 0 ? null : "Full verification could not complete: " + string.Join(" ", missing) };
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)

@@ -40,18 +40,12 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
 var client = new SidecarClient(http);
 var server = Required("OPTIMISARR_ACCEPTANCE_SERVER");
-var paired = await client.PairAsync(server, Required("OPTIMISARR_ACCEPTANCE_PIN"), capabilities, cancellation.Token);
-var pairing = new StoredPairing(server, paired.Credential, paired.WorkerId);
 var runner = new JobRunner(client, new JobTransfer(http), new ProcessTranscoder(), ffmpeg, scratch,
     () => null, Console.WriteLine);
-while (!cancellation.IsCancellationRequested)
-{
-    capabilities = capabilities with { FreeScratchBytes = FreeBytes() };
-    var heartbeat = await client.HeartbeatAsync(pairing, capabilities, cancellationToken: cancellation.Token);
-    if (!heartbeat.Draining && await client.ClaimAsync(pairing, cancellation.Token) is { } assignment)
-    {
-        var outcome = await runner.RunAsync(pairing, assignment, cancellation.Token);
-        Console.WriteLine($"Job {outcome.JobId}: {outcome.Delivered} {outcome.Detail}");
-    }
-    await Task.Delay(1000, cancellation.Token);
-}
+// Use the service's recovery, heartbeat and claim lifecycle, including server restarts.
+var session = new SidecarSession(client, new InMemoryCredentialStore(),
+    _ => Task.FromResult(capabilities), () => null, Task.Delay,
+    status => Console.WriteLine($"Session: {status.State} {status.Detail}"),
+    (pairing, assignment, token) => runner.RunAsync(pairing, assignment, token), FreeBytes);
+await session.PairAsync(server, Required("OPTIMISARR_ACCEPTANCE_PIN"), cancellation.Token);
+await session.RunAsync(cancellation.Token);

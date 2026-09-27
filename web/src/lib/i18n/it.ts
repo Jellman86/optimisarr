@@ -734,10 +734,11 @@ quarantine: {
     diagnostics_job_invalid: "Inserisci un ID lavoro positivo valido.",
 
     appearance_title: "Aspetto",
-    appearance_desc: "Salvato in questo browser. Si applica all’icona dell’applicazione e alla favicon.",
+    appearance_desc: "Salvato su questo server, così ogni browser e la pagina di ogni sidecar Linux associato mostrano la stessa icona.",
     brand_style: "Icona dell’applicazione",
     brand_stellar: "Cubo stellare",
     brand_precession: "Cubo in precessione (predefinito)",
+    brand_save_failed: "Impossibile salvare l’icona sul server. Questo browser la mostra, ma gli altri browser e i sidecar no.",
     concurrency_hint: 'Video e verifica completa nel container usano questi slot. Audio e immagini possono usare uno slot libero.',
     encoder_hint: 'Usa la selezione automatica o scegli un codificatore.',
     threads_hint: 'Con 0, il codificatore decide quanti thread usare.',

@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance.core import Blocked, Report, inside, quality_failures, statistics
-from acceptance.media import compare_report
+from acceptance.media import compare_report, validate_shadow_report
 from acceptance.corpus import import_corpus
 from acceptance.runner import missing_workers
 from media_acceptance import strict_worker_verification_for_run
@@ -18,6 +18,43 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+    def test_shadow_acceptance_requires_complete_matching_pairs_and_baseline_authority(self):
+        score = {"frameCount": 24, "vmafMean": 95, "vmafHarmonicMean": 94,
+                 "vmafMin": 85, "vmafFifthPercentile": 90, "modelVersion": "vmaf_v0.6.1"}
+        report = {"vmaf": {"scores": score}, "shadowVmaf": {"status": "Measured", "measurementLocation": "Server",
+                  "baselineModel": "vmaf_v0.6.1", "candidateModel": "vmaf_v1.0.16_3d0h",
+                  "windows": [{"baseline": score, "candidate": {**score, "modelVersion": "vmaf_v1.0.16_3d0h"}}]}}
+        self.assertEqual(1, validate_shadow_report(report)["pairs"])
+        report["shadowVmaf"]["windows"][0]["candidate"]["frameCount"] = 23
+        with self.assertRaises(AssertionError):
+            validate_shadow_report(report)
+        report["shadowVmaf"]["status"] = "TimedOut"
+        with self.assertRaises(AssertionError):
+            validate_shadow_report(report)
+
+    def test_empty_report_cannot_claim_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Report(Path(directory) / "report")
+            report.write()
+            self.assertEqual(2, report.exit_code)
+            self.assertEqual("incomplete", json.loads((report.root / "report.json").read_text())["summary"]["status"])
+
+    def test_partial_success_cannot_be_mistaken_for_a_completed_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Report(Path(directory) / "report")
+            report.case("first test", lambda: {"passed": True})
+            self.assertEqual(2, report.exit_code)
+            summary = json.loads((report.root / "report.json").read_text())["summary"]
+            self.assertEqual("running", summary["status"])
+            self.assertFalse(summary["completed"])
+            self.assertIn("Run has not finished", (report.root / "junit.xml").read_text())
+            report.finish()
+            self.assertEqual(0, report.exit_code)
+            summary = json.loads((report.root / "report.json").read_text())["summary"]
+            self.assertEqual("passed", summary["status"])
+            self.assertTrue(summary["completed"])
+            self.assertNotIn("<error", (report.root / "junit.xml").read_text())
+
     def test_fleet_defaults_to_complete_sidecar_verification_with_explicit_opt_out(self):
         self.assertTrue(strict_worker_verification_for_run("fleet", server_verification=False))
         self.assertFalse(strict_worker_verification_for_run("fleet", server_verification=True))

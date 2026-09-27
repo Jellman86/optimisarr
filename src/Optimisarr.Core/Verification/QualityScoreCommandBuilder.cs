@@ -88,7 +88,11 @@ public sealed record QualityMeasurementContext(
     // True when both files hold the same number of frames, so each sampled window compares frame
     // k with frame k instead of rounding timestamps onto a cadence grid. See FramePairing. It needs
     // a frame rate and a window, and a cut clip keeps its own pairing.
-    bool PairFramesByNumber = false);
+    bool PairFramesByNumber = false,
+    // CAMBI needs the encode's format before measurement rescaling or conversion to 10-bit.
+    VmafEncodedVideo? EncodedVideo = null);
+
+public sealed record VmafEncodedVideo(int Width, int Height, int BitDepth);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -108,6 +112,14 @@ public static class QualityScoreCommandBuilder
     public const string HdModelVersion = "vmaf_v0.6.1";
     public const string UhdModelVersion = "vmaf_4k_v0.6.1";
     public const int MaximumFrameSubsample = 10;
+
+    public static bool IsV1(string? model) => model?.StartsWith("vmaf_v1.", StringComparison.Ordinal) == true;
+
+    // The accelerated graphs currently use 8-bit surfaces. V1's banding features must see the
+    // same 10-bit pixels as the calibrated software path, including when choosing the executable.
+    public static VmafAcceleration EffectiveAcceleration(QualityMeasurementContext context) =>
+        context.ReferenceIsHdr || context.ReferenceCrop is not null || context.ReferenceDecimation is not null
+            || IsV1(context.ModelVersion) ? VmafAcceleration.None : context.Acceleration;
 
     /// <summary>
     /// The viewing model for a picture of this size. Cropped cinema masters are commonly
@@ -163,11 +175,7 @@ public static class QualityScoreCommandBuilder
         // reason: correctness over speed.
         // A decimated reference likewise: the frame selection must be reproduced exactly, and
         // only the CPU graph carries it.
-        var acceleration = context.ReferenceIsHdr
-            || context.ReferenceCrop is not null
-            || context.ReferenceDecimation is not null
-            ? VmafAcceleration.None
-            : context.Acceleration;
+        var acceleration = EffectiveAcceleration(context);
 
         // Thinning by frame index happens before anything touches timestamps, so the index each
         // frame is judged by is the one the encode judged it by.
@@ -183,11 +191,19 @@ public static class QualityScoreCommandBuilder
         var model = context.ModelVersion is { } chosen
             ? ValidatedModelName(chosen)
             : ModelVersionFor(referenceWidth, referenceHeight);
+        var v1 = IsV1(model);
+        if (v1 && (context.ReferenceIsHdr || context.EncodedVideo is not { Width: > 0, Height: > 0, BitDepth: 8 or 10 }))
+        {
+            throw new ArgumentException("VMAF v1 requires SDR and the actual encoded width, height and 8- or 10-bit depth.", nameof(context));
+        }
+        var modelOptions = v1
+            ? FormattableString.Invariant($"{model}\\:cambi.enc_width={context.EncodedVideo!.Width}\\:cambi.enc_height={context.EncodedVideo.Height}\\:cambi.enc_bitdepth={context.EncodedVideo.BitDepth}")
+            : model;
         var colourPreprocessing = context.ReferenceIsHdr
             ? context.HdrConvertedToSdr
                 ? "HDR reference tone-mapped to SDR"
                 : "HDR (matching transfer characteristics)"
-            : "SDR";
+            : v1 ? "SDR (10-bit VMAF v1, encode-aware CAMBI)" : "SDR";
         var pairFrames = context.PairFramesByNumber
             && !context.DistortedIsCutClip
             && context.ReferenceFrameRate is not null
@@ -203,7 +219,7 @@ public static class QualityScoreCommandBuilder
         var scale =
             $"scale={referenceWidth}:{referenceHeight}:" +
             "flags=bicubic:in_range=auto:out_range=tv";
-        var pixelFormat = context.ReferenceIsHdr && !context.HdrConvertedToSdr
+        var pixelFormat = v1 || context.ReferenceIsHdr && !context.HdrConvertedToSdr
             ? "yuv420p10le"
             : "yuv420p";
         var distortedInputStart = InputSeek(
@@ -261,7 +277,7 @@ public static class QualityScoreCommandBuilder
             ? BuildCudaFilter(
                 context,
                 escapedLogPath,
-                model,
+                modelOptions,
                 boundedThreads,
                 distortedTimeline,
                 referenceTimeline)
@@ -270,7 +286,7 @@ public static class QualityScoreCommandBuilder
                 normalise,
                 referencePreparation,
                 escapedLogPath,
-                model,
+                modelOptions,
                 boundedThreads,
                 context.FrameSubsample,
                 acceleration,
@@ -338,11 +354,12 @@ public static class QualityScoreCommandBuilder
         var download = acceleration is VmafAcceleration.Qsv or VmafAcceleration.Vaapi
             ? "hwdownload,format=nv12,"
             : string.Empty;
+        var modelOption = IsV1(model) ? $"model='version={model}':" : $"model=version={model}:";
         return
             $"[0:v]{download}{distortedTimeline},{normalise}[dist];" +
             $"[1:v]{download}{referenceDecimation}{referenceTimeline},{referencePreparation}[ref];" +
             "[dist][ref]libvmaf=" +
-            $"model=version={model}:" +
+            modelOption +
             $"n_threads={threads}:n_subsample={frameSubsample}:" +
             $"log_fmt=json:log_path={logPath}:shortest=1:repeatlast=0";
     }

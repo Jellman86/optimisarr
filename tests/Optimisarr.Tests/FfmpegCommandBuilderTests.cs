@@ -490,6 +490,16 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-init_hw_device", args);
     }
 
+    [Theory]
+    [InlineData("hevc_vaapi", false, "p010le")]
+    [InlineData("av1_vaapi", false, "p010le")]
+    [InlineData("hevc_vaapi", true, "nv12")]
+    public void Vaapi_preserves_ten_bit_uploads_unless_tone_mapping_to_eight_bit(string encoder, bool tonemap, string pixelFormat)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(tonemap: tonemap) with { SourceBitDepth = 10 }, videoEncoder: encoder);
+        Assert.Contains($"format={pixelFormat},hwupload", args[IndexOf(args, "-filter:v:0") + 1]);
+    }
+
     [Fact]
     public void Vaapi_inits_the_device_before_input_and_uses_qp_and_hwupload()
     {
@@ -555,6 +565,22 @@ public sealed class FfmpegCommandBuilderTests
         // The encoder is still QSV with its constant-quality knob.
         Assert.Equal("hevc_qsv", args[IndexOf(args, "-c:v:0") + 1]);
         Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
+    }
+
+    [Theory]
+    [InlineData("hevc_qsv")]
+    [InlineData("hevc_vaapi")]
+    [InlineData("av1_qsv")]
+    [InlineData("av1_vaapi")]
+    public void Intel_GPU_decode_reserves_extra_surfaces_and_fails_on_decode_errors(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: encoder, hardwareDecode: true);
+        Assert.Contains("-xerror", args);
+        Assert.True(IndexOf(args, "-extra_hw_frames") < IndexOf(args, "-i"));
+        Assert.Equal("16", args[IndexOf(args, "-extra_hw_frames") + 1]);
+        var softwareDecode = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: encoder);
+        Assert.DoesNotContain("-extra_hw_frames", softwareDecode);
+        Assert.DoesNotContain("-xerror", softwareDecode);
     }
 
     [Fact]

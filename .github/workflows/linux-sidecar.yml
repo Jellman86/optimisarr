@@ -1,0 +1,77 @@
+name: Linux sidecar
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+    tags: ['v*', 'sidecar-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-sidecar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-sidecar:
+    name: Linux sidecar tests, image and smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet build sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release -warnaserror
+      - run: dotnet test sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release --no-build
+      - run: dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}-sidecar
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=match,pattern=^(?:sidecar-)?v(.*)$,group=1
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and test the final image
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r tag; do args+=(--tag "$tag"); done <<<"${{ steps.meta.outputs.tags }}"
+          docker build --target sidecar-runtime --build-arg GIT_HASH="${{ github.sha }}" \
+            --label org.opencontainers.image.revision="${{ github.sha }}" "${args[@]}" .
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          bash scripts/ci_linux_sidecar_smoke.sh "$first_tag"
+      - name: Accept paired sidecar jobs in RAM before publication
+        run: |
+          set -euo pipefail
+          docker build --build-arg GIT_HASH="${{ github.sha }}" -t optimisarr:sidecar-acceptance .
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image optimisarr:sidecar-acceptance \
+            --worker-image "$first_tag" --tier fleet --worker-encoder libx265 \
+            --local-encoder libx265 --fixture-variant sdr --fixture-seconds 16 --vmaf-shadow \
+            --root /tmp/optimisarr-sidecar-acceptance
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-sidecar-acceptance
+          path: |
+            /tmp/optimisarr-sidecar-acceptance/report
+            /tmp/optimisarr-sidecar-acceptance/*.log
+          retention-days: 14
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish verified image
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do docker push "$tag"; done <<<"${{ steps.meta.outputs.tags }}"

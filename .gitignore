@@ -37,3 +37,5 @@ src/Optimisarr.Api/work/
 # .NET build output for the Windows sidecar.
 sidecars/windows/**/bin/
 sidecars/windows/**/obj/
+
+sidecars/linux/src/Optimisarr.Sidecar.Linux/wwwroot/

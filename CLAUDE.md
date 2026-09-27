@@ -163,15 +163,32 @@ cd web && npm run check               # frontend type/lint check
 cd web && npm run test:e2e            # Playwright end-to-end suite (CI gate — run it)
 cd web && npm run build               # emits static assets into Optimisarr.Api/wwwroot
 cd sidecars/macos && swift test        # macOS sidecar protocol and lifecycle suite
+cd sidecars/macos && OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
 cd sidecars/macos && swift build -c release
 ```
+
+Linux sidecar and shared worker core:
+
+```bash
+dotnet build sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release -warnaserror
+dotnet test sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release --no-build
+dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release
+docker build --target sidecar-runtime -t optimisarr-sidecar:test .
+bash scripts/ci_linux_sidecar_smoke.sh optimisarr-sidecar:test
+```
+
+`.github/workflows/linux-sidecar.yml` runs those checks on Linux and publishes
+the separately tagged sidecar image only after final-image smoke and paired RAM acceptance pass.
+The paired gate builds the server image too and runs the fleet harness with `--worker-image`,
+`--worker-encoder libx265`, `--local-encoder libx265`, `--fixture-variant sdr`,
+and `--fixture-seconds 16` so short jobs remain observable.
 
 The final-image gate also runs real application media workflows:
 
 ```bash
 docker build -t optimisarr:acceptance .
 python3 scripts/media_acceptance.py --image optimisarr:acceptance \
-  --root /tmp/optimisarr-acceptance-run --tier smoke
+  --root /tmp/optimisarr-acceptance-run --tier smoke --vmaf-shadow
 ```
 
 Use a new root for each run. See [the acceptance guide](docs/development/media-acceptance.md)
@@ -205,7 +222,7 @@ to `dev`/`main`, every tag `v*`, and every pull request targeting `dev`/`main`:
 - **frontend** — `npm ci` → `npm run check` → `npx playwright install chromium` →
   `npm run test:e2e`. Both must be clean. The end-to-end suite is a gate, not an optional
   extra, so run it locally before pushing rather than discovering it here.
-- **macos-sidecar** — `swift test` → release build on an Apple Silicon macOS runner. Live
+- **macos-sidecar** — `swift test` → real RAM-volume capacity/cleanup tests → release build on an Apple Silicon macOS runner. Live
   VideoToolbox and server tests remain explicit hardware acceptance runs because CI does not bundle
   the sidecar's pinned FFmpeg or provision a paired Optimisarr server.
 - **docker** — builds the image (after backend + frontend pass) and **publishes

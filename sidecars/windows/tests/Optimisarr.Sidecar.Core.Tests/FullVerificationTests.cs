@@ -25,6 +25,8 @@ public sealed class FullVerificationTests
         var contract = new RemoteVerificationContract(1, Guid.NewGuid(), true);
         var copy = JsonSerializer.Deserialize<RemoteVerificationContract>(JsonSerializer.Serialize(contract, options), options);
         Assert.Equal(contract, copy);
-        Assert.Equal(2, Optimisarr.Sidecar.Core.Session.WorkerProtocol.Maximum);
+        Assert.Equal(1, Optimisarr.Sidecar.Core.Session.WorkerProtocol.Minimum);
+        Assert.Equal(Optimisarr.Core.Workers.WorkerProtocol.Current,
+            Optimisarr.Sidecar.Core.Session.WorkerProtocol.Maximum);
     }
 }

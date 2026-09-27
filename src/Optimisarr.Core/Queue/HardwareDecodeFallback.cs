@@ -19,6 +19,7 @@ public static class HardwareDecodeFallback
         "impossible to convert between the formats",
         "error while opening decoder",
         "no decoder surfaces left",
+        "fixed pool of hardware frames",
         "device creation failed",
         "no device available for decoder",
         "device setup failed for decoder",

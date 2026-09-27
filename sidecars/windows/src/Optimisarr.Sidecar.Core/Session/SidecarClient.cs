@@ -30,7 +30,12 @@ public sealed record HeartbeatResult(
     int ProtocolVersion,
     TimeSpan Interval,
     bool Draining,
-    SidecarUpdate? Update = null);
+    SidecarUpdate? Update = null,
+    /// <summary>The server's brand mark by its wire name, or null when the server did not say one we know.</summary>
+    string? BrandStyle = null);
+
+/// <summary>The poster of a leased title, for a sidecar's own status page.</summary>
+public sealed record LeaseArtwork(byte[] Bytes, string ContentType);
 
 /// <summary>
 /// A newer release the server says this sidecar should install. This PC never updates itself: an
@@ -68,6 +73,41 @@ public sealed class SidecarClient(HttpClient http)
     /// well-formed quality search was dropped on the other sidecar and nobody noticed for a week.
     /// </summary>
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Artwork is decoration for a local page; anything larger is not worth holding in memory.</summary>
+    public const int MaximumArtworkBytes = 1024 * 1024;
+
+    /// <summary>
+    /// The leased title's poster, or null when the server has none, is older than the route, or
+    /// answers with something that is not a small image. Never an error: a missing poster must not
+    /// cost a job anything.
+    /// </summary>
+    public async Task<LeaseArtwork?> ArtworkAsync(
+        StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/artwork"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        var type = response.Content.Headers.ContentType?.MediaType;
+        if (response.StatusCode != HttpStatusCode.OK || type is null
+            || !type.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            || response.Content.Headers.ContentLength > MaximumArtworkBytes)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > MaximumArtworkBytes) return null;
+            buffer.Write(chunk, 0, read);
+        }
+        return buffer.Length == 0 ? null : new LeaseArtwork(buffer.ToArray(), type);
+    }
 
     /// <summary>
     /// Redeems a PIN and returns the credential. The PIN is single-use: a failure here generally
@@ -187,7 +227,9 @@ public sealed class SidecarClient(HttpClient http)
                     payload.ProtocolVersion,
                     TimeSpan.FromSeconds(Math.Max(5, payload.HeartbeatIntervalSeconds)),
                     payload.Draining,
-                    SidecarUpdate.TryCreate(payload.UpdateVersion, payload.UpdateUrl));
+                    SidecarUpdate.TryCreate(payload.UpdateVersion, payload.UpdateUrl),
+                    // Only names the local page already has assets for; it is used to build a path.
+                    payload.BrandStyle?.ToLowerInvariant() is "precession" or "stellar" ? payload.BrandStyle.ToLowerInvariant() : null);
 
             case HttpStatusCode.Unauthorized:
                 // Covers absent, malformed, unknown and revoked credentials alike. Only pairing
@@ -428,7 +470,8 @@ public sealed class SidecarClient(HttpClient http)
         int HeartbeatIntervalSeconds,
         bool Draining,
         string? UpdateVersion = null,
-        string? UpdateUrl = null);
+        string? UpdateUrl = null,
+        string? BrandStyle = null);
 
     /// <summary>
     /// The server's machine-readable errors carry a human sentence in <c>error</c>. Surfacing that

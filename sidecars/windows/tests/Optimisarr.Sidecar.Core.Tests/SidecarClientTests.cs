@@ -152,6 +152,54 @@ public sealed class SidecarClientTests
         }
     }
 
+    [Theory]
+    [InlineData(",\"brandStyle\":\"stellar\"", "stellar")]
+    [InlineData(",\"brandStyle\":\"Precession\"", "precession")]
+    [InlineData(",\"brandStyle\":\"<img src=x>\"", null)]
+    [InlineData("", null)]
+    public async Task A_check_in_carries_the_servers_brand_only_when_it_is_one_we_know(string field, string? expected)
+    {
+        var body = "{\"workerId\":7,\"protocolVersion\":2,\"serverTimeUtc\":\"2026-09-14T20:00:00Z\","
+            + "\"heartbeatIntervalSeconds\":30,\"draining\":false" + field + "}";
+        var (client, _) = Client(HttpStatusCode.OK, body);
+
+        var result = await client.HeartbeatAsync(
+            new StoredPairing("https://optimisarr.example.com", "secret", 7), Capabilities(), null);
+
+        Assert.Equal(expected, result.BrandStyle);
+    }
+
+    private sealed class ArtworkHandler(HttpStatusCode status, string contentType, byte[] bytes) : HttpMessageHandler
+    {
+        public HttpRequestMessage? LastRequest { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            var content = new ByteArrayContent(bytes);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+            return Task.FromResult(new HttpResponseMessage(status) { Content = content });
+        }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK, "image/jpeg", 64, true)]
+    [InlineData(HttpStatusCode.NotFound, "image/jpeg", 64, false)]
+    [InlineData(HttpStatusCode.OK, "text/html", 64, false)]
+    [InlineData(HttpStatusCode.OK, "image/png", SidecarClient.MaximumArtworkBytes + 1, false)]
+    public async Task Lease_artwork_is_an_optional_bounded_image(HttpStatusCode status, string type, int length, bool kept)
+    {
+        var handler = new ArtworkHandler(status, type, new byte[length]);
+        var client = new SidecarClient(new HttpClient(handler));
+        var lease = Guid.NewGuid();
+
+        var artwork = await client.ArtworkAsync(new StoredPairing("https://optimisarr.example.com", "secret", 7), lease);
+
+        Assert.Equal(kept, artwork is not null);
+        Assert.Equal($"/api/workers/leases/{lease}/artwork", handler.LastRequest!.RequestUri!.AbsolutePath);
+        Assert.Equal("secret", handler.LastRequest.Headers.Authorization!.Parameter);
+        if (kept) Assert.Equal(type, artwork!.ContentType);
+    }
+
     [Fact]
     public async Task Load_that_could_not_be_measured_is_left_out_rather_than_sent_as_zero()
     {

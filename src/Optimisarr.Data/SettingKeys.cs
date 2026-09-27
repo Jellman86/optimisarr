@@ -104,6 +104,12 @@ public static class SettingKeys
     /// </summary>
     public const string ReplacementQuarantineRetentionDays = "replacement.quarantineRetentionDays";
 
+    /// <summary>
+    /// The brand mark this server shows. Server-wide rather than per browser so paired sidecars,
+    /// whose own pages live on another origin, can show the same mark.
+    /// </summary>
+    public const string BrandStyle = "appearance.brandStyle";
+
     /// <summary>Stable client identifier Optimisarr presents to Plex during the OAuth/PIN flow.</summary>
     public const string PlexClientIdentifier = "connect.plexClientIdentifier";
 

@@ -81,6 +81,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: swift test
+      - name: Verify real RAM volume capacity and cleanup
+        run: OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
       - run: swift build --configuration release
 
   windows-sidecar:
@@ -160,7 +162,7 @@ jobs:
         run: |
           first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
           python3 scripts/media_acceptance.py --image "$first_tag" \
-            --root "$RUNNER_TEMP/optimisarr-acceptance" --tier smoke
+            --root "$RUNNER_TEMP/optimisarr-acceptance" --tier smoke --vmaf-shadow
 
       - name: Retain media acceptance evidence
         if: always()

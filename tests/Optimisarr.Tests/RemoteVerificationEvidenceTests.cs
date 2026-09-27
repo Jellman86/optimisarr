@@ -5,6 +5,15 @@ namespace Optimisarr.Tests;
 
 public sealed class RemoteVerificationEvidenceTests
 {
+    [Fact]
+    public void Incomplete_timestamp_evidence_identifies_the_stream_and_missing_presentation_times()
+    {
+        var reasons = RemoteVerificationEvidenceValidator.ValidateMeasurements(
+            Valid() with { SourceVideo = new(true, 0, null, null) }, true);
+        Assert.Contains(reasons, reason => reason.Contains("source-video") && reason.Contains("presentation"));
+        Assert.DoesNotContain(reasons, reason => reason.Contains("candidate-video"));
+    }
+
     private static readonly RemoteVerificationContract Contract = new(1, Guid.NewGuid(), true);
     private static readonly string Source = new('a', 64);
     private static readonly string Candidate = new('b', 64);

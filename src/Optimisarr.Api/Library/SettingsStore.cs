@@ -93,7 +93,8 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
         SettingKeys.DryRunMode,
         SettingKeys.ReplacementQuarantineRetentionDays,
         SettingKeys.RemoteWorkersEnabled,
-        SettingKeys.WorkerVerificationRequired
+        SettingKeys.WorkerVerificationRequired,
+        SettingKeys.BrandStyle
     };
 
     /// <summary>
@@ -256,6 +257,18 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
 
     public Task SetQueuePausedAsync(bool paused, CancellationToken cancellationToken) =>
         UpsertAsync(SettingKeys.QueuePaused, paused.ToString(CultureInfo.InvariantCulture), cancellationToken);
+
+    /// <summary>The server-wide brand mark. Anything unrecognised, including a bad import, reads as the default.</summary>
+    public async Task<BrandStyle> GetBrandStyleAsync(CancellationToken cancellationToken)
+    {
+        var setting = await db.AppSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.BrandStyle, cancellationToken);
+        return BrandStyles.TryParse(setting?.Value, out var style) ? style : BrandStyle.Precession;
+    }
+
+    public Task SetBrandStyleAsync(BrandStyle style, CancellationToken cancellationToken) =>
+        UpsertAsync(SettingKeys.BrandStyle, BrandStyles.WireName(style), cancellationToken);
 
     /// <summary>Sets the global concurrency limit. Clamped to at least 1.</summary>
     public async Task SetMaxConcurrentJobsAsync(int value, CancellationToken cancellationToken)

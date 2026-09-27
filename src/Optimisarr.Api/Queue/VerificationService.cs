@@ -89,7 +89,8 @@ public sealed class VerificationService(
     LoudnessService loudness,
     ImageQualityService imageQuality,
     ImageMetadataService imageMetadata,
-    TranscodeOptions transcodeOptions)
+    TranscodeOptions transcodeOptions,
+    VmafShadowService? shadow = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -147,7 +148,7 @@ public sealed class VerificationService(
             // video and can report source corruption separately. Disposable clips have their own
             // deliberately bounded/reference-offset timeline, so keep their established checks.
             var originalTimestampResult = remoteEvidence?.SourceVideo ?? (inspectFullFile && reference.Kind == MediaKind.Video && clip is null
-                ? await timestamps.CheckAsync(reference.Path, cancellationToken)
+                ? await timestamps.CheckSourceAsync(reference.Path, cancellationToken)
                 : TimestampCheckResult.NotMeasured);
             var originalAudioTimestampResult = remoteEvidence?.SourceAudio ?? (inspectFullFile && reference.Kind == MediaKind.Video
                 && originalProbe.AudioTrackCount > 0
@@ -173,7 +174,7 @@ public sealed class VerificationService(
                     originalAudioTimestampResult.LastPresentationSeconds is { } audioEnd
                         ? Math.Max(0, audioEnd - (originalProbe.AudioStartSeconds ?? 0)) : null))
             {
-                var rechecked = await timestamps.CheckAsync(reference.Path, cancellationToken);
+                var rechecked = await timestamps.CheckSourceAsync(reference.Path, cancellationToken);
                 if (rechecked.Measured && rechecked.LastPresentationSeconds is not null)
                 {
                     originalTimestampResult = rechecked;
@@ -425,8 +426,34 @@ public sealed class VerificationService(
                     ? outputProbe.AudioTracks.Select(track => track.Codec).ToList()
                     : null);
 
+            var report = VerificationEvaluator.Evaluate(input, policy);
+            // Research runs only after the gate report has been evaluated. Its scores/errors never
+            // enter VerificationInput, retries, adaptive quality selection or replacement decisions.
+            var shadowSkip = clip is not null ? "Disposable previews and calibration clips are excluded."
+                : reference.Kind != MediaKind.Video || !reference.VideoReencoded ? "Only re-encoded video is studied."
+                : !decodeResult.Healthy ? "Candidate failed decode health."
+                : qualityResult is not { Measured: true } ? "No authoritative baseline VMAF measurement is available."
+                : !originalProbe.Success || !outputProbe.Success ? "Source or candidate probe is unavailable."
+                : outputProbe.IsHdr ? "HDR candidates are outside this SDR study."
+                : null;
+            var depth = PixelFormatInfo.Parse(outputProbe.PixelFormat, outputProbe.BitsPerRawSample)?.BitDepth;
+            var shadowContext = new QualityMeasurementContext(
+                originalProbe.Width ?? 0, originalProbe.Height ?? 0, reference.IsHdr, reference.HdrConvertedToSdr,
+                ReferenceDurationSeconds: referenceVideoDuration,
+                ReferenceFrameRate: originalProbe.VideoFrameRate,
+                ReferenceCrop: reference.Crop, ReferenceDecimation: reference.FrameRate,
+                ReferenceContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(originalProbe),
+                DistortedContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(outputProbe),
+                PairFramesByNumber: reference.FrameRate is null
+                    && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
+                EncodedVideo: depth is { } bits && outputProbe.Width is { } width && outputProbe.Height is { } height
+                    ? new(width, height, bits) : null);
+            if (shadow is not null)
+                report = report with { ShadowVmaf = await shadow.ObserveAsync(
+                    reference.Path, outputPath, shadowContext, shadowSkip, cancellationToken) };
+
             return new VerificationOutcome(
-                VerificationEvaluator.Evaluate(input, policy),
+                report,
                 outputSize,
                 vmafSampling,
                 preparedReference.PresentationOffsetSeconds,

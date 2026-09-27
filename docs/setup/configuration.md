@@ -64,7 +64,7 @@ did before and logs a warning at startup.
 
 ## Remote workers
 
-Windows and macOS sidecars can encode video, measure VMAF, and perform the full
+Windows, macOS and Linux sidecars can encode video, measure VMAF, and perform the full
 verification workload. They remain an opt-in preview behind
 `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`. Enable **Remote workers** in
 **Settings → Files & safety**, then pair and manage machines in **Settings → Remote workers**.
@@ -75,7 +75,8 @@ Where this library's work may run**. Choose **Here or on a worker**, **Only on t
 new installations; existing settings are preserved. You can change it in **Settings → Files & safety → Remote workers**.
 
 See [Remote workers and sidecars](remote-workers.md) for installation, the ten-minute preference
-window, strict verification, and the work that remains on the container.
+window, strict verification, and the work that remains on the container. For a Linux worker,
+use the [Linux container setup guide](linux-sidecar.md).
 
 ## Library workflow
 
@@ -141,6 +142,11 @@ VMAF override is optional; leave it unset unless supplying a compatible NVIDIA b
 override the standard values unless supplying a complete, tested replacement toolchain.
 
 ## Per-library verification gates
+
+`OPTIMISARR_VMAF_SHADOW_SERVER=1` opts the main container into bounded paired v0/v1 research
+measurements. It adds server CPU work even for sidecar-verified candidates, with up to two minutes
+of extra finalisation per sampled job. Existing VMAF gates still decide replacements. It is off by
+default; see the [decision and evidence guide](../development/vmaf-shadow-decision.md) before enabling.
 
 The configuration page has four linked stages for every media type:
 **Choose files → Encode → Verify → Schedule & replace**. Open any stage directly from the overview

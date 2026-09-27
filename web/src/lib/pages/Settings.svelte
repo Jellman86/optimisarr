@@ -1420,10 +1420,11 @@
     <ConfigSection id="appearance" title={i18n.m.settings.appearance_title} description={i18n.m.settings.appearance_desc}>
       <div class="max-w-sm">
         <label for="brand-style" class="label">{i18n.m.settings.brand_style}</label>
-        <select id="brand-style" class="input" value={brand.style} onchange={(event) => brand.set(parseBrandStyle(event.currentTarget.value))}>
+        <select id="brand-style" class="input" value={brand.style} aria-describedby={brand.saveFailed ? 'brand-style-error' : undefined} onchange={(event) => void brand.set(parseBrandStyle(event.currentTarget.value))}>
           <option value="precession">{i18n.m.settings.brand_precession}</option>
           <option value="stellar">{i18n.m.settings.brand_stellar}</option>
         </select>
+        {#if brand.saveFailed}<p id="brand-style-error" class="callout tone-bad mt-2" role="alert">{i18n.m.settings.brand_save_failed}</p>{/if}
       </div>
     </ConfigSection>
     <DiagnosticCapturePanel />

@@ -25,6 +25,8 @@ public static class EncoderListParser
         "h264_nvenc", "hevc_nvenc", "av1_nvenc",
         // Intel Quick Sync.
         "h264_qsv", "hevc_qsv", "av1_qsv",
+        // Linux VA-API.
+        "h264_vaapi", "hevc_vaapi", "av1_vaapi",
         // AMD.
         "h264_amf", "hevc_amf", "av1_amf",
     };

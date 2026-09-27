@@ -29,6 +29,39 @@ public sealed class JobRunnerTests : IDisposable
 
     private static StoredPairing Pairing() => new("https://server.example.com", "secret", 7);
 
+    [Theory]
+    [InlineData(HttpStatusCode.Conflict)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task A_terminal_delivery_offset_refusal_releases_the_lease_and_removes_scratch(HttpStatusCode status)
+    {
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source)) { OffsetStatus = status };
+        using var http = new HttpClient(server);
+        var runner = new JobRunner(new SidecarClient(http), new JobTransfer(http),
+            new FakeMeasuringTranscoder(), "ffmpeg.exe", _scratch, () => null);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var outcome = await runner.RunAsync(Pairing(), Assignment(), deadline.Token);
+        Assert.False(outcome.Delivered);
+        Assert.Single(server.Calls, c => c.EndsWith("/result/offset"));
+        Assert.Contains(server.Calls, c => c.EndsWith("/release"));
+        Assert.Empty(Directory.GetDirectories(_scratch));
+    }
+
+    [Fact]
+    public async Task Monitor_progress_arrives_before_a_short_encode_finishes_without_waiting_for_lease_renewal()
+    {
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source));
+        using var http = new HttpClient(server);
+        var observed = new List<MonitorJob>();
+        var runner = new JobRunner(new SidecarClient(http), new JobTransfer(http),
+            new FakeMeasuringTranscoder(), "ffmpeg.exe", _scratch, () => null, observe: observed.Add);
+        await runner.RunAsync(Pairing(), Assignment(), CancellationToken.None);
+        Assert.Contains(observed, job => job.Stage == RemoteStage.Encoding && job.EncodedSeconds == 12.5);
+    }
+
     [Fact]
     public async Task A_command_naming_a_file_on_this_machine_is_refused_and_the_job_handed_back()
     {

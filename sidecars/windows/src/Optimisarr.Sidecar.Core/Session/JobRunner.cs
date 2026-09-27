@@ -25,7 +25,8 @@ public sealed class JobRunner(
     Action<MonitorJob>? observe = null,
     Func<bool>? wantsPreview = null,
     Action<int, byte[]>? publishPreview = null,
-    IFramePreviewExtractor? previewExtractor = null)
+    IFramePreviewExtractor? previewExtractor = null,
+    string? measurementFfmpegPath = null, bool allowLinuxDevices = false)
 {
     public async Task<JobOutcome> RunAsync(
         StoredPairing pairing, Assignment assignment, CancellationToken cancellationToken)
@@ -87,7 +88,7 @@ public sealed class JobRunner(
             // not get to name files on this machine, which runs as LocalSystem. A command outside
             // the contract is refused whole and the job handed back — a repaired command is one
             // nobody wrote. See AssignmentCommand.
-            if (AssignmentCommand.Refuse(encodeArguments, assignment.OutputExtension) is { } refused)
+            if (AssignmentCommand.Refuse(encodeArguments, assignment.OutputExtension, allowLinuxDevices) is { } refused)
             {
                 await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false, $"The encode command was refused. {refused.Reason}");
@@ -100,9 +101,11 @@ public sealed class JobRunner(
             var result = await WhileRenewing(
                 pairing, assignment, RemoteStage.Encoding, () => encoded, cancellationToken,
                 token => transcoder.RunAsync(
-                    ffmpegPath, arguments, new Progress<double>(seconds =>
+                    ffmpegPath, arguments, new InlineProgress(seconds =>
                     {
                         encoded = seconds;
+                        observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title,
+                            assignment.VideoEncoder, RemoteStage.Encoding, seconds));
                         if (previews is not null) _ = previews.TrySampleAsync(source, seconds, token);
                     }), token, assignment.MaxCandidateBytes is { } maximum
                         ? new OutputSizeBudget(candidate, maximum) : null));
@@ -184,7 +187,7 @@ public sealed class JobRunner(
                 candidateHash ??= await JobTransfer.HashAsync(candidate, cancellationToken);
                 var evidence = await WhileRenewing(pairing, assignment, RemoteStage.Measuring, null,
                     cancellationToken, token => FullVerification.MeasureAsync(
-                        ffmpegPath, source, candidate, verification, declaredHash ?? string.Empty, candidateHash, token));
+                        ffmpegPath, source, candidate, verification, declaredHash ?? string.Empty, candidateHash, token, measurementFfmpegPath));
                 await client.ReportVerificationAsync(pairing, assignment.LeaseId, evidence, cancellationToken);
             }
 
@@ -345,7 +348,7 @@ public sealed class JobRunner(
                 argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)))
             {
                 distortedShift = await TimelineAlignment.MeasureAsync(
-                    transcoder, ffmpegPath, commands[index], source, candidate, frameSeconds!.Value,
+                    transcoder, measurementFfmpegPath ?? ffmpegPath, commands[index], source, candidate, frameSeconds!.Value,
                     scratch, cancellationToken);
                 if (distortedShift is null)
                 {
@@ -368,7 +371,7 @@ public sealed class JobRunner(
 
             var log = Path.Combine(scratch, $"vmaf-{index}.json");
             var scored = await transcoder.RunAsync(
-                ffmpegPath,
+                measurementFfmpegPath ?? ffmpegPath,
                 MeasurementPlaceholders.Resolve(
                     commands[index], candidate, source, log, distortedShift),
                 null,
@@ -528,7 +531,7 @@ public sealed class JobRunner(
             // A sample encode is the same contract as the real one — same placeholders, same
             // machine — and there are a dozen of them per job, so it is the larger surface of the
             // two rather than the smaller.
-            if (AssignmentCommand.Refuse(step.SampleCommands[index], assignment.OutputExtension) is { } refused)
+            if (AssignmentCommand.Refuse(step.SampleCommands[index], assignment.OutputExtension, allowLinuxDevices) is { } refused)
             {
                 return CandidateMeasurement.Failed(
                     $"The sample encode for quality {step.Quality} was refused. {refused.Reason}");
@@ -563,7 +566,7 @@ public sealed class JobRunner(
             }
 
             var scored = await transcoder.RunAsync(
-                ffmpegPath,
+                measurementFfmpegPath ?? ffmpegPath,
                 MeasurementPlaceholders.Resolve(
                     step.Measurement.Commands[index], sample, source, log),
                 null,
@@ -714,5 +717,11 @@ public sealed class JobRunner(
             // A file still held open by a process that has not quite exited. The next run's sweep
             // will get it; failing the job over tidying would be absurd.
         }
+    }
+    // Progress<T> queues callbacks after a short encode can already have finished. Keeping this
+    // small observer inline prevents stale encoding state arriving after verification or cleanup.
+    private sealed class InlineProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
     }
 }

@@ -427,6 +427,23 @@ test('sidebar language menu fits its labels in expanded and collapsed rails', as
   }
 })
 
+test('the language menu stays on screen when opened while the sidebar is still collapsing', async ({ page }) => {
+  // Regression: the menu measured its place once, on open, relative to the rail. Opened while the
+  // rail was still narrowing, it rode the rail's left edge off the screen. Slow CI runners caught
+  // it; a long transition makes the race certain here.
+  await mockSettings(page)
+  await page.goto('/#/settings/system')
+  await page.addStyleTag({ content: '.app-rail { transition-duration: 1500ms !important; }' })
+  await page.getByRole('button', { name: 'Collapse sidebar' }).click()
+  await page.getByRole('button', { name: 'Language: English' }).click()
+  const menu = page.getByRole('listbox', { name: 'Language' })
+  await expect(menu).toBeVisible()
+  await page.waitForTimeout(1700)
+  const bounds = await menu.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+})
+
 test('system panels keep a consistent gap before backup and first-run setup', async ({ page }) => {
   await mockSettings(page)
   await page.goto('/#/settings/system')
@@ -473,4 +490,28 @@ test('settings child pages use the same content width as their overview', async 
     expect(Math.abs(body!.x - heading!.x), room).toBeLessThan(1)
     expect(Math.abs(body!.width - heading!.width), room).toBeLessThan(1)
   }
+})
+
+test('the application icon is the server’s choice, so sidecars can show it too', async ({ page }) => {
+  await mockSettings(page)
+  let stored = 'stellar'
+  const saved: string[] = []
+  await page.route('**/api/settings/appearance', async (route) => {
+    if (route.request().method() === 'PUT') {
+      stored = route.request().postDataJSON().brandStyle
+      saved.push(stored)
+    }
+    await route.fulfill({ json: { brandStyle: stored } })
+  })
+  await page.goto('/#/settings/system')
+  const select = page.getByLabel('Application icon')
+  await expect(select).toHaveValue('stellar')
+  await select.selectOption('precession')
+  await expect.poll(() => saved).toEqual(['precession'])
+  await expect(page.getByText('Could not save the icon on the server')).toHaveCount(0)
+
+  await page.unroute('**/api/settings/appearance')
+  await page.route('**/api/settings/appearance', route => route.fulfill({ status: 500, json: { error: 'down' } }))
+  await select.selectOption('stellar')
+  await expect(page.getByRole('alert')).toContainText('Could not save the icon on the server')
 })

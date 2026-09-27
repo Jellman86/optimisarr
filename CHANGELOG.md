@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.2.17 — 2026-09-27
+
+### Testing
+
+- Optional server VMAF research scores bounded samples under both v0 and v1 and records paired results separately in job reports. Existing gates remain authoritative. `OPTIMISARR_VMAF_SHADOW_SERVER=1` explicitly enables the extra server CPU work, including for sidecar-verified jobs; missing models, timeouts and skipped observations cannot change replacement verdicts. A JSONL exporter retains incomplete coverage for analysis.
+
+- VMAF model studies now measure v1 in 10-bit SDR with the encoded file’s actual CAMBI parameters, support separate encoding/scoring FFmpeg binaries, and validate thresholds against held-out sources. Production models and gates stay unchanged pending calibration.
+- Unattended VMAF studies fail on unavailable models and incomplete pairs, checkpoint partial evidence, and verify cached clips against source/tool/command fingerprints. Interrupted or corrupted encodes cannot be reused as successful samples.
+
+- Acceptance reports remain visibly unfinished, with a nonzero result and a JUnit error, until the complete run and cleanup finish. An interrupted artifact cannot look like a successful full suite.
+
+- macOS and Windows acceptance launchers now use the production session lifecycle, including reconnection after a server restart. Cleanup checks current revocations and attempts every settings/worker restoration even when another cleanup fails. Intel decode-retry fixtures leave enough size headroom to reach the intended quality rejection.
+
+- Native acceptance workers can use a separate RAM scratch directory while reports, logs and fixtures remain on durable storage.
+
+- Linux sidecar publication now requires paired real-media jobs in RAM, including verification, cancellation, reconnect and rollback. The harness checks live media/load information, actual RAM working files and cleanup.
+- Unavailable worker encoders no longer abort the remaining acceptance matrix. Missing targets remain blocked with a nonzero result; current worker availability is checked before and during jobs. Hardware-decode cases reject software fallback and independently check every output picture.
+
+### Added
+
+- **The Linux sidecar can be paired from its own page.** An unpaired worker shows a pairing form: enter the server address and the eight-digit code from Settings → Workers, and it connects. No code in the container's environment is needed, and a revoked worker returns to the pairing form instead of restarting in a loop. The form only exists while the worker has no credential, so a paired worker cannot be pointed at another server from the page.
+- **The Linux sidecar's page was rebuilt in the main app's style.** It uses the same status strip, the icon style chosen on the server, the title's poster beside a live frame, encode speed and time left, the four stages a worker handles, and a short explanation of which steps happen on the worker and which stay on the server. It also lists recent results and shows when a newer release is available.
+- The application icon (Precession or Stellar) is now saved on the server instead of in each browser, so every browser and every paired Linux sidecar shows the same mark. It is included in settings backups.
+- Workers can fetch the poster for the title they are leasing while they hold the lease. Like the source download, the request names only the lease, so it cannot be used to browse the library's artwork.
+- Linux sidecar monitoring now includes media previews, codec/resolution/duration, encoding progress, host CPU load and worker GPU use. Source metadata is shared by the server and worker without exposing server paths.
+
+- Added a focused Linux sidecar web dashboard with live job stages, proved GPU capabilities, and detected RAM/disk working storage. It uses the main app’s theme and links to server-side worker controls.
+- A preview Linux sidecar runs as a worker with persistent pairing, Intel QSV/VAAPI capability probes, bounded operator-mounted RAM scratch, graceful shutdown and a separate container image. It shares the Windows worker core and the server's FFmpeg/VMAF toolchain.
+
+### Changed
+
+- Linux worker setup now has a dedicated guide covering browser pairing, media/load monitoring, persistent credentials, upgrades and proxy requirements. The Compose example starts CPU-only, with optional Intel acceleration and bounded RAM scratch.
+
+- Mac sidecar RAM storage now shares one budget across concurrent jobs and includes candidate limits, scratch allowance and filesystem overhead. Unbounded candidates and adaptive searches use disk. The monitor shows actual storage and explains fallbacks. Source downloads stream directly to working storage, with incomplete ranges rolled back on interruption or cancellation.
+
+### Fixed
+
+- VC-1 sources that contain decode timestamps but omit presentation timestamps now use the same timestamp reconstruction during verification as during encoding. This fixes incomplete sidecar evidence and false duration drift on affected files across the main container, Mac, Windows and Linux workers. Candidate timestamp checks remain strict, and missing evidence identifies the affected stream.
+
+- Cancelling a remote job releases its lease atomically. Late claims cannot reclaim cancelled jobs, legacy orphan leases cannot keep renewing, and Windows/Linux workers stop retrying terminal upload refusals and clear their scratch files.
+- VAAPI encodes preserve 10-bit software-decoded frames in both the main container and sidecar, while SDR tone mapping retains its intended 8-bit output.
+- Windows GPU decode support follows negotiated protocol capabilities instead of the sidecar release number, enabling capable development builds while preserving compatibility with older workers.
+- The Windows size-budget regression test runs without requiring PowerShell script-file execution or changing host policy.
+
+- Shared Windows/Linux job monitors receive progress during short encodes, without waiting for lease renewal. Main-container and Linux-sidecar telemetry share one unprivileged sampler; DRM engine-capacity fields no longer count as GPU busy time.
+
+- Intel GPU decoding reserves additional hardware frames and stops on decoding errors. Quark tests exposed a default frame pool running out while QSV/VAAPI encoders still held frames, producing truncated output despite a successful FFmpeg exit.
+- Remote QSV, VAAPI and NVIDIA workers can now receive GPU-resident decode commands for the H.264 8-bit 4:2:0 format their probes verify. Previously only VideoToolbox was selected for remote hardware decoding. Workers without the required protocol capabilities retain software decode until their command validator is updated.
+- The shared Windows/Linux worker now accepts the server's GPU surface and fixed device arguments. Hardware decode probes use an eight-bit 4:2:0 fixture so an unsupported test pixel format does not hide a working decoder.
+- Mac sidecar memory jobs no longer reject a writable RAM disk as having zero free space. RAM-disk setup also uses process termination callbacks to avoid intermittent 20-second waits after a command has already exited. Invalid source sizes are rejected before allocating storage. CI now checks real RAM-volume capacity and cleanup.
+- The sidebar language menu no longer opens partly off the left of the screen when it is opened while the sidebar is still collapsing. It now follows the sidebar until the animation ends.
+
 ## 0.2.16 — 2026-09-26
 
 ### Changed

@@ -15,7 +15,8 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Choose a personal quality setting](usage/personal-quality-check.md) - run a blind video, audio, or image comparison for one library.
 - [Safe replacement and rollback](operations/safe-replacement.md) - what has to pass before an original is moved, and how rollback works.
 - [Configuration and scheduling](setup/configuration.md) - queue limits, verification gates, per-library automation, exclusions, and backup.
-- [Remote workers and sidecars](setup/remote-workers.md) - install and pair Mac/Windows workers, choose placement, and require worker verification.
+- [Remote workers and sidecars](setup/remote-workers.md) - install and pair Mac, Windows and Linux workers, choose placement, and require worker verification.
+- [Linux container sidecar](setup/linux-sidecar.md) - Compose, browser pairing, live monitoring, Intel acceleration and RAM scratch.
 - [Hardware acceleration](setup/hardware-acceleration.md)
 - [Run the NVIDIA quality comparison](setup/nvenc-quality-comparison.md) - create an anonymous NVENC benchmark report without changing the supplied clips.
 - [Running behind a reverse proxy](setup/reverse-proxy.md)

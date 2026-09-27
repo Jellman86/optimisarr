@@ -9,6 +9,8 @@ namespace Optimisarr.Core.Verification;
 public sealed record QualityResult(bool Measured, QualityScores? Scores, string? Error)
 {
     public VmafAcceleration Acceleration { get; init; } = VmafAcceleration.None;
+    // Research pairs reuse the baseline's alignment instead of optimising each model separately.
+    public string? DistortedShiftToken { get; init; }
 
     public static QualityResult Ok(QualityScores scores) => new(true, scores, null);
 
@@ -62,9 +64,7 @@ public sealed class QualityScoreService(
             // Keep measurement useful without monopolising a small home server. Four
             // libvmaf workers scale well while leaving capacity for the API and disk I/O.
             var threads = Math.Clamp(Environment.ProcessorCount, 1, 4);
-            var requestedAcceleration = context.ReferenceIsHdr
-                ? VmafAcceleration.None
-                : context.Acceleration;
+            var requestedAcceleration = QualityScoreCommandBuilder.EffectiveAcceleration(context);
 
             if (requestedAcceleration == VmafAcceleration.Cuda
                 && !await HasFilterAsync(_cudaFfmpeg, "libvmaf_cuda", cancellationToken))
@@ -106,7 +106,7 @@ public sealed class QualityScoreService(
 
             if (result.Measured || requestedAcceleration == VmafAcceleration.None)
             {
-                return result;
+                return result with { DistortedShiftToken = effectiveContext.DistortedShiftToken };
             }
 
             // Hardware decode is codec/profile/driver dependent, and CUDA VMAF also requires a
@@ -134,7 +134,7 @@ public sealed class QualityScoreService(
                     $"Accelerated VMAF failed ({result.Error}); software fallback failed: {fallback.Error}");
             }
 
-            return fallback;
+            return fallback with { DistortedShiftToken = fallbackContext.DistortedShiftToken };
         }
         catch (ArgumentException ex)
         {
