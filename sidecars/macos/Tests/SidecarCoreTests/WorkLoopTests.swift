@@ -484,6 +484,47 @@ struct TimelineLeadShiftTests {
 
 @Suite("Work location in a real job")
 struct WorkLocationJobTests {
+    @Test("failed RAM creation frees its reservation and reports disk fallback")
+    func failedCreationFallsBack() async {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
+        let budget = MemoryWorkBudget()
+        let storage = StorageRecorder()
+        let root = scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
+            memoryBudget: budget, makeRamDisk: { _ in nil })
+        let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
+            pairing: pairing, progress: { _ in }, storage: storage.record)
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(budget.reservedBytes == 0)
+        #expect(storage.value?.inMemory == false)
+        #expect(storage.value?.fallbackReason?.contains("could not create") == true)
+    }
+
+    @Test("a full shared budget runs the next job on disk and preserves the existing reservation")
+    func sharedBudgetFallback() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
+        let budget = MemoryWorkBudget()
+        let limit: Int64 = 200 * 1024 * 1024
+        let reservation = budget.reserve(bytes: limit, limit: limit)
+        let token = try #require(reservation)
+        defer { budget.release(token) }
+        let storage = StorageRecorder()
+        let root = scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
+            memoryBudget: budget, makeRamDisk: { _ in Issue.record("must not create an over-budget volume"); return nil })
+        let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
+            pairing: pairing, progress: { _ in }, storage: storage.record)
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(budget.reservedBytes == 200 * 1024 * 1024)
+        #expect(storage.value?.fallbackReason?.contains("shared budget") == true)
+    }
+
     @Test("a job too large for the memory budget runs on disk instead of being handed back")
     func fallsBackToDiskRatherThanRefusing() async throws {
         // The point of the fallback: a preference must never cost the work. Before, a job that did
@@ -666,6 +707,22 @@ private func assignment(
 
 @Suite("Scratch capacity")
 struct ScratchCapacityTests {
+    @Test("invalid and overflowing source sizes are released before allocating scratch",
+          arguments: [Int64(0), -1, Int64.max])
+    func invalidSizeIsReleased(sourceBytes: Int64) async {
+        let server = FakeWorkerServer(sourceBytes: Data())
+        let root = scratch()
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(), scratchRoot: root,
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: Int64.max))
+        let outcome = await runner.execute(assignment(sourceBytes: sourceBytes), pairing: pairing) { _ in }
+        #expect(outcome == .released(jobId: 12, reason: "The assignment named an invalid source size."))
+        #expect(server.sourceDownloads == 0)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
     @Test("a job that no longer fits is handed back before its source is downloaded")
     func refusesBeforeDownload() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 100))
@@ -1043,7 +1100,8 @@ final class RecordingExecutor: WorkExecutor, @unchecked Sendable {
     func execute(
         _ assignment: Assignment, pairing: StoredPairing,
         progress: @escaping @Sendable (JobProgress) -> Void,
-        preview: @escaping @Sendable (Data) -> Void
+        preview: @escaping @Sendable (Data) -> Void,
+        storage: @escaping @Sendable (WorkStorage) -> Void
     ) async -> JobOutcome {
         executed.append(assignment)
         progress(.encoding(encodedSeconds: 3))
@@ -1691,4 +1749,11 @@ struct TimelineAlignmentChoiceTests {
         #expect(TimelineAlignment.probeSeconds == 5)
         #expect(TimelineAlignment.choiceMarginPoints == 2)
     }
+}
+
+private final class StorageRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: WorkStorage?
+    var value: WorkStorage? { lock.withLock { recorded } }
+    func record(_ storage: WorkStorage) { lock.withLock { recorded = storage } }
 }

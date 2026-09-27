@@ -23,6 +23,8 @@ public final class SettingsSnapshot: @unchecked Sendable {
         self.budget = memoryBudgetBytes
     }
 
+    public var current: (workLocation: WorkLocation, memoryBudgetBytes: Int64) { lock.withLock { (location, budget) } }
+
     public var workLocation: WorkLocation { lock.withLock { location } }
     public var memoryBudgetBytes: Int64 { lock.withLock { budget } }
 

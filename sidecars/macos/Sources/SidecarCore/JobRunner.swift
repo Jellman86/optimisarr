@@ -352,7 +352,8 @@ public protocol WorkExecutor: Sendable {
         _ assignment: Assignment,
         pairing: StoredPairing,
         progress: @escaping @Sendable (JobProgress) -> Void,
-        preview: @escaping @Sendable (Data) -> Void
+        preview: @escaping @Sendable (Data) -> Void,
+        storage: @escaping @Sendable (WorkStorage) -> Void
     ) async -> JobOutcome
 }
 
@@ -383,6 +384,8 @@ public struct JobRunner: WorkExecutor {
     /// crashed the app the moment a job was claimed. A box cannot be misused that way.
     ///
     /// Read per job, so changing a setting takes effect on the next job without a restart.
+    private let makeRamDisk: @Sendable (Int64) -> RamDisk?
+    private let memoryBudget: MemoryWorkBudget
     private let settings: SettingsSnapshot
     private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
@@ -405,6 +408,8 @@ public struct JobRunner: WorkExecutor {
             workLocation: .applicationSupport,
             memoryBudgetBytes: WorkLocationPolicy.defaultBudget(
                 physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory))),
+        memoryBudget: MemoryWorkBudget = .shared,
+        makeRamDisk: @escaping @Sendable (Int64) -> RamDisk? = RamDisk.create,
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
@@ -420,6 +425,8 @@ public struct JobRunner: WorkExecutor {
         self.previewSampler = previewSampler
         self.wantsPreviews = wantsPreviews
         self.settings = settings
+        self.memoryBudget = memoryBudget
+        self.makeRamDisk = makeRamDisk
         self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
         self.load = load
@@ -443,56 +450,64 @@ public struct JobRunner: WorkExecutor {
             guard parent != existing else { return nil }
             existing = parent
         }
-        let values = try? existing.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        return values?.volumeAvailableCapacityForImportantUsage
+        // HFS RAM volumes can report zero for the purgeable-space-aware API even while
+        // statfs reports writable space. Keep that estimate for APFS, but never let it hide
+        // free blocks on a RAM disk or another filesystem without purgeable-space support.
+        let important = try? existing.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        let filesystem = try? FileManager.default.attributesOfFileSystem(forPath: existing.path)
+        let free = (filesystem?[.systemFreeSize] as? NSNumber)?.int64Value
+        return [important?.volumeAvailableCapacityForImportantUsage, free]
+            .compactMap { $0 }.filter { $0 >= 0 }.max()
     }
 
     public func execute(
         _ assignment: Assignment,
         pairing: StoredPairing,
         progress: @escaping @Sendable (JobProgress) -> Void,
-        preview: @escaping @Sendable (Data) -> Void = { _ in }
+        preview: @escaping @Sendable (Data) -> Void = { _ in },
+        storage: @escaping @Sendable (WorkStorage) -> Void = { _ in }
     ) async -> JobOutcome {
         // Where this job works, which the operator may have moved to another volume or to memory.
         // A RAM disk is made per job and sized to it, so an idle sidecar holds no memory at all,
         // and a job too large for the memory budget quietly runs on disk instead of being lost.
-        let required = assignment.sourceBytes + assignment.sourceBytes / 2
-        let preference = settings.workLocation
-        let budget = settings.memoryBudgetBytes
-        // Logged before anything is created, so a step that never returns is visible as a job that
-        // started and said nothing more, rather than as a worker that silently stopped asking.
-        SidecarLog.job.info("""
-            Job \(assignment.jobId) claimed: \(assignment.videoEncoder, privacy: .public), \
-            source \(assignment.sourceBytes) bytes, needs \(required) bytes, \
-            wants \(String(describing: preference), privacy: .public)
-            """)
+        let size = assignment.sourceBytes.addingReportingOverflow(assignment.sourceBytes / 2)
+        guard assignment.sourceBytes > 0, !size.overflow else {
+            return await release(assignment, pairing: pairing, reason: "The assignment named an invalid source size.")
+        }
+        let snapshot = settings.current
+        let preference = snapshot.workLocation
+        var root = scratchRoot
         var ramDisk: RamDisk?
-        let root: URL
-        switch WorkLocationPolicy.resolve(
-            preference: preference, requiredBytes: required, memoryBudget: budget
-        ) {
-        case .applicationSupport:
-            root = scratchRoot
-        case let .folder(folder):
-            root = folder
+        var reservation: UUID?
+        var fallback: String?
+        switch preference {
+        case .applicationSupport: break
+        case let .folder(folder): root = folder
         case .memory:
-            SidecarLog.storage.info("Job \(assignment.jobId): creating a \(required)-byte RAM disk")
-            if let disk = RamDisk.create(bytes: required) {
-                ramDisk = disk
-                root = disk.mountPoint
-                SidecarLog.storage.info(
-                    "Job \(assignment.jobId): working in memory on \(disk.mountPoint.path, privacy: .public)")
+            if assignment.search != nil {
+                fallback = "The quality search has no scratch-size limit, so this job uses disk."
+            } else if let plan = MemoryWorkPlan.make(sourceBytes: assignment.sourceBytes,
+                                                     maximumCandidateBytes: assignment.maxCandidateBytes) {
+                if let token = memoryBudget.reserve(bytes: plan.allocatedBytes, limit: snapshot.memoryBudgetBytes) {
+                    reservation = token
+                    if let disk = makeRamDisk(plan.workingBytes) {
+                        ramDisk = disk
+                        root = disk.mountPoint
+                    } else {
+                        memoryBudget.release(token)
+                        reservation = nil
+                        fallback = "The Mac could not create a RAM disk, so this job uses disk."
+                    }
+                } else {
+                    fallback = "This job needs \(ByteCountFormatter.string(fromByteCount: plan.allocatedBytes, countStyle: .memory)) of RAM storage. The shared budget is too small or is in use by other jobs."
+                }
             } else {
-                // The Mac would not give us the volume. That is a reason to use the disk, not a
-                // reason to give the job back.
-                root = scratchRoot
-                SidecarLog.storage.error("Job \(assignment.jobId): no RAM disk could be created; using the disk")
+                fallback = "The candidate has no safe size limit, so this job uses disk."
             }
         }
-        if let reason = WorkLocationPolicy.fallbackReason(
-            preference: preference, requiredBytes: required, memoryBudget: budget) {
-            SidecarLog.storage.notice("Job \(assignment.jobId): \(reason, privacy: .public)")
-        }
+        let location = WorkStorage(inMemory: ramDisk != nil, path: root.path, fallbackReason: fallback)
+        storage(location)
+        SidecarLog.storage.info("Job \(assignment.jobId): \(location.summary, privacy: .public). \(fallback ?? root.path, privacy: .public)")
         SidecarLog.job.info("""
             Job \(assignment.jobId) starting: encoder \(assignment.videoEncoder, privacy: .public), \
             source \(assignment.sourceBytes) bytes, working in \(root.path, privacy: .public)
@@ -503,7 +518,13 @@ public struct JobRunner: WorkExecutor {
             try? FileManager.default.removeItem(at: scratch)
             // Before anything else can go wrong: a RAM disk that outlives its job holds real
             // memory until the Mac reboots, and nothing on screen would say so.
-            ramDisk?.destroy()
+            if let ramDisk, !ramDisk.destroy() {
+                // The memory is still allocated. Keeping its reservation prevents later jobs
+                // from spending it again until the process exits and startup cleanup runs.
+                SidecarLog.storage.error("RAM disk ejection failed; keeping its memory reservation")
+            } else if let reservation {
+                memoryBudget.release(reservation)
+            }
         }
 
         do {

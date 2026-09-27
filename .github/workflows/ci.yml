@@ -81,6 +81,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: swift test
+      - name: Verify real RAM volume capacity and cleanup
+        run: OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
       - run: swift build --configuration release
 
   windows-sidecar:

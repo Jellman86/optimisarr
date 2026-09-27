@@ -85,7 +85,7 @@ struct OptionsView: View {
                         Text(bytes(Int64(budgetRange.upperBound))).font(.caption2).foregroundStyle(.tertiary)
                     }
                     // Said plainly, because the obvious expectation is that memory is faster.
-                    note("A job needing more working space than the budget runs on disk instead — it is never refused over this setting. A RAM disk holds real memory for as long as the job runs, and most films will not fit in any sensible budget. It is also rarely faster: a download is limited by the network and an encode by the encoder, not by an Apple SSD.")
+                    note("The budget is shared by all running jobs, including filesystem overhead. Jobs use disk when the budget is full, the candidate has no size limit, or a quality search needs unbounded scratch space. A RAM disk holds real memory for as long as the job runs, and most films will not fit in any sensible budget. It is also rarely faster: a download is limited by the network and an encode by the encoder, not by an Apple SSD.")
                 }
             }
 

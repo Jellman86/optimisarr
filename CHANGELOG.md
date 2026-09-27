@@ -2,17 +2,21 @@
 
 ## Unreleased
 
-- Added a focused Linux sidecar web dashboard with live job stages, proved GPU capabilities, and detected RAM/disk working storage. It uses the main app’s theme and links to server-side worker controls.
-
 ### Added
 
-- A preview Linux sidecar runs as a headless worker with persistent pairing, Intel QSV/VAAPI capability probes, bounded operator-mounted RAM scratch, graceful shutdown and a separate container image. It shares the Windows worker core and the server's FFmpeg/VMAF toolchain.
+- Added a focused Linux sidecar web dashboard with live job stages, proved GPU capabilities, and detected RAM/disk working storage. It uses the main app’s theme and links to server-side worker controls.
+- A preview Linux sidecar runs as a worker with persistent pairing, Intel QSV/VAAPI capability probes, bounded operator-mounted RAM scratch, graceful shutdown and a separate container image. It shares the Windows worker core and the server's FFmpeg/VMAF toolchain.
+
+### Changed
+
+- Mac sidecar RAM storage now shares one budget across concurrent jobs and includes candidate limits, scratch allowance and filesystem overhead. Unbounded candidates and adaptive searches use disk. The monitor shows actual storage and explains fallbacks. Source downloads stream directly to working storage, with incomplete ranges rolled back on interruption or cancellation.
 
 ### Fixed
 
 - Intel GPU decoding reserves additional hardware frames and stops on decoding errors. Quark tests exposed a default frame pool running out while QSV/VAAPI encoders still held frames, producing truncated output despite a successful FFmpeg exit.
 - Remote QSV, VAAPI and NVIDIA workers can now receive GPU-resident decode commands for the H.264 8-bit 4:2:0 format their probes verify. Previously only VideoToolbox was selected for remote hardware decoding. Windows workers older than 0.2.17 retain software decode until their command validator is updated.
 - The shared Windows/Linux worker now accepts the server's GPU surface and fixed device arguments. Hardware decode probes use an eight-bit 4:2:0 fixture so an unsupported test pixel format does not hide a working decoder.
+- Mac sidecar memory jobs no longer reject a writable RAM disk as having zero free space. RAM-disk setup also uses process termination callbacks to avoid intermittent 20-second waits after a command has already exited. Invalid source sizes are rejected before allocating storage. CI now checks real RAM-volume capacity and cleanup.
 - The sidebar language menu no longer opens partly off the left of the screen when it is opened while the sidebar is still collapsing. It now follows the sidebar until the animation ends.
 
 ## 0.2.16 — 2026-09-26
