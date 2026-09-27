@@ -1,5 +1,6 @@
 """Observe the real Linux worker, its working files and cleanup during owned jobs."""
 import math
+from datetime import datetime, timezone
 import time
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class LinuxObserver:
         status = self.api.request("/api/sidecar/status")
         job = next((j for j in status["jobs"] if j["jobId"] == job_id), None)
         files = self.files(job_id)
-        sample = {"state": status["state"], "storage": status["storage"],
+        sample = {"observedAt": datetime.now(timezone.utc).isoformat(), "state": status["state"], "storage": status["storage"],
                   "metrics": status.get("metrics"), "job": job, "files": files}
         history = self.samples.setdefault(job_id, [])
         # Keep early transfer evidence and the most recent progress without unbounded reports.
@@ -44,6 +45,7 @@ class LinuxObserver:
             if not any(f["name"] == "source" for f in observed) or not any(f["name"].startswith("candidate.") for f in observed):
                 raise Blocked("Source and candidate working files were not both observed; use a longer fixture")
             metrics = [s["metrics"] for s in samples if s["metrics"]]
+            require(all(fresh_metrics(s) for s in samples if s["metrics"]), "Worker utilization samples are stale")
             require(any(valid_percent(m.get("cpuPercent")) for m in metrics), "No valid CPU sample")
             require(all(m.get("gpuPercent") is None or valid_percent(m["gpuPercent"]) for m in metrics),
                     "Invalid GPU utilization sample")
@@ -55,6 +57,15 @@ class LinuxObserver:
             require(time.monotonic() < deadline, "Worker retained working files or a finished job in its monitor")
             time.sleep(.2)
         return {"filesystem": filesystem, "cleanupConfirmed": True, "samples": samples}
+
+
+def fresh_metrics(sample):
+    try:
+        observed = datetime.fromisoformat(sample["observedAt"])
+        measured = datetime.fromisoformat(sample["metrics"]["sampledAt"])
+        return abs((observed - measured).total_seconds()) <= 10
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 def valid_percent(value):

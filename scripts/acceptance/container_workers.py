@@ -33,6 +33,7 @@ class ContainerWorkers(Workers):
             capabilities = json.loads(command(["docker", "run", "--name", name, *self.docker_options(),
                 "-e", "OPTIMISARR_WEB_ENABLED=false", self.image, "--discover"], timeout=120))
             require(capabilities["videoEncoders"], "Container proved no encoders")
+            capabilities["acceptanceImageId"] = command(["docker", "inspect", "-f", "{{.Image}}", name]).strip()
             return capabilities
         finally:
             self.remove(name)
