@@ -124,7 +124,7 @@ public protocol HTTPTransport: Sendable {
 public struct URLSessionTransport: HTTPTransport {
     private let session: URLSession
 
-    public init(session: URLSession = .shared) {
+    public init(session: URLSession = URLSession(configuration: .ephemeral)) {
         self.session = session
     }
 
@@ -137,33 +137,39 @@ public struct URLSessionTransport: HTTPTransport {
     }
 
     public func download(_ request: URLRequest, to destination: URL) async throws -> HTTPURLResponse {
-        let (temporary, response) = try await session.download(for: request)
+        try Task.checkCancellation()
+        let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
-            try? FileManager.default.removeItem(at: temporary)
             throw SidecarError.unexpectedResponse(status: 0)
         }
-        if http.statusCode == 200 {
-            try? FileManager.default.removeItem(at: destination)
-            try FileManager.default.moveItem(at: temporary, to: destination)
-        } else if http.statusCode == 206 {
-            if !FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.moveItem(at: temporary, to: destination)
-                return http
+        guard http.statusCode == 200 || http.statusCode == 206 else { return http }
+        if !FileManager.default.fileExists(atPath: destination.path) {
+            guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+                throw SidecarError.transferFailed(reason: "The source working file could not be created.")
             }
-
-            let input = try FileHandle(forReadingFrom: temporary)
-            let output = try FileHandle(forWritingTo: destination)
-            defer {
-                try? input.close()
-                try? output.close()
-                try? FileManager.default.removeItem(at: temporary)
+        }
+        let output = try FileHandle(forWritingTo: destination)
+        defer { try? output.close() }
+        let originalLength = try output.seekToEnd()
+        let rollbackLength: UInt64 = http.statusCode == 200 ? 0 : originalLength
+        if http.statusCode == 200 { try output.truncate(atOffset: 0); try output.seek(toOffset: 0) }
+        do {
+            var buffer = Data()
+            buffer.reserveCapacity(256 * 1024)
+            for try await byte in bytes {
+                buffer.append(byte)
+                if buffer.count == 256 * 1024 {
+                    try Task.checkCancellation()
+                    try output.write(contentsOf: buffer)
+                    buffer.removeAll(keepingCapacity: true)
+                }
             }
-            try output.seekToEnd()
-            while let bytes = try input.read(upToCount: 1024 * 1024), !bytes.isEmpty {
-                try output.write(contentsOf: bytes)
-            }
-        } else {
-            try? FileManager.default.removeItem(at: temporary)
+            try Task.checkCancellation()
+            if !buffer.isEmpty { try output.write(contentsOf: buffer) }
+        } catch {
+            // A retry starts at the last complete range, never after a partial HTTP body.
+            try output.truncate(atOffset: rollbackLength)
+            throw error
         }
         return http
     }

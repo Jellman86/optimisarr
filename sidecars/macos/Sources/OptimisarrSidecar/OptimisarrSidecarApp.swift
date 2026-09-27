@@ -145,15 +145,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// A RAM disk that outlived a crash holds real memory until the Mac reboots, and nothing on
     /// screen would say so. Cleared at launch, before any job can make another.
-    private func sweepStrayRamDisks() {
-        Task.detached(priority: .utility) { RamDisk.sweepStrays() }
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         installApplicationMenu()
         installMenuBarItem()
         observePowerEvents()
-        sweepStrayRamDisks()
         // Restoring reads the Keychain, and that read can block — on an item written by a build
         // whose signature no longer matches, indefinitely. Deferring it into a `Task { @MainActor }`
         // was not enough and looked like it was: this is already the main actor, so the block
@@ -161,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The session now does the read off the main actor; this waits for the answer only so it
         // knows whether to offer pairing.
         Task { @MainActor in
+            await Task.detached(priority: .utility) { RamDisk.sweepStrays() }.value
             await AppState.shared.session.restoreAndSettle()
             restoreSettled = true
             // Whether a pairing was found, not what the status says. A restored pairing leaves the

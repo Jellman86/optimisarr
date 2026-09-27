@@ -26,11 +26,12 @@ struct LiveRamDiskTests {
         let source = try Data(contentsOf: fixture)
         let server = FakeWorkerServer(sourceBytes: source)
         let recorder = ArgumentRecorder()
+        let budget = MemoryWorkBudget()
         let runner = JobRunner(
             client: SidecarClient(transport: server), ffmpeg: ffmpeg,
             runner: RecordedLiveTranscoder(recorder: recorder, ending: ending),
             scratchRoot: root.appendingPathComponent("disk-fallback"),
-            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 128 * 1024 * 1024))
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 128 * 1024 * 1024), memoryBudget: budget)
         let assignment = Assignment(
             leaseId: UUID().uuidString, jobId: 12, sourceBytes: Int64(source.count),
             videoEncoder: "hevc_videotoolbox", renewWithinSeconds: 30,
@@ -38,7 +39,7 @@ struct LiveRamDiskTests {
                         "-i", "{{input}}", "-c:v", "hevc_videotoolbox", "-q:v", "60", "{{output}}.mp4"],
             outputExtension: "mp4",
             quality: QualityRequirement(measure: false, model: "vmaf_v0.6.1", frameSubsample: 1,
-                clipVmaf: false, minimumHarmonicMean: 93, minimumMinimum: 80, commands: [], sampling: "None"))
+                clipVmaf: false, minimumHarmonicMean: 93, minimumMinimum: 80, commands: [], sampling: "None"), maxCandidateBytes: 10 * 1024 * 1024)
         let outcome = await runner.execute(assignment,
             pairing: StoredPairing(serverAddress: "localhost:8787", credential: "test", workerId: 3)) { _ in }
         let arguments = try #require(recorder.all.first)
@@ -48,6 +49,7 @@ struct LiveRamDiskTests {
         #expect(output.hasPrefix("/Volumes/\(RamDisk.volumePrefix)"))
         let volume = URL(fileURLWithPath: output).deletingLastPathComponent().deletingLastPathComponent()
         #expect(!FileManager.default.fileExists(atPath: volume.path))
+        #expect(budget.reservedBytes == 0)
         if ending != .success {
             guard case .released = outcome else {
                 Issue.record("expected a released job, got \(outcome)")

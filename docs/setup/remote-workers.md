@@ -35,8 +35,10 @@ leases finish; use it before an update and resume the worker afterward.
 
 These are separate capabilities. The Mac sidecar's **Preferences → Where work happens → Memory**
 stores the job's working source and candidate on a temporary RAM disk when they fit its budget.
-Larger jobs, or jobs for which a RAM disk cannot be created, use the normal disk folder. Network
-downloads can still use the operating system's temporary files before copying into working storage.
+The budget is shared across jobs and includes the candidate-size limit and filesystem overhead.
+Jobs without a bounded candidate, adaptive searches, and jobs that cannot reserve or create a RAM
+disk use the normal disk folder. The monitor reports the actual storage and fallback reason.
+Source downloads stream directly to working storage without a temporary download file.
 
 The Windows sidecar currently uses a disk folder (`C:\OptimisarrWork`, overridable with
 `OPTIMISARR_SIDECAR_WORK`). It does not create or manage RAM disks.

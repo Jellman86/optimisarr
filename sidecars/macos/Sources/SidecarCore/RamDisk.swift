@@ -73,13 +73,21 @@ public struct RamDisk: Sendable {
         return String(decoding: box.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    static func allocationBytes(for bytes: Int64) -> Int64? {
+        guard bytes > 0 else { return nil }
+        let overhead = bytes / 20 + 32 * 1024 * 1024
+        let total = bytes.addingReportingOverflow(overhead)
+        guard !total.overflow else { return nil }
+        let rounded = total.partialValue.addingReportingOverflow(511)
+        guard !rounded.overflow else { return nil }
+        return rounded.partialValue / 512 * 512
+    }
+
     /// Creates a volume of at least this many bytes. Nil if the Mac would not give it one, which
     /// is treated as "use a disk instead" rather than as a failure worth stopping a job for.
     public static func create(bytes: Int64) -> RamDisk? {
-        // hdiutil counts 512-byte sectors. A little headroom covers the filesystem's own overhead,
-        // which would otherwise make a volume sized exactly to the job too small to hold it.
-        let withOverhead = Int64(Double(bytes) * 1.05) + 32 * 1024 * 1024
-        let sectors = withOverhead / 512
+        guard let allocated = allocationBytes(for: bytes) else { return nil }
+        let sectors = allocated / 512
 
         guard let device = run("/usr/bin/hdiutil", ["attach", "-nomount", "ram://\(sectors)"]) else {
             return nil
@@ -111,8 +119,9 @@ public struct RamDisk: Sendable {
 
     /// Ejects it. Forced, because a job that has just failed may still hold a file handle and the
     /// alternative to forcing is leaking the memory until reboot.
-    public func destroy() {
-        _ = Self.run("/usr/bin/hdiutil", ["detach", device, "-force"])
+    @discardableResult
+    public func destroy() -> Bool {
+        Self.run("/usr/bin/hdiutil", ["detach", device, "-force"]) != nil
     }
 
     /// Ejects anything left behind by a previous run that did not exit cleanly.

@@ -73,21 +73,21 @@ The opt-in tests create small RAM volumes and sweep volumes named `OptimisarrWor
 with no other sidecar jobs using RAM. Hardware probes use synthetic media. These checks do not
 certify full-film endurance, HDR, every GPU, or production server verification/replacement.
 
-## Remaining hardening priorities
+## Follow-up hardening implemented
 
-1. **Share the RAM budget across concurrent jobs.** The Mac checks each job independently against
-   the configured budget and allows up to four jobs. Four individually eligible jobs can exceed
-   the intended total. Reservations must include filesystem overhead and release on every exit.
-2. **Size RAM storage against the candidate contract.** Allocation currently assumes source plus
-   a candidate half its size. A valid candidate larger than that can exhaust a RAM volume. Use the
-   frozen candidate limit where available and define a conservative policy for unbounded outputs.
-3. **Show actual storage and fallback reasons in the monitor.** They are currently in unified logs.
-   The preference alone cannot tell the operator whether this job is using RAM or disk.
-4. **Define the scope of disk-free transfers.** `URLSessionTransport` downloads ranges to operating
-   system temporary files before moving/appending to the working source. RAM working storage
-   therefore does not currently mean zero SSD writes. Direct streaming needs cancellation and
-   resumed-range tests before replacing that path.
-5. **Finish sidecar verification and upgrade work already tracked:**
+- One atomic process-wide ledger reserves the complete RAM volume before creation. Reservations
+  release after successful ejection, remain held if ejection fails, and respect budget reductions.
+- Allocation uses the source plus the frozen candidate limit, 64 MiB working allowance, and
+  filesystem overhead. Unknown limits and adaptive searches use disk with a visible explanation.
+- The activity card identifies RAM/disk storage and explains fallbacks. Startup volume cleanup
+  completes before the session can restore pairing and start jobs.
+- Source downloads now stream directly to the working file with an ephemeral URLSession and a
+  bounded buffer. Interrupted/cancelled ranges roll back to their previous length before retry.
+  Tests prove bytes arrive before HTTP completion and cancellation preserves the valid prefix.
+
+## Remaining project priorities
+
+1. **Finish sidecar verification and upgrade work already tracked:**
    [missing strict timestamp evidence](https://github.com/Jellman86/optimisarr/issues/294),
    [Windows service restart after upgrade](https://github.com/Jellman86/optimisarr/issues/295), and
    [duration drift](https://github.com/Jellman86/optimisarr/issues/289).
