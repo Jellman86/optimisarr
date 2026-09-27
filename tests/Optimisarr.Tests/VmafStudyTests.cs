@@ -80,6 +80,17 @@ public sealed class VmafStudyTests
     }
 
     [Fact]
+    public void A_regenerated_report_describes_the_recorded_encoders_instead_of_CLI_defaults()
+    {
+        var options = StudyOptions.Parse(["--out", "out", "--report-from", "scores.csv"])!;
+        var report = StudyReport.Markdown([Row(StudyOptions.BaselineHd) with { Encoder = "hevc_qsv" },
+            Row(StudyOptions.DefaultCandidateHd) with { Encoder = "hevc_qsv" }], options);
+        Assert.Contains("`hevc_qsv`", report);
+        Assert.DoesNotContain("`libx265`", report);
+        Assert.DoesNotContain("preset `medium`", report);
+    }
+
+    [Fact]
     public async Task A_verified_cache_is_reused_but_changed_or_partial_clips_are_never_trusted()
     {
         var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

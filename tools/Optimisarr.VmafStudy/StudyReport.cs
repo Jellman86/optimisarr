@@ -18,7 +18,9 @@ internal static class StudyReport
         var text = new StringBuilder("# VMAF model study\n\n");
         text.AppendLine("Exploratory calibration only. V0 uses its established precision; V1 uses 10-bit SDR with actual encode parameters. Production gates are unchanged.\n");
         var sources = rows.Select(row => row.Source).Distinct().ToList();
-        text.AppendLine(CultureInfo.InvariantCulture, $"{sources.Count} source(s), encoder `{options.Encoder}` preset `{options.Preset}`, qualities {string.Join(", ", options.Qualities)}, up to three 40-second sample windows each, measured with Optimisarr's own sample graph.\n");
+        var encoders = string.Join(", ", rows.Select(r => $"`{r.Encoder}`").Distinct());
+        var preset = options.ReportFrom is null ? $"preset `{options.Preset}`" : "presets recorded in the original run.json files";
+        text.AppendLine(CultureInfo.InvariantCulture, $"{sources.Count} source(s), encoders {encoders}, {preset}, qualities {string.Join(", ", rows.Select(r => r.Quality).Distinct().Order())}, up to three 40-second sample windows each, measured with Optimisarr's own sample graph.\n");
 
         var models = rows.Select(row => row.Model).Distinct().ToList();
         foreach (var candidate in models.Where(model => !IsCurrent(model)))
@@ -38,8 +40,11 @@ internal static class StudyReport
                 text.AppendLine("|---|---|---|---|");
                 foreach (var gate in comparison.Thresholds)
                 {
+                    var rank = pairs.All(p => p.Baseline < gate.BaselineThreshold)
+                        ? "above observed maximum"
+                        : gate.RankEquivalent.ToString("0.#", CultureInfo.InvariantCulture);
                     text.AppendLine(CultureInfo.InvariantCulture,
-                        $"| {gate.BaselineThreshold:0.#} | {gate.LinearEquivalent:0.#} | {gate.RankEquivalent:0.#} | {gate.Agreements}/{gate.Windows} |");
+                        $"| {gate.BaselineThreshold:0.#} | {gate.LinearEquivalent:0.#} | {rank} | {gate.Agreements}/{gate.Windows} |");
                 }
                 text.AppendLine();
             }
@@ -62,8 +67,8 @@ internal static class StudyReport
         text.AppendLine();
 
         text.AppendLine("## Per source and quality (harmonic mean, both models)\n");
-        text.AppendLine("| source | quality | bytes | " + string.Join(" | ", models) + " |");
-        text.AppendLine("|---|---|---|" + string.Concat(models.Select(_ => "---|")));
+        text.AppendLine("| source | encoder | quality | bytes | " + string.Join(" | ", models) + " |");
+        text.AppendLine("|---|---|---|---|" + string.Concat(models.Select(_ => "---|")));
         foreach (var group in rows.GroupBy(row => (row.Source, row.Encoder, row.Quality)).OrderBy(g => g.Key.Source).ThenBy(g => g.Key.Quality))
         {
             var bytes = group.Where(row => row.Model == models[0]).Sum(row => row.Bytes);
@@ -72,7 +77,7 @@ internal static class StudyReport
                 var values = group.Where(row => row.Model == model && row.Harmonic is not null).Select(row => row.Harmonic!.Value).ToList();
                 return values.Count == 0 ? "—" : values.Min().ToString("0.0", CultureInfo.InvariantCulture) + "–" + values.Max().ToString("0.0", CultureInfo.InvariantCulture);
             });
-            text.AppendLine(CultureInfo.InvariantCulture, $"| {group.Key.Source} | {group.Key.Quality} | {bytes:N0} | {string.Join(" | ", cells)} |");
+            text.AppendLine(CultureInfo.InvariantCulture, $"| {group.Key.Source} | {group.Key.Encoder} | {group.Key.Quality} | {bytes:N0} | {string.Join(" | ", cells)} |");
         }
 
         var failures = rows.Where(row => row.Error is not null).ToList();
