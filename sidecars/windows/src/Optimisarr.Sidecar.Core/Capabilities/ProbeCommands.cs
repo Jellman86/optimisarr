@@ -9,14 +9,22 @@ public static class ProbeCommands
     /// A few frames of a synthetic source to the null muxer. Large enough to clear encoder
     /// minimums — NVENC refuses very small dimensions — rather than a thumbnail.
     /// </summary>
-    public static IReadOnlyList<string> VideoEncoder(string encoder) =>
+    public static IReadOnlyList<string> VideoEncoder(string encoder, bool linuxDevices = false) =>
     [
         "-hide_banner", "-v", "error",
+        .. DeviceArguments(encoder, linuxDevices),
         "-f", "lavfi", "-i", "color=c=black:s=320x240:r=25:d=0.2",
         "-frames:v", "3",
+        .. (encoder.EndsWith("_vaapi", StringComparison.Ordinal) ? new[] { "-vf", "format=nv12,hwupload" } : Array.Empty<string>()),
         "-c:v", encoder,
         "-f", "null", "-",
     ];
+
+    private static IReadOnlyList<string> DeviceArguments(string encoder, bool linuxDevices) =>
+        !linuxDevices ? [] : encoder.EndsWith("_vaapi", StringComparison.Ordinal)
+            ? ["-vaapi_device", "/dev/dri/renderD128"]
+            : encoder.EndsWith("_qsv", StringComparison.Ordinal)
+                ? ["-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"] : [];
 
     /// <summary>A fifth of a second of silence: an audio encoder that cannot open fails at once.</summary>
     public static IReadOnlyList<string> AudioEncoder(string encoder) =>
@@ -34,6 +42,7 @@ public static class ProbeCommands
     [
         "-hide_banner", "-v", "error", "-y",
         "-f", "lavfi", "-i", "testsrc=s=320x240:r=25:d=1",
+        "-pix_fmt", "yuv420p",
         "-c:v", encoder,
         path,
     ];
@@ -42,9 +51,10 @@ public static class ProbeCommands
     /// Decodes it back with the accelerator engaged. Listing an accelerator under
     /// <c>-hwaccels</c> only says FFmpeg was compiled for it; both halves have to succeed.
     /// </summary>
-    public static IReadOnlyList<string> HardwareDecodeDecodeStep(string path, string accelerator) =>
+    public static IReadOnlyList<string> HardwareDecodeDecodeStep(string path, string accelerator, bool linuxDevices = false) =>
     [
         "-hide_banner", "-v", "error",
+        .. DeviceArguments(accelerator == "vaapi" ? "hevc_vaapi" : accelerator == "qsv" ? "hevc_qsv" : "", linuxDevices),
         "-hwaccel", accelerator,
         "-i", path,
         "-f", "null", "-",

@@ -1950,6 +1950,12 @@ public sealed class QueueDispatcher(
         var remoteHardwareDecoder = placement.RemoteWorker is { } decodingWorker
             ? RemoteHardwareDecoder(decodingWorker, videoEncoderName)
             : null;
+        // New GPU-surface paths start with the source format actually proved by the worker's
+        // H.264 round-trip probe. Other codecs/profiles keep software decode and GPU encode.
+        if (remoteHardwareDecoder is "qsv" or "vaapi" or "cuda"
+            && !(string.Equals(media.VideoCodec, "h264", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(media.PixelFormat, "yuv420p", StringComparison.OrdinalIgnoreCase)))
+            remoteHardwareDecoder = null;
         var hardwareDecode = !job.PreferSoftwareDecode
             && (placement.IsRemote ? remoteHardwareDecoder is not null : true)
             && HardwareDecodePolicy.ShouldUse(
@@ -2078,12 +2084,27 @@ public sealed class QueueDispatcher(
             ? video - container
             : null;
 
-    private static string? RemoteHardwareDecoder(WorkerCapabilities worker, string? videoEncoder) =>
-        videoEncoder is not null
-        && videoEncoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase)
-        && worker.HardwareDecoders.Any(decoder => string.Equals(decoder, "videotoolbox", StringComparison.OrdinalIgnoreCase))
-            ? "videotoolbox"
-            : null;
+    private static string? RemoteHardwareDecoder(WorkerCapabilities worker, string? videoEncoder)
+    {
+        var decoder = videoEncoder?.ToLowerInvariant() switch
+        {
+            { } encoder when encoder.EndsWith("_videotoolbox", StringComparison.Ordinal) => "videotoolbox",
+            { } encoder when encoder.EndsWith("_nvenc", StringComparison.Ordinal) => "cuda",
+            { } encoder when encoder.EndsWith("_qsv", StringComparison.Ordinal) => "qsv",
+            { } encoder when encoder.EndsWith("_vaapi", StringComparison.Ordinal) => "vaapi",
+            _ => null
+        };
+        // Older Windows validators refuse GPU-surface arguments. Preserve their existing
+        // software-decode commands until the worker containing this support is installed.
+        if (decoder is "cuda" or "qsv" or "vaapi"
+            && !string.Equals(worker.OperatingSystem, "linux", StringComparison.OrdinalIgnoreCase)
+            && !(string.Equals(worker.OperatingSystem, "windows", StringComparison.OrdinalIgnoreCase)
+                && Version.TryParse(worker.SidecarVersion?.Split('+', '-')[0], out var version)
+                && version >= new Version(0, 2, 17)))
+            return null;
+        return decoder is not null && worker.HardwareDecoders.Contains(decoder, StringComparer.OrdinalIgnoreCase)
+            ? decoder : null;
+    }
 
     /// <summary>
     /// Runs a bounded, fail-open preparation search for an adaptive library. Every candidate uses

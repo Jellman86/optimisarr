@@ -28,12 +28,12 @@ public sealed record CommandRefusal(string Reason)
 public static class AssignmentCommand
 {
     /// <summary>Options that take no value.</summary>
-    private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "-y", "-nostats" };
+    private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "-y", "-nostats", "-xerror" };
 
     /// <summary>
     /// Options that take exactly one value, drawn from the server's FfmpegCommandBuilder and
-    /// EncoderTuningPolicy. Device options are absent on purpose: a remote command decodes in
-    /// software and the server never sends them to a worker.
+    /// EncoderTuningPolicy. Device options accept only the server's fixed device names;
+    /// the Linux render path requires an explicit opt-in from the host.
     /// </summary>
     private static readonly HashSet<string> Valued = new(StringComparer.Ordinal)
     {
@@ -43,7 +43,9 @@ public static class AssignmentCommand
         "-global_quality", "-rc_mode", "-quality", "-lossless",
         "-tune", "-maxrate", "-minrate", "-bufsize", "-x264-params", "-x265-params",
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0",
-        "-ss", "-t", "-movflags", "-hwaccel",
+        "-ss", "-t", "-movflags", "-hwaccel", "-hwaccel_output_format",
+        "-init_hw_device", "-filter_hw_device", "-vaapi_device",
+        "-extra_hw_frames",
     };
 
     /// <summary>
@@ -57,7 +59,7 @@ public static class AssignmentCommand
     /// Checks the array against the contract. Returns the reason on refusal rather than throwing,
     /// because refusing a command is an ordinary outcome this machine hands the job back for.
     /// </summary>
-    public static CommandRefusal? Refuse(IReadOnlyList<string> arguments, string outputExtension)
+    public static CommandRefusal? Refuse(IReadOnlyList<string> arguments, string outputExtension, bool allowLinuxDevices = false)
     {
         if (arguments.Count == 0)
         {
@@ -105,6 +107,21 @@ public static class AssignmentCommand
                 case "-i":
                     inputs += 1;
                     break;
+                case "-vaapi_device" when !allowLinuxDevices || value != "/dev/dri/renderD128":
+                    return new CommandRefusal("Only the configured Linux render node is allowed.");
+                case "-vaapi_device": break;
+                case "-extra_hw_frames" when value != "16":
+                    return new CommandRefusal("The hardware frame pool is outside the worker contract.");
+                case "-extra_hw_frames": break;
+                case "-init_hw_device" when value != "qsv=hw":
+                case "-filter_hw_device" when value != "hw":
+                    return new CommandRefusal("The hardware device name is outside the worker contract.");
+                case "-init_hw_device":
+                case "-filter_hw_device": break;
+                case "-hwaccel_output_format" when value is not ("cuda" or "qsv") && !(allowLinuxDevices && value == "vaapi"):
+                    return new CommandRefusal("Unsupported hardware surface format.");
+                case "-hwaccel_output_format": break;
+                case "-hwaccel" when allowLinuxDevices && value == "vaapi": break;
                 case "-hwaccel" when !HardwareDecoders.Contains(value):
                     return new CommandRefusal($"'{value}' is not a hardware decoder this platform has.");
                 case "-hwaccel":

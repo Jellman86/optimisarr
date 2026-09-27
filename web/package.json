@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "audit:ui": "playwright test e2e/layout-audit.spec.ts",
     "audit:ui:webkit": "playwright test -c playwright.webkit-audit.config.ts",
-    "brand:assets": "node scripts/render-stellar-assets.ts"
+    "brand:assets": "node scripts/render-stellar-assets.ts",
+    "build:sidecar": "vite build --config vite.sidecar.config.ts && node -e \"require('fs').renameSync('../sidecars/linux/src/Optimisarr.Sidecar.Linux/wwwroot/sidecar.html', '../sidecars/linux/src/Optimisarr.Sidecar.Linux/wwwroot/index.html')\""
   },
   "devDependencies": {
     "@napi-rs/canvas": "1.0.9",

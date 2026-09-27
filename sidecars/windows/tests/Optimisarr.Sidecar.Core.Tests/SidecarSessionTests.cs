@@ -18,6 +18,7 @@ public sealed class SidecarSessionTests
         private int _index;
         public int Calls { get; private set; }
         public List<int> HeartbeatCapacities { get; } = [];
+        public List<long> ScratchCapacities { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -28,6 +29,7 @@ public sealed class SidecarSessionTests
                 using var document = System.Text.Json.JsonDocument.Parse(
                     await request.Content!.ReadAsStringAsync(cancellationToken));
                 HeartbeatCapacities.Add(document.RootElement.GetProperty("maxConcurrency").GetInt32());
+                ScratchCapacities.Add(document.RootElement.GetProperty("freeScratchBytes").GetInt64());
             }
             var (status, json) = replies[Math.Min(_index++, replies.Length - 1)];
             return new HttpResponseMessage(status)
@@ -75,6 +77,21 @@ public sealed class SidecarSessionTests
     /// the next heartbeat and the test passes for the wrong reason.
     private static Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>> TakesAnyJob() =>
         (_, assignment, _) => Task.FromResult(new JobOutcome(assignment.JobId, Delivered: true, "done"));
+
+    [Fact]
+    public async Task Scratch_capacity_is_refreshed_before_each_heartbeat()
+    {
+        var handler = new QueuedHandler((HttpStatusCode.OK, Beat));
+        var bytes = new Queue<long>([100, -1]);
+        var beats = 0;
+        var session = new SidecarSession(new SidecarClient(new HttpClient(handler)),
+            new InMemoryCredentialStore(new StoredPairing("https://example.com", "secret", 7)),
+            _ => Task.FromResult(Capabilities()), () => null,
+            (_, _) => ++beats >= 2 ? throw new OperationCanceledException() : Task.CompletedTask,
+            availableScratchBytes: bytes.Dequeue);
+        await session.RunAsync(CancellationToken.None);
+        Assert.Equal([100L, 0L], handler.ScratchCapacities);
+    }
 
     [Fact]
     public async Task Paused_worker_keeps_heartbeats_but_never_claims_work()

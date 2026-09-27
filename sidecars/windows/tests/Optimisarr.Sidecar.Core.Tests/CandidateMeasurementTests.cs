@@ -56,7 +56,8 @@ public sealed class CandidateMeasurementTests : IDisposable
     private static StoredPairing Pairing() => new("https://server.example.com", "secret", 7);
 
     private (FakeWorkerServer Server, JobRunner Runner, FakeMeasuringTranscoder Transcoder) Build(
-        string? probeOutput = LeadProbe, bool writeLogs = true, HttpStatusCode quality = HttpStatusCode.OK)
+        string? probeOutput = LeadProbe, bool writeLogs = true, HttpStatusCode quality = HttpStatusCode.OK,
+        string? measurementFfmpeg = null)
     {
         var server = new FakeWorkerServer(SourceBytes, Sha256(SourceBytes)) { QualityStatus = quality };
         var http = new HttpClient(server);
@@ -67,7 +68,7 @@ public sealed class CandidateMeasurementTests : IDisposable
         };
         var runner = new JobRunner(
             new SidecarClient(http), new JobTransfer(http), transcoder,
-            FfmpegBesideAProbe(), _scratch, () => null);
+            FfmpegBesideAProbe(), _scratch, () => null, measurementFfmpegPath: measurementFfmpeg);
         return (server, runner, transcoder);
     }
 
@@ -79,6 +80,23 @@ public sealed class CandidateMeasurementTests : IDisposable
         File.WriteAllText(ffmpeg, "");
         File.WriteAllText(Path.Combine(_scratch, "ffprobe.exe"), "");
         return ffmpeg;
+    }
+
+    [Fact]
+    public async Task Separate_measurement_binary_handles_alignment_and_VMAF_but_not_encoding()
+    {
+        var (server, runner, transcoder) = Build(measurementFfmpeg: "measurement-tool");
+        var outcome = await runner.RunAsync(Pairing(), Measured(), CancellationToken.None);
+        Assert.True(outcome.Delivered);
+        Assert.NotNull(server.QualityBody);
+        Assert.True(transcoder.AllRuns.Count > 2);
+        foreach (var (arguments, executable) in transcoder.AllRuns.Zip(transcoder.Executables))
+        {
+            if (arguments.Any(a => a.Contains("libvmaf", StringComparison.Ordinal)))
+                Assert.Equal("measurement-tool", executable);
+            else
+                Assert.EndsWith("ffmpeg.exe", executable, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

@@ -557,6 +557,22 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
     }
 
+    [Theory]
+    [InlineData("hevc_qsv")]
+    [InlineData("hevc_vaapi")]
+    [InlineData("av1_qsv")]
+    [InlineData("av1_vaapi")]
+    public void Intel_GPU_decode_reserves_extra_surfaces_and_fails_on_decode_errors(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: encoder, hardwareDecode: true);
+        Assert.Contains("-xerror", args);
+        Assert.True(IndexOf(args, "-extra_hw_frames") < IndexOf(args, "-i"));
+        Assert.Equal("16", args[IndexOf(args, "-extra_hw_frames") + 1]);
+        var softwareDecode = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: encoder);
+        Assert.DoesNotContain("-extra_hw_frames", softwareDecode);
+        Assert.DoesNotContain("-xerror", softwareDecode);
+    }
+
     [Fact]
     public void Videotoolbox_hardware_decode_adds_hwaccel_but_leaves_frames_in_system_memory()
     {

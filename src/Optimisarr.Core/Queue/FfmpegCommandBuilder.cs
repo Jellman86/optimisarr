@@ -141,6 +141,13 @@ public static class FfmpegCommandBuilder
             && (!spec.TonemapToSdr || useHardwareToneMap);
 
         AppendHardwareDeviceInit(args, family, useHardwareDecode);
+        if (useHardwareDecode && family is EncoderFamily.Qsv or EncoderFamily.Vaapi)
+        {
+            // The encoder retains decoded surfaces while its asynchronous queue drains. On
+            // Quark the default fixed pool exhausted and FFmpeg exited 0 with missing frames.
+            // Keep bounded headroom and fail immediately if decoding reports an error.
+            args.AddRange(["-extra_hw_frames", "16", "-xerror"]);
+        }
 
         // Regenerate presentation timestamps for a video source whose DTS/PTS are missing or
         // non-monotonic, so it muxes cleanly instead of warning ("Non-monotonous DTS …") or aborting.
