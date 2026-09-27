@@ -20,7 +20,8 @@ var token = cancellation.Token;
 var prober = new CapabilityProber(new ProcessCommandRunner(), platform: "linux",
     measurementFfmpeg: options.MeasurementFfmpeg, linuxDevices: true);
 long FreeBytes() => new DriveInfo(Path.GetFullPath(options.Scratch)).AvailableFreeSpace;
-var dashboard = new WorkerDashboard(options.Name, options.Server ?? new FileCredentialStore(options.Config).Load()?.ServerAddress, options.Scratch, options.Concurrency);
+var metrics = new LinuxWorkerMetrics();
+var dashboard = new WorkerDashboard(options.Name, options.Server ?? new FileCredentialStore(options.Config).Load()?.ServerAddress, options.Scratch, options.Concurrency, () => metrics.Current);
 SidecarCapabilities? proved = null;
 async Task<SidecarCapabilities> Probe(CancellationToken ct)
 {
@@ -41,16 +42,18 @@ if (args.Contains("--discover"))
 await using var web = Environment.GetEnvironmentVariable("OPTIMISARR_WEB_ENABLED") == "true"
     ? DashboardHost.Create(dashboard) : null;
 if (web is not null) await web.StartAsync(token);
+var metricsTask = metrics.RunAsync(token);
 using var control = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 using var bulk = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
 var client = new SidecarClient(control);
 var store = new FileCredentialStore(options.Config);
 var runner = new JobRunner(client, new JobTransfer(bulk), new ProcessTranscoder(), options.Ffmpeg,
-    options.Scratch, () => null, Console.WriteLine, measurementFfmpegPath: options.MeasurementFfmpeg,
-    allowLinuxDevices: true, observe: dashboard.Observe);
+    options.Scratch, metrics.Load, Console.WriteLine, measurementFfmpegPath: options.MeasurementFfmpeg,
+    allowLinuxDevices: true, observe: dashboard.Observe,
+    wantsPreview: () => dashboard.WantsPreview, publishPreview: dashboard.Preview);
 var healthGate = new object();
 SidecarSession? session = null;
-session = new SidecarSession(client, store, Probe, () => null, Task.Delay,
+session = new SidecarSession(client, store, Probe, metrics.Load, Task.Delay,
     report: status =>
     {
         Console.WriteLine($"{status.State}: {status.Detail}");
@@ -70,6 +73,7 @@ session = new SidecarSession(client, store, Probe, () => null, Task.Delay,
             await client.ReleaseAsync(pairing, assignment.LeaseId, ct);
             return new JobOutcome(assignment.JobId, false, "Insufficient scratch capacity or invalid source size.");
         }
+        dashboard.Start(assignment);
         var succeeded = false;
         try
         {
@@ -100,6 +104,8 @@ try
 catch (OperationCanceledException) when (token.IsCancellationRequested) { return 0; }
 finally
 {
+    cancellation.Cancel();
+    await metricsTask;
     File.Delete(health);
     if (web is not null) await web.StopAsync(CancellationToken.None);
 }

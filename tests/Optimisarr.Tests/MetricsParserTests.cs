@@ -5,6 +5,13 @@ namespace Optimisarr.Tests;
 public sealed class MetricsParserTests
 {
     [Fact]
+    public void Drm_engine_capacity_is_not_a_busy_time_counter()
+    {
+        var sample = DrmFdinfoParser.ParseClient("drm-client-id: 1\ndrm-engine-capacity-video: 2");
+        Assert.Null(sample);
+    }
+
+    [Fact]
     public void Cpu_sample_sums_total_and_counts_idle_plus_iowait()
     {
         // user nice system idle iowait irq softirq steal

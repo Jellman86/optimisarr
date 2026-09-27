@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../../../src/Optimisarr.Api/Metrics/LinuxSystemMetrics.cs" Link="Metrics/LinuxSystemMetrics.cs" />
     <ProjectReference Include="../../../windows/src/Optimisarr.Sidecar.Core/Optimisarr.Sidecar.Core.csproj" />
   </ItemGroup>
 </Project>

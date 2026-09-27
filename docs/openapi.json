@@ -281,6 +281,16 @@
               "string"
             ]
           },
+          "sourceMedia": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkerMediaInfo"
+              }
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -3304,6 +3314,71 @@
           "relativePath",
           "stage",
           "progress"
+        ],
+        "type": "object"
+      },
+      "WorkerMediaInfo": {
+        "properties": {
+          "audioCodecs": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "container": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "durationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "height": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "pixelFormat": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "width": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "videoCodec",
+          "width",
+          "height",
+          "durationSeconds",
+          "container",
+          "audioCodecs",
+          "pixelFormat"
         ],
         "type": "object"
       },
