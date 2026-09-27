@@ -44,6 +44,7 @@ public final class SidecarSession: ObservableObject {
     @Published public internal(set) var lastOutcome: JobOutcome?
 
     /// Every job in flight and where it has got to, keyed by job id.
+    @Published public private(set) var jobStorage: [Int: WorkStorage] = [:]
     @Published public internal(set) var activeJobs: [Int: JobProgress] = [:]
 
     /// How fast each job's current transfer is moving, in bytes per second. Absent while a job is
@@ -367,6 +368,7 @@ public final class SidecarSession: ObservableObject {
         for task in jobTasks.values { task.cancel() }
         jobTasks = [:]
         activeJobs = [:]
+        jobStorage = [:]
         jobTitles = [:]
         transferRates = [:]
         rateMeters = [:]
@@ -545,6 +547,11 @@ public final class SidecarSession: ObservableObject {
                     Task { @MainActor in self.report(jobId: jobId, progress: progress) }
                 } preview: { frame in
                     Task { @MainActor in self.report(jobId: jobId, frame: frame) }
+                } storage: { storage in
+                    Task { @MainActor in
+                        guard self.jobTasks[jobId] != nil else { return }
+                        self.jobStorage[jobId] = storage
+                    }
                 }
                 self.finish(outcome, jobId: jobId, workerId: workerId)
             }
@@ -680,6 +687,7 @@ public final class SidecarSession: ObservableObject {
         if case .unconfirmed = outcome { unconfirmedResult = true }
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
+        jobStorage[jobId] = nil
         setTickerRunning(!activeJobs.isEmpty || menuIsOpen)
         jobTitles[jobId] = nil
         transferRates[jobId] = nil
@@ -764,6 +772,7 @@ public extension SidecarSession {
         serverAddress: String = "https://optimisarr.example.com",
         activeJobs: [Int: JobProgress] = [:],
         jobTitles: [Int: String] = [:],
+        jobStorage: [Int: WorkStorage] = [:],
         transferRates: [Int: Double] = [:],
         filmStrips: [Int: FilmStrip] = [:],
         gpu: GpuUsage? = nil,
@@ -777,6 +786,7 @@ public extension SidecarSession {
         session.serverAddress = serverAddress
         session.activeJobs = activeJobs
         session.jobTitles = jobTitles
+        session.jobStorage = jobStorage
         session.transferRates = transferRates
         session.filmStrips = filmStrips
         session.gpu = gpu

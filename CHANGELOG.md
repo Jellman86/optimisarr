@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Mac sidecar RAM storage now shares one budget across concurrent jobs and includes candidate limits, scratch allowance and filesystem overhead. Unbounded candidates and adaptive searches use disk. The monitor shows actual storage and explains fallbacks. Source downloads stream directly to working storage, with incomplete ranges rolled back on interruption or cancellation.
+
 ### Fixed
 
+- Mac sidecar memory jobs no longer reject a writable RAM disk as having zero free space. RAM-disk setup also uses process termination callbacks to avoid intermittent 20-second waits after a command has already exited. Invalid source sizes are rejected before allocating storage. CI now checks real RAM-volume capacity and cleanup.
 - The sidebar language menu no longer opens partly off the left of the screen when it is opened while the sidebar is still collapsing. It now follows the sidebar until the animation ends.
 
 ## 0.2.16 — 2026-09-26

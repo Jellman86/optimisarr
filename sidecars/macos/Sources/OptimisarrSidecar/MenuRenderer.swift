@@ -80,6 +80,19 @@ enum MenuRenderer {
                 jobTitles: [5846: "Prism Field · Demo clip"],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.31, memoryInUse: 1_253_064_704))),
+            ("memory-fallback", .posed(
+                status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
+                activeJobs: [5846: .encoding(encodedSeconds: 751)],
+                jobTitles: [5846: "Prism Field · Demo clip"],
+                jobStorage: [5846: WorkStorage(inMemory: false, path: "/work",
+                    fallbackReason: "This job needs 3 GB of RAM storage. The shared budget is too small or is in use by other jobs.")],
+                filmStrips: [5846: strip])),
+            ("memory", .posed(
+                status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
+                activeJobs: [5846: .encoding(encodedSeconds: 751)],
+                jobTitles: [5846: "Prism Field · Demo clip"],
+                jobStorage: [5846: WorkStorage(inMemory: true, path: "/Volumes/OptimisarrWork-demo")],
+                filmStrips: [5846: strip])),
             ("sending", .posed(
                 status: .working(jobId: 5846, progress: .delivering(sent: 300_000_000, total: 394_256_442)),
                 activeJobs: [5846: .delivering(sent: 300_000_000, total: 394_256_442)],

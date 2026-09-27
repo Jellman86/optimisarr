@@ -24,10 +24,8 @@ public struct RamDisk: Sendable {
     /// has not finished in this long is wedged, and letting it block would hold the worker's only
     /// job slot for ever — which is exactly what happened on 2026-09-13, leaving a sidecar that
     /// checked in cheerfully and never asked for work again.
-    private static let stepTimeout: TimeInterval = 20
-
     /// Runs a command and returns its trimmed output, or nil if it failed or took too long.
-    private static func run(_ path: String, _ arguments: [String]) -> String? {
+    static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20) -> String? {
         let process = Process()
         let pipe = Pipe()
         pipe.sealFromOtherChildren()
@@ -35,25 +33,35 @@ public struct RamDisk: Sendable {
         process.arguments = arguments
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
+        let finished = DispatchGroup()
+        finished.enter()
+        process.terminationHandler = { _ in finished.leave() }
         do { try process.run() } catch {
+            process.terminationHandler = nil
+            finished.leave()
             SidecarLog.storage.error("\(path, privacy: .public) could not be launched")
             return nil
         }
 
         // Read on another thread so a child that holds the pipe open cannot block the wait, and
         // wait with a deadline so nothing here can hang the job that called it.
-        let finished = DispatchSemaphore(value: 0)
+        // Foundation can strand waitUntilExit on a different thread from process.run,
+        // even after the child has exited. Its termination callback is independent of
+        // that thread's run loop. Wait for both exit and output without moving the wait.
         let box = OutputBox()
+        finished.enter()
         DispatchQueue.global(qos: .utility).async {
             box.data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            finished.signal()
+            finished.leave()
         }
 
-        guard finished.wait(timeout: .now() + stepTimeout) == .success else {
+        guard finished.wait(timeout: .now() + timeout) == .success else {
             SidecarLog.storage.error(
-                "\(path, privacy: .public) did not finish within \(Int(stepTimeout))s; giving up on it")
-            process.terminate()
+                "\(path, privacy: .public) did not finish within \(timeout)s; giving up on it")
+            if process.isRunning { process.terminate() }
+            if finished.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
             return nil
         }
 
@@ -65,13 +73,21 @@ public struct RamDisk: Sendable {
         return String(decoding: box.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    static func allocationBytes(for bytes: Int64) -> Int64? {
+        guard bytes > 0 else { return nil }
+        let overhead = bytes / 20 + 32 * 1024 * 1024
+        let total = bytes.addingReportingOverflow(overhead)
+        guard !total.overflow else { return nil }
+        let rounded = total.partialValue.addingReportingOverflow(511)
+        guard !rounded.overflow else { return nil }
+        return rounded.partialValue / 512 * 512
+    }
+
     /// Creates a volume of at least this many bytes. Nil if the Mac would not give it one, which
     /// is treated as "use a disk instead" rather than as a failure worth stopping a job for.
     public static func create(bytes: Int64) -> RamDisk? {
-        // hdiutil counts 512-byte sectors. A little headroom covers the filesystem's own overhead,
-        // which would otherwise make a volume sized exactly to the job too small to hold it.
-        let withOverhead = Int64(Double(bytes) * 1.05) + 32 * 1024 * 1024
-        let sectors = withOverhead / 512
+        guard let allocated = allocationBytes(for: bytes) else { return nil }
+        let sectors = allocated / 512
 
         guard let device = run("/usr/bin/hdiutil", ["attach", "-nomount", "ram://\(sectors)"]) else {
             return nil
@@ -103,8 +119,9 @@ public struct RamDisk: Sendable {
 
     /// Ejects it. Forced, because a job that has just failed may still hold a file handle and the
     /// alternative to forcing is leaking the memory until reboot.
-    public func destroy() {
-        _ = Self.run("/usr/bin/hdiutil", ["detach", device, "-force"])
+    @discardableResult
+    public func destroy() -> Bool {
+        Self.run("/usr/bin/hdiutil", ["detach", device, "-force"]) != nil
     }
 
     /// Ejects anything left behind by a previous run that did not exit cleanly.

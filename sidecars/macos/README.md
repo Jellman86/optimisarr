@@ -171,7 +171,7 @@ The **Preferences** gear opens work-location and login settings inside the Compa
 Choose **Back to activity** to return to job progress.
 
 **Where work happens.** A job downloads its source and writes its candidate before sending it back,
-which together come to roughly one and a half times the size of the original. Three choices:
+so the working volume must hold both. Three choices:
 
 - *The app's own folder*, inside Application Support on the startup disk. The default.
 - *A folder I choose* — an external SSD, or simply somewhere off the startup disk. If the drive is
@@ -179,12 +179,18 @@ which together come to roughly one and a half times the size of the original. Th
   no longer exists.
 - *Memory*, a RAM disk created for each job and destroyed when it ends.
 
-**About memory.** A job needing more working space than the budget runs on disk instead. It is
-never refused over this setting — losing work to a preference would be worse than ignoring the
-preference, and a refused job goes straight back on the queue to be offered again. The budget
-defaults to a quarter of installed memory and is adjustable between a twentieth and a half; a RAM
-disk holds real pages for as long as the job runs, and filling most of a Mac's memory with one
-leaves it swapping, which is slower than the SSD the setting was meant to avoid.
+**About memory.** The budget is shared across all jobs, including volumes being created. Each
+reservation covers the source, the server's candidate-size limit, 64 MiB for scratch/encoder
+headroom, and filesystem overhead. The budget defaults to a quarter of installed memory and is
+adjustable between a twentieth and a half. An existing job keeps its reservation if the budget
+is reduced; new jobs use disk until enough budget is free.
+
+Jobs without a candidate-size limit, and adaptive searches whose intermediate outputs have no
+size contract, use disk. Creation failures and a full shared budget also fall back to disk. The
+activity card shows **Working in RAM** or **Working on disk**, with the fallback reason when
+applicable. Source ranges stream directly to that working volume; incomplete ranges are rolled
+back before retrying. A cancelled or failed job ejects its volume. Failed ejection retains its
+reservation so later jobs cannot reuse memory that is still allocated.
 
 It is also rarely faster. A download is limited by the network and an encode by the encoder, not by
 an Apple SSD. Most films will not fit any sensible budget.

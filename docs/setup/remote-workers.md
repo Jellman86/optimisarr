@@ -31,6 +31,29 @@ leases finish; use it before an update and resume the worker afterward.
 
 ## Choose where a library runs
 
+### RAM storage and GPU processing
+
+These are separate capabilities. The Mac sidecar's **Preferences → Where work happens → Memory**
+stores the job's working source and candidate on a temporary RAM disk when they fit its budget.
+The budget is shared across jobs and includes the candidate-size limit and filesystem overhead.
+Jobs without a bounded candidate, adaptive searches, and jobs that cannot reserve or create a RAM
+disk use the normal disk folder. The monitor reports the actual storage and fallback reason.
+Source downloads stream directly to working storage without a temporary download file.
+
+The Windows sidecar currently uses a disk folder (`C:\OptimisarrWork`, overridable with
+`OPTIMISARR_SIDECAR_WORK`). It does not create or manage RAM disks.
+
+GPU encoding does not require RAM working storage. Windows can keep CUDA-decoded frames on the
+GPU for NVENC when no software picture filter is needed. Cropping, resizing and frame-rate changes
+use software decoding with hardware encoding. Mac VideoToolbox decoding returns frames to system
+memory for the existing filter pipeline. Bundled Windows FFmpeg provides CPU VMAF rather than
+`libvmaf_cuda`; this does not prevent CUDA decoding or NVENC encoding.
+
+See the [RAM and GPU validation report](../engineering/hardware-validation/2026-09-27-sidecar-memory.md)
+for tested paths and remaining limitations.
+
+### Placement
+
 Open **Libraries → Configure → Choose files → Advanced eligibility → Where this library's work
 may run**. Placement is saved per library and applies to eligible video re-encodes.
 
