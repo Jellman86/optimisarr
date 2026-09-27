@@ -178,7 +178,9 @@ bash scripts/ci_linux_sidecar_smoke.sh optimisarr-sidecar:test
 ```
 
 `.github/workflows/linux-sidecar.yml` runs those checks on Linux and publishes
-the separately tagged sidecar image only after its final-image smoke passes.
+the separately tagged sidecar image only after final-image smoke and paired RAM acceptance pass.
+The paired gate builds the server image too and runs the fleet harness with `--worker-image`,
+`--worker-encoder libx265`, `--local-encoder libx265`, and `--fixture-variant sdr`.
 
 The final-image gate also runs real application media workflows:
 

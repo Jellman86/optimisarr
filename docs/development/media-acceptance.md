@@ -106,6 +106,71 @@ selected worker, retaining queue/worker/free-space snapshots after each cycle. F
 reports intentionally accumulate; provision disk accordingly. This exercises repeated lifecycle
 work, but does not yet assert a quantitative memory-leak or GPU-memory threshold.
 
+### Linux sidecar and RAM evidence
+
+Use the existing Linux worker executable with the native runner. Put the **entire new run root**
+on an operator-provisioned tmpfs (for example `/dev/shm/optimisarr-run-001`) and add
+`--require-worker-ram`. Pass the production FFmpeg/ffprobe and independent VMAF paths explicitly.
+The runner supplies isolated config, scratch, pairing and a private loopback dashboard port:
+
+```bash
+python3 scripts/media_acceptance.py --native /build/server/Optimisarr.Api.dll \
+  --worker-command '["dotnet", "/build/worker/Optimisarr.Sidecar.Linux.dll"]' \
+  --ffmpeg /tools/ffmpeg --ffprobe /tools/ffprobe --vmaf /tools/ffmpeg-vmaf \
+  --tier fleet --root /dev/shm/optimisarr-run-001 --require-worker-ram \
+  --local-encoder libx265 --worker-encoder hevc_qsv --worker-encoder hevc_vaapi
+```
+
+Linux observations check the actual scratch filesystem, source and candidate files with nonzero
+length, source media details, valid CPU/GPU samples, and removal of job files and monitor entries.
+Unavailable GPU telemetry stays unknown; it is never treated as a zero-load measurement. Evidence
+is retained beside each video case as `worker-samples.json` and `worker-monitor.json`. A job too fast
+to sample is blocked with instructions to use a longer fixture. RAM checks do not claim GPU frame
+residency: separate compressed H.264 cases require an actual GPU-decode command, complete frame
+counts, full decoding and independent quality verification.
+
+On **disposable local Linux Docker daemons**, including CI, use `--worker-image` instead:
+
+```bash
+python3 scripts/media_acceptance.py --image optimisarr:test \
+  --worker-image optimisarr-sidecar:test --tier fleet \
+  --root /tmp/optimisarr-container-fleet-001 \
+  --local-encoder libx265 --worker-encoder libx265 --fixture-variant sdr
+```
+
+This launches the final sidecar image with a 1 GiB tmpfs and 2 GiB memory limit, pairs it to the
+owned test server, requires RAM observations, and removes only its own containers afterwards.
+The Linux sidecar workflow runs this gate **before publishing** and retains evidence for 14 days.
+Host networking is used only on the disposable test daemon. Managed servers must use their
+Git-backed stack manager for Docker lifecycle changes; run native isolated acceptance there.
+The installed sidecar keeps its existing server identity throughout either method.
+
+### Unavailable workers and regression coverage
+
+A missing executable or encoder records blocked coverage and the runner continues with available
+encoders and local tests. A crashing launcher is a failure. Before each remote job the runner checks
+current worker availability; if a worker goes offline during a pending job, it requests cancellation
+and records the missing coverage. `--expected-worker` is checked against the final live fleet too.
+A blocked run returns 2, a failed run returns 1, and both fail CI. An empty report cannot pass.
+Do not remove a required host from the arguments merely to obtain a green report.
+
+| Past failure or risk | Regression evidence |
+|---|---|
+| Intel frame-pool exhaustion returning success with missing pictures | Remote H.264 GPU-decode case plus independent decoded frame counts/cadence and full decode |
+| RAM setting silently using disk or leaking working files | Linux filesystem and live source/candidate observations; cleanup after successful, rejected and cancelled jobs |
+| Cancellation followed by a late upload or release reviving work | Protocol-fault cases plus real remote active-job cancellation and lease release |
+| Worker loses server contact during deployment | Abrupt restart of the owned server; same worker identities must check in again, then run the remaining matrix |
+| Worker-only placement falls back locally | All test workers drained; the job must remain queued without changing its original |
+| Worker VMAF differs from the server or measurement drops frames | Strict worker evidence checked against raw independent VMAF and picture counts |
+| A rejected candidate replaces the source, or repeat replace corrupts history | Impossible-quality rejection, duplicate replace, quarantine hash and byte-for-byte rollback |
+| One unavailable target hides all other coverage | Harness self-tests for partial startup, absent executables, stale availability and disconnect cancellation |
+
+These cases supplement the shared worker unit suites and macOS live RAM-volume tests. Linux
+RAM observation does not certify Windows RAM-disk software or the macOS RAM allocator. Keep
+physical-host runs for those platforms and list required hosts explicitly. Server restart here is
+an idle-control-plane reconnect test; a long network partition during an active encode remains
+separate coverage.
+
 ### macOS launcher
 
 ```bash
@@ -211,7 +276,7 @@ normalized to the reference cadence, matching the declared scoring contract. A 0
 tolerance permits numerical variation; it never lowers the quality gate thresholds.
 
 This is not a claim of exhaustive media certification. Genuine HDR/Dolby Vision mastering and
-tone-map fidelity, ICC/EXIF-bearing image corpus, hardware decode/driver telemetry, sampled-window
+tone-map fidelity, ICC/EXIF-bearing image corpus, full driver telemetry, sampled-window
 versus full-film audits, real worker network partition/process-kill recovery, filesystem exhaustion during
 replacement and quantitative resource-leak thresholds remain separate required release evidence. Existing unit and
 endpoint tests cover many of those policies, but a green smoke run cannot substitute for hardware
@@ -219,6 +284,7 @@ acceptance. The harness deliberately refuses HDR reference scoring until its tra
 
 ## Reports and troubleshooting
 
+Reports include a machine-readable summary of passed, failed and blocked selected cases.
 Every run writes `report/index.html`, `report/report.json` and `report/junit.xml`, plus per-case
 settings, application reports, probe JSON, exact reference measurement commands, raw VMAF frames,
 and output hashes. Exit codes: **0** all selected cases passed; **1** failure; **2** missing facility
