@@ -64,6 +64,12 @@ var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
 var cudaVmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF_CUDA");
 builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe, cudaVmafFfmpeg));
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg, cudaVmafFfmpeg));
+// Explicit research opt-in: this adds server CPU scoring even for sidecar-verified candidates.
+// It never supplies gate evidence or substitutes for a missing worker measurement.
+builder.Services.AddSingleton(services => new VmafShadowService(
+    string.Equals(Environment.GetEnvironmentVariable("OPTIMISARR_VMAF_SHADOW_SERVER"), "1", StringComparison.Ordinal),
+    (source, candidate, context, token) => services.GetRequiredService<QualityScoreService>()
+        .MeasureAsync(source, candidate, context, token)));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpeg));

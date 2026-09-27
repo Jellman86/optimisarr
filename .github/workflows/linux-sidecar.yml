@@ -54,7 +54,7 @@ jobs:
           first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
           python3 scripts/media_acceptance.py --image optimisarr:sidecar-acceptance \
             --worker-image "$first_tag" --tier fleet --worker-encoder libx265 \
-            --local-encoder libx265 --fixture-variant sdr --fixture-seconds 16 \
+            --local-encoder libx265 --fixture-variant sdr --fixture-seconds 16 --vmaf-shadow \
             --root /tmp/optimisarr-sidecar-acceptance
       - uses: actions/upload-artifact@v7
         if: always()

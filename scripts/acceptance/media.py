@@ -2,11 +2,36 @@
 from __future__ import annotations
 
 import json
+import math
 from fractions import Fraction
 from pathlib import Path
 import re
 
 from .core import Blocked, command, require, save, sha256, statistics
+
+
+def validate_shadow_report(report):
+    shadow = report.get("shadowVmaf") or {}
+    require(shadow.get("status") == "Measured", f"Research coverage incomplete: {shadow}")
+    require(shadow.get("measurementLocation") == "Server", "Research location is missing")
+    baseline = shadow.get("baselineModel")
+    candidate = shadow.get("candidateModel")
+    require(baseline in ("vmaf_v0.6.1", "vmaf_4k_v0.6.1"), "Research baseline changed")
+    require(candidate in ("vmaf_v1.0.16_3d0h", "vmaf_v1.0.16_1d5h_2160"), "Research candidate changed")
+    require((report.get("vmaf") or {}).get("scores", {}).get("modelVersion") == baseline,
+            "Authoritative verification stopped using the baseline model")
+    windows = shadow.get("windows") or []
+    require(0 < len(windows) <= 3, "Missing or unbounded research windows")
+    for window in windows:
+        before, after = window.get("baseline") or {}, window.get("candidate") or {}
+        require(before.get("modelVersion") == baseline and after.get("modelVersion") == candidate, "Wrong measured models")
+        require(isinstance(before.get("frameCount"), int) and before["frameCount"] > 0
+                and before["frameCount"] == after.get("frameCount"), "Research frame counts differ")
+        for scores in (before, after):
+            require(all(isinstance(scores.get(metric), (float, int)) and math.isfinite(scores[metric])
+                        for metric in ("vmafMean", "vmafHarmonicMean", "vmafMin", "vmafFifthPercentile")),
+                    "Research scores are missing or non-finite")
+    return {"pairs": len(windows), "baselineModel": baseline, "candidateModel": candidate}
 
 
 class Tools:

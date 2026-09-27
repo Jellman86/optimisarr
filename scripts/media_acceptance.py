@@ -39,6 +39,7 @@ def main():
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--vmaf", help="Independent reference FFmpeg with libvmaf (native mode)")
+    parser.add_argument("--vmaf-shadow", action="store_true", help="Require paired server v0/v1 research alongside unchanged verification")
     verification = parser.add_mutually_exclusive_group()
     verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
     verification.add_argument("--server-verification", action="store_true", help="Explicitly test the legacy server-verification mode")
@@ -104,7 +105,8 @@ def main():
                "OPTIMISARR_WORK_DIR": str(root / "work"), "OPTIMISARR_TRASH_DIR": str(root / "trash"),
                "OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS": "true",
                "OPTIMISARR_FFMPEG": args.ffmpeg, "OPTIMISARR_FFPROBE": args.ffprobe,
-               "OPTIMISARR_FFMPEG_VMAF": args.vmaf or args.ffmpeg}
+               "OPTIMISARR_FFMPEG_VMAF": args.vmaf or args.ffmpeg,
+               "OPTIMISARR_VMAF_SHADOW_SERVER": "1" if args.vmaf_shadow else "0"}
         if args.image:
             container = "optimisarr-acceptance-" + secrets.token_hex(5)
             argv = ["docker", "run", "-d", "--name", container, "-p", f"{args.listen}:{port}:8787",
@@ -112,6 +114,7 @@ def main():
                     "-e", "OPTIMISARR_CONFIG_DIR=/acceptance/config",
                     "-e", "OPTIMISARR_WORK_DIR=/acceptance/work", "-e", "OPTIMISARR_TRASH_DIR=/acceptance/trash",
                     "-e", "OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true",
+                    "-e", "OPTIMISARR_VMAF_SHADOW_SERVER",
                     "-e", f"PUID={os.getuid()}", "-e", f"PGID={os.getgid()}"]
             for device in args.device:
                 argv += ["--device", device]
@@ -183,6 +186,7 @@ def main():
 
         harness = Harness(api, tools, root, report, timeout=args.timeout, restart=restart)
         harness.observers = workers.observers if workers else {}
+        harness.vmaf_shadow = args.vmaf_shadow
         exit_code = harness.run(tier=args.tier,
                            strict_worker_verification=strict_worker_verification_for_run(args.tier, args.server_verification),
                            corpus=corpus, expected_workers=args.expected_worker,

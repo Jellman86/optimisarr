@@ -10,13 +10,13 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "optimisarr-tests", Guid.NewGuid().ToString("N"));
     private const string Probe = """{"streams":[{"codec_type":"video","codec_name":"hevc","profile":"Main","width":64,"height":64,"pix_fmt":"yuv420p","duration":"8"}],"format":{"duration":"8","format_name":"matroska"}}""";
 
-    private VerificationService Service()
+    private VerificationService Service(VmafShadowService? shadow = null)
     {
         var missing = Path.Combine(_root, "no-media-tool-is-installed");
         return new(new MediaProbeService(missing), new DecodeHealthCheck(missing),
             new TimestampIntegrityCheck(missing), new ReferenceFrameAlignmentProbe(missing),
             new QualityScoreService(missing), new LoudnessService(missing),
-            new ImageQualityService(missing), new ImageMetadataService(missing), new TranscodeOptions(missing));
+            new ImageQualityService(missing), new ImageMetadataService(missing), new TranscodeOptions(missing), shadow);
     }
 
     private RemoteVerificationEvidence Evidence() => new(Guid.NewGuid(), new('a', 64), new('b', 64),
@@ -42,6 +42,50 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
             "unread", VerificationPolicy.Default with { QualityGateEnabled = true },
             CancellationToken.None, remoteEvidence: Evidence()));
         Assert.Contains("fallback is disabled", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(95, true)]
+    [InlineData(20, false)]
+    public async Task Explicit_server_research_failure_preserves_the_workers_authoritative_quality_verdict(double score, bool passes)
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "shadow-candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot(Path.Combine(_root, "source.mkv"), 1000, 8,
+            0, 0, false, false, ExpectedVideoCodec: "hevc");
+        var calls = 0;
+        using var shadow = new VmafShadowService(true, (_, _, _, _) =>
+        {
+            calls++;
+            return Task.FromResult(QualityResult.Failed("Research binary cannot load the model"));
+        });
+        var probe = Probe.Replace("\"duration\":\"8\"", "\"avg_frame_rate\":\"24/1\",\"duration\":\"8\"");
+        var evidence = Evidence() with { SourceProbe = probe, CandidateProbe = probe };
+        var remoteQuality = new RemoteQuality(QualityResult.Ok(new(score, score, score, null, null,
+            "vmaf_v0.6.1", "worker", score, 192)), "worker");
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = true };
+        var expected = await Service().VerifyAsync(original, output, policy, default,
+            remoteQuality: remoteQuality, remoteEvidence: evidence);
+        var actual = await Service(shadow).VerifyAsync(original, output, policy, default,
+            remoteQuality: remoteQuality, remoteEvidence: evidence);
+
+        Assert.Equal(1, calls);
+        Assert.Equal(passes, actual.Report.Passed);
+        Assert.Equal(expected.Report.Checks, actual.Report.Checks);
+        Assert.Equal(expected.Report.Vmaf, actual.Report.Vmaf);
+        Assert.Equal("Unavailable", actual.Report.ShadowVmaf!.Status);
+        Assert.Equal("Server", actual.Report.ShadowVmaf.MeasurementLocation);
+    }
+
+    [Fact]
+    public async Task Research_is_never_a_fallback_for_missing_worker_verification()
+    {
+        using var shadow = new VmafShadowService(true, (_, _, _, _) => throw new Exception("Research must not run"));
+        var original = new OriginalSnapshot("unread", 1000, 8, 0, 0, false, false, ExpectedVideoCodec: "hevc");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Service(shadow).VerifyAsync(original,
+            "unread", VerificationPolicy.Default with { QualityGateEnabled = true },
+            default, remoteEvidence: Evidence()));
     }
 
     [Fact]

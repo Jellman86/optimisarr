@@ -4,6 +4,8 @@
 
 ### Testing
 
+- Optional server VMAF research scores bounded samples under both v0 and v1 and records paired results separately in job reports. Existing gates remain authoritative. `OPTIMISARR_VMAF_SHADOW_SERVER=1` explicitly enables the extra server CPU work, including for sidecar-verified jobs; missing models, timeouts and skipped observations cannot change replacement verdicts. A JSONL exporter retains incomplete coverage for analysis.
+
 - VMAF model studies now measure v1 in 10-bit SDR with the encoded file’s actual CAMBI parameters, support separate encoding/scoring FFmpeg binaries, and validate thresholds against held-out sources. Production models and gates stay unchanged pending calibration.
 - Unattended VMAF studies fail on unavailable models and incomplete pairs, checkpoint partial evidence, and verify cached clips against source/tool/command fingerprints. Interrupted or corrupted encodes cannot be reused as successful samples.
 

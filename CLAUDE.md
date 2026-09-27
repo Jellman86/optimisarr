@@ -188,7 +188,7 @@ The final-image gate also runs real application media workflows:
 ```bash
 docker build -t optimisarr:acceptance .
 python3 scripts/media_acceptance.py --image optimisarr:acceptance \
-  --root /tmp/optimisarr-acceptance-run --tier smoke
+  --root /tmp/optimisarr-acceptance-run --tier smoke --vmaf-shadow
 ```
 
 Use a new root for each run. See [the acceptance guide](docs/development/media-acceptance.md)

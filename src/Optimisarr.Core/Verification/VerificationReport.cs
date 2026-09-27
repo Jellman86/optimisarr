@@ -53,7 +53,8 @@ public sealed record VerificationReport(
     IReadOnlyList<VerificationCheck> Checks,
     VerificationContext? Context = null,
     VmafEvidence? Vmaf = null,
-    ColourEvidence? Colour = null)
+    ColourEvidence? Colour = null,
+    VmafShadowEvidence? ShadowVmaf = null)
 {
     public bool Passed => Checks.All(check => check.Outcome == CheckOutcome.Passed);
 }
