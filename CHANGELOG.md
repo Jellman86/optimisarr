@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a focused Linux sidecar web dashboard with live job stages, proved GPU capabilities, and detected RAM/disk working storage. It uses the main app’s theme and links to server-side worker controls.
+
 ### Added
 
 - A preview Linux sidecar runs as a headless worker with persistent pairing, Intel QSV/VAAPI capability probes, bounded operator-mounted RAM scratch, graceful shutdown and a separate container image. It shares the Windows worker core and the server's FFmpeg/VMAF toolchain.

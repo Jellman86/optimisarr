@@ -51,6 +51,7 @@ public sealed class SidecarSession(
     Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null, Func<long>? availableScratchBytes = null)
 {
     private int _paused;
+    public bool ServerDraining { get; private set; }
     public bool IsPaused => Volatile.Read(ref _paused) != 0;
 
     /// <summary>A newer release the server says to install, from the latest check-in; null while current.</summary>
@@ -179,6 +180,7 @@ public sealed class SidecarSession(
                     load(), cancellationToken);
                 if (reportingDrain && ShutdownArmed)
                     Interlocked.Exchange(ref _drainedHeartbeatTicks, DateTime.UtcNow.Ticks);
+                ServerDraining = beat.Draining;
                 interval = beat.Interval;
                 AvailableUpdate = beat.Update;
                 Set(

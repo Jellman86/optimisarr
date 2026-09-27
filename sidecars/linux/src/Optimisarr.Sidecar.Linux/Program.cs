@@ -20,6 +20,7 @@ var token = cancellation.Token;
 var prober = new CapabilityProber(new ProcessCommandRunner(), platform: "linux",
     measurementFfmpeg: options.MeasurementFfmpeg, linuxDevices: true);
 long FreeBytes() => new DriveInfo(Path.GetFullPath(options.Scratch)).AvailableFreeSpace;
+var dashboard = new WorkerDashboard(options.Name, options.Server ?? new FileCredentialStore(options.Config).Load()?.ServerAddress, options.Scratch, options.Concurrency);
 SidecarCapabilities? proved = null;
 async Task<SidecarCapabilities> Probe(CancellationToken ct)
 {
@@ -29,6 +30,7 @@ async Task<SidecarCapabilities> Probe(CancellationToken ct)
         if (!proved.VideoEncoders.Contains(encoder)) throw new InvalidOperationException("Configured encoder failed its real capability probe.");
         proved = proved with { VideoEncoders = [encoder] };
     }
+    dashboard.Capabilities(proved);
     return proved with { FreeScratchBytes = FreeBytes() };
 }
 if (args.Contains("--discover"))
@@ -36,18 +38,23 @@ if (args.Contains("--discover"))
     Console.WriteLine(JsonSerializer.Serialize(await Probe(token), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     return 0;
 }
+await using var web = Environment.GetEnvironmentVariable("OPTIMISARR_WEB_ENABLED") == "true"
+    ? DashboardHost.Create(dashboard) : null;
+if (web is not null) await web.StartAsync(token);
 using var control = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 using var bulk = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
 var client = new SidecarClient(control);
 var store = new FileCredentialStore(options.Config);
 var runner = new JobRunner(client, new JobTransfer(bulk), new ProcessTranscoder(), options.Ffmpeg,
     options.Scratch, () => null, Console.WriteLine, measurementFfmpegPath: options.MeasurementFfmpeg,
-    allowLinuxDevices: true);
+    allowLinuxDevices: true, observe: dashboard.Observe);
 var healthGate = new object();
-var session = new SidecarSession(client, store, Probe, () => null, Task.Delay,
+SidecarSession? session = null;
+session = new SidecarSession(client, store, Probe, () => null, Task.Delay,
     report: status =>
     {
         Console.WriteLine($"{status.State}: {status.Detail}");
+        dashboard.Status(status, session?.ServerDraining == true || session?.IsPaused == true);
         lock (healthGate)
         {
             if (status.State is SidecarState.Connected or SidecarState.Working)
@@ -63,7 +70,14 @@ var session = new SidecarSession(client, store, Probe, () => null, Task.Delay,
             await client.ReleaseAsync(pairing, assignment.LeaseId, ct);
             return new JobOutcome(assignment.JobId, false, "Insufficient scratch capacity or invalid source size.");
         }
-        return await runner.RunAsync(pairing, assignment, ct);
+        var succeeded = false;
+        try
+        {
+            var outcome = await runner.RunAsync(pairing, assignment, ct);
+            succeeded = outcome.Delivered;
+            return outcome;
+        }
+        finally { dashboard.Finish(assignment.JobId, succeeded); }
     }, availableScratchBytes: FreeBytes);
 try
 {
@@ -84,4 +98,8 @@ try
     return token.IsCancellationRequested ? 0 : 1;
 }
 catch (OperationCanceledException) when (token.IsCancellationRequested) { return 0; }
-finally { File.Delete(health); }
+finally
+{
+    File.Delete(health);
+    if (web is not null) await web.StopAsync(CancellationToken.None);
+}

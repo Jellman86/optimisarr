@@ -9,10 +9,13 @@ config
 .env
 README.md
 docs
-# Only the headless Linux host and its shared core belong in the image context.
+# Only the Linux host and its shared core belong in the image context.
 sidecars/macos
 sidecars/windows/tests
 sidecars/windows/src/Optimisarr.Sidecar.Service
 sidecars/windows/src/Optimisarr.Sidecar.Tray
 sidecars/windows/installer
 sidecars/linux/tests
+
+sidecars/linux/src/Optimisarr.Sidecar.Linux/wwwroot
+web/test-results

@@ -73,3 +73,25 @@ prints JSON capabilities without pairing. The
 `--worker-command '["dotnet","/absolute/path/Optimisarr.Sidecar.Linux.dll"]'`
 and `--worker-encoder hevc_qsv` (or `hevc_vaapi`). It creates disposable identities
 and test media. Production library paths are never test fixtures.
+
+## Sidecar web dashboard
+
+The container serves a read-only dashboard on port **8788**. It shares the main
+app’s Svelte tooling, theme tokens and brand assets, with a dedicated
+entry point that ships no server settings or library pages. It shows the worker
+connection, current job stages, proved encoders/decoders, CPU/CUDA VMAF support,
+and the actual filesystem type and remaining working storage. RAM working files
+and GPU frame memory are shown as separate concepts.
+
+Pair, pause, resume and manage scheduling in the main server. The dashboard
+has no write API and exposes no pairing token, raw logs or media previews. Keep
+it on a trusted private network or behind an authenticated reverse proxy; job
+titles and worker information are visible to anyone who can reach it.
+
+`OPTIMISARR_WEB_ENABLED=true` enables the dashboard (the container default).
+Native acceptance runs leave it disabled unless explicitly enabled. Set
+`ASPNETCORE_URLS` to change its listen address. `/api/health` is HTTP liveness;
+the container healthcheck still requires a recent successful server check-in.
+
+Build the dedicated UI with `cd web && npm run build:sidecar`. The main server
+build remains `npm run build`. Test both with the existing `npm run test:e2e`.

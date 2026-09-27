@@ -12,6 +12,9 @@ RUN npm ci
 COPY web/ /src/web/
 RUN npm run build
 
+FROM web-build AS sidecar-web-build
+RUN npm run build:sidecar
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api-build
 WORKDIR /src
 COPY Optimisarr.slnx global.json ./
@@ -76,12 +79,15 @@ RUN /usr/local/lib/optimisarr/ffmpeg-vmaf -hide_banner -filters 2>&1 \
 
 FROM media-runtime AS sidecar-runtime
 COPY --from=sidecar-build /app/sidecar/ /app/
+COPY --from=sidecar-web-build /src/sidecars/linux/src/Optimisarr.Sidecar.Linux/wwwroot/ /app/wwwroot/
 COPY --chmod=0755 sidecars/linux/entrypoint.sh /entrypoint.sh
 ENV OPTIMISARR_CONFIG_DIR=/config \
     OPTIMISARR_SIDECAR_WORK=/work \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
-    PUID=1000 PGID=1000 UMASK=077
+    PUID=1000 PGID=1000 UMASK=077 \
+    OPTIMISARR_WEB_ENABLED=true ASPNETCORE_URLS=http://0.0.0.0:8788
+EXPOSE 8788
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
     CMD ["dotnet", "/app/Optimisarr.Sidecar.Linux.dll", "--healthcheck"]
 STOPSIGNAL SIGTERM
