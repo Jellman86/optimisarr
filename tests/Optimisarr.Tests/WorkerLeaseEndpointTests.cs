@@ -91,7 +91,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
 
     private async Task<HttpClient> PairWorker(
         string name, int concurrency, string[] encoders, string[] decoders, string[]? audioEncoders = null,
-        string operatingSystem = "linux", string? sidecarVersion = null)
+        string operatingSystem = "linux", string? sidecarVersion = null, int protocolMaximum = 1)
     {
         var admin = Admin();
         var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -106,7 +106,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             sidecarVersion,
             architecture = "x64",
             protocolMinimum = 1,
-            protocolMaximum = 1,
+            protocolMaximum,
             videoEncoders = encoders,
             audioEncoders = audioEncoders ?? ["aac"],
             hardwareDecoders = decoders,
@@ -622,6 +622,26 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(decoder, lease.HardwareDecoder);
     }
 
+    [Fact]
+    public async Task A_ten_bit_source_reaches_the_worker_as_a_ten_bit_upload_command()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Ten bit VAAPI", 1, ["hevc_vaapi"], []);
+        var jobId = await QueueAJob(videoEncoder: null);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+            job.MediaFile!.PixelFormat = "yuv420p10le";
+            await db.SaveChangesAsync();
+        }
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        claim.EnsureSuccessStatusCode();
+        var args = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("arguments")
+            .EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.Contains("format=p010le,hwupload", args[args.IndexOf("-filter:v:0") + 1]);
+    }
+
     [Theory]
     [InlineData("ffv1", "yuv420p")]
     [InlineData("h264", "yuv420p10le")]
@@ -662,15 +682,15 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(null, false)]
-    [InlineData("0.2.16", false)]
-    [InlineData("0.2.17", true)]
-    [InlineData("0.2.18+commit", true)]
-    public async Task Older_Windows_workers_keep_commands_their_validator_understands(string? version, bool hardware)
+    [InlineData(1, "0.2.16", false)]
+    [InlineData(2, "99.0.0", false)]
+    [InlineData(3, "0.2.16", true)]
+    [InlineData(3, null, true)]
+    public async Task Windows_GPU_commands_follow_the_negotiated_contract_not_the_release_version(int protocol, string? version, bool hardware)
     {
         await EnableRemoteWorkers();
         var worker = await PairWorker("Windows", 1, ["hevc_nvenc"], ["cuda"],
-            operatingSystem: "windows", sidecarVersion: version);
+            operatingSystem: "windows", sidecarVersion: version, protocolMaximum: protocol);
         await QueueAJob(videoEncoder: null);
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
@@ -1475,6 +1495,44 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Forbidden, stolenRenew.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, stolenRelease.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancelled_jobs_release_worker_capacity_and_cannot_renew(bool legacyHeldLease)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Cancelled lease");
+        var jobId = await QueueAJob();
+        var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetGuid();
+        if (legacyHeldLease)
+        {
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.Jobs.FindAsync(jobId))!.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            (await Admin().PostAsync($"/api/jobs/{jobId}/cancel", null)).EnsureSuccessStatusCode();
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            Assert.Equal(Optimisarr.Core.Workers.LeaseState.Released,
+                (await db.JobLeases.FindAsync(leaseId))!.State);
+        }
+        using var renewal = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/renew", new { stage = "Delivering" });
+        Assert.Equal(HttpStatusCode.Conflict, renewal.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var database = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = (await database.JobLeases.FindAsync(leaseId))!;
+        Assert.Equal(Optimisarr.Core.Workers.LeaseState.Released, lease.State);
+        Assert.NotNull(lease.EndedAt);
+        Assert.Equal(JobStatus.Cancelled, (await database.Jobs.FindAsync(jobId))!.Status);
+        Assert.Empty(await database.JobLeases.Where(l => l.WorkerId == lease.WorkerId
+            && l.State == Optimisarr.Core.Workers.LeaseState.Held).ToListAsync());
     }
 
     [Fact]

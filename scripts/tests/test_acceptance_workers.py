@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance.core import Blocked, Report
@@ -105,3 +105,33 @@ class WorkerAvailabilityTests(unittest.TestCase):
         with self.assertRaisesRegex(Blocked, "offline"):
             harness.wait_job({"libraryId": 3, "jobId": 4, "workerId": 1})
         api.post.assert_called_once_with("/api/jobs/4/cancel")
+
+    def test_selection_skips_workers_revoked_since_preflight(self):
+        api = Mock()
+        old = {"id": 1, "name": "retired", "revokedAt": None}
+        live = {"id": 2, "name": "live", "online": True, "revokedAt": None}
+        api.request.return_value = [{**old, "revokedAt": "now"}, live]
+        harness = Harness(api, Mock(), "/tmp/unused", Mock())
+        harness.workers = [old, live]
+        harness.settings = {"remoteWorkersAvailable": True}
+        with patch.object(harness, "configure"):
+            harness.select_worker(live)
+        self.assertEqual([call("/api/workers"), call("/api/workers/2/drain", "DELETE")], api.request.call_args_list)
+
+    def test_restore_skips_revoked_and_missing_workers_and_continues_after_failure(self):
+        api = Mock()
+        workers = [{"id": i, "revokedAt": None, "drainRequestedAt": None} for i in range(1, 5)]
+        def request(path, *args):
+            if path == "/api/jobs": return [{"id": 9, "status": "Encoding"}]
+            if path == "/api/workers": return [{**workers[0], "revokedAt": "now"}, workers[2], workers[3]]
+            if path == "/api/workers/3/drain": raise RuntimeError("drain unavailable")
+        api.request.side_effect = request
+        harness = Harness(api, Mock(), "/tmp/unused", Mock())
+        harness.workers, harness.job_ids, harness.settings = workers, {9}, {"original": True}
+        with self.assertRaisesRegex(AssertionError, "drain unavailable"):
+            harness.restore()
+        api.post.assert_called_once_with("/api/jobs/9/cancel")
+        self.assertNotIn(call("/api/workers/1/drain", "DELETE"), api.request.call_args_list)
+        self.assertNotIn(call("/api/workers/2/drain", "DELETE"), api.request.call_args_list)
+        self.assertIn(call("/api/workers/4/drain", "DELETE"), api.request.call_args_list)
+        self.assertEqual(call("/api/settings", "PUT", {"original": True}), api.request.call_args_list[-1])

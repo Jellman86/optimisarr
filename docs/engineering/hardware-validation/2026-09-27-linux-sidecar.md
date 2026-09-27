@@ -48,8 +48,9 @@ The server's remote decoder selector originally matched only VideoToolbox. It
 now also matches proved QSV, VAAPI and CUDA decoders to their encoder family.
 These new paths initially accept H.264 eight-bit 4:2:0 sources, matching the
 worker's actual probe; other formats retain software decode. Windows workers
-must report version 0.2.17 or newer because older validators reject the surface
-arguments. The new Linux host supports them from its first preview. Existing
+must negotiate protocol 3 because older validators reject the surface
+arguments. An initial release-number gate was replaced after validation showed
+it prevented capable development builds from using GPU decode. The new Linux host supports them from its first preview. Existing
 crop/downscale/sample restrictions and verification gates remain in effect.
 
 Direct tests used commands from `FfmpegCommandBuilder`, checked by the shared

@@ -83,8 +83,10 @@ slots. Queue names the waiting lane and its reason when work cannot start yet.
 **Verify entirely on the sidecar** is on by default for fresh installations once remote workers
 are enabled. Existing installations retain their saved or previous value. You can change it under
 **Settings → Files & safety → Remote workers**; changes apply to newly issued assignments. Updated sidecars
-negotiate protocol 2 on heartbeat; they do not need a new pairing. Older workers cannot claim an
-assignment that requires full verification.
+negotiate protocol 2 or newer on heartbeat; they do not need a new pairing. Older workers cannot claim an
+assignment that requires full verification. Protocol 3 additionally enables GPU-surface decode commands
+for Windows workers that proved the matching hardware decoder. This is negotiated independently of
+the sidecar release number.
 
 ![Files and safety settings with Remote workers enabled and Verify entirely on the sidecar selected](../images/optimisarr-settings-files-dark.png)
 

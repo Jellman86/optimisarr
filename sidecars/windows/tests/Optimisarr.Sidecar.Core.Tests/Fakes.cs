@@ -16,6 +16,7 @@ internal sealed class FakeWorkerServer(byte[] source, string sourceHash) : HttpM
     public readonly List<string> Calls = [];
     public byte[] Delivered = [];
     public bool Completed;
+    public HttpStatusCode OffsetStatus = HttpStatusCode.OK;
     /// <summary>The evidence body a worker offered, if it offered any.</summary>
     public string? QualityBody;
     /// <summary>Whether the candidate had already arrived when the evidence was offered.</summary>
@@ -72,6 +73,7 @@ internal sealed class FakeWorkerServer(byte[] source, string sourceHash) : HttpM
         if (path.EndsWith("/result/offset", StringComparison.Ordinal))
         {
             if (Blink()) { return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway)); }
+            if (OffsetStatus != HttpStatusCode.OK) return Task.FromResult(new HttpResponseMessage(OffsetStatus));
             return Json($$"""{"bytes":{{Delivered.Length}}}""");
         }
 

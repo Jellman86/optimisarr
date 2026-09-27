@@ -53,6 +53,9 @@ public sealed record TranscodeSpec(
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
     FrameRateDecimation? FrameRate = null)
 {
+    /// <summary>Probed precision to preserve when uploading software-decoded frames.</summary>
+    public int? SourceBitDepth { get; init; }
+
     /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
     public double? TargetFrameRate => FrameRate?.TargetFps;
 
@@ -346,7 +349,8 @@ public static class FfmpegCommandBuilder
             switch (family)
             {
                 case EncoderFamily.Vaapi:
-                    filters.Add("format=nv12,hwupload");
+                    filters.Add(spec.SourceBitDepth > 8 && !spec.TonemapToSdr
+                        ? "format=p010le,hwupload" : "format=nv12,hwupload");
                     break;
                 case EncoderFamily.Qsv:
                     filters.Add("hwupload=extra_hw_frames=64,format=qsv");

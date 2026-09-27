@@ -5,6 +5,7 @@ import SidecarCore
 /// neither the menu-bar application's Keychain nor its preferences are touched.
 @main
 struct AcceptanceWorker {
+    @MainActor
     static func main() async throws {
         let env = ProcessInfo.processInfo.environment
         func required(_ key: String) throws -> String {
@@ -40,19 +41,25 @@ struct AcceptanceWorker {
         }
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         let client = SidecarClient()
-        let paired = try await client.pair(serverAddress: server,
-            pin: required("OPTIMISARR_ACCEPTANCE_PIN"), capabilities: capabilities)
-        let pairing = StoredPairing(serverAddress: server, credential: paired.credential, workerId: paired.workerId)
         let runner = JobRunner(client: client, ffmpeg: ffmpeg, ffprobe: ffprobe, scratchRoot: scratch)
-        while !Task.isCancelled {
-            let heartbeat = try await client.heartbeat(serverAddress: server, credential: pairing.credential,
-                freeScratchBytes: JobRunner.availableScratchBytes(at: scratch) ?? 0,
-                maxConcurrency: 1, capabilities: capabilities)
-            if !heartbeat.draining, let assignment = try await client.claim(serverAddress: server, credential: pairing.credential) {
-                let result = await runner.execute(assignment, pairing: pairing) { _ in }
-                print("Job \(assignment.jobId): \(result)")
+        // Exercise the same recovery and concurrent heartbeat loop as the installed app.
+        let session = SidecarSession(client: client, store: InMemoryCredentialStore(),
+            capabilities: capabilities, prober: nil, executor: runner,
+            scratchCapacity: { JobRunner.availableScratchBytes(at: scratch) ?? 0 },
+            jobConcurrency: 1, persistConcurrency: { _ in })
+        await session.pair(serverAddress: server, pin: try required("OPTIMISARR_ACCEPTANCE_PIN"))
+        guard session.isPaired else {
+            throw NSError(domain: "AcceptanceWorker", code: 4,
+                          userInfo: [NSLocalizedDescriptionKey: "Pairing failed: \(session.status)"])
+        }
+        var previous: SidecarStatus?
+        while !Task.isCancelled && session.isPaired {
+            if session.status != previous {
+                print("Session: \(session.status)")
+                previous = session.status
             }
             try await Task.sleep(for: .seconds(1))
         }
+        await session.prepareToQuit()
     }
 }

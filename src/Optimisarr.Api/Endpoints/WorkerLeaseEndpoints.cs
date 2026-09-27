@@ -386,6 +386,11 @@ internal static class WorkerLeaseEndpoints
                     continue;
                 }
 
+                // Preparation can outlive a cancellation. Recheck while holding the write
+                // transaction so this claim cannot turn a cancelled job back into leased work.
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                await db.Entry(job).ReloadAsync(cancellationToken);
+                if (job.Status != JobStatus.Queued) continue;
                 var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
                 var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
                     job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
@@ -452,6 +457,7 @@ internal static class WorkerLeaseEndpoints
                 try
                 {
                     await db.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
                 }
                 catch (DbUpdateException)
                 {
@@ -1058,6 +1064,8 @@ internal static class WorkerLeaseEndpoints
             return WorkerGate.Unauthenticated();
         }
 
+        // Serialize lease mutation with cancellation; a late renewal must never restore Held.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var stored = await db.JobLeases
             .Include(lease => lease.Job)
             .ThenInclude(job => job!.MediaFile)
@@ -1098,6 +1106,16 @@ internal static class WorkerLeaseEndpoints
             return invalid;
         }
 
+        if (result.Outcome == LeaseOutcome.Renewed && stored.Job?.Status != JobStatus.Leased)
+        {
+            // Also repair held leases left behind by older servers when their job ended.
+            stored.State = LeaseState.Released;
+            stored.EndedAt ??= now;
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ApiErrors.Conflict("worker.lease.notHeld", "That job no longer accepts worker results.");
+        }
+
         stored.Apply(result.Lease, now);
         if (stored.Job is not null)
         {
@@ -1110,6 +1128,7 @@ internal static class WorkerLeaseEndpoints
         applyToWorker?.Invoke(worker);
 
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return success(result.Lease);
     }
 

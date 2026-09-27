@@ -1865,6 +1865,7 @@ public sealed class QueueDispatcher(
             var sourceBitDepth = PixelFormatInfo.Parse(
                 freshSourceProbe?.PixelFormat ?? media.PixelFormat,
                 freshSourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth;
+            spec = spec with { SourceBitDepth = sourceBitDepth };
             // A worker's encoder is chosen from what it proved, in the same preference order this
             // machine uses for its own hardware. The queue's encoder mode describes this machine's
             // GPU and says nothing about the worker's, so Auto is the only honest mode there.
@@ -2095,12 +2096,11 @@ public sealed class QueueDispatcher(
             _ => null
         };
         // Older Windows validators refuse GPU-surface arguments. Preserve their existing
-        // software-decode commands until the worker containing this support is installed.
+        // software-decode commands until GPU-surface command support has been negotiated.
         if (decoder is "cuda" or "qsv" or "vaapi"
             && !string.Equals(worker.OperatingSystem, "linux", StringComparison.OrdinalIgnoreCase)
             && !(string.Equals(worker.OperatingSystem, "windows", StringComparison.OrdinalIgnoreCase)
-                && Version.TryParse(worker.SidecarVersion?.Split('+', '-')[0], out var version)
-                && version >= new Version(0, 2, 17)))
+                && worker.ProtocolVersion >= 3))
             return null;
         return decoder is not null && worker.HardwareDecoders.Contains(decoder, StringComparer.OrdinalIgnoreCase)
             ? decoder : null;

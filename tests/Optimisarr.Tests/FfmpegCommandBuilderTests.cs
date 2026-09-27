@@ -490,6 +490,16 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-init_hw_device", args);
     }
 
+    [Theory]
+    [InlineData("hevc_vaapi", false, "p010le")]
+    [InlineData("av1_vaapi", false, "p010le")]
+    [InlineData("hevc_vaapi", true, "nv12")]
+    public void Vaapi_preserves_ten_bit_uploads_unless_tone_mapping_to_eight_bit(string encoder, bool tonemap, string pixelFormat)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(tonemap: tonemap) with { SourceBitDepth = 10 }, videoEncoder: encoder);
+        Assert.Contains($"format={pixelFormat},hwupload", args[IndexOf(args, "-filter:v:0") + 1]);
+    }
+
     [Fact]
     public void Vaapi_inits_the_device_before_input_and_uses_qp_and_hwupload()
     {
