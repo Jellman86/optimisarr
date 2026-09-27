@@ -507,7 +507,9 @@ struct WorkLocationJobTests {
     func sharedBudgetFallback() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
         let budget = MemoryWorkBudget()
-        let token = try #require(budget.reserve(bytes: 200 * 1024 * 1024, limit: 200 * 1024 * 1024))
+        let limit: Int64 = 200 * 1024 * 1024
+        let reservation = budget.reserve(bytes: limit, limit: limit)
+        let token = try #require(reservation)
         defer { budget.release(token) }
         let storage = StorageRecorder()
         let root = scratch()
