@@ -1,12 +1,13 @@
-# Deploy separately on the worker host. Enable remote workers and generate a code
-# in the server's Settings → Workers before the first start.
+# Deploy separately on the worker host, then open http://<host>:8788 and pair it with a
+# code from the server's Settings → Workers. Setting OPTIMISARR_SERVER and a code below
+# pairs without the page instead.
 services:
   optimisarr-sidecar:
     image: ghcr.io/jellman86/optimisarr-sidecar:${SIDECAR_TAG:-dev}
     restart: unless-stopped
     stop_grace_period: 45s
     environment:
-      OPTIMISARR_SERVER: ${OPTIMISARR_SERVER:-http://optimisarr:8787}
+      OPTIMISARR_SERVER: ${OPTIMISARR_SERVER:-}
       OPTIMISARR_PAIRING_CODE: ${OPTIMISARR_PAIRING_CODE:-}
       OPTIMISARR_WORKER_NAME: ${OPTIMISARR_WORKER_NAME:-Linux worker}
       OPTIMISARR_CONCURRENCY: ${OPTIMISARR_CONCURRENCY:-1}

@@ -712,10 +712,11 @@ export const pt: Messages = {
     diagnostics_job_invalid: "Introduza um ID de trabalho positivo válido.",
 
     appearance_title: "Aparência",
-    appearance_desc: "Guardado neste navegador. Aplica-se ao ícone da aplicação e ao favicon.",
+    appearance_desc: "Guardado neste servidor, para que todos os navegadores e a página de cada sidecar Linux emparelhado mostrem o mesmo ícone.",
     brand_style: "Ícone da aplicação",
     brand_stellar: "Cubo estelar",
     brand_precession: "Cubo de precessão (predefinido)",
+    brand_save_failed: "Não foi possível guardar o ícone no servidor. Este navegador mostra-o, mas outros navegadores e sidecars não.",
     concurrency_hint: 'Vídeo e verificação completa no contentor usam estas vagas. Áudio e imagens podem usar uma vaga livre.',
     encoder_hint: 'Use a seleção automática ou escolha um codificador.',
     threads_hint: 'Com 0, o codificador escolhe o número de threads.',

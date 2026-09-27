@@ -12,17 +12,20 @@ libvmaf measurement binary. Published images use
 `ghcr.io/jellman86/optimisarr-sidecar:dev`, `:main`, `:latest` and full version
 tags. Pull requests build and smoke-test without publishing.
 
-Start with [the Compose example](../../compose.sidecar.example.yml). Generate a
-pairing code under Settings → Workers and provide a reachable server URL. The
-first connection saves a private credential in `/config/pairing.json`; preserve
-that volume across upgrades. Remove the one-time code after pairing. To pair a
-different server, use a new config volume. Only one process may use a config
+Start with [the Compose example](../../compose.sidecar.example.yml), then open
+the dashboard on port 8788 and pair from there: enter the server address and the
+code from Settings → Workers → Pair a sidecar. `OPTIMISARR_SERVER` and
+`OPTIMISARR_PAIRING_CODE` still pair without the page (for automated or headless
+installs). If `OPTIMISARR_SERVER` is set, the page pairs with that server only.
+The first connection saves a private credential in `/config/pairing.json`;
+preserve that volume across upgrades. A worker revoked on the server returns to
+the pairing form. To pair a different server, use a new config volume. Only one process may use a config
 directory or scratch directory at a time. Give each worker its own directories.
 
 | Setting | Default / meaning |
 | --- | --- |
-| `OPTIMISARR_SERVER` | Required on first pairing; server HTTP(S) URL |
-| `OPTIMISARR_PAIRING_CODE` | One-time code |
+| `OPTIMISARR_SERVER` | Optional; server HTTP(S) URL. When set, dashboard pairing is limited to it |
+| `OPTIMISARR_PAIRING_CODE` | Optional one-time code, tried once at start; the dashboard is the alternative |
 | `OPTIMISARR_PAIRING_CODE_FILE` | Alternative mounted secret file; takes precedence |
 | `OPTIMISARR_WORKER_NAME` | Hostname |
 | `OPTIMISARR_CONCURRENCY` | `1`, range 1–4 |
@@ -83,8 +86,13 @@ connection, current job stages, proved encoders/decoders, CPU/CUDA VMAF support,
 and the actual filesystem type and remaining working storage. RAM working files
 and GPU frame memory are shown as separate concepts.
 
-Pair, pause, resume and manage scheduling in the main server. The dashboard
-has no write API and exposes no pairing token or raw logs. It shows small media
+The dashboard shows the icon style chosen in the server's Settings, the poster
+of each title being worked on, and a notice when the server has a newer release.
+Pause, resume, drain, revoke and scheduling stay on the main server. The one
+write is `POST /api/sidecar/pair`, accepted only while the worker has no
+credential: it takes a JSON body (so a plain cross-site form cannot submit it),
+refuses browser requests marked cross-site, and runs one attempt at a time. The
+page exposes no pairing credential or raw logs. It shows small media
 preview frames only while a viewer is polling; frames are bounded to 8 KiB and
 discarded when the job ends. Keep
 it on a trusted private network or behind an authenticated reverse proxy; job

@@ -11,6 +11,10 @@
 
 ### Added
 
+- **The Linux sidecar can be paired from its own page.** An unpaired worker shows a pairing form: enter the server address and the eight-digit code from Settings → Workers, and it connects. No code in the container's environment is needed, and a revoked worker returns to the pairing form instead of restarting in a loop. The form only exists while the worker has no credential, so a paired worker cannot be pointed at another server from the page.
+- **The Linux sidecar's page was rebuilt in the main app's style.** It uses the same status strip, the icon style chosen on the server, the title's poster beside a live frame, encode speed and time left, the four stages a worker handles, and a short explanation of which steps happen on the worker and which stay on the server. It also lists recent results and shows when a newer release is available.
+- The application icon (Precession or Stellar) is now saved on the server instead of in each browser, so every browser and every paired Linux sidecar shows the same mark. It is included in settings backups.
+- Workers can fetch the poster for the title they are leasing while they hold the lease. Like the source download, the request names only the lease, so it cannot be used to browse the library's artwork.
 - Linux sidecar monitoring now includes media previews, codec/resolution/duration, encoding progress, host CPU load and worker GPU use. Source metadata is shared by the server and worker without exposing server paths.
 
 - Added a focused Linux sidecar web dashboard with live job stages, proved GPU capabilities, and detected RAM/disk working storage. It uses the main app’s theme and links to server-side worker controls.

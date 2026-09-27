@@ -739,10 +739,11 @@ settings: {
     diagnostics_job_invalid: "Introduce un ID de trabajo positivo válido.",
 
     appearance_title: 'Apariencia',
-    appearance_desc: 'Se guarda en este navegador. Se aplica al icono de la aplicación y al favicon.',
+    appearance_desc: 'Se guarda en este servidor, para que todos los navegadores y la página de cada sidecar Linux emparejado muestren el mismo icono.',
     brand_style: 'Icono de la aplicación',
     brand_stellar: 'Cubo estelar',
     brand_precession: 'Cubo de precesión (predeterminado)',
+    brand_save_failed: 'No se pudo guardar el icono en el servidor. Este navegador lo muestra, pero otros navegadores y sidecars no.',
     concurrency_hint: 'La codificación de vídeo y la verificación completa en el contenedor usan estas plazas. Audio e imágenes pueden usar una libre.',
     encoder_hint: 'Usa la selección automática o elige un codificador.',
     threads_hint: 'Con 0, el codificador decide cuántos hilos usar.',

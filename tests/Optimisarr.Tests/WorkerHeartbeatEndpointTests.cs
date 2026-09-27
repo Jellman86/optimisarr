@@ -115,6 +115,30 @@ public sealed class WorkerHeartbeatEndpointTests
     }
 
     [Fact]
+    public async Task A_check_in_tells_the_worker_which_brand_the_server_shows()
+    {
+        await EnableRemoteWorkers();
+        var admin = Admin();
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+        using var paired = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", PairBody(code, "Brand worker"));
+        var sidecar = _api.CreateClient();
+        sidecar.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",
+            (await paired.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("credential").GetString()!);
+        try
+        {
+            (await admin.PutAsJsonAsync("/api/settings/appearance", new { brandStyle = "stellar" })).EnsureSuccessStatusCode();
+            using var beat = await sidecar.PostAsJsonAsync("/api/workers/heartbeat", Beat());
+            var body = await beat.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("stellar", body.GetProperty("brandStyle").GetString());
+        }
+        finally
+        {
+            (await admin.PutAsJsonAsync("/api/settings/appearance", new { brandStyle = "precession" })).EnsureSuccessStatusCode();
+        }
+    }
+
+    [Fact]
     public async Task Capabilities_cross_the_wire_as_names_not_numbers()
     {
         await EnableRemoteWorkers();

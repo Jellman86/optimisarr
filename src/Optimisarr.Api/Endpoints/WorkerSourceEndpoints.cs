@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
@@ -107,6 +108,55 @@ internal static class WorkerSourceEndpoints
         })
         .WithName("FetchLeaseSource")
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+
+        // The poster of the leased title, for the sidecar's own status page. The same lease rules
+        // as the source: the worker names only its lease, and only while it holds it, so this
+        // cannot be used to walk the library's artwork. 404 when nothing resolves.
+        app.MapGet("/api/workers/leases/{leaseId:guid}/artwork", async (
+            Guid leaseId,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            ArtworkService artwork,
+            CancellationToken cancellationToken) =>
+        {
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
+            var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
+            if (worker is null)
+            {
+                return WorkerGate.Unauthenticated();
+            }
+
+            var lease = await db.JobLeases.AsNoTracking().Include(l => l.Job)
+                .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
+            if (lease is null)
+            {
+                return ApiErrors.NotFound("worker.lease.notFound", $"No lease with id {leaseId}.");
+            }
+            if (lease.WorkerId != worker.Id)
+            {
+                return Results.Json(
+                    new ApiError("worker.lease.notHolder", "That lease belongs to another worker."),
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+            if (lease.ToDomain().StateAt(DateTimeOffset.UtcNow) != LeaseState.Held)
+            {
+                return ApiErrors.Conflict("worker.lease.expired",
+                    "That lease is no longer held, so its artwork is no longer available.");
+            }
+
+            return lease.Job is { } job && await artwork.GetThumbnailAsync(job.MediaFileId, cancellationToken) is { } poster
+                ? Results.File(poster.Bytes, poster.ContentType)
+                : Results.NotFound();
+        })
+        .WithName("FetchLeaseArtwork")
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 
     private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)

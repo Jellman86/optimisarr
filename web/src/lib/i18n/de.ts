@@ -743,10 +743,11 @@ export const de: Messages = {
     diagnostics_job_invalid: "Gültige positive Auftrags-ID eingeben.",
 
     appearance_title: "Darstellung",
-    appearance_desc: "In diesem Browser gespeichert. Gilt für das Anwendungssymbol und das Favicon.",
+    appearance_desc: "Auf diesem Server gespeichert, damit jeder Browser und die eigene Seite jedes gekoppelten Linux-Sidecars dasselbe Symbol zeigen.",
     brand_style: "Anwendungssymbol",
     brand_stellar: "Sternenwürfel",
     brand_precession: "Präzessionswürfel (Standard)",
+    brand_save_failed: "Das Symbol konnte nicht auf dem Server gespeichert werden. Dieser Browser zeigt es, andere Browser und Sidecars jedoch nicht.",
     concurrency_hint: 'Video und vollständige Prüfung im Container nutzen diese Plätze. Audio und Bilder können freie Plätze ebenfalls nutzen.',
     encoder_hint: 'Automatisch auswählen lassen oder einen Encoder festlegen.',
     threads_hint: 'Bei 0 bestimmt der Encoder die Anzahl der Threads.',

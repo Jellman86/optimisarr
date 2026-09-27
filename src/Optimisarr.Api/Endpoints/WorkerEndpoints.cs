@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Workers;
+using Optimisarr.Core.Settings;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
@@ -148,7 +149,9 @@ internal sealed record HeartbeatResponse(
     /// Both null otherwise. Sidecars never update themselves; this is so they can say so.
     /// </summary>
     string? UpdateVersion = null,
-    string? UpdateUrl = null);
+    string? UpdateUrl = null,
+    /// <summary>The server's brand mark, so a sidecar's own page shows what the operator chose.</summary>
+    string? BrandStyle = null);
 
 internal static class WorkerEndpoints
 {
@@ -348,7 +351,8 @@ internal static class WorkerEndpoints
                 (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
                 worker.DrainRequestedAt is not null,
                 update.ReleaseUrl is null ? null : update.LatestVersion,
-                update.ReleaseUrl));
+                update.ReleaseUrl,
+                BrandStyles.WireName(await settings.GetBrandStyleAsync(cancellationToken))));
         })
         .WithName("WorkerHeartbeat")
         .Produces<HeartbeatResponse>()

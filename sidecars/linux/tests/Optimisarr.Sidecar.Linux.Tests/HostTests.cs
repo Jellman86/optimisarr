@@ -75,6 +75,10 @@ public sealed class HostTests
     }
 
     [Fact]
+    public void An_empty_server_setting_means_pair_from_the_dashboard() =>
+        Assert.Null(WorkerOptions.Read(key => key == "OPTIMISARR_SERVER" ? "" : null).Server);
+
+    [Fact]
     public void State_survives_restart_and_can_be_cleared_without_logging_the_credential()
     {
         var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

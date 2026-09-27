@@ -712,10 +712,11 @@ export const ja: Messages = {
     diagnostics_job_invalid: "正の整数のジョブ ID を入力してください。",
 
     appearance_title: "外観",
-    appearance_desc: "このブラウザーに保存されます。アプリのアイコンとファビコンに適用されます。",
+    appearance_desc: "このサーバーに保存されるため、すべてのブラウザーとペアリング済みの各 Linux サイドカーのページに同じマークが表示されます。",
     brand_style: "アプリのアイコン",
     brand_stellar: "星空キューブ",
     brand_precession: "歳差運動キューブ（既定）",
+    brand_save_failed: "アイコンをサーバーに保存できませんでした。このブラウザーには表示されますが、他のブラウザーやサイドカーには反映されません。",
     concurrency_hint: '動画のエンコードとコンテナでの完全な検証に使用します。空きがあれば音声と画像も使用できます。',
     encoder_hint: '自動選択を使うか、エンコーダーを指定します。',
     threads_hint: '0 にするとエンコーダーがスレッド数を決めます。',

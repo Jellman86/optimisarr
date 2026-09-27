@@ -712,10 +712,11 @@ export const zh: Messages = {
     diagnostics_job_invalid: "请输入有效的正整数任务 ID。",
 
     appearance_title: "外观",
-    appearance_desc: "保存在此浏览器中。应用于应用图标和网站图标。",
+    appearance_desc: "保存在此服务器上，因此每个浏览器和每个已配对 Linux 边车自己的页面都显示相同的标志。",
     brand_style: "应用图标",
     brand_stellar: "星空立方体",
     brand_precession: "进动立方体（默认）",
+    brand_save_failed: "无法将图标保存到服务器。此浏览器会显示它，但其他浏览器和边车不会。",
     concurrency_hint: '视频编码和容器中的完整验证使用这些名额。音频和图片也可以使用空闲名额。',
     encoder_hint: '自动选择或指定编码器。',
     threads_hint: '设为 0 时，由编码器决定线程数。',

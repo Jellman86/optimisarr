@@ -22,17 +22,27 @@ var prober = new CapabilityProber(new ProcessCommandRunner(), platform: "linux",
 long FreeBytes() => new DriveInfo(Path.GetFullPath(options.Scratch)).AvailableFreeSpace;
 var metrics = new LinuxWorkerMetrics();
 var dashboard = new WorkerDashboard(options.Name, options.Server ?? new FileCredentialStore(options.Config).Load()?.ServerAddress, options.Scratch, options.Concurrency, () => metrics.Current);
-SidecarCapabilities? proved = null;
-async Task<SidecarCapabilities> Probe(CancellationToken ct)
+// One probe shared by pairing, the session and the eager start below, so an early pairing from
+// the page never runs a second set of real encodes beside the first. A failed probe is retried.
+var probeGate = new object();
+Task<SidecarCapabilities>? probing = null;
+async Task<SidecarCapabilities> Prove()
 {
-    proved ??= await prober.ProbeAsync(options.Name, options.Ffmpeg, FreeBytes(), options.Concurrency, ct);
+    var proved = await prober.ProbeAsync(options.Name, options.Ffmpeg, FreeBytes(), options.Concurrency, token);
     if (options.Encoder is { Length: > 0 } encoder)
     {
         if (!proved.VideoEncoders.Contains(encoder)) throw new InvalidOperationException("Configured encoder failed its real capability probe.");
         proved = proved with { VideoEncoders = [encoder] };
     }
     dashboard.Capabilities(proved);
-    return proved with { FreeScratchBytes = FreeBytes() };
+    return proved;
+}
+async Task<SidecarCapabilities> Probe(CancellationToken ct)
+{
+    Task<SidecarCapabilities> task;
+    lock (probeGate)
+        task = probing = probing is null || probing.IsFaulted || probing.IsCanceled ? Prove() : probing;
+    return (await task.WaitAsync(ct)) with { FreeScratchBytes = FreeBytes() };
 }
 if (args.Contains("--discover"))
 {
@@ -41,7 +51,13 @@ if (args.Contains("--discover"))
 }
 await using var web = Environment.GetEnvironmentVariable("OPTIMISARR_WEB_ENABLED") == "true"
     ? DashboardHost.Create(dashboard) : null;
-if (web is not null) await web.StartAsync(token);
+if (web is not null)
+{
+    await web.StartAsync(token);
+    // The page shows what this machine proved while it waits to be paired, and the first pairing
+    // then does not wait for the probe.
+    _ = Probe(token).ContinueWith(probe => _ = probe.Exception, TaskScheduler.Default);
+}
 var metricsTask = metrics.RunAsync(token);
 using var control = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 using var bulk = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
@@ -58,6 +74,7 @@ session = new SidecarSession(client, store, Probe, metrics.Load, Task.Delay,
     {
         Console.WriteLine($"{status.State}: {status.Detail}");
         dashboard.Status(status, session?.ServerDraining == true || session?.IsPaused == true);
+        if (session is not null) dashboard.Server(session.BrandStyle, session.AvailableUpdate);
         lock (healthGate)
         {
             if (status.State is SidecarState.Connected or SidecarState.Working)
@@ -74,6 +91,7 @@ session = new SidecarSession(client, store, Probe, metrics.Load, Task.Delay,
             return new JobOutcome(assignment.JobId, false, "Insufficient scratch capacity or invalid source size.");
         }
         dashboard.Start(assignment);
+        _ = ShowArtworkAsync(pairing, assignment, ct);
         var succeeded = false;
         try
         {
@@ -85,21 +103,51 @@ session = new SidecarSession(client, store, Probe, metrics.Load, Task.Delay,
     }, availableScratchBytes: FreeBytes);
 try
 {
-    var pairing = store.Load();
-    if (pairing is null)
+    // A code from the environment is one-time, so it is tried once per process at most.
+    var codeTried = false;
+    string? problem = null;
+    while (true)
     {
-        var codeFile = Environment.GetEnvironmentVariable("OPTIMISARR_PAIRING_CODE_FILE");
-        var pin = codeFile is null ? Environment.GetEnvironmentVariable("OPTIMISARR_PAIRING_CODE")
-            : (await File.ReadAllTextAsync(codeFile, token)).Trim();
-        if (string.IsNullOrWhiteSpace(pin) || options.Server is null)
-            throw new InvalidOperationException("First start requires OPTIMISARR_SERVER and a pairing code or pairing-code file.");
-        await session.PairAsync(options.Server, pin, token);
-        Environment.SetEnvironmentVariable("OPTIMISARR_PAIRING_CODE", null);
+        var pairing = store.Load();
+        if (pairing is null)
+        {
+            string? pin = null;
+            if (!codeTried)
+            {
+                codeTried = true;
+                var codeFile = Environment.GetEnvironmentVariable("OPTIMISARR_PAIRING_CODE_FILE");
+                pin = codeFile is null ? Environment.GetEnvironmentVariable("OPTIMISARR_PAIRING_CODE")
+                    : (await File.ReadAllTextAsync(codeFile, token)).Trim();
+                Environment.SetEnvironmentVariable("OPTIMISARR_PAIRING_CODE", null);
+            }
+            if (!string.IsNullOrWhiteSpace(pin) && options.Server is not null)
+            {
+                try { pairing = await session.PairAsync(options.Server, pin, token); }
+                catch (Exception error) when (web is not null && error is SidecarException or HttpRequestException)
+                {
+                    problem = error is SidecarException ? error.Message : "Could not reach the configured server to redeem the pairing code.";
+                }
+            }
+            if (pairing is null)
+            {
+                if (web is null)
+                    throw new InvalidOperationException(problem ?? "First start requires OPTIMISARR_SERVER and a pairing code or pairing-code file, or OPTIMISARR_WEB_ENABLED=true to pair from the dashboard.");
+                Console.WriteLine("Unpaired: waiting for a pairing code on the dashboard.");
+                pairing = await dashboard.Pairing.WaitAsync(options.Server, problem, session.PairAsync, token);
+            }
+            dashboard.Paired(pairing.ServerAddress);
+            problem = null;
+        }
+        else if (options.Server is not null && !string.Equals(options.Server.TrimEnd('/'), pairing.ServerAddress.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The configured server differs from the saved pairing. Use a separate config volume to pair another server.");
+        await session.RunAsync(token);
+        if (token.IsCancellationRequested) return 0;
+        // The session returns early only when the server refused the credential, which it has
+        // already discarded. With a dashboard the worker waits to be paired again instead of
+        // restarting into the same refusal.
+        if (web is null || store.Load() is not null) return 1;
+        problem = session.Status.Detail;
     }
-    else if (options.Server is not null && !string.Equals(options.Server.TrimEnd('/'), pairing.ServerAddress.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
-        throw new InvalidOperationException("The configured server differs from the saved pairing. Use a separate config volume to pair another server.");
-    await session.RunAsync(token);
-    return token.IsCancellationRequested ? 0 : 1;
 }
 catch (OperationCanceledException) when (token.IsCancellationRequested) { return 0; }
 finally
@@ -108,4 +156,15 @@ finally
     await metricsTask;
     File.Delete(health);
     if (web is not null) await web.StopAsync(CancellationToken.None);
+}
+
+// A recognition aid only: any failure leaves the plain placeholder and costs the job nothing.
+async Task ShowArtworkAsync(StoredPairing pairing, Assignment assignment, CancellationToken ct)
+{
+    try
+    {
+        if (await client.ArtworkAsync(pairing, assignment.LeaseId, ct) is { } artwork)
+            dashboard.Artwork(assignment.JobId, artwork);
+    }
+    catch (Exception error) when (error is HttpRequestException or OperationCanceledException or IOException or SidecarException) { }
 }

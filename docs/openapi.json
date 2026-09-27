@@ -168,6 +168,17 @@
         ],
         "type": "object"
       },
+      "AppearanceDto": {
+        "properties": {
+          "brandStyle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "brandStyle"
+        ],
+        "type": "object"
+      },
       "ArrConnectionSnapshot": {
         "properties": {
           "apiKey": {
@@ -731,6 +742,12 @@
       },
       "HeartbeatResponse": {
         "properties": {
+          "brandStyle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "draining": {
             "type": "boolean"
           },
@@ -5812,6 +5829,70 @@
         ]
       }
     },
+    "/api/settings/appearance": {
+      "get": {
+        "operationId": "GetAppearance",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppearanceDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      },
+      "put": {
+        "operationId": "UpdateAppearance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppearanceDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppearanceDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
     "/api/settings/cleanup": {
       "get": {
         "operationId": "PreviewTimedCleanup",
@@ -6196,6 +6277,57 @@
               }
             },
             "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/artwork": {
+      "get": {
+        "operationId": "FetchLeaseArtwork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "tags": [

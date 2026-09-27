@@ -8,9 +8,9 @@ public sealed record WorkerOptions(string? Server, string Config, string Scratch
         var concurrencyText = read("OPTIMISARR_CONCURRENCY") ?? "1";
         if (!int.TryParse(concurrencyText, out var concurrency) || concurrency is < 1 or > 4)
             throw new ArgumentException("OPTIMISARR_CONCURRENCY must be between 1 and 4.");
-        var server = read("OPTIMISARR_SERVER");
-        if (server is not null && (!Uri.TryCreate(server, UriKind.Absolute, out var uri)
-            || uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo)))
+        // Compose files commonly pass an unset variable through as an empty string.
+        var server = read("OPTIMISARR_SERVER") is { Length: > 0 } configured ? configured : null;
+        if (server is not null && !IsServerAddress(server))
             throw new ArgumentException("OPTIMISARR_SERVER must be an HTTP(S) URL without embedded credentials.");
         return new(server, read("OPTIMISARR_CONFIG_DIR") ?? "/config",
             read("OPTIMISARR_SIDECAR_WORK") ?? "/work",
@@ -19,4 +19,8 @@ public sealed record WorkerOptions(string? Server, string Config, string Scratch
             read("OPTIMISARR_WORKER_NAME") ?? Environment.MachineName, concurrency,
             read("OPTIMISARR_ENCODER"));
     }
+
+    public static bool IsServerAddress(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo);
 }
