@@ -104,6 +104,7 @@ public sealed class HardwareDecodeFallbackTests
     [Theory]
     [InlineData("[hevc_qsv @ 0x..] Failed setup for format qsv: hwaccel initialisation returned error")]
     [InlineData("Error while opening decoder for input stream")]
+    [InlineData("Failed to allocate a vaapi/nv12 frame from a fixed pool of hardware frames.")]
     [InlineData("Impossible to convert between the formats supported by the filter")]
     [InlineData("[AVHWDeviceContext] Device creation failed: -22")]
     [InlineData("No device available for decoder: device type cuda needed for codec h264")]

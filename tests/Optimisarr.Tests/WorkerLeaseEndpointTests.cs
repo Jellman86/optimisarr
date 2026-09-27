@@ -90,7 +90,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         PairWorker(name, concurrency, encoders, decoders: []);
 
     private async Task<HttpClient> PairWorker(
-        string name, int concurrency, string[] encoders, string[] decoders, string[]? audioEncoders = null)
+        string name, int concurrency, string[] encoders, string[] decoders, string[]? audioEncoders = null,
+        string operatingSystem = "linux", string? sidecarVersion = null)
     {
         var admin = Admin();
         var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -101,7 +102,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         {
             code = pin,
             name,
-            operatingSystem = "linux",
+            operatingSystem,
+            sidecarVersion,
             architecture = "x64",
             protocolMinimum = 1,
             protocolMaximum = 1,
@@ -164,6 +166,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             // names its VMAF model from the size, and a re-encode needs a video to re-encode.
             MediaKind = MediaKind.Video,
             VideoCodec = "h264",
+            PixelFormat = "yuv420p",
             Width = 1920,
             Height = 1080,
             // Known so a worker's encoded seconds can become a fraction of the whole.
@@ -584,14 +587,18 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal("-", command[^1]);
     }
 
-    [Fact]
-    public async Task A_worker_that_proved_its_decoder_is_told_to_decode_in_hardware()
+    [Theory]
+    [InlineData("hevc_videotoolbox", "videotoolbox")]
+    [InlineData("hevc_qsv", "qsv")]
+    [InlineData("hevc_vaapi", "vaapi")]
+    [InlineData("hevc_nvenc", "cuda")]
+    public async Task A_worker_that_proved_its_decoder_is_told_to_decode_in_hardware(string encoder, string decoder)
     {
         // The decoder is used only where it was proved by a real decode, and only with the
         // encoder family it belongs to; the lease records it so a corrupt result can be retried
         // in software rather than failed.
         await EnableRemoteWorkers();
-        var worker = await PairWorker("Apple", 1, ["hevc_videotoolbox"], ["videotoolbox"]);
+        var worker = await PairWorker("Proved decoder", 1, [encoder], [decoder]);
         var jobId = await QueueAJob(videoEncoder: null);
 
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
@@ -601,13 +608,37 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
 
         var hwaccel = arguments.IndexOf("-hwaccel");
         Assert.True(hwaccel >= 0, string.Join(" ", arguments));
-        Assert.Equal("videotoolbox", arguments[hwaccel + 1]);
-        Assert.Equal("hevc_videotoolbox", arguments[arguments.IndexOf("-c:v:0") + 1]);
+        Assert.Equal(decoder, arguments[hwaccel + 1]);
+        Assert.Equal(encoder, arguments[arguments.IndexOf("-c:v:0") + 1]);
 
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         var lease = await db.JobLeases.SingleAsync(l => l.JobId == jobId && l.State == Optimisarr.Core.Workers.LeaseState.Held);
-        Assert.Equal("videotoolbox", lease.HardwareDecoder);
+        Assert.Equal(decoder, lease.HardwareDecoder);
+    }
+
+    [Theory]
+    [InlineData("ffv1", "yuv420p")]
+    [InlineData("h264", "yuv420p10le")]
+    [InlineData("h264", "yuv444p")]
+    public async Task GPU_surface_decode_is_not_assumed_for_an_unproved_source_format(string codec, string pixelFormat)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Intel", 1, ["hevc_qsv"], ["qsv"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+            job.MediaFile!.VideoCodec = codec;
+            job.MediaFile.PixelFormat = pixelFormat;
+            await db.SaveChangesAsync();
+        }
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.DoesNotContain("-hwaccel", arguments);
     }
 
     [Fact]
@@ -623,6 +654,24 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             .GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
 
         Assert.DoesNotContain("-hwaccel", arguments);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("0.2.16", false)]
+    [InlineData("0.2.17", true)]
+    [InlineData("0.2.18+commit", true)]
+    public async Task Older_Windows_workers_keep_commands_their_validator_understands(string? version, bool hardware)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Windows", 1, ["hevc_nvenc"], ["cuda"],
+            operatingSystem: "windows", sidecarVersion: version);
+        await QueueAJob(videoEncoder: null);
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.Equal(hardware, arguments.Contains("-hwaccel_output_format"));
     }
 
     [Fact]

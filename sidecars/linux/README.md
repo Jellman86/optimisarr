@@ -17,7 +17,7 @@ pairing code under Settings → Workers and provide a reachable server URL. The
 first connection saves a private credential in `/config/pairing.json`; preserve
 that volume across upgrades. Remove the one-time code after pairing. To pair a
 different server, use a new config volume. Only one process may use a config
-directory at a time.
+directory or scratch directory at a time. Give each worker its own directories.
 
 | Setting | Default / meaning |
 | --- | --- |
@@ -37,8 +37,9 @@ directory at a time.
 No inbound port is needed. Map `/dev/dri` for Intel QSV/VAAPI; the server currently
 targets `/dev/dri/renderD128`. NVIDIA requires the host's NVIDIA container runtime
 and GPU exposure. Only encoders and decoders that pass real probes are advertised.
-GPU decode stays on GPU surfaces when the server generates a compatible command;
-software filters can require a software decode path. CPU VMAF uses the separate
+GPU decode stays on GPU surfaces for the H.264 8-bit 4:2:0 source format proved
+by the decoder probe; other source formats retain software decode for now.
+Software filters can require a software decode path. CPU VMAF uses the separate
 measurement binary even when encoding runs on the GPU.
 
 `/work` may be a bounded tmpfs for RAM storage. This is an operator-provided

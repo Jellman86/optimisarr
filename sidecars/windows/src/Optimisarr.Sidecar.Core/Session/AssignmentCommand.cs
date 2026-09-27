@@ -28,7 +28,7 @@ public sealed record CommandRefusal(string Reason)
 public static class AssignmentCommand
 {
     /// <summary>Options that take no value.</summary>
-    private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "-y", "-nostats" };
+    private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "-y", "-nostats", "-xerror" };
 
     /// <summary>
     /// Options that take exactly one value, drawn from the server's FfmpegCommandBuilder and
@@ -45,6 +45,7 @@ public static class AssignmentCommand
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0",
         "-ss", "-t", "-movflags", "-hwaccel", "-hwaccel_output_format",
         "-init_hw_device", "-filter_hw_device", "-vaapi_device",
+        "-extra_hw_frames",
     };
 
     /// <summary>
@@ -109,6 +110,9 @@ public static class AssignmentCommand
                 case "-vaapi_device" when !allowLinuxDevices || value != "/dev/dri/renderD128":
                     return new CommandRefusal("Only the configured Linux render node is allowed.");
                 case "-vaapi_device": break;
+                case "-extra_hw_frames" when value != "16":
+                    return new CommandRefusal("The hardware frame pool is outside the worker contract.");
+                case "-extra_hw_frames": break;
                 case "-init_hw_device" when value != "qsv=hw":
                 case "-filter_hw_device" when value != "hw":
                     return new CommandRefusal("The hardware device name is outside the worker contract.");

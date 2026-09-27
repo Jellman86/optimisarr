@@ -9,11 +9,9 @@ var health = Path.Combine(options.Config, "health");
 if (args.Contains("--healthcheck"))
     return File.Exists(health) && DateTime.UtcNow - File.GetLastWriteTimeUtc(health) < TimeSpan.FromSeconds(100) ? 0 : 1;
 if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Run this host on Linux.");
-Directory.CreateDirectory(options.Config);
-Directory.CreateDirectory(options.Scratch);
 // A second process using this pairing could claim duplicate capacity and delete another job's scratch.
-using var instance = new FileStream(Path.Combine(options.Config, "worker.lock"), FileMode.OpenOrCreate,
-    FileAccess.ReadWrite, FileShare.None);
+using var instance = new WorkerDirectoryLock(options.Config);
+using var scratchInstance = new WorkerDirectoryLock(options.Scratch);
 File.Delete(health);
 using var cancellation = new CancellationTokenSource();
 using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => { context.Cancel = true; cancellation.Cancel(); });

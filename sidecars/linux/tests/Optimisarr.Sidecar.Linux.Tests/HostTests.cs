@@ -7,6 +7,19 @@ namespace Optimisarr.Sidecar.Linux.Tests;
 
 public sealed class HostTests
 {
+    [Fact]
+    public void A_second_worker_cannot_share_an_active_scratch_or_config_directory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            using (var first = new WorkerDirectoryLock(root))
+                Assert.Throws<IOException>(() => new WorkerDirectoryLock(root));
+            using var afterExit = new WorkerDirectoryLock(root);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData("hevc_qsv")]
     [InlineData("hevc_vaapi")]
