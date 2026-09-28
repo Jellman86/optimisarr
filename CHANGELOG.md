@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Testing
+
+- A 20-job retry trial on the September 28 development build finished with 10 verified completions
+  (Mac 5, Linux 4, Windows 1), four failures and six pre-encode size-review holds. All workers
+  remained available and the Linux RAM workspace was fully reclaimed. This is bounded validation,
+  not a claim that every failed source is fixed.
+
+### Known issues
+
+- The trial exposed a main-container QSV failure on duplicate output timestamps at the start of a
+  full encode, plus two Windows VMAF failures confined to late comparison windows. Their causes
+  remain under investigation. A separate retry hit the size limit after a near-miss on quality;
+  rejected candidates did not replace originals. The [hardening handoff](docs/development/sidecar-hardening-handoff.md)
+  records the evidence and next tests. Verification gates remain unchanged.
+
 ### Fixed
 
 - Windows installer builds recover the same pinned FFmpeg tools and notices from the checksum-verified 0.2.17 installer when upstream removes its expiring autobuild release.
@@ -10,7 +25,6 @@
 
 - Sidecar claims now apply the same current eligibility rules and exclusions as local encoding. Retrying an excluded file explains how to remove the exclusion and preserves its existing failure evidence.
 - Manual and automatic quality retries retain the latest eight attempt reports with bounded process logs. Worker VMAF diagnostics include per-window scores and planned comparison commands; size-budget failures retain the limit and observed size.
-
 
 ## 0.2.17 — 2026-09-27
 
