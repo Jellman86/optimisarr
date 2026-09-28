@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Windows installer builds recover the same pinned FFmpeg tools and notices from the checksum-verified 0.2.17 installer when upstream removes its expiring autobuild release.
+
 - Full-file VC-1 verification with matching frame counts now samples absolute decoded frame numbers instead of seeking independently into the two files. This avoids false low VMAF scores observed on VC-1 Matroska sources. Sidecars count decoded frames rather than assuming one packet always contains one picture.
 
 - Sidecar claims now apply the same current eligibility rules and exclusions as local encoding. Retrying an excluded file explains how to remove the exclusion and preserves its existing failure evidence.
