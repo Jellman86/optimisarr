@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Full-file VC-1 verification with matching frame counts now samples absolute decoded frame numbers instead of seeking independently into the two files. This avoids false low VMAF scores observed on VC-1 Matroska sources. Sidecars count decoded frames rather than assuming one packet always contains one picture.
+
+- Sidecar claims now apply the same current eligibility rules and exclusions as local encoding. Retrying an excluded file explains how to remove the exclusion and preserves its existing failure evidence.
+- Manual and automatic quality retries retain the latest eight attempt reports with bounded process logs. Worker VMAF diagnostics include per-window scores and planned comparison commands; size-budget failures retain the limit and observed size.
+
+
 ## 0.2.17 — 2026-09-27
 
 ### Testing

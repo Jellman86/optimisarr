@@ -128,8 +128,12 @@ public sealed class CandidateService(OptimisarrDbContext db)
     public async Task<CandidateDecision?> EvaluateFileAsync(int mediaFileId, CancellationToken cancellationToken)
     {
         var file = await db.MediaFiles.AsNoTracking()
-            .FirstOrDefaultAsync(f => f.Id == mediaFileId && f.Status == MediaFileStatus.Probed, cancellationToken);
-        if (file is null)
+            .FirstOrDefaultAsync(f => f.Id == mediaFileId, cancellationToken);
+        if (file is not null && await db.Exclusions.AsNoTracking().AnyAsync(e => e.Path == file.Path, cancellationToken))
+        {
+            return CandidateDecision.Skipped("Excluded — won't be optimised");
+        }
+        if (file is null || file.Status != MediaFileStatus.Probed)
         {
             return null;
         }

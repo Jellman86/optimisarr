@@ -303,3 +303,35 @@ Run harness self-tests with:
 ```bash
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 ```
+
+
+### Investigating frame pairing on retained files
+
+Use this read-only diagnostic when VMAF has very low individual frames despite passing decode and
+timeline checks. It compares independently sought windows with absolute decoded-frame windows,
+records both packet and decoded-frame counts, and saves commands, stderr and raw VMAF JSON.
+It supports SDR files with matching dimensions; scores are diagnostic and never authorize replacement.
+Use retained candidates or disposable copies, and give each run a new output directory.
+
+```bash
+python3 scripts/diagnose_frame_pairing.py \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
+  --source /evidence/source.mkv --candidate /evidence/candidate.mp4 \
+  --starts 123 635 1147 --seconds 10 --root /evidence/pairing-run-1
+```
+
+VC-1 Matroska regression: a retained equal-frame candidate scored 9.49 in a sought 10-second
+window and 94.25 when decoded sequentially. Three absolute-frame windows scored 94–95.
+The shared production command therefore avoids input seeking for complete, equal-frame VC-1
+comparisons. Other sources and disposable cut clips keep their existing policies. Sequential
+comparison costs more decoding time, especially for late windows.
+
+A separate Mac candidate had 32,283 packets but only 32,282 decoded frames. Packet equality must
+not select frame-number pairing. That candidate remained below the quality gate after a diagnostic
+one-frame alignment check, so this case does not justify lowering thresholds or automatic replacement.
+
+Retries now retain up to eight previous attempt reports. The failed-job log API also exposes
+worker window summaries and planned commands, or the observed and allowed size for budget failures.
+Legacy worker quality reports do not identify which pairing command they selected; diagnostics label
+that uncertainty explicitly. These summaries supplement the verification report rather than changing
+its verdict.

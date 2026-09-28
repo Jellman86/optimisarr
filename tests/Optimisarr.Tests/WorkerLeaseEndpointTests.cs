@@ -196,6 +196,70 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             .OrderByDescending(w => w.Id).Select(w => w.Id).FirstAsync();
     }
 
+    [Theory]
+    [InlineData(ExclusionSource.Manual)]
+    [InlineData(ExclusionSource.RepeatedFailures)]
+    public async Task An_exclusion_added_after_enqueue_prevents_a_worker_claim(ExclusionSource source)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Excluded");
+        var jobId = await QueueAJob();
+        await ExcludeJob(jobId, source);
+
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.False(await db.JobLeases.AnyAsync(l => l.JobId == jobId));
+        Assert.NotEqual(JobStatus.Leased, await StatusOf(jobId));
+    }
+
+    [Theory]
+    [InlineData(ExclusionSource.Manual)]
+    [InlineData(ExclusionSource.RepeatedFailures)]
+    public async Task Retrying_an_excluded_file_preserves_its_failure_evidence(ExclusionSource source)
+    {
+        var jobId = await QueueAJob();
+        await ExcludeJob(jobId, source);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Failed;
+            job.ProcessLog = "original diagnostics";
+            await db.SaveChangesAsync();
+        }
+        using var response = await Admin().PostAsync($"/api/jobs/{jobId}/retry", null);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var read = _api.Services.CreateScope();
+        var stored = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Failed, stored.Status);
+        Assert.Equal("original diagnostics", stored.ProcessLog);
+    }
+
+    [Fact]
+    public async Task Excluded_jobs_do_not_fill_the_worker_shortlist_and_starve_eligible_work()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Eligible after exclusions");
+        for (var i = 0; i < 25; i++)
+            await ExcludeJob(await QueueAJob(), ExclusionSource.Manual);
+        var eligible = await QueueAJob();
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(eligible));
+    }
+
+    private async Task ExcludeJob(int jobId, ExclusionSource source)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        db.Exclusions.Add(new Exclusion { Path = job.MediaFile!.Path, RelativePath = job.MediaFile.RelativePath,
+            LibraryId = job.LibraryId, Source = source });
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task A_draining_worker_is_offered_nothing_until_it_is_resumed()
     {
@@ -762,6 +826,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var lease = await db.JobLeases.SingleAsync(l => l.Id == Guid.Parse(leaseId));
         Assert.Equal("cafe", lease.QualityCandidateSha256);
         Assert.Contains("94.9", lease.QualityScoresJson);
+        var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Contains("94.9", job.ProcessLog);
+        Assert.Contains("windows", job.ProcessLog);
+        Assert.Contains(sourceHash, job.ProcessLog);
     }
 
     [Fact]
@@ -1421,6 +1489,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var job = await db.Jobs.Include(item => item.MediaFile).SingleAsync(item => item.Id == jobId);
         Assert.Equal(FailureCategory.SizeSaving, job.FailureCategory);
         Assert.Contains("Size saving", job.ErrorMessage);
+        Assert.Contains(budget.ToString(), job.ProcessLog);
+        Assert.Contains((budget + 1).ToString(), job.ProcessLog);
         Assert.Equal(1, job.MediaFile!.FailureCount);
         var lease = await db.JobLeases.SingleAsync(item => item.Id == Guid.Parse(leaseId));
         Assert.Equal(budget + 1, lease.SizeBudgetExceededAtBytes);

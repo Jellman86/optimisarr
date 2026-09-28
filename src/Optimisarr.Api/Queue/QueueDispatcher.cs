@@ -1539,6 +1539,7 @@ public sealed class QueueDispatcher(
         // picture sits relative to its container start. That is not kept on the media record, so
         // the source is probed here; a failed probe only costs the grid alignment, not the plan.
         double? referenceContainerLead = null;
+        string? referenceVideoCodec = null;
         var referenceFrameRate = work.Spec.TargetFrameRate ?? work.VideoFrameRate;
         if (work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
         {
@@ -1546,6 +1547,7 @@ public sealed class QueueDispatcher(
             var sourceProbe = await scope.ServiceProvider
                 .GetRequiredService<MediaProbeService>()
                 .ProbeAsync(work.Original.Path, cancellationToken);
+            referenceVideoCodec = sourceProbe.VideoCodec;
             referenceContainerLead = ContainerLeadSeconds(sourceProbe);
             referenceFrameRate ??= sourceProbe.VideoFrameRate;
         }
@@ -1560,7 +1562,8 @@ public sealed class QueueDispatcher(
                 referenceFrameRate,
                 referenceContainerLead,
                 work.Spec.CropTo,
-                work.Spec.FrameRate)
+                work.Spec.FrameRate,
+                referenceVideoCodec)
             : null;
 
         return RemoteWorkPlan.For(new RemoteAssignment(
@@ -3382,6 +3385,7 @@ public sealed class QueueDispatcher(
         DeleteWorkOutput(outputPath);
         await WithJobAsync(jobId, job =>
         {
+            JobAttemptHistory.Archive(job, "HigherQualityRetry", DateTimeOffset.UtcNow);
             job.Status = JobStatus.Queued;
             job.QualityRetryCount += 1;
             job.Progress = 0;

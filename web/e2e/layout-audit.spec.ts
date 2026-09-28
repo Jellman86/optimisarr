@@ -266,6 +266,8 @@ for (const viewport of viewports) {
 }
 
 test('translated controls stay inside their cards at phone width', async ({ page }, testInfo) => {
+  // Nine locales across six pages need a total budget beyond one ordinary page test.
+  test.setTimeout(120_000)
   const unexpected = await mockApp(page)
   await page.setViewportSize({ width: 320, height: 720 })
   await page.emulateMedia({ reducedMotion: 'reduce' })

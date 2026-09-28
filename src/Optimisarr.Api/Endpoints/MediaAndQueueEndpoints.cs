@@ -564,6 +564,15 @@ internal static class MediaAndQueueEndpoints
                 return ApiErrors.BadRequest("job.retry.invalidState", $"Only failed or cancelled jobs can be retried; job {id} is {job.Status}.", new { id, status = job.Status.ToString() });
             }
 
+            var excluded = await db.MediaFiles.AsNoTracking()
+                .Where(file => file.Id == job.MediaFileId)
+                .AnyAsync(file => db.Exclusions.Any(e => e.Path == file.Path), cancellationToken);
+            if (excluded)
+            {
+                return ApiErrors.Conflict("job.retry.excluded",
+                    "This file is excluded. Remove its exclusion from the library's Excluded tab before retrying.");
+            }
+
             if (!dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
             {
                 return ApiErrors.Conflict(
@@ -571,6 +580,7 @@ internal static class MediaAndQueueEndpoints
                     "The previous output could not be removed from the work directory. The job was not retried.");
             }
 
+            JobAttemptHistory.Archive(job, "ManualRetry", DateTimeOffset.UtcNow);
             job.Status = JobStatus.Queued;
             job.ErrorMessage = null;
             job.FailureCategory = null;

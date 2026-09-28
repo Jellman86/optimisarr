@@ -615,7 +615,7 @@ struct FakeLeadProbe: CommandRunner {
     var frames: (source: String?, candidate: String?) = (nil, nil)
 
     func run(_ executable: URL, _ arguments: [String]) async -> (exitCode: Int32, output: String) {
-        if arguments.contains("-count_packets") {
+        if arguments.contains("-count_frames") {
             let count = arguments.last!.contains("candidate") ? frames.candidate : frames.source
             return count.map { (0, $0) } ?? (1, "")
         }

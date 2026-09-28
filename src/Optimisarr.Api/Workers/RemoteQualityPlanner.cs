@@ -29,7 +29,8 @@ internal static class RemoteQualityPlanner
         double? referenceFrameRate,
         double? referenceContainerLeadSeconds,
         CropRect? crop,
-        FrameRateDecimation? decimation)
+        FrameRateDecimation? decimation,
+        string? referenceVideoCodec = null)
     {
         if (!policy.QualityGateEnabled || referenceWidth <= 0 || referenceHeight <= 0)
         {
@@ -66,7 +67,8 @@ internal static class RemoteQualityPlanner
                 ReferenceCrop: crop,
                 ReferenceDecimation: decimation,
                 ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
-                DistortedShiftToken: RemoteQualityContract.DistortedShiftPlaceholder);
+                DistortedShiftToken: RemoteQualityContract.DistortedShiftPlaceholder,
+                ReferenceVideoCodec: referenceVideoCodec);
             var command = QualityScoreCommandBuilder.Build(
                 RemoteQualityContract.DistortedPlaceholder,
                 RemoteQualityContract.ReferencePlaceholder,
