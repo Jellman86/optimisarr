@@ -35,6 +35,10 @@ $Release = 'autobuild-2026-09-14-13-17'
 $Asset   = 'ffmpeg-n8.1.2-52-g5a03dfa0f6-win64-gpl-8.1.zip'
 $Sha256  = 'F42DCA81BDCCE7CCAB00BDE91CECEB96685BEAB97C42A77C003C90771B47EB17'
 $Url     = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$Release/$Asset"
+# Upstream autobuild releases expire. The released MSI preserves the identical tools and notices.
+# Administrative extraction stages files only; it does not install or start the sidecar.
+$FallbackUrl = 'https://github.com/Jellman86/optimisarr/releases/download/v0.2.17/OptimisarrSidecar-0.2.17-win-x64.msi'
+$FallbackSha256 = '50509090FC445DCCBB330BC0C93710897717EF8C81DF3B2FD65960D5E946E981'
 
 # Every one of these was verified present in the pinned build. The check below is fatal: a
 # capability silently missing is a worker that is never offered the work it exists to do, and the
@@ -59,22 +63,41 @@ try {
     Write-Host "Fetching $Asset ..."
     $previous = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'   # the progress bar makes this many times slower
+    $fromReleasedInstaller = $false
+    $provenance = $Url
     try {
-        Invoke-WebRequest -Uri $Url -OutFile $zip -TimeoutSec 600
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $zip -TimeoutSec 600
+        }
+        catch {
+            # A transient network error or hash mismatch must not silently select another input.
+            if ($null -eq $_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 404) { throw }
+            $fromReleasedInstaller = $true
+            $msi = Join-Path $work 'released.msi'
+            Invoke-WebRequest -Uri $FallbackUrl -OutFile $msi -TimeoutSec 600
+            if ((Get-FileHash $msi -Algorithm SHA256).Hash -ne $FallbackSha256) {
+                throw 'Released media fallback checksum mismatch.'
+            }
+            $expanded = Join-Path $work 'released'
+            $extract = Start-Process msiexec.exe -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$expanded`"") -Wait -PassThru
+            if ($extract.ExitCode -ne 0) { throw "Released media extraction failed: $($extract.ExitCode)" }
+            $provenance = "$FallbackUrl (MSI SHA256 $FallbackSha256)"
+        }
     }
     finally {
         $ProgressPreference = $previous
     }
 
-    $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
-    if ($actual -ne $Sha256) {
-        throw "Downloaded archive does not match the pinned hash.`n  expected $Sha256`n  actual   $actual"
+    if (-not $fromReleasedInstaller) {
+        $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+        if ($actual -ne $Sha256) {
+            throw "Downloaded archive does not match the pinned hash.`n  expected $Sha256`n  actual   $actual"
+        }
+        Expand-Archive -Path $zip -DestinationPath $work -Force
     }
-
-    Expand-Archive -Path $zip -DestinationPath $work -Force
     $found = Get-ChildItem -Path $work -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
     if (-not $found) {
-        throw "The archive contained no ffmpeg.exe."
+        throw 'The verified package contained no ffmpeg.exe.'
     }
 
     $bin = $found.Directory.FullName
@@ -87,8 +110,13 @@ try {
     # binaries. Corresponding source archives are supplied separately with public releases.
     $noticeDirectory = Join-Path $Destination 'media-notices'
     New-Item -ItemType Directory -Force -Path $noticeDirectory | Out-Null
-    Get-ChildItem -LiteralPath $found.Directory.Parent.FullName | Where-Object { $_.Name -ne 'bin' } |
-        Copy-Item -Destination $noticeDirectory -Recurse -Force
+    if ($fromReleasedInstaller) {
+        Copy-Item -Path (Join-Path $bin 'media-notices\*') -Destination $noticeDirectory -Recurse -Force
+    }
+    else {
+        Get-ChildItem -LiteralPath $found.Directory.Parent.FullName | Where-Object { $_.Name -ne 'bin' } |
+            Copy-Item -Destination $noticeDirectory -Recurse -Force
+    }
 
     # Proved by running it, never read off a listing of what the build was meant to contain.
     Write-Host "Verifying capabilities ..."
@@ -112,7 +140,8 @@ try {
     @(
         "release: $Release"
         "asset:   $Asset"
-        "sha256:  $Sha256"
+        "upstream archive sha256: $Sha256"
+        "verified package: $provenance"
         "version: $version"
         "fetched: $([DateTimeOffset]::UtcNow.ToString('u'))"
         "proved:  " + (($RequiredEncoders + $RequiredFilters + $RequiredDecoders) -join ', ')

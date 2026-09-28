@@ -90,7 +90,8 @@ public sealed record QualityMeasurementContext(
     // a frame rate and a window, and a cut clip keeps its own pairing.
     bool PairFramesByNumber = false,
     // CAMBI needs the encode's format before measurement rescaling or conversion to 10-bit.
-    VmafEncodedVideo? EncodedVideo = null);
+    VmafEncodedVideo? EncodedVideo = null,
+    string? ReferenceVideoCodec = null);
 
 public sealed record VmafEncodedVideo(int Width, int Height, int BitDepth);
 
@@ -210,29 +211,34 @@ public static class QualityScoreCommandBuilder
             && context.ReferenceStartSeconds is not null
             && context.DistortedStartSeconds is not null
             && context.MeasureDurationSeconds is > 0;
+        // VC-1 in Matroska can seek to different pictures despite equal timestamps/counts.
+        // For complete equal-frame encodes, absolute decoded indices preserve correspondence.
+        var sequential = pairFrames && string.Equals(context.ReferenceVideoCodec, "vc1", StringComparison.OrdinalIgnoreCase);
         var preprocessing = DescribePreprocessing(
             colourPreprocessing,
             acceleration,
             context.FrameSubsample,
             context.ReferenceFrameRate,
-            pairFrames);
+            pairFrames) + (sequential ? ", sequential decode" : "");
         var scale =
             $"scale={referenceWidth}:{referenceHeight}:" +
             "flags=bicubic:in_range=auto:out_range=tv";
         var pixelFormat = v1 || context.ReferenceIsHdr && !context.HdrConvertedToSdr
             ? "yuv420p10le"
             : "yuv420p";
-        var distortedInputStart = InputSeek(
+        var distortedInputStart = sequential ? null : InputSeek(
             context.DistortedStartSeconds, context.MeasureDurationSeconds,
             context.ReferenceFrameRate, context.ReferenceContainerLeadSeconds);
         // A cut clip's reference must hold exactly the pictures the sample encoder cut: the first at
         // or after the window start. Snapping the seek to the frame grid moves that instant by up
         // to half a frame, and a picture inside the gap then shifts every pair by one.
-        var referenceInputStart = InputSeek(
+        var referenceInputStart = sequential ? null : InputSeek(
             context.ReferenceStartSeconds, context.MeasureDurationSeconds,
             context.ReferenceFrameRate,
             context.DistortedIsCutClip ? null : context.ReferenceContainerLeadSeconds);
-        var distortedTimeline = pairFrames
+        var distortedTimeline = sequential
+            ? SequentialFrameTimeline(context.DistortedStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
+            : pairFrames
             ? FramePairedTimeline(
                 context.DistortedStartSeconds!.Value,
                 distortedInputStart,
@@ -247,7 +253,9 @@ public static class QualityScoreCommandBuilder
                 context.ReferenceFrameRate,
                 DistortedShift(context),
                 context.DistortedIsCutClip);
-        var referenceTimeline = pairFrames
+        var referenceTimeline = sequential
+            ? SequentialFrameTimeline(context.ReferenceStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
+            : pairFrames
             ? FramePairedTimeline(
                 context.ReferenceStartSeconds!.Value,
                 referenceInputStart,
@@ -496,6 +504,14 @@ public static class QualityScoreCommandBuilder
         // so pairing on raw timestamps met a third of the frames with their predecessors.
         var cut = $"{inputTimeline},{lead}{alignment}{origin}";
         return cadence.Length == 0 ? $"{cut},setpts=N" : $"{cut},{cadence.TrimEnd(',')}";
+    }
+
+    private static string SequentialFrameTimeline(int startSeconds, int durationSeconds, double frameRate)
+    {
+        var first = (long)Math.Round(startSeconds * frameRate);
+        var end = first + (long)Math.Round(durationSeconds * frameRate);
+        var step = (long)Math.Round(1_000_000 / frameRate);
+        return $"trim=start_frame={first}:end_frame={end},settb=AVTB,setpts=N*{step}";
     }
 
     // Frames either side of the window kept for the candidate's offset to move into.

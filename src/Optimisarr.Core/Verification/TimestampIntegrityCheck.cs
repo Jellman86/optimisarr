@@ -12,7 +12,7 @@ public sealed record TimestampCheckResult(
     int NonMonotonicCount,
     string? FirstRegressionDetail,
     double? LastPresentationSeconds,
-    // How many packets carried a timestamp: the stream's frame count, read without decoding. Null
+    // How many packets carried a timestamp. This is not necessarily the decoded frame count. Null
     // from an older worker's evidence, which then keeps timestamp pairing. See FramePairing.
     int? PacketCount = null)
 {
@@ -57,6 +57,30 @@ public sealed class TimestampIntegrityCheck
         string path,
         CancellationToken cancellationToken)
         => await CheckAsync(path, "a:0", false, cancellationToken);
+
+    public async Task<int?> CountDecodedFramesAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var process = new Process { StartInfo = new ProcessStartInfo(_ffprobe)
+            {
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            } };
+            foreach (var argument in FramePairing.CountArguments(path))
+                process.StartInfo.ArgumentList.Add(argument);
+            process.Start();
+            using var stop = cancellationToken.Register(() => KillQuietly(process));
+            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var error = process.StandardError.ReadToEndAsync(cancellationToken);
+            await Task.WhenAll(output, error, process.WaitForExitAsync(cancellationToken));
+            return process.ExitCode == 0 ? FramePairing.ParseCount(await output) : null;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            return null;
+        }
+    }
 
     internal static IReadOnlyList<string> Arguments(string path, string streamSpecifier, bool generateMissingPts) =>
     [

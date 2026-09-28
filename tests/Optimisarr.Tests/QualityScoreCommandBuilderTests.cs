@@ -6,6 +6,21 @@ namespace Optimisarr.Tests;
 public sealed class QualityScoreCommandBuilderTests
 {
     [Fact]
+    public void Equal_frame_vc1_windows_decode_sequentially_and_select_absolute_frame_numbers()
+    {
+        var context = new QualityMeasurementContext(576, 432, false, false,
+            ReferenceStartSeconds: 635, DistortedStartSeconds: 635, MeasureDurationSeconds: 10,
+            ReferenceFrameRate: 25, PairFramesByNumber: true, ReferenceVideoCodec: "vc1");
+        var command = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json", context, 2);
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.Contains("trim=start_frame=15875:end_frame=16125", command.FilterGraph);
+        Assert.Contains("sequential", command.Preprocessing);
+        var ordinary = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json",
+            context with { ReferenceVideoCodec = "h264" }, 2);
+        Assert.Contains("-ss", ordinary.Arguments);
+    }
+
+    [Fact]
     public void Sdr_measurement_aligns_timebases_normalises_range_and_scales_bicubic()
     {
         var command = QualityScoreCommandBuilder.Build(

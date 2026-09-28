@@ -14,12 +14,12 @@ enum FramePairing {
         return source > 0 && source == candidate
     }
 
-    /// Counts a file's pictures by reading its packets, not decoding them. Nil when it cannot say.
+    /// Counts a file's pictures by decoding frames; packet counts can include non-picture packets. Nil when it cannot say.
     static func count(ffprobe: URL?, file: URL, runner: CommandRunner) async -> Int? {
         guard let ffprobe else { return nil }
         let result = await runner.run(ffprobe, [
-            "-v", "error", "-select_streams", FullVerification.movingPictureStreamSpecifier, "-count_packets",
-            "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", file.path,
+            "-v", "error", "-select_streams", FullVerification.movingPictureStreamSpecifier, "-count_frames",
+            "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", file.path,
         ])
         guard result.exitCode == 0 else { return nil }
         var text = result.output.trimmingCharacters(in: .whitespacesAndNewlines)

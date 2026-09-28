@@ -201,6 +201,7 @@ internal static class WorkerLeaseEndpoints
             SettingsStore settings,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            CandidateService eligibility,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
@@ -254,7 +255,8 @@ internal static class WorkerLeaseEndpoints
             // loaded with their media file, rather than pulling a whole queue's worth of rows.
             var queuedOrder = await db.Jobs
                 .AsNoTracking()
-                .Where(job => job.Status == JobStatus.Queued && job.Type == JobType.Normal)
+                .Where(job => job.Status == JobStatus.Queued && job.Type == JobType.Normal
+                    && !db.Exclusions.Any(exclusion => exclusion.Path == job.MediaFile!.Path))
                 .Select(job => new { job.Id, job.Priority, job.EnqueuedAt })
                 .ToListAsync(cancellationToken);
 
@@ -307,6 +309,12 @@ internal static class WorkerLeaseEndpoints
                 {
                     continue;
                 }
+
+                // Share the local dispatcher's current rules, including durable exclusions.
+                // A queued retry does not grant permission to ignore a later exclusion.
+                if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
+                    is { IsEligible: false })
+                    continue;
 
                 // Workers poll, and full preparation probes the source. Rule out the jobs that
                 // preparation would refuse anyway from what is already loaded, so a queue of
@@ -391,6 +399,9 @@ internal static class WorkerLeaseEndpoints
                 await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
                 await db.Entry(job).ReloadAsync(cancellationToken);
                 if (job.Status != JobStatus.Queued) continue;
+                if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
+                    is { IsEligible: false })
+                    continue;
                 var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
                 var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
                     job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
@@ -892,6 +903,18 @@ internal static class WorkerLeaseEndpoints
                     pooled.Error ?? "The returned logs produced no usable score.");
             }
 
+            // Keep bounded per-window summaries, not the potentially huge per-frame JSON logs.
+            // These are diagnostic facts only; verification still consumes validated lease evidence.
+            lease.Job!.ProcessLog = JsonSerializer.Serialize(new
+            {
+                kind = "WorkerQuality", worker = worker.Name, leaseId = lease.Id,
+                sourceSha256 = request.SourceSha256, candidateSha256 = request.CandidateSha256,
+                model = contract.Model, sampling = contract.Sampling,
+                windows = windows.Select(window => window.Scores),
+                timestampCommands = contract.Commands,
+                framePairedCommands = contract.FramePairedCommands,
+                pairing = "Selected by worker; legacy reports do not identify the selected mode."
+            }, EvidenceJson);
             lease.QualityScoresJson = JsonSerializer.Serialize(pooled.Scores, EvidenceJson);
             lease.QualitySourceSha256 = request.SourceSha256;
             lease.QualityCandidateSha256 = request.CandidateSha256;
@@ -926,6 +949,12 @@ internal static class WorkerLeaseEndpoints
                 {
                     var now = DateTimeOffset.UtcNow;
                     stored.SizeBudgetExceededAtBytes = request.ObservedBytes;
+                    job.ProcessLog = JsonSerializer.Serialize(new
+                    {
+                        kind = "SizeBudgetExceeded", leaseId = stored.Id,
+                        maximumBytes = stored.MaxCandidateBytes, observedBytes = request.ObservedBytes,
+                        arguments = job.FfmpegArguments
+                    }, EvidenceJson);
                     job.Status = JobStatus.Failed;
                     job.ErrorMessage = $"Size saving: candidate grew to {request.ObservedBytes:n0} bytes, exceeding this attempt's byte budget.";
                     job.FailureCategory = FailureCategory.SizeSaving;

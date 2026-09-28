@@ -17,11 +17,11 @@ public class FramePairingTests
     }
 
     [Fact]
-    public void A_count_reads_the_moving_picture_stream_without_decoding_it()
+    public void A_count_decodes_the_moving_picture_stream_instead_of_counting_packets()
     {
         Assert.Equal(
-            ["-v", "error", "-select_streams", "V:0", "-count_packets",
-             "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", "/media/a.mkv"],
+            ["-v", "error", "-select_streams", "V:0", "-count_frames",
+             "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", "/media/a.mkv"],
             FramePairing.CountArguments("/media/a.mkv"));
     }
 

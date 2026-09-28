@@ -220,6 +220,11 @@ public sealed class VerificationService(
                     ? "Full file"
                     : "Three 40-second samples (early, middle and late)";
 
+                var pairDecodedFrames = clip is null && reference.FrameRate is null
+                    && windows.Any(window => window.StartSeconds is not null)
+                    && FramePairing.Applies(
+                        await timestamps.CountDecodedFramesAsync(reference.Path, cancellationToken),
+                        await timestamps.CountDecodedFramesAsync(outputPath, cancellationToken));
                 var measurements = new List<QualityResult>(windows.Count);
                 for (var index = 0; index < windows.Count; index++)
                 {
@@ -250,8 +255,7 @@ public sealed class VerificationService(
                         // Equal frame counts mean frame k of the candidate is frame k of the
                         // source, whatever its timestamps say. A capped encode thins its
                         // reference by its own index rule and keeps the timestamp path.
-                        clip is null && reference.FrameRate is null
-                            && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
+                        pairDecodedFrames,
                         progress,
                         cancellationToken));
                 }
@@ -447,7 +451,8 @@ public sealed class VerificationService(
                 PairFramesByNumber: reference.FrameRate is null
                     && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
                 EncodedVideo: depth is { } bits && outputProbe.Width is { } width && outputProbe.Height is { } height
-                    ? new(width, height, bits) : null);
+                    ? new(width, height, bits) : null,
+                ReferenceVideoCodec: originalProbe.VideoCodec);
             if (shadow is not null)
                 report = report with { ShadowVmaf = await shadow.ObserveAsync(
                     reference.Path, outputPath, shadowContext, shadowSkip, cancellationToken) };
@@ -574,7 +579,8 @@ public sealed class VerificationService(
             ReferenceDecimation: reference.FrameRate,
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
             DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
-            PairFramesByNumber: pairFramesByNumber);
+            PairFramesByNumber: pairFramesByNumber,
+            ReferenceVideoCodec: originalProbe.VideoCodec);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

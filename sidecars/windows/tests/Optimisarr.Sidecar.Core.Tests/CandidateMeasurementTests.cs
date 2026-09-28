@@ -195,7 +195,7 @@ public sealed class CandidateMeasurementTests : IDisposable
         var transcoder = new FakeMeasuringTranscoder
         {
             WriteVmafLogs = true,
-            AnswerProbe = arguments => arguments.Contains("-count_packets")
+            AnswerProbe = arguments => arguments.Contains("-count_frames")
                 ? arguments[^1].Contains("candidate", StringComparison.Ordinal) ? candidateFrames : sourceFrames
                 : "24000/1001",
         };
