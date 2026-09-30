@@ -178,6 +178,13 @@ jobs:
             --root "$RUNNER_TEMP/optimisarr-subtitle-overlap-acceptance" \
             --regression subtitle-overlap --local-encoder libx265 --fixture-seconds 16
 
+      - name: Verify complete copied ALAC audio in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-alac-copy-acceptance" \
+            --regression alac-copy --local-encoder libx265 --fixture-seconds 16
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -193,6 +200,9 @@ jobs:
             ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/report/
             ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/server.log
             ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-alac-copy-acceptance/report/
+            ${{ runner.temp }}/optimisarr-alac-copy-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-alac-copy-acceptance/image.json
           if-no-files-found: ignore
           retention-days: 14
 

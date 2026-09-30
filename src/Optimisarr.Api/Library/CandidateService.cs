@@ -199,7 +199,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
             file.MaxAudioChannels,
             TrackLanguages.ParseTrackLanguages(file.AudioLanguages),
             TrackLanguages.ParseTrackLanguages(file.SubtitleLanguages),
-            file.HardLinkCount);
+            file.HardLinkCount) { AudioCodecSummary = file.AudioCodecs };
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }

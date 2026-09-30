@@ -319,6 +319,16 @@ public static class CandidateEvaluator
                     : "No removable tracks (all tracks match the kept languages or are unknown)");
             }
 
+            var removalPlanKnown =
+                (rules.KeepAudioLanguages.Count == 0 || media.AudioLanguages is not null)
+                && (rules.KeepSubtitleLanguages.Count == 0 || media.SubtitleLanguages is not null);
+            if (rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+                && removalPlanKnown && audioRemovals.Count + subtitleRemovals.Count == 0
+                && media.Container?.Contains("matroska", StringComparison.OrdinalIgnoreCase) == true
+                && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.RelativePath),
+                    media.AudioCodecSummary?.Split(',', StringSplitOptions.TrimEntries), []))
+                return CandidateDecision.Skipped(AudioContainerCompatibility.AlacRemuxNoChangeReason);
+
             var keyword = ContainerKeyword(rules.TargetContainer);
             var alreadyClean = media.Container is not null &&
                 media.Container.Contains(keyword, StringComparison.OrdinalIgnoreCase);
