@@ -21,6 +21,11 @@ adds QSV H.264/HEVC, software AV1 and installed Mac VideoToolbox evidence. It re
 failures on the deployed image: two VFR measurement-plan mismatches and an output-directory
 failure during a correctly triggered quality rejection retry. These are not passing validations.
 
+The [2026-09-26 frame-number pairing record](../engineering/hardware-validation/2026-09-26-vmaf-frame-number-pairing.md)
+shows VideoToolbox candidates that kept every source frame but drifted by a frame in stretches
+being scored at 93 instead of 16–39, offline and on live retries with the 0.2.16 Mac sidecar. It
+concerns how VMAF pairs frames, not what the hardware can do, so it changes no row below.
+
 | Platform | Encode | Hardware decode | HDR→SDR tone map | VMAF path | Live metrics | Last real-host validation | Evidence and known limits |
 |---|---|---|---|---|---|---|---|
 | CPU (`libx264`/`libx265`) | Validated in every final-image CI run | Not applicable | Software `zscale`/Hable implemented and unit-tested | Validated: software decode and CPU `libvmaf` | Validated: `/proc/stat` CPU usage | Every CI run | The [container smoke test](../../scripts/ci_container_smoke.sh) performs real transcodes, decode checks, and VMAF comparisons in the built image. It cannot validate a GPU. |

@@ -37,6 +37,21 @@ quitting the Mac app returns its held jobs. **Pause new jobs** lets held jobs fi
 when the worker/app restarts. A server-requested **Drain** also stops new claims while existing
 leases finish; use it before an update and resume the worker afterward.
 
+## Keep sidecars on the server's version
+
+Update each sidecar when you update the server. Part of quality verification runs on the worker,
+and a sidecar older than its server keeps measuring the old way: since 0.2.16, for example, only an
+updated sidecar compares frame by frame when an encode keeps every frame of the original.
+
+- An older sidecar shows **Update available** in its menu or tray, with a link to the matching
+  release, and its card under **Settings → Workers** says the same. Sidecars never update
+  themselves.
+- Drain the worker first, or update while it has no job, so no work is handed back.
+- On Windows, an MSI upgrade leaves the service stopped. Use **Start worker** in the tray (or
+  reboot) afterward. Pairing is kept.
+- On a Mac, quit the app, replace it in Applications with the new one, and open it again. Pairing is
+  kept in the Keychain.
+
 ## Choose where a library runs
 
 ### RAM storage and GPU processing
