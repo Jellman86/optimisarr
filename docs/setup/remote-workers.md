@@ -28,6 +28,10 @@ installation, upgrades, and packaging/signing status. Windows installs a backgro
 tray companion. The Mac runs from the menu bar. Both expose a compact current-work monitor,
 processing details, pause, preferences, and diagnostics.
 
+Windows MSI upgrades restart a paired worker using its retained pairing; fresh installs and
+unpaired upgrades wait for pairing. Drain before upgrading and resume from the server afterward.
+An upgrade starts a paired service even if it was stopped before the update.
+
 Closing either monitor keeps work running. Quitting the Windows tray leaves its service running;
 quitting the Mac app returns its held jobs. **Pause new jobs** lets held jobs finish and resets
 when the worker/app restarts. A server-requested **Drain** also stops new claims while existing
