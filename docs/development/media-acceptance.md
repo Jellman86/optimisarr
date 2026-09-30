@@ -351,3 +351,25 @@ python3 scripts/media_acceptance.py --regression subtitle-mux \
   --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
   --root /tmp/optimisarr-subtitle-regression-001
 ```
+
+### Fractional timestamp regression
+
+Use `--regression fractional-timing` to encode a freely generated 24000/1001 H.264 Matroska
+fixture to MP4. Its video starts 21 ms after a subtitle cue at zero, and the container stores
+millisecond timestamps. Rounding these timestamps to the encoder's default frame timebase
+previously caused QSV duplicate-DTS failures and NVENC duplicate presentation timestamps.
+The fixture has no audio so audio priming and padding cannot disguise the picture-timing result;
+the normal matrix continues to check decoded lossless audio hashes.
+
+The focused run checks complete verification, every decoded picture, timestamp cadence,
+independent v0 VMAF, replacement and rollback. Fleet mode repeats it under strict sidecar
+verification on each selected worker. Use `--fixture-variant fractional` to include it in the
+normal Matroska matrix too. Frame-rate caps and the constant-rate AV1 NVENC timestamp exception
+are separate paths and retain their existing behavior.
+
+```bash
+python3 scripts/media_acceptance.py --regression fractional-timing \
+  --native src/Optimisarr.Api/bin/Release/net10.0/Optimisarr.Api.dll \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe --fixture-seconds 16 \
+  --root /tmp/optimisarr-fractional-regression-001
+```

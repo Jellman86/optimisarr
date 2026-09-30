@@ -82,7 +82,8 @@ class Tools:
             mapping = ["-map", "0:v:0", "-map", "0:a?"]
             filters = ["-vf", "scale=640:-2,format=yuv420p"]
         else:
-            inputs = ["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=12:duration={seconds}",
+            rate = "24000/1001" if variant == "fractional" else "12"
+            inputs = ["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate={rate}:duration={seconds}",
                       "-f", "lavfi", "-i", f"sine=frequency=880:sample_rate=48000:duration={seconds}"]
             mapping = ["-map", "0:v", "-map", "1:a"]
             filters = []
@@ -92,8 +93,22 @@ class Tools:
                 filters = ["-output_ts_offset", "2.5"]
             elif variant == "ten-bit":
                 filters = ["-pix_fmt", "yuv420p10le"]
-        self.encode(inputs + mapping + filters + ["-t", str(seconds), "-c:v", "ffv1", "-level", "3",
-                    "-c:a", "flac", "-metadata:s:a:0", "language=eng", self.path(path)])
+            elif variant == "fractional":
+                # A half-frame lead rounded to milliseconds reproduces collisions when a
+                # nominally constant source is rounded again to the encoder's frame timebase.
+                # A cue at zero pins the container start without introducing cross-container
+                # audio priming/padding into this picture-timestamp regression.
+                cue = path.with_suffix(".srt")
+                cue.write_text("1\n00:00:00,000 --> 00:00:00,100\nTimestamp reference\n", encoding="utf-8")
+                inputs = inputs[:4] + ["-i", self.path(cue)]
+                mapping = ["-map", "0:v", "-map", "1:s"]
+                filters = ["-vf", "settb=1/1000,setpts=PTS+21", "-fps_mode", "passthrough",
+                           "-enc_time_base:v:0", "1/1000"]
+        codecs = (["-c:v", "libx264", "-crf", "3", "-preset", "fast", "-bf", "3", "-c:s", "srt",
+                   "-metadata:s:s:0", "language=eng"]
+                  if variant == "fractional" else ["-c:v", "ffv1", "-level", "3", "-c:a", "flac"])
+        self.encode(inputs + mapping + filters + ["-t", str(seconds), *codecs,
+                    "-metadata:s:a:0", "language=eng", self.path(path)])
         return {"path": str(path), "sha256": sha256(path), "variant": variant,
                 "seconds": seconds, "sourceSha256": sha256(source) if source else None,
                 "start": start, "probe": self.probe(path, True)}
