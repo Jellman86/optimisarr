@@ -1785,6 +1785,24 @@ public sealed class QueueDispatcher(
             sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null);
 
+        if (isVideoJob && !spec.VideoOnly && TranscodeSpecResolver.IsMp4Container(Path.GetExtension(spec.OutputPath))
+            && freshSourceProbe is { SubtitleTrackCount: > 0 })
+        {
+            var keptSubtitleIndexes = Enumerable.Range(0, freshSourceProbe.SubtitleTrackCount)
+                .Where(index => spec.RemoveSubtitleStreamIndexes?.Contains(index) != true)
+                .Select(index => index < freshSourceProbe.SubtitleStreamIndexes.Count
+                    ? freshSourceProbe.SubtitleStreamIndexes[index] : null)
+                .ToArray();
+            if (keptSubtitleIndexes.Any(index => index is null))
+                throw new InvalidOperationException("Fresh source subtitle stream indexes are required for safe MP4 planning.");
+            var timeline = scope.ServiceProvider.GetRequiredService<SubtitleTimelineProbe>();
+            if (await timeline.RequiresMatroskaAsync(media.Path, keptSubtitleIndexes.Select(index => index!.Value).ToArray(), cancellationToken))
+            {
+                spec = spec with { OutputPath = Path.ChangeExtension(spec.OutputPath, "mkv") };
+                logger.LogInformation("Job {JobId} uses Matroska to preserve kept subtitle cue timelines that MP4 cannot safely represent", job.Id);
+            }
+        }
+
         // The inventory made the job eligible, but the mandatory fresh probe is authoritative.
         // If its current track set has nothing to remove, cancel cleanly instead of producing a
         // byte-for-byte no-op that can only fail the size-reduction gate and retry forever.

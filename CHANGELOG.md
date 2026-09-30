@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Video jobs targeting MP4 use Matroska when kept subtitle tracks contain simultaneous, overlapping or unproven cue timing. Cue text, timing and language tags remain preserved; removing incompatible tracks still allows MP4. This prevents strict timed-text conversion failures without dropping cues or relaxing verification.
+
 - Constant-rate video encodes preserve the source timestamp timebase alongside passthrough. Fractional-rate Matroska with a small video lead previously produced duplicate presentation timestamps on NVIDIA workers or stopped QSV encodes with duplicate DTS. Frame-rate caps and the existing constant-rate AV1 NVIDIA exception retain their current behavior.
 - Windows MSI upgrades restart an already-paired worker automatically. Fresh installations and unpaired upgrades still wait for pairing. Installer CI verifies repeated upgrades, preserved DPAPI pairing and authenticated check-ins as well as native UI and uninstall behavior.
 - Worker claims scan past unsuitable jobs instead of stopping at the first 25. Higher priorities run first, equal-priority libraries take turns, and an idle worker with queued work gets a throttled explanation in server logs.

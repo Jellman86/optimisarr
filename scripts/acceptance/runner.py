@@ -163,7 +163,16 @@ class Harness:
         self.tools.subtitle_fixture(fixture, source)
         return self.video(name, fixture, encoder, worker, check_subtitles=True)
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv"):
+    def subtitle_overlap(self, name, source, encoder="libx265", worker=None, filtered=False):
+        fixture = self.root / "fixtures" / (name + ".mkv")
+        self.tools.overlapping_subtitle_fixture(fixture, source)
+        return self.video(name, fixture, encoder, worker, container="mp4",
+            rule_overrides={"keepSubtitleLanguages": "fra"} if filtered else None,
+            subtitle_expectations=(["mov_text"], ["fra"], [1]) if filtered
+                else (["subrip"] * 3, ["eng", "fra", "jpn"], [0, 1, 2]),
+            expected_container="mp4" if filtered else "mkv")
+
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -172,7 +181,7 @@ class Harness:
                                    expected_ineligible="limited to 8-bit sources")
         overrides = {"audioLoudnessGateEnabled": True, "maxLoudnessDriftLufs": 1,
                      "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0} if audio_gates else None
-        overrides = {**(overrides or {}), "targetContainer": container}
+        overrides = {**(overrides or {}), **(rule_overrides or {}), "targetContainer": container}
         case = self.create_job(name, fixture, encoder=encoder, worker=worker, strategy=strategy, gates=gates,
                                overrides=overrides)
         directory = self.report.root / name
@@ -214,27 +223,31 @@ class Harness:
             return {"jobId": case["jobId"], "expectedRejection": True, "originalUnchanged": True,
                     "decodeRetry": verification.get("context", {}).get("decodeRetry")}
         candidate = self.output(case)
+        if expected_container:
+            require(candidate.suffix.lower() == "." + expected_container, "Unexpected planned output container")
         require(candidate.stat().st_size < case["source"].stat().st_size, "No size saving")
         expected_codec = CODECS.get(encoder, encoder.split("_")[0])
         streams = self.tools.probe(candidate)["streams"]
         require(next(s["codec_name"] for s in streams if s["codec_type"] == "video") == expected_codec,
                 "Delivered codec differs from requested codec")
         source_bytes, candidate_bytes = case["source"].stat().st_size, candidate.stat().st_size
-        scores = self.tools.measure(case["source"], candidate, directory)
+        scores = self.tools.measure(case["source"], candidate, directory,
+            kept_subtitle_indexes=subtitle_expectations[2] if subtitle_expectations else None)
         require(not quality_failures(scores, gates), f"Independent quality gate failed: {scores}")
         compare_report(verification, scores)
         if audio_gates:
             before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
             require(abs(before["lufs"] - after["lufs"]) <= 1, "Worker output loudness drift exceeds 1 LUFS")
             require(after["truePeak"] <= 0, "Worker output introduced clipping")
-        if check_subtitles:
+        if check_subtitles or subtitle_expectations:
+            codecs, languages, source_indexes = subtitle_expectations or (["ass", "ass"], ["eng", "fra"], [0, 1])
             subtitles = [stream for stream in streams if stream["codec_type"] == "subtitle"]
-            require([stream["codec_name"] for stream in subtitles] == ["ass", "ass"],
-                    "MP4 timed text was not converted into compatible Matroska subtitles")
-            require([stream.get("tags", {}).get("language") for stream in subtitles] == ["eng", "fra"],
+            require([stream["codec_name"] for stream in subtitles] == codecs,
+                    "Subtitle output codecs differ from the preserving plan")
+            require([stream.get("tags", {}).get("language") for stream in subtitles] == languages,
                     "Subtitle language or order changed")
-            for index in range(2):
-                before = self.tools.subtitle_cues(case["source"], index)
+            for index, source_index in enumerate(source_indexes):
+                before = self.tools.subtitle_cues(case["source"], source_index)
                 after = self.tools.subtitle_cues(candidate, index)
                 require(bool(before) and before == after, f"Subtitle {index} text or timing changed")
                 (directory / f"subtitle-{index}.srt").write_text(after, encoding="utf-8")
@@ -587,16 +600,22 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
-            if regression in ("subtitle-mux", "fractional-timing"):
+            if regression in ("subtitle-mux", "fractional-timing", "subtitle-overlap"):
                 def regression_case(name, encoder, worker=None):
                     if regression == "subtitle-mux":
                         return self.subtitle_mux(name, primary, encoder, worker)
+                    if regression == "subtitle-overlap":
+                        return self.subtitle_overlap(name, primary, encoder, worker)
                     require("fractional" in fixtures, "Fractional timestamp fixture could not be generated")
                     return self.video(name, fixtures["fractional"], encoder, worker, container="mp4")
-                suffix = "mov-text-to-mkv" if regression == "subtitle-mux" else "fractional-to-mp4"
+                suffix = {"subtitle-mux": "mov-text-to-mkv", "fractional-timing": "fractional-to-mp4",
+                          "subtitle-overlap": "overlapping-cues-to-mkv"}[regression]
                 for encoder in encoders:
                     name = f"local-{encoder}-{suffix}"
                     self.report.case(name, lambda n=name, e=encoder: regression_case(n, e))
+                    if regression == "subtitle-overlap":
+                        filtered_name = f"local-{encoder}-filtered-cues-to-mp4"
+                        self.report.case(filtered_name, lambda n=filtered_name, e=encoder: self.subtitle_overlap(n, primary, e, filtered=True))
                 if tier == "fleet":
                     for name in missing_workers(self.workers, expected_workers):
                         self.report.case("required-worker-" + name, lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
@@ -607,6 +626,9 @@ class Harness:
                         for encoder in worker["videoEncoders"]:
                             name = f"worker-{worker['id']}-{encoder}-{suffix}"
                             self.report.case(name, lambda n=name, e=encoder, w=worker: regression_case(n, e, w))
+                            if regression == "subtitle-overlap":
+                                filtered_name = f"worker-{worker['id']}-{encoder}-filtered-cues-to-mp4"
+                                self.report.case(filtered_name, lambda n=filtered_name, e=encoder, w=worker: self.subtitle_overlap(n, primary, e, w, filtered=True))
                 return self.report.exit_code
             for encoder in encoders:
                 if encoder not in available:
