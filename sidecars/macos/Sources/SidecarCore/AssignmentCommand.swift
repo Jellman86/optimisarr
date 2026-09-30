@@ -73,7 +73,7 @@ public struct AssignmentCommand: Sendable, Equatable {
                 index += 1
                 continue
             }
-            guard valued.contains(token) else {
+            guard valued.contains(token) || isIndexedSubtitleCodec(token) else {
                 throw AssignmentCommandError.unknownOption(token)
             }
             guard index + 1 < body.count else {
@@ -110,6 +110,13 @@ public struct AssignmentCommand: Sendable, Equatable {
             result[index] = input.path
         }
         return result
+    }
+
+    private static func isIndexedSubtitleCodec(_ token: String) -> Bool {
+        guard token.hasPrefix("-c:s:") else { return false }
+        let suffix = String(token.dropFirst(5))
+        guard let index = Int32(suffix), index >= 0 else { return false }
+        return suffix == String(index)
     }
 
     private static func checkValue(_ value: String) throws {

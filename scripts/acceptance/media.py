@@ -98,6 +98,24 @@ class Tools:
                 "seconds": seconds, "sourceSha256": sha256(source) if source else None,
                 "start": start, "probe": self.probe(path, True)}
 
+    def subtitle_fixture(self, path, source):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        first, second = path.with_suffix(".eng.srt"), path.with_suffix(".fra.srt")
+        first.write_text("1\n00:00:01,000 --> 00:00:02,500\nHello — subtitle regression\n\n2\n00:00:04,000 --> 00:00:05,500\nSecond cue\n", encoding="utf-8")
+        second.write_text("1\n00:00:01,250 --> 00:00:03,000\nBonjour — deuxième piste\n", encoding="utf-8")
+        self.encode(["-i", self.path(source), "-i", self.path(first), "-i", self.path(second),
+            "-map", "0:v:0", "-map", "0:a:0", "-map", "1:s:0", "-map", "2:s:0",
+            "-c:v", "libx264", "-crf", "0", "-c:a", "alac", "-c:s", "mov_text",
+            "-metadata:s:a:0", "language=eng", "-metadata:s:s:0", "language=eng",
+            "-metadata:s:s:1", "language=fra", self.path(path)])
+        return {"sha256": sha256(path), "probe": self.probe(path)}
+
+    def subtitle_cues(self, path, index):
+        text = self.run(self.ffmpeg, ["-v", "error", "-i", self.path(path), "-map", f"0:s:{index}",
+            "-c:s", "srt", "-f", "srt", "-"])
+        return text.strip().replace("\r\n", "\n")
+
     def frame_times(self, path):
         result = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "v:0",
             "-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))

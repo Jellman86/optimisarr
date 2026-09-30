@@ -22,6 +22,22 @@ public sealed class AssignmentCommandTests
         AssignmentCommand.Refuse(arguments, extension);
 
     [Fact]
+    public void Indexed_subtitle_codec_overrides_are_accepted()
+    {
+        Assert.Null(Refuse(["-i", "{{input}}", "-c:s:0", "ass", "-c:s:12", "copy", "{{output}}.mkv"]));
+    }
+
+    [Theory]
+    [InlineData("-c:s:-1")]
+    [InlineData("-c:s:0/../../tmp")]
+    [InlineData("-c:s:0?foo")]
+    [InlineData("-c:s:9999999999999999")]
+    public void Malformed_subtitle_stream_specifiers_are_refused(string token)
+    {
+        Assert.NotNull(Refuse(["-i", "{{input}}", token, "ass", "{{output}}.mkv"]));
+    }
+
+    [Fact]
     public void The_command_the_server_actually_sends_is_accepted()
     {
         Assert.Null(Refuse(Ordinary));

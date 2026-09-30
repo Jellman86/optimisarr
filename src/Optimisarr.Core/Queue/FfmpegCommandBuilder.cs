@@ -53,6 +53,9 @@ public sealed record TranscodeSpec(
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
     FrameRateDecimation? FrameRate = null)
 {
+    /// <summary>Source subtitle codecs in subtitle-relative stream order, from a fresh probe.</summary>
+    public IReadOnlyList<string?>? SourceSubtitleCodecs { get; init; }
+
     /// <summary>Probed precision to preserve when uploading software-decoded frames.</summary>
     public int? SourceBitDepth { get; init; }
 
@@ -312,6 +315,7 @@ public static class FfmpegCommandBuilder
             {
                 AppendAudioCodec(args, spec);
             }
+            AppendMatroskaSubtitleOverrides(args, spec);
             return;
         }
 
@@ -438,7 +442,7 @@ public static class FfmpegCommandBuilder
 
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV
         // cannot mux SubRip directly, so their text subtitles must use the native mov_text
-        // codec; containers such as Matroska can retain the source subtitle codec unchanged.
+        // codec. Matroska retains compatible codecs, converting only MP4 timed text below.
         if (spec.VideoOnly)
         {
             return;
@@ -455,6 +459,28 @@ public static class FfmpegCommandBuilder
         }
         args.Add("-c:s");
         args.Add(IsMp4Family(spec.OutputPath) ? "mov_text" : "copy");
+        AppendMatroskaSubtitleOverrides(args, spec);
+    }
+
+    private static void AppendMatroskaSubtitleOverrides(List<string> args, TranscodeSpec spec)
+    {
+        if (spec.VideoOnly || !string.Equals(Path.GetExtension(spec.OutputPath), ".mkv", StringComparison.OrdinalIgnoreCase)
+            || spec.SourceSubtitleCodecs is null) return;
+
+        var outputIndex = 0;
+        for (var sourceIndex = 0; sourceIndex < spec.SourceSubtitleCodecs.Count; sourceIndex++)
+        {
+            if (spec.RemoveSubtitleStreamIndexes?.Contains(sourceIndex) == true) continue;
+            if (string.Equals(spec.SourceSubtitleCodecs[sourceIndex], "mov_text", StringComparison.OrdinalIgnoreCase))
+            {
+                // Matroska cannot store MP4 timed text. ASS retains decoded text and styling;
+                // compatible text, bitmap and unknown tracks stay copied. FFmpeg addresses the
+                // output subtitle ordinal, which shifts when an earlier source track is removed.
+                args.Add($"-c:s:{outputIndex}");
+                args.Add("ass");
+            }
+            outputIndex++;
+        }
     }
 
     private static void AppendAudioCodec(List<string> args, TranscodeSpec spec)

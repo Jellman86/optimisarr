@@ -20,8 +20,11 @@ public sealed record ProtocolNegotiation(bool Compatible, int AgreedVersion, str
 public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
-    // Protocol 3 accepts the canonical CUDA/QSV/VAAPI GPU-surface command grammar.
-    public const int Current = 3;
+    // Protocol 4 adds indexed subtitle codec overrides for safe container conversion.
+    public const int Current = 4;
+
+    public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments) =>
+        arguments.Any(argument => argument.StartsWith("-c:s:", StringComparison.Ordinal)) ? 4 : 1;
 
     /// <summary>The oldest contract version this build still accepts.</summary>
     public const int MinimumSupported = 1;

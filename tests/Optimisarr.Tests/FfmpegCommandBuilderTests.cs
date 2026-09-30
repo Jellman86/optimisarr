@@ -909,6 +909,32 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Theory]
+    [InlineData("hevc")]
+    [InlineData(null)]
+    public void Matroska_converts_only_kept_mov_text_tracks_with_output_relative_indexes(string? videoCodec)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            VideoCodec = videoCodec, OutputPath = "/work/film.mkv",
+            SourceSubtitleCodecs = ["mov_text", "ass", "mov_text", "hdmv_pgs_subtitle", null],
+            RemoveSubtitleStreamIndexes = [0],
+        });
+        Assert.Equal("ass", args[IndexOf(args, "-c:s:1") + 1]);
+        Assert.DoesNotContain("-c:s:0", args);
+        Assert.DoesNotContain("-c:s:2", args);
+        Assert.DoesNotContain("-c:s:3", args);
+        Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
+    }
+
+    [Fact]
+    public void Video_only_candidates_do_not_include_subtitle_conversion()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        { VideoOnly = true, SourceSubtitleCodecs = ["mov_text"] });
+        Assert.DoesNotContain("-c:s:0", args);
+    }
+
+    [Theory]
     [InlineData(".mp4")]
     [InlineData(".m4v")]
     [InlineData(".mov")]

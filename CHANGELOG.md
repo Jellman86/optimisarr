@@ -5,6 +5,7 @@
 ### Fixed
 
 - Worker claims scan past unsuitable jobs instead of stopping at the first 25. Higher priorities run first, equal-priority libraries take turns, and an idle worker with queued work gets a throttled explanation in server logs.
+- MP4 timed-text subtitles are converted to ASS when a video encode or remux targets Matroska, including automatic container fallbacks. Other subtitle tracks stay copied, with stream indexes adjusted correctly after language filtering. Update sidecars too: these jobs require protocol 4, while older clients can still receive ordinary work.
 
 - Windows installer builds recover the same pinned FFmpeg tools and notices from the checksum-verified 0.2.17 installer when upstream removes its expiring autobuild release.
 

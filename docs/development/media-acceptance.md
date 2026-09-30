@@ -335,3 +335,19 @@ worker window summaries and planned commands, or the observed and allowed size f
 Legacy worker quality reports do not identify which pairing command they selected; diagnostics label
 that uncertainty explicitly. These summaries supplement the verification report rather than changing
 its verdict.
+
+### Subtitle container regression
+
+Use `--regression subtitle-mux` for a focused matrix of MP4 timed-text subtitles converted to
+Matroska ASS. The harness generates two Unicode subtitle tracks with language tags and lossless
+audio, verifies the complete output, independently compares subtitle text and timing, and exercises
+replacement and rollback. Fleet mode repeats this on each selected worker under strict sidecar
+verification. Per-track subtitle codec options require protocol 4; update sidecars alongside the
+server. Earlier protocols still receive ordinary jobs.
+
+```bash
+python3 scripts/media_acceptance.py --regression subtitle-mux \
+  --native src/Optimisarr.Api/bin/Release/net10.0/Optimisarr.Api.dll \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
+  --root /tmp/optimisarr-subtitle-regression-001
+```
