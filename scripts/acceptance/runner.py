@@ -118,7 +118,8 @@ class Harness:
             require(len(candidates) == 1 and not candidates[0]["eligible"]
                     and expected_ineligible in candidates[0]["reason"], f"Unsupported media was not safely excluded: {candidates}")
             require(sha256(source) == sha256(fixture), "Eligibility refusal changed the source")
-            return {"eligibility": candidates[0], "sourceUnchanged": True}
+            return {"libraryId": library_id, "mediaId": files[0]["id"],
+                    "eligibility": candidates[0], "sourceUnchanged": True}
         require(len(candidates) == 1 and candidates[0]["eligible"], f"Fixture ineligible: {candidates}")
         self.api.post(f"/api/libraries/{library_id}/enqueue")
         jobs = self.api.request(f"/api/jobs?libraryId={library_id}")
@@ -172,7 +173,24 @@ class Harness:
                 else (["subrip"] * 3, ["eng", "fra", "jpn"], [0, 1, 2]),
             expected_container="mp4" if filtered else "mkv")
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None):
+    def alac_copy(self, name, source, encoder="libx265", worker=None, mode="matroska"):
+        fixture = self.root / "fixtures" / (name + (".mp4" if mode == "native-mp4" else ".mkv"))
+        self.tools.alac_fixture(fixture, source, mixed=mode == "filtered")
+        if mode == "remux-noop":
+            self.select_worker(worker)
+            case = self.create_job(name, fixture, encoder=encoder, worker=worker,
+                overrides={"ruleProfile": "RemuxCleanup", "targetVideoCodec": None, "targetContainer": "mp4"},
+                expected_ineligible="ALAC")
+            self.api.post(f"/api/libraries/{case['libraryId']}/enqueue")
+            jobs = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")
+            require(not jobs, "Unchanged ALAC remux was queued despite its ineligible reason")
+            return {**case, "excludedBeforeQueueing": True}
+        return self.video(name, fixture, encoder, worker, container="mp4",
+            rule_overrides={"keepAudioLanguages": "eng"} if mode == "filtered" else None,
+            audio_expectations=(["flac"], ["eng"], [0]) if mode == "filtered" else (["alac"], ["eng"], [0]),
+            expected_container="mkv" if mode == "matroska" else "mp4")
+
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -232,13 +250,20 @@ class Harness:
                 "Delivered codec differs from requested codec")
         source_bytes, candidate_bytes = case["source"].stat().st_size, candidate.stat().st_size
         scores = self.tools.measure(case["source"], candidate, directory,
-            kept_subtitle_indexes=subtitle_expectations[2] if subtitle_expectations else None)
+            kept_subtitle_indexes=subtitle_expectations[2] if subtitle_expectations else None,
+            kept_audio_indexes=audio_expectations[2] if audio_expectations else None)
         require(not quality_failures(scores, gates), f"Independent quality gate failed: {scores}")
         compare_report(verification, scores)
         if audio_gates:
             before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
             require(abs(before["lufs"] - after["lufs"]) <= 1, "Worker output loudness drift exceeds 1 LUFS")
             require(after["truePeak"] <= 0, "Worker output introduced clipping")
+        if audio_expectations:
+            codecs, languages, _ = audio_expectations
+            audio = [stream for stream in streams if stream["codec_type"] == "audio"]
+            require([stream["codec_name"] for stream in audio] == codecs, "Copied audio codec changed")
+            require([stream.get("tags", {}).get("language") for stream in audio] == languages,
+                    "Copied audio language or order changed")
         if check_subtitles or subtitle_expectations:
             codecs, languages, source_indexes = subtitle_expectations or (["ass", "ass"], ["eng", "fra"], [0, 1])
             subtitles = [stream for stream in streams if stream["codec_type"] == "subtitle"]
@@ -600,22 +625,28 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
-            if regression in ("subtitle-mux", "fractional-timing", "subtitle-overlap"):
+            if regression in ("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy"):
                 def regression_case(name, encoder, worker=None):
                     if regression == "subtitle-mux":
                         return self.subtitle_mux(name, primary, encoder, worker)
                     if regression == "subtitle-overlap":
                         return self.subtitle_overlap(name, primary, encoder, worker)
+                    if regression == "alac-copy":
+                        return self.alac_copy(name, primary, encoder, worker)
                     require("fractional" in fixtures, "Fractional timestamp fixture could not be generated")
                     return self.video(name, fixtures["fractional"], encoder, worker, container="mp4")
                 suffix = {"subtitle-mux": "mov-text-to-mkv", "fractional-timing": "fractional-to-mp4",
-                          "subtitle-overlap": "overlapping-cues-to-mkv"}[regression]
+                          "subtitle-overlap": "overlapping-cues-to-mkv", "alac-copy": "alac-to-mkv"}[regression]
                 for encoder in encoders:
                     name = f"local-{encoder}-{suffix}"
                     self.report.case(name, lambda n=name, e=encoder: regression_case(n, e))
                     if regression == "subtitle-overlap":
                         filtered_name = f"local-{encoder}-filtered-cues-to-mp4"
                         self.report.case(filtered_name, lambda n=filtered_name, e=encoder: self.subtitle_overlap(n, primary, e, filtered=True))
+                    if regression == "alac-copy":
+                        for mode in ("native-mp4", "filtered", "remux-noop"):
+                            extra_name = f"local-{encoder}-{mode}-alac-copy"
+                            self.report.case(extra_name, lambda n=extra_name, e=encoder, m=mode: self.alac_copy(n, primary, e, mode=m))
                 if tier == "fleet":
                     for name in missing_workers(self.workers, expected_workers):
                         self.report.case("required-worker-" + name, lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
@@ -629,6 +660,10 @@ class Harness:
                             if regression == "subtitle-overlap":
                                 filtered_name = f"worker-{worker['id']}-{encoder}-filtered-cues-to-mp4"
                                 self.report.case(filtered_name, lambda n=filtered_name, e=encoder, w=worker: self.subtitle_overlap(n, primary, e, w, filtered=True))
+                            if regression == "alac-copy":
+                                for mode in ("native-mp4", "filtered", "remux-noop"):
+                                    extra_name = f"worker-{worker['id']}-{encoder}-{mode}-alac-copy"
+                                    self.report.case(extra_name, lambda n=extra_name, e=encoder, w=worker, m=mode: self.alac_copy(n, primary, e, w, mode=m))
                 return self.report.exit_code
             for encoder in encoders:
                 if encoder not in available:

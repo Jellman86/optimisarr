@@ -398,3 +398,29 @@ collecting cue text. It stops when an incompatible kept timeline is proved. Miss
 selects Matroska conservatively; a failed probe stops planning. Tracks removed by the
 library's language rules do not force a fallback. This uses existing sidecar protocol 4
 commands and leaves production verification gates unchanged.
+
+### Copied ALAC tail regression
+
+Use `--regression alac-copy` to check three generated-media output paths: Matroska ALAC must stay
+in Matroska when audio is copied; ALAC encoded directly into MP4 must remain eligible for MP4
+copy; and removing the ALAC track from a mixed FLAC/ALAC Matroska source must allow MP4.
+A fourth case excludes an unchanged fallback remux before queueing, with its reason and original intact.
+Each output case verifies the planned container, kept codecs/languages, complete verification,
+independent picture quality/cadence, exact decoded PCM hashes, size savings, replacement and
+rollback. Decoded-audio evidence is saved beside the quality report. Edit lists remain enabled.
+
+```bash
+python3 scripts/media_acceptance.py --regression alac-copy \
+  --native src/Optimisarr.Api/bin/Release/net10.0/Optimisarr.Api.dll \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
+  --local-encoder libx265 --fixture-seconds 16 \
+  --root /tmp/optimisarr-alac-copy-001
+```
+
+Fleet arguments exercise the same cases with strict worker verification. Final-container CI
+runs all four. The fixture has 768,000 audio samples at 48 kHz over 16 seconds, with a partial
+final ALAC packet. Normal copying from Matroska into MP4 reproduced a 2,048-sample loss during
+playback in the tested toolchains; these are present when edit lists are ignored, but globally
+ignoring edit lists would endanger other streams' valid priming and offsets. Container fallback
+preserves the copied samples instead. This is a planning safeguard for the evidenced Matroska
+copy path, not a new general PCM-equality production gate or a certification of every ALAC container.

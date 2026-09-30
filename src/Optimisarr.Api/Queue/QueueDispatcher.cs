@@ -1657,13 +1657,16 @@ public sealed class QueueDispatcher(
         var needsSubtitleProbe = isVideoJob
             && ((media.SubtitleTrackCount ?? 0) > 0
                 || TranscodeSpecResolver.IsMp4Container(Path.GetExtension(media.Path)));
+        var needsAudioCopyProbe = isVideoJob && rules.VideoAudioCodec is null
+            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            && (media.AudioCodecs ?? "").Split(',').Any(codec => codec.Trim().Equals("alac", StringComparison.OrdinalIgnoreCase));
         var sourceAudioLanguages = TrackLanguages.ParseTrackLanguages(media.AudioLanguages);
         var needsLanguageProbe = isVideoJob && rules.KeepAudioLanguages.Count > 0;
         var sourceSubtitleLanguages = TrackLanguages.ParseTrackLanguages(media.SubtitleLanguages);
         var needsSubtitleLanguageProbe = isVideoJob && rules.KeepSubtitleLanguages.Count > 0;
         var sourceHasImageSubtitles = false;
         MediaProbeResult? freshSourceProbe = null;
-        if (needsSubtitleProbe || needsLanguageProbe || needsSubtitleLanguageProbe)
+        if (needsSubtitleProbe || needsLanguageProbe || needsSubtitleLanguageProbe || needsAudioCopyProbe)
         {
             var probe = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
             freshSourceProbe = await probe.ProbeAsync(media.Path, cancellationToken);
@@ -1783,7 +1786,18 @@ public sealed class QueueDispatcher(
             sourceHeight: media.Height,
             detectedCrop: detectedCrop,
             sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
-            sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null);
+            sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
+            sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null);
+
+        if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.Path),
+                freshSourceProbe?.AudioCodecs, spec.RemoveAudioStreamIndexes ?? []))
+        {
+            if (!isDisposable && AudioContainerCompatibility.CopiedAlacFallbackHasNoWork(spec, freshSourceProbe?.AudioCodecs))
+                throw new JobNoLongerEligibleException(
+                    AudioContainerCompatibility.AlacRemuxNoChangeReason);
+            logger.LogInformation("Job {JobId} uses Matroska to preserve the complete copied ALAC audio from its source container", job.Id);
+        }
 
         if (isVideoJob && !spec.VideoOnly && TranscodeSpecResolver.IsMp4Container(Path.GetExtension(spec.OutputPath))
             && freshSourceProbe is { SubtitleTrackCount: > 0 })

@@ -41,7 +41,8 @@ public static class TranscodeSpecResolver
         // The probed average frame rate, needed only to plan a frame-rate cap. Null when unknown,
         // in which case the cap is not applied: guessing a rate would decimate the wrong frames.
         double? sourceFrameRate = null,
-        IReadOnlyList<string?>? sourceSubtitleCodecs = null)
+        IReadOnlyList<string?>? sourceSubtitleCodecs = null,
+        IReadOnlyList<string>? sourceAudioCodecs = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -82,9 +83,15 @@ public static class TranscodeSpecResolver
         // MP4 can only carry text subtitles (mov_text) and has no tag for some Blu-ray audio formats
         // (TrueHD, LPCM). If the source has image-based subtitles (PGS/VobSub), or audio MP4 can't mux
         // that is being copied rather than re-encoded to a compatible codec, fall back to MKV so the
-        // stream survives instead of aborting the encode. Any other target container already holds them.
+        // stream survives instead of aborting the encode. Copied Matroska ALAC also stays in MKV
+        // because an MP4 edit list can hide its last packet during normal playback.
+        var removedAudio = sourceAudioLanguages is null
+            ? Array.Empty<int>()
+            : AudioTrackSelection.SelectRemovals(sourceAudioLanguages, rules.KeepAudioLanguages);
         var copyingAudio = rules.VideoAudioCodec is null;
-        var audioForcesMkv = sourceHasMp4IncompatibleAudio && copyingAudio;
+        var copiedAlacNeedsMatroska = AudioContainerCompatibility.CopiedAlacNeedsMatroska(
+            Path.GetExtension(inputPath), sourceAudioCodecs, removedAudio);
+        var audioForcesMkv = copyingAudio && (sourceHasMp4IncompatibleAudio || copiedAlacNeedsMatroska);
         // A null target container means "keep the source container" (the track-cleanup
         // promise). Every kept stream already lives in that container, so the MP4
         // image-subtitle / incompatible-audio fallback does not apply.
@@ -106,9 +113,6 @@ public static class TranscodeSpecResolver
             ? AudioTarget.Resolve(videoAudioCodec).Encoder
             : null;
 
-        var removedAudio = sourceAudioLanguages is null
-            ? Array.Empty<int>()
-            : AudioTrackSelection.SelectRemovals(sourceAudioLanguages, rules.KeepAudioLanguages);
         var removedSubtitles = sourceSubtitleLanguages is null
             ? Array.Empty<int>()
             : SubtitleTrackSelection.SelectRemovals(sourceSubtitleLanguages, rules.KeepSubtitleLanguages);

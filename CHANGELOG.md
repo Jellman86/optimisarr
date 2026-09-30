@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- MP4 video jobs keep Matroska when copying a kept ALAC track from Matroska. This preserves the final audio samples that normal MP4 playback could omit after a successful copy. Original MP4 ALAC, re-encoded audio and removed ALAC tracks retain their selected output path. A remux with no remaining change cancels before encoding with its reason. Verification and playback edit-list handling remain unchanged.
+
 - Video jobs targeting MP4 use Matroska when kept subtitle tracks contain simultaneous, overlapping or unproven cue timing. Cue text, timing and language tags remain preserved; removing incompatible tracks still allows MP4. This prevents strict timed-text conversion failures without dropping cues or relaxing verification.
 
 - Constant-rate video encodes preserve the source timestamp timebase alongside passthrough. Fractional-rate Matroska with a small video lead previously produced duplicate presentation timestamps on NVIDIA workers or stopped QSV encodes with duplicate DTS. Frame-rate caps and the existing constant-rate AV1 NVIDIA exception retain their current behavior.

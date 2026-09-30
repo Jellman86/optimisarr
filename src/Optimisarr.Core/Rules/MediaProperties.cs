@@ -36,4 +36,8 @@ public sealed record MediaProperties(
     // How many names point at this file's inode. One means only the library's own entry; more
     // means another location shares the exact bytes and would see any replacement. Null when it
     // could not be read, including every file probed before the count was captured.
-    int? HardLinkCount = null);
+    int? HardLinkCount = null)
+{
+    /// <summary>All inventory audio codec names; this summary does not prove per-track identity.</summary>
+    public string? AudioCodecSummary { get; init; }
+}

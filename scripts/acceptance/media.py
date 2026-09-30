@@ -113,6 +113,18 @@ class Tools:
                 "seconds": seconds, "sourceSha256": sha256(source) if source else None,
                 "start": start, "probe": self.probe(path, True)}
 
+    def alac_fixture(self, path, source, *, mixed=False):
+        path = Path(path)
+        maps = ["-map", "0:v:0", "-map", "0:a:0"]
+        audio = ["-c:a:0", "alac", "-metadata:s:a:0", "language=eng"]
+        if mixed:
+            maps += ["-map", "0:a:0"]
+            audio = ["-c:a:0", "flac", "-c:a:1", "alac",
+                     "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=fra"]
+        self.encode(["-i", self.path(source), *maps, "-c:v", "libx264", "-crf", "3",
+                     "-preset", "fast", *audio, self.path(path)])
+        return path
+
     def subtitle_fixture(self, path, source):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,7 +168,7 @@ class Tools:
         require(all(b > a for a, b in zip(times, times[1:])), "Non-increasing picture timestamps")
         return [x - times[0] for x in times]
 
-    def measure(self, reference, candidate, evidence_dir, *, kept_subtitle_indexes=None):
+    def measure(self, reference, candidate, evidence_dir, *, kept_subtitle_indexes=None, kept_audio_indexes=None):
         evidence_dir = Path(evidence_dir)
         evidence_dir.mkdir(parents=True, exist_ok=True)
         ref, out = self.probe(reference, True), self.probe(candidate, True)
@@ -178,6 +190,8 @@ class Tools:
             before = [x for x in ref["streams"] if x["codec_type"] == kind]
             if kind == "subtitle" and kept_subtitle_indexes is not None:
                 before = [before[index] for index in kept_subtitle_indexes]
+            if kind == "audio" and kept_audio_indexes is not None:
+                before = [before[index] for index in kept_audio_indexes]
             after = [x for x in out["streams"] if x["codec_type"] == kind]
             require(len(before) == len(after), f"Lost {kind} streams")
             for a, b in zip(before, after):
@@ -187,10 +201,14 @@ class Tools:
                         f"Changed {kind} language")
         # Generated fixtures copy lossless audio. Decoded PCM hashes catch changed/lost samples.
         if any(x["codec_type"] == "audio" for x in ref["streams"]):
-            def audio_hash(path):
-                return self.run(self.ffmpeg, ["-v", "error", "-i", self.path(path), "-map", "0:a",
+            def audio_hash(path, indexes=None):
+                maps = ["-map", "0:a"] if indexes is None else [item for index in indexes for item in ("-map", f"0:a:{index}")]
+                return self.run(self.ffmpeg, ["-v", "error", "-i", self.path(path), *maps,
                     "-c:a", "pcm_s32le", "-f", "hash", "-hash", "sha256", "-"]).strip()
-            require(audio_hash(reference) == audio_hash(candidate), "Decoded audio samples changed")
+            before_hash, after_hash = audio_hash(reference, kept_audio_indexes), audio_hash(candidate)
+            save(evidence_dir / "decoded-audio.json", {"reference": before_hash, "candidate": after_hash,
+                 "keptSourceAudioIndexes": kept_audio_indexes})
+            require(before_hash == after_hash, "Decoded audio samples changed")
         self.run(self.ffmpeg, ["-nostdin", "-v", "error", "-xerror", "-i", self.path(candidate), "-f", "null", "-"])
         if rv.get("color_transfer") in ("smpte2084", "arib-std-b67"):
             raise Blocked("HDR needs an explicitly reviewed reference transform; SDR VMAF is not HDR certification")
