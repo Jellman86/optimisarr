@@ -398,8 +398,31 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
 
         await using (var db = Db())
         {
+            var previousLease = await db.JobLeases.SingleAsync(lease => lease.Worker!.Name == "Mac");
+            previousLease.VerificationWorkJson = "{\"command\":\"Bearer secret-token\"}";
+            previousLease.VerificationContractJson = System.Text.Json.JsonSerializer.Serialize(
+                new RemoteVerificationContract(1, Guid.Parse("e0272676-6247-4d63-900f-6c931b449fe7"), false));
+            previousLease.QualitySourceSha256 = new string('a', 64);
+            previousLease.DeliveredSha256 = new string('b', 64);
+            previousLease.VerificationEvidenceJson = System.Text.Json.JsonSerializer.Serialize(
+                new RemoteVerificationEvidence(Guid.Parse("e0272676-6247-4d63-900f-6c931b449fe7"),
+                    new string('a', 64), new string('b', 64),
+                    SourceVideo: new TimestampCheckResult(true, 0, "Bearer secret-token", 1290.04, 32250)));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = Db())
+        {
             var bundle = await DiagnosticJobBundleQueries.BuildAsync(
                 db, sessionId, jobId, _now.AddMinutes(40), CancellationToken.None);
+            Assert.Equal(2, bundle.Manifest.SchemaVersion);
+            var previousEvidence = bundle.Leases[0].VerificationEvidence;
+            Assert.Equal("Available", previousEvidence.State);
+            Assert.Equal(1290.04, previousEvidence.SourceVideo!.LastPresentationSeconds);
+            Assert.Equal("Missing", bundle.Leases[1].VerificationEvidence.State);
+            Assert.Equal("CurrentWorkerRegistration", bundle.Leases[0].WorkerIdentitySource);
+            Assert.NotNull(bundle.Leases[0].VerificationWorkSha256);
+            Assert.DoesNotContain("secret-token", System.Text.Json.JsonSerializer.Serialize(bundle));
             Assert.Equal(2, bundle.Job.Attempt);
             Assert.Equal("AwaitingVerification", bundle.Job.Status);
             Assert.Equal("hevc_nvenc", bundle.Job.VideoEncoder);

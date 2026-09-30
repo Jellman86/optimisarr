@@ -37,7 +37,21 @@ queue. **Include full media paths in the export** is off by default. Start the
 capture, reproduce the issue, then select **Stop capture**. Enter the job ID
 under **Job ID to export** and select **Download diagnostics**. The JSON file
 contains the selected job's server-held state transitions, attempt summaries,
-worker leases, and verification summaries.
+worker leases, and verification summaries. Schema version 2 also includes the
+server-held worker packet endpoints, timestamped packet counts, regression counts,
+and decode error counts when retained evidence contains them. Probe JSON, error
+text and commands remain excluded.
+
+Each lease labels its evidence as `Available`, `Missing`, `Malformed`, or
+`Oversized`. `Available` means a record could be read, not that verification passed
+or that the candidate file still exists. Hash comparisons identify whether the
+record matches the delivered candidate, the worker's reported quality-source hash,
+and the frozen contract; `null` means the comparison cannot be established.
+Stored work/contract SHA-256 values identify the exact saved JSON, not a semantic
+command hash. Worker version/OS/protocol are explicitly labelled as the **current
+registration**; they are not an attempt-time snapshot. Historical packet evidence
+has no recorded tool build or timestamp command, so its timeline method is
+`NotRecorded`. Do not assume an old endpoint used source `+genpts`.
 
 The capture is off until you start it. Each session records at most 10,000
 enhanced events. Ended sessions and their events are removed after seven days;

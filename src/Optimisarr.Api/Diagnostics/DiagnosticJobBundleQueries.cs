@@ -66,7 +66,11 @@ internal sealed record DiagnosticLeaseSummary(
     string State,
     string? Stage,
     string? DeliveredSha256,
-    bool VerificationEvidencePresent);
+    bool VerificationEvidencePresent,
+    string WorkerIdentitySource,
+    string? VerificationWorkSha256,
+    string? VerificationContractSha256,
+    DiagnosticWorkerVerificationSummary VerificationEvidence);
 
 internal sealed record DiagnosticEventSummary(
     long Id,
@@ -129,7 +133,10 @@ internal static class DiagnosticJobBundleQueries
 
         var omissions = new List<string>
         {
-            "Sidecar-local diagnostic logs are not collected by this bundle; server-held lease and evidence-presence records are included.",
+            "Worker version, OS and protocol describe the current registration, not a frozen attempt-time identity.",
+            "Historical packet evidence does not record the timestamp command or tool build; timeline method is NotRecorded.",
+            "A worker evidence state describes record availability, not verification acceptance or media availability.",
+            "Sidecar-local diagnostic logs are not collected by this bundle; retained server-held lease measurements are included.",
             "Raw FFmpeg output and commands are omitted because they may contain paths or credentials.",
             "Only retries already archived in job attempt history are listed as historical attempts; the current attempt is summarised on the job.",
             "Each verification report includes at most 100 check names and outcomes; raw check details are omitted."
@@ -175,7 +182,7 @@ internal static class DiagnosticJobBundleQueries
             job.FailureCategory?.ToString(),
             SummariseReport(job.VerificationReportJson));
         return new DiagnosticJobBundle(
-            new DiagnosticBundleManifest(1, session.Id, nowUtc, session.IncludePaths,
+            new DiagnosticBundleManifest(2, session.Id, nowUtc, session.IncludePaths,
                 session.EventLimitReached, omissions),
             summary,
             attempts.Select(attempt => new DiagnosticAttemptSummary(
@@ -200,7 +207,11 @@ internal static class DiagnosticJobBundleQueries
                 lease.State.ToString(),
                 lease.Stage?.ToString(),
                 DiagnosticSafeFields.Sha256(lease.DeliveredSha256),
-                lease.VerificationEvidenceJson is not null)).ToList(),
+                lease.VerificationEvidenceJson is not null,
+                "CurrentWorkerRegistration",
+                DiagnosticWorkerEvidence.StoredRecordSha256(lease.VerificationWorkJson),
+                DiagnosticWorkerEvidence.StoredRecordSha256(lease.VerificationContractJson),
+                DiagnosticWorkerEvidence.Summarise(lease))).ToList(),
             events.Select(entry => new DiagnosticEventSummary(
                 entry.Id,
                 entry.OccurredAt,
