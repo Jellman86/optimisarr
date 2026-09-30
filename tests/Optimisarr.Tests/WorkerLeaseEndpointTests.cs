@@ -250,6 +250,64 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(JobStatus.Leased, await StatusOf(eligible));
     }
 
+    [Theory]
+    [InlineData("cleanup")]
+    [InlineData("local")]
+    [InlineData("encoder")]
+    [InlineData("audio")]
+    [InlineData("handback")]
+    public async Task Unofferable_jobs_beyond_a_full_page_do_not_starve_a_worker(string reason)
+    {
+        await EnableRemoteWorkers();
+        var name = $"Past a page of {reason}";
+        var worker = await PairCapableWorker(name);
+        var workerId = await WorkerIdNamed(name);
+        for (var i = 0; i < 30; i++)
+        {
+            var id = await QueueAJob(
+                profile: reason == "cleanup" ? RuleProfile.TrackCleanup : RuleProfile.ConservativeHevc,
+                placement: reason == "local" ? WorkPlacement.LocalOnly : WorkPlacement.Anywhere);
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library)
+                .SingleAsync(j => j.Id == id);
+            if (reason == "encoder") job.MediaFile!.Library!.TargetVideoCodec = "av1";
+            if (reason == "audio") job.MediaFile!.MediaKind = MediaKind.Audio;
+            if (reason == "handback") db.JobLeases.Add(new JobLease
+            {
+                Id = Guid.NewGuid(), JobId = id, WorkerId = workerId,
+                State = Optimisarr.Core.Workers.LeaseState.Released,
+                AcquiredAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+                EndedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            });
+            await db.SaveChangesAsync();
+        }
+        var eligible = await QueueAJob();
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(eligible));
+    }
+
+    [Fact]
+    public async Task Worker_claims_honor_highest_priority_before_age()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Priority order");
+        var oldest = await QueueAJob();
+        var urgent = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.Jobs.SingleAsync(j => j.Id == urgent)).Priority = 10;
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(urgent));
+        Assert.Equal(JobStatus.Queued, await StatusOf(oldest));
+    }
+
     private async Task ExcludeJob(int jobId, ExclusionSource source)
     {
         using var scope = _api.Services.CreateScope();
