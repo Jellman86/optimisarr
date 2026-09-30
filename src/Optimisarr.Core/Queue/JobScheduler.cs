@@ -100,7 +100,8 @@ public static class JobScheduler
         return selected;
     }
 
-    private static IEnumerable<QueuedJob> FairOrder(IEnumerable<QueuedJob> jobs, int? lastStartedLibraryId)
+    /// <summary>Priority first, then rotating libraries with FIFO within each library.</summary>
+    public static IEnumerable<QueuedJob> FairOrder(IEnumerable<QueuedJob> jobs, int? lastStartedLibraryId)
     {
         foreach (var priority in jobs.GroupBy(job => job.Priority).OrderByDescending(group => group.Key))
         {

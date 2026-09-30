@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Worker claims scan past unsuitable jobs instead of stopping at the first 25. Higher priorities run first, equal-priority libraries take turns, and an idle worker with queued work gets a throttled explanation in server logs.
+
 - Windows installer builds recover the same pinned FFmpeg tools and notices from the checksum-verified 0.2.17 installer when upstream removes its expiring autobuild release.
 
 - Full-file VC-1 verification with matching frame counts now samples absolute decoded frame numbers instead of seeking independently into the two files. This avoids false low VMAF scores observed on VC-1 Matroska sources. Sidecars count decoded frames rather than assuming one packet always contains one picture.

@@ -6,6 +6,18 @@ namespace Optimisarr.Tests;
 public sealed class JobSchedulerTests
 {
     [Fact]
+    public void Worker_scan_rotates_libraries_without_losing_priority_or_fifo()
+    {
+        var jobs = new[]
+        {
+            new QueuedJob(1, 1, 0, T0), new QueuedJob(2, 1, 0, T0.AddSeconds(1)),
+            new QueuedJob(3, 2, 0, T0.AddSeconds(2)), new QueuedJob(4, 2, 0, T0.AddSeconds(3)),
+            new QueuedJob(5, 1, 10, T0.AddSeconds(4)),
+        };
+        Assert.Equal([5, 3, 1, 4, 2], JobScheduler.FairOrder(jobs, 1).Select(job => job.Id));
+    }
+
+    [Fact]
     public void Evidence_and_audio_have_their_own_bounded_slots_beside_a_full_video_lane()
     {
         var t = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
