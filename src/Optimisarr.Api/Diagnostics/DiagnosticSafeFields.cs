@@ -41,8 +41,8 @@ internal static class DiagnosticSafeFields
 
     public static string? Version(string? value)
     {
-        return value is { Length: <= 32 }
-            && Regex.IsMatch(value, @"\A[v]?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:\+[0-9a-f]{7,12})?\z",
+        return value is { Length: <= 64 }
+            && Regex.IsMatch(value, @"\A[v]?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:\+[0-9a-f]{7,40})?\z",
                 RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100))
             ? value : null;
     }
