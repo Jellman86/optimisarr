@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Testing
+
+- The published Linux sidecar image has hardware acceptance on an RTX 4070 for HEVC NVENC and CUDA decoding, with strict worker verification, independent media checks, RAM cleanup, cancellation and reconnect evidence. This does not extend certification to every NVIDIA codec, driver or media format.
+
 ### Fixed
 
 - Opt-in job diagnostic exports now retain safe worker packet/decode measurements, frozen work/contract fingerprints and file-hash comparisons. Missing or unreadable evidence is labelled explicitly; current worker registration is distinguished from historical identity, and unrecorded timestamp methods are not guessed. Native sidecar versions with full Git revision or Mac numeric build suffixes are retained.
