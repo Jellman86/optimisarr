@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- Opt-in job diagnostic exports now retain safe worker packet/decode measurements, frozen work/contract fingerprints and file-hash comparisons. Missing or unreadable evidence is labelled explicitly; current worker registration is distinguished from historical identity, and unrecorded timestamp methods are not guessed. Native sidecar versions with full Git revision suffixes are retained.
+- Opt-in job diagnostic exports now retain safe worker packet/decode measurements, frozen work/contract fingerprints and file-hash comparisons. Missing or unreadable evidence is labelled explicitly; current worker registration is distinguished from historical identity, and unrecorded timestamp methods are not guessed. Native sidecar versions with full Git revision or Mac numeric build suffixes are retained.
 
 - MP4 video jobs keep Matroska when copying a kept ALAC track from Matroska. This preserves the final audio samples that normal MP4 playback could omit after a successful copy. Original MP4 ALAC, re-encoded audio and removed ALAC tracks retain their selected output path. A remux with no remaining change cancels before encoding with its reason. Verification and playback edit-list handling remain unchanged.
 
