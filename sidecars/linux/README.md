@@ -39,3 +39,9 @@ prints JSON capabilities without pairing. The
 `--worker-command '["dotnet","/absolute/path/Optimisarr.Sidecar.Linux.dll"]'`
 and `--worker-encoder hevc_qsv` (or `hevc_vaapi`). It creates disposable identities
 and test media. Production library paths are never test fixtures.
+
+## NVIDIA acceptance
+
+The published Linux container has separate [HEVC NVENC hardware evidence](../../docs/engineering/hardware-validation/2026-09-30-linux-nvenc.md)
+on an RTX 4070, including strict worker verification, CUDA decoding, RAM cleanup
+and independent output measurements. Native Windows results are separate coverage.

@@ -80,7 +80,9 @@ and workflows needing software filters can retain software decoding. CPU VMAF us
 bundled measurement binary even when encoding uses the GPU. Mapping `/dev/dri` does not expose
 an NVIDIA GPU; NVIDIA needs the host's container runtime and GPU configuration. See the
 [hardware evidence and limits](../engineering/hardware-validation/2026-09-27-linux-sidecar.md)
-before assuming a GPU or format is covered.
+before assuming a GPU or format is covered. A separate
+[Linux-container HEVC NVENC acceptance record](../engineering/hardware-validation/2026-09-30-linux-nvenc.md)
+records the published image on an RTX 4070; it does not certify every NVIDIA codec or driver.
 
 ## Optional RAM working storage
 

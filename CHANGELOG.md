@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Testing
+
+- The published Linux sidecar image has hardware acceptance on an RTX 4070 for HEVC NVENC and CUDA decoding, with strict worker verification, independent media checks, RAM cleanup, cancellation and reconnect evidence. This does not extend certification to every NVIDIA codec, driver or media format.
+
 ### Fixed
 
 - MP4 video jobs keep Matroska when copying a kept ALAC track from Matroska. This preserves the final audio samples that normal MP4 playback could omit after a successful copy. Original MP4 ALAC, re-encoded audio and removed ALAC tracks retain their selected output path. A remux with no remaining change cancels before encoding with its reason. Verification and playback edit-list handling remain unchanged.
