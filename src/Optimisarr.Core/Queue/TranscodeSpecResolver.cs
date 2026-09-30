@@ -40,7 +40,8 @@ public static class TranscodeSpecResolver
         CropRect? detectedCrop = null,
         // The probed average frame rate, needed only to plan a frame-rate cap. Null when unknown,
         // in which case the cap is not applied: guessing a rate would decimate the wrong frames.
-        double? sourceFrameRate = null)
+        double? sourceFrameRate = null,
+        IReadOnlyList<string?>? sourceSubtitleCodecs = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -144,7 +145,8 @@ public static class TranscodeSpecResolver
             // A copied stream keeps its cadence too; only a re-encode can drop frames.
             FrameRate: rules.TargetVideoCodec is null
                 ? null
-                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate, sourceIsVariableFrameRate));
+                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate, sourceIsVariableFrameRate))
+        { SourceSubtitleCodecs = sourceSubtitleCodecs };
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

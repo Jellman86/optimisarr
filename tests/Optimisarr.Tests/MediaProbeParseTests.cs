@@ -34,6 +34,7 @@ public sealed class MediaProbeParseTests
         Assert.Equal(new[] { "eac3", "aac" }, result.AudioCodecs);
         Assert.Equal(2, result.AudioTrackCount);
         Assert.Equal(1, result.SubtitleTrackCount);
+        Assert.Equal(["subrip"], result.SubtitleCodecs);
     }
 
     [Fact]

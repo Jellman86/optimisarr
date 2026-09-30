@@ -55,6 +55,12 @@ public static class AssignmentCommand
     private static readonly HashSet<string> HardwareDecoders =
         new(StringComparer.Ordinal) { "cuda", "d3d11va", "qsv", "dxva2" };
 
+    private static bool IsIndexedSubtitleCodec(string token) =>
+        token.StartsWith("-c:s:", StringComparison.Ordinal)
+        && int.TryParse(token.AsSpan(5), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var index)
+        && index >= 0 && token[5..] == index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>
     /// Checks the array against the contract. Returns the reason on refusal rather than throwing,
     /// because refusing a command is an ordinary outcome this machine hands the job back for.
@@ -89,7 +95,7 @@ public static class AssignmentCommand
                 continue;
             }
 
-            if (!Valued.Contains(token))
+            if (!Valued.Contains(token) && !IsIndexedSubtitleCodec(token))
             {
                 return new CommandRefusal($"The server sent an option this sidecar does not know: '{token}'.");
             }

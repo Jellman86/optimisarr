@@ -158,7 +158,12 @@ class Harness:
         require(len(files) == 1, f"Expected exactly one delivered candidate, found {files}")
         return inside(self.root / "work", files[0])
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False):
+    def subtitle_mux(self, name, source, encoder="libx265", worker=None):
+        fixture = self.root / "fixtures" / (name + ".mp4")
+        self.tools.subtitle_fixture(fixture, source)
+        return self.video(name, fixture, encoder, worker, check_subtitles=True)
+
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -220,6 +225,17 @@ class Harness:
             before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
             require(abs(before["lufs"] - after["lufs"]) <= 1, "Worker output loudness drift exceeds 1 LUFS")
             require(after["truePeak"] <= 0, "Worker output introduced clipping")
+        if check_subtitles:
+            subtitles = [stream for stream in streams if stream["codec_type"] == "subtitle"]
+            require([stream["codec_name"] for stream in subtitles] == ["ass", "ass"],
+                    "MP4 timed text was not converted into compatible Matroska subtitles")
+            require([stream.get("tags", {}).get("language") for stream in subtitles] == ["eng", "fra"],
+                    "Subtitle language or order changed")
+            for index in range(2):
+                before = self.tools.subtitle_cues(case["source"], index)
+                after = self.tools.subtitle_cues(candidate, index)
+                require(bool(before) and before == after, f"Subtitle {index} text or timing changed")
+                (directory / f"subtitle-{index}.srt").write_text(after, encoding="utf-8")
         self.replace_restore(case, candidate)
         return {"jobId": case["jobId"], "workerId": worker["id"] if worker else None,
                 "encoder": encoder, "strategy": strategy, "scores": scores, "restoredOriginal": True,
@@ -532,7 +548,7 @@ class Harness:
         require(not errors, "Cleanup failed: " + "; ".join(errors))
 
     def run(self, *, tier="smoke", corpus=None, expected_workers=(), local_encoders=(), variants=None,
-            soak_cycles=0, fixture_seconds=8, strict_worker_verification=False):
+            soak_cycles=0, fixture_seconds=8, strict_worker_verification=False, regression=None):
         if self.report.case("preflight", self.preflight)["status"] != "passed":
             return self.report.exit_code
         self.strict_worker_verification = strict_worker_verification
@@ -567,6 +583,21 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
+            if regression == "subtitle-mux":
+                for encoder in encoders:
+                    name = f"local-{encoder}-mov-text-to-mkv"
+                    self.report.case(name, lambda n=name, e=encoder: self.subtitle_mux(n, primary, e))
+                if tier == "fleet":
+                    for name in missing_workers(self.workers, expected_workers):
+                        self.report.case("required-worker-" + name, lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
+                    usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
+                    if not usable:
+                        self.report.case("fleet-workers", lambda: (_ for _ in ()).throw(Blocked("No workers paired")))
+                    for worker in usable:
+                        for encoder in worker["videoEncoders"]:
+                            name = f"worker-{worker['id']}-{encoder}-mov-text-to-mkv"
+                            self.report.case(name, lambda n=name, e=encoder, w=worker: self.subtitle_mux(n, primary, e, w))
+                return self.report.exit_code
             for encoder in encoders:
                 if encoder not in available:
                     self.report.case("local-" + encoder, lambda e=encoder: (_ for _ in ()).throw(Blocked(f"Required local encoder {e} is unavailable")))
@@ -577,6 +608,7 @@ class Harness:
                 if encoder.endswith(("_qsv", "_nvenc", "_vaapi", "_videotoolbox")):
                     self.report.case(f"local-{encoder}-decode-retry-rejection",
                                      lambda e=encoder: self.hardware_decode_rejection(e, primary))
+            self.report.case("local-mov-text-to-mkv", lambda: self.subtitle_mux("local-mov-text-to-mkv", primary))
             self.report.case("local-vmaf-rejection", lambda: self.video("local-vmaf-rejection", primary, reject=True))
             self.report.case("queued-cancellation", lambda: self.cancel(primary))
             self.report.case("running-cancellation", self.cancel_running)
@@ -614,6 +646,8 @@ class Harness:
                         for variant, fixture in fixtures.items():
                             name = f"worker-{worker['id']}-{encoder}-{variant}"
                             self.report.case(name, lambda n=name, f=fixture, e=encoder, w=worker: self.video(n, f, e, w))
+                        name = f"worker-{worker['id']}-{encoder}-mov-text-to-mkv"
+                        self.report.case(name, lambda n=name, e=encoder, w=worker: self.subtitle_mux(n, primary, e, w))
                         name = f"worker-{worker['id']}-{encoder}-adaptive"
                         self.report.case(name, lambda n=name, e=encoder, w=worker: self.video(n, primary, e, w, strategy="AdaptiveVmaf"))
                         name = f"worker-{worker['id']}-{encoder}-vmaf-rejection"

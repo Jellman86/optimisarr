@@ -1655,8 +1655,8 @@ public sealed class QueueDispatcher(
         // FFmpeg if that proof cannot be gathered. This also closes the same-size/same-mtime edge
         // case where a file was replaced without invalidating its cached track order.
         var needsSubtitleProbe = isVideoJob
-            && (media.SubtitleTrackCount ?? 0) > 0
-            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer);
+            && ((media.SubtitleTrackCount ?? 0) > 0
+                || TranscodeSpecResolver.IsMp4Container(Path.GetExtension(media.Path)));
         var sourceAudioLanguages = TrackLanguages.ParseTrackLanguages(media.AudioLanguages);
         var needsLanguageProbe = isVideoJob && rules.KeepAudioLanguages.Count > 0;
         var sourceSubtitleLanguages = TrackLanguages.ParseTrackLanguages(media.SubtitleLanguages);
@@ -1782,7 +1782,8 @@ public sealed class QueueDispatcher(
             sourceWidth: media.Width,
             sourceHeight: media.Height,
             detectedCrop: detectedCrop,
-            sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null);
+            sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
+            sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null);
 
         // The inventory made the job eligible, but the mandatory fresh probe is authoritative.
         // If its current track set has nothing to remove, cancel cleanly instead of producing a

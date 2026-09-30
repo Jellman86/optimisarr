@@ -365,6 +365,15 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
+                    if (worker.ProtocolVersion < WorkerProtocol.MinimumForEncodeCommand(assignment.Arguments))
+                    {
+                        skipped++;
+                        lastReason = "This job converts MP4 timed-text subtitles to Matroska. Update the sidecar to support protocol 4.";
+                        WorkerProblems.Record(worker, lastReason, now);
+                        await db.SaveChangesAsync(cancellationToken);
+                        continue;
+                    }
+
                     if (assignment.FullVerification is not null && worker.ProtocolVersion < 2)
                     {
                         skipped++;

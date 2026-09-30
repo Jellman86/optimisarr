@@ -25,6 +25,18 @@ private let serverCommand: [String] = [
 
 @Suite("Assignment command contract")
 struct AssignmentCommandTests {
+    @Test("indexed subtitle codec overrides are accepted")
+    func indexedSubtitles() throws {
+        _ = try AssignmentCommand.validate(["-i", "{{input}}", "-c:s:0", "ass", "-c:s:12", "copy", "{{output}}.mkv"], outputExtension: "mkv")
+    }
+
+    @Test("malformed subtitle stream specifiers are refused", arguments: ["-c:s:-1", "-c:s:0/../../tmp", "-c:s:0?foo", "-c:s:9999999999999999"])
+    func malformedSubtitle(_ token: String) {
+        #expect(throws: AssignmentCommandError.unknownOption(token)) {
+            _ = try AssignmentCommand.validate(["-i", "{{input}}", token, "ass", "{{output}}.mkv"], outputExtension: "mkv")
+        }
+    }
+
     @Test("a command shaped like the server's is accepted and both tokens are substituted")
     func acceptsServerShape() throws {
         let command = try AssignmentCommand.validate(serverCommand, outputExtension: "mp4")

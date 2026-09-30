@@ -9,6 +9,19 @@ public sealed class TranscodeSpecResolverTests
     private static readonly RuleSettings Hevc = RuleProfileDefaults.For(RuleProfile.ConservativeHevc);
 
     [Fact]
+    public void Carries_fresh_subtitle_codecs_into_the_encode_and_fallback_container_plan()
+    {
+        var spec = TranscodeSpecResolver.Resolve(Hevc, "/data/film.mp4", "film.mp4", "/work",
+            false, 23, "medium", sourceHasImageSubtitles: true,
+            sourceSubtitleCodecs: ["mov_text", "hdmv_pgs_subtitle"]);
+        Assert.EndsWith(".mkv", spec.OutputPath);
+        Assert.Equal(["mov_text", "hdmv_pgs_subtitle"], spec.SourceSubtitleCodecs);
+        var args = FfmpegCommandBuilder.Build(spec);
+        Assert.Contains("-c:s:0", args);
+        Assert.DoesNotContain("-c:s:1", args);
+    }
+
+    [Fact]
     public void Output_goes_under_the_work_root_with_the_target_container_extension()
     {
         var spec = TranscodeSpecResolver.Resolve(

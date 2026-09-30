@@ -10,6 +10,13 @@ namespace Optimisarr.Tests;
 public class WorkerProtocolTests
 {
     [Fact]
+    public void Indexed_subtitle_overrides_require_the_new_command_contract()
+    {
+        Assert.Equal(4, WorkerProtocol.MinimumForEncodeCommand(["-c:s:0", "ass"]));
+        Assert.Equal(1, WorkerProtocol.MinimumForEncodeCommand(["-c:s", "copy"]));
+    }
+
+    [Fact]
     public void Negotiate_agrees_the_current_version_when_the_worker_supports_it()
     {
         var result = WorkerProtocol.Negotiate(
