@@ -375,3 +375,26 @@ python3 scripts/media_acceptance.py --regression fractional-timing \
   --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe --fixture-seconds 16 \
   --root /tmp/optimisarr-fractional-regression-001
 ```
+
+### Overlapping subtitle regression
+
+Use `--regression subtitle-overlap` to test MP4 planning with simultaneous English cues,
+partially overlapping Japanese cues and a compatible French track. Keeping all three must
+select Matroska and preserve every cue. Keeping only French must produce MP4 timed text.
+Both cases compare exact cue text, timestamps, languages and track order, perform full
+verification and independent VMAF/frame checks, and exercise replacement and rollback.
+The generated fixture contains no private media. CI runs both cases against the final image.
+
+```bash
+python3 scripts/media_acceptance.py --regression subtitle-overlap \
+  --native /build/server/Optimisarr.Api.dll --ffmpeg /tools/ffmpeg --ffprobe /tools/ffprobe \
+  --local-encoder libx265 --fixture-seconds 16 \
+  --root /tmp/optimisarr-subtitle-overlap-001
+```
+
+Add the fleet worker arguments described above to exercise strict sidecar verification.
+The server reads subtitle packet timestamps during planning, without decoding media or
+collecting cue text. It stops when an incompatible kept timeline is proved. Missing timing
+selects Matroska conservatively; a failed probe stops planning. Tracks removed by the
+library's language rules do not force a fallback. This uses existing sidecar protocol 4
+commands and leaves production verification gates unchanged.

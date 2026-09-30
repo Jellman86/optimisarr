@@ -131,6 +131,23 @@ class Tools:
             "-c:s", "srt", "-f", "srt", "-"])
         return text.strip().replace("\r\n", "\n")
 
+    def overlapping_subtitle_fixture(self, path, source):
+        path = Path(path)
+        tracks = [
+            ("eng", "1\n00:00:01,000 --> 00:00:02,500\nAlpha\n\n2\n00:00:01,000 --> 00:00:03,000\nBeta\n"),
+            ("fra", "1\n00:00:01,250 --> 00:00:03,000\nBonjour\n"),
+            ("jpn", "1\n00:00:04,000 --> 00:00:06,000\nGamma\n\n2\n00:00:05,000 --> 00:00:07,000\nDelta\n"),
+        ]
+        inputs, maps, metadata = ["-i", self.path(source)], ["-map", "0:v:0"], []
+        for index, (language, cues) in enumerate(tracks):
+            track = path.with_suffix(f".{language}.srt")
+            track.write_text(cues, encoding="utf-8")
+            inputs += ["-i", self.path(track)]
+            maps += ["-map", f"{index + 1}:s:0"]
+            metadata += [f"-metadata:s:s:{index}", f"language={language}"]
+        self.encode(inputs + maps + ["-c", "copy", "-c:s", "srt", *metadata, self.path(path)])
+        return path
+
     def frame_times(self, path):
         result = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "v:0",
             "-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))
@@ -139,7 +156,7 @@ class Tools:
         require(all(b > a for a, b in zip(times, times[1:])), "Non-increasing picture timestamps")
         return [x - times[0] for x in times]
 
-    def measure(self, reference, candidate, evidence_dir):
+    def measure(self, reference, candidate, evidence_dir, *, kept_subtitle_indexes=None):
         evidence_dir = Path(evidence_dir)
         evidence_dir.mkdir(parents=True, exist_ok=True)
         ref, out = self.probe(reference, True), self.probe(candidate, True)
@@ -159,6 +176,8 @@ class Tools:
                 require(rv.get(key) == ov.get(key), f"Changed {key}")
         for kind in ("audio", "subtitle"):
             before = [x for x in ref["streams"] if x["codec_type"] == kind]
+            if kind == "subtitle" and kept_subtitle_indexes is not None:
+                before = [before[index] for index in kept_subtitle_indexes]
             after = [x for x in out["streams"] if x["codec_type"] == kind]
             require(len(before) == len(after), f"Lost {kind} streams")
             for a, b in zip(before, after):

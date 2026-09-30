@@ -171,6 +171,13 @@ jobs:
             --root "$RUNNER_TEMP/optimisarr-fractional-acceptance" \
             --regression fractional-timing --local-encoder libx265 --fixture-seconds 16
 
+      - name: Verify overlapping subtitle preservation in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-subtitle-overlap-acceptance" \
+            --regression subtitle-overlap --local-encoder libx265 --fixture-seconds 16
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -183,6 +190,9 @@ jobs:
             ${{ runner.temp }}/optimisarr-fractional-acceptance/report/
             ${{ runner.temp }}/optimisarr-fractional-acceptance/server.log
             ${{ runner.temp }}/optimisarr-fractional-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/report/
+            ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/image.json
           if-no-files-found: ignore
           retention-days: 14
 
