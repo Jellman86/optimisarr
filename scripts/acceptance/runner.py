@@ -163,7 +163,7 @@ class Harness:
         self.tools.subtitle_fixture(fixture, source)
         return self.video(name, fixture, encoder, worker, check_subtitles=True)
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False):
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv"):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -172,6 +172,7 @@ class Harness:
                                    expected_ineligible="limited to 8-bit sources")
         overrides = {"audioLoudnessGateEnabled": True, "maxLoudnessDriftLufs": 1,
                      "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0} if audio_gates else None
+        overrides = {**(overrides or {}), "targetContainer": container}
         case = self.create_job(name, fixture, encoder=encoder, worker=worker, strategy=strategy, gates=gates,
                                overrides=overrides)
         directory = self.report.root / name
@@ -187,6 +188,9 @@ class Harness:
             require(re.search(r"(?:^| )-hwaccel (qsv|vaapi|cuda|videotoolbox)(?: |$)", job["ffmpegArguments"] or ""),
                     "GPU decode was requested but the delivered encode used software decoding")
         require(sha256(case["source"]) == case["sourceSha256"], "Original changed before replacement")
+        if not reject:
+            require(job["status"] == "ReadyToReplace" and job["verificationPassed"] is True,
+                    f"Output failed application verification: {job['status']}: {job['errorMessage']}")
         require(job["workerName"] == (worker["name"] if worker else None), "Wrong worker executed job")
         if job["videoEncoder"] != encoder:
             raise Blocked(f"Requested coverage for {encoder}, scheduler selected {job['videoEncoder']}; not covered")
@@ -209,8 +213,6 @@ class Harness:
                         "Software-decode retry was not verified; fallback coverage is missing")
             return {"jobId": case["jobId"], "expectedRejection": True, "originalUnchanged": True,
                     "decodeRetry": verification.get("context", {}).get("decodeRetry")}
-        require(job["status"] == "ReadyToReplace" and job["verificationPassed"] is True,
-                f"Output failed application verification: {job['status']}: {job['errorMessage']}")
         candidate = self.output(case)
         require(candidate.stat().st_size < case["source"].stat().st_size, "No size saving")
         expected_codec = CODECS.get(encoder, encoder.split("_")[0])
@@ -559,6 +561,8 @@ class Harness:
         try:
             fixture_dir = self.root / "fixtures"
             variants = variants or (["sdr"] if tier == "smoke" else ["sdr", "vfr", "offset", "ten-bit"])
+            if regression == "fractional-timing" and "fractional" not in variants:
+                variants = [*variants, "fractional"]
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}
@@ -583,10 +587,16 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
-            if regression == "subtitle-mux":
+            if regression in ("subtitle-mux", "fractional-timing"):
+                def regression_case(name, encoder, worker=None):
+                    if regression == "subtitle-mux":
+                        return self.subtitle_mux(name, primary, encoder, worker)
+                    require("fractional" in fixtures, "Fractional timestamp fixture could not be generated")
+                    return self.video(name, fixtures["fractional"], encoder, worker, container="mp4")
+                suffix = "mov-text-to-mkv" if regression == "subtitle-mux" else "fractional-to-mp4"
                 for encoder in encoders:
-                    name = f"local-{encoder}-mov-text-to-mkv"
-                    self.report.case(name, lambda n=name, e=encoder: self.subtitle_mux(n, primary, e))
+                    name = f"local-{encoder}-{suffix}"
+                    self.report.case(name, lambda n=name, e=encoder: regression_case(n, e))
                 if tier == "fleet":
                     for name in missing_workers(self.workers, expected_workers):
                         self.report.case("required-worker-" + name, lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
@@ -595,8 +605,8 @@ class Harness:
                         self.report.case("fleet-workers", lambda: (_ for _ in ()).throw(Blocked("No workers paired")))
                     for worker in usable:
                         for encoder in worker["videoEncoders"]:
-                            name = f"worker-{worker['id']}-{encoder}-mov-text-to-mkv"
-                            self.report.case(name, lambda n=name, e=encoder, w=worker: self.subtitle_mux(n, primary, e, w))
+                            name = f"worker-{worker['id']}-{encoder}-{suffix}"
+                            self.report.case(name, lambda n=name, e=encoder, w=worker: regression_case(n, e, w))
                 return self.report.exit_code
             for encoder in encoders:
                 if encoder not in available:

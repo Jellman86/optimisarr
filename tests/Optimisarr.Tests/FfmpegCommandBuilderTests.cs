@@ -1083,8 +1083,14 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
     }
 
-    [Fact]
-    public void Keeps_every_frame_even_when_the_source_looks_constant()
+    [Theory]
+    [InlineData("libx265", ".mp4")]
+    [InlineData("hevc_qsv", ".mp4")]
+    [InlineData("hevc_qsv", ".mkv")]
+    [InlineData("hevc_nvenc", ".mp4")]
+    [InlineData("hevc_vaapi", ".mkv")]
+    [InlineData("hevc_videotoolbox", ".mp4")]
+    public void Constant_rate_passthrough_preserves_source_timestamp_precision(string encoder, string extension)
     {
         // This used to assert the opposite, and that is what let the bug through. FFmpeg's default
         // frame-rate handling drops frames whose timestamps collide, and it does that on sources
@@ -1093,12 +1099,14 @@ public sealed class FfmpegCommandBuilderTests
         //
         // The dangerous source is the one that looks regular and is not, so the rule cannot be
         // conditional on having noticed.
-        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" });
+        var args = FfmpegCommandBuilder.Build(
+            Reencode() with { OutputPath = $"/work/Movie.opt{extension}" }, videoEncoder: encoder);
 
         Assert.Equal("passthrough", args[IndexOf(args, "-fps_mode") + 1]);
-        // The demux timebase stays for a source known to be variable; a source that looks regular
-        // needs nothing beyond keeping its frames.
-        Assert.DoesNotContain("-enc_time_base:v:0", args);
+        // Constant fractional-rate Matroska can have finer timestamps than the encoder default.
+        // Passthrough alone collapses timestamps or fails muxing instead of preserving the cadence.
+        Assert.Contains("-enc_time_base:v:0", args);
+        Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
     }
 
     [Fact]

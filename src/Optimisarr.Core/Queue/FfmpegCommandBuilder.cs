@@ -431,13 +431,11 @@ public static class FfmpegCommandBuilder
             args.Add("-fps_mode");
             args.Add("passthrough");
 
-            // Keeps the encoder's timestamps anchored to the source's own timebase rather than a
-            // rounded one, which is what makes passthrough exact rather than merely close.
-            if (spec.SourceIsVariableFrameRate)
-            {
-                args.Add("-enc_time_base:v:0");
-                args.Add("demux");
-            }
+            // Constant fractional-rate Matroska also needs its timestamp precision retained.
+            // The default encoder timebase collapsed presentation timestamps in NVENC output
+            // and caused duplicate-DTS mux failures with QSV, even with software decoding.
+            args.Add("-enc_time_base:v:0");
+            args.Add("demux");
         }
 
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV
