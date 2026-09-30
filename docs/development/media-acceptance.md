@@ -363,7 +363,9 @@ the normal matrix continues to check decoded lossless audio hashes.
 
 The focused run checks complete verification, every decoded picture, timestamp cadence,
 independent v0 VMAF, replacement and rollback. Fleet mode repeats it under strict sidecar
-verification on each selected worker. Use `--fixture-variant fractional` to include it in the
+verification on each selected worker. Container CI runs the focused CPU-to-MP4 regression
+against the final image and retains its report beside the ordinary media acceptance evidence.
+Use `--fixture-variant fractional` to include it in the
 normal Matroska matrix too. Frame-rate caps and the constant-rate AV1 NVENC timestamp exception
 are separate paths and retain their existing behavior.
 
