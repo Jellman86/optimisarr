@@ -29,6 +29,32 @@ public sealed class TimedCleanupServiceTests : IDisposable
         Directory.CreateDirectory(_workDir);
     }
 
+    [Theory]
+    [InlineData(ReplacementStatus.Pending)]
+    [InlineData(ReplacementStatus.RollbackPending)]
+    public async Task Retention_preserves_outputs_needed_by_interrupted_recovery(ReplacementStatus status)
+    {
+        await SetRetentionDaysAsync(7);
+        var (jobId, outputPath) = await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            db.Replacements.Add(new Optimisarr.Data.Replacement
+            {
+                JobId = jobId, MediaFileId = job.MediaFileId, Status = status,
+                OriginalPath = Path.Combine(_trashDir, "original.mkv"),
+                QuarantinePath = Path.Combine(_trashDir, "quarantined.mkv"),
+                FinalPath = outputPath
+            });
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(0, (await PreviewAsync()).FailedOutputCount);
+        Assert.Equal(0, await PurgeAsync());
+        Assert.Equal("candidate", await File.ReadAllTextAsync(outputPath));
+        await using var verify = new OptimisarrDbContext(_options);
+        Assert.Equal(status, (await verify.Replacements.SingleAsync()).Status);
+    }
+
     [Fact]
     public async Task Purge_does_nothing_when_retention_is_indefinite()
     {

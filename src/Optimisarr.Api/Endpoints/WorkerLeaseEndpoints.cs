@@ -478,6 +478,9 @@ internal static class WorkerLeaseEndpoints
                     job.WorkOutputPath = null;
                     job.OutputSizeBytes = null;
                     job.VerificationPassed = null;
+                    job.SourceSha256 = null;
+                    job.VerifiedSourceSha256 = null;
+                    job.VerifiedOutputSha256 = null;
                     job.VerificationReportJson = null;
                     job.VerifiedAt = null;
                     // The queue shows these for every job. For a remote job they must be what the

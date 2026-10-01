@@ -66,6 +66,9 @@ internal static class JobAttemptHistory
         job.VideoQualityMode = null;
         job.OutputSizeBytes = null;
         job.VerificationPassed = null;
+        job.SourceSha256 = null;
+        job.VerifiedSourceSha256 = null;
+        job.VerifiedOutputSha256 = null;
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
         job.StartedAt = null;

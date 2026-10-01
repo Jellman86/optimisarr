@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Optimisarr.Core.Tools;
 
 public sealed class HardwareCapabilityService(string? ffmpegCommand = null)
@@ -99,40 +97,12 @@ public sealed class HardwareCapabilityService(string? ffmpegCommand = null)
 
     private static async Task<CommandResult> RunAsync(string command, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = command,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            foreach (var argument in arguments)
-            {
-                process.StartInfo.ArgumentList.Add(argument);
-            }
-
-            process.Start();
-            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-
-            return new CommandResult(process.ExitCode, stdout, FirstLine(stderr));
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return new CommandResult(-1, string.Empty, ex.Message);
-        }
+        var result = await BoundedToolProcess.RunAsync(command, arguments, cancellationToken);
+        return new CommandResult(result.ExitCode, result.Output, result.Error);
     }
 
     private static async Task<bool> CommandSucceedsAsync(string command, IReadOnlyList<string> arguments, CancellationToken cancellationToken) =>
         (await RunAsync(command, arguments, cancellationToken)).ExitCode == 0;
-
-    private static string? FirstLine(string value) =>
-        value.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
 
     private sealed record CommandResult(int ExitCode, string Output, string? Error);
 }

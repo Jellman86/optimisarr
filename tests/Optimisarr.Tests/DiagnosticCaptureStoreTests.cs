@@ -10,6 +10,32 @@ namespace Optimisarr.Tests;
 
 public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
 {
+
+    [Theory]
+    [InlineData("{\"checks\":null}")]
+    [InlineData("{\"checks\":[null]}")]
+    [InlineData("{}")]
+    [InlineData("{\"checks\":[]}")]
+    [InlineData("{\"checks\":[{\"name\":\"decode\",\"outcome\":17,\"detail\":\"unknown\"}]}")]
+    [InlineData("{broken")]
+    [InlineData("{\"checks\":[{\"name\":null,\"outcome\":0,\"detail\":\"bad name\"}]}")]
+    public async Task ReviewRegression_null_check_report_does_not_break_bundle(string report)
+    {
+        await using var db = Db();
+        var media = new MediaFile { Path = "/data/review.mkv", RelativePath = "review.mkv" };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+        var job = new Job { MediaFileId = media.Id, VerificationReportJson = report };
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        var session = await new DiagnosticCaptureStore(db).StartAsync(1, job.Id, false, _now, CancellationToken.None);
+        var error = await Record.ExceptionAsync(() => DiagnosticJobBundleQueries.BuildAsync(db, session.Id, job.Id, _now, CancellationToken.None));
+        Assert.Null(error);
+        var bundle = await DiagnosticJobBundleQueries.BuildAsync(db, session.Id, job.Id, _now, CancellationToken.None);
+        Assert.Null(bundle.Job.CurrentReport);
+        Assert.Contains(bundle.Manifest.Omissions, omission => omission.Contains("report"));
+    }
+
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
     private DbContextOptions<OptimisarrDbContext> _options = null!;
     private readonly DateTimeOffset _now = new(2026, 9, 23, 10, 0, 0, TimeSpan.Zero);

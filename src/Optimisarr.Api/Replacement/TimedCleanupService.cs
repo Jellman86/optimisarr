@@ -169,7 +169,9 @@ public sealed class TimedCleanupService
             .Where(job => job.Type == JobType.Normal
                 && job.Status == JobStatus.Failed
                 && job.WorkOutputPath != null
-                && job.FinishedAt != null)
+                && job.FinishedAt != null
+                && !_db.Replacements.Any(r => r.JobId == job.Id
+                    && JobClearing.LiveReplacementStatuses.Contains(r.Status)))
             .ToListAsync(cancellationToken);
         var cutoff = now.AddDays(-retentionDays);
 
@@ -292,7 +294,9 @@ public sealed class TimedCleanupService
                 || job.FinishedAt is null
                 || job.FinishedAt > cutoff
                 || WasWrittenAfter(path, cutoff.UtcDateTime)
-                || await IsPathProtectedAsync(path, job.Id, cancellationToken))
+                || await IsPathProtectedAsync(path, job.Id, cancellationToken)
+                || await _db.Replacements.AnyAsync(r => r.JobId == job.Id
+                    && JobClearing.LiveReplacementStatuses.Contains(r.Status), cancellationToken))
             {
                 continue;
             }
