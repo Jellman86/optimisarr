@@ -2,10 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- Remote workers are available and enabled on fresh installations without a preview flag. Existing saved choices are preserved, including older installations without a saved worker setting. Explicit pairing, library placement and strict verification remain required; the existing environment variable still supports disabling the service.
+- Unraid Community Apps metadata now describes video, audio, image and distributed processing, with setup, license and screenshot links. The install guide reflects the live listing and the shared current application icon.
+
 - H.264 NVIDIA encodes preserve explicitly probed limited/full colour range in the primary bitstream, including MP4 outputs with otherwise unspecified colour tags. HDR-to-SDR output keeps its deliberate limited range; copied streams and other encoders remain unchanged. Update sidecars too: the narrow range options require protocol 5, while older workers retain ordinary work.
 
 ### Testing
 
+- Windows installer CI retains MSI logs in its uploaded evidence directory and captures service-start failure diagnostics before cleanup.
 - The UI layout audit now checks accessible names and WCAG contrast across all routes in desktop dark and phone light appearances.
 - Added a reusable full application review prompt, evidence-led review report and follow-up mitigation record.
 
@@ -13,6 +19,7 @@
 
 ### Fixed
 
+- Disabling workers through the deployment environment no longer blocks unrelated settings updates when the saved worker choice is enabled. The override still refuses all worker routes.
 - Replacement now checks the exact source and candidate bytes that passed verification, before and after moving them. Old ready outputs without recorded identities record a failed file-identity gate and can be retried with a fresh verified attempt. Interrupted recovery preserves conflicting files and the quarantined original, and queue clearing/retention protect pending recovery evidence.
 - Worker delivery rechecks current credentials, lease expiry, cancellation and execution attempt after transfer. Lease-specific candidate paths and serialized resumable chunks prevent retry collisions; file hashing stays outside database write locks.
 - Tool discovery drains both process pipes concurrently, bounds captured output and execution time, and reaps its owned process on cancellation.

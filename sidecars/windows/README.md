@@ -142,9 +142,9 @@ the source). Updated Windows sidecars reject a smaller finished candidate before
 with a terminal **Compression ceiling** result; blank leaves compression unrestricted.
 
 Enable **Remote workers** under **Settings → Files & safety** on the server, then pair through
-**Settings → Remote workers**. If these controls are absent, the server operator must enable
-`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true` in its container environment through the normal
-deployment process. Each library chooses placement under **Choose files → Advanced eligibility →
+**Settings → Remote workers**. Fresh installations enable workers; existing choices are preserved. If these controls are absent,
+remove any `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override and redeploy through the
+normal deployment process. Each library chooses placement under **Choose files → Advanced eligibility →
 Where this library's work may run**. **Only on workers** keeps eligible video re-encodes off the
 container; **Prefer a worker** allows server fallback after ten minutes. Remote workers must remain
 enabled for these placement choices to apply. Remuxes, audio-only and image jobs remain server work.

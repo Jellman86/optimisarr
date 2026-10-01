@@ -40,10 +40,11 @@ server has confirmed it is eligible under the configured policy — asks for wor
 
 ### Where jobs and verification run
 
-Enable workers under **Settings → Files & safety → Remote workers**. In the same section,
+Fresh installations enable workers; existing saved choices are preserved. Check
+**Settings → Files & safety → Remote workers** before pairing. In the same section,
 **Verify entirely on the sidecar** defaults on for new installations and requires complete verification evidence for new worker
 assignments. Pair and inspect machines under **Settings → Remote workers**. If these controls are absent,
-the server operator must opt into the preview with `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`
+remove any `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override
 in the container environment and restart through their normal deployment process.
 
 Choose placement separately for each library under **Libraries → open a library → Choose files →

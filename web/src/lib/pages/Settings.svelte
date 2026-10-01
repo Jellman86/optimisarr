@@ -561,8 +561,8 @@
         ? targets.map((n) => n.name).join(', ')
         : i18n.m.settings.room_none_configured,
     },
-    // Only once opted in, and only where the server offers the preview at all: a default
-    // single-container install should not have to wonder what a remote worker is.
+    // Keep worker management discoverable when available and enabled.
+    // Explicitly disabled installations retain the switch in Files & safety.
     ...(settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
       ? [{
           key: 'workers' as RoomKey,

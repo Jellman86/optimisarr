@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Workers;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
 using Optimisarr.Data;
@@ -19,6 +20,35 @@ public sealed class SettingsStoreTests : IDisposable
         _options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite(_connection).Options;
         using var db = new OptimisarrDbContext(_options);
         db.Database.EnsureCreated();
+    }
+
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(false, false, false)]
+    [InlineData(true, true, false)]
+    public async Task Startup_defaults_workers_only_for_new_available_installations(
+        bool databaseExisted, bool available, bool expected)
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db, new RemoteWorkersFeature(available));
+        await store.InitialiseSetupStateAsync(databaseExisted, CancellationToken.None);
+        Assert.Equal(expected, (await store.GetQueueSettingsAsync(CancellationToken.None)).RemoteWorkersEnabled);
+        Assert.Equal(expected, bool.Parse((await db.AppSettings.SingleAsync(
+            setting => setting.Key == SettingKeys.RemoteWorkersEnabled)).Value));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Startup_and_repeat_initialisation_preserve_the_saved_worker_choice(bool enabled)
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db, new RemoteWorkersFeature(true));
+        var settings = await store.GetQueueSettingsAsync(CancellationToken.None);
+        await store.SetQueueSettingsAsync(settings with { RemoteWorkersEnabled = enabled }, CancellationToken.None);
+        await store.InitialiseSetupStateAsync(true, CancellationToken.None);
+        await store.InitialiseSetupStateAsync(true, CancellationToken.None);
+        Assert.Equal(enabled, (await store.GetQueueSettingsAsync(CancellationToken.None)).RemoteWorkersEnabled);
     }
 
     [Fact]

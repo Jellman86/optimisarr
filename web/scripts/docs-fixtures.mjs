@@ -1,4 +1,7 @@
 // Fabricated documentation fixtures. No production endpoints, credentials, media or artwork.
+import { readFileSync } from 'node:fs'
+export const applicationVersion = readFileSync(new URL('../../Directory.Build.props', import.meta.url), 'utf8').match(/<Version>([^<]+)<\/Version>/)?.[1]
+if (!applicationVersion) throw new Error('Application version is missing from Directory.Build.props')
 export const library = {
   id: 1, name: 'Documentary films', path: '/data/films', mediaType: 'Film', ruleProfile: 'ConservativeHevc',
   enabled: true, priority: 0, minFileSizeBytes: null, maxHeight: null,
@@ -132,9 +135,20 @@ export const queue = { ...settings, canStart: true, blockedReason: null, manuall
     { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
   ] }
 export const stats = { bytesSaved: 184e9, originalBytes: 320e9, optimisedBytes: 136e9, filesOptimised: 84, averageSavingPercent: 57.5, inQuarantine: 3, quarantineReclaimableBytes: 28e9, queued: 2, running: 1, readyToReplace: 1, failed: 1, libraries: 4, enabledLibraries: 4, discoveredFiles: 478 }
+export const results = files.slice(6, 8).map((file, i) => ({
+  jobId: 20 + i, mediaFileId: file.id, relativePath: file.relativePath, libraryId: 1,
+  libraryName: library.name, sourceSizeBytes: file.sizeBytes, outputSizeBytes: Math.round(file.sizeBytes * .38),
+  vmafHarmonicMean: 96.2, videoEncoder: i ? 'hevc_videotoolbox' : 'hevc_qsv',
+  workerName: i ? 'Studio Mac' : null, finishedAt: when,
+}))
+export const dailyResults = Array.from({ length: 30 }, (_, i) => ({
+  date: new Date(Date.parse(when) - (29 - i) * 86_400_000).toISOString().slice(0, 10),
+  bytesSaved: i % 4 === 0 ? 0 : (i % 7 + 1) * 1e9,
+  files: i % 4 === 0 ? 0 : i % 5 + 1,
+}))
 export const replacements = files.slice(0,3).map((f,i) => ({id:f.id,jobId:f.id,mediaFileId:f.id, originalPath:'/data/films/'+f.relativePath, finalPath:'/data/films/'+f.relativePath.replace('.mkv','.mp4'), quarantinePath:`/trash/job-${f.id}/${titles[i]}.mkv`, originalSizeBytes:f.sizeBytes,newSizeBytes:Math.round(f.sizeBytes*.38),crossFilesystem:false,status:'Replaced',replacedAt:when,rolledBackAt:null,purgedAt:null,mediaKind:'Video',verificationPassed:true,verificationReportJson:JSON.stringify({checks})}))
 export const candidates = files.map(f => ({ mediaFileId:f.id, libraryId:1, relativePath:f.relativePath,sizeBytes:f.sizeBytes,videoCodec:f.videoCodec,ruleProfile:'ConservativeHevc',eligible:f.id!==3,reason:f.id===3?'Already uses the target codec.':'Video qualifies for the library’s HEVC target.',mediaKind:'Video' }))
-export const workers = ['Studio Mac', 'Studio PC'].map((name,i)=>({id:i+1,name,operatingSystem:i?'Windows':'macOS',architecture:i?'x64':'arm64',protocolVersion:2,sidecarVersion:'0.2.13',cpuBusyFraction:.12,gpuBusyFraction:.08,loadReportedAt:when,videoEncoders:[i?'hevc_nvenc':'hevc_videotoolbox'],audioEncoders:['aac'],hardwareDecoders:[i?'cuda':'videotoolbox'],vmaf:'Cpu',freeScratchBytes:400e9,maxConcurrency:1,pairedAt:when,lastSeenAt:when,revokedAt:null,online:true,drainRequestedAt:null,heldLeases:0,activeJobs:[],lastProblem:null,lastProblemAt:null}))
+export const workers = ['Studio Mac', 'Studio PC'].map((name,i)=>({id:i+1,name,operatingSystem:i?'Windows':'macOS',architecture:i?'x64':'arm64',protocolVersion:5,sidecarVersion:applicationVersion,cpuBusyFraction:.12,gpuBusyFraction:.08,loadReportedAt:when,videoEncoders:[i?'hevc_nvenc':'hevc_videotoolbox'],audioEncoders:['aac'],hardwareDecoders:[i?'cuda':'videotoolbox'],vmaf:'Cpu',freeScratchBytes:400e9,maxConcurrency:1,pairedAt:when,lastSeenAt:when,revokedAt:null,online:true,drainRequestedAt:null,heldLeases:0,activeJobs:[],lastProblem:null,lastProblemAt:null}))
 // Original vector illustrations created for documentation, not posters from a media provider.
 export function artwork(id,wide=false) {
  const i=(Number(id)-1)%titles.length, color=['#387c81','#8b6075','#bc9250','#46735a'][i%4]

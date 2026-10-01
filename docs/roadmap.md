@@ -397,12 +397,13 @@ the replacement workflow is trustworthy.
    `/config`, work/output, quarantine, media-library paths, health check, optional hardware
    acceleration, update-channel guidance, and a smoke-test checklist.
 
-   - **Unraid Community Applications template: template shipped; discovery listing remains.**
+   - **Unraid Community Applications template and discovery listing: shipped.**
      `unraid/optimisarr.xml` (volume mappings for config, media, work, and quarantine, the `8787`
      port, optional `OPTIMISARR_ADMIN_TOKEN`, PUID/PGID/UMASK, and an optional `/dev/dri` device),
-     a repository-root `ca_profile.xml`, and `docs/setup/unraid.md` are shipped. Remaining: promote
-     the template + profile to the default branch at release and pursue the Community Applications
-     discovery listing so users don't need to paste the raw template URL.
+     a repository-root `ca_profile.xml`, and `docs/setup/unraid.md` are shipped. The
+     [Community Apps listing](https://ca.unraid.net/apps/optimisarr-0y5bjeh0aktq6l) is live. Keep the
+     template, profile, icon and screenshot links on the default branch in sync at each release;
+     `scripts/check_unraid_metadata.py` validates the local container/asset contract.
 
    - **TrueNAS custom-app docs, then catalog submission.** First document the low-friction
      TrueNAS Custom App path so users can deploy the existing container before catalog
@@ -518,8 +519,18 @@ the replacement workflow is trustworthy.
      is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
 
-9. **Optional Windows and macOS sidecars for distributed transcoding: implemented as an opt-in
-   preview behind `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`.**
+9. **Windows, macOS and Linux sidecars for distributed transcoding: available by default.**
+
+   **Default decision, 2026-10-01:** following the tested application-review mitigations,
+   the operator requested that workers be available without a preview opt-in. Fresh installations
+   enable workers with strict sidecar verification; upgrades preserve saved enabled/disabled
+   choices and materialise the old disabled choice where a historical key is absent. The existing
+   `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override remains a deployment-level disable.
+   Availability never pairs a machine, changes library placement, enables automatic replacement
+   or relaxes a quality gate. Physical Windows NVENC, Mac VideoToolbox and Linux/container
+   acceptance, credential/lease cancellation tests and rollback/identity hardening are documented
+   in the [tested mitigation review](reviews/2026-10-01-review-mitigations.md). This default does
+   not imply that every GPU/format is certified or that unsigned Windows packages are signed.
 
    **Current status, 2026-09-17:** both platforms run the Compact Monitor UI, worker-side adaptive
    quality search and VMAF, and protocol-2 full verification without server media-tool
@@ -536,13 +547,10 @@ the replacement workflow is trustworthy.
    Keep one Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
    contribute otherwise-idle CPU/GPU capacity. A sidecar may receive a read-only source, transcode
    it, run the assigned VMAF policy, and return the candidate plus evidence; it can never replace,
-   quarantine, move, or delete an original. This remains post-MVP and opt-in: one container must
-   continue to be the complete, uncomplicated default. **That opt-in now exists:** the
-   `workers.remoteEnabled` setting is off by default and off on upgrade, no Workers tab is shown
-   while it is off, and every route that pairs a machine or accepts a check-in refuses with `403`
-   so the switch is a real boundary rather than a UI preference. Turning it off is non-destructive:
-   check-ins stop at once, but paired records survive so an operator can still see and revoke them,
-   and re-enabling restores them without a re-pair.
+   quarantine, move, or delete an original. One container remains a complete installation without
+   any sidecar. The saved `workers.remoteEnabled` switch still refuses pairing and check-ins when
+   disabled. Turning it off is non-destructive: paired records survive so operators can inspect
+   and revoke them, and re-enabling restores them without a re-pair.
 
    - **Versioned worker protocol and explicit ownership: started.** Define a platform-neutral
      contract before either app: registration, capability discovery, heartbeats, leases, progress,
@@ -1074,9 +1082,10 @@ the replacement workflow is trustworthy.
 - Safety beats savings.
 - No original file is deleted until verification has passed.
 - Every destructive action must have a rollback path.
-- Defaults should be conservative and understandable. One recorded exception stands: Adaptive
-  per-title VMAF defaults on for new video re-encode libraries while still labelled Experimental,
-  for the reasons given under adaptive per-title VMAF quality targeting above.
+- Defaults should be conservative and understandable. Adaptive per-title VMAF defaults on for
+  new video re-encode libraries while still labelled Experimental. Fresh installations also
+  enable remote workers with strict verification and explicit pairing. Both decisions and
+  their upgrade behavior are recorded in their roadmap entries above.
 - The app should feel familiar to Docker media-stack users.
 - One container should be enough for normal use.
 

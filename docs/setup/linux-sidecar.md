@@ -11,7 +11,8 @@ You need Docker with Compose on a Linux x86-64 host, a reachable Optimisarr serv
 working storage for source and candidate files. The published sidecar build currently targets
 `linux/amd64`; ARM64 publication and native/systemd installation are not provided by this workflow.
 
-1. On the **main server**, set `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`, redeploy through
+1. On the **main server**, ensure **Remote workers** is enabled. Remove any
+   `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override and redeploy through
    your normal stack manager, then enable **Remote workers** in **Settings → Files & safety**.
 2. Copy [compose.sidecar.example.yml](../../compose.sidecar.example.yml) into a separate worker
    stack and deploy it. Its default is CPU encoding with disk scratch. On managed hosts, commit

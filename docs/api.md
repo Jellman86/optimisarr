@@ -262,7 +262,8 @@ Settings fields include:
 }
 ```
 
-`remoteWorkersEnabled` enables the preview worker service when available.
+`remoteWorkersEnabled` controls the worker service when available; fresh installations enable it
+and upgrades preserve existing choices.
 `workerVerificationRequired` requires complete worker verification for newly issued remote
 full-file video assignments. It defaults on for new installations, while upgrades keep their
 previous choice, and is separate from per-library work placement.
@@ -586,15 +587,19 @@ The credential is returned exactly once, in the pairing response. Optimisarr sto
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
 outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
 
-Remote workers are a preview: the whole surface exists only when the container starts with
-`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`; without it every route below answers `403` with code
-`workers.unavailable`, and `PUT /api/settings` refuses `remoteWorkersEnabled: true` with `400`.
+Remote workers are available when the existing `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`
+environment variable is unset or explicitly enabled. A false, empty or unrecognised value
+makes worker routes return `403 workers.unavailable`; settings updates that try to newly enable
+workers then return `400`. An unchanged saved enabled choice may be preserved when updating
+other settings, but the deployment override still refuses every worker route. The environment
+variable name is retained for compatibility.
 
-Remote workers are opt-in. While the `workers.remoteEnabled` setting is off — the default, and the
-value any upgrade inherits — `POST /api/workers/pairing-code`, `POST /api/workers/pair`, and
-`POST /api/workers/heartbeat` all answer `403 workers.disabled`. `GET /api/workers` and
-`DELETE /api/workers/{id}` stay available so an operator can still see and remove what is paired
-after switching the feature off.
+Fresh databases start with `workers.remoteEnabled=true` and strict worker verification.
+Upgrades preserve saved choices, including the historical disabled default where a key is
+missing. While the saved switch is off, pairing and heartbeat routes return
+`403 workers.disabled`. `GET /api/workers` and `DELETE /api/workers/{id}` remain available
+when the deployment offers workers, so an operator can inspect or remove retained pairings.
+Availability never creates a pairing or changes a library's placement policy.
 
 Capabilities are named, not numbered. `vmaf` is `None`, `Cpu`, or `Cuda` (case-insensitive on the
 way in; omitting it means the worker claims no VMAF support). An unrecognised name is rejected with

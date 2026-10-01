@@ -21,6 +21,8 @@ Set `DOCS_PORT` if that port is occupied. `node scripts/capture-docs.mjs --check
 checks only startup ownership and writes no images. It refuses to reuse a server on that port, blocks external
 requests, mocks every API route, and fails on unexpected API requests or application errors. It
 never connects to an installed Optimisarr server and cannot alter a real library or pairing.
+The frontend CI job runs the full capture harness to detect API/UI drift; displayed application
+and sidecar versions are read from project metadata.
 
 The script uses English, dark appearance, a fixed documentation clock, and reduced motion. The
 standard viewport is 1440 × 1000; the Quarantine review uses 1440 × 1500 to show both the comparison

@@ -4,18 +4,22 @@ Optimisarr can send video re-encodes to a paired Windows PC, Apple Silicon Mac o
 The main server keeps the library, job history, and authority to replace or roll back files. Workers use their own
 scratch space and return candidates and measurements; they cannot modify your originals.
 
-Remote workers remain an opt-in preview. A single container is still the default installation.
+Remote workers are available by default, and fresh installations enable them with strict sidecar
+verification. Upgrades preserve saved choices. A single container works without any sidecar.
+The existing `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override disables availability;
+its name is retained for compatibility. Pairing remains an explicit operator action.
 
 Screenshots use fabricated dummy media created for documentation. No copyrighted material is used.
 
 ## Enable and pair
 
-1. Set `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true` in the container environment and deploy it.
-2. Open **Settings → Files & safety** and enable **Remote workers**, then save.
-3. Open **Settings → Remote workers** and issue a pairing code.
-4. Install the sidecar and enter the server URL and code. The code expires after five minutes,
+1. Check **Settings → Files & safety → Remote workers**. Enable it if an existing installation
+   has a saved disabled choice. If availability is disabled by the environment override, remove
+   the override or set it to `true` and redeploy first.
+2. Open **Settings → Remote workers** and issue a pairing code.
+3. Install the sidecar and enter the server URL and code. The code expires after five minutes,
    can be used once, and is invalidated after five wrong guesses.
-5. Confirm the machine is online and has proved the encoder needed by your library. Advertised
+4. Confirm the machine is online and has proved the encoder needed by your library. Advertised
    hardware is checked with real test encodes; the presence of a GPU alone does not qualify it.
 
 For Linux, use the [container setup guide](linux-sidecar.md): deploy its separate Compose stack,

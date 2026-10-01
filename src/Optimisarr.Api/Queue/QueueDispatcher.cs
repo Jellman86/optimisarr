@@ -459,7 +459,7 @@ public sealed class QueueDispatcher(
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             // A library's placement only means something while work can actually go elsewhere:
-            // the switch on and the preview flag present. Otherwise "only on workers" would hold a
+            // both the saved switch and deployment availability. Otherwise "only on workers" would hold a
             // job for a claim that the worker routes refuse, which is a stall nobody asked for.
             var availability = await WorkerAvailability.ResolveAsync(
                 db,

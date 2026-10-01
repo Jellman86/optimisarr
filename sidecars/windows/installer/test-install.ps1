@@ -10,8 +10,12 @@ if ((Get-Service OptimisarrSidecar -ErrorAction SilentlyContinue) -or (Test-Path
 }
 $installerPath = (Resolve-Path $Installer).Path
 $upgradePath = (Resolve-Path $UpgradeInstaller).Path
-$logRoot = Join-Path $env:TEMP ('optimisarr-install-test-' + [guid]::NewGuid().ToString('N'))
+$testStarted = [DateTime]::Now
+# CI uploads runner.temp; TEMP can point at the user profile and silently lose evidence.
+$evidenceRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$logRoot = Join-Path $evidenceRoot ('optimisarr-install-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $logRoot | Out-Null
+Write-Output "Installer evidence: $logRoot"
 function Invoke-Msi([string] $Action, [string] $Name, [string] $Path) {
     $process = Start-Process msiexec.exe -ArgumentList @($Action, ('"'+$Path+'"'), '/qn', '/norestart', '/l*v', ('"'+$logRoot+'\'+$Name+'.log"')) -Wait -PassThru
     if ($process.ExitCode -notin @(0,3010)) { throw "MSI $Name failed: $($process.ExitCode). Logs: $logRoot" }
@@ -140,6 +144,30 @@ try {
     if ((Get-FileHash $pairingFile).Hash -ne $pairingHash) { throw 'Uninstall changed retained pairing' }
     Remove-Item $sentinel
     Write-Output "Fresh install, unpaired/paired/repeated upgrades, check-in, native rendering and uninstall passed. Evidence: $logRoot"
+}
+catch {
+    $failure = $_
+    # Capture before uninstall removes the registration. Only the guarded disposable test
+    # reaches here; no production pairing or machine diagnostics are collected.
+    try {
+        Get-CimInstance Win32_Service -Filter "Name='OptimisarrSidecar'" |
+            Select-Object Name, State, StartName, PathName, ProcessId, ExitCode |
+            ConvertTo-Json | Set-Content (Join-Path $logRoot 'service-state.json')
+        foreach ($eventLog in @(
+            @{ Name = 'System'; Providers = @('Service Control Manager') },
+            @{ Name = 'Application'; Providers = @('.NET Runtime', 'Application Error', 'OptimisarrSidecar') }
+        )) {
+            Get-WinEvent -FilterHashtable @{
+                LogName = $eventLog.Name
+                ProviderName = $eventLog.Providers
+                StartTime = $testStarted
+            } -MaxEvents 40 -ErrorAction SilentlyContinue |
+                Select-Object TimeCreated, Id, ProviderName, Message |
+                ConvertTo-Json -Depth 4 | Set-Content (Join-Path $logRoot ($eventLog.Name + '-events.json'))
+        }
+    }
+    catch { Write-Warning "Could not capture every installer diagnostic: $_" }
+    throw $failure
 }
 finally {
     try { if ($installed) { Invoke-Msi '/x' 'cleanup' $currentInstaller } }

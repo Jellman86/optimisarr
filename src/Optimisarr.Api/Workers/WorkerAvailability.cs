@@ -7,8 +7,8 @@ namespace Optimisarr.Api.Workers;
 /// <summary>
 /// The two facts a placement decision needs about the worker fleet, resolved once per question
 /// so the dispatcher and the queue feed cannot disagree about whether a job is waiting for a
-/// worker. Remote work is on only when the switch is on <em>and</em> the preview flag is present,
-/// because without the flag every worker route refuses and nothing could ever claim.
+/// worker. Remote work requires both the saved switch and deployment availability. An explicit
+/// deployment disable refuses worker routes, so no machine could claim the job.
 /// </summary>
 public sealed record WorkerAvailability(bool RemoteWorkersOn, bool AWorkerCouldTakeWork)
 {
