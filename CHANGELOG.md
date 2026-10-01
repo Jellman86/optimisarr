@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pausing the queue prevents new worker assignments as well as container dispatch. Existing worker leases can renew and finish; resuming offers queued work again. Claims recheck pause under the shared transition lock before committing.
+
 ### Fixed
 
 - Queue's "Needs review" banner brings held jobs into view and moves keyboard focus to the review list, including on mobile with working jobs above it.
