@@ -5,6 +5,7 @@
 ### Fixed
 
 - Queue's "Needs review" banner brings held jobs into view and moves keyboard focus to the review list, including on mobile with working jobs above it.
+- Windows and Linux sidecars drain FFmpeg's progress output during quality measurements even without a progress subscriber, preventing long VMAF measurements from blocking on a full pipe.
 
 ## 0.2.18 — 2026-10-01
 
