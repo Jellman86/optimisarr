@@ -1,6 +1,6 @@
 # Practical plan: current VMAF and NVIDIA acceleration
 
-Updated: **1 October 2026**. Status: **SDR implementation validated on all four available machines; final-image CI pending**. New builds select v1 for ordinary SDR;
+Updated: **1 October 2026**. Status: **SDR implementation merged; all four available machines, MSI and published server/worker images validated**. New builds select v1 for ordinary SDR;
 running installations change only when updated. HDR/HFR/conversions and started legacy jobs keep v0.
 Evidence: [hardware validation and second-order review](../engineering/hardware-validation/2026-10-01-vmaf-v1.md).
 Related: [PR #114 and the contributor's comment](https://github.com/Jellman86/optimisarr/pull/114#issuecomment-5909379935),
