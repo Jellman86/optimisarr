@@ -171,5 +171,8 @@ still declares `3.2.0` in Meson; Git builds may emit their abbreviated commit in
 CUDA v1 remains deferred because upstream lacks CAMBI, SpEED chroma and the newer ADM/motion
 extractors in its CUDA feature set. The CPU graph keeps the complete v1 model. No numerical offset,
 per-GPU threshold, incomplete feature substitution or nonfree artifact is shipped by this change.
+A PICARD prototype of CUDA decode followed by full CPU v1 matched all recorded features and scores
+but did not beat CPU decode on its bounded HD fixture. Hybrid scoring is therefore not enabled by
+default; this small result is not a general benchmark. See the retained hardware evidence.
 The optional server shadow study stays opt-in and retains a legacy/v1 diagnostic pair; only the
 job's selected production model controls its configured quality gates.
