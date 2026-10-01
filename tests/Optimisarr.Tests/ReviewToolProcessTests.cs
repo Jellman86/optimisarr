@@ -22,7 +22,7 @@ public sealed class ReviewToolProcessTests
                 : excessOutput ? "import os; os.write(1,b'x'*3000000)" : "import time; time.sleep(60)";
             await File.WriteAllTextAsync(script, content);
             var arguments = windows ? new[] { "-NoProfile", "-NonInteractive", "-File", script } : new[] { script };
-            var result = await BoundedToolProcess.RunAsync(windows ? "powershell.exe" : "/usr/bin/python3",
+            var result = await BoundedToolProcess.RunAsync(windows ? "pwsh.exe" : "/usr/bin/python3",
                 arguments, CancellationToken.None, TimeSpan.FromSeconds(excessOutput ? 15 : 0.2));
             Assert.Equal(-1, result.ExitCode);
             Assert.Empty(result.Output);
@@ -45,14 +45,14 @@ public sealed class ReviewToolProcessTests
         string[] arguments;
         if (windows)
         {
-            // No execution-policy override: use the host's normal test environment policy.
+            // Use the PowerShell 7 test host with its normal policy; never override execution policy.
             var escaped = pidPath.Replace("'", "''");
             var script = $"[IO.File]::WriteAllText('{escaped}', $PID.ToString())\n";
             if (floodStderr) script += "[Console]::Error.Write([string]::new('x', 1000000))\n";
             script += "[Console]::Out.WriteLine('ffmpeg version review')\n";
             if (!floodStderr) script += "Start-Sleep -Seconds 60\n";
             File.WriteAllText(tool, script);
-            command = "powershell.exe";
+            command = "pwsh.exe";
             arguments = ["-NoProfile", "-NonInteractive", "-File", tool];
         }
         else
@@ -73,7 +73,12 @@ public sealed class ReviewToolProcessTests
             var run = typeof(ToolDetectionService).GetMethod("RunAsync", BindingFlags.Static | BindingFlags.NonPublic)!;
             var task = (Task<ToolCheckResult>)run.Invoke(null, ["Review", command, false, arguments, (Func<string, ToolCheckResult>)(s => new("Review", tool, true, false, s, null)), cts.Token])!;
             var error = await Record.ExceptionAsync(async () => await task);
-            if (floodStderr) Assert.Null(error);
+            if (floodStderr)
+            {
+                Assert.Null(error);
+                Assert.True((await task).Available);
+                Assert.Equal("ffmpeg version review", (await task).Version?.Trim());
+            }
             else Assert.IsAssignableFrom<OperationCanceledException>(error);
             try { child = Process.GetProcessById(int.Parse(File.ReadAllText(pidPath))); }
             catch (ArgumentException) { }
