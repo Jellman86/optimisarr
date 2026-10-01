@@ -62,13 +62,13 @@ public sealed class CapabilityProber(ICommandRunner runner, string platform = "w
 
         // No encoder means no work can be done here, whatever else is true, and reporting capacity
         // the server can never use only makes a healthy-looking worker that never takes anything.
-        if (video.Count == 0)
+        if (video.Count == 0 && audio.Count == 0)
         {
             return SidecarCapabilities.Nothing(name, platform) with { AudioEncoders = audio };
         }
 
-        var decoders = await ProveDecodersAsync(ffmpeg, video, cancellationToken);
-        var vmaf = await ProveVmafAsync(ffmpeg, video, cancellationToken);
+        var decoders = video.Count > 0 ? await ProveDecodersAsync(ffmpeg, video, cancellationToken) : [];
+        var vmaf = video.Count > 0 ? await ProveVmafAsync(ffmpeg, video, cancellationToken) : VmafCapability.None;
 
         return new SidecarCapabilities(
             name,

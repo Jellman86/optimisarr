@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Core.Workers;
 
 /// <summary>
@@ -20,11 +22,11 @@ public sealed record ProtocolNegotiation(bool Compatible, int AgreedVersion, str
 public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
-    // Protocol 5 adds narrowly validated primary H.264 colour-range options.
-    public const int Current = 5;
+    // Protocol 6 adds standalone audio assignments and their complete worker verification.
+    public const int Current = 6;
 
-    public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments) =>
-        arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
+    public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments, MediaKind kind = MediaKind.Video) =>
+        kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
             : arguments.Any(argument => argument.StartsWith("-c:s:", StringComparison.Ordinal)) ? 4 : 1;
 
     /// <summary>The oldest contract version this build still accepts.</summary>

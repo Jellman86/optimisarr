@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Core.Workers;
 
 /// <summary>
@@ -34,11 +36,12 @@ public sealed record WorkerCapabilities(
 /// library profile before offering work, so a worker never re-derives policy for itself.
 /// </summary>
 public sealed record JobRequirements(
-    string VideoEncoder,
+    string? VideoEncoder,
     string? AudioEncoder,
     string? HardwareDecoder,
     VmafCapability Vmaf,
-    long ScratchBytes);
+    long ScratchBytes,
+    MediaKind Kind = MediaKind.Video);
 
 /// <summary>The decision, with every unmet requirement named rather than only the first.</summary>
 public sealed record CapabilityMatch(bool Accepted, IReadOnlyList<string> Reasons);
@@ -54,7 +57,14 @@ public static class WorkerCapabilityMatcher
     {
         var reasons = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(required.VideoEncoder))
+        if (required.Kind == MediaKind.Audio)
+        {
+            if (string.IsNullOrWhiteSpace(required.AudioEncoder))
+                reasons.Add("The audio assignment named no audio encoder.");
+            if (worker.ProtocolVersion < 6)
+                reasons.Add("Standalone audio requires sidecar protocol 6.");
+        }
+        else if (string.IsNullOrWhiteSpace(required.VideoEncoder))
         {
             // An unnamed encoder is a malformed assignment, not a wildcard.
             reasons.Add("The assignment named no video encoder.");

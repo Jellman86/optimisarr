@@ -131,3 +131,19 @@ test('a server set by the container cannot be edited on the page', async ({ page
   await page.setViewportSize({ width: 375, height: 812 })
   await noHorizontalScroll(page)
 })
+
+
+test('audio work shows a source spectrogram with an honest verification label', async ({ page }) => {
+  await serve(page, { ...status, state: 'Working', jobs: [{ ...job, kind: 'Audio', title: 'Audio fixture',
+    encoder: 'libopus', outputExtension: 'opus', hardwareDecoder: null, previewRevision: 1,
+    sourceMedia: { videoCodec: null, width: null, height: null, durationSeconds: 100, audioCodecs: 'flac', pixelFormat: null } }] })
+  await page.route('**/api/sidecar/jobs/42/preview*', route => route.fulfill({ contentType: 'image/svg+xml',
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="96"><rect width="320" height="96" fill="#102e3f"/></svg>' }))
+  await page.goto('/sidecar.html')
+  const card = page.getByRole('article', { name: 'Audio fixture' })
+  await expect(card.getByRole('img', { name: 'Source audio spectrogram of Audio fixture' })).toBeVisible()
+  await expect(card.getByText('Source spectrum', { exact: true })).toBeVisible()
+  await expect(card.getByText(/verification runs separately/)).toBeVisible()
+  await page.setViewportSize({ width: 375, height: 812 })
+  await noHorizontalScroll(page)
+})

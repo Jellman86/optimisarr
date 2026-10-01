@@ -26,6 +26,7 @@
     upload: 'M12 21V9m0 0l-4 4m4-4l4 4M4 3h16',
     folder: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z',
     clock: 'M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    waveform: 'M3 10v4M7 6v12M11 3v18M15 7v10M19 9v6M23 11v2',
     film: 'M4 4h16v16H4zM4 8h16M4 16h16M8 4v16M16 4v16',
     rotate: 'M20 4v6h-6M18.5 9a7 7 0 00-11.9-2.6L4 9',
     trash: 'M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v12a2 2 0 002 2h4a2 2 0 002-2V7',

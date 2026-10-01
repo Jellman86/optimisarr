@@ -4,6 +4,22 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("standalone audio measures audio packet spans without requiring picture streams")
+    func standaloneAudio() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let evidence = try await FullVerification(runner: TimestampFixtureRunner(audio: true)).measure(
+            contract: FullVerificationContract(version: 2, id: "fixture", measureAudio: false),
+            ffmpeg: root, ffprobe: root, source: root.appendingPathComponent("source"),
+            candidate: root.appendingPathComponent("candidate"), scratch: root,
+            sourceHash: "source", candidateHash: "candidate")
+        #expect(evidence.sourceAudio?.lastPresentationSeconds == 0.12)
+        #expect(evidence.sourceVideo == nil)
+        #expect(evidence.candidateVideo == nil)
+        #expect(evidence.error == nil)
+    }
+
     @Test("DTS-only source packets get presentation times without repairing candidate evidence")
     func sourceWithoutPresentationTimes() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -120,6 +136,7 @@ struct FullVerificationTests {
 }
 
 private struct TimestampFixtureRunner: TranscodeRunner {
+    var audio = false
     var candidateMissingPts = false
     var sourceWithoutTimestamps = false
 
@@ -131,7 +148,7 @@ private struct TimestampFixtureRunner: TranscodeRunner {
         if arguments.contains("-show_streams") {
             content = #"{"streams":[{"codec_type":"video","start_time":"0"}],"format":{}}"#
         } else if arguments.contains("a:0") {
-            content = ""
+            content = audio ? "0.040000,0.000000,0.040000\n0.080000,0.040000,0.040000\n" : ""
         } else {
             let source = arguments.last?.hasSuffix("/source") == true
             // Captured shape of the VC-1 regression: decoding times exist, presentation times do not.

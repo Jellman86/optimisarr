@@ -1506,13 +1506,12 @@ public sealed class QueueDispatcher(
 
         var strictVerification = forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
         if (strictVerification && work.IsDisposable)
-            return RemoteWorkPlan.Refused("Sidecar-only verification requires a full-file video job.");
+            return RemoteWorkPlan.Refused("Sidecar-only verification requires a full-file job.");
 
-        // Only a video re-encode has an encoder to match and arguments worth shipping; a remux,
-        // audio or image job is cheap enough that distributing it buys nothing yet.
-        if (work.Spec.VideoCodec is null || work.VideoEncoder is null)
+        // Video and audio share the transfer lifecycle; remux and image paths stay local.
+        if (work.Spec.Kind != MediaKind.Audio && (work.Spec.VideoCodec is null || work.VideoEncoder is null))
         {
-            return RemoteWorkPlan.Refused("Only video re-encodes are offered to remote workers.");
+            return RemoteWorkPlan.Refused("Only video and audio re-encodes are offered to remote workers.");
         }
 
         // Adaptive selection runs sample encodes on an encoder, and a quality proven on one means
@@ -1520,7 +1519,7 @@ public sealed class QueueDispatcher(
         // being done here first. The worker measures the candidates this machine chooses, on the
         // encoder that will do the real encode.
         AdaptiveSearchStep? search = null;
-        if (work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
+        if (work.Spec.Kind != MediaKind.Audio && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
             search = work.VideoQuality is { } baseline
                 ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken)
@@ -1578,15 +1577,16 @@ public sealed class QueueDispatcher(
             work.VerificationPolicy,
             QualityScoreCommandBuilder.ModelVersionFor(width, height),
             quality,
-            work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
+            work.UsedHardwareDecode && work.VideoEncoder is not null ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
             work.Spec.AudioEncoder,
             search,
-            strictVerification ? new RemoteVerificationContract(1, Guid.NewGuid(),
+            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2 : 1, Guid.NewGuid(),
                 work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
-            work.VideoQuality?.Mode));
+            work.VideoQuality?.Mode,
+            work.Spec.Kind));
     }
 
     /// <summary>
@@ -1892,7 +1892,8 @@ public sealed class QueueDispatcher(
             RemovedSubtitleStreamIndexes: spec.RemoveSubtitleStreamIndexes,
             // Track cleanup (no codec, no target container) promises the container type
             // is untouched; verification holds the output to that promise.
-            ContainerMustMatch: rules.TargetVideoCodec is null && rules.TargetContainer is null);
+            ContainerMustMatch: rules.TargetVideoCodec is null && rules.TargetContainer is null,
+            ExpectedAudioCodec: spec.Kind == MediaKind.Audio ? rules.TargetAudioCodec : null);
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,

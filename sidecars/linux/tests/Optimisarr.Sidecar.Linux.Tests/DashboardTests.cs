@@ -10,6 +10,17 @@ namespace Optimisarr.Sidecar.Linux.Tests;
 public sealed class DashboardTests
 {
     [Fact]
+    public void Audio_monitor_kind_survives_projection_and_clears_after_delivery()
+    {
+        var view = new WorkerDashboard("Audio worker", null, "/work", 1);
+        view.Observe(new MonitorJob(42, "Audio fixture", "libopus", RemoteStage.Encoding, 12,
+            Kind: Optimisarr.Core.Domain.MediaKind.Audio));
+        Assert.Equal("Audio", Assert.Single(view.Snapshot(new ScratchStorage("Disk", 1, 2)).Jobs).Kind);
+        view.Finish(42, true);
+        Assert.Empty(view.Snapshot(new ScratchStorage("Disk", 1, 2)).Jobs);
+    }
+
+    [Fact]
     public void Snapshot_removes_finished_jobs_and_never_exposes_server_query_secrets()
     {
         var view = new WorkerDashboard("Quark", "https://server.test/base?token=secret", "/work", 1);

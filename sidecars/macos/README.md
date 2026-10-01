@@ -49,8 +49,8 @@ in the container environment and restart through their normal deployment process
 
 Choose placement separately for each library under **Libraries → open a library → Choose files →
 Advanced eligibility → Where this library's work may run**. Select **Only on workers** to keep
-eligible video re-encodes off the server, and enable strict verification to keep their media
-verification there too. Worker placement applies to video re-encodes; remuxes, audio-only and image
+eligible video and audio re-encodes off the server, and enable strict verification to keep their media
+verification there too. Worker placement applies to video and audio re-encodes; remuxes and image
 jobs remain server work. The server still schedules jobs, transfers and hashes files, evaluates
 evidence, writes its database and performs replacement/quarantine. This is not a zero-work server
 mode. Keep remote workers enabled: placement preferences are ignored while they are disabled.
@@ -157,7 +157,7 @@ Encoding, all proved with a real test encode at launch rather than taken from FF
 | H.264 | `h264_videotoolbox` (hardware) and `libx264` |
 | HEVC | `hevc_videotoolbox` (hardware) and `libx265` |
 | AV1 | `libsvtav1` (software only) |
-| Audio | `aac`. **Not** `libopus` or `libmp3lame` — the build links no external audio libraries, so a library set to Opus or MP3 is never offered to this worker |
+| Audio | `aac`, `libopus`, `libmp3lame`; each encoder must pass a real capability probe. The bundle includes pinned Opus and LAME sources and licenses. |
 
 **This sidecar currently offers software AV1 encoding through SVT-AV1.** Hardware decoding is
 advertised only where the launch probe succeeds. The bundled build is pinned to FFmpeg 8.0.3; see

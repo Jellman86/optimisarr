@@ -12,6 +12,6 @@ namespace Optimisarr.Sidecar.Core.Session;
 public static class WorkerProtocol
 {
     public const int Minimum = 1;
-    // Protocol 5 also accepts narrowly validated primary H.264 colour-range options.
-    public const int Maximum = 5;
+    // Protocol 6 supports standalone audio and its complete sidecar verification.
+    public const int Maximum = 6;
 }

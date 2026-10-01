@@ -27,6 +27,18 @@ public class WorkerCapabilityMatcherTests
         ScratchBytes: 10L * 1024 * 1024 * 1024);
 
     [Fact]
+    public void Standalone_audio_needs_a_proved_audio_encoder_and_updated_protocol_without_video_or_VMAF()
+    {
+        var worker = Capable() with { VideoEncoders = [], Vmaf = VmafCapability.None, ProtocolVersion = 6 };
+        var requirement = Wanted() with { VideoEncoder = null, AudioEncoder = "aac", Vmaf = VmafCapability.None,
+            Kind = Optimisarr.Core.Domain.MediaKind.Audio };
+        Assert.True(WorkerCapabilityMatcher.Match(worker, requirement).Accepted);
+        Assert.False(WorkerCapabilityMatcher.Match(worker with { ProtocolVersion = 5 }, requirement).Accepted);
+        Assert.False(WorkerCapabilityMatcher.Match(worker, requirement with { AudioEncoder = null }).Accepted);
+        Assert.False(WorkerCapabilityMatcher.Match(worker, requirement with { AudioEncoder = "libmp3lame" }).Accepted);
+    }
+
+    [Fact]
     public void Match_accepts_a_worker_that_satisfies_every_requirement()
     {
         var match = WorkerCapabilityMatcher.Match(Capable(), Wanted());

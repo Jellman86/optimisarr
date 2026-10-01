@@ -39,10 +39,18 @@ public sealed class VerificationEvaluatorTests
 
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
-        foreach (var name in new[] { "HDR signal", "A/V sync", "Timestamp integrity", "Tail integrity" })
+        foreach (var name in new[] { "HDR signal", "A/V sync", "Tail integrity" })
         {
             Assert.DoesNotContain(report.Checks, check => check.Name == name);
         }
+    }
+
+    [Fact]
+    public void Audio_packet_regressions_fail_when_measured()
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyAudio() with {
+            TimestampsMeasured = true, NonMonotonicTimestampCount = 1 }, VerificationPolicy.Default);
+        Assert.Contains(report.Checks, check => check.Name == "Timestamp integrity" && check.Outcome == CheckOutcome.Failed);
     }
 
     // An image output: a smaller still that decodes, keeps its dimensions, and has no

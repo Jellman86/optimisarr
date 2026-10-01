@@ -9,9 +9,17 @@ public interface IFramePreviewExtractor
     Task<byte[]?> ExtractAsync(string ffmpeg, string source, double seconds, CancellationToken cancellationToken);
 }
 
-public sealed class FfmpegFramePreviewExtractor : IFramePreviewExtractor
+public sealed class FfmpegFramePreviewExtractor(bool audio = false) : IFramePreviewExtractor
 {
-    public static IReadOnlyList<string> Arguments(string source, double seconds) =>
+    public static IReadOnlyList<string> Arguments(string source, double seconds, bool audio = false) => audio ?
+    [
+        "-hide_banner", "-loglevel", "error", "-nostdin", "-max_alloc", "67108864",
+        "-threads", "1", "-ss", Math.Clamp(seconds - 3, 0, 7 * 24 * 3600).ToString("0.00", CultureInfo.InvariantCulture),
+        "-t", "3", "-i", source, "-filter_complex_threads", "1",
+        "-filter_complex", "[0:a:0]aresample=48000,showspectrumpic=s=320x96:legend=0:scale=log:fscale=log:color=viridis:mode=combined[spectrum]",
+        "-map", "[spectrum]", "-an", "-sn", "-dn", "-frames:v", "1",
+        "-threads:v", "1", "-q:v", "8", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"
+    ] :
     [
         "-hide_banner", "-loglevel", "error", "-nostdin", "-max_alloc", "67108864",
         "-threads", "1", "-ss", Math.Clamp(seconds, 0, 7 * 24 * 3600).ToString("0.00", CultureInfo.InvariantCulture),
@@ -30,7 +38,7 @@ public sealed class FfmpegFramePreviewExtractor : IFramePreviewExtractor
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var argument in Arguments(source, seconds)) start.ArgumentList.Add(argument);
+        foreach (var argument in Arguments(source, seconds, audio)) start.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = start };
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(3));

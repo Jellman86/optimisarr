@@ -124,4 +124,5 @@ public sealed record VerificationInput(
     IReadOnlyList<string?>? OutputSubtitleLanguages = null,
     IReadOnlyList<string?>? ExpectedAudioCodecs = null,
     IReadOnlyList<string?>? OutputAudioCodecs = null,
-    bool SourceTimelineIndeterminate = false);
+    bool SourceTimelineIndeterminate = false,
+    string? ExpectedAudioCodec = null);

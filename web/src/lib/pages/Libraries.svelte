@@ -2074,7 +2074,7 @@
              the stored choice is otherwise moot, and a control that does nothing would only invite
              a wrong conclusion. A library that already holds a non-default value while workers
              are off says so in one line instead, so nothing is silently kept. -->
-        {#if showVideoOptions && remoteWorkersOn}
+        {#if (showVideoOptions || isAudioType(form.mediaType)) && remoteWorkersOn}
           <div class="mt-4" data-testid="work-placement">
             <span class="label">{i18n.m.libraries.placement_label} <InfoTip text={i18n.m.libraries.placement_tip} /></span>
             <p class="mb-2 text-xs text-ink-3">{i18n.m.libraries.placement_hint}</p>

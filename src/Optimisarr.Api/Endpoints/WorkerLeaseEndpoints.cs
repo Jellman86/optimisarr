@@ -31,7 +31,7 @@ internal sealed record AssignmentDto(
     /// operator standing at the Mac nothing about which of their files is being worked on.</summary>
     string Title,
     long SourceBytes,
-    string VideoEncoder,
+    string? VideoEncoder,
     string Vmaf,
     DateTimeOffset ExpiresUtc,
     int RenewWithinSeconds,
@@ -47,7 +47,9 @@ internal sealed record AssignmentDto(
     RemoteVerificationContract? FullVerification = null,
     long? MaxCandidateBytes = null,
     long? MinCandidateBytes = null,
-    Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null);
+    Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null,
+    MediaKind Kind = MediaKind.Video,
+    string? AudioEncoder = null);
 
 internal sealed record SizeBudgetExceededRequest(long ObservedBytes);
 internal sealed record SizeBudgetUndershotRequest(long ObservedBytes);
@@ -365,11 +367,13 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
-                    var requiredProtocol = WorkerProtocol.MinimumForEncodeCommand(assignment.Arguments);
+                    var requiredProtocol = WorkerProtocol.MinimumForEncodeCommand(assignment.Arguments, assignment.Kind);
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol >= 5
+                        lastReason = requiredProtocol == 6
+                            ? "Standalone audio requires an updated sidecar (protocol 6)."
+                            : requiredProtocol >= 5
                             ? "This H.264 encode preserves declared colour range. Update the sidecar to support protocol 5."
                             : "This job converts MP4 timed-text subtitles to Matroska. Update the sidecar to support protocol 4.";
                         WorkerProblems.Record(worker, lastReason, now);
@@ -395,10 +399,11 @@ internal static class WorkerLeaseEndpoints
                         // Named only when the command actually uses one, and then it must be proved.
                         HardwareDecoder: assignment.HardwareDecoder,
                         // Only a job whose policy will judge VMAF needs a worker that can score it.
-                        Vmaf: assignment.Verification.QualityGateEnabled ? VmafCapability.Cpu : VmafCapability.None,
+                        Vmaf: assignment.Verification.RequiresVmaf(assignment.Kind, true) ? VmafCapability.Cpu : VmafCapability.None,
                         // Scratch for the candidate plus headroom; a worker that cannot hold the output
                         // has no business starting the encode.
-                        ScratchBytes: job.MediaFile.SizeBytes + (job.MediaFile.SizeBytes / 2));
+                        ScratchBytes: job.MediaFile.SizeBytes + (job.MediaFile.SizeBytes / 2),
+                        Kind: assignment.Kind);
 
                     var match = WorkerCapabilityMatcher.Match(capabilities, requirements);
                     if (!match.Accepted)
@@ -526,7 +531,7 @@ internal static class WorkerLeaseEndpoints
                         assignment.Arguments,
                         assignment.OutputExtension,
                         new QualityRequirementDto(
-                            policy.QualityGateEnabled,
+                            policy.RequiresVmaf(assignment.Kind, true),
                             assignment.VmafModel,
                             policy.VmafFrameSubsample,
                             policy.ClipVmafEnabled,
@@ -541,7 +546,7 @@ internal static class WorkerLeaseEndpoints
                         minCandidateBytes,
                         new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
                             job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
-                            job.MediaFile.PixelFormat)));
+                            job.MediaFile.PixelFormat), assignment.Kind, assignment.AudioEncoder));
                 }
 
             }
@@ -1253,7 +1258,7 @@ internal static class WorkerLeaseEndpoints
     }
 
     /// <summary>
-    /// The refusals that need nothing beyond the loaded rows: only a video re-encode is offered,
+    /// The refusals that need nothing beyond the loaded rows: video and audio re-encodes are offered,
     /// the library permits remote placement, and the worker must prove an
     /// encoder for the target codec. Mirrors <see cref="QueueDispatcher.PrepareRemoteWorkAsync"/>,
     /// which remains the authority.
@@ -1261,7 +1266,7 @@ internal static class WorkerLeaseEndpoints
     private static bool PlausiblyOfferable(Job job, WorkerCapabilities capabilities)
     {
         var media = job.MediaFile!;
-        if (media.MediaKind is MediaKind.Audio or MediaKind.Image)
+        if (media.MediaKind == MediaKind.Image)
         {
             return false;
         }
@@ -1278,7 +1283,11 @@ internal static class WorkerLeaseEndpoints
         // needs the source's picture and duration, which this cheap pre-filter does not load —
         // PrepareRemoteWorkAsync decides that, and refuses the job there if it cannot.
 
-        var targetCodec = LibraryRuleResolution.Resolve(library).TargetVideoCodec;
+        var rules = LibraryRuleResolution.Resolve(library);
+        if (media.MediaKind == MediaKind.Audio)
+            return capabilities.ProtocolVersion >= 6 && AudioTarget.IsSupportedTarget(rules.TargetAudioCodec) && capabilities.AudioEncoders.Contains(
+                AudioTarget.Resolve(rules.TargetAudioCodec).Encoder, StringComparer.OrdinalIgnoreCase);
+        var targetCodec = rules.TargetVideoCodec;
         return targetCodec is not null
             && EncoderSelector.Select(
                 targetCodec,

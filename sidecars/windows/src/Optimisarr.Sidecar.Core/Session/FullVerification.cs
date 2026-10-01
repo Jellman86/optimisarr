@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -15,22 +16,23 @@ public static class FullVerification
         var evidence = new RemoteVerificationEvidence(contract.Id, sourceHash, candidateHash);
         try
         {
-            if (contract.Version != 1) throw new InvalidOperationException("Unsupported full verification contract.");
+            if (contract.Version is not (1 or 2)) throw new InvalidOperationException("Unsupported full verification contract.");
             var ffprobe = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!,
                 OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
             var timestamps = new TimestampIntegrityCheck(ffprobe);
-            var loudness = new LoudnessService(measurementFfmpeg ?? ffmpeg);
+            var loudness = new LoudnessService(contract.Kind == MediaKind.Audio ? ffmpeg : measurementFfmpeg ?? ffmpeg);
             var sourceProbe = await ProbeAsync(ffprobe, source, cancellationToken);
             var candidateProbe = await ProbeAsync(ffprobe, candidate, cancellationToken);
             var decode = await new DecodeHealthCheck(ffmpeg).CheckAsync(candidate, cancellationToken);
-            var sourceVideo = await timestamps.CheckSourceAsync(source, cancellationToken);
-            var candidateVideo = await timestamps.CheckAsync(candidate, cancellationToken);
+            var sourceVideo = contract.Kind == MediaKind.Audio ? null : await timestamps.CheckSourceAsync(source, cancellationToken);
+            var candidateVideo = contract.Kind == MediaKind.Audio ? null : await timestamps.CheckAsync(candidate, cancellationToken);
+            var candidateAudio = contract.Kind == MediaKind.Audio ? await timestamps.CheckPrimaryAudioAsync(candidate, cancellationToken) : null;
             var sourceAudio = await timestamps.CheckPrimaryAudioAsync(source, cancellationToken);
             var sourceStreams = MediaProbeService.Parse(sourceProbe);
             // Confirm a short source packet scan before submitting it as evidence. The server's
             // strict mode deliberately does not repeat media reads after receiving this report.
             if (SourceTimelineAssessment.NeedsConfirmation(
-                    sourceVideo.LastPresentationSeconds is { } videoEnd
+                    sourceVideo?.LastPresentationSeconds is { } videoEnd
                         ? Math.Max(0, videoEnd - (sourceStreams.VideoStartSeconds ?? 0)) : null,
                     sourceAudio.LastPresentationSeconds is { } audioEnd
                         ? Math.Max(0, audioEnd - (sourceStreams.AudioStartSeconds ?? 0)) : null))
@@ -47,10 +49,11 @@ public static class FullVerification
                 SourceVideo = sourceVideo,
                 CandidateVideo = candidateVideo,
                 SourceAudio = sourceAudio,
+                CandidateAudio = candidateAudio,
                 SourceLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(source, cancellationToken) : null,
                 CandidateLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(candidate, cancellationToken) : null
             };
-            var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio);
+            var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio, contract.Kind);
             return completed with { Error = missing.Count == 0 ? null : "Full verification could not complete: " + string.Join(" ", missing) };
         }
         catch (OperationCanceledException) { throw; }

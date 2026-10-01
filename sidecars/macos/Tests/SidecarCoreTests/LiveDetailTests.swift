@@ -34,6 +34,26 @@ struct GpuStatisticsTests {
 
 @Suite("Frame preview")
 struct FramePreviewTests {
+    @Test("an unresponsive preview process is stopped without holding up the worker")
+    func previewDeadline() async {
+        let start = Date()
+        let result = await ProcessBinaryCommandRunner().run(URL(fileURLWithPath: "/bin/sleep"), ["6"])
+        #expect(result.exitCode != 0)
+        #expect(result.output.isEmpty)
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test("audio previews measure a bounded source window and do not select a picture stream")
+    func audioSpectrum() {
+        let args = FramePreviewCommand.arguments(source: URL(fileURLWithPath: "/scratch/source"),
+            atSeconds: 12.5, width: 320, audio: true)
+        #expect(args[args.firstIndex(of: "-ss")! + 1] == "9.50")
+        #expect(args[args.firstIndex(of: "-t")! + 1] == "3")
+        #expect(args.contains("[spectrum]"))
+        #expect(args[args.firstIndex(of: "-filter_complex")! + 1].contains("showspectrumpic"))
+        #expect(!args.contains("0:V:0"))
+    }
+
     @Test("the seek comes before the input so one frame costs a keyframe jump, not a full decode")
     func seeksBeforeInput() {
         let arguments = FramePreviewCommand.arguments(
@@ -158,6 +178,20 @@ struct PreviewGatingTests {
 ///     OPTIMISARR_FFMPEG=$(pwd)/vendor/ffmpeg swift test
 @Suite("Live frame preview", .enabled(if: ProcessInfo.processInfo.environment["OPTIMISARR_FFMPEG"] != nil))
 struct LiveFramePreviewTests {
+    @Test("an audio source produces a bounded real spectrogram")
+    func realAudioSpectrum() async throws {
+        let ffmpeg = URL(fileURLWithPath: ProcessInfo.processInfo.environment["OPTIMISARR_FFMPEG"] ?? "")
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("spectrum-\(UUID().uuidString).flac")
+        defer { try? FileManager.default.removeItem(at: source) }
+        let made = await ProcessCommandRunner().run(ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i",
+            "sine=frequency=440:duration=5:sample_rate=48000", "-c:a", "flac", source.path])
+        #expect(made.exitCode == 0)
+        let frame = await FramePreviewSampler(ffmpeg: ffmpeg, interval: 0).frame(from: source, atSeconds: 4, audio: true)
+        let bytes = try #require(frame)
+        #expect(bytes.prefix(2) == Data([0xff, 0xd8]))
+        #expect(bytes.count <= 8192)
+    }
+
     @Test("grabs a real JPEG out of a real file")
     func grabsAJpeg() async throws {
         let ffmpeg = URL(fileURLWithPath: ProcessInfo.processInfo.environment["OPTIMISARR_FFMPEG"]!)
@@ -218,5 +252,26 @@ struct VmafLogSummaryTests {
     func refusesJunk() {
         #expect(VmafLogSummary.of("not json") == nil)
         #expect(VmafLogSummary.of("{\"frames\":[]}") == nil)
+    }
+}
+
+@Suite("Preview process bounds")
+struct PreviewProcessBoundsTests {
+    @Test("oversized preview output is discarded and its producer stopped")
+    func oversized() async {
+        let result = await ProcessBinaryCommandRunner().run(URL(fileURLWithPath: "/usr/bin/yes"), ["spectrum"])
+        #expect(result.exitCode != 0)
+        #expect(result.output.isEmpty)
+    }
+
+    @Test("cancelling a preview stops its child without waiting for the deadline")
+    func cancellation() async throws {
+        let start = Date()
+        let task = Task { await ProcessBinaryCommandRunner().run(URL(fileURLWithPath: "/bin/sleep"), ["6"]) }
+        try await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+        let result = await task.value
+        #expect(result.exitCode != 0)
+        #expect(Date().timeIntervalSince(start) < 2)
     }
 }

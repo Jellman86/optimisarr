@@ -64,6 +64,11 @@ public static class VerificationEvaluator
         if (input.Kind == MediaKind.Audio)
         {
             checks.Add(AudioMetadataPreserved(input));
+            if (input.ExpectedAudioCodec is { } expected)
+                checks.Add(input.OutputAudioCodecs is { Count: > 0 } codecs
+                    && codecs.All(codec => string.Equals(codec, expected, StringComparison.OrdinalIgnoreCase))
+                    ? Pass("Audio codec", $"All output audio streams use {expected}.")
+                    : Fail("Audio codec", $"Expected {expected} on every output audio stream."));
         }
 
         checks.Add(SizeReduced(input, policy));
@@ -135,7 +140,7 @@ public static class VerificationEvaluator
 
         // Timestamp monotonicity is checked whenever we managed to read the output's
         // packet timestamps; an unreadable packet stream simply omits the line.
-        if (isVideo && input.TimestampsMeasured)
+        if ((isVideo || input.Kind == MediaKind.Audio) && input.TimestampsMeasured)
         {
             checks.Add(MonotonicTimestamps(input));
         }

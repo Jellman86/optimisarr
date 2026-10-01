@@ -110,4 +110,22 @@ struct AdaptiveSearchDecodingTests {
         broken["measurement"] = ["model": "vmaf_v0.6.1"]
         #expect(AdaptiveSearchStep(json: broken) == nil)
     }
+    @Test("audio reads the numeric wire kind without a video encoder and rejects unknown kinds or contracts")
+    func audioWireContract() {
+        var json: [String: Any] = [
+            "leaseId": UUID().uuidString, "jobId": 7, "sourceBytes": 4096,
+            "renewWithinSeconds": 30, "arguments": ["-i", "{{input}}", "{{output}}.opus"],
+            "outputExtension": "opus", "kind": 2, "audioEncoder": "libopus",
+            "quality": ["measure": false, "model": "vmaf_v0.6.1", "frameSubsample": 1,
+                "clipVmaf": false, "minimumHarmonicMean": 0.0, "minimumMinimum": 0.0],
+        ]
+        #expect(Assignment(json: json)?.isAudio == true)
+        json["videoEncoder"] = "libx265"
+        json["kind"] = 99
+        #expect(Assignment(json: json) == nil)
+        json["kind"] = 2
+        json["fullVerification"] = ["version": 1, "id": UUID().uuidString, "measureAudio": true]
+        #expect(Assignment(json: json) == nil)
+    }
+
 }

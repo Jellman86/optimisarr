@@ -31,8 +31,8 @@ class SidecarSourceTests(unittest.TestCase):
 
     def test_exact_revision_is_taken_from_build_info_not_tag(self):
         info = self.root / 'BUILD-INFO.txt'
-        info.write_text('built: 2026-09-17\n' + ''.join(f'{name} moving-tag {"a" * 40}\n' for name in source.MAC_REPOS))
-        self.assertEqual(set(source.read_mac_revisions(info).values()), {'a' * 40})
+        info.write_text('built: 2026-09-17\n' + ''.join(f'{name} moving-tag {"a" * 40}\n' for name in source.MAC_REPOS) + ''.join(f'{name} version {"a" * 64}\n' for name in source.MAC_ARCHIVES))
+        self.assertEqual(set(source.read_mac_revisions(info).values()), {'a' * 40, 'a' * 64})
 
     def cache(self, name):
         compressed = io.BytesIO()

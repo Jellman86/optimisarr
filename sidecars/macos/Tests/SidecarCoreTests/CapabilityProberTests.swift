@@ -133,7 +133,7 @@ struct CapabilityProberTests {
     @Test("advertises no concurrency when it has no encoder to offer")
     func noEncodersMeansNoConcurrency() async {
         // Otherwise the server sees a live worker with capacity that it can never actually use.
-        let runner = ScriptedRunner(["encoders": (0, " A....D aac  AAC"), "filters": (0, "")])
+        let runner = ScriptedRunner(["encoders": (0, " A....D aac  AAC"), "filters": (0, ""), "aac": (1, "Unavailable")])
 
         let capabilities = await prober(runner).probe(name: "Mac", maxConcurrency: 4)
 

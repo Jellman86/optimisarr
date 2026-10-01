@@ -8,7 +8,7 @@ import Foundation
 /// working across a server upgrade.
 public enum WorkerProtocol {
     public static let minimum = 1
-    public static let maximum = 5
+    public static let maximum = 6
 }
 
 /// What this machine has *proved* it can do.
@@ -179,6 +179,10 @@ public struct Assignment: Sendable, Equatable {
     public let title: String
     public let sourceBytes: Int64
     public let videoEncoder: String
+    public let kind: String
+    public let audioEncoder: String?
+    public var isAudio: Bool { kind == "Audio" }
+    public var encoder: String { isAudio ? audioEncoder ?? "Unknown audio encoder" : videoEncoder }
     public let renewWithinSeconds: Int
     public let arguments: [String]
     public let outputExtension: String
@@ -196,13 +200,15 @@ public struct Assignment: Sendable, Equatable {
         renewWithinSeconds: Int, arguments: [String], outputExtension: String,
         quality: QualityRequirement, search: AdaptiveSearchStep? = nil,
         fullVerification: FullVerificationContract? = nil, maxCandidateBytes: Int64? = nil,
-        minCandidateBytes: Int64? = nil
+        minCandidateBytes: Int64? = nil, kind: String = "Video", audioEncoder: String? = nil
     ) {
         self.leaseId = leaseId
         self.jobId = jobId
         self.title = title
         self.sourceBytes = sourceBytes
         self.videoEncoder = videoEncoder
+        self.kind = kind
+        self.audioEncoder = audioEncoder
         self.renewWithinSeconds = renewWithinSeconds
         self.arguments = arguments
         self.outputExtension = outputExtension
@@ -218,17 +224,33 @@ public struct Assignment: Sendable, Equatable {
             let leaseId = json["leaseId"] as? String,
             let jobId = (json["jobId"] as? NSNumber)?.intValue,
             let sourceBytes = (json["sourceBytes"] as? NSNumber)?.int64Value,
-            let encoder = json["videoEncoder"] as? String,
             let renew = (json["renewWithinSeconds"] as? NSNumber)?.intValue,
             let arguments = json["arguments"] as? [String],
             let outputExtension = json["outputExtension"] as? String,
             let qualityJson = json["quality"] as? [String: Any],
             let quality = QualityRequirement(json: qualityJson)
         else { return nil }
+        let kind: String
+        if let number = json["kind"] as? NSNumber {
+            switch number.intValue {
+            case 1: kind = "Video"
+            case 2: kind = "Audio"
+            default: return nil
+            }
+        } else {
+            kind = json["kind"] as? String ?? "Video"
+        }
+        guard ["Video", "Audio", "Unknown"].contains(kind),
+              let encoder = (kind == "Audio" ? json["audioEncoder"] : json["videoEncoder"]) as? String,
+              !encoder.isEmpty else { return nil }
+        if kind == "Audio" {
+            guard json["search"] == nil || json["search"] is NSNull, !quality.measure else { return nil }
+        }
         var fullVerification: FullVerificationContract?
         if let raw = json["fullVerification"], !(raw is NSNull) {
             guard let data = try? JSONSerialization.data(withJSONObject: raw),
                   let contract = try? JSONDecoder().decode(FullVerificationContract.self, from: data) else { return nil }
+            guard contract.version == (kind == "Audio" ? 2 : 1) else { return nil }
             fullVerification = contract
         }
         self.init(
@@ -244,7 +266,8 @@ public struct Assignment: Sendable, Equatable {
             // before the field existed.
             search: Assignment.search(from: json), fullVerification: fullVerification,
             maxCandidateBytes: (json["maxCandidateBytes"] as? NSNumber)?.int64Value,
-            minCandidateBytes: (json["minCandidateBytes"] as? NSNumber)?.int64Value)
+            minCandidateBytes: (json["minCandidateBytes"] as? NSNumber)?.int64Value,
+            kind: kind, audioEncoder: json["audioEncoder"] as? String)
     }
 
     /// Says so when a search arrives that cannot be read.
