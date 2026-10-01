@@ -225,6 +225,48 @@ async function mockWorkingQueue(page: Page, fixture: { jobs: ReturnType<typeof j
   })
 }
 
+for (const scenario of [
+  { name: 'mobile tap', width: 390, height: 844, keyboard: false },
+  { name: 'desktop keyboard', width: 1280, height: 900, keyboard: true },
+  { name: 'mobile landscape with reduced motion', width: 844, height: 390, keyboard: false },
+]) {
+  test(`Needs review brings held jobs into view with ${scenario.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await mockWorkingQueue(page, { jobs: [
+      { ...job(1, 'Transcoding', null), progress: .4 },
+      { ...job(2, 'Leased', null), workerName: 'PICARD', remoteStage: 'Encoding', progress: .3 },
+      { ...job(3, 'Leased', null), workerName: 'Mac', remoteStage: 'Verifying', progress: .2 },
+      ...Array.from({ length: 105 }, (_, index) => job(100 + index, 'Completed', true)),
+      job(19, 'AwaitingSizeReview', null),
+      job(20, 'AwaitingSizeReview', null),
+    ], queue: { workloadLanes: [
+      { lane: 'Video', active: 1, capacity: 1, waiting: 0, reason: null },
+      { lane: 'Evidence', active: 0, capacity: 2, waiting: 0, reason: null },
+      { lane: 'Workers', active: 2, capacity: 3, waiting: 0, reason: null },
+    ] } })
+    await page.goto('/#/queue')
+    await page.getByRole('button', { name: 'Next page', exact: true }).click()
+    const alert = page.locator('.queue-review-alert')
+    if (scenario.keyboard) {
+      await alert.focus()
+      await page.keyboard.press('Enter')
+    } else {
+      await alert.click()
+    }
+    await expect(page.locator('#queue-job-19')).toBeInViewport()
+    const review = page.getByRole('region', { name: 'Needs review', exact: true })
+    await expect(review.getByRole('heading', { name: 'Needs review', exact: true })).toBeFocused()
+    await expect(review.locator('tbody tr')).toHaveCount(2)
+    await expect(review.getByRole('button', { name: 'Needs review · 2', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.locator('#queue-job-19').click()
+    await expect(page.getByRole('dialog').getByText('Full encode paused for size review')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.locator('#queue-job-19')).toBeFocused()
+  })
+}
+
 test('a size preflight hold explains the estimate and requeues only after confirmation', async ({ page }) => {
   let held = { ...job(19, 'AwaitingSizeReview', null), progress: 0,
     errorMessage: 'Three video-only quality samples project video data at about 150% of the source file.' }

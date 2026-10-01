@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Queue's "Needs review" banner brings held jobs into view and moves keyboard focus to the review list, including on mobile with working jobs above it.
+
 ## 0.2.18 — 2026-10-01
 
 ### Quality verification

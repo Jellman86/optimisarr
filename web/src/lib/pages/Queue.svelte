@@ -266,6 +266,14 @@
     queuePage = 1
   }
 
+  async function showSizeReviews() {
+    selectFilter('review')
+    await tick()
+    const heading = document.getElementById('queue-list-title')
+    heading?.focus({ preventScroll: true })
+    heading?.scrollIntoView({ block: 'start' })
+  }
+
   function goToQueuePage(next: number) {
     queuePage = Math.max(1, Math.min(next, queuePageCount))
   }
@@ -513,7 +521,7 @@
     <FailuresPanel />
   {:else}
     {#if counts.review > 0}
-      <button class="queue-review-alert card tone-warn focus-ring" onclick={() => selectFilter('review')}>
+      <button class="queue-review-alert card tone-warn focus-ring" onclick={showSizeReviews} aria-controls="queue-list">
         <Icon name="warning" />
         <span><strong>{i18n.m.queue.filter_review} · {counts.review}</strong><small>{i18n.m.queue.size_review_detail}</small></span>
         <Icon name="arrow-right" />
@@ -781,8 +789,8 @@
       </dialog>
     {/if}
 
-    <section aria-label={i18n.m.queue.next_recent}>
-      <div class="queue-section-heading"><h2>{i18n.m.queue.next_recent}</h2><span>{remainingJobs.length}</span></div>
+    <section id="queue-list" aria-labelledby="queue-list-title">
+      <div class="queue-section-heading"><h2 id="queue-list-title" class="focus-ring" tabindex="-1">{filter === 'review' ? i18n.m.queue.filter_review : i18n.m.queue.next_recent}</h2><span>{visibleJobs.length}</span></div>
       {#if jobs.length > 0}
         <div class="queue-tools">
           <div class="queue-filters">
@@ -822,6 +830,7 @@
 </div>
 
 <style>
+  #queue-list-title { scroll-margin-block-start: .75rem; }
   .queue-review-alert { width: 100%; display: flex; align-items: center; gap: .875rem; margin-bottom: 1.25rem; padding: 1rem 1.125rem; text-align: left; box-shadow: var(--lift-1); transition: transform 180ms ease, box-shadow 180ms ease; }
   .queue-review-alert:hover, .queue-review-alert:focus-visible { transform: translateY(-2px); box-shadow: var(--lift-3); }
   .queue-review-alert > :global(svg) { flex: none; }
