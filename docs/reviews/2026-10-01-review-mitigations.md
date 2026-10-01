@@ -13,7 +13,7 @@ The [review prompt](../development/application-review-prompt.md) remains reusabl
 |---|---|---|
 | R1: verification could apply to different bytes at replacement | Record exact verified source/candidate SHA-256 identities, check before moves and at the final paths, and freeze identities in the pending rollback record. Recovery never finalizes from size alone. | Same-size candidate mutation; upgraded source; historical ready output without hashes; a new file appearing after quarantine; ambiguous same-container remnant; changed quarantine identity; cancellation after the first move; existing crash recovery and rollback tests. |
 | R2: a result upload could revive a cancelled or expired assignment | Re-read current credentials, lease, attempt and source identity in a short writer transaction after transfer/hash. Candidates belong to a lease; promotion cannot overwrite another candidate. Serialize chunks, completion and offset reads per lease. | Cancellation, elapsed expiry, explicit expiry, credential revocation and attempt changes during a controlled stream; renewal during delivery succeeds; simultaneous chunks at the same offset append only once; existing resumable/hash/strict-verification tests. |
-| R3: discovery could deadlock on stderr and leave a cancelled child | Drain both pipes concurrently; bound retained output to 1 MiB of characters per pipe while continuing to drain; enforce a 30-second probe deadline; kill and reap the owned process on abort. Oversized/incomplete listings are unavailable, not trusted capabilities. | Generated executable writes 1 MB to stderr while producing valid stdout; a sleeping owned child is cancelled and verified exited; explicit deadline and excess-output probes fail closed. The Windows version uses PowerShell under its normal policy, without an execution-policy bypass. |
+| R3: discovery could deadlock on stderr and leave a cancelled child | Drain both pipes concurrently; bound retained output to 1 MiB of characters per pipe while continuing to drain; enforce a 30-second probe deadline; kill and reap the owned process on abort. Oversized/incomplete listings are unavailable, not trusted capabilities. | Generated executable writes 1 MB to stderr while producing valid stdout; a sleeping owned child is cancelled and verified exited; explicit deadline and excess-output probes fail closed. The Windows version uses PowerShell 7 under its normal policy, without an execution-policy bypass; valid stdout must still be reported as an available tool after the stderr flood. |
 | R4: malformed stored reports could break diagnostic exports | Validate report structure before summarizing it. Invalid reports are omitted with an explicit manifest reason; failure summaries use the same guard. | Null check collections, null entries, missing/empty checks, unknown outcomes, malformed JSON and missing check names; valid named/numeric outcomes in current and historical reports; existing redaction tests. |
 | R5: sidebar progress had no accessible name | Name expanded and collapsed progress indicators with their existing translated heading, title and worker location. Indeterminate progress gets a state description. | Axe checks across every audited route, plus existing job/sidebar interaction coverage. |
 | R6: status text and Quarantine guidance lacked contrast | Use the theme's strong status tokens and readable secondary text for meaningful Quarantine copy. Card texture, layout, hover lift and shadows remain unchanged. | Automated WCAG contrast checks in desktop dark and phone light on Chromium and WebKit; geometric, hover and keyboard-focus checks; representative screenshot review. |
@@ -112,17 +112,17 @@ complete WCAG conformance.
 
 | Surface | Result and scope |
 |---|---|
-| Local Mac backend | 2,493 tests pass; Release build has zero warnings/errors. |
-| Quark Linux backend | 2,493 tests pass; Release build has zero warnings/errors, from an isolated copy of the final application/test sources. |
-| Shared sidecar core on Quark | 246 tests pass. This is portable worker logic, not Windows native UI certification. |
+| Local Mac backend | 2,506 tests pass; Release build has zero warnings/errors. |
+| Quark Linux backend | 2,506 tests pass; Release build has zero warnings/errors, from an isolated copy of the final application/test sources. |
+| Shared sidecar core on Quark | 258 tests pass. This is portable worker logic, not Windows native UI certification. |
 | Linux sidecar on Quark | 29 tests pass. |
-| Mac sidecar | Swift suite reports 235 test declarations in 49 suites; opt-in live suites are separately gated. Release AcceptanceWorker builds. |
+| Mac sidecar | Swift suite reports 237 test declarations in 49 suites; opt-in live suites are separately gated. Release AcceptanceWorker builds. |
 | Mac RAM work directory | Real RAM volume creation, crash sweep and production-runner success/failure/cancellation tested with bundled FFmpeg. |
 | Browser UI | All 195 Chromium E2E tests and 12 WebKit audit tests pass. Axe scans 30 routes per appearance in desktop dark and phone light; frontend check has zero Svelte errors/warnings and 75 unit tests pass. |
 | Python harness and maintenance | 64 tests pass. Release metadata, documentation links, OpenAPI drift and migration-model checks pass. |
 | Mac media acceptance | 40 selected fleet cases pass using libx265 locally and the production Mac worker with HEVC VideoToolbox. Includes SDR, VFR, timestamp offset, 10-bit, subtitles, adaptive quality, deliberate VMAF rejection, audio/image work, independent corruption oracles, cancellation, reconnect, isolation and rollback. |
 | Running Riker container and Quark sidecar | Finite generated-media probes completed encode, 48-frame count, full decode and VMAF with exit 0 on both. VMAF mean 97.973, minimum 96.021. These test installed toolchains, not deployment of this branch. |
-| PICARD | SSH was unreachable. Native Windows/RTX 4070 hardware acceptance is blocked and is not counted as passing. Windows CI additionally runs process/replacement/migration regressions, alongside its existing native tray checks. |
+| PICARD native Windows | Zero-warning backend/sidecar Release builds; 258 sidecar tests pass. All 51 process/replacement/migration regressions pass, along with native popover anchoring, monitor rendering and tray-motion rendering. The full backend run passes 2,488 tests with the same 18 Windows-specific baseline failures described below. |
 
 Media acceptance used the replacement/delivery hardening revision (`5dd84d5`).
 The subsequent manual identity-refusal workflow change was retested by both full
@@ -134,7 +134,96 @@ review work. Generated fixtures, isolated servers/workers and owned scratch file
 were used for testing. CI validates a fresh container build and smoke/media
 acceptance before merge; installed-container probes do not substitute for that.
 
-The remaining platform limit is PICARD availability. GPU, driver, HDR format and
+GPU, driver, HDR format and
 filesystem combinations outside the selected matrix are not certified. Pending
 path conflicts require inspection rather than automatic deletion of unknown files.
 See [safe replacement](../operations/safe-replacement.md) for operator guidance.
+
+## Native Windows follow-up
+
+PICARD became available before merge. Its RTX 4070 (12 GB, driver 617.14) proved
+H.264, HEVC and AV1 NVENC through the production capability prober. Disposable
+workers run the branch's Windows sidecar core, use generated media and hold only
+test credentials in memory. SSH reverse forwards reach the isolated loopback
+server; the installed worker's credentials, settings and service remain intact.
+
+The first native run exposed three new test-fixture failures: the tests invoked
+Windows PowerShell, whose default policy on this host disallows script files.
+They now invoke the installed PowerShell 7 test host with its normal policy.
+No security or execution policy was changed. A stronger assertion also requires
+the stderr-flood probe to report available, valid stdout; merely returning without
+an exception is insufficient.
+
+All 18 remaining full-backend failures also reproduce against the exact reviewed
+`dev` baseline, which passed 2,433 of its 2,451 tests on Windows. They comprise
+Unix hard-link fixtures (four probe and three inventory cases), POSIX path
+expectations (four replacement-planner, two library-refresh, and one each for
+work paths, setup mounts and readiness), a synthetic-media fixture using POSIX relative paths, and the
+queue-pause test expecting process suspension on a host that supports dispatch
+pause instead. They are recorded as outstanding backend-suite portability work,
+not hidden by skipping or changing those tests. The supported Mac/Linux backend
+suites remain fully green. Native Windows sidecar and the new safety regressions
+are independently green.
+
+![Native Windows monitor with expanded processing details, rendered on the physical test host with fabricated readings](../images/review-2026-10-01-windows-compact.png)
+
+### Hardware finding: explicit H.264 NVENC range
+
+The first focused MP4 run passed HEVC and AV1 but failed the independent colour
+check for H.264 NVENC: its source declared `color_range=tv`, while the candidate
+left the range unspecified. Pictures, fractional cadence and VMAF still passed.
+The existing production gate permits an unspecified output tag, so this was a
+metadata-preservation discrepancy rather than evidence of pixel corruption.
+
+An isolated native experiment proved that `-color_range tv` alone still omitted
+the H.264 tag; the documented
+[FFmpeg H.264 metadata bitstream filter](https://ffmpeg.org/ffmpeg-bitstream-filters.html#h264_005fmetadata)
+preserved it. The dispatcher now carries only the fresh probe's declared range
+into the transcode specification. H.264 NVENC commands set the matching output
+range and `h264_metadata` flag on video stream zero. Unknown range is never guessed
+or interpolated into a filter. A deliberate HDR-to-SDR transform selects limited
+range; copied video and other encoders receive no workaround. Neither production quality gates
+nor independent acceptance assertions were relaxed.
+
+Four new behaviour tests failed before implementation; all twelve range/guard
+cases now pass. A native full-range source/candidate experiment also checks that
+preserving limited range does not incorrectly retag full-range pictures. Both
+probes retained `pc` and all 96 decoded frames; independent VMAF was 99.972.
+
+The new options are an explicit protocol-5 extension. Mac and shared Windows/Linux
+command guards accept only `tv`/`pc` and the two fixed H.264 range-filter values;
+other bitstream operations, filter chains and stream selectors remain refused.
+The server checks the required protocol before issuing a lease, explains the
+upgrade requirement to older workers, and still allows ordinary older-protocol
+work. Tests also pass the actual server-built commands through the shared guard,
+so a future builder/validator mismatch cannot be hidden by hand-written fixtures.
+
+Native Windows additionally exposed a two-second unit-fixture deadline under
+filesystem load. Its deadline now guards a hang without imposing a latency SLA;
+assertions still require exactly one offset request, lease release and empty
+scratch after a terminal delivery refusal. Production retry behavior is unchanged.
+
+### Completed physical-GPU matrices
+
+| Matrix | Passed checks | Scope |
+|---|---:|---|
+| Initial three-codec fleet | 69 | HEVC/H.264/AV1 NVENC: SDR, variable cadence, timestamp offsets, 10-bit and fractional timing; GPU decode, adaptive quality, deliberate VMAF rejection, audio, cancellation/reconnect, independent corruption oracles and rollback. |
+| Corrected H.264 fleet | 43 | Repeat the full H.264 matrix after the metadata and protocol-5 guard fixes. |
+| Fractional MP4 timing | 16 | All three NVENC codecs; independent range, frame-count, cadence, audio and VMAF checks. |
+| Overlapping subtitles | 19 | All three codecs, with Matroska fallback and compatible filtered MP4 output. |
+| Copied ALAC | 27 | All three codecs: Matroska, native MP4, filtered tracks and remux/no-op paths. |
+
+Every completed matrix has zero failed or blocked checks and uses strict worker
+verification. Counts include fixture/setup/cleanup checks and overlap across
+matrices; they are not counts of unique media files. The final four matrices
+executed the corrected protocol-5 sources at `da731fe6aa854aece9de053ebbb01e1fb8321d65`.
+The initial fleet preceded the new range options. Interrupted intermediate runs
+that exposed the command-guard mismatch are not counted as passing evidence.
+
+The [redacted native evidence](2026-10-01-picard-evidence.json) records case names,
+results and the unchanged baseline failures without private endpoints, credentials
+or media paths. Final inspection found no remaining owned acceptance worker
+processes and no files in any owned worker scratch directory. Installed workers
+and other agents' processes were not altered. Older sidecars need the protocol-5
+update to receive range-preserving H.264 assignments; no production rollout is
+included in this review merge.

@@ -56,6 +56,8 @@ Native sidecar captures use their own platform renderers and are separate from t
 `review-2026-09-30-*.png` preserves the original review baseline. It may show
 issues that have since been fixed. `review-2026-10-01-*.png` shows the tested
 mitigation UI, captured by the Playwright layout audit with fabricated media.
+The dated Windows compact-monitor image was rendered by the branch's native WPF
+renderer on the physical Windows test host; its readings are fabricated too.
 These are dated review evidence, not substitutes for the current user-guide
 screenshots. See the [review](../reviews/2026-09-30-full-application-review.md)
 and [mitigations](../reviews/2026-10-01-review-mitigations.md).
