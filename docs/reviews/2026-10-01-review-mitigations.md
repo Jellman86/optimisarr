@@ -14,7 +14,7 @@ The [review prompt](../development/application-review-prompt.md) remains reusabl
 | R1: verification could apply to different bytes at replacement | Record exact verified source/candidate SHA-256 identities, check before moves and at the final paths, and freeze identities in the pending rollback record. Recovery never finalizes from size alone. | Same-size candidate mutation; upgraded source; historical ready output without hashes; a new file appearing after quarantine; ambiguous same-container remnant; changed quarantine identity; cancellation after the first move; existing crash recovery and rollback tests. |
 | R2: a result upload could revive a cancelled or expired assignment | Re-read current credentials, lease, attempt and source identity in a short writer transaction after transfer/hash. Candidates belong to a lease; promotion cannot overwrite another candidate. Serialize chunks, completion and offset reads per lease. | Cancellation, elapsed expiry, explicit expiry, credential revocation and attempt changes during a controlled stream; renewal during delivery succeeds; simultaneous chunks at the same offset append only once; existing resumable/hash/strict-verification tests. |
 | R3: discovery could deadlock on stderr and leave a cancelled child | Drain both pipes concurrently; bound retained output to 1 MiB of characters per pipe while continuing to drain; enforce a 30-second probe deadline; kill and reap the owned process on abort. Oversized/incomplete listings are unavailable, not trusted capabilities. | Generated executable writes 1 MB to stderr while producing valid stdout; a sleeping owned child is cancelled and verified exited; explicit deadline and excess-output probes fail closed. The Windows version uses PowerShell under its normal policy, without an execution-policy bypass. |
-| R4: malformed stored reports could break diagnostic exports | Validate report structure before summarizing it. Invalid reports are omitted with an explicit manifest reason; failure summaries use the same guard. | Null check collections, null entries, missing/empty checks, unknown outcomes, malformed JSON and missing check names; existing valid report/redaction tests. |
+| R4: malformed stored reports could break diagnostic exports | Validate report structure before summarizing it. Invalid reports are omitted with an explicit manifest reason; failure summaries use the same guard. | Null check collections, null entries, missing/empty checks, unknown outcomes, malformed JSON and missing check names; valid named/numeric outcomes in current and historical reports; existing redaction tests. |
 | R5: sidebar progress had no accessible name | Name expanded and collapsed progress indicators with their existing translated heading, title and worker location. Indeterminate progress gets a state description. | Axe checks across every audited route, plus existing job/sidebar interaction coverage. |
 | R6: status text and Quarantine guidance lacked contrast | Use the theme's strong status tokens and readable secondary text for meaningful Quarantine copy. Card texture, layout, hover lift and shadows remain unchanged. | Automated WCAG contrast checks in desktop dark and phone light on Chromium and WebKit; geometric, hover and keyboard-focus checks; representative screenshot review. |
 | R7: paged feeds loaded full report histories first | Apply count, exact UTC date filtering, stable ordering and paging in SQL before DTO/report hydration. Select the latest 500 diagnostic leases in SQL. Add indexed computed UTC tick columns without rewriting stored timestamps. | SQL capture requires LIMIT/OFFSET on report hydration; offset and sub-millisecond date boundaries; total/page behavior; populated historical schema upgrade and repeat migration; independent 100,000-row SQLite planner exercise. |
@@ -49,7 +49,9 @@ Old ready outputs have no proof of the bytes that earned their historical pass.
 They fail closed, record a failed **File identity** gate and become eligible for
 the normal Retry action. This also covers manual replacement; leaving the row
 Ready would otherwise strand the user without a retry action. A conditional
-update protects concurrent cancellation and newer attempts. Legacy pending records may
+update protects concurrent cancellation and newer attempts. Positive regression
+checks also exposed named enum outcomes being omitted by a numeric-only parser:
+both persisted formats now retain their quality measurements in reports and exports. Legacy pending records may
 restore a quarantined original into an empty path, but an unidentified occupied
 path remains protected. No migration fabricates a hash from file size or an old
 pass flag.
@@ -110,8 +112,8 @@ complete WCAG conformance.
 
 | Surface | Result and scope |
 |---|---|
-| Local Mac backend | 2,491 tests pass; Release build has zero warnings/errors. |
-| Quark Linux backend | 2,491 tests pass; Release build has zero warnings/errors, from an isolated copy of the final application/test sources. |
+| Local Mac backend | 2,493 tests pass; Release build has zero warnings/errors. |
+| Quark Linux backend | 2,493 tests pass; Release build has zero warnings/errors, from an isolated copy of the final application/test sources. |
 | Shared sidecar core on Quark | 246 tests pass. This is portable worker logic, not Windows native UI certification. |
 | Linux sidecar on Quark | 29 tests pass. |
 | Mac sidecar | Swift suite reports 235 test declarations in 49 suites; opt-in live suites are separately gated. Release AcceptanceWorker builds. |

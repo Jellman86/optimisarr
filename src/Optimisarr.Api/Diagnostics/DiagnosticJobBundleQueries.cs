@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Verification;
@@ -100,7 +101,8 @@ internal static class DiagnosticJobBundleQueries
 
     private static readonly JsonSerializerOptions ReportOptions = new(JsonSerializerDefaults.Web)
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     public static async Task<DiagnosticJobBundle> BuildAsync(

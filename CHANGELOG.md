@@ -14,7 +14,7 @@
 - Replacement now checks the exact source and candidate bytes that passed verification, before and after moving them. Old ready outputs without recorded identities record a failed file-identity gate and can be retried with a fresh verified attempt. Interrupted recovery preserves conflicting files and the quarantined original, and queue clearing/retention protect pending recovery evidence.
 - Worker delivery rechecks current credentials, lease expiry, cancellation and execution attempt after transfer. Lease-specific candidate paths and serialized resumable chunks prevent retry collisions; file hashing stays outside database write locks.
 - Tool discovery drains both process pipes concurrently, bounds captured output and execution time, and reaps its owned process on cancellation.
-- Malformed historical verification reports no longer break diagnostic exports or failure summaries; missing evidence is labelled.
+- Malformed historical verification reports no longer break diagnostic exports or failure summaries; missing evidence is labelled. Valid numeric and named outcomes remain visible, including archived attempts.
 - Queue pages and diagnostic lease histories are bounded in SQL before loading reports. Indexed UTC ticks preserve exact offset-aware ordering and inclusive date filters.
 - Sidebar progress indicators have accessible names, and status text and Quarantine guidance use legible theme colours without changing card textures or hover shadows.
 

@@ -12,6 +12,39 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
 {
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Valid_reports_retain_numeric_and_named_outcomes_in_current_and_historical_evidence(bool named)
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        if (named) options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        var json = System.Text.Json.JsonSerializer.Serialize(new VerificationReport([
+            new VerificationCheck("Decode health", CheckOutcome.Passed, "Synthetic evidence")]), options);
+        await using var db = Db();
+        var media = new MediaFile { Path = "/synthetic/report.mkv", RelativePath = "report.mkv" };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+        var job = new Job
+        {
+            MediaFileId = media.Id, VerificationReportJson = json,
+            AttemptHistoryJson = System.Text.Json.JsonSerializer.Serialize(new[]
+            {
+                new JobAttemptSnapshot(1, null, null, null, null, _now, true, json,
+                    _now, null, "Completed", "ManualRetry", null, null)
+            })
+        };
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        var session = await new DiagnosticCaptureStore(db).StartAsync(1, job.Id, false, _now, CancellationToken.None);
+        var bundle = await DiagnosticJobBundleQueries.BuildAsync(db, session.Id, job.Id, _now, CancellationToken.None);
+        Assert.NotNull(bundle.Job.CurrentReport);
+        Assert.True(bundle.Job.CurrentReport.Passed);
+        Assert.Equal("Decode health", Assert.Single(bundle.Job.CurrentReport.Checks).Name);
+        Assert.NotNull(Assert.Single(bundle.Attempts).Report);
+        Assert.True(Assert.Single(bundle.Attempts).Report!.Passed);
+    }
+
+    [Theory]
     [InlineData("{\"checks\":null}")]
     [InlineData("{\"checks\":[null]}")]
     [InlineData("{}")]

@@ -125,7 +125,7 @@ public sealed class ReplacementServiceTests : IDisposable
         await using (var db = new OptimisarrDbContext(_options))
         {
             var row = await db.Jobs.FindAsync(id);
-            row!.VerificationReportJson = "{\"checks\":[{\"name\":\"Decode health\",\"outcome\":0,\"detail\":\"Passed\"}]}";
+            row!.VerificationReportJson = "{\"checks\":[{\"name\":\"Decode health\",\"outcome\":\"Passed\",\"detail\":\"Passed\"}]}";
             row.VerifiedSourceSha256 = null;
             row.VerifiedOutputSha256 = null;
             await db.SaveChangesAsync();

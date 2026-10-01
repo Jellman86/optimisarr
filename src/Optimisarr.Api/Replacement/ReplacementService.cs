@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Microsoft.EntityFrameworkCore;
@@ -217,7 +218,8 @@ public sealed class ReplacementService
 
     private async Task<ReplacementActionResult> RefuseIdentityAsync(Job job, string message, CancellationToken token)
     {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        { Converters = { new JsonStringEnumConverter() } };
         var check = new VerificationCheck("File identity", CheckOutcome.Failed, message);
         var report = new VerificationReport([check]);
         if (job.VerificationReportJson is { } json)
