@@ -29,6 +29,22 @@ the pending record to restore the original or finish the already-completed
 replacement before queue processing resumes. Same-filesystem paths use atomic
 moves; cross-filesystem copy-plus-delete is an opt-in fallback.
 
+The source and candidate must still match the SHA-256 identities that earned the
+passing verdict. Both are checked again before replacement and after their moves.
+Historical ready outputs without those identities require a fresh verified attempt;
+the upgrade does not invent evidence from an old pass flag or matching file size.
+
+If another file appears at a destination during replacement, recovery preserves it
+and the quarantined original. The pending recovery record remains protected from
+queue clearing and retention. Inspect the paths and logs before resolving that
+conflict; automatic recovery does not overwrite an unidentified file. A partial
+remnant whose identity cannot be proven is protected in the same way.
+
+Strict sidecar verification still offloads media probing, decoding and quality
+scoring. The server retains database coordination, candidate delivery, file hashing,
+replacement and quarantine ownership. These additional full-file hash reads cost
+storage I/O; strict sidecar verification does not mean zero server work.
+
 Auto-replace is per-library, disabled by default, and runs only after every
 verification gate passes. It does not bypass quarantine or rollback.
 
@@ -55,7 +71,7 @@ replacement remains available for another rollback attempt.
 ## What can be safely cleared
 
 - **Queue → Clear errored** removes failed/cancelled queue entries and any retained
-  `/work` outputs; originals are untouched. This also removes their diagnostic rows.
+  `/work` outputs, except jobs with a live or pending rollback record; originals are untouched. This also removes their diagnostic rows.
 - **Queue → Clear completed** removes completed queue entries only.
 - **Queue → Clear pending** removes queued and ready-to-replace work and stops
   running jobs; originals are not touched, but verified outputs are discarded.

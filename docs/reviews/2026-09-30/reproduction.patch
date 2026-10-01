@@ -1,0 +1,202 @@
+diff --git a/tests/Optimisarr.Tests/DiagnosticCaptureStoreTests.cs b/tests/Optimisarr.Tests/DiagnosticCaptureStoreTests.cs
+index 2b6b8d6..47f1626 100644
+--- a/tests/Optimisarr.Tests/DiagnosticCaptureStoreTests.cs
++++ b/tests/Optimisarr.Tests/DiagnosticCaptureStoreTests.cs
+@@ -10,6 +10,25 @@ namespace Optimisarr.Tests;
+
+ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
+ {
++
++    [Theory]
++    [InlineData("{\"checks\":null}")]
++    [InlineData("{\"checks\":[null]}")]
++    public async Task ReviewProbe_null_check_report_breaks_bundle(string report)
++    {
++        await using var db = Db();
++        var media = new MediaFile { Path = "/data/review.mkv", RelativePath = "review.mkv" };
++        db.MediaFiles.Add(media);
++        await db.SaveChangesAsync();
++        var job = new Job { MediaFileId = media.Id, VerificationReportJson = report };
++        db.Jobs.Add(job);
++        await db.SaveChangesAsync();
++        var session = await new DiagnosticCaptureStore(db).StartAsync(1, job.Id, false, _now, CancellationToken.None);
++        var error = await Record.ExceptionAsync(() => DiagnosticJobBundleQueries.BuildAsync(db, session.Id, job.Id, _now, CancellationToken.None));
++        Assert.NotNull(error);
++        Assert.True(error is ArgumentNullException or NullReferenceException, error.GetType().Name);
++    }
++
+     private readonly SqliteConnection _connection = new("DataSource=:memory:");
+     private DbContextOptions<OptimisarrDbContext> _options = null!;
+     private readonly DateTimeOffset _now = new(2026, 9, 23, 10, 0, 0, TimeSpan.Zero);
+diff --git a/tests/Optimisarr.Tests/ReplacementServiceTests.cs b/tests/Optimisarr.Tests/ReplacementServiceTests.cs
+index e1aa63c..afd3a95 100644
+--- a/tests/Optimisarr.Tests/ReplacementServiceTests.cs
++++ b/tests/Optimisarr.Tests/ReplacementServiceTests.cs
+@@ -11,6 +11,50 @@ namespace Optimisarr.Tests;
+
+ public sealed class ReplacementServiceTests : IDisposable
+ {
++
++    [Fact]
++    public async Task ReviewProbe_candidate_changed_after_verification_is_still_replaced()
++    {
++        var (original, output) = WriteFiles("Review.avi", "Review.mkv", "ORIGINAL-DATA", "VERIFIED!");
++        var id = await SeedReadyJobAsync(original, output, true);
++        await using (var db = new OptimisarrDbContext(_options))
++        {
++            var worker = new Worker { Name = "Review", OperatingSystem = "linux", Architecture = "x64" };
++            db.Workers.Add(worker);
++            await db.SaveChangesAsync();
++            db.JobLeases.Add(new JobLease
++            {
++                Id = Guid.NewGuid(), JobId = id, WorkerId = worker.Id,
++                State = Optimisarr.Core.Workers.LeaseState.Completed,
++                DeliveredSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("VERIFIED!"))).ToLowerInvariant()
++            });
++            await db.SaveChangesAsync();
++        }
++        File.WriteAllText(output, "CORRUPT!!"); // Same length, different bytes after verification.
++        var result = await ReplaceAsync(id);
++        Assert.Equal(ReplacementResultKind.Success, result.Kind);
++        Assert.Equal("CORRUPT!!", File.ReadAllText(result.Replacement!.FinalPath));
++        Assert.Equal("ORIGINAL-DATA", File.ReadAllText(result.Replacement.QuarantinePath));
++    }
++
++    [Fact]
++    public async Task ReviewProbe_source_changed_after_verification_is_still_replaced()
++    {
++        var (original, output) = WriteFiles("Review.avi", "Review.mkv", "ORIGINAL-DATA", "VERIFIED!");
++        var id = await SeedReadyJobAsync(original, output, true);
++        await using (var db = new OptimisarrDbContext(_options))
++        {
++            var job = await db.Jobs.FindAsync(id);
++            job!.SourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("ORIGINAL-DATA"))).ToLowerInvariant();
++            await db.SaveChangesAsync();
++        }
++        File.WriteAllText(original, "UPGRADED-DATA");
++        var result = await ReplaceAsync(id);
++        Assert.Equal(ReplacementResultKind.Success, result.Kind);
++        Assert.Equal("VERIFIED!", File.ReadAllText(result.Replacement!.FinalPath));
++        Assert.Equal("UPGRADED-DATA", File.ReadAllText(result.Replacement.QuarantinePath));
++    }
++
+     private readonly SqliteConnection _connection;
+     private readonly DbContextOptions<OptimisarrDbContext> _options;
+     private readonly string _root;
+diff --git a/tests/Optimisarr.Tests/WorkerResultUploadTests.cs b/tests/Optimisarr.Tests/WorkerResultUploadTests.cs
+index 0849aa6..6f1c296 100644
+--- a/tests/Optimisarr.Tests/WorkerResultUploadTests.cs
++++ b/tests/Optimisarr.Tests/WorkerResultUploadTests.cs
+@@ -29,6 +29,65 @@ namespace Optimisarr.Tests;
+ [Collection(TokenedApiCollection.Name)]
+ public sealed class WorkerResultUploadTests : IAsyncLifetime
+ {
++
++    [Theory]
++    [InlineData(0)]
++    [InlineData(1)]
++    [InlineData(2)]
++    public async Task ReviewProbe_state_change_during_upload_is_not_respected(int mode)
++    {
++        await EnableRemoteWorkers();
++        using var worker = await PairWorker("Review controlled transfer");
++        await QueueAJob();
++        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
++        if (mode == 2)
++        {
++            using var expiry = _api.Services.CreateScope();
++            var expiryDb = expiry.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
++            var expiryRow = await expiryDb.JobLeases.FindAsync(Guid.Parse(leaseId));
++            expiryRow!.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(1);
++            await expiryDb.SaveChangesAsync();
++        }
++        var endpoint = Assert.Single(_api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
++            endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "DeliverResult");
++        using var scope = _api.Services.CreateScope();
++        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
++        context.RequestServices = scope.ServiceProvider;
++        context.Request.Method = "POST";
++        context.Request.Path = $"/api/workers/leases/{leaseId}/result";
++        context.Request.RouteValues["leaseId"] = leaseId;
++        context.Request.Headers.Authorization = worker.DefaultRequestHeaders.Authorization!.ToString();
++        context.Request.Headers["X-Optimisarr-Source-Sha256"] = sourceHash;
++        context.Request.Headers["X-Optimisarr-Candidate-Sha256"] = Sha256(CandidateBytes);
++        context.Request.ContentType = "application/octet-stream";
++        context.Request.Body = new ReviewCallbackStream(CandidateBytes, async () =>
++        {
++            if (mode == 2) { await Task.Delay(1500); return; }
++            using var change = _api.Services.CreateScope();
++            var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
++            var lease = await db.JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
++            if (mode == 1) lease.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
++            else { lease.Job!.Status = JobStatus.Cancelled; lease.State = LeaseState.Released; }
++            await db.SaveChangesAsync();
++        });
++        context.Response.Body = new MemoryStream();
++        await endpoint.RequestDelegate!(context);
++        Assert.Equal(202, context.Response.StatusCode);
++        using var read = _api.Services.CreateScope();
++        var row = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
++        Assert.Equal(JobStatus.AwaitingVerification, row.Job!.Status);
++    }
++
++    private sealed class ReviewCallbackStream(byte[] bytes, Func<Task> callback) : MemoryStream(bytes)
++    {
++        private bool called;
++        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
++        {
++            if (!called) { called = true; await callback(); }
++            return await base.ReadAsync(buffer, cancellationToken);
++        }
++    }
++
+     private readonly AdminTokenAuthEndpointTests.TokenedApi _api;
+     private readonly List<int> _createdLibraries = [];
+
+diff --git a/tests/Optimisarr.Tests/ReviewToolProcessTests.cs b/tests/Optimisarr.Tests/ReviewToolProcessTests.cs
+new file mode 100644
+index 0000000..c7d3eac
+--- /dev/null
++++ b/tests/Optimisarr.Tests/ReviewToolProcessTests.cs
+@@ -0,0 +1,41 @@
++using System.Diagnostics;
++using System.Reflection;
++using System.Text.Json;
++using Optimisarr.Core.Tools;
++namespace Optimisarr.Tests;
++public sealed class ReviewToolProcessTests
++{
++    [Theory]
++    [InlineData(false)]
++    [InlineData(true)]
++    public async Task ReviewProbe_detection_cancellation_leaves_owned_child_alive(bool floodStderr)
++    {
++        if (OperatingSystem.IsWindows()) return;
++        var root = Path.Combine(Path.GetTempPath(), "optimisarr-review-process-" + Guid.NewGuid().ToString("N"));
++        Directory.CreateDirectory(root);
++        var pidPath = Path.Combine(root, "pid");
++        var tool = Path.Combine(root, "tool");
++        var script = "#!/usr/bin/python3\nimport os,time\nopen(" + JsonSerializer.Serialize(pidPath) + ", 'w').write(str(os.getpid()))\n";
++        script += floodStderr ? "os.write(2,b'x'*1000000)\nprint('ffmpeg version review',flush=True)\n" : "print('ffmpeg version review',flush=True)\n";
++        if (!floodStderr) script += "time.sleep(60)\n";
++        File.WriteAllText(tool, script);
++        File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
++        Process? child = null;
++        try
++        {
++            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
++            var run = typeof(ToolDetectionService).GetMethod("RunAsync", BindingFlags.Static | BindingFlags.NonPublic)!;
++            var task = (Task<ToolCheckResult>)run.Invoke(null, ["Review", tool, false, Array.Empty<string>(), (Func<string, ToolCheckResult>)(s => new("Review", tool, true, false, s, null)), cts.Token])!;
++            var error = await Record.ExceptionAsync(async () => await task);
++            Assert.IsAssignableFrom<OperationCanceledException>(error);
++            try { child = Process.GetProcessById(int.Parse(File.ReadAllText(pidPath))); }
++            catch (ArgumentException) when (floodStderr) { }
++            if (!floodStderr) Assert.False(child!.HasExited);
++        }
++        finally
++        {
++            if (child is not null) { if (!child.HasExited) { child.Kill(true); await child.WaitForExitAsync(); } child.Dispose(); }
++            Directory.Delete(root, true);
++        }
++    }
++}

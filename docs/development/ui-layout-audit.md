@@ -36,6 +36,12 @@ screenshot and measurements. These are review evidence, not brittle exact-pixel
 snapshots: human review remains necessary for spacing, hierarchy, artwork,
 contrast and awkward but technically un-clipped wrapping.
 
+The audit also runs axe WCAG 2 A/AA and 2.1 AA checks across all routes at
+1440 px dark and 390 px light. It rejects violations, including unnamed progress
+indicators and insufficient contrast, and saves the results as JSON. Automated
+checks complement the geometry and human screenshot review; they cannot establish
+complete accessibility conformance or replace keyboard and screen-reader checks.
+
 ## Run it
 
 From `web/`:

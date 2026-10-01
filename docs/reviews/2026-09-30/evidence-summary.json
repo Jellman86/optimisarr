@@ -1,0 +1,186 @@
+{
+  "reviewed_commit": "573ba821587db92b1958429b5045a376189fbe19",
+  "reviewed_tree": "597b7209423f255dd05dafb100cca4cb37bc276d",
+  "date": "2026-09-30",
+  "scope": "Risk-prioritised full application review; selected matrix only.",
+  "application_changes": false,
+  "production_mutations": false,
+  "toolchains": {
+    "mac_dotnet": "10.0.302",
+    "linux_dotnet": "10.0.300",
+    "node": "26.5.1",
+    "python": "3.14.6",
+    "swift": "6.4",
+    "mac_bundled_ffmpeg": "8.0.3"
+  },
+  "test_results": {
+    "backend_mac": {
+      "passed": 2451,
+      "failed": 0,
+      "skipped": 0
+    },
+    "backend_linux": {
+      "passed": 2451,
+      "failed": 0,
+      "skipped": 0
+    },
+    "build_release": {
+      "warnings": 0,
+      "errors": 0,
+      "hosts": [
+        "Mac",
+        "Quark"
+      ]
+    },
+    "python": {
+      "passed": 64
+    },
+    "frontend_unit": {
+      "passed": 75
+    },
+    "frontend_check": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "frontend_build": "passed",
+    "chromium_e2e": {
+      "passed": 193
+    },
+    "webkit_layout": {
+      "passed": 10
+    },
+    "geometry_supplement": {
+      "passed": 3,
+      "private_captures_and_measurements": 65
+    },
+    "swift": {
+      "runner_reported_tests": 235,
+      "suites": 49,
+      "status": "green with conditional live skips",
+      "skipped_suites": [
+        "Live timeline alignment",
+        "Live server",
+        "Live work loop"
+      ],
+      "note": "Not 235 executed live integration cases."
+    },
+    "swift_ram": {
+      "test_declarations": 3,
+      "case_executions": 5,
+      "status": "passed"
+    },
+    "shared_worker": {
+      "mac_passed": 246,
+      "linux_passed": 246
+    },
+    "linux_worker": {
+      "linux_passed": 29,
+      "mac_supplement_passed": 29
+    },
+    "mac_media_fleet": {
+      "status": "passed",
+      "completed": true,
+      "passed": 40,
+      "failed": 0,
+      "blocked": 0,
+      "scope": "Selected matrix only; omitted hosts and hardware are not certified"
+    },
+    "defect_probes": {
+      "mac_reproduced": 9,
+      "linux_reproduced": 9,
+      "note": "Passing probes assert current defects, not fixed behaviour."
+    },
+    "openapi": "passed",
+    "release_metadata": "passed",
+    "documentation_links_and_api_reference": "passed",
+    "portable_accessibility_reproducer": {
+      "scan_runs_completed": 2,
+      "violations_found": true
+    }
+  },
+  "accessibility": {
+    "desktop": {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "theme": "dark"
+      },
+      "routes": 30,
+      "violation_route_groups": {
+        "aria-progressbar-name": 30,
+        "color-contrast": 1
+      },
+      "affected_nodes_including_repeats": {
+        "aria-progressbar-name": 30,
+        "color-contrast": 3
+      },
+      "unexpected_api_requests": [],
+      "interpretation": "Scan completed with violations; repeated shared components are not distinct bugs."
+    },
+    "phone": {
+      "viewport": {
+        "name": "phone",
+        "width": 390,
+        "height": 844,
+        "theme": "light"
+      },
+      "routes": 30,
+      "violation_route_groups": {
+        "aria-progressbar-name": 30,
+        "color-contrast": 16
+      },
+      "affected_nodes_including_repeats": {
+        "aria-progressbar-name": 30,
+        "color-contrast": 19
+      },
+      "unexpected_api_requests": [],
+      "interpretation": "Scan completed with violations; repeated shared components are not distinct bugs."
+    }
+  },
+  "installed_containers": {
+    "riker": {
+      "image_digest": "sha256:41ee0a530dd48b00e238b148285eb5de659f6719ea24f1ad0358a8d9d23f939d",
+      "restart_count": 0,
+      "probe_exit_code": 0,
+      "decoded_frames": 48,
+      "vmaf_harmonic": 97.964199,
+      "probe_scope": "Bounded generated CPU libx265 decode/VMAF tool sanity, not full application acceptance."
+    },
+    "quark": {
+      "image_digest": "sha256:bd40406bff4b3ce296f04cf8e01ad02ff0abc4102a1c1693e5aa5a73108dc35a",
+      "restart_count": 0,
+      "probe_exit_code": 0,
+      "decoded_frames": 48,
+      "vmaf_harmonic": 97.964199,
+      "probe_scope": "Bounded generated CPU libx265 decode/VMAF tool sanity, not full application acceptance."
+    }
+  },
+  "observational_state": {
+    "before_utc": "2026-09-30T21:47:21.533901+00:00",
+    "after_utc": "2026-09-30T22:13:17.684847+00:00",
+    "counts": {
+      "Completed": 1687,
+      "Failed": 43,
+      "Cancelled": 89,
+      "AwaitingSizeReview": 6
+    },
+    "failed_and_held_ids_unchanged": true,
+    "health": "healthy",
+    "ready": "ready",
+    "worker_reachability": {
+      "Mac": "online",
+      "Quark": "online",
+      "PICARD": "offline"
+    }
+  },
+  "coverage_gaps": [
+    "Fresh Windows native monitor/MSI/NVIDIA testing: PICARD unreachable",
+    "Full HDR/Dolby Vision and all codec/driver matrices",
+    "Long soak and large-history performance benchmark",
+    "Power-loss durability campaign",
+    "Penetration testing and complete assistive-technology audit"
+  ],
+  "private_evidence": "Raw logs, job records, TRX, media artifacts and host addresses retained privately; not included in public export.",
+  "report_validated_utc": "2026-09-30T22:22:36.423497+00:00"
+}
