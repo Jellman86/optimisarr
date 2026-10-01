@@ -33,6 +33,7 @@ The source and candidate must still match the SHA-256 identities that earned the
 passing verdict. Both are checked again before replacement and after their moves.
 Historical ready outputs without those identities require a fresh verified attempt;
 the upgrade does not invent evidence from an old pass flag or matching file size.
+Refusal records a failed **File identity** gate, so the job can be retried normally.
 
 If another file appears at a destination during replacement, recovery preserves it
 and the quarantined original. The pending recovery record remains protected from

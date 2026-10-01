@@ -125,7 +125,8 @@ public sealed class ReplacementServiceTests : IDisposable
         await using (var db = new OptimisarrDbContext(_options))
         {
             var row = await db.Jobs.FindAsync(id);
-            row!.VerifiedSourceSha256 = null;
+            row!.VerificationReportJson = "{\"checks\":[{\"name\":\"Decode health\",\"outcome\":0,\"detail\":\"Passed\"}]}";
+            row.VerifiedSourceSha256 = null;
             row.VerifiedOutputSha256 = null;
             await db.SaveChangesAsync();
         }
@@ -133,6 +134,14 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal(ReplacementResultKind.Failed, result.Kind);
         Assert.True(result.Permanent);
         Assert.Contains("fresh verified attempt", result.Message);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var failed = await db.Jobs.FindAsync(id);
+            Assert.Equal(JobStatus.Failed, failed!.Status);
+            Assert.False(failed.VerificationPassed);
+            Assert.Contains("File identity", failed.VerificationReportJson);
+            Assert.Contains("Decode health", failed.VerificationReportJson);
+        }
         Assert.Equal("ORIGINAL", File.ReadAllText(original));
         Assert.Equal("VERIFIED", File.ReadAllText(output));
     }

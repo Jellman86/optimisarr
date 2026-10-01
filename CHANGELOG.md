@@ -11,7 +11,7 @@
 
 ### Fixed
 
-- Replacement now checks the exact source and candidate bytes that passed verification, before and after moving them. Old ready outputs without recorded identities need a fresh verified attempt. Interrupted recovery preserves conflicting files and the quarantined original, and queue clearing/retention protect pending recovery evidence.
+- Replacement now checks the exact source and candidate bytes that passed verification, before and after moving them. Old ready outputs without recorded identities record a failed file-identity gate and can be retried with a fresh verified attempt. Interrupted recovery preserves conflicting files and the quarantined original, and queue clearing/retention protect pending recovery evidence.
 - Worker delivery rechecks current credentials, lease expiry, cancellation and execution attempt after transfer. Lease-specific candidate paths and serialized resumable chunks prevent retry collisions; file hashing stays outside database write locks.
 - Tool discovery drains both process pipes concurrently, bounds captured output and execution time, and reaps its owned process on cancellation.
 - Malformed historical verification reports no longer break diagnostic exports or failure summaries; missing evidence is labelled.

@@ -46,7 +46,10 @@ not guessed away. Cancellation after quarantine completes restoration and saves
 its cleanup without using the already-cancelled request token.
 
 Old ready outputs have no proof of the bytes that earned their historical pass.
-They fail closed and require a fresh verified attempt. Legacy pending records may
+They fail closed, record a failed **File identity** gate and become eligible for
+the normal Retry action. This also covers manual replacement; leaving the row
+Ready would otherwise strand the user without a retry action. A conditional
+update protects concurrent cancellation and newer attempts. Legacy pending records may
 restore a quarantined original into an empty path, but an unidentified occupied
 path remains protected. No migration fabricates a hash from file size or an old
 pass flag.
@@ -118,6 +121,11 @@ complete WCAG conformance.
 | Mac media acceptance | 40 selected fleet cases pass using libx265 locally and the production Mac worker with HEVC VideoToolbox. Includes SDR, VFR, timestamp offset, 10-bit, subtitles, adaptive quality, deliberate VMAF rejection, audio/image work, independent corruption oracles, cancellation, reconnect, isolation and rollback. |
 | Running Riker container and Quark sidecar | Finite generated-media probes completed encode, 48-frame count, full decode and VMAF with exit 0 on both. VMAF mean 97.973, minimum 96.021. These test installed toolchains, not deployment of this branch. |
 | PICARD | SSH was unreachable. Native Windows/RTX 4070 hardware acceptance is blocked and is not counted as passing. Windows CI additionally runs process/replacement/migration regressions, alongside its existing native tray checks. |
+
+Media acceptance used the replacement/delivery hardening revision (`5dd84d5`).
+The subsequent manual identity-refusal workflow change was retested by both full
+backend suites and the Windows CI regression gate; it does not alter encoding or
+quality scoring.
 
 Production queue, media, pairing and container lifecycle were not changed by this
 review work. Generated fixtures, isolated servers/workers and owned scratch files

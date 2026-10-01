@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
@@ -212,6 +215,42 @@ public sealed class ReplacementService
         }
     }
 
+    private async Task<ReplacementActionResult> RefuseIdentityAsync(Job job, string message, CancellationToken token)
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var check = new VerificationCheck("File identity", CheckOutcome.Failed, message);
+        var report = new VerificationReport([check]);
+        if (job.VerificationReportJson is { } json)
+        {
+            try
+            {
+                var previous = JsonSerializer.Deserialize<VerificationReport>(json, options);
+                if (previous is not null && previous.HasValidStructure())
+                    report = previous with { Checks = [.. previous.Checks, check] };
+            }
+            catch (JsonException) { } // The new identity refusal is valid evidence on its own.
+        }
+        var reportJson = JsonSerializer.Serialize(report, options);
+        var now = DateTimeOffset.UtcNow;
+        // Make manual refusal retryable too. A concurrent cancel or newer attempt must not be
+        // overwritten, and historical quality measurements remain alongside the failed gate.
+        await _db.Jobs.Where(row => row.Id == job.Id && row.Status == JobStatus.ReadyToReplace
+                && row.ExecutionAttempt == job.ExecutionAttempt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(row => row.Status, JobStatus.Failed)
+                .SetProperty(row => row.VerificationPassed, false)
+                .SetProperty(row => row.VerificationReportJson, reportJson)
+                .SetProperty(row => row.VerifiedSourceSha256, (string?)null)
+                .SetProperty(row => row.VerifiedOutputSha256, (string?)null)
+                .SetProperty(row => row.ErrorMessage, message)
+                .SetProperty(row => row.FailureCategory, FailureCategory.Verification)
+                .SetProperty(row => row.VerifiedAt, now)
+                .SetProperty(row => row.FinishedAt, now)
+                .SetProperty(row => row.UpdatedAt, now), token);
+        await _db.Entry(job).ReloadAsync(token);
+        return ReplacementActionResult.Failed(message, permanent: true);
+    }
+
     private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, CancellationToken cancellationToken)
     {
         var job = await _db.Jobs
@@ -352,15 +391,15 @@ public sealed class ReplacementService
         }
 
         if (!FileContentIdentity.IsHash(job.VerifiedSourceSha256) || !FileContentIdentity.IsHash(job.VerifiedOutputSha256))
-            return ReplacementActionResult.Failed(
-                "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", permanent: true);
+            return await RefuseIdentityAsync(job,
+                "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", cancellationToken);
 
         await using var sourceGuard = FileContentIdentity.OpenGuard(media.Path);
         await using var outputGuard = FileContentIdentity.OpenGuard(job.WorkOutputPath);
         if (!await FileContentIdentity.MatchesAsync(media.Path, job.VerifiedSourceSha256, cancellationToken)
             || !await FileContentIdentity.MatchesAsync(job.WorkOutputPath, job.VerifiedOutputSha256, cancellationToken))
-            return ReplacementActionResult.Failed(
-                "Source or output bytes changed after verification. The original was left untouched; create a fresh verified attempt.", permanent: true);
+            return await RefuseIdentityAsync(job,
+                "Source or output bytes changed after verification. The original was left untouched; create a fresh verified attempt.", cancellationToken);
 
         var originalSize = new FileInfo(media.Path).Length;
         var outputSize = new FileInfo(job.WorkOutputPath).Length;
