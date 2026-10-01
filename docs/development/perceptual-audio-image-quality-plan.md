@@ -13,18 +13,20 @@ approval or retention purge. Quarantine is not a backup.
 
 ## Candidate decision
 
-**SSIMULACRA2 is the preferred image implementation. For audio, qualify ViSQOL and
-Zimtohrli in a bounded comparison before choosing the production metric.** Research
-supports these as the practical shortlist, not a claim that one metric always predicts
-human perception best. No new listening-panel programme is a prerequisite.
+**Use SSIMULACRA2 for the image implementation and Zimtohrli for the audio implementation.**
+Following the research, the operator selected the newer audio approach on 1 October 2026.
+Qualify Zimtohrli's native packaging, coverage and thresholds before enforcing a gate;
+ViSQOL remains an optional offline comparison tool, not a prerequisite for choosing the
+production metric. This direction is not a claim that one metric always predicts human
+perception best. No new listening-panel programme is a prerequisite.
 
 | Candidate | Fit for Optimisarr | Decision and limits |
 | --- | --- | --- |
 | [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2) | Native image-compression metric; explicitly measures blur and ringing/blocking. Its author's held-out CID22 results favour it over plain SSIM and Butteraugli. Available in libjxl tools. | Preferred for SDR stills. The author's benchmark is useful evidence, not an independent Optimisarr evaluation. Colour, alpha and metadata safety need separate tests. |
 | [Butteraugli](https://github.com/google/butteraugli) | Native perceptual distance with a spatial error map. Its original documentation emphasises barely noticeable differences. | Useful comparison baseline; SSIMULACRA2 better matches a user-facing compression-quality score. Reconsider if local near-lossless evidence favours it. |
 | [LPIPS](https://github.com/richzhang/PerceptualSimilarity) | Learned perceptual patch distance using PyTorch and pretrained networks. | Research comparator if needed; the additional runtime/weights are not justified for the first native worker implementation. This is a packaging judgement, not an accuracy claim. |
-| [ViSQOL](https://github.com/google/visqol) | Established full-reference general-audio mode, with Linux/Mac build instructions and experimental Windows instructions. | Strong audio candidate. Audio mode uses 48 kHz and downmixes to mono; one score cannot certify surround preservation. Speech mode is not the default for music or film soundtracks. |
-| [Zimtohrli](https://github.com/google/zimtohrli) | Newer native psychoacoustic metric aimed at high-quality audio compression and just-noticeable differences. | Required head-to-head candidate. Upstream documents Debian-like testing; native Windows/Mac packaging and performance remain unproved here. |
+| [ViSQOL](https://github.com/google/visqol) | Established full-reference general-audio mode, with Linux/Mac build instructions and experimental Windows instructions. | Optional offline comparator only. Audio mode uses 48 kHz and downmixes to mono; one score cannot certify surround preservation. It is not a required shipped dependency or runtime fallback. |
+| [Zimtohrli](https://github.com/google/zimtohrli) | Newer native psychoacoustic metric aimed at high-quality audio compression and just-noticeable differences. | Selected audio implementation. Upstream documents Debian-like testing; native Windows/Mac packaging and performance must still be proved before distribution or gating. |
 | [PEAQ / GstPEAQ](https://github.com/HSU-ANT/gstpeaq) | Established reference-audio approach. The available plugin explicitly says it does not meet the test tolerances of BS.1387-1. [Current ITU recommendation](https://www.itu.int/rec/R-REC-BS.1387-2-202305-I/en) is revision 2. | Optional laboratory comparator, not the initial production dependency. Do not describe this plugin as a conforming current-standard implementation. |
 
 Zimtohrli's [published comparison](https://github.com/google/zimtohrli/blob/main/CORRELATION.md)
@@ -51,15 +53,16 @@ Research starting points, not committed production tool pins:
 
 ## Implementation sequence
 
-1. **Qualify the shortlist.** Build isolated native tools on this Mac, PICARD and Quark,
+1. **Qualify the selected tools.** Build isolated Zimtohrli and SSIMULACRA2 tools on this Mac, PICARD and Quark,
    and run the published container on the authorised disposable host. Exercise Riker's
-   supported CPU path through its documented deployment/test route. Compare audio candidates
+   supported CPU path through its documented deployment/test route. Validate Zimtohrli
    on a small attributed free-media set: speech, music, mixed soundtracks, silence and
    stereo/5.1 channel fixtures, with Opus/AAC/MP3 at several bitrates. Compare image metrics
    on JPEG/WebP, text/edges, photographs, gradients, colour and alpha fixtures. Include
    identities and deliberate degradation. Record disagreement, runtime, peak memory and
-   platform parity. Choose the audio metric from this evidence; retain the rejected
-   candidate as an offline comparator rather than shipping two mandatory tools.
+   platform parity. ViSQOL may help explain disagreements in offline research, but choosing
+   between two production metrics is no longer a prerequisite. A packaging or coverage
+   failure is an explicit blocker to fix, not permission to silently substitute an older metric.
 2. **Add measurement-only providers using TDD.** Pure command builders, bounded parsers and
    policy evaluation; cancellable native execution with captured logs. Return metric name,
    version/model hash, raw units, window/channel coverage and failure reason. Persist

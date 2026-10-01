@@ -1087,10 +1087,11 @@ the replacement workflow is trustworthy.
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
       HDR or transparent-image fidelity from one perceptual score.
-    - **Audio direction:** qualify ViSQOL against Google's newer Zimtohrli using free speech,
-      music, mixed soundtracks and stereo/5.1 fixtures with actual Opus/AAC/MP3 encodes. Select
-      one production metric from accuracy, platform, runtime and packaging evidence; no
-      blanket winner follows from published benchmarks. Mono aggregation must not hide
+    - **Audio direction:** implement Google's newer Zimtohrli, selected by the operator after
+      research. Qualify native packaging, runtime and coverage using free speech, music,
+      mixed soundtracks and stereo/5.1 fixtures with actual Opus/AAC/MP3 encodes. ViSQOL is
+      an optional offline comparator, not a required shipped dependency or runtime fallback.
+      This selection does not claim a universal benchmark winner. Mono aggregation must not hide
       missing/swapped channels or override timing, loudness and clipping checks.
     - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
       additive/idempotent evidence storage and a versioned worker capability/evidence contract.
