@@ -1075,6 +1075,34 @@ the replacement workflow is trustworthy.
       chosen quality and its evidence recorded against the job as they are today.
 
 
+14. **Perceptual quality for audio and still images: planned, researched 2026-10-01.** Add
+    understandable, optional quality evidence alongside the existing structural, timing,
+    loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
+    introduce enforced gates only after the metric, coverage and threshold policy are proved.
+    The [research and implementation plan](development/perceptual-audio-image-quality-plan.md)
+    records the sources, tradeoffs and platform qualification still needed.
+    Track delivery in [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
+
+    - **Image direction:** prefer SSIMULACRA2 for SDR compression checks; compare against the
+      current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
+      Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
+      HDR or transparent-image fidelity from one perceptual score.
+    - **Audio direction:** qualify ViSQOL against Google's newer Zimtohrli using free speech,
+      music, mixed soundtracks and stereo/5.1 fixtures with actual Opus/AAC/MP3 encodes. Select
+      one production metric from accuracy, platform, runtime and packaging evidence; no
+      blanket winner follows from published benchmarks. Mono aggregation must not hide
+      missing/swapped channels or override timing, loudness and clipping checks.
+    - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
+      additive/idempotent evidence storage and a versioned worker capability/evidence contract.
+      Strict sidecar-only verification must complete the required metric on the worker, with
+      no server fallback. New per-library reporting starts off; existing saved choices survive.
+    - **Evidence to call it complete:** real good/bad encodes and rollback/cancellation/resource
+      tests on this Mac, PICARD, Quark, Riker and final supported container images; offline
+      installer/bundle and parity checks; a second-order review of alignment, sampling, colour
+      and channel preparation; clear UI/tooltips separating unmeasured, measured and failed.
+      Thresholds are explicit policies, not a conversion from VMAF or SSIM's numeric scale.
+      No listening-panel programme or promised release date is required.
+
 ## Guiding principles
 
 - Safety beats savings.

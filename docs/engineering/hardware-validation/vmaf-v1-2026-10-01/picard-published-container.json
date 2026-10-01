@@ -1,0 +1,253 @@
+{
+  "mergeRevision": "e40b6e23d765a107538f50fede5b597887e4ee6b",
+  "host": "PICARD, RTX 4070, driver 617.14, WSL Ubuntu Linux containers",
+  "serverPublicationRun": "https://github.com/Jellman86/optimisarr/actions/runs/36869999467",
+  "workerPublicationRun": "https://github.com/Jellman86/optimisarr/actions/runs/36869999518",
+  "images": [
+    {
+      "role": "server",
+      "id": "sha256:299262eaf0acf66073659741a30c83d9f76ff3a9988a39589ceb2f63fd594348",
+      "repoDigests": [
+        "ghcr.io/jellman86/optimisarr@sha256:299262eaf0acf66073659741a30c83d9f76ff3a9988a39589ceb2f63fd594348"
+      ]
+    },
+    {
+      "role": "worker",
+      "id": "sha256:f0007e08f3f4c781bc4ee13c20b960848b59ea718e8a68050ddc64949dec89a9",
+      "repoDigests": [
+        "ghcr.io/jellman86/optimisarr-sidecar@sha256:f0007e08f3f4c781bc4ee13c20b960848b59ea718e8a68050ddc64949dec89a9"
+      ]
+    }
+  ],
+  "summary": {
+    "status": "passed",
+    "completed": true,
+    "passed": 55,
+    "failed": 0,
+    "blocked": 0,
+    "scope": "Selected matrix only; omitted hosts and hardware are not certified"
+  },
+  "cases": [
+    {
+      "name": "worker-discovery",
+      "status": "passed"
+    },
+    {
+      "name": "worker-start-hevc_nvenc",
+      "status": "passed"
+    },
+    {
+      "name": "preflight",
+      "status": "passed"
+    },
+    {
+      "name": "fixture-sdr",
+      "status": "passed"
+    },
+    {
+      "name": "fixture-vfr",
+      "status": "passed"
+    },
+    {
+      "name": "fixture-offset",
+      "status": "passed"
+    },
+    {
+      "name": "fixture-ten-bit",
+      "status": "passed"
+    },
+    {
+      "name": "fixture-fractional",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-sdr",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-vfr",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-offset",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-ten-bit",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-fractional",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-bunny-60",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-bunny-180",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-bunny-300",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-tears-60",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-tears-240",
+      "status": "passed"
+    },
+    {
+      "name": "local-libx265-tears-480",
+      "status": "passed"
+    },
+    {
+      "name": "local-mov-text-to-mkv",
+      "status": "passed"
+    },
+    {
+      "name": "local-vmaf-rejection",
+      "status": "passed"
+    },
+    {
+      "name": "queued-cancellation",
+      "status": "passed"
+    },
+    {
+      "name": "running-cancellation",
+      "status": "passed"
+    },
+    {
+      "name": "low-disk-space",
+      "status": "passed"
+    },
+    {
+      "name": "audio-quality-and-rollback",
+      "status": "passed"
+    },
+    {
+      "name": "image-quality-and-rollback",
+      "status": "passed"
+    },
+    {
+      "name": "preview-quality-and-cleanup",
+      "status": "passed"
+    },
+    {
+      "name": "concurrent-isolation",
+      "status": "passed"
+    },
+    {
+      "name": "worker-protocol-faults",
+      "status": "passed"
+    },
+    {
+      "name": "local-adaptive",
+      "status": "passed"
+    },
+    {
+      "name": "calibration-playable-samples",
+      "status": "passed"
+    },
+    {
+      "name": "workers-reconnect-after-server-restart",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-unavailable-placement",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-running-cancel",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-gpu-decode",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-sdr",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-vfr",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-offset",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-ten-bit",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-fractional",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-bunny-60",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-bunny-180",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-bunny-300",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-tears-60",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-tears-240",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-tears-480",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-mov-text-to-mkv",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-adaptive",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-vmaf-rejection",
+      "status": "passed"
+    },
+    {
+      "name": "worker-1-hevc_nvenc-audio-gates",
+      "status": "passed"
+    },
+    {
+      "name": "oracle-rejects-black",
+      "status": "passed"
+    },
+    {
+      "name": "oracle-rejects-drop",
+      "status": "passed"
+    },
+    {
+      "name": "oracle-rejects-truncate",
+      "status": "passed"
+    },
+    {
+      "name": "restore-test-settings",
+      "status": "passed"
+    },
+    {
+      "name": "stop-disposable-workers",
+      "status": "passed"
+    }
+  ],
+  "scope": "Disposable server and 1 GiB RAM worker; strict sidecar verification; HEVC NVENC worker and local x265; five generated timing/format variants and six free-film scenes. Production installations were unchanged."
+}
