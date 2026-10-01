@@ -65,7 +65,7 @@
       onclick={() => layout.closeMobile()}
     >
       <Thumbnail mediaFileId={job.mediaFileId} size="sm" />
-      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-valuenow={percent ?? undefined} aria-valuemin="0" aria-valuemax="100">
+      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-label={`${heading}: ${title}, ${where}`} aria-valuetext={percent === null ? heading : undefined} aria-valuenow={percent ?? undefined} aria-valuemin="0" aria-valuemax="100">
         {#if percent !== null}<span class="progress-fill block" style="width: {percent}%"></span>
         {:else}<span class="progress-indeterminate block"></span>{/if}
       </span>
@@ -103,7 +103,7 @@
         </span>
       </span>
 
-      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-valuenow={percent ?? undefined} aria-valuemin="0" aria-valuemax="100">
+      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-label={`${heading}: ${title}, ${where}`} aria-valuetext={percent === null ? heading : undefined} aria-valuenow={percent ?? undefined} aria-valuemin="0" aria-valuemax="100">
         {#if percent !== null}
           <span class="progress-fill block" style="width: {percent}%"></span>
         {:else}

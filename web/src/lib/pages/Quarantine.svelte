@@ -261,7 +261,7 @@
   <h1 class="page-title">{i18n.m.nav.quarantine}</h1>
   <p class="text-sm text-ink-3">
     {i18n.m.quarantine.subtitle_1}<strong>{i18n.m.quarantine.approve_word}</strong>{i18n.m.quarantine.subtitle_2}<strong>{i18n.m.quarantine.reject_word}</strong>{i18n.m.quarantine.subtitle_3}
-    {#if activeCount > 0}<span class="text-ink-4">{t(i18n.m.quarantine.count_suffix, { count: activeCount })}</span>{/if}
+    {#if activeCount > 0}<span class="text-ink-3">{t(i18n.m.quarantine.count_suffix, { count: activeCount })}</span>{/if}
   </p>
 </header>
 
@@ -285,12 +285,12 @@
         {clearing ? i18n.m.quarantine.clearing : t(i18n.m.quarantine.clear_finished, { count: spentCount })}
       </button>
     {/if}
-    <span class="text-xs text-ink-4">{i18n.m.quarantine.bulk_note}</span>
+    <span class="text-xs text-ink-3">{i18n.m.quarantine.bulk_note}</span>
   </div>
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
+  <div class="card p-8 text-center text-ink-3">{i18n.m.common.loading_short}</div>
 {:else if replacements.length > 0}
   <div class="card overflow-hidden">
     <div bind:this={tableScrollEl} data-quarantine-list class="max-h-[65vh] overflow-auto">
@@ -323,9 +323,9 @@
               <td class="px-4 py-2">
                 <a id={`replacement-${r.id}`} class="focus-ring flex min-h-11 items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
                 {#if r.status === 'Purged'}
-                  <div class="text-[11px] text-ink-4">{i18n.m.quarantine.original_purged}</div>
+                  <div class="text-[11px] text-ink-3">{i18n.m.quarantine.original_purged}</div>
                 {:else if r.status === 'Replaced'}
-                  <div class="max-w-md truncate font-mono text-[11px] text-ink-4" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
+                  <div class="max-w-md truncate font-mono text-[11px] text-ink-3" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
                 {/if}
               </td>
               <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
@@ -339,7 +339,7 @@
       </table>
     </div>
   </div>
-  <p class="mt-2 text-xs text-ink-4">{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</p>
+  <p class="mt-2 text-xs text-ink-3">{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</p>
 {:else}
   <div class="card p-8 text-center text-ink-3">
     {i18n.m.quarantine.empty}

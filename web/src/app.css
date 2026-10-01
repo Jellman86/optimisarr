@@ -390,23 +390,23 @@ p {
      "failed" is the same red wherever it is said. */
   .tone-ok {
     --tone-soft: var(--ok-soft);
-    --tone-ink: var(--ok);
+    --tone-ink: var(--ok-strong);
   }
   .tone-warn {
     --tone-soft: var(--warn-soft);
-    --tone-ink: var(--warn);
+    --tone-ink: var(--warn-strong);
   }
   .tone-bad {
     --tone-soft: var(--bad-soft);
-    --tone-ink: var(--bad);
+    --tone-ink: var(--bad-strong);
   }
   .tone-accent {
     --tone-soft: var(--accent-soft);
-    --tone-ink: var(--accent);
+    --tone-ink: var(--accent-strong);
   }
   .tone-info {
     --tone-soft: var(--info-soft);
-    --tone-ink: var(--info);
+    --tone-ink: var(--info-strong);
   }
   /* The neutral pair: a fact rather than a verdict ("Video", "hevc"), and the
      same shape a step quieter for things that are merely not happening ("Skipped"). */
