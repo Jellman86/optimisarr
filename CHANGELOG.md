@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- H.264 NVIDIA encodes preserve explicitly probed limited/full colour range in the primary bitstream, including MP4 outputs with otherwise unspecified colour tags. HDR-to-SDR output keeps its deliberate limited range; copied streams and other encoders remain unchanged. Update sidecars too: the narrow range options require protocol 5, while older workers retain ordinary work.
+
 ### Testing
 
 - The UI layout audit now checks accessible names and WCAG contrast across all routes in desktop dark and phone light appearances.

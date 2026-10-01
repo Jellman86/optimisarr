@@ -13,6 +13,7 @@ public enum AssignmentCommandError: Error, Equatable, Sendable {
     case pathLikeValue(String)
     case strayPlaceholder(String)
     case unknownHardwareDecoder(String)
+    case invalidColourMetadata(option: String)
 }
 
 /// The server's argument array, checked before this machine will run it.
@@ -41,7 +42,7 @@ public struct AssignmentCommand: Sendable, Equatable {
         "-global_quality", "-rc_mode", "-quality", "-lossless",
         "-tune", "-maxrate", "-minrate", "-bufsize", "-x264-params", "-x265-params",
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0",
-        "-ss", "-t", "-movflags", "-hwaccel",
+        "-ss", "-t", "-movflags", "-hwaccel", "-color_range:v:0", "-bsf:v:0",
     ]
 
     /// The one hardware decoder this platform has. The server names it only when this machine
@@ -80,7 +81,15 @@ public struct AssignmentCommand: Sendable, Equatable {
                 throw AssignmentCommandError.optionWithoutValue(token)
             }
             let value = body[index + 1]
-            if token == "-i" {
+            if token == "-color_range:v:0" {
+                guard ["tv", "pc"].contains(value) else {
+                    throw AssignmentCommandError.invalidColourMetadata(option: token)
+                }
+            } else if token == "-bsf:v:0" {
+                guard ["h264_metadata=video_full_range_flag=0", "h264_metadata=video_full_range_flag=1"].contains(value) else {
+                    throw AssignmentCommandError.invalidColourMetadata(option: token)
+                }
+            } else if token == "-i" {
                 guard value == Assignment.inputPlaceholder else {
                     throw AssignmentCommandError.inputMustBePlaceholder(value)
                 }

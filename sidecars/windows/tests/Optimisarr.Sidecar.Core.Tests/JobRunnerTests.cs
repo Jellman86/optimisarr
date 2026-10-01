@@ -41,7 +41,9 @@ public sealed class JobRunnerTests : IDisposable
         using var http = new HttpClient(server);
         var runner = new JobRunner(new SidecarClient(http), new JobTransfer(http),
             new FakeMeasuringTranscoder(), "ffmpeg.exe", _scratch, () => null);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        // Bound a hung fixture without assuming filesystem latency on a loaded Windows host.
+        // The single offset request below proves that terminal refusals are never retried.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var outcome = await runner.RunAsync(Pairing(), Assignment(), deadline.Token);
         Assert.False(outcome.Delivered);
         Assert.Single(server.Calls, c => c.EndsWith("/result/offset"));

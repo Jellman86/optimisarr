@@ -45,7 +45,7 @@ public static class AssignmentCommand
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0",
         "-ss", "-t", "-movflags", "-hwaccel", "-hwaccel_output_format",
         "-init_hw_device", "-filter_hw_device", "-vaapi_device",
-        "-extra_hw_frames",
+        "-extra_hw_frames", "-color_range:v:0", "-bsf:v:0",
     };
 
     /// <summary>
@@ -108,6 +108,11 @@ public static class AssignmentCommand
             var value = arguments[index + 1];
             switch (token)
             {
+                case "-color_range:v:0" when value is not ("tv" or "pc"):
+                case "-bsf:v:0" when value is not ("h264_metadata=video_full_range_flag=0" or "h264_metadata=video_full_range_flag=1"):
+                    return new CommandRefusal($"Unsupported colour metadata value for '{token}'.");
+                case "-color_range:v:0":
+                case "-bsf:v:0": break;
                 case "-i" when value != AssignmentPlaceholders.Input:
                     return new CommandRefusal($"The only input may be {AssignmentPlaceholders.Input}, not '{value}'.");
                 case "-i":

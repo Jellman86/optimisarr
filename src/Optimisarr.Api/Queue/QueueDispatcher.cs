@@ -1906,7 +1906,11 @@ public sealed class QueueDispatcher(
             var sourceBitDepth = PixelFormatInfo.Parse(
                 freshSourceProbe?.PixelFormat ?? media.PixelFormat,
                 freshSourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth;
-            spec = spec with { SourceBitDepth = sourceBitDepth };
+            spec = spec with
+            {
+                SourceBitDepth = sourceBitDepth,
+                SourceColorRange = freshSourceProbe?.Success == true ? freshSourceProbe.ColorRange : null
+            };
             // A worker's encoder is chosen from what it proved, in the same preference order this
             // machine uses for its own hardware. The queue's encoder mode describes this machine's
             // GPU and says nothing about the worker's, so Auto is the only honest mode there.

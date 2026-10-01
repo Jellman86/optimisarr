@@ -20,11 +20,12 @@ public sealed record ProtocolNegotiation(bool Compatible, int AgreedVersion, str
 public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
-    // Protocol 4 adds indexed subtitle codec overrides for safe container conversion.
-    public const int Current = 4;
+    // Protocol 5 adds narrowly validated primary H.264 colour-range options.
+    public const int Current = 5;
 
     public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments) =>
-        arguments.Any(argument => argument.StartsWith("-c:s:", StringComparison.Ordinal)) ? 4 : 1;
+        arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
+            : arguments.Any(argument => argument.StartsWith("-c:s:", StringComparison.Ordinal)) ? 4 : 1;
 
     /// <summary>The oldest contract version this build still accepts.</summary>
     public const int MinimumSupported = 1;
