@@ -125,9 +125,13 @@ public struct RamDisk: Sendable {
     }
 
     /// Ejects anything left behind by a previous run that did not exit cleanly.
-    public static func sweepStrays() {
+    static func strayVolumeNames(in volumes: [String], ownedVolumeNames: Set<String>?) -> [String] {
+        volumes.filter { $0.hasPrefix(volumePrefix) && (ownedVolumeNames?.contains($0) ?? true) }
+    }
+
+    public static func sweepStrays(ownedVolumeNames: Set<String>? = nil) {
         guard let volumes = try? FileManager.default.contentsOfDirectory(atPath: "/Volumes") else { return }
-        for volume in volumes where volume.hasPrefix(volumePrefix) {
+        for volume in strayVolumeNames(in: volumes, ownedVolumeNames: ownedVolumeNames) {
             _ = run("/usr/sbin/diskutil", ["eject", "/Volumes/\(volume)"])
         }
     }

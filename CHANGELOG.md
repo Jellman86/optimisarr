@@ -4,6 +4,8 @@
 
 ### Quality verification
 
+- Live Mac RAM-disk acceptance scopes cleanup to the test's owned volumes, preserving concurrent sidecar work.
+
 - Workers use software decode for H.264 profiles beyond their proved Baseline/Main/High support, including lossless High 4:4:4 Predictive. GPU encoding and strict worker verification still run on the worker.
 - Native Windows image verification escapes SSIM log paths and sends literal Unicode filenames to ExifTool through UTF-8 argument input. This fixes false failures for filenames containing brackets and non-Latin characters.
 - New ordinary SDR video jobs use VMAF v1 HD/UHD models for adaptive selection and final verification. Numeric preset/custom floors stay unchanged; scores can change because v1 detects banding and chroma artifacts. HDR, sources at 45 fps or above, frame-rate conversions and already-started legacy jobs retain their existing model.
