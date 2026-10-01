@@ -57,6 +57,7 @@ For actual installation/uninstallation, use a disposable elevated Windows VM wit
 sidecar or pairing directory:
 
 ```powershell
+./sidecars/windows/installer/test-evidence.ps1
 ./sidecars/windows/installer/build.ps1 -BuildUpgradeTest
 ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName -UpgradeInstaller ./sidecars/windows/artifacts/upgrade-test/OptimisarrSidecar-upgrade-test.msi
 ```
@@ -72,6 +73,8 @@ heartbeat evidence remain. CI stores them under its uploaded runner temporary di
 failed runs also capture service registration and recent SCM/runtime events before uninstalling.
 The workflow verifies that the installation log exists in the uploaded directory.
 These diagnostics are limited to the guarded disposable test, not installed user machines.
+A separate non-installing regression test simulates startup and diagnostic-provider failures,
+proving that evidence is retained and collection never replaces the original error.
 The upgrade fixture shares the staged payload but lives outside
 published artifact globs. The
 `Windows sidecar installer` GitHub workflow builds and runs this test on a fresh Windows

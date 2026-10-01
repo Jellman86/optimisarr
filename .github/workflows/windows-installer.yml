@@ -29,6 +29,7 @@ jobs:
         run: python scripts/sidecar_release_version.py
       - run: dotnet build sidecars/windows/Optimisarr.Sidecar.slnx -c Release -warnaserror
       - run: dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build
+      - run: ./sidecars/windows/installer/test-evidence.ps1
       - run: ./sidecars/windows/installer/build.ps1 -BuildUpgradeTest
       - id: smoke
         run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName -UpgradeInstaller sidecars/windows/artifacts/upgrade-test/OptimisarrSidecar-upgrade-test.msi

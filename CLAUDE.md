@@ -175,6 +175,7 @@ Linux sidecar and shared worker core:
 dotnet build sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release -warnaserror
 dotnet test sidecars/linux/tests/Optimisarr.Sidecar.Linux.Tests -c Release --no-build
 dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release
+# On Windows: ./sidecars/windows/installer/test-evidence.ps1
 docker build --target sidecar-runtime -t optimisarr-sidecar:test .
 bash scripts/ci_linux_sidecar_smoke.sh optimisarr-sidecar:test
 ```

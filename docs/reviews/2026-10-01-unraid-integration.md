@@ -55,7 +55,10 @@ runner.temp. Corrected the evidence root and added failure-only service/event di
 cleanup, without retrying or suppressing failed service starts. CI now verifies the retained
 installation log before uploading, on successful and failed smoke runs. The initial attempt
 would fail that evidence gate. PICARD passed native PowerShell parsing and proved that the
-existing-installed-host guard still refuses smoke installation before any mutation. The initial failure's cause cannot
+existing-installed-host guard still refuses smoke installation before any mutation. A native
+non-installing regression test failed against the original harness, then passed with retained
+service/event evidence and original-error preservation, including when the diagnostic provider
+itself fails. The initial failure's cause cannot
 be established from the retained evidence; the passing final checks must not be described as a
 proven service-start bug fix.
 
