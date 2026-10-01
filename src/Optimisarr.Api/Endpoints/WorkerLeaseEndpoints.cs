@@ -195,6 +195,8 @@ internal static class WorkerLeaseEndpoints
 {
     private static readonly JsonSerializerOptions EvidenceJson = new(JsonSerializerDefaults.Web);
 
+    private sealed record ClaimAttempt(AssignmentDto? Assignment);
+
     public static void MapWorkerLeaseEndpoints(this WebApplication app)
     {
         var claimHistory = new ConcurrentDictionary<int, ClaimHistory>();
@@ -206,6 +208,7 @@ internal static class WorkerLeaseEndpoints
             SettingsStore settings,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            QueuePauseManager pauseManager,
             CandidateService eligibility,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
@@ -221,6 +224,8 @@ internal static class WorkerLeaseEndpoints
             {
                 return WorkerGate.Unauthenticated();
             }
+
+            if (pauseManager.IsPaused) return Results.NoContent();
 
             var now = DateTimeOffset.UtcNow;
 
@@ -419,138 +424,145 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
-                    // Preparation can outlive a cancellation. Recheck while holding the write
-                    // transaction so this claim cannot turn a cancelled job back into leased work.
-                    await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-                    // Track only the job about to be claimed; skipped batches stay untracked.
-                    db.Entry(job).State = EntityState.Unchanged;
-                    await db.Entry(job).ReloadAsync(cancellationToken);
-                    if (job.Status != JobStatus.Queued)
+                    // Preparation may probe a source. Hold the pause transition only for the
+                    // short claim commit, so slow preparation cannot delay the operator's pause.
+                    var committed = await pauseManager.TryRunAutomaticActionAsync(async () =>
                     {
-                        db.Entry(job).State = EntityState.Detached;
-                        continue;
-                    }
-                    if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
-                        is { IsEligible: false })
-                    {
-                        db.Entry(job).State = EntityState.Detached;
-                        continue;
-                    }
-                    var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
-                    var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
-                        job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
-                        job.Type is JobType.Preview or JobType.Calibration,
-                        assignment.Verification.MinimumSizeSavingPercent);
-                    var minCandidateBytes = SizeBudget.MinCandidateBytes(
-                        job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
-                        job.Type is JobType.Preview or JobType.Calibration,
-                        assignment.Verification.MaximumSizeSavingPercent);
+                        // Preparation can outlive a cancellation. Recheck while holding the write
+                        // transaction so this claim cannot turn a cancelled job back into leased work.
+                        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                        // Track only the job about to be claimed; skipped batches stay untracked.
+                        db.Entry(job).State = EntityState.Unchanged;
+                        await db.Entry(job).ReloadAsync(cancellationToken);
+                        if (job.Status != JobStatus.Queued)
+                        {
+                            db.Entry(job).State = EntityState.Detached;
+                            return new ClaimAttempt(null);
+                        }
+                        if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
+                            is { IsEligible: false })
+                        {
+                            db.Entry(job).State = EntityState.Detached;
+                            return new ClaimAttempt(null);
+                        }
+                        var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
+                        var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
+                            job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                            job.Type is JobType.Preview or JobType.Calibration,
+                            assignment.Verification.MinimumSizeSavingPercent);
+                        var minCandidateBytes = SizeBudget.MinCandidateBytes(
+                            job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                            job.Type is JobType.Preview or JobType.Calibration,
+                            assignment.Verification.MaximumSizeSavingPercent);
 
-                    db.JobLeases.Add(new JobLease
-                    {
-                        Id = lease.Id,
-                        JobId = lease.JobId,
-                        WorkerId = lease.WorkerId,
-                        AcquiredAt = lease.AcquiredUtc,
-                        ExpiresAt = lease.ExpiresUtc,
-                        State = lease.State,
-                        // Bound to the lease so delivery names the candidate by the contract, not by
-                        // the source; the replacement's final extension comes from that name.
-                        OutputExtension = assignment.OutputExtension,
-                        MaxCandidateBytes = maxCandidateBytes,
-                        MinCandidateBytes = minCandidateBytes,
-                        HardwareDecoder = assignment.HardwareDecoder,
-                        // What the worker was asked to measure, fixed now so the evidence it returns is
-                        // judged against this, not against a policy that may have changed since.
-                        // The first candidate to measure, and how. Held on the lease so a report can be
-                        // checked against the question that was actually asked.
-                        AdaptiveAskedQuality = assignment.Search?.Quality,
-                        AdaptiveContractJson = assignment.Search is null
-                            ? null
-                            : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
-                        VerificationWorkJson = assignment.VerificationWorkJson,
-                        VerificationContractJson = assignment.FullVerification is null ? null
-                            : JsonSerializer.Serialize(assignment.FullVerification, EvidenceJson),
-                        QualityContractJson = assignment.Quality is null
-                            ? null
-                            : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
-                    });
+                        db.JobLeases.Add(new JobLease
+                        {
+                            Id = lease.Id,
+                            JobId = lease.JobId,
+                            WorkerId = lease.WorkerId,
+                            AcquiredAt = lease.AcquiredUtc,
+                            ExpiresAt = lease.ExpiresUtc,
+                            State = lease.State,
+                            // Bound to the lease so delivery names the candidate by the contract, not by
+                            // the source; the replacement's final extension comes from that name.
+                            OutputExtension = assignment.OutputExtension,
+                            MaxCandidateBytes = maxCandidateBytes,
+                            MinCandidateBytes = minCandidateBytes,
+                            HardwareDecoder = assignment.HardwareDecoder,
+                            // What the worker was asked to measure, fixed now so the evidence it returns is
+                            // judged against this, not against a policy that may have changed since.
+                            // The first candidate to measure, and how. Held on the lease so a report can be
+                            // checked against the question that was actually asked.
+                            AdaptiveAskedQuality = assignment.Search?.Quality,
+                            AdaptiveContractJson = assignment.Search is null
+                                ? null
+                                : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
+                            VerificationWorkJson = assignment.VerificationWorkJson,
+                            VerificationContractJson = assignment.FullVerification is null ? null
+                                : JsonSerializer.Serialize(assignment.FullVerification, EvidenceJson),
+                            QualityContractJson = assignment.Quality is null
+                                ? null
+                                : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
+                        });
 
-                    // The exclusion that matters: off the queue, so this machine will not also run it.
-                    job.Status = JobStatus.Leased;
-                    job.ExecutionAttempt += 1;
-                    job.Progress = 0;
-                    job.StartedAt = now;
-                    job.FinishedAt = null;
-                    job.UpdatedAt = now;
-                    job.ErrorMessage = null;
-                    job.FailureCategory = null;
-                    job.ProcessLog = null;
-                    job.WorkOutputPath = null;
-                    job.OutputSizeBytes = null;
-                    job.VerificationPassed = null;
-                    job.SourceSha256 = null;
-                    job.VerifiedSourceSha256 = null;
-                    job.VerifiedOutputSha256 = null;
-                    job.VerificationReportJson = null;
-                    job.VerifiedAt = null;
-                    // The queue shows these for every job. For a remote job they must be what the
-                    // worker will actually run, not whatever this server last ran for it.
-                    job.VideoEncoder = assignment.VideoEncoder;
-                    job.FfmpegArguments = string.Join(' ', assignment.Arguments);
-                    job.RequestedVideoQuality = assignment.RequestedVideoQuality;
-                    job.EffectiveVideoQuality = assignment.EffectiveVideoQuality;
-                    job.VideoQualityMode = assignment.VideoQualityMode;
-                    job.VmafModel = assignment.VmafModel;
+                        // The exclusion that matters: off the queue, so this machine will not also run it.
+                        job.Status = JobStatus.Leased;
+                        job.ExecutionAttempt += 1;
+                        job.Progress = 0;
+                        job.StartedAt = now;
+                        job.FinishedAt = null;
+                        job.UpdatedAt = now;
+                        job.ErrorMessage = null;
+                        job.FailureCategory = null;
+                        job.ProcessLog = null;
+                        job.WorkOutputPath = null;
+                        job.OutputSizeBytes = null;
+                        job.VerificationPassed = null;
+                        job.SourceSha256 = null;
+                        job.VerifiedSourceSha256 = null;
+                        job.VerifiedOutputSha256 = null;
+                        job.VerificationReportJson = null;
+                        job.VerifiedAt = null;
+                        // The queue shows these for every job. For a remote job they must be what the
+                        // worker will actually run, not whatever this server last ran for it.
+                        job.VideoEncoder = assignment.VideoEncoder;
+                        job.FfmpegArguments = string.Join(' ', assignment.Arguments);
+                        job.RequestedVideoQuality = assignment.RequestedVideoQuality;
+                        job.EffectiveVideoQuality = assignment.EffectiveVideoQuality;
+                        job.VideoQualityMode = assignment.VideoQualityMode;
+                        job.VmafModel = assignment.VmafModel;
 
-                    try
-                    {
-                        await db.SaveChangesAsync(cancellationToken);
-                        await transaction.CommitAsync(cancellationToken);
-                    }
-                    catch (DbUpdateException)
-                    {
-                        // Another worker claimed it in the gap. The unique index on held leases is what
-                        // makes that a database error rather than two holders, so move on and try the
-                        // next candidate rather than treating it as a failure.
-                        db.ChangeTracker.Clear();
-                        continue;
-                    }
+                        try
+                        {
+                            await db.SaveChangesAsync(cancellationToken);
+                            await transaction.CommitAsync(cancellationToken);
+                        }
+                        catch (DbUpdateException)
+                        {
+                            // Another worker claimed it in the gap. The unique index on held leases is what
+                            // makes that a database error rather than two holders, so move on and try the
+                            // next candidate rather than treating it as a failure.
+                            db.ChangeTracker.Clear();
+                            return new ClaimAttempt(null);
+                        }
 
-                    history.LastLibraryId = job.LibraryId;
-                    logger.LogInformation("Job {JobId} offered to worker {Worker} after skipping {Skipped} unsuitable jobs.",
-                        job.Id, worker.Name, skipped);
-                    var policy = assignment.Verification;
-                    return Results.Ok(new AssignmentDto(
-                        lease.Id,
-                        job.Id,
-                        // The file name rather than the whole relative path: the worker shows this in
-                        // a narrow menu, and the folders above it are the server's business.
-                        Path.GetFileName(job.MediaFile.RelativePath),
-                        job.MediaFile.SizeBytes,
-                        assignment.VideoEncoder,
-                        requirements.Vmaf.ToString(),
-                        lease.ExpiresUtc,
-                        (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
-                        assignment.Arguments,
-                        assignment.OutputExtension,
-                        new QualityRequirementDto(
-                            policy.RequiresVmaf(assignment.Kind, true),
-                            assignment.VmafModel,
-                            policy.VmafFrameSubsample,
-                            policy.ClipVmafEnabled,
-                            policy.MinimumVmafHarmonicMean,
-                            policy.MinimumVmafMin,
-                            assignment.Quality?.Commands ?? [],
-                            assignment.Quality?.Sampling ?? "None",
-                            assignment.Quality?.FramePairedCommands),
-                        AdaptiveSearchWire.From(assignment.Search, policy),
-                        assignment.FullVerification,
-                        maxCandidateBytes,
-                        minCandidateBytes,
-                        new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
-                            job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
-                            job.MediaFile.PixelFormat), assignment.Kind, assignment.AudioEncoder));
+                        history.LastLibraryId = job.LibraryId;
+                        logger.LogInformation("Job {JobId} offered to worker {Worker} after skipping {Skipped} unsuitable jobs.",
+                            job.Id, worker.Name, skipped);
+                        var policy = assignment.Verification;
+                        return new ClaimAttempt(new AssignmentDto(
+                            lease.Id,
+                            job.Id,
+                            // The file name rather than the whole relative path: the worker shows this in
+                            // a narrow menu, and the folders above it are the server's business.
+                            Path.GetFileName(job.MediaFile.RelativePath),
+                            job.MediaFile.SizeBytes,
+                            assignment.VideoEncoder,
+                            requirements.Vmaf.ToString(),
+                            lease.ExpiresUtc,
+                            (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
+                            assignment.Arguments,
+                            assignment.OutputExtension,
+                            new QualityRequirementDto(
+                                policy.RequiresVmaf(assignment.Kind, true),
+                                assignment.VmafModel,
+                                policy.VmafFrameSubsample,
+                                policy.ClipVmafEnabled,
+                                policy.MinimumVmafHarmonicMean,
+                                policy.MinimumVmafMin,
+                                assignment.Quality?.Commands ?? [],
+                                assignment.Quality?.Sampling ?? "None",
+                                assignment.Quality?.FramePairedCommands),
+                            AdaptiveSearchWire.From(assignment.Search, policy),
+                            assignment.FullVerification,
+                            maxCandidateBytes,
+                            minCandidateBytes,
+                            new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
+                                job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
+                                job.MediaFile.PixelFormat), assignment.Kind, assignment.AudioEncoder));
+                    }, cancellationToken);
+                    if (!committed.Started) return Results.NoContent();
+                    if (committed.Value?.Assignment is { } offered) return Results.Ok(offered);
                 }
 
             }

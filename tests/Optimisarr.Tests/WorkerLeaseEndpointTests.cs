@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 using System.Net;
 using System.Net.Http.Headers;
@@ -380,6 +383,90 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         db.Exclusions.Add(new Exclusion { Path = job.MediaFile!.Path, RelativePath = job.MediaFile.RelativePath,
             LibraryId = job.LibraryId, Source = source });
         await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task A_claim_still_preparing_when_pause_returns_cannot_acquire_a_lease()
+    {
+        await EnableRemoteWorkers();
+        using var paired = await PairCapableWorker("Pause during source preparation");
+        var waitingJob = await QueueAJob();
+        var preparation = new WaitingSourcePreflight();
+        using var factory = _api.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<ISourceTimelinePreflight>();
+            services.AddSingleton<ISourceTimelinePreflight>(preparation);
+        }));
+        using var worker = factory.CreateClient();
+        worker.DefaultRequestHeaders.Authorization = paired.DefaultRequestHeaders.Authorization;
+        using var admin = factory.CreateClient();
+        admin.DefaultRequestHeaders.Authorization = Admin().DefaultRequestHeaders.Authorization;
+        var claim = worker.PostAsJsonAsync("/api/workers/claim", new { });
+        try
+        {
+            await preparation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            // A source probe must not keep Pause waiting. The claim commits only after preparation.
+            using var paused = await admin.PostAsync("/api/queue/pause", null).WaitAsync(TimeSpan.FromSeconds(5));
+            paused.EnsureSuccessStatusCode();
+            preparation.Release.TrySetResult();
+            using var refused = await claim.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(HttpStatusCode.NoContent, refused.StatusCode);
+            Assert.Equal(JobStatus.Queued, await StatusOf(waitingJob));
+        }
+        finally
+        {
+            preparation.Release.TrySetResult();
+            (await admin.PostAsync("/api/queue/resume", null)).EnsureSuccessStatusCode();
+            await claim.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    private sealed class WaitingSourcePreflight : ISourceTimelinePreflight
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<SourceTimelineVerdict> CheckAsync(string path, CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return SourceTimelineVerdict.Clear;
+        }
+    }
+
+    [Theory]
+    [InlineData(WorkPlacement.Anywhere)]
+    [InlineData(WorkPlacement.PreferWorker)]
+    [InlineData(WorkPlacement.WorkerOnly)]
+    public async Task Queue_pause_blocks_new_worker_claims_but_keeps_existing_leases_renewable(WorkPlacement placement)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Pause respects all placements", concurrency: 2);
+        var runningJob = await QueueAJob(placement: placement);
+        using var first = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var leaseId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        var waitingJob = await QueueAJob(placement: placement);
+        var admin = Admin();
+
+        try
+        {
+            (await admin.PostAsync("/api/queue/pause", null)).EnsureSuccessStatusCode();
+            using var refused = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, refused.StatusCode);
+            Assert.Equal(JobStatus.Queued, await StatusOf(waitingJob));
+            Assert.Equal(JobStatus.Leased, await StatusOf(runningJob));
+            using var renewed = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/renew", new { });
+            Assert.Equal(HttpStatusCode.OK, renewed.StatusCode);
+        }
+        finally
+        {
+            (await admin.PostAsync("/api/queue/resume", null)).EnsureSuccessStatusCode();
+        }
+
+        using var offered = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, offered.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(waitingJob));
     }
 
     [Fact]
