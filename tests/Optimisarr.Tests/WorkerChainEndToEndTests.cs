@@ -1,3 +1,4 @@
+using Optimisarr.Core.Workers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -99,7 +100,7 @@ public sealed class WorkerChainEndToEndTests : IAsyncLifetime
         var paired = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", new
         {
             code = pin, name, operatingSystem = "windows", architecture = "x64",
-            protocolMinimum = 1, protocolMaximum = 1,
+            protocolMinimum = 1, protocolMaximum = WorkerProtocol.Current,
             videoEncoders = new[] { "libx265" }, audioEncoders = new[] { "aac" },
             hardwareDecoders = Array.Empty<string>(),
             vmaf = "Cpu", freeScratchBytes = 500L * 1024 * 1024 * 1024, maxConcurrency = 1,

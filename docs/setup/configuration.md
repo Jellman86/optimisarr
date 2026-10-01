@@ -65,9 +65,11 @@ did before and logs a warning at startup.
 ## Remote workers
 
 Windows, macOS and Linux sidecars can encode video, measure VMAF, and perform the full
-verification workload. They remain an opt-in preview behind
-`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`. Enable **Remote workers** in
-**Settings → Files & safety**, then pair and manage machines in **Settings → Remote workers**.
+verification workload. Availability and the saved worker switch default on for fresh installations;
+existing settings are preserved. Pair and manage machines in **Settings → Remote workers**.
+Use **Settings → Files & safety → Remote workers** to disable activity without deleting pairings.
+The existing `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` environment override disables
+the feature for the deployment; an unset variable leaves it available.
 
 Work placement is per library: **Libraries → Configure → Choose files → Advanced eligibility →
 Where this library's work may run**. Choose **Here or on a worker**, **Only on this server**,

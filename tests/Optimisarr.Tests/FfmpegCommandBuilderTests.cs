@@ -5,6 +5,66 @@ namespace Optimisarr.Tests;
 
 public sealed class FfmpegCommandBuilderTests
 {
+    [Theory]
+    [InlineData("tv", "0")]
+    [InlineData("pc", "1")]
+    [InlineData("TV", "0")]
+    public void H264_nvenc_records_declared_range_in_the_primary_bitstream(string range, string flag)
+    {
+        var spec = Reencode() with { VideoCodec = "h264", OutputPath = "/work/output.mp4", SourceColorRange = range };
+        var args = FfmpegCommandBuilder.Build(spec, videoEncoder: "h264_nvenc");
+
+        Assert.Equal("h264_metadata=video_full_range_flag=" + flag, args[IndexOf(args, "-bsf:v:0") + 1]);
+        Assert.Equal(flag == "0" ? "tv" : "pc", args[IndexOf(args, "-color_range:v:0") + 1]);
+        Assert.True(IndexOf(args, "-bsf:v:0") > IndexOf(args, "-i"));
+        Assert.DoesNotContain("-bsf:v", args);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("unknown")]
+    [InlineData("unspecified")]
+    [InlineData("tv:video_full_range_flag=1")]
+    public void H264_nvenc_does_not_guess_or_interpolate_an_unknown_range(string? range)
+    {
+        var spec = Reencode() with { VideoCodec = "h264", SourceColorRange = range };
+        var args = FfmpegCommandBuilder.Build(spec, videoEncoder: "h264_nvenc");
+
+        Assert.DoesNotContain("-bsf:v:0", args);
+        Assert.DoesNotContain("-color_range:v:0", args);
+    }
+
+    [Theory]
+    [InlineData("libx264")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("av1_nvenc")]
+    public void Other_encoders_do_not_receive_the_H264_range_workaround(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { SourceColorRange = "tv" }, videoEncoder: encoder);
+
+        Assert.DoesNotContain("-bsf:v:0", args);
+        Assert.DoesNotContain("-color_range:v:0", args);
+    }
+
+    [Fact]
+    public void H264_nvenc_tone_mapping_records_limited_output_instead_of_the_source_range()
+    {
+        var spec = Reencode() with { VideoCodec = "h264", SourceColorRange = "pc", TonemapToSdr = true };
+        var args = FfmpegCommandBuilder.Build(spec, videoEncoder: "h264_nvenc");
+
+        Assert.Equal("h264_metadata=video_full_range_flag=0", args[IndexOf(args, "-bsf:v:0") + 1]);
+        Assert.Equal("tv", args[IndexOf(args, "-color_range:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Copied_video_is_not_retagged_by_the_H264_range_workaround()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { VideoCodec = null, SourceColorRange = "pc" }, videoEncoder: "h264_nvenc");
+
+        Assert.DoesNotContain("-bsf:v:0", args);
+        Assert.DoesNotContain("-color_range:v:0", args);
+    }
+
     [Fact]
     public void Every_job_requests_machine_readable_progress_without_human_stats()
     {
@@ -909,6 +969,32 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Theory]
+    [InlineData("hevc")]
+    [InlineData(null)]
+    public void Matroska_converts_only_kept_mov_text_tracks_with_output_relative_indexes(string? videoCodec)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            VideoCodec = videoCodec, OutputPath = "/work/film.mkv",
+            SourceSubtitleCodecs = ["mov_text", "ass", "mov_text", "hdmv_pgs_subtitle", null],
+            RemoveSubtitleStreamIndexes = [0],
+        });
+        Assert.Equal("ass", args[IndexOf(args, "-c:s:1") + 1]);
+        Assert.DoesNotContain("-c:s:0", args);
+        Assert.DoesNotContain("-c:s:2", args);
+        Assert.DoesNotContain("-c:s:3", args);
+        Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
+    }
+
+    [Fact]
+    public void Video_only_candidates_do_not_include_subtitle_conversion()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        { VideoOnly = true, SourceSubtitleCodecs = ["mov_text"] });
+        Assert.DoesNotContain("-c:s:0", args);
+    }
+
+    [Theory]
     [InlineData(".mp4")]
     [InlineData(".m4v")]
     [InlineData(".mov")]
@@ -1057,8 +1143,14 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
     }
 
-    [Fact]
-    public void Keeps_every_frame_even_when_the_source_looks_constant()
+    [Theory]
+    [InlineData("libx265", ".mp4")]
+    [InlineData("hevc_qsv", ".mp4")]
+    [InlineData("hevc_qsv", ".mkv")]
+    [InlineData("hevc_nvenc", ".mp4")]
+    [InlineData("hevc_vaapi", ".mkv")]
+    [InlineData("hevc_videotoolbox", ".mp4")]
+    public void Constant_rate_passthrough_preserves_source_timestamp_precision(string encoder, string extension)
     {
         // This used to assert the opposite, and that is what let the bug through. FFmpeg's default
         // frame-rate handling drops frames whose timestamps collide, and it does that on sources
@@ -1067,12 +1159,14 @@ public sealed class FfmpegCommandBuilderTests
         //
         // The dangerous source is the one that looks regular and is not, so the rule cannot be
         // conditional on having noticed.
-        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" });
+        var args = FfmpegCommandBuilder.Build(
+            Reencode() with { OutputPath = $"/work/Movie.opt{extension}" }, videoEncoder: encoder);
 
         Assert.Equal("passthrough", args[IndexOf(args, "-fps_mode") + 1]);
-        // The demux timebase stays for a source known to be variable; a source that looks regular
-        // needs nothing beyond keeping its frames.
-        Assert.DoesNotContain("-enc_time_base:v:0", args);
+        // Constant fractional-rate Matroska can have finer timestamps than the encoder default.
+        // Passthrough alone collapses timestamps or fails muxing instead of preserving the cadence.
+        Assert.Contains("-enc_time_base:v:0", args);
+        Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
     }
 
     [Fact]

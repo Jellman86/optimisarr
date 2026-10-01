@@ -60,9 +60,22 @@ class InstallerPayloadTests(unittest.TestCase):
         self.assertEqual('yes', directory.attrib['Permanent'])
         self.assertIn('D:P', directory.find('.//w:PermissionEx', NS).attrib['Sddl'])
         self.assertEqual([], root.findall('.//w:RemoveFile', NS))
-        service = root.find('.//w:ServiceControl', NS)
+        service = root.find('.//w:ServiceControl[@Id="ControlWorker"]', NS)
         self.assertEqual('both', service.attrib['Stop'])
         self.assertNotIn('Start', service.attrib)
+
+    def test_service_files_install_without_pairing_but_upgrade_start_requires_it(self):
+        root = ET.parse(ROOT / 'sidecars/windows/installer/Package.wxs')
+        host = root.find('.//w:Component[@Id="ServiceHost"]', NS)
+        self.assertNotIn('Condition', host.attrib)
+        starters = [component for component in root.findall('.//w:Component', NS)
+                    if any('Start' in control.attrib for control in component.findall('w:ServiceControl', NS))]
+        self.assertEqual(1, len(starters))
+        self.assertEqual('WIX_UPGRADE_DETECTED AND PAIRINGPRESENT', starters[0].attrib['Condition'])
+        self.assertEqual('install', starters[0].find('w:ServiceControl', NS).attrib['Start'])
+        pairing = root.find('.//w:Property[@Id="PAIRINGPRESENT"]', NS)
+        self.assertEqual('yes', pairing.attrib['Secure'])
+        self.assertEqual('pairing.dat', pairing.find('.//w:FileSearch', NS).attrib['Name'])
 
 
 if __name__ == '__main__':

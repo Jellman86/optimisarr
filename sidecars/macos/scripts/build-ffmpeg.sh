@@ -30,12 +30,13 @@ X265_TAG="${X265_TAG:-4.2}"
 # Silicon, M5 included — 27 encoders are advertised and not one is AV1 — so software is the only
 # way to encode AV1 here.
 SVTAV1_TAG="${SVTAV1_TAG:-v4.2.0}"
-# v3.2.1: the first libvmaf with the VMAF v1 models built in, matching the container's measurement
-# FFmpeg (libvmaf 3.2.0) and the Windows sidecar's. vmaf_v0.6.1 scores are unchanged by the move —
-# measured on 30 real sample clips, 3.0.0 and 3.2.1 agree to within 0.001 on every metric — so no
-# gate or calibration shifts. Adopting the v1 models is a separate decision (see #114).
+# v3.2.1 carries both v1 models and fixes thread-pool backpressure in long measurements.
+# Scores from older models remain available for HDR/HFR and already-started jobs.
 VMAF_TAG="${VMAF_TAG:-v3.2.1}"
 DAV1D_TAG="${DAV1D_TAG:-1.5.3}"
+OPUS_TAG="${OPUS_TAG:-v1.5.2}"
+LAME_VERSION="3.100"
+LAME_SHA256="ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e"
 # n7.1.2, not n7.1. The libx265 wrapper in the base n7.1 tag guards the multi-layer encoder API
 # with `#if X265_BUILD >= 210` and no upper bound. x265 reverted that API at build 213, so a
 # wrapper built against x265 4.2 passes an array of *pointers* where the library now expects an
@@ -56,7 +57,7 @@ JOBS="$(sysctl -n hw.ncpu)"
 # and a compiler, but libvmaf builds with meson and ninja, so a machine without them gets most of
 # the way through and then stops with a bare "command not found".
 missing=()
-for tool in git cmake meson ninja pkg-config; do
+for tool in git cmake meson ninja pkg-config curl shasum; do
   command -v "${tool}" >/dev/null 2>&1 || missing+=("${tool}")
 done
 if (( ${#missing[@]} )); then
@@ -92,14 +93,25 @@ clone_at "https://gitlab.com/AOMediaCodec/SVT-AV1.git" "${SVTAV1_TAG}" svtav1
 clone_at "https://code.videolan.org/videolan/dav1d.git" "${DAV1D_TAG}" dav1d
 clone_at "https://github.com/Netflix/vmaf.git" "${VMAF_TAG}" vmaf
 clone_at "https://github.com/FFmpeg/FFmpeg.git" "${FFMPEG_TAG}" ffmpeg
+clone_at "https://github.com/xiph/opus.git" "${OPUS_TAG}" opus
+if [[ ! -f "${BUILD}/lame-${LAME_VERSION}.tar.gz" ]]; then
+  curl -fL --retry 3 -o "${BUILD}/lame-${LAME_VERSION}.tar.gz" \
+    "https://downloads.sourceforge.net/project/lame/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz"
+fi
+printf '%s  %s\n' "${LAME_SHA256}" "${BUILD}/lame-${LAME_VERSION}.tar.gz" | shasum -a 256 -c -
+if [[ ! -d "${BUILD}/lame-${LAME_VERSION}" ]]; then
+  tar -xzf "${BUILD}/lame-${LAME_VERSION}.tar.gz" -C "${BUILD}"
+fi
+
 
 echo "==> Recording exactly what was built"
 {
   echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  for d in x264 x265 svtav1 dav1d vmaf ffmpeg; do
+  for d in x264 x265 svtav1 dav1d vmaf ffmpeg opus; do
     printf '%-8s %s %s\n' "${d}" "$(git -C "${BUILD}/${d}" describe --tags --always 2>/dev/null || echo '?')" \
       "$(git -C "${BUILD}/${d}" rev-parse HEAD 2>/dev/null || echo '?')"
   done
+  printf 'lame     %s %s\n' "${LAME_VERSION}" "${LAME_SHA256}"
 } > "${VENDOR}/BUILD-INFO.txt"
 cat "${VENDOR}/BUILD-INFO.txt"
 
@@ -162,6 +174,22 @@ if [[ ! -f "${PREFIX}/lib/libvmaf.a" ]]; then
     && ninja -C build >/dev/null && ninja -C build install >/dev/null)
 fi
 
+
+if [[ ! -f "${PREFIX}/lib/libopus.a" ]]; then
+  echo "==> Opus"
+  cmake -S "${BUILD}/opus" -B "${BUILD}/opus/build" -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+    -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=ON >/dev/null
+  cmake --build "${BUILD}/opus/build" -j "${JOBS}" >/dev/null
+  cmake --install "${BUILD}/opus/build" >/dev/null
+fi
+if [[ ! -f "${PREFIX}/lib/libmp3lame.a" ]]; then
+  echo "==> LAME MP3"
+  (cd "${BUILD}/lame-${LAME_VERSION}" && ./configure --prefix="${PREFIX}" \
+    --enable-static --disable-shared --disable-frontend --with-pic >/dev/null \
+    && make -j"${JOBS}" >/dev/null && make install >/dev/null)
+fi
+
 echo "==> ffmpeg"
 # VideoToolbox comes from the platform rather than a third-party library, and is what makes hardware
 # encoding possible here at all. libvmaf is the reason this script exists.
@@ -185,6 +213,8 @@ echo "==> ffmpeg"
     --enable-libsvtav1 \
     --enable-libdav1d \
     --enable-libvmaf \
+    --enable-libopus \
+    --enable-libmp3lame \
     --enable-videotoolbox \
     --disable-doc \
     --disable-debug \

@@ -6,6 +6,7 @@ public sealed class DiagnosticSafeFieldsTests
 {
     [Theory]
     [InlineData("Decode health", "Decode health")]
+    [InlineData("File identity", "File identity")]
     [InlineData("Authorization: Bearer secret", "Other verification check")]
     [InlineData("secret-token", "Other verification check")]
     public void Only_known_verification_check_names_enter_bundles(string value, string expected) =>
@@ -28,6 +29,10 @@ public sealed class DiagnosticSafeFieldsTests
     [Theory]
     [InlineData("v0.2.14", "v0.2.14")]
     [InlineData("0.2.14+5b7864b", "0.2.14+5b7864b")]
+    [InlineData("0.2.17+8a70298490185b9f8182573e6f3810c0de7e8413", "0.2.17+8a70298490185b9f8182573e6f3810c0de7e8413")]
+    [InlineData("0.2.17 (202609301618)", "0.2.17 (202609301618)")]
+    [InlineData("0.2.17 (secret-token)", null)]
+    [InlineData("0.2.17 (202609301618) Bearer secret", null)]
     [InlineData("1.secret", null)]
     [InlineData("1.2.3+secret", null)]
     [InlineData("Bearer secret-token", null)]

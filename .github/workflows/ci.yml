@@ -53,6 +53,9 @@ jobs:
         working-directory: web
       - run: npm run test:e2e
         working-directory: web
+      - name: Validate documentation captures against the current UI
+        run: node scripts/capture-docs.mjs
+        working-directory: web
 
   docs:
     name: Documentation and Compose validation
@@ -67,6 +70,7 @@ jobs:
       - run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - run: python3 scripts/check_release_metadata.py
       - run: python3 scripts/check_docs.py
+      - run: python3 scripts/check_unraid_metadata.py
       - run: |
           for file in compose*.example.yml; do
             RENDER_GID=107 docker compose -f "$file" config --quiet
@@ -101,6 +105,8 @@ jobs:
       # rather than on someone's machine.
       - run: dotnet build Optimisarr.Sidecar.slnx --configuration Release -warnaserror
       - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
+      - name: Verify Windows process and replacement safety regressions
+        run: dotnet test ../../tests/Optimisarr.Tests --configuration Release --filter "FullyQualifiedName~ReviewToolProcessTests|FullyQualifiedName~ReplacementServiceTests|FullyQualifiedName~MigrationTests|FullyQualifiedName~FfmpegCommandBuilderTests|FullyQualifiedName~WorkerProtocolTests"
       - name: Verify native popover anchoring
         run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --verify-popover
       - name: Render native tray states
@@ -164,15 +170,54 @@ jobs:
           python3 scripts/media_acceptance.py --image "$first_tag" \
             --root "$RUNNER_TEMP/optimisarr-acceptance" --tier smoke --vmaf-shadow
 
+      - name: Verify fractional timestamp regression in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-fractional-acceptance" \
+            --regression fractional-timing --local-encoder libx265 --fixture-seconds 16
+
+      - name: Verify overlapping subtitle preservation in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-subtitle-overlap-acceptance" \
+            --regression subtitle-overlap --local-encoder libx265 --fixture-seconds 16
+
+      - name: Verify complete copied ALAC audio in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-alac-copy-acceptance" \
+            --regression alac-copy --local-encoder libx265 --fixture-seconds 16
+
+      - name: Verify standalone audio codecs and cover art in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-audio-acceptance" --regression audio
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: media-acceptance
           path: |
+            ${{ runner.temp }}/optimisarr-audio-acceptance/report/
+            ${{ runner.temp }}/optimisarr-audio-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-audio-acceptance/image.json
             ${{ runner.temp }}/optimisarr-acceptance/report/
             ${{ runner.temp }}/optimisarr-acceptance/server.log
             ${{ runner.temp }}/optimisarr-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-fractional-acceptance/report/
+            ${{ runner.temp }}/optimisarr-fractional-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-fractional-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/report/
+            ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-alac-copy-acceptance/report/
+            ${{ runner.temp }}/optimisarr-alac-copy-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-alac-copy-acceptance/image.json
           if-no-files-found: ignore
           retention-days: 14
 

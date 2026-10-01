@@ -420,7 +420,7 @@
     if (!subtitleLanguageError) form.keepSubtitleLanguages = subtitleLanguageInput.normalised
   }
 
-  // Whether work can go to a remote worker at all: the switch on and the preview flag present.
+  // Work can go to a remote worker only when both the saved switch and deployment allow it.
   // Decides whether the placement choice is shown; the choice itself is stored either way.
   let remoteWorkersOn = $state(false)
   const placements: WorkPlacement[] = ['Anywhere', 'LocalOnly', 'PreferWorker', 'WorkerOnly']
@@ -2074,7 +2074,7 @@
              the stored choice is otherwise moot, and a control that does nothing would only invite
              a wrong conclusion. A library that already holds a non-default value while workers
              are off says so in one line instead, so nothing is silently kept. -->
-        {#if showVideoOptions && remoteWorkersOn}
+        {#if (showVideoOptions || isAudioType(form.mediaType)) && remoteWorkersOn}
           <div class="mt-4" data-testid="work-placement">
             <span class="label">{i18n.m.libraries.placement_label} <InfoTip text={i18n.m.libraries.placement_tip} /></span>
             <p class="mb-2 text-xs text-ink-3">{i18n.m.libraries.placement_hint}</p>

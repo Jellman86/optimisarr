@@ -149,6 +149,17 @@ public sealed class MeasurementCommandTests
         Assert.NotNull(MeasurementCommand.Refuse(arguments));
     }
 
+    [Theory]
+    [InlineData("{{encodedWidth}}")]
+    [InlineData("{{encodedHeight}}")]
+    [InlineData("{{encodedBitDepth}}")]
+    public void Candidate_format_tokens_cannot_change_options_outside_the_filter(string token)
+    {
+        string[] arguments = ["-i", "{{distorted}}", "-i", "{{reference}}", "-threads", token,
+            "-lavfi", "[d][r]libvmaf=log_path={{log}}", "-f", "null", "-"];
+        Assert.NotNull(MeasurementCommand.Refuse(arguments));
+    }
+
     [Fact]
     public void An_empty_command_is_refused_rather_than_run()
     {

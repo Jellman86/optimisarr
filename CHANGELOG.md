@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.2.18 — 2026-10-01
+
+### Quality verification
+
+- Live Mac RAM-disk acceptance scopes cleanup to the test's owned volumes, preserving concurrent sidecar work.
+
+- Workers use software decode for H.264 profiles beyond their proved Baseline/Main/High support, including lossless High 4:4:4 Predictive. GPU encoding and strict worker verification still run on the worker.
+- Native Windows image verification escapes SSIM log paths and sends literal Unicode filenames to ExifTool through UTF-8 argument input. This fixes false failures for filenames containing brackets and non-Latin characters.
+- New ordinary SDR video jobs use VMAF v1 HD/UHD models for adaptive selection and final verification. Numeric preset/custom floors stay unchanged; scores can change because v1 detects banding and chroma artifacts. HDR, sources at 45 fps or above, frame-rate conversions and already-started legacy jobs retain their existing model.
+- VMAF v1 uses 10-bit measurement and the candidate's actual encoded dimensions/depth. Update sidecars together with the server: gated v1 work requires protocol 7 and real HD/UHD model probes. Strict worker verification keeps scoring on the worker; incomplete evidence cannot approve replacement.
+- Container/Linux measurement now pins libvmaf v3.2.1, matching the Mac bundle. The Windows bundle pins a verified upstream revision eight commits later. Both include long-measurement backpressure fixes. NVIDIA encoding/decode remain supported; complete v1 scoring runs on the CPU because upstream CUDA lacks its full feature set.
+
+### Added
+
+- Standalone audio can run on Mac, Windows and Linux sidecars: AAC, Opus and MP3 with per-library placement, proved encoders and complete strict worker verification. Updated protocol 6 sidecars are required for audio; existing video workers remain compatible.
+- Audio jobs display a measured source spectrogram in each sidecar monitor, with frequency/time labels, bounded sampling and an honest unavailable state. The Mac media bundle now includes pinned Opus and LAME with redistributable source/license records.
+- Real-media audio acceptance covers all three codecs, metadata, MP3 cover art, downmixing, independent decode/loudness/peak checks and exact rollback. Final server and paired Linux images run the matrix in CI.
+
+### Changed
+
+- Remote workers are available and enabled on fresh installations without a preview flag. Existing saved choices are preserved, including older installations without a saved worker setting. Explicit pairing, library placement and strict verification remain required; the existing environment variable still supports disabling the service.
+- Unraid Community Apps metadata now describes video, audio, image and distributed processing, with setup, license and screenshot links. The install guide reflects the live listing and the shared current application icon.
+
+- H.264 NVIDIA encodes preserve explicitly probed limited/full colour range in the primary bitstream, including MP4 outputs with otherwise unspecified colour tags. HDR-to-SDR output keeps its deliberate limited range; copied streams and other encoders remain unchanged. Update sidecars too: the narrow range options require protocol 5, while older workers retain ordinary work.
+
+### Testing
+
+- Windows installer CI retains MSI logs in its uploaded evidence directory and captures service-start failure diagnostics before cleanup.
+- The UI layout audit now checks accessible names and WCAG contrast across all routes in desktop dark and phone light appearances.
+- Added a reusable full application review prompt, evidence-led review report and follow-up mitigation record.
+
+- The published Linux sidecar image has hardware acceptance on an RTX 4070 for HEVC NVENC and CUDA decoding, with strict worker verification, independent media checks, RAM cleanup, cancellation and reconnect evidence. This does not extend certification to every NVIDIA codec, driver or media format.
+
+### Fixed
+
+- Disabling workers through the deployment environment no longer blocks unrelated settings updates when the saved worker choice is enabled. The override still refuses all worker routes.
+- Replacement now checks the exact source and candidate bytes that passed verification, before and after moving them. Old ready outputs without recorded identities record a failed file-identity gate and can be retried with a fresh verified attempt. Interrupted recovery preserves conflicting files and the quarantined original, and queue clearing/retention protect pending recovery evidence.
+- Worker delivery rechecks current credentials, lease expiry, cancellation and execution attempt after transfer. Lease-specific candidate paths and serialized resumable chunks prevent retry collisions; file hashing stays outside database write locks.
+- Tool discovery drains both process pipes concurrently, bounds captured output and execution time, and reaps its owned process on cancellation.
+- Malformed historical verification reports no longer break diagnostic exports or failure summaries; missing evidence is labelled. Valid numeric and named outcomes remain visible, including archived attempts.
+- Queue pages and diagnostic lease histories are bounded in SQL before loading reports. Indexed UTC ticks preserve exact offset-aware ordering and inclusive date filters.
+- Sidebar progress indicators have accessible names, and status text and Quarantine guidance use legible theme colours without changing card textures or hover shadows.
+
+- Opt-in job diagnostic exports now retain safe worker packet/decode measurements, frozen work/contract fingerprints and file-hash comparisons. Missing or unreadable evidence is labelled explicitly; current worker registration is distinguished from historical identity, and unrecorded timestamp methods are not guessed. Native sidecar versions with full Git revision or Mac numeric build suffixes are retained.
+
+- MP4 video jobs keep Matroska when copying a kept ALAC track from Matroska. This preserves the final audio samples that normal MP4 playback could omit after a successful copy. Original MP4 ALAC, re-encoded audio and removed ALAC tracks retain their selected output path. A remux with no remaining change cancels before encoding with its reason. Verification and playback edit-list handling remain unchanged.
+
+- Video jobs targeting MP4 use Matroska when kept subtitle tracks contain simultaneous, overlapping or unproven cue timing. Cue text, timing and language tags remain preserved; removing incompatible tracks still allows MP4. This prevents strict timed-text conversion failures without dropping cues or relaxing verification.
+
+- Constant-rate video encodes preserve the source timestamp timebase alongside passthrough. Fractional-rate Matroska with a small video lead previously produced duplicate presentation timestamps on NVIDIA workers or stopped QSV encodes with duplicate DTS. Frame-rate caps and the existing constant-rate AV1 NVIDIA exception retain their current behavior.
+- Windows MSI upgrades restart an already-paired worker automatically. Fresh installations and unpaired upgrades still wait for pairing. Installer CI verifies repeated upgrades, preserved DPAPI pairing and authenticated check-ins as well as native UI and uninstall behavior.
+- Worker claims scan past unsuitable jobs instead of stopping at the first 25. Higher priorities run first, equal-priority libraries take turns, and an idle worker with queued work gets a throttled explanation in server logs.
+- MP4 timed-text subtitles are converted to ASS when a video encode or remux targets Matroska, including automatic container fallbacks. Other subtitle tracks stay copied, with stream indexes adjusted correctly after language filtering. Update sidecars too: these jobs require protocol 4, while older clients can still receive ordinary work.
+
+- Windows installer builds reject stale media bundles instead of silently reusing the older 0.2.17 tools. Expired upstream artifacts require a matching binary/source mirror before release.
+
+- Full-file VC-1 verification with matching frame counts now samples absolute decoded frame numbers instead of seeking independently into the two files. This avoids false low VMAF scores observed on VC-1 Matroska sources. Sidecars count decoded frames rather than assuming one packet always contains one picture.
+
+- Sidecar claims now apply the same current eligibility rules and exclusions as local encoding. Retrying an excluded file explains how to remove the exclusion and preserves its existing failure evidence.
+- Manual and automatic quality retries retain the latest eight attempt reports with bounded process logs. Worker VMAF diagnostics include per-window scores and planned comparison commands; size-budget failures retain the limit and observed size.
+
+
 ## 0.2.17 — 2026-09-27
 
 ### Testing

@@ -147,6 +147,16 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             }
         }
 
+        // Preserve the old disabled default on upgrades, including databases without a key.
+        // Only a genuinely new deployment with workers available starts ready for pairing.
+        if (!await db.AppSettings.AnyAsync(
+                candidate => candidate.Key == SettingKeys.RemoteWorkersEnabled,
+                cancellationToken))
+        {
+            initialValues[SettingKeys.RemoteWorkersEnabled] =
+                (!databaseExistedBeforeStartup && RemoteWorkersAvailable).ToString(CultureInfo.InvariantCulture);
+        }
+
         // The old implicit value was false. An upgraded database may have no saved key at all,
         // so materialise that old choice before the new true fallback can take effect.
         if (!await db.AppSettings.AnyAsync(
@@ -217,8 +227,8 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0),
-            // Off unless explicitly turned on. A fresh install, and any install that predates this
-            // setting, has remote workers disabled.
+            // Startup records the fresh-install default or preserves the historical choice.
+            // A missing/malformed key still fails closed.
             ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.WorkerVerificationRequired), fallback: true),
             ParseEnum(settings.GetValueOrDefault(SettingKeys.WorkloadConcurrencyMode), WorkloadConcurrencyMode.Automatic),

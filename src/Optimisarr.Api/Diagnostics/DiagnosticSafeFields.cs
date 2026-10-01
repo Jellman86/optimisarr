@@ -12,7 +12,7 @@ internal static class DiagnosticSafeFields
         "A/V sync", "Audio clipping (true peak)", "Audio codecs unchanged", "Audio fidelity",
         "Audio languages", "Audio loudness (EBU R128)", "Audio metadata and artwork",
         "Audio tracks", "Colour metadata", "Container unchanged", "Decode health", "Dimensions",
-        "Duration", "HDR signal", "Image metadata (EXIF/ICC)", "Image quality (SSIM)",
+        "Duration", "File identity", "HDR signal", "Image metadata (EXIF/ICC)", "Image quality (SSIM)",
         "Output readable", "Perceptual quality (VMAF)", "Picture", "Size saving", "Compression ceiling",
         "Source video timeline", "Subtitle languages", "Subtitle tracks", "Tail integrity",
         "Timestamp integrity", "Video stream", "Video structure"
@@ -41,8 +41,8 @@ internal static class DiagnosticSafeFields
 
     public static string? Version(string? value)
     {
-        return value is { Length: <= 32 }
-            && Regex.IsMatch(value, @"\A[v]?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:\+[0-9a-f]{7,12})?\z",
+        return value is { Length: <= 64 }
+            && Regex.IsMatch(value, @"\A[v]?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:\+[0-9a-f]{7,40}| \([0-9]{12}\))?\z",
                 RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100))
             ? value : null;
     }

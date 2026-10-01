@@ -266,6 +266,8 @@ for (const viewport of viewports) {
 }
 
 test('translated controls stay inside their cards at phone width', async ({ page }, testInfo) => {
+  // Nine locales across six pages need a total budget beyond one ordinary page test.
+  test.setTimeout(120_000)
   const unexpected = await mockApp(page)
   await page.setViewportSize({ width: 320, height: 720 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -331,3 +333,26 @@ test('interactive cards retain their hover lift and keyboard focus', async ({ pa
   await card.focus()
   await expect(card).toBeFocused()
 })
+
+for (const probeViewport of [{ name: 'desktop', width: 1440, height: 900, theme: 'dark' }, { name: 'phone', width: 390, height: 844, theme: 'light' }]) {
+  test(`accessible names and text contrast ${probeViewport.name}`, async ({ page }, testInfo) => {
+    test.setTimeout(240_000)
+    const { default: AxeBuilder } = await import('@axe-core/playwright')
+    await page.setViewportSize(probeViewport)
+    await page.emulateMedia({ colorScheme: probeViewport.theme as 'dark' | 'light', reducedMotion: 'reduce' })
+    await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), probeViewport.theme)
+    const unexpected = await mockApp(page)
+    const results = []
+    for (const [name, route] of routes) {
+      await page.goto(`/#${route}`)
+      await expect(page.locator('main')).toBeVisible()
+      await waitForAuditedContent(page, name)
+      await page.evaluate(() => document.fonts.ready)
+      const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+      expect(scan.violations, `${name}: ${JSON.stringify(scan.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))}`).toEqual([])
+      results.push({ name, route, violations: scan.violations, incomplete: scan.incomplete.map(x => ({ id: x.id, nodes: x.nodes.length })), passes: scan.passes.length })
+    }
+    await writeFile(testInfo.outputPath(`axe-${probeViewport.name}.json`), JSON.stringify({ viewport: probeViewport, results, unexpected: [...unexpected] }, null, 2))
+    expect([...unexpected]).toEqual([])
+  })
+}

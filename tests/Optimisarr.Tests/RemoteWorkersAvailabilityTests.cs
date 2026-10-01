@@ -11,9 +11,8 @@ using Optimisarr.Api.Workers;
 namespace Optimisarr.Tests;
 
 /// <summary>
-/// Remote workers are groundwork in this release. Without the experimental flag the switch must not
-/// exist, the setting must not be acceptable, and every worker route must refuse, whatever an older
-/// database may have stored. With the flag, the opt-in behaves as it always did.
+/// Availability defaults on. An explicit deployment disable still hides the setting and refuses
+/// worker routes, regardless of a stored choice.
 /// </summary>
 [Collection(TokenedApiCollection.Name)]
 public sealed class RemoteWorkersAvailabilityTests
@@ -31,11 +30,11 @@ public sealed class RemoteWorkersAvailabilityTests
     [InlineData("false", false)]
     [InlineData("0", false)]
     [InlineData("", false)]
-    [InlineData(null, false)]
+    [InlineData(null, true)]
     public void The_flag_accepts_the_spellings_people_type(string? value, bool expected) =>
         Assert.Equal(expected, RemoteWorkersFeature.IsEnabled(value));
 
-    private WebApplicationFactory<Program> WithoutThePreview() =>
+    private WebApplicationFactory<Program> WithWorkersExplicitlyUnavailable() =>
         _api.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<RemoteWorkersFeature>();
@@ -51,16 +50,16 @@ public sealed class RemoteWorkersAvailabilityTests
     }
 
     [Fact]
-    public async Task Without_the_flag_settings_say_workers_are_not_available()
+    public async Task When_explicitly_disabled_settings_say_workers_are_not_available()
     {
-        using var host = WithoutThePreview();
+        using var host = WithWorkersExplicitlyUnavailable();
         var settings = await (await Admin(host).GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.False(settings.GetProperty("remoteWorkersAvailable").GetBoolean());
     }
 
     [Fact]
-    public async Task With_the_flag_settings_say_workers_are_available()
+    public async Task When_available_settings_say_workers_are_available()
     {
         var settings = await (await Admin(_api).GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
 
@@ -68,9 +67,9 @@ public sealed class RemoteWorkersAvailabilityTests
     }
 
     [Fact]
-    public async Task Without_the_flag_the_switch_cannot_be_turned_on()
+    public async Task When_explicitly_disabled_the_switch_cannot_be_turned_on()
     {
-        using var host = WithoutThePreview();
+        using var host = WithWorkersExplicitlyUnavailable();
         var admin = Admin(host);
         var current = await (await admin.GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
         using var doc = JsonDocument.Parse(current.GetRawText());
@@ -86,17 +85,50 @@ public sealed class RemoteWorkersAvailabilityTests
         Assert.Equal(HttpStatusCode.BadRequest, saved.StatusCode);
         var error = await saved.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("workers.unavailable", error.GetProperty("code").GetString());
+        Assert.Contains("disabled", error.GetProperty("error").GetString());
     }
 
     [Fact]
-    public async Task Without_the_flag_every_worker_route_refuses()
+    public async Task Deployment_disable_preserves_enabled_choice_and_allows_unrelated_settings_updates()
     {
-        using var host = WithoutThePreview();
+        using var host = WithWorkersExplicitlyUnavailable();
+        var admin = Admin(host);
+        using var scope = host.Services.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<Optimisarr.Api.Library.SettingsStore>();
+        var original = await store.GetQueueSettingsAsync(CancellationToken.None);
+        try
+        {
+            await store.SetQueueSettingsAsync(original with { RemoteWorkersEnabled = true }, CancellationToken.None);
+            var current = await admin.GetFromJsonAsync<SettingsDto>("/api/settings");
+            Assert.NotNull(current);
+            using var saved = await admin.PutAsJsonAsync("/api/settings", current with { CpuThreadLimit = 2 });
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+            var result = await saved.Content.ReadFromJsonAsync<SettingsDto>();
+            Assert.NotNull(result);
+            Assert.True(result.RemoteWorkersEnabled);
+            Assert.False(result.RemoteWorkersAvailable);
+            Assert.Equal(2, result.CpuThreadLimit);
+            using var pairing = await admin.PostAsync("/api/workers/pairing-code", null);
+            Assert.Equal(HttpStatusCode.Forbidden, pairing.StatusCode);
+        }
+        finally
+        {
+            using var restore = host.Services.CreateScope();
+            await restore.ServiceProvider.GetRequiredService<Optimisarr.Api.Library.SettingsStore>()
+                .SetQueueSettingsAsync(original, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task When_explicitly_disabled_every_worker_route_refuses()
+    {
+        using var host = WithWorkersExplicitlyUnavailable();
         var admin = Admin(host);
 
         using var pairing = await admin.PostAsync("/api/workers/pairing-code", null);
         Assert.Equal(HttpStatusCode.Forbidden, pairing.StatusCode);
         var error = await pairing.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("workers.unavailable", error.GetProperty("code").GetString());
+        Assert.Contains("disabled", error.GetProperty("error").GetString());
     }
 }

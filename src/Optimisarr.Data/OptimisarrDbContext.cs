@@ -148,13 +148,20 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         modelBuilder.Entity<Job>(entity =>
         {
             entity.HasKey(job => job.Id);
+            entity.Property<long>("QueueEnqueuedUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("EnqueuedAt"));
+            entity.Property<long>("QueueEffectiveUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("COALESCE(FinishedAt, EnqueuedAt)"));
+            entity.HasIndex("Type", "Priority", "QueueEnqueuedUtcTicks", "Id").IsDescending(false, true, false, false);
+            entity.HasIndex("Type", "QueueEffectiveUtcTicks");
             entity.Property(job => job.Status).HasConversion<string>().HasMaxLength(32);
             entity.Property(job => job.Type).HasConversion<string>().HasMaxLength(16);
             entity.Property(job => job.FailureCategory).HasConversion<string>().HasMaxLength(32);
+            entity.Property(job => job.VerifiedSourceSha256).HasMaxLength(64);
+            entity.Property(job => job.VerifiedOutputSha256).HasMaxLength(64);
             entity.Property(job => job.WorkOutputPath).HasMaxLength(1024);
             entity.Property(job => job.VideoEncoder).HasMaxLength(64);
             entity.Property(job => job.EnqueueReason).HasMaxLength(512);
             entity.Property(job => job.VideoQualityMode).HasMaxLength(16);
+            entity.Property(job => job.VmafModel).HasMaxLength(64);
             entity.Property(job => job.RequestedRuleProfile).HasConversion<string>().HasMaxLength(32);
 
             // Deleting a media file (e.g. via its library) removes its jobs too.
@@ -172,6 +179,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         modelBuilder.Entity<Replacement>(entity =>
         {
             entity.HasKey(replacement => replacement.Id);
+            entity.Property(replacement => replacement.OriginalSha256).HasMaxLength(64);
+            entity.Property(replacement => replacement.OutputSha256).HasMaxLength(64);
             entity.Property(replacement => replacement.OriginalPath).IsRequired().HasMaxLength(1024);
             entity.Property(replacement => replacement.QuarantinePath).IsRequired().HasMaxLength(1024);
             entity.Property(replacement => replacement.FinalPath).IsRequired().HasMaxLength(1024);
@@ -251,6 +260,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
             entity.Property(lease => lease.Stage).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.EndReason).HasConversion<string>().HasMaxLength(32);
+            entity.Property<long>("AcquiredUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("AcquiredAt"));
+            entity.HasIndex("JobId", "AcquiredUtcTicks", "Id");
             entity.Property(lease => lease.QualitySourceSha256).HasMaxLength(64);
             entity.Property(lease => lease.QualityCandidateSha256).HasMaxLength(64);
             entity.Property(lease => lease.DeliveredSha256).HasMaxLength(64);

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +31,7 @@ internal sealed record AssignmentDto(
     /// operator standing at the Mac nothing about which of their files is being worked on.</summary>
     string Title,
     long SourceBytes,
-    string VideoEncoder,
+    string? VideoEncoder,
     string Vmaf,
     DateTimeOffset ExpiresUtc,
     int RenewWithinSeconds,
@@ -46,7 +47,9 @@ internal sealed record AssignmentDto(
     RemoteVerificationContract? FullVerification = null,
     long? MaxCandidateBytes = null,
     long? MinCandidateBytes = null,
-    Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null);
+    Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null,
+    MediaKind Kind = MediaKind.Video,
+    string? AudioEncoder = null);
 
 internal sealed record SizeBudgetExceededRequest(long ObservedBytes);
 internal sealed record SizeBudgetUndershotRequest(long ObservedBytes);
@@ -194,6 +197,8 @@ internal static class WorkerLeaseEndpoints
 
     public static void MapWorkerLeaseEndpoints(this WebApplication app)
     {
+        var claimHistory = new ConcurrentDictionary<int, ClaimHistory>();
+
         // A worker asking for something to do. 204 when there is nothing it can run, which is the
         // ordinary answer most of the time and not an error.
         app.MapPost("/api/workers/claim", async (
@@ -201,6 +206,7 @@ internal static class WorkerLeaseEndpoints
             SettingsStore settings,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            CandidateService eligibility,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
@@ -221,6 +227,10 @@ internal static class WorkerLeaseEndpoints
             // Reclaim before offering. A job whose holder went away must come back to the queue,
             // and doing it here means no separate sweeper has to be running for work to recover.
             await ReclaimExpiredAsync(db, now, cancellationToken);
+            // Reclamation has saved its changes. Drop its tracked job graph before scanning
+            // untracked batches, so a reclaimed candidate can be attached once at claim time.
+            db.ChangeTracker.Clear();
+            db.Attach(worker);
 
             // A worker that has stopped checking in is not given new work: it may be mid-shutdown,
             // and a job handed over now would only sit until the lease lapsed.
@@ -245,261 +255,309 @@ internal static class WorkerLeaseEndpoints
 
             var capabilities = worker.ToCapabilities();
 
-            // Ordered the same way the local dispatcher orders its own work, so a remote worker
-            // takes the job that would have run next rather than cherry-picking the easy ones.
-            //
-            // Ordering happens in memory because SQLite cannot ORDER BY a DateTimeOffset — the same
-            // constraint the dispatcher and the job date filters already work around. A light
-            // projection is ordered first so only the few jobs actually under consideration are
-            // loaded with their media file, rather than pulling a whole queue's worth of rows.
-            var queuedOrder = await db.Jobs
+            // Keep the queue projection light, and scan bounded batches until an assignment is
+            // found. A batch is a loading limit, never a visibility limit: cleanup, incompatible
+            // encoders, local-only jobs and recent handbacks must not hide later video work.
+            var queued = await db.Jobs
                 .AsNoTracking()
-                .Where(job => job.Status == JobStatus.Queued && job.Type == JobType.Normal)
-                .Select(job => new { job.Id, job.Priority, job.EnqueuedAt })
+                .Where(job => job.Status == JobStatus.Queued && job.Type == JobType.Normal
+                    && !db.Exclusions.Any(exclusion => exclusion.Path == job.MediaFile!.Path))
+                .Select(job => new { job.Id, job.LibraryId, job.Priority, job.EnqueuedAt })
                 .ToListAsync(cancellationToken);
+            if (queued.Count == 0) return Results.NoContent();
 
-            var shortlist = queuedOrder
-                .OrderBy(job => job.Priority)
-                .ThenBy(job => job.EnqueuedAt)
-                .Take(25)
-                .Select(job => job.Id)
-                .ToList();
-
-            if (shortlist.Count == 0)
+            var history = claimHistory.GetOrAdd(worker.Id, _ => new ClaimHistory());
+            var ordered = JobScheduler.FairOrder(queued.Select(job => new QueuedJob(
+                job.Id, job.LibraryId, job.Priority, job.EnqueuedAt)), history.LastLibraryId)
+                .Select(job => job.Id).ToList();
+            var skipped = 0;
+            string? lastReason = null;
+            foreach (var batch in ordered.Chunk(25))
             {
-                return Results.NoContent();
+                var shortlist = batch.ToList();
+                var loaded = await db.Jobs
+                    .AsNoTracking()
+                    .Include(job => job.MediaFile)!
+                    .ThenInclude(file => file!.Library)
+                    .Where(job => shortlist.Contains(job.Id))
+                    .ToListAsync(cancellationToken);
+
+                // Who has already given these jobs back, and when. Read in one query rather than per
+                // candidate: the shortlist is 25 jobs and this runs on every check-in from every worker.
+                var handbacks = await db.JobLeases
+                    .AsNoTracking()
+                    .Where(lease => shortlist.Contains(lease.JobId)
+                        && lease.State == LeaseState.Released
+                        && lease.EndReason == null)
+                    .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
+                    .ToListAsync(cancellationToken);
+                // Distinct workers, not refusals: see HandbackPolicy.MaxRefusingWorkers. One machine
+                // refusing the same job three times is one machine's opinion.
+                var refusingWorkers = handbacks
+                    .GroupBy(h => h.JobId)
+                    .ToDictionary(g => g.Key, g => g.Select(h => h.WorkerId).Distinct().Count());
+                var lastHandbackHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id)
+                    .GroupBy(h => h.JobId)
+                    .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+
+                var candidates = shortlist
+                    .Select(id => loaded.FirstOrDefault(job => job.Id == id))
+                    .Where(job => job is not null)
+                    .Select(job => job!)
+                    .ToList();
+
+                foreach (var job in candidates)
+                {
+                    if (job.MediaFile is null)
+                    {
+                        continue;
+                    }
+
+                    // Workers poll, and full preparation probes the source. Rule out the jobs that
+                    // preparation would refuse anyway from what is already loaded, so a queue of
+                    // local-only or remux jobs does not cost an ffprobe per candidate per poll.
+                    // Preparation repeats these refusals itself; this is only the cheap first pass.
+                    if (!PlausiblyOfferable(job, capabilities))
+                    {
+                        skipped++;
+                        lastReason = "Queued work includes jobs this worker cannot encode or that must run on this server.";
+                        continue;
+                    }
+
+                    // A job this worker already gave back, or that too many workers have given back.
+                    // Offering it again straight away is a loop that re-downloads the source each time.
+                    lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
+                    refusingWorkers.TryGetValue(job.Id, out var refusedBy);
+                    if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now))
+                    {
+                        skipped++;
+                        lastReason = HandbackPolicy.Explain(handedBackHere, refusedBy, now);
+                        continue;
+                    }
+
+                    // Share the local dispatcher's current rules, including durable exclusions.
+                    if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
+                        is { IsEligible: false } verdict)
+                    {
+                        skipped++;
+                        lastReason = verdict.Reason;
+                        continue;
+                    }
+
+                    // A source whose own picture stops well short of its audio fails verification
+                    // whatever encodes it. Checked here, where a worker would otherwise download it and
+                    // spend the whole encode first; cached per source, so each poll costs nothing more.
+                    if (job.Type == JobType.Normal
+                        && job.MediaFile.MediaKind == MediaKind.Video
+                        && await dispatcher.HeldBySourceTimelineAsync(job.Id, job.MediaFile.Path, cancellationToken))
+                    {
+                        skipped++;
+                        lastReason = "The source timeline requires review before encoding.";
+                        continue;
+                    }
+
+                    // Preparation remains authoritative, including fresh source facts and policy.
+                    // Refusals are summarised when the worker cannot find any suitable queued work.
+                    var plan = await dispatcher.PrepareRemoteWorkAsync(job.Id, capabilities, cancellationToken);
+                    if (plan.Assignment is not { } assignment)
+                    {
+                        skipped++;
+                        lastReason = plan.Reason;
+                        continue;
+                    }
+
+                    var requiredProtocol = WorkerProtocol.MinimumForAssignment(assignment.Arguments, assignment.Kind, assignment.VmafModel,
+                        assignment.Quality is not null || assignment.Search is not null);
+                    if (worker.ProtocolVersion < requiredProtocol)
+                    {
+                        skipped++;
+                        lastReason = requiredProtocol == 7
+                            ? "VMAF v1 requires an updated sidecar with proved HD/UHD models and candidate-format probing (protocol 7)."
+                            : requiredProtocol == 6
+                            ? "Standalone audio requires an updated sidecar (protocol 6)."
+                            : requiredProtocol >= 5
+                            ? "This H.264 encode preserves declared colour range. Update the sidecar to support protocol 5."
+                            : "This job converts MP4 timed-text subtitles to Matroska. Update the sidecar to support protocol 4.";
+                        WorkerProblems.Record(worker, lastReason, now);
+                        await db.SaveChangesAsync(cancellationToken);
+                        continue;
+                    }
+
+                    if (assignment.FullVerification is not null && worker.ProtocolVersion < 2)
+                    {
+                        skipped++;
+                        lastReason = "Sidecar-only verification requires an updated sidecar (protocol 2).";
+                        WorkerProblems.Record(worker, "Sidecar-only verification requires an updated sidecar (protocol 2).", now);
+                        await db.SaveChangesAsync(cancellationToken);
+                        continue;
+                    }
+
+                    var requirements = new JobRequirements(
+                        VideoEncoder: assignment.VideoEncoder,
+                        // Null when the audio is copied. When the command names one it has to be
+                        // proved: the library form offers Opus and MP3, and a sidecar whose FFmpeg
+                        // lacks libopus or libmp3lame can only fail the job and hand it straight back.
+                        AudioEncoder: assignment.AudioEncoder,
+                        // Named only when the command actually uses one, and then it must be proved.
+                        HardwareDecoder: assignment.HardwareDecoder,
+                        // Only a job whose policy will judge VMAF needs a worker that can score it.
+                        Vmaf: assignment.Verification.RequiresVmaf(assignment.Kind, true) ? VmafCapability.Cpu : VmafCapability.None,
+                        // Scratch for the candidate plus headroom; a worker that cannot hold the output
+                        // has no business starting the encode.
+                        ScratchBytes: job.MediaFile.SizeBytes + (job.MediaFile.SizeBytes / 2),
+                        Kind: assignment.Kind);
+
+                    var match = WorkerCapabilityMatcher.Match(capabilities, requirements);
+                    if (!match.Accepted)
+                    {
+                        // Information, not Debug. A paired worker sitting idle beside a full queue is
+                        // the single most confusing thing this feature can do, and the reason was
+                        // written only at a level nobody runs in production.
+                        skipped++;
+                        lastReason = string.Join(" ", match.Reasons);
+                        continue;
+                    }
+
+                    // Preparation can outlive a cancellation. Recheck while holding the write
+                    // transaction so this claim cannot turn a cancelled job back into leased work.
+                    await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                    // Track only the job about to be claimed; skipped batches stay untracked.
+                    db.Entry(job).State = EntityState.Unchanged;
+                    await db.Entry(job).ReloadAsync(cancellationToken);
+                    if (job.Status != JobStatus.Queued)
+                    {
+                        db.Entry(job).State = EntityState.Detached;
+                        continue;
+                    }
+                    if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
+                        is { IsEligible: false })
+                    {
+                        db.Entry(job).State = EntityState.Detached;
+                        continue;
+                    }
+                    var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
+                    var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
+                        job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                        job.Type is JobType.Preview or JobType.Calibration,
+                        assignment.Verification.MinimumSizeSavingPercent);
+                    var minCandidateBytes = SizeBudget.MinCandidateBytes(
+                        job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                        job.Type is JobType.Preview or JobType.Calibration,
+                        assignment.Verification.MaximumSizeSavingPercent);
+
+                    db.JobLeases.Add(new JobLease
+                    {
+                        Id = lease.Id,
+                        JobId = lease.JobId,
+                        WorkerId = lease.WorkerId,
+                        AcquiredAt = lease.AcquiredUtc,
+                        ExpiresAt = lease.ExpiresUtc,
+                        State = lease.State,
+                        // Bound to the lease so delivery names the candidate by the contract, not by
+                        // the source; the replacement's final extension comes from that name.
+                        OutputExtension = assignment.OutputExtension,
+                        MaxCandidateBytes = maxCandidateBytes,
+                        MinCandidateBytes = minCandidateBytes,
+                        HardwareDecoder = assignment.HardwareDecoder,
+                        // What the worker was asked to measure, fixed now so the evidence it returns is
+                        // judged against this, not against a policy that may have changed since.
+                        // The first candidate to measure, and how. Held on the lease so a report can be
+                        // checked against the question that was actually asked.
+                        AdaptiveAskedQuality = assignment.Search?.Quality,
+                        AdaptiveContractJson = assignment.Search is null
+                            ? null
+                            : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
+                        VerificationWorkJson = assignment.VerificationWorkJson,
+                        VerificationContractJson = assignment.FullVerification is null ? null
+                            : JsonSerializer.Serialize(assignment.FullVerification, EvidenceJson),
+                        QualityContractJson = assignment.Quality is null
+                            ? null
+                            : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
+                    });
+
+                    // The exclusion that matters: off the queue, so this machine will not also run it.
+                    job.Status = JobStatus.Leased;
+                    job.ExecutionAttempt += 1;
+                    job.Progress = 0;
+                    job.StartedAt = now;
+                    job.FinishedAt = null;
+                    job.UpdatedAt = now;
+                    job.ErrorMessage = null;
+                    job.FailureCategory = null;
+                    job.ProcessLog = null;
+                    job.WorkOutputPath = null;
+                    job.OutputSizeBytes = null;
+                    job.VerificationPassed = null;
+                    job.SourceSha256 = null;
+                    job.VerifiedSourceSha256 = null;
+                    job.VerifiedOutputSha256 = null;
+                    job.VerificationReportJson = null;
+                    job.VerifiedAt = null;
+                    // The queue shows these for every job. For a remote job they must be what the
+                    // worker will actually run, not whatever this server last ran for it.
+                    job.VideoEncoder = assignment.VideoEncoder;
+                    job.FfmpegArguments = string.Join(' ', assignment.Arguments);
+                    job.RequestedVideoQuality = assignment.RequestedVideoQuality;
+                    job.EffectiveVideoQuality = assignment.EffectiveVideoQuality;
+                    job.VideoQualityMode = assignment.VideoQualityMode;
+                    job.VmafModel = assignment.VmafModel;
+
+                    try
+                    {
+                        await db.SaveChangesAsync(cancellationToken);
+                        await transaction.CommitAsync(cancellationToken);
+                    }
+                    catch (DbUpdateException)
+                    {
+                        // Another worker claimed it in the gap. The unique index on held leases is what
+                        // makes that a database error rather than two holders, so move on and try the
+                        // next candidate rather than treating it as a failure.
+                        db.ChangeTracker.Clear();
+                        continue;
+                    }
+
+                    history.LastLibraryId = job.LibraryId;
+                    logger.LogInformation("Job {JobId} offered to worker {Worker} after skipping {Skipped} unsuitable jobs.",
+                        job.Id, worker.Name, skipped);
+                    var policy = assignment.Verification;
+                    return Results.Ok(new AssignmentDto(
+                        lease.Id,
+                        job.Id,
+                        // The file name rather than the whole relative path: the worker shows this in
+                        // a narrow menu, and the folders above it are the server's business.
+                        Path.GetFileName(job.MediaFile.RelativePath),
+                        job.MediaFile.SizeBytes,
+                        assignment.VideoEncoder,
+                        requirements.Vmaf.ToString(),
+                        lease.ExpiresUtc,
+                        (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
+                        assignment.Arguments,
+                        assignment.OutputExtension,
+                        new QualityRequirementDto(
+                            policy.RequiresVmaf(assignment.Kind, true),
+                            assignment.VmafModel,
+                            policy.VmafFrameSubsample,
+                            policy.ClipVmafEnabled,
+                            policy.MinimumVmafHarmonicMean,
+                            policy.MinimumVmafMin,
+                            assignment.Quality?.Commands ?? [],
+                            assignment.Quality?.Sampling ?? "None",
+                            assignment.Quality?.FramePairedCommands),
+                        AdaptiveSearchWire.From(assignment.Search, policy),
+                        assignment.FullVerification,
+                        maxCandidateBytes,
+                        minCandidateBytes,
+                        new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
+                            job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
+                            job.MediaFile.PixelFormat), assignment.Kind, assignment.AudioEncoder));
+                }
+
             }
-
-            var loaded = await db.Jobs
-                .Include(job => job.MediaFile)!
-                .ThenInclude(file => file!.Library)
-                .Where(job => shortlist.Contains(job.Id))
-                .ToListAsync(cancellationToken);
-
-            // Who has already given these jobs back, and when. Read in one query rather than per
-            // candidate: the shortlist is 25 jobs and this runs on every check-in from every worker.
-            var handbacks = await db.JobLeases
-                .AsNoTracking()
-                .Where(lease => shortlist.Contains(lease.JobId)
-                    && lease.State == LeaseState.Released
-                    && lease.EndReason == null)
-                .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
-                .ToListAsync(cancellationToken);
-            // Distinct workers, not refusals: see HandbackPolicy.MaxRefusingWorkers. One machine
-            // refusing the same job three times is one machine's opinion.
-            var refusingWorkers = handbacks
-                .GroupBy(h => h.JobId)
-                .ToDictionary(g => g.Key, g => g.Select(h => h.WorkerId).Distinct().Count());
-            var lastHandbackHere = handbacks
-                .Where(h => h.WorkerId == worker.Id)
-                .GroupBy(h => h.JobId)
-                .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
-
-            var candidates = shortlist
-                .Select(id => loaded.FirstOrDefault(job => job.Id == id))
-                .Where(job => job is not null)
-                .Select(job => job!)
-                .ToList();
-
-            foreach (var job in candidates)
-            {
-                if (job.MediaFile is null)
-                {
-                    continue;
-                }
-
-                // Workers poll, and full preparation probes the source. Rule out the jobs that
-                // preparation would refuse anyway from what is already loaded, so a queue of
-                // adaptive-library or remux jobs does not cost an ffprobe per candidate per poll.
-                // Preparation repeats these refusals itself; this is only the cheap first pass.
-                if (!PlausiblyOfferable(job, capabilities))
-                {
-                    continue;
-                }
-
-                // A job this worker already gave back, or that too many workers have given back.
-                // Offering it again straight away is a loop that re-downloads the source each time.
-                lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
-                refusingWorkers.TryGetValue(job.Id, out var refusedBy);
-                if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now))
-                {
-                    logger.LogInformation(
-                        "Job {JobId} not offered to worker {Worker}: {Reason}",
-                        job.Id, worker.Name,
-                        HandbackPolicy.Explain(handedBackHere, refusedBy, now));
-                    continue;
-                }
-
-                // A source whose own picture stops well short of its audio fails verification
-                // whatever encodes it. Checked here, where a worker would otherwise download it and
-                // spend the whole encode first; cached per source, so each poll costs nothing more.
-                if (job.Type == JobType.Normal
-                    && job.MediaFile.MediaKind == MediaKind.Video
-                    && await dispatcher.HeldBySourceTimelineAsync(job.Id, job.MediaFile.Path, cancellationToken))
-                {
-                    continue;
-                }
-
-                // The same preparation local dispatch runs, with the encoder chosen from what this
-                // worker proved. A refusal is ordinary — an adaptive library, a remux, an encoder
-                // the worker lacks — and is logged rather than surfaced, since the worker's answer
-                // is simply the next candidate or nothing.
-                var plan = await dispatcher.PrepareRemoteWorkAsync(job.Id, capabilities, cancellationToken);
-                if (plan.Assignment is not { } assignment)
-                {
-                    logger.LogInformation(
-                        "Job {JobId} not offered to worker {Worker}: {Reason}",
-                        job.Id, worker.Name, plan.Reason);
-                    continue;
-                }
-
-                if (assignment.FullVerification is not null && worker.ProtocolVersion < 2)
-                {
-                    WorkerProblems.Record(worker, "Sidecar-only verification requires an updated sidecar (protocol 2).", now);
-                    await db.SaveChangesAsync(cancellationToken);
-                    continue;
-                }
-
-                var requirements = new JobRequirements(
-                    VideoEncoder: assignment.VideoEncoder,
-                    // Null when the audio is copied. When the command names one it has to be
-                    // proved: the library form offers Opus and MP3, and a sidecar whose FFmpeg
-                    // lacks libopus or libmp3lame can only fail the job and hand it straight back.
-                    AudioEncoder: assignment.AudioEncoder,
-                    // Named only when the command actually uses one, and then it must be proved.
-                    HardwareDecoder: assignment.HardwareDecoder,
-                    // Only a job whose policy will judge VMAF needs a worker that can score it.
-                    Vmaf: assignment.Verification.QualityGateEnabled ? VmafCapability.Cpu : VmafCapability.None,
-                    // Scratch for the candidate plus headroom; a worker that cannot hold the output
-                    // has no business starting the encode.
-                    ScratchBytes: job.MediaFile.SizeBytes + (job.MediaFile.SizeBytes / 2));
-
-                var match = WorkerCapabilityMatcher.Match(capabilities, requirements);
-                if (!match.Accepted)
-                {
-                    // Information, not Debug. A paired worker sitting idle beside a full queue is
-                    // the single most confusing thing this feature can do, and the reason was
-                    // written only at a level nobody runs in production.
-                    logger.LogInformation(
-                        "Job {JobId} not offered to worker {Worker}: {Reasons}",
-                        job.Id, worker.Name, string.Join(" ", match.Reasons));
-                    continue;
-                }
-
-                // Preparation can outlive a cancellation. Recheck while holding the write
-                // transaction so this claim cannot turn a cancelled job back into leased work.
-                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-                await db.Entry(job).ReloadAsync(cancellationToken);
-                if (job.Status != JobStatus.Queued) continue;
-                var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
-                var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
-                    job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
-                    job.Type is JobType.Preview or JobType.Calibration,
-                    assignment.Verification.MinimumSizeSavingPercent);
-                var minCandidateBytes = SizeBudget.MinCandidateBytes(
-                    job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
-                    job.Type is JobType.Preview or JobType.Calibration,
-                    assignment.Verification.MaximumSizeSavingPercent);
-
-                db.JobLeases.Add(new JobLease
-                {
-                    Id = lease.Id,
-                    JobId = lease.JobId,
-                    WorkerId = lease.WorkerId,
-                    AcquiredAt = lease.AcquiredUtc,
-                    ExpiresAt = lease.ExpiresUtc,
-                    State = lease.State,
-                    // Bound to the lease so delivery names the candidate by the contract, not by
-                    // the source; the replacement's final extension comes from that name.
-                    OutputExtension = assignment.OutputExtension,
-                    MaxCandidateBytes = maxCandidateBytes,
-                    MinCandidateBytes = minCandidateBytes,
-                    HardwareDecoder = assignment.HardwareDecoder,
-                    // What the worker was asked to measure, fixed now so the evidence it returns is
-                    // judged against this, not against a policy that may have changed since.
-                    // The first candidate to measure, and how. Held on the lease so a report can be
-                    // checked against the question that was actually asked.
-                    AdaptiveAskedQuality = assignment.Search?.Quality,
-                    AdaptiveContractJson = assignment.Search is null
-                        ? null
-                        : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
-                    VerificationWorkJson = assignment.VerificationWorkJson,
-                    VerificationContractJson = assignment.FullVerification is null ? null
-                        : JsonSerializer.Serialize(assignment.FullVerification, EvidenceJson),
-                    QualityContractJson = assignment.Quality is null
-                        ? null
-                        : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
-                });
-
-                // The exclusion that matters: off the queue, so this machine will not also run it.
-                job.Status = JobStatus.Leased;
-                job.ExecutionAttempt += 1;
-                job.Progress = 0;
-                job.StartedAt = now;
-                job.FinishedAt = null;
-                job.UpdatedAt = now;
-                job.ErrorMessage = null;
-                job.FailureCategory = null;
-                job.ProcessLog = null;
-                job.WorkOutputPath = null;
-                job.OutputSizeBytes = null;
-                job.VerificationPassed = null;
-                job.VerificationReportJson = null;
-                job.VerifiedAt = null;
-                // The queue shows these for every job. For a remote job they must be what the
-                // worker will actually run, not whatever this server last ran for it.
-                job.VideoEncoder = assignment.VideoEncoder;
-                job.FfmpegArguments = string.Join(' ', assignment.Arguments);
-                job.RequestedVideoQuality = assignment.RequestedVideoQuality;
-                job.EffectiveVideoQuality = assignment.EffectiveVideoQuality;
-                job.VideoQualityMode = assignment.VideoQualityMode;
-
-                try
-                {
-                    await db.SaveChangesAsync(cancellationToken);
-                    await transaction.CommitAsync(cancellationToken);
-                }
-                catch (DbUpdateException)
-                {
-                    // Another worker claimed it in the gap. The unique index on held leases is what
-                    // makes that a database error rather than two holders, so move on and try the
-                    // next candidate rather than treating it as a failure.
-                    db.ChangeTracker.Clear();
-                    continue;
-                }
-
-                var policy = assignment.Verification;
-                return Results.Ok(new AssignmentDto(
-                    lease.Id,
-                    job.Id,
-                    // The file name rather than the whole relative path: the worker shows this in
-                    // a narrow menu, and the folders above it are the server's business.
-                    Path.GetFileName(job.MediaFile.RelativePath),
-                    job.MediaFile.SizeBytes,
-                    assignment.VideoEncoder,
-                    requirements.Vmaf.ToString(),
-                    lease.ExpiresUtc,
-                    (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
-                    assignment.Arguments,
-                    assignment.OutputExtension,
-                    new QualityRequirementDto(
-                        policy.QualityGateEnabled,
-                        assignment.VmafModel,
-                        policy.VmafFrameSubsample,
-                        policy.ClipVmafEnabled,
-                        policy.MinimumVmafHarmonicMean,
-                        policy.MinimumVmafMin,
-                        assignment.Quality?.Commands ?? [],
-                        assignment.Quality?.Sampling ?? "None",
-                        assignment.Quality?.FramePairedCommands),
-                    AdaptiveSearchWire.From(assignment.Search, policy),
-                    assignment.FullVerification,
-                    maxCandidateBytes,
-                    minCandidateBytes,
-                    new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
-                        job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
-                        job.MediaFile.PixelFormat)));
-            }
+            if (history.ShouldExplain(now))
+                logger.LogInformation(
+                    "Worker {Worker} has free capacity, but none of {Queued} queued jobs can be offered. {Reason}",
+                    worker.Name, queued.Count, lastReason ?? "Current eligibility, source timeline or verification requirements prevent an offer.");
 
             return Results.NoContent();
         })
@@ -751,7 +809,7 @@ internal static class WorkerLeaseEndpoints
                 // arguments were fixed before the search and name the library's value.
                 var settled = await dispatcher.PrepareRemoteWorkAsync(
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
-                    forceStrictVerification: lease.VerificationContractJson is not null);
+                    forceStrictVerification: lease.VerificationContractJson is not null, vmafModel: contract.Model);
 
                 lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
                 await db.SaveChangesAsync(cancellationToken);
@@ -765,7 +823,7 @@ internal static class WorkerLeaseEndpoints
             // Planned for this worker, so every candidate is measured on the encoder that will do
             // the real encode — which is the whole reason the search travels with the job.
             var next = await dispatcher.PlanAdaptiveStepAsync(
-                lease.JobId, progress.Decision.NextQuality!.Value, worker.ToCapabilities(), cancellationToken);
+                lease.JobId, progress.Decision.NextQuality!.Value, worker.ToCapabilities(), cancellationToken, contract.Model);
             if (next is null)
             {
                 // The search cannot be expressed any further, so it ends where it stands rather
@@ -779,7 +837,7 @@ internal static class WorkerLeaseEndpoints
                 await db.SaveChangesAsync(cancellationToken);
                 var fallback = await dispatcher.PrepareRemoteWorkAsync(
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
-                    forceStrictVerification: lease.VerificationContractJson is not null);
+                    forceStrictVerification: lease.VerificationContractJson is not null, vmafModel: contract.Model);
                 lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
                 await db.SaveChangesAsync(cancellationToken);
                 return Results.Ok(new AdaptiveProbeDirectionDto(
@@ -892,6 +950,18 @@ internal static class WorkerLeaseEndpoints
                     pooled.Error ?? "The returned logs produced no usable score.");
             }
 
+            // Keep bounded per-window summaries, not the potentially huge per-frame JSON logs.
+            // These are diagnostic facts only; verification still consumes validated lease evidence.
+            lease.Job!.ProcessLog = JsonSerializer.Serialize(new
+            {
+                kind = "WorkerQuality", worker = worker.Name, leaseId = lease.Id,
+                sourceSha256 = request.SourceSha256, candidateSha256 = request.CandidateSha256,
+                model = contract.Model, sampling = contract.Sampling,
+                windows = windows.Select(window => window.Scores),
+                timestampCommands = contract.Commands,
+                framePairedCommands = contract.FramePairedCommands,
+                pairing = "Selected by worker; legacy reports do not identify the selected mode."
+            }, EvidenceJson);
             lease.QualityScoresJson = JsonSerializer.Serialize(pooled.Scores, EvidenceJson);
             lease.QualitySourceSha256 = request.SourceSha256;
             lease.QualityCandidateSha256 = request.CandidateSha256;
@@ -926,6 +996,12 @@ internal static class WorkerLeaseEndpoints
                 {
                     var now = DateTimeOffset.UtcNow;
                     stored.SizeBudgetExceededAtBytes = request.ObservedBytes;
+                    job.ProcessLog = JsonSerializer.Serialize(new
+                    {
+                        kind = "SizeBudgetExceeded", leaseId = stored.Id,
+                        maximumBytes = stored.MaxCandidateBytes, observedBytes = request.ObservedBytes,
+                        arguments = job.FfmpegArguments
+                    }, EvidenceJson);
                     job.Status = JobStatus.Failed;
                     job.ErrorMessage = $"Size saving: candidate grew to {request.ObservedBytes:n0} bytes, exceeding this attempt's byte budget.";
                     job.FailureCategory = FailureCategory.SizeSaving;
@@ -1186,15 +1262,15 @@ internal static class WorkerLeaseEndpoints
     }
 
     /// <summary>
-    /// The refusals that need nothing beyond the loaded rows: only a video re-encode is offered,
-    /// an adaptive library's job waits for its per-title quality, and the worker must prove an
+    /// The refusals that need nothing beyond the loaded rows: video and audio re-encodes are offered,
+    /// the library permits remote placement, and the worker must prove an
     /// encoder for the target codec. Mirrors <see cref="QueueDispatcher.PrepareRemoteWorkAsync"/>,
     /// which remains the authority.
     /// </summary>
     private static bool PlausiblyOfferable(Job job, WorkerCapabilities capabilities)
     {
         var media = job.MediaFile!;
-        if (media.MediaKind is MediaKind.Audio or MediaKind.Image)
+        if (media.MediaKind == MediaKind.Image)
         {
             return false;
         }
@@ -1211,12 +1287,34 @@ internal static class WorkerLeaseEndpoints
         // needs the source's picture and duration, which this cheap pre-filter does not load —
         // PrepareRemoteWorkAsync decides that, and refuses the job there if it cannot.
 
-        var targetCodec = LibraryRuleResolution.Resolve(library).TargetVideoCodec;
+        var rules = LibraryRuleResolution.Resolve(library);
+        if (media.MediaKind == MediaKind.Audio)
+            return capabilities.ProtocolVersion >= 6 && AudioTarget.IsSupportedTarget(rules.TargetAudioCodec) && capabilities.AudioEncoders.Contains(
+                AudioTarget.Resolve(rules.TargetAudioCodec).Encoder, StringComparer.OrdinalIgnoreCase);
+        var targetCodec = rules.TargetVideoCodec;
         return targetCodec is not null
             && EncoderSelector.Select(
                 targetCodec,
                 EncoderMode.Auto,
                 WorkerEncoderCatalogue.Describe(capabilities.VideoEncoders)).Succeeded;
+    }
+
+    private sealed class ClaimHistory
+    {
+        private int _lastLibraryId = -1;
+        public int? LastLibraryId
+        {
+            get => Volatile.Read(ref _lastLibraryId) is var id && id >= 0 ? id : null;
+            set => Volatile.Write(ref _lastLibraryId, value ?? -1);
+        }
+        private long _lastExplanationTicks;
+
+        public bool ShouldExplain(DateTimeOffset now)
+        {
+            var previous = Interlocked.Read(ref _lastExplanationTicks);
+            return now.UtcTicks - previous >= TimeSpan.FromMinutes(5).Ticks
+                && Interlocked.CompareExchange(ref _lastExplanationTicks, now.UtcTicks, previous) == previous;
+        }
     }
 
 }

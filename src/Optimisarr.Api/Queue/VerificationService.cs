@@ -45,7 +45,10 @@ public sealed record OriginalSnapshot(
     // expects exactly those tracks gone (and, unlike audio, tolerates zero remaining).
     IReadOnlyList<int>? RemovedSubtitleStreamIndexes = null,
     // True for a track-cleanup job, whose promise includes an unchanged container type.
-    bool ContainerMustMatch = false);
+    bool ContainerMustMatch = false,
+    string? ExpectedAudioCodec = null,
+    // Frozen with a prepared job. Absent in pre-v1 snapshots, which retain legacy scoring.
+    string? VmafModel = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -106,13 +109,13 @@ public sealed class VerificationService(
         if (remoteEvidence is not null)
         {
             var objections = RemoteVerificationEvidenceValidator.ValidateMeasurements(remoteEvidence,
-                policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled);
+                policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled, original.Kind);
             if (objections.Count > 0)
                 throw new InvalidOperationException("Sidecar-only verification evidence is incomplete; server fallback is disabled. "
                     + string.Join(" ", objections));
         }
-        if (remoteEvidence is not null && original.Kind != MediaKind.Video)
-            throw new InvalidOperationException("This sidecar verification contract supports video assignments only.");
+        if (remoteEvidence is not null && original.Kind is not (MediaKind.Video or MediaKind.Audio))
+            throw new InvalidOperationException("This sidecar verification contract supports video and audio assignments only.");
         if (remoteEvidence is not null && clip is not null)
             throw new InvalidOperationException("Sidecar-only verification does not accept disposable reference clips.");
         if (remoteEvidence is not null && policy.RequiresVmaf(original.Kind, original.VideoReencoded) && remoteQuality is null)
@@ -129,8 +132,8 @@ public sealed class VerificationService(
             // it replaceable. Keep already-supplied sidecar evidence for diagnosis, but do not
             // read both large files repeatedly after an AV1 parser error on the server.
             var inspectFullFile = decodeResult.Healthy || remoteEvidence is not null;
-            // Packet-timestamp integrity is a video concern; skip it for an audio output.
-            var timestampResult = remoteEvidence?.CandidateVideo ?? (!inspectFullFile || reference.Kind == MediaKind.Audio
+            // Strict audio evidence has its own packet scan; legacy local audio keeps its existing path.
+            var timestampResult = (reference.Kind == MediaKind.Audio ? remoteEvidence?.CandidateAudio : remoteEvidence?.CandidateVideo) ?? (!inspectFullFile || reference.Kind == MediaKind.Audio
                 ? TimestampCheckResult.NotMeasured
                 : await timestamps.CheckAsync(outputPath, cancellationToken));
             var outputProbe = remoteEvidence is null
@@ -181,7 +184,9 @@ public sealed class VerificationService(
                 }
             }
             var sourceTimelineIndeterminate = SourceTimelineIndeterminate(originalTimestampResult);
-            var referenceVideoDuration = ReferenceVideoDurationForVerification(
+            var referenceVideoDuration = reference.Kind == MediaKind.Audio && remoteEvidence is not null
+                ? Math.Max(0, remoteEvidence.SourceAudio!.LastPresentationSeconds!.Value - (originalProbe.AudioStartSeconds ?? 0))
+                : ReferenceVideoDurationForVerification(
                 originalProbe,
                 sourceTimelineIndeterminate ? TimestampCheckResult.NotMeasured : originalTimestampResult,
                 reference.DurationSeconds,
@@ -220,6 +225,11 @@ public sealed class VerificationService(
                     ? "Full file"
                     : "Three 40-second samples (early, middle and late)";
 
+                var pairDecodedFrames = clip is null && reference.FrameRate is null
+                    && windows.Any(window => window.StartSeconds is not null)
+                    && FramePairing.Applies(
+                        await timestamps.CountDecodedFramesAsync(reference.Path, cancellationToken),
+                        await timestamps.CountDecodedFramesAsync(outputPath, cancellationToken));
                 var measurements = new List<QualityResult>(windows.Count);
                 for (var index = 0; index < windows.Count; index++)
                 {
@@ -231,6 +241,7 @@ public sealed class VerificationService(
                         reference,
                         outputPath,
                         originalProbe,
+                        outputProbe,
                         // A preview's stream-copied clip is not the file VMAF reads, so its
                         // container lead says nothing about the reference actually decoded.
                         clip is null ? QueueDispatcher.ContainerLeadSeconds(originalProbe) : null,
@@ -250,8 +261,7 @@ public sealed class VerificationService(
                         // Equal frame counts mean frame k of the candidate is frame k of the
                         // source, whatever its timestamps say. A capped encode thins its
                         // reference by its own index rule and keeps the timestamp path.
-                        clip is null && reference.FrameRate is null
-                            && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
+                        pairDecodedFrames,
                         progress,
                         cancellationToken));
                 }
@@ -314,7 +324,9 @@ public sealed class VerificationService(
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
                 OriginalDurationSeconds: referenceVideoDuration,
-                OutputDurationSeconds: OutputDurationForVerification(
+                OutputDurationSeconds: reference.Kind == MediaKind.Audio && remoteEvidence is not null
+                    ? Math.Max(0, remoteEvidence.CandidateAudio!.LastPresentationSeconds!.Value - (outputProbe.AudioStartSeconds ?? 0))
+                    : OutputDurationForVerification(
                     outputProbe,
                     reference.Kind,
                     timestampResult),
@@ -422,7 +434,8 @@ public sealed class VerificationService(
                         originalProbe.AudioTracks.Select(track => track.Codec).ToList(),
                         reference.RemovedAudioStreamIndexes)
                     : null,
-                OutputAudioCodecs: reference.ContainerMustMatch
+                ExpectedAudioCodec: reference.ExpectedAudioCodec,
+                OutputAudioCodecs: reference.ContainerMustMatch || reference.Kind == MediaKind.Audio
                     ? outputProbe.AudioTracks.Select(track => track.Codec).ToList()
                     : null);
 
@@ -447,7 +460,8 @@ public sealed class VerificationService(
                 PairFramesByNumber: reference.FrameRate is null
                     && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
                 EncodedVideo: depth is { } bits && outputProbe.Width is { } width && outputProbe.Height is { } height
-                    ? new(width, height, bits) : null);
+                    ? new(width, height, bits) : null,
+                ReferenceVideoCodec: originalProbe.VideoCodec);
             if (shadow is not null)
                 report = report with { ShadowVmaf = await shadow.ObserveAsync(
                     reference.Path, outputPath, shadowContext, shadowSkip, cancellationToken) };
@@ -535,6 +549,7 @@ public sealed class VerificationService(
         OriginalSnapshot reference,
         string outputPath,
         MediaProbeResult originalProbe,
+        MediaProbeResult outputProbe,
         double? referenceContainerLeadSeconds,
         double? distortedContainerLeadSeconds,
         QualityScoreService quality,
@@ -574,7 +589,12 @@ public sealed class VerificationService(
             ReferenceDecimation: reference.FrameRate,
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
             DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
-            PairFramesByNumber: pairFramesByNumber);
+            PairFramesByNumber: pairFramesByNumber,
+            ReferenceVideoCodec: originalProbe.VideoCodec,
+            ModelVersion: reference.VmafModel ?? QualityScoreCommandBuilder.LegacyModelVersionFor(
+                reference.Crop?.Width ?? originalProbe.Width.Value, reference.Crop?.Height ?? originalProbe.Height.Value),
+            EncodedVideo: PixelFormatInfo.Parse(outputProbe.PixelFormat, outputProbe.BitsPerRawSample)?.BitDepth is { } depth
+                && outputProbe.Width is { } width && outputProbe.Height is { } height ? new(width, height, depth) : null);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

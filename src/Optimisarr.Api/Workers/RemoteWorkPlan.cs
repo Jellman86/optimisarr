@@ -1,4 +1,5 @@
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Workers;
 
 namespace Optimisarr.Api.Workers;
@@ -10,7 +11,7 @@ namespace Optimisarr.Api.Workers;
 /// of truth for the encode contract rather than a second implementation on the other side.
 /// </summary>
 public sealed record RemoteAssignment(
-    string VideoEncoder,
+    string? VideoEncoder,
     IReadOnlyList<string> Arguments,
     string OutputExtension,
     VerificationPolicy Verification,
@@ -30,7 +31,8 @@ public sealed record RemoteAssignment(
     string? VerificationWorkJson = null,
     int? RequestedVideoQuality = null,
     int? EffectiveVideoQuality = null,
-    string? VideoQualityMode = null);
+    string? VideoQualityMode = null,
+    MediaKind Kind = MediaKind.Video);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

@@ -1,3 +1,4 @@
+using Optimisarr.Core.Workers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -62,7 +63,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         return client;
     }
 
-    private async Task EnableRemoteWorkers()
+    private async Task EnableRemoteWorkers(bool strict = false)
     {
         var admin = Admin();
         var current = await (await admin.GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
@@ -73,15 +74,40 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             payload[property.Name] = JsonSerializer.Deserialize<object?>(property.Value.GetRawText());
         }
         payload["remoteWorkersEnabled"] = true;
-        // This fixture pairs protocol-1 workers. Explicitly disable the fresh-install strict
+        // Explicitly disable the fresh-install strict
         // default instead of relying on another test having changed shared settings first.
-        payload["workerVerificationRequired"] = false;
+        payload["workerVerificationRequired"] = strict;
         (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
     }
 
     /// <summary>Pairs a worker that can actually satisfy a job, and returns its credential.</summary>
     private Task<HttpClient> PairCapableWorker(string name, int concurrency = 1) =>
         PairWorkerWithEncoders(name, concurrency, "libx265");
+
+    [Fact]
+    public async Task A_protocol_6_worker_cannot_claim_v1_but_can_claim_ungated_work()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Previous worker", 1, ["libx265"], [], protocolMaximum: 6);
+        var gated = await QueueAJob(qualityGate: true);
+        var ungated = await QueueAJob(qualityGate: false);
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        Assert.Equal(JobStatus.Queued, await StatusOf(gated));
+        Assert.Equal(JobStatus.Leased, await StatusOf(ungated));
+    }
+
+    [Fact]
+    public async Task A_high_frame_rate_Matroska_source_keeps_legacy_without_a_subtitle_probe()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("HFR policy");
+        await QueueAJob(qualityGate: true, fileName: "high-fps.mkv");
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("vmaf_v0.6.1", assignment.GetProperty("quality").GetProperty("model").GetString());
+    }
 
     private Task<HttpClient> PairWorkerWithEncoders(string name, params string[] encoders) =>
         PairWorkerWithEncoders(name, 1, encoders);
@@ -91,7 +117,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
 
     private async Task<HttpClient> PairWorker(
         string name, int concurrency, string[] encoders, string[] decoders, string[]? audioEncoders = null,
-        string operatingSystem = "linux", string? sidecarVersion = null, int protocolMaximum = 1)
+        string operatingSystem = "linux", string? sidecarVersion = null, int protocolMaximum = WorkerProtocol.Current)
     {
         var admin = Admin();
         var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -169,6 +195,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             PixelFormat = "yuv420p",
             Width = 1920,
             Height = 1080,
+            VideoProfile = "High",
             // Known so a worker's encoded seconds can become a fraction of the whole.
             DurationSeconds = 100,
         };
@@ -188,12 +215,171 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         return job.Id;
     }
 
+    [Theory]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.WorkerOnly, true)]
+    [InlineData("aac", "aac", "m4a", 5, WorkPlacement.WorkerOnly, false)]
+    [InlineData("aac", "libopus", "m4a", 6, WorkPlacement.WorkerOnly, false)]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.LocalOnly, false)]
+    [InlineData("opus", "libopus", "opus", 6, WorkPlacement.WorkerOnly, true)]
+    [InlineData("mp3", "libmp3lame", "mp3", 6, WorkPlacement.WorkerOnly, true)]
+    public async Task Audio_claims_require_placement_protocol_and_the_proved_encoder(string codec, string encoder, string extension, int protocol, WorkPlacement placement, bool claim)
+    {
+        await EnableRemoteWorkers(strict: true);
+        var worker = await PairWorker("Audio only", 1, [], [], [encoder], protocolMaximum: protocol);
+        var id = await QueueAJob(videoEncoder: null, placement: placement, qualityGate: true, fileName: "track.flac");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == id);
+            var media = job.MediaFile!;
+            media.MediaKind = MediaKind.Audio; media.VideoCodec = null; media.Width = null; media.Height = null;
+            media.AudioCodecs = "flac"; media.AudioTrackCount = 1; media.MaxAudioChannels = 2;
+            media.Library!.AudioTargetCodec = codec;
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        if (!claim) { Assert.Equal(HttpStatusCode.NoContent, response.StatusCode); return; }
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var assignment = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal((int)MediaKind.Audio, assignment.GetProperty("kind").GetInt32());
+        Assert.Equal(encoder, assignment.GetProperty("audioEncoder").GetString());
+        Assert.Equal(extension, assignment.GetProperty("outputExtension").GetString());
+        Assert.False(assignment.GetProperty("quality").GetProperty("measure").GetBoolean());
+        Assert.Equal(2, assignment.GetProperty("fullVerification").GetProperty("version").GetInt32());
+    }
+
     private async Task<int> WorkerIdNamed(string name)
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         return await db.Workers.Where(w => w.Name == name && w.RevokedAt == null)
             .OrderByDescending(w => w.Id).Select(w => w.Id).FirstAsync();
+    }
+
+    [Theory]
+    [InlineData(ExclusionSource.Manual)]
+    [InlineData(ExclusionSource.RepeatedFailures)]
+    public async Task An_exclusion_added_after_enqueue_prevents_a_worker_claim(ExclusionSource source)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Excluded");
+        var jobId = await QueueAJob();
+        await ExcludeJob(jobId, source);
+
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.False(await db.JobLeases.AnyAsync(l => l.JobId == jobId));
+        Assert.NotEqual(JobStatus.Leased, await StatusOf(jobId));
+    }
+
+    [Theory]
+    [InlineData(ExclusionSource.Manual)]
+    [InlineData(ExclusionSource.RepeatedFailures)]
+    public async Task Retrying_an_excluded_file_preserves_its_failure_evidence(ExclusionSource source)
+    {
+        var jobId = await QueueAJob();
+        await ExcludeJob(jobId, source);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Failed;
+            job.ProcessLog = "original diagnostics";
+            await db.SaveChangesAsync();
+        }
+        using var response = await Admin().PostAsync($"/api/jobs/{jobId}/retry", null);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var read = _api.Services.CreateScope();
+        var stored = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Failed, stored.Status);
+        Assert.Equal("original diagnostics", stored.ProcessLog);
+    }
+
+    [Fact]
+    public async Task Excluded_jobs_do_not_fill_the_worker_shortlist_and_starve_eligible_work()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Eligible after exclusions");
+        for (var i = 0; i < 25; i++)
+            await ExcludeJob(await QueueAJob(), ExclusionSource.Manual);
+        var eligible = await QueueAJob();
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(eligible));
+    }
+
+    [Theory]
+    [InlineData("cleanup")]
+    [InlineData("local")]
+    [InlineData("encoder")]
+    [InlineData("audio")]
+    [InlineData("handback")]
+    public async Task Unofferable_jobs_beyond_a_full_page_do_not_starve_a_worker(string reason)
+    {
+        await EnableRemoteWorkers();
+        var name = $"Past a page of {reason}";
+        var worker = await PairCapableWorker(name);
+        var workerId = await WorkerIdNamed(name);
+        for (var i = 0; i < 30; i++)
+        {
+            var id = await QueueAJob(
+                profile: reason == "cleanup" ? RuleProfile.TrackCleanup : RuleProfile.ConservativeHevc,
+                placement: reason == "local" ? WorkPlacement.LocalOnly : WorkPlacement.Anywhere);
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library)
+                .SingleAsync(j => j.Id == id);
+            if (reason == "encoder") job.MediaFile!.Library!.TargetVideoCodec = "av1";
+            if (reason == "audio")
+            {
+                job.MediaFile!.MediaKind = MediaKind.Audio;
+                job.MediaFile.Library!.AudioTargetCodec = "opus";
+            }
+            if (reason == "handback") db.JobLeases.Add(new JobLease
+            {
+                Id = Guid.NewGuid(), JobId = id, WorkerId = workerId,
+                State = Optimisarr.Core.Workers.LeaseState.Released,
+                AcquiredAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+                EndedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            });
+            await db.SaveChangesAsync();
+        }
+        var eligible = await QueueAJob();
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(eligible));
+    }
+
+    [Fact]
+    public async Task Worker_claims_honor_highest_priority_before_age()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Priority order");
+        var oldest = await QueueAJob();
+        var urgent = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.Jobs.SingleAsync(j => j.Id == urgent)).Priority = 10;
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(urgent));
+        Assert.Equal(JobStatus.Queued, await StatusOf(oldest));
+    }
+
+    private async Task ExcludeJob(int jobId, ExclusionSource source)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        db.Exclusions.Add(new Exclusion { Path = job.MediaFile!.Path, RelativePath = job.MediaFile.RelativePath,
+            LibraryId = job.LibraryId, Source = source });
+        await db.SaveChangesAsync();
     }
 
     [Fact]
@@ -588,7 +774,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var command = Assert.Single(quality.GetProperty("commands").EnumerateArray()).EnumerateArray().Select(a => a.GetString()!).ToList();
         Assert.Contains("{{distorted}}", command);
         Assert.Contains("{{reference}}", command);
-        Assert.Contains(command, arg => arg.Contains("log_path={{log}}") && arg.Contains("model=version=vmaf_v0.6.1"));
+        Assert.Contains(command, arg => arg.Contains("log_path={{log}}") && arg.Contains("model='version=vmaf_v1.0.16_3d0h"));
         Assert.Equal("-", command[^1]);
     }
 
@@ -762,6 +948,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var lease = await db.JobLeases.SingleAsync(l => l.Id == Guid.Parse(leaseId));
         Assert.Equal("cafe", lease.QualityCandidateSha256);
         Assert.Contains("94.9", lease.QualityScoresJson);
+        var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Contains("94.9", job.ProcessLog);
+        Assert.Contains("windows", job.ProcessLog);
+        Assert.Contains(sourceHash, job.ProcessLog);
     }
 
     [Fact]
@@ -950,7 +1140,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.False(assignment.TryGetProperty("sourcePath", out _));
 
         var quality = assignment.GetProperty("quality");
-        Assert.Equal("vmaf_v0.6.1", quality.GetProperty("model").GetString());
+        Assert.Equal("vmaf_v1.0.16_3d0h", quality.GetProperty("model").GetString());
         Assert.True(quality.GetProperty("minimumHarmonicMean").GetDouble() > 0);
     }
 
@@ -1421,6 +1611,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var job = await db.Jobs.Include(item => item.MediaFile).SingleAsync(item => item.Id == jobId);
         Assert.Equal(FailureCategory.SizeSaving, job.FailureCategory);
         Assert.Contains("Size saving", job.ErrorMessage);
+        Assert.Contains(budget.ToString(), job.ProcessLog);
+        Assert.Contains((budget + 1).ToString(), job.ProcessLog);
         Assert.Equal(1, job.MediaFile!.FailureCount);
         var lease = await db.JobLeases.SingleAsync(item => item.Id == Guid.Parse(leaseId));
         Assert.Equal(budget + 1, lease.SizeBudgetExceededAtBytes);

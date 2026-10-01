@@ -12,6 +12,45 @@ public sealed class MigrationTests : IDisposable
         $"{Guid.NewGuid():N}.db");
 
     [Fact]
+    public async Task Review_migrations_preserve_populated_history_and_exact_offset_times()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20260925080923_AddJobSourceSize");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO MediaFiles (Path,RelativePath,SizeBytes,ModifiedAt,DiscoveredAt,UpdatedAt,Status,MediaKind)
+            VALUES ('/synthetic/old.mkv','old.mkv',100,'2026-01-01T00:00:00+00:00',
+                '2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00','Probed','Video');
+            INSERT INTO Jobs (Attempt,BypassSizePreflight,ExecutionAttempt,IgnoreMediaActivity,
+                PreferSoftwareDecode,Progress,QualityRetryCount,MediaFileId,Type,Status,Priority,EnqueuedAt,UpdatedAt)
+            VALUES (0,0,1,0,0,0,0,1,'Normal','Failed',0,'2026-01-01 12:00:00.0000001+05:00','2026-01-01T00:00:00+00:00');
+            INSERT INTO Replacements (JobId,MediaFileId,OriginalPath,QuarantinePath,FinalPath,
+                OriginalSizeBytes,NewSizeBytes,CrossFilesystem,Status,ReplacedAt)
+            VALUES (1,1,'/synthetic/old.mkv','/synthetic/quarantine.mkv','/synthetic/new.mkv',100,50,0,
+                'Pending','2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync();
+        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        var job = await db.Jobs.SingleAsync();
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Null(job.VmafModel);
+        job.VmafModel = "vmaf_v0.6.1";
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        Assert.Equal("vmaf_v0.6.1", (await db.Jobs.AsNoTracking().SingleAsync()).VmafModel);
+        Assert.Null(job.VerifiedSourceSha256);
+        Assert.Null(job.VerifiedOutputSha256);
+        var expected = new DateTimeOffset(2026, 1, 1, 7, 0, 0, TimeSpan.Zero).AddTicks(1).UtcTicks;
+        Assert.Equal(expected, await db.Jobs.Select(j => EF.Property<long>(j, "QueueEnqueuedUtcTicks")).SingleAsync());
+        Assert.Equal(expected, await db.Jobs.Select(j => EF.Property<long>(j, "QueueEffectiveUtcTicks")).SingleAsync());
+        Assert.Equal(ReplacementStatus.Pending, (await db.Replacements.SingleAsync()).Status);
+    }
+
+    [Fact]
     public async Task Migrations_apply_to_an_empty_sqlite_database()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);

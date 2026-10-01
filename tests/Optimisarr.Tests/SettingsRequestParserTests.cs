@@ -80,6 +80,30 @@ public sealed class SettingsRequestParserTests
         Assert.Equal("settings.hdrToneMapMode.invalid", error?.Code);
     }
 
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    public void Deployment_disable_allows_other_settings_but_refuses_new_worker_enabling(
+        bool savedChoice, bool requestedChoice, bool expected)
+    {
+        var current = new QueueSettings(1, 0, 0, 1, EncoderMode.Auto, true,
+            HdrToneMapMode.Software, VerificationPolicy.Default, false, false, 0,
+            RemoteWorkersEnabled: savedChoice);
+        var request = ValidRequest() with { RemoteWorkersEnabled = requestedChoice, CpuThreadLimit = 2 };
+        var parsed = SettingsRequestParser.TryParse(request, false, out var settings, out var error,
+            currentSettings: current);
+        Assert.Equal(expected, parsed);
+        if (expected)
+        {
+            Assert.Null(error);
+            Assert.Equal(requestedChoice, settings.RemoteWorkersEnabled);
+            Assert.Equal(2, settings.CpuThreadLimit);
+        }
+        else Assert.Equal("workers.unavailable", error?.Code);
+    }
+
     private static SettingsDto ValidRequest() => SettingsDto.From(new QueueSettings(
         MaxConcurrentJobs: 1,
         MinFreeDiskBytes: 0,

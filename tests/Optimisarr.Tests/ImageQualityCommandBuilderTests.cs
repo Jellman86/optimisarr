@@ -5,6 +5,14 @@ namespace Optimisarr.Tests;
 public sealed class ImageQualityCommandBuilderTests
 {
     [Fact]
+    public void A_Windows_log_path_is_escaped_as_a_filter_option()
+    {
+        var command = ImageQualityCommandBuilder.Build("out.jpg", "in.png", @"C:\Users\Test\ssim.log",
+            new(320, 240, false));
+        Assert.Contains(@"stats_file=C\\:/Users/Test/ssim.log:shortest=", command.FilterGraph);
+    }
+
+    [Fact]
     public void Measurement_uses_explicit_dimensions_timebase_full_range_and_rgb()
     {
         var command = ImageQualityCommandBuilder.Build(

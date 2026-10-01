@@ -56,7 +56,12 @@ enum MenuRenderer {
         var shutdown = ShutdownCountdown()
         shutdown.arm()
         _ = shutdown.evaluate(at: Date(), ready: true, activeJobs: 0)
+        let audio = SidecarSession.posed(
+            status: .working(jobId: 5848, progress: .encoding(encodedSeconds: 31)),
+            activeJobs: [5848: .encoding(encodedSeconds: 31)], jobTitles: [5848: "Audio Study · Generated fixture"],
+            filmStrips: [5848: FilmStrip(frames: sampleSpectrum())], audioJobs: [5848])
         let poses: [(String, SidecarSession)] = [
+            ("audio", audio),
             ("unpaired", .posed(status: .unpaired, serverAddress: "")),
             ("connected-idle", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()),
@@ -149,6 +154,12 @@ enum MenuRenderer {
             print(file.path)
             }
         }
+    }
+
+    private static func sampleSpectrum() -> [Data] {
+        guard let path = ProcessInfo.processInfo.environment["OPTIMISARR_RENDER_SPECTRUM"],
+              let data = try? Data(contentsOf: URL(fileURLWithPath: path)), data.count <= 8192 else { return [] }
+        return [data]
     }
 
     /// Stand-in frames: a colour ramp, so the strip and its playback are visibly a sequence rather

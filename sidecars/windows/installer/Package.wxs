@@ -9,6 +9,11 @@
     <Property Id="EXISTINGSIDECAR">
       <RegistrySearch Id="ExistingService" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OptimisarrSidecar" Name="ImagePath" Type="raw" Bitness="always64" />
     </Property>
+    <Property Id="PAIRINGPRESENT" Secure="yes">
+      <DirectorySearch Id="PairingDataSearch" Path="[CommonAppDataFolder]Optimisarr\Sidecar" Depth="0">
+        <FileSearch Id="PairingFileSearch" Name="pairing.dat" />
+      </DirectorySearch>
+    </Property>
     <Launch Condition="Installed OR WIX_UPGRADE_DETECTED OR NOT EXISTINGSIDECAR"
             Message="A manually installed Optimisarr Sidecar service already exists. Drain it, wait for its job to finish, then remove its service registration before using this installer. Pairing data can be retained." />
     <Icon Id="SidecarIcon" SourceFile="$(var.Payload)\Optimisarr.Sidecar.Tray.exe" />
@@ -16,6 +21,13 @@
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/Jellman86/optimisarr" />
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Optimisarr Sidecar">
+        <!-- Keep service installation unconditional. Only an existing paired MSI product
+             should start automatically; an unpaired first install cannot check in. -->
+        <Component Id="PairedUpgradeStart" Guid="E967398E-FEB4-4A93-A4B5-0E2FB44C0D29" Bitness="always64"
+                   Condition="WIX_UPGRADE_DETECTED AND PAIRINGPRESENT">
+          <RegistryValue Root="HKLM" Key="Software\Optimisarr\Sidecar" Name="PairedUpgradeStart" Type="integer" Value="1" KeyPath="yes" />
+          <ServiceControl Id="StartPairedWorker" Name="OptimisarrSidecar" Start="install" Wait="yes" />
+        </Component>
         <Directory Id="RUNTIMEFOLDER" Name="runtime">
           <Component Id="ServiceHost" Guid="1A3F91A8-4EB0-45EF-A265-0A68BA6077DB" Bitness="always64">
             <File Id="DotnetHost" Source="$(var.Payload)\runtime\dotnet.exe" KeyPath="yes" />
@@ -51,7 +63,7 @@
       </Directory>
     </StandardDirectory>
     <Feature Id="Sidecar" Title="Optimisarr Sidecar" Level="1">
-      <ComponentRef Id="TrayShortcut" /><ComponentRef Id="ServiceHost" /><ComponentRef Id="PairingDirectory" />
+      <ComponentRef Id="TrayShortcut" /><ComponentRef Id="ServiceHost" /><ComponentRef Id="PairingDirectory" /><ComponentRef Id="PairedUpgradeStart" />
       <ComponentGroupRef Id="PayloadFiles" />
     </Feature>
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />

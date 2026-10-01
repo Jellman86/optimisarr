@@ -32,7 +32,7 @@ public static class ImageQualityCommandBuilder
         var filter =
             $"[0:v]settb=AVTB,setpts=PTS-STARTPTS,{normalise}[dist];" +
             $"[1:v]settb=AVTB,setpts=PTS-STARTPTS,{normalise}[ref];" +
-            $"[dist][ref]ssim=stats_file={logPath}:shortest=1:repeatlast=0";
+            $"[dist][ref]ssim=stats_file={FfmpegFilterOptionPath.Escape(logPath)}:shortest=1:repeatlast=0";
 
         IReadOnlyList<string> arguments =
         [

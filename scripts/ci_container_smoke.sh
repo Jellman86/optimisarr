@@ -41,6 +41,18 @@ for _ in {1..30}; do
         -f null -
       grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
 
+      # Ordinary SDR uses v1 on libvmaf 3.2.1. Prove both shipped models with 10-bit
+      # measurements and the actual encoded format, rather than just listing a filter.
+      for model in vmaf_v1.0.16_3d0h vmaf_v1.0.16_1d5h_2160; do
+        rm -f "$vmaf_log"
+        "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+          -f lavfi -i "testsrc2=size=320x240:rate=2:duration=1,format=yuv420p10le" \
+          -f lavfi -i "testsrc2=size=320x240:rate=2:duration=1,format=yuv420p10le" \
+          -lavfi "[0:v][1:v]libvmaf=model=version=$model\\\\:cambi.enc_width=320\\\\:cambi.enc_height=240\\\\:cambi.enc_bitdepth=10:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+          -f null -
+        grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
+      done
+
       # Exercise the HDR-reference preparation too. The synthetic pixels are not
       # intended to produce a meaningful score; their BT.2020/PQ tags force the
       # exact production zscale/Hable/Rec.709 chain to initialise and emit a log.

@@ -73,4 +73,31 @@ public sealed class RemoteVerificationEvidenceTests
         Assert.NotEmpty(RemoteVerificationEvidenceValidator.Validate(Contract,
             Valid() with { CandidateVideo = new(true, 0, null, double.NaN) }, Source, Candidate));
     }
+    [Fact]
+    public void Audio_evidence_requires_audio_probes_and_packet_spans_instead_of_picture_measurements()
+    {
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"flac","channels":2,"sample_rate":"48000"}],"format":{"duration":"8"}}""";
+        var contract = new RemoteVerificationContract(2, Contract.Id, true);
+        var evidence = Valid() with { SourceProbe = audio, CandidateProbe = audio,
+            SourceVideo = null, CandidateVideo = null, SourceAudio = new(true, 0, null, 8), CandidateAudio = new(true, 0, null, 8) };
+        Assert.Empty(RemoteVerificationEvidenceValidator.Validate(contract, evidence, Source, Candidate));
+    }
+    [Fact]
+    public void Audio_contract_rejects_missing_candidate_packets_video_and_unrequested_contracts()
+    {
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000"}],"format":{"duration":"8"}}""";
+        var contract = new RemoteVerificationContract(2, Contract.Id, true);
+        var evidence = Valid() with { SourceProbe = audio, CandidateProbe = audio,
+            SourceVideo = null, CandidateVideo = null, SourceAudio = new(true, 0, null, 8), CandidateAudio = new(true, 0, null, 8) };
+        Assert.Empty(RemoteVerificationEvidenceValidator.Validate(contract, evidence, Source, Candidate));
+        foreach (var bad in new[] { evidence with { CandidateAudio = null }, evidence with { CandidateProbe = Probe },
+            evidence with { CandidateLoudness = null }, evidence with { CandidateAudio = new(true, 0, null, double.NaN) },
+            evidence with { SourceAudio = new(true, 0, null, 0) },
+            evidence with { CandidateAudio = new(true, 0, null, -1) },
+            evidence with { CandidateProbe = audio.Replace("48000", "0") } })
+            Assert.NotEmpty(RemoteVerificationEvidenceValidator.Validate(contract, bad, Source, Candidate));
+        Assert.NotEmpty(RemoteVerificationEvidenceValidator.Validate(contract with { Version = 3 }, evidence, Source, Candidate));
+        Assert.NotEmpty(RemoteVerificationEvidenceValidator.Validate(contract with { Version = 1 }, evidence, Source, Candidate));
+    }
+
 }

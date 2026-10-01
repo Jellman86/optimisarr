@@ -52,8 +52,10 @@ Start with the [documentation index](docs/index.md): [getting started](docs/setu
 Keep the container as the coordinator and use the [Mac menu-bar app](sidecars/macos/README.md)
 or [Windows tray app](sidecars/windows/README.md) for video encoding. Both show live work,
 resource readings and pause controls. Each library chooses whether to use the server, prefer a
-worker, or wait for workers only. Optional strict worker verification also moves media checks
-to compatible sidecars; scheduling, file transfer and safe replacement remain on the server.
+worker, or wait for workers only. Fresh installations enable remote workers and strict sidecar
+verification; upgrades preserve existing choices. Pairing is always explicit. Sidecar verification
+moves media checks to compatible workers; scheduling, file transfer and safe replacement remain
+on the server.
 
 A [Linux container sidecar preview](docs/setup/linux-sidecar.md) adds browser pairing and a
 live work/load dashboard, with CPU encoding, optional Intel QSV/VAAPI and bounded tmpfs scratch.

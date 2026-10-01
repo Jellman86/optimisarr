@@ -4,18 +4,22 @@ Optimisarr can send video re-encodes to a paired Windows PC, Apple Silicon Mac o
 The main server keeps the library, job history, and authority to replace or roll back files. Workers use their own
 scratch space and return candidates and measurements; they cannot modify your originals.
 
-Remote workers remain an opt-in preview. A single container is still the default installation.
+Remote workers are available by default, and fresh installations enable them with strict sidecar
+verification. Upgrades preserve saved choices. A single container works without any sidecar.
+The existing `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override disables availability;
+its name is retained for compatibility. Pairing remains an explicit operator action.
 
 Screenshots use fabricated dummy media created for documentation. No copyrighted material is used.
 
 ## Enable and pair
 
-1. Set `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true` in the container environment and deploy it.
-2. Open **Settings → Files & safety** and enable **Remote workers**, then save.
-3. Open **Settings → Remote workers** and issue a pairing code.
-4. Install the sidecar and enter the server URL and code. The code expires after five minutes,
+1. Check **Settings → Files & safety → Remote workers**. Enable it if an existing installation
+   has a saved disabled choice. If availability is disabled by the environment override, remove
+   the override or set it to `true` and redeploy first.
+2. Open **Settings → Remote workers** and issue a pairing code.
+3. Install the sidecar and enter the server URL and code. The code expires after five minutes,
    can be used once, and is invalidated after five wrong guesses.
-5. Confirm the machine is online and has proved the encoder needed by your library. Advertised
+4. Confirm the machine is online and has proved the encoder needed by your library. Advertised
    hardware is checked with real test encodes; the presence of a GPU alone does not qualify it.
 
 For Linux, use the [container setup guide](linux-sidecar.md): deploy its separate Compose stack,
@@ -28,10 +32,22 @@ installation, upgrades, and packaging/signing status. Windows installs a backgro
 tray companion. The Mac runs from the menu bar. Both expose a compact current-work monitor,
 processing details, pause, preferences, and diagnostics.
 
+Windows MSI upgrades restart a paired worker using its retained pairing; fresh installs and
+unpaired upgrades wait for pairing. Drain before upgrading and resume from the server afterward.
+An upgrade starts a paired service even if it was stopped before the update.
+
 Closing either monitor keeps work running. Quitting the Windows tray leaves its service running;
 quitting the Mac app returns its held jobs. **Pause new jobs** lets held jobs finish and resets
 when the worker/app restarts. A server-requested **Drain** also stops new claims while existing
 leases finish; use it before an update and resume the worker afterward.
+
+## Keep worker command support current
+
+Update sidecars alongside the server. H.264 NVIDIA jobs that preserve a declared
+colour range require worker protocol 5; an older sidecar stays available for
+ordinary work and reports that an update is needed for those jobs. Timed-text
+subtitle conversion to Matroska requires protocol 4. Unsupported commands are
+held before a lease is issued, rather than sent to the worker to fail.
 
 ## Choose where a library runs
 
@@ -63,21 +79,20 @@ for tested paths and remaining limitations.
 ### Placement
 
 Open **Libraries → Configure → Choose files → Advanced eligibility → Where this library's work
-may run**. Placement is saved per library and applies to eligible video re-encodes.
+may run**. Placement is saved per library and applies to eligible video and audio re-encodes.
 
 | Setting | Effect |
 |---|---|
 | **Here or on a worker** | Either the container or a compatible worker can claim the job. |
 | **Only on this server** | Encode on the container. |
 | **Prefer a worker** | Give an online, non-draining worker first opportunity, then allow the container after up to ten minutes. The waiting window starts when the job becomes eligible to run, not when it was queued. |
-| **Only on workers** | Wait for a compatible worker; do not fall back to a local video encode. |
+| **Only on workers** | Wait for a compatible worker; do not fall back to a local encode. |
 
 ![Advanced eligibility page showing its library breadcrumb and all four work-placement choices](../images/optimisarr-library-advanced-eligibility-dark.png)
 
 Turning **Remote workers** off makes placement fall back to the container, including libraries
 saved as **Only on workers**. Keep remote workers enabled to enforce worker-only placement.
-Automation windows, pause rules, capability requirements, and disk checks still apply. Audio-only,
-image, preview, and personal quality-check workflows retain their existing local paths.
+Automation windows, pause rules, capability requirements, and disk checks still apply. Image, remux, preview, and personal quality-check workflows retain their existing local paths.
 
 Queue shows separate capacity for video work, audio/images, sidecar evidence checks, safe
 replacement, and workers. A strict worker result waits for the container to validate its evidence;
@@ -128,3 +143,38 @@ itself if the returned quality evidence cannot be used.
 The [acceptance guide](../development/media-acceptance.md) describes isolated end-to-end checks
 with freely licensed media. Dated [strict-verification evidence](../engineering/hardware-validation/2026-09-17-strict-sidecar-verification.md)
 records the hardware and formats actually tested; it does not certify every GPU or HDR workflow.
+
+## Standalone audio
+
+Protocol 6 sidecars can encode music to AAC/M4A, Opus or MP3 using the library’s
+selected audio encoder and bitrate. A worker must prove that encoder before it can
+claim the job; protocol 1–5 workers keep their existing video work. Music libraries
+use the same placement controls as video libraries. With **Only on workers** and
+strict verification enabled, an unsupported worker does not trigger local fallback.
+
+Strict audio verification uses source/candidate probes, complete candidate decode,
+primary-audio packet timestamps, channel/track/codec preservation, duration and size
+gates, and configured EBU R128 loudness and true-peak checks. VMAF measures pictures
+and does not apply to standalone audio. The server still scans/probes the library,
+transfers and hashes files, evaluates evidence, and handles replacement and rollback.
+
+Mac, Windows and Linux monitors display a source-audio spectrogram near the encode
+position. Frequency is logarithmic from 0–24 kHz; time spans up to three seconds;
+brighter colour means stronger signal. It samples only while a monitor is viewed,
+at most once per 1.5 seconds, with one bounded process per job. Preview failure is
+labelled and never fails an encode. The display is not a loudness or quality verdict.
+
+Embedded covers are preserved when encoding to MP3. AAC/Opus sources containing
+embedded cover art remain safely ineligible, with guidance to select MP3. Existing
+channel compatibility and timed-lyrics guards apply unchanged.
+
+![Mac Compact Monitor encoding a generated audio fixture with measured source spectrum](../images/optimisarr-sidecar-macos-audio.png)
+
+![Windows Compact Monitor encoding the same generated audio fixture](../images/optimisarr-sidecar-windows-audio.png)
+
+![Linux sidecar audio monitor with a generated fixture](../images/optimisarr-sidecar-linux-audio-dark.png)
+
+Documentation captures use fabricated jobs and a spectrogram measured from a
+three-second generated chirp, never private media. Native captures use the apps’
+`--render-menu` and `--render-monitor` modes. Linux captures can be regenerated with
+`cd web && node scripts/capture-audio-sidecar.mjs /absolute/path/generated-spectrum.jpg`.

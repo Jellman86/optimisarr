@@ -41,9 +41,14 @@ The core promise is:
   4. Probe output.
   5. Run health verification.
   6. Compare stream policy.
-  7. Replace original atomically when possible.
-  8. Move original to quarantine.
-  9. Record rollback metadata.
+  7. Bind the passing verdict to SHA-256 identities of the source and candidate.
+  8. Record a pending rollback path before any filesystem change.
+  9. Move the original to quarantine.
+  10. Place the verified candidate at the library path.
+  11. Check both final identities and commit, or retain the original and recovery record.
+
+Same-filesystem moves are atomic individually; the whole sequence is recovered
+from the durable pending record if interrupted.
 
 The timed retention sweep runs at startup and every six hours. One cleanup window
 covers quarantined originals and failed `/work` outputs. It never removes active or
@@ -55,9 +60,9 @@ actually reclaimed.
 
 ### Out of scope for MVP
 
-- Distributed workers were outside the original MVP. Optional registered Windows and macOS
-  sidecars are now available as an opt-in preview; the main container remains the safety authority
-  and the complete single-host default (see [remote workers](setup/remote-workers.md)).
+- Distributed workers were outside the original MVP. Optional registered Windows, macOS and Linux
+  sidecars are now available by default, with explicit pairing and saved enable/disable controls.
+  The main container remains the safety authority and a complete single-host installation (see [remote workers](setup/remote-workers.md)).
 - Cloud storage.
 - Full plugin marketplace.
 - Automatic download client integration.
@@ -431,3 +436,17 @@ layout is suboptimal.
   media stream inspection:
   https://www.ffmpeg.org/ffmpeg.html
   https://ffmpeg.org/ffprobe.html
+
+### Current video quality model
+
+New ordinary SDR video jobs use VMAF v1.0.16 (HD or UHD viewing model) for adaptive selection
+and final verification. Preset/custom numerical floors are unchanged heuristic policy, not a
+subjective calibration guarantee. HDR, 45 fps or higher and frame-rate conversions retain legacy
+scoring. Each started job freezes its model; existing candidates and pre-upgrade adaptive choices
+keep legacy policy. Explicit retries start under the current policy.
+
+Protocol 7 sidecars measure at 10-bit precision and use actual candidate geometry/depth for CAMBI
+banding features. Both models must pass real capability probes. Strict worker verification keeps
+complete CPU scoring on that sidecar; the server still owns orchestration, evidence validation,
+replacement and quarantine. Full v1 CUDA is deferred pending missing upstream features and an
+exact artifact/parity/license audit. See the [VMAF/NVIDIA plan](development/vmaf-v1-and-nvidia-plan.md).

@@ -5,12 +5,19 @@ layout that keeps replacements safe, and enabling hardware transcoding.
 
 ## Install
 
-Until Optimisarr is listed in Community Applications, add the template by URL:
+Install from [Optimisarr in Community Apps](https://ca.unraid.net/apps/optimisarr-0y5bjeh0aktq6l):
 
-1. **Docker → Add Container → Template ▾ →** paste
-   `https://raw.githubusercontent.com/Jellman86/optimisarr/main/unraid/optimisarr.xml`.
-2. Set the paths below and click **Apply**.
-3. Open the WebUI at `http://<server>:8787/`.
+1. Open **Apps**, search for **Optimisarr**, and click **Install**.
+2. Review the storage paths, host port and optional hardware device, then click **Apply**.
+3. Open the container's **WebUI** to complete first-run setup. Start with a small test library;
+   fresh installations use dry-run and do not automatically queue or replace media.
+
+The canonical template is
+[`unraid/optimisarr.xml`](../../unraid/optimisarr.xml). For manual installation, download its
+[raw XML](https://raw.githubusercontent.com/Jellman86/optimisarr/main/unraid/optimisarr.xml)
+to `/boot/config/plugins/dockerMan/templates-user/my-optimisarr.xml` on your Unraid host, then
+select it under **Docker → Add Container → Template**. The dropdown selects saved templates;
+it is not a field for pasting an arbitrary URL.
 
 The image is `ghcr.io/jellman86/optimisarr:latest`. It exposes port **8787** and reports health at
 `/api/ready`.
@@ -31,7 +38,7 @@ on the same filesystem, so Optimisarr must use its slower verified copy-plus-del
 The template sets `OPTIMISARR_WORK_DIR=/data/.optimisarr/work` and
 `OPTIMISARR_TRASH_DIR=/data/.optimisarr/trash`. You can move work to fast scratch storage, but doing
 so intentionally gives up atomic work-to-library moves; keep the verified cross-filesystem fallback
-enabled and use the setup Re-test action to confirm the effective relationship.
+enabled in **Settings → Files & safety** and use the setup Re-test action to confirm the effective relationship.
 
 No original is ever deleted or overwritten until a verified replacement exists — a failed or
 re-eligible job leaves the source untouched.
@@ -72,3 +79,42 @@ libnvidia-encode.so.1"* even though `nvidia-smi` works, and NVDEC is unavailable
 
 Optimisarr confirms each encoder with a tiny real test encode at startup, so a present-but-broken
 driver reads as unavailable rather than failing jobs later.
+
+## Remote workers
+
+Remote workers are available by default. Fresh installations enable them and require full
+sidecar verification; upgrades keep the saved choices, including disabled workers. Pair trusted
+Windows, macOS or Linux sidecars from **Settings → Remote workers**. No machine is discovered or
+paired automatically. Library placement decides whether a job may run locally or on a worker.
+
+The template's advanced **Remote workers** variable uses the existing
+`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS` name for compatibility. Set it to `false` to disable the
+worker service for the deployment. An unset variable now leaves the service available. You can
+also disable new worker activity in **Settings → Files & safety** without deleting pairings.
+See [Remote workers and sidecars](remote-workers.md) for placement, strict verification and updates.
+
+## Updates and installation checks
+
+The template uses `:latest`, the released channel. `:dev` is a development build and is not the
+same as the latest release. Update from Unraid's Docker/Apps interface after reviewing the
+[release notes](https://github.com/Jellman86/optimisarr/releases). Pause new work and let active
+jobs finish before stopping/updating: the application can wait for work on graceful shutdown,
+but Unraid's configured Docker stop timeout may force termination earlier. Keep `/config` and
+the storage-root mapping intact so history and rollback paths survive updates.
+
+After installing or updating, check the following:
+
+- The Docker page reports **healthy**, the **WebUI** opens the mapped host port, and the UI shows
+  the expected released version.
+- **Settings → System** reports writable config, work and quarantine paths. Setup's Re-test
+  confirms the effective filesystem/mount relationship; one mapping does not guarantee that
+  underlying Unraid shares, pools or devices share a filesystem.
+- **Settings → Tools** proves the intended encoder, full decoding and VMAF capability. On a
+  CPU-only host, remove the optional `/dev/dri` entry before applying the template.
+- A small test job produces a verification report before you allow replacement. If using a
+  sidecar, confirm its attribution and full verification evidence in the job details.
+
+The template and repository profile share the static transparent Precession cube application
+icon. The Community Apps listing also links the setup guide, GPL license and fabricated
+Dashboard/Queue screenshots. Cached listing text or icons may lag the default-branch template;
+existing installations keep their own saved template and settings.

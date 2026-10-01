@@ -53,8 +53,14 @@ public sealed record TranscodeSpec(
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
     FrameRateDecimation? FrameRate = null)
 {
+    /// <summary>Source subtitle codecs in subtitle-relative stream order, from a fresh probe.</summary>
+    public IReadOnlyList<string?>? SourceSubtitleCodecs { get; init; }
+
     /// <summary>Probed precision to preserve when uploading software-decoded frames.</summary>
     public int? SourceBitDepth { get; init; }
+
+    /// <summary>Declared range from the fresh source probe; null when unspecified.</summary>
+    public string? SourceColorRange { get; init; }
 
     /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
     public double? TargetFrameRate => FrameRate?.TargetFps;
@@ -312,6 +318,7 @@ public static class FfmpegCommandBuilder
             {
                 AppendAudioCodec(args, spec);
             }
+            AppendMatroskaSubtitleOverrides(args, spec);
             return;
         }
 
@@ -379,6 +386,22 @@ public static class FfmpegCommandBuilder
         args.Add("-c:v:0");
         args.Add(encoder!);
 
+        // NVENC can omit the H.264 limited-range VUI when other colour tags are unknown.
+        // Preserve only a declared range (or the deliberate SDR transform), on the primary
+        // stream. The metadata filter changes the signal, never the encoded pictures.
+        if (encoder == "h264_nvenc"
+            && (spec.TonemapToSdr
+                || string.Equals(spec.SourceColorRange, "tv", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(spec.SourceColorRange, "pc", StringComparison.OrdinalIgnoreCase)))
+        {
+            var limited = spec.TonemapToSdr
+                || string.Equals(spec.SourceColorRange, "tv", StringComparison.OrdinalIgnoreCase);
+            args.Add("-color_range:v:0");
+            args.Add(limited ? "tv" : "pc");
+            args.Add("-bsf:v:0");
+            args.Add(limited ? "h264_metadata=video_full_range_flag=0" : "h264_metadata=video_full_range_flag=1");
+        }
+
         AppendQualityArguments(args, family, spec.Crf);
 
         // The dispatcher has already resolved the portable effort onto this exact encoder's
@@ -427,18 +450,16 @@ public static class FfmpegCommandBuilder
             args.Add("-fps_mode");
             args.Add("passthrough");
 
-            // Keeps the encoder's timestamps anchored to the source's own timebase rather than a
-            // rounded one, which is what makes passthrough exact rather than merely close.
-            if (spec.SourceIsVariableFrameRate)
-            {
-                args.Add("-enc_time_base:v:0");
-                args.Add("demux");
-            }
+            // Constant fractional-rate Matroska also needs its timestamp precision retained.
+            // The default encoder timebase collapsed presentation timestamps in NVENC output
+            // and caused duplicate-DTS mux failures with QSV, even with software decoding.
+            args.Add("-enc_time_base:v:0");
+            args.Add("demux");
         }
 
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV
         // cannot mux SubRip directly, so their text subtitles must use the native mov_text
-        // codec; containers such as Matroska can retain the source subtitle codec unchanged.
+        // codec. Matroska retains compatible codecs, converting only MP4 timed text below.
         if (spec.VideoOnly)
         {
             return;
@@ -455,6 +476,28 @@ public static class FfmpegCommandBuilder
         }
         args.Add("-c:s");
         args.Add(IsMp4Family(spec.OutputPath) ? "mov_text" : "copy");
+        AppendMatroskaSubtitleOverrides(args, spec);
+    }
+
+    private static void AppendMatroskaSubtitleOverrides(List<string> args, TranscodeSpec spec)
+    {
+        if (spec.VideoOnly || !string.Equals(Path.GetExtension(spec.OutputPath), ".mkv", StringComparison.OrdinalIgnoreCase)
+            || spec.SourceSubtitleCodecs is null) return;
+
+        var outputIndex = 0;
+        for (var sourceIndex = 0; sourceIndex < spec.SourceSubtitleCodecs.Count; sourceIndex++)
+        {
+            if (spec.RemoveSubtitleStreamIndexes?.Contains(sourceIndex) == true) continue;
+            if (string.Equals(spec.SourceSubtitleCodecs[sourceIndex], "mov_text", StringComparison.OrdinalIgnoreCase))
+            {
+                // Matroska cannot store MP4 timed text. ASS retains decoded text and styling;
+                // compatible text, bitmap and unknown tracks stay copied. FFmpeg addresses the
+                // output subtitle ordinal, which shifts when an earlier source track is removed.
+                args.Add($"-c:s:{outputIndex}");
+                args.Add("ass");
+            }
+            outputIndex++;
+        }
     }
 
     private static void AppendAudioCodec(List<string> args, TranscodeSpec spec)

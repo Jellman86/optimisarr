@@ -397,12 +397,13 @@ the replacement workflow is trustworthy.
    `/config`, work/output, quarantine, media-library paths, health check, optional hardware
    acceleration, update-channel guidance, and a smoke-test checklist.
 
-   - **Unraid Community Applications template: template shipped; discovery listing remains.**
+   - **Unraid Community Applications template and discovery listing: shipped.**
      `unraid/optimisarr.xml` (volume mappings for config, media, work, and quarantine, the `8787`
      port, optional `OPTIMISARR_ADMIN_TOKEN`, PUID/PGID/UMASK, and an optional `/dev/dri` device),
-     a repository-root `ca_profile.xml`, and `docs/setup/unraid.md` are shipped. Remaining: promote
-     the template + profile to the default branch at release and pursue the Community Applications
-     discovery listing so users don't need to paste the raw template URL.
+     a repository-root `ca_profile.xml`, and `docs/setup/unraid.md` are shipped. The
+     [Community Apps listing](https://ca.unraid.net/apps/optimisarr-0y5bjeh0aktq6l) is live. Keep the
+     template, profile, icon and screenshot links on the default branch in sync at each release;
+     `scripts/check_unraid_metadata.py` validates the local container/asset contract.
 
    - **TrueNAS custom-app docs, then catalog submission.** First document the low-friction
      TrueNAS Custom App path so users can deploy the existing container before catalog
@@ -504,11 +505,9 @@ the replacement workflow is trustworthy.
      Intel (QSV/VAAPI), AMD, Vulkan, OpenCL, or NPU/OpenVINO backend for the VMAF feature
      extractors; Intel/AMD silicon can hardware-accelerate decode and scaling but not the scoring.
      Document this plainly so users don't expect QSV/VAAPI/NPU VMAF that does not exist.
-   - **Optional CUDA VMAF when an NVIDIA GPU is present: done.** Detect the filter and switch to NVDEC
+   - **Legacy CUDA VMAF: implemented; complete v1 CUDA deferred.** Detect the filter and switch to NVDEC
      decode + `scale_cuda` + `libvmaf_cuda` (CUDA frames end to end), falling back to the CPU path
-     otherwise. Reported ~4.4× throughput. Needs an ffmpeg built with `--enable-nonfree`
-     `--enable-libvmaf` and `--enable-ffnvcodec` (and the CUDA VMAF library), so it is a build/runtime capability check,
-     not an assumption.
+     otherwise. The earlier ~4.4× result applies to the legacy model, not v1. Complete v1 lacks required upstream CUDA feature extractors and uses CPU scoring. `libvmaf_cuda` itself does not mandate `--enable-nonfree`; CUDA NVCC/SDK/NPP build routes do. An accelerated redistributable v1 artifact still requires a feature/parity/license audit. See the [practical plan](development/vmaf-v1-and-nvidia-plan.md).
    - **CPU-side wins for everyone else (the N100 case): done.** In impact order: score a short
      representative **clip** instead of the whole file (reuse the preview-clip mechanism — the
      biggest single win); optionally **hardware-decode the two inputs** with QSV/VAAPI to offload
@@ -518,8 +517,18 @@ the replacement workflow is trustworthy.
      is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
 
-9. **Optional Windows and macOS sidecars for distributed transcoding: implemented as an opt-in
-   preview behind `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`.**
+9. **Windows, macOS and Linux sidecars for distributed transcoding: available by default.**
+
+   **Default decision, 2026-10-01:** following the tested application-review mitigations,
+   the operator requested that workers be available without a preview opt-in. Fresh installations
+   enable workers with strict sidecar verification; upgrades preserve saved enabled/disabled
+   choices and materialise the old disabled choice where a historical key is absent. The existing
+   `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override remains a deployment-level disable.
+   Availability never pairs a machine, changes library placement, enables automatic replacement
+   or relaxes a quality gate. Physical Windows NVENC, Mac VideoToolbox and Linux/container
+   acceptance, credential/lease cancellation tests and rollback/identity hardening are documented
+   in the [tested mitigation review](reviews/2026-10-01-review-mitigations.md). This default does
+   not imply that every GPU/format is certified or that unsigned Windows packages are signed.
 
    **Current status, 2026-09-17:** both platforms run the Compact Monitor UI, worker-side adaptive
    quality search and VMAF, and protocol-2 full verification without server media-tool
@@ -536,13 +545,10 @@ the replacement workflow is trustworthy.
    Keep one Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
    contribute otherwise-idle CPU/GPU capacity. A sidecar may receive a read-only source, transcode
    it, run the assigned VMAF policy, and return the candidate plus evidence; it can never replace,
-   quarantine, move, or delete an original. This remains post-MVP and opt-in: one container must
-   continue to be the complete, uncomplicated default. **That opt-in now exists:** the
-   `workers.remoteEnabled` setting is off by default and off on upgrade, no Workers tab is shown
-   while it is off, and every route that pairs a machine or accepts a check-in refuses with `403`
-   so the switch is a real boundary rather than a UI preference. Turning it off is non-destructive:
-   check-ins stop at once, but paired records survive so an operator can still see and revoke them,
-   and re-enabling restores them without a re-pair.
+   quarantine, move, or delete an original. One container remains a complete installation without
+   any sidecar. The saved `workers.remoteEnabled` switch still refuses pairing and check-ins when
+   disabled. Turning it off is non-destructive: paired records survive so operators can inspect
+   and revoke them, and re-enabling restores them without a re-pair.
 
    - **Versioned worker protocol and explicit ownership: started.** Define a platform-neutral
      contract before either app: registration, capability discovery, heartbeats, leases, progress,
@@ -1069,14 +1075,44 @@ the replacement workflow is trustworthy.
       chosen quality and its evidence recorded against the job as they are today.
 
 
+14. **Perceptual quality for audio and still images: planned, researched 2026-10-01.** Add
+    understandable, optional quality evidence alongside the existing structural, timing,
+    loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
+    introduce enforced gates only after the metric, coverage and threshold policy are proved.
+    The [research and implementation plan](development/perceptual-audio-image-quality-plan.md)
+    records the sources, tradeoffs and platform qualification still needed.
+    Track delivery in [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
+
+    - **Image direction:** prefer SSIMULACRA2 for SDR compression checks; compare against the
+      current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
+      Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
+      HDR or transparent-image fidelity from one perceptual score.
+    - **Audio direction:** implement Google's newer Zimtohrli, selected by the operator after
+      research. Qualify native packaging, runtime and coverage using free speech, music,
+      mixed soundtracks and stereo/5.1 fixtures with actual Opus/AAC/MP3 encodes. ViSQOL is
+      an optional offline comparator, not a required shipped dependency or runtime fallback.
+      This selection does not claim a universal benchmark winner. Mono aggregation must not hide
+      missing/swapped channels or override timing, loudness and clipping checks.
+    - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
+      additive/idempotent evidence storage and a versioned worker capability/evidence contract.
+      Strict sidecar-only verification must complete the required metric on the worker, with
+      no server fallback. New per-library reporting starts off; existing saved choices survive.
+    - **Evidence to call it complete:** real good/bad encodes and rollback/cancellation/resource
+      tests on this Mac, PICARD, Quark, Riker and final supported container images; offline
+      installer/bundle and parity checks; a second-order review of alignment, sampling, colour
+      and channel preparation; clear UI/tooltips separating unmeasured, measured and failed.
+      Thresholds are explicit policies, not a conversion from VMAF or SSIM's numeric scale.
+      No listening-panel programme or promised release date is required.
+
 ## Guiding principles
 
 - Safety beats savings.
 - No original file is deleted until verification has passed.
 - Every destructive action must have a rollback path.
-- Defaults should be conservative and understandable. One recorded exception stands: Adaptive
-  per-title VMAF defaults on for new video re-encode libraries while still labelled Experimental,
-  for the reasons given under adaptive per-title VMAF quality targeting above.
+- Defaults should be conservative and understandable. Adaptive per-title VMAF defaults on for
+  new video re-encode libraries while still labelled Experimental. Fresh installations also
+  enable remote workers with strict verification and explicit pairing. Both decisions and
+  their upgrade behavior are recorded in their roadmap entries above.
 - The app should feel familiar to Docker media-stack users.
 - One container should be enough for normal use.
 

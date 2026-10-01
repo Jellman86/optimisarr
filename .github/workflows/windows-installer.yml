@@ -29,8 +29,23 @@ jobs:
         run: python scripts/sidecar_release_version.py
       - run: dotnet build sidecars/windows/Optimisarr.Sidecar.slnx -c Release -warnaserror
       - run: dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build
-      - run: ./sidecars/windows/installer/build.ps1
-      - run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName
+      - run: ./sidecars/windows/installer/test-evidence.ps1
+      - run: ./sidecars/windows/installer/build.ps1 -BuildUpgradeTest
+      - name: Exercise the bundled audio verifier and spectrogram
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'optimisarr-audio-tools'
+          ./sidecars/windows/scripts/fetch-ffmpeg.ps1 -Destination $tools -Force
+          $env:OPTIMISARR_PREVIEW_FFMPEG = Join-Path $tools 'ffmpeg.exe'
+          dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build --filter Native_ffmpeg
+      - id: smoke
+        run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName -UpgradeInstaller sidecars/windows/artifacts/upgrade-test/OptimisarrSidecar-upgrade-test.msi
+      - name: Verify installer evidence is retained
+        if: always() && (steps.smoke.outcome == 'success' || steps.smoke.outcome == 'failure')
+        run: |
+          $evidence = @(Get-ChildItem $env:RUNNER_TEMP -Directory -Filter 'optimisarr-install-test-*')
+          if ($evidence.Count -ne 1 -or !(Test-Path (Join-Path $evidence[0].FullName 'install.log'))) {
+            throw 'Installer evidence is missing from the uploaded runner temporary directory.'
+          }
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -83,8 +83,25 @@ current AppKit and WPF views with isolated fixture data; no live worker is conta
 
 The Windows tray now samples a small local source frame only while its activity panel is visible.
 The [fallback fixture](../../images/optimisarr-sidecar-windows-preview-fallback.png) shows the
-labelled state when video cannot be decoded or the job is audio-only.
+labelled state when a source preview cannot be decoded. Standalone audio now has its own measured spectrogram.
 
 See [the native comparison](native.html) for light/dark activity and Preferences views. The
 [original design studies](index.html) remain historical mockups with proposed controls, using a
 fabricated geometric scene in place of real media artwork. They are not evidence of shipped features.
+
+## Audio monitor
+
+The audio view keeps the Compact Monitor typography, card texture, colours and
+hover shadows. Its distinguishing element is a full-width measured source spectrum
+with log-frequency and time labels, rather than a film thumbnail or decorative EQ
+bars. It appears in the active card without opening details; missing samples have
+an explicit waiting state. Preview data never contributes to verification.
+
+![Mac audio monitor with generated chirp](../../images/optimisarr-sidecar-macos-audio.png)
+
+![Windows audio monitor with generated chirp](../../images/optimisarr-sidecar-windows-audio.png)
+
+Light-theme captures and the Linux phone view are retained alongside these images.
+The visual review removed empty video thumbnails and duplicate Mac spectra, checked
+frequency/time labels and panel bounds, and corrected the Linux workflow wording
+so it no longer implies VMAF applies to music or repeats media checks on the server.

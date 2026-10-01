@@ -50,6 +50,11 @@ public sealed record MediaProbeResult(
     double? ContainerStartSeconds = null,
     string? ColorRange = null)
 {
+    /// <summary>Codec names in subtitle-relative order; null entries retain unknown streams.</summary>
+    public IReadOnlyList<string?> SubtitleCodecs { get; init; } = [];
+    /// <summary>Absolute stream indexes in the same subtitle-relative order, when reported.</summary>
+    public IReadOnlyList<int?> SubtitleStreamIndexes { get; init; } = [];
+
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
             0, 0, Array.Empty<string?>(), false, false, false, 0, 0, null,
@@ -191,6 +196,8 @@ public sealed class MediaProbeService : IMediaProbeService
         var audioTracks = new List<AudioTrackInfo>();
         var subtitleCount = 0;
         var subtitleLanguages = new List<string?>();
+        var subtitleCodecs = new List<string?>();
+        var subtitleStreamIndexes = new List<int?>();
         var hasImageSubtitles = false;
         var maxAudioChannels = 0;
         var maxAudioSampleRate = 0;
@@ -304,6 +311,10 @@ public sealed class MediaProbeService : IMediaProbeService
                         break;
                     case "subtitle":
                         subtitleCount++;
+                        subtitleCodecs.Add(codecName);
+                        subtitleStreamIndexes.Add(stream.TryGetProperty("index", out var subtitleIndex)
+                            && subtitleIndex.ValueKind == JsonValueKind.Number
+                            && subtitleIndex.TryGetInt32(out var index) && index >= 0 ? index : null);
                         subtitleLanguages.Add(ReadLanguageTag(stream));
                         if (SubtitleClassifier.IsImageBased(codecName))
                         {
@@ -358,7 +369,7 @@ public sealed class MediaProbeService : IMediaProbeService
             null,
             videoFrameRate,
             containerStart,
-            colorRange);
+            colorRange) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes };
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still

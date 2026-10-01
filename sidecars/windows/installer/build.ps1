@@ -2,7 +2,8 @@
 param(
     [string] $Version = '',
     [string] $OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts'),
-    [string] $Python = 'python'
+    [string] $Python = 'python',
+    [switch] $BuildUpgradeTest
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -74,6 +75,15 @@ https://github.com/Jellman86/optimisarr/releases/tag/v${Version}
     Assert-Exit 'MSI build and validation'
     (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($msi) | Set-Content "$msi.sha256"
     Write-Host "Built $msi"
+    if ($BuildUpgradeTest) {
+        # A separate ProductCode exercises major upgrade rather than repair. Keep this
+        # fixture outside the distributable artifact glob and never publish it.
+        $upgradeDirectory = Join-Path $output 'upgrade-test'
+        New-Item -ItemType Directory -Force $upgradeDirectory | Out-Null
+        $upgradeMsi = Join-Path $upgradeDirectory 'OptimisarrSidecar-upgrade-test.msi'
+        & $wix build (Join-Path $PSScriptRoot 'Package.wxs') $generated -arch x64 -ext WixToolset.UI.wixext -d "Version=$Version" -d "Payload=$payload" -d "LicenseRtf=$licensePath" -o $upgradeMsi
+        Assert-Exit 'Upgrade fixture build and validation'
+    }
 }
 finally {
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue

@@ -39,6 +39,10 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Code signing policy](../CODE_SIGNING_POLICY.md) - signed Windows release scope, approvals, privacy and verification.
 - [Support](../SUPPORT.md)
 - [Contributing](development/contributing.md)
+- [Full application review prompt](development/application-review-prompt.md) - a repeatable, evidence-led cross-platform review.
+- [VMAF v1 and NVIDIA plan](development/vmaf-v1-and-nvidia-plan.md) - implemented SDR model policy, hardware evidence and remaining complete-CUDA feasibility work; installations change only when updated.
+- [Perceptual audio and image quality plan](development/perceptual-audio-image-quality-plan.md) - researched candidates, worker implementation sequence and evidence needed before optional gates; planned, not shipped.
+- [Application review](reviews/2026-09-30-full-application-review.md) and [tested mitigations](reviews/2026-10-01-review-mitigations.md).
 - [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.
 
 ## UI Map

@@ -1,16 +1,21 @@
 # VMAF model study
 
-Production remains on v0.6.1. The [shadow-scoring decision](vmaf-shadow-decision.md) records the
-September 2026 calibration result and the opt-in collection mode for real encoded candidates.
+New ordinary SDR jobs use v1.0.16; HDR/HFR/conversions and started legacy jobs retain v0.6.1.
+The [shadow-scoring decision](vmaf-shadow-decision.md) records the historical September 2026
+comparison and opt-in collection mode for real encoded candidates.
 
-Optimisarr's quality gates (harmonic mean, fifth percentile, catastrophic floor) and every
-calibration were tuned on Netflix's `vmaf_v0.6.1` model (`vmaf_4k_v0.6.1` for UHD). A different
-model scores the same pictures on its own scale. VMAF v1 (libvmaf 3.2.0 and later), for example,
-scores a lightly noisy clip about four points lower than v0.6.1. Switching models without restating
-the gates would silently make every library stricter or more lenient.
+Optimisarr's quality gates (harmonic mean, fifth percentile, catastrophic floor) were chosen while
+using Netflix's `vmaf_v0.6.1` model (`vmaf_4k_v0.6.1` for UHD). There was no subjective study
+calibrating those preset thresholds. Per-title encoder calibration against a chosen threshold is
+a different operation and does not validate the threshold itself. Netflix says v1's score
+scale was calibrated to remain broadly consistent with v0; better sensitivity can still change
+individual scores and verdicts. A lower score can describe a real defect that v0 missed.
 
-The study harness measures the same encodes under both models so the gates can be restated from
-evidence rather than guessed.
+The study harness measures the same encodes under both models to locate differences for review.
+Its fitted conversions and legacy-verdict checks are diagnostics, not authority for choosing v1
+gates. The [practical v1 migration and NVIDIA plan](vmaf-v1-and-nvidia-plan.md) starts with existing
+numerical thresholds, validates the implementation automatically and investigates concrete
+anomalies. It does not require a new subjective study or preservation of v0 verdicts.
 
 ## What it runs
 
@@ -19,7 +24,7 @@ For each source, the harness:
 1. probes it and plans the three 40-second adaptive sample windows, as the server does;
 2. encodes each window at every quality on the ladder with the server's own sample encode command;
 3. scores every clip twice with the server's own measurement service, including its per-window
-   alignment: once with the model the server uses today and once with the candidate model.
+   alignment: once with the explicit legacy baseline and once with the v1 candidate model.
 
 The encoded bytes and alignment are identical. The baseline retains its established preparation; v1 measures SDR at 10-bit precision and passes the actual encoded width, height and bit depth to CAMBI. Both use the reference picture dimensions. See [Netflix’s v1 model guidance](https://github.com/Netflix/vmaf/blob/master/resource/doc/models_v1.md). These results must not be mixed with earlier 8-bit v1 studies.
 
@@ -60,7 +65,7 @@ a different candidate model. Encoded clips are kept and reused only when their c
 
 `--out DIR --report-from DIR/scores.csv` regenerates a report without measuring. It checks pair integrity but cannot establish the original requested coverage; retain the original `run.json` as the completion record. Do not combine studies with different preparation policies or duplicate pairs.
 
-The report also fits conservative gates with each source held out: the source being evaluated never contributes to its own threshold. Every training fold needs both passing and failing examples. A candidate fails this regression check if it accepts any legacy failure or rejects more than 20% of legacy passes. This is an explicit engineering criterion, not a subjective quality claim or automatic permission to change production gates. Multiple episodes of one title still need a separate review of title independence.
+The report also fits conservative gates with each source held out: the source being evaluated never contributes to its own threshold. Every training fold needs both passing and failing examples. A candidate fails this legacy-agreement check if it accepts any legacy failure or rejects more than 20% of legacy passes. This describes the existing diagnostic's implementation, not a perceptual migration requirement or permission to change production gates. Its `UnsafeAccepts` field means accepted legacy failures; it does not establish that those pictures are visibly unacceptable. Multiple episodes of one title still need a separate review of title independence.
 
 ## What makes a study good enough to switch models
 

@@ -8,6 +8,23 @@ namespace Optimisarr.Tests;
 
 public sealed class QueueDispatcherSafetyTests
 {
+    [Fact]
+    public void Software_decode_retry_keeps_source_identity_but_discards_the_previous_verdict()
+    {
+        var job = new Job
+        {
+            SourceSha256 = new string('a', 64), VerifiedSourceSha256 = new string('a', 64),
+            VerifiedOutputSha256 = new string('b', 64), VerificationPassed = false,
+            VerifiedAt = DateTimeOffset.UtcNow, OutputSizeBytes = 100
+        };
+        QueueDispatcher.ResetForSoftwareDecode(job, DateTimeOffset.UtcNow);
+        Assert.Equal(new string('a', 64), job.SourceSha256);
+        Assert.Null(job.VerifiedSourceSha256);
+        Assert.Null(job.VerifiedOutputSha256);
+        Assert.Null(job.VerificationPassed);
+        Assert.Null(job.VerifiedAt);
+    }
+
     [Theory]
     [InlineData(0, 0, true)]
     [InlineData(1, 0, false)]

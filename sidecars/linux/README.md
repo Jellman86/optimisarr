@@ -39,3 +39,18 @@ prints JSON capabilities without pairing. The
 `--worker-command '["dotnet","/absolute/path/Optimisarr.Sidecar.Linux.dll"]'`
 and `--worker-encoder hevc_qsv` (or `hevc_vaapi`). It creates disposable identities
 and test media. Production library paths are never test fixtures.
+
+## NVIDIA acceptance
+
+The published Linux container has separate [HEVC NVENC hardware evidence](../../docs/engineering/hardware-validation/2026-09-30-linux-nvenc.md)
+on an RTX 4070, including strict worker verification, CUDA decoding, RAM cleanup
+and independent output measurements. Native Windows results are separate coverage.
+
+## Audio jobs
+
+Protocol 6 supports standalone AAC, Opus and MP3 jobs using the shared worker core.
+Audio requires only its proved audio encoder, not a video encoder or VMAF backend.
+Strict audio verification uses the encoding FFmpeg for loudness/true-peak checks.
+The dashboard shows a labelled, measured source spectrogram while viewed. See the
+[worker guide](../../docs/setup/remote-workers.md#standalone-audio) for placement,
+verification, preview limits and cover-art restrictions.

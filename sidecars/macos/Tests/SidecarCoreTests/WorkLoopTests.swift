@@ -25,6 +25,43 @@ private let serverCommand: [String] = [
 
 @Suite("Assignment command contract")
 struct AssignmentCommandTests {
+    @Test("only declared primary H.264 range operations are accepted")
+    func acceptsDeclaredRange() throws {
+        for (range, flag) in [("tv", "0"), ("pc", "1")] {
+            let arguments = ["-i", "{{input}}", "-color_range:v:0", range,
+                "-bsf:v:0", "h264_metadata=video_full_range_flag=" + flag, "{{output}}.mp4"]
+            let command = try AssignmentCommand.validate(arguments, outputExtension: "mp4")
+            #expect(command.arguments == arguments)
+        }
+    }
+
+    @Test("range support cannot enable arbitrary bitstream filters")
+    func rejectsOtherMetadataOperations() {
+        for (option, value) in [
+            ("-color_range:v:0", "unknown"), ("-color_range:v:0", "tv:pc"),
+            ("-bsf:v:0", "h264_metadata=video_full_range_flag=2"),
+            ("-bsf:v:0", "h264_metadata=video_full_range_flag=0,trace_headers"),
+            ("-bsf:v:0", "h264_metadata=sei_user_data=anything"),
+            ("-bsf:v", "h264_metadata=video_full_range_flag=0")
+        ] {
+            #expect(throws: (any Error).self) {
+                try AssignmentCommand.validate(["-i", "{{input}}", option, value, "{{output}}.mp4"], outputExtension: "mp4")
+            }
+        }
+    }
+
+    @Test("indexed subtitle codec overrides are accepted")
+    func indexedSubtitles() throws {
+        _ = try AssignmentCommand.validate(["-i", "{{input}}", "-c:s:0", "ass", "-c:s:12", "copy", "{{output}}.mkv"], outputExtension: "mkv")
+    }
+
+    @Test("malformed subtitle stream specifiers are refused", arguments: ["-c:s:-1", "-c:s:0/../../tmp", "-c:s:0?foo", "-c:s:9999999999999999"])
+    func malformedSubtitle(_ token: String) {
+        #expect(throws: AssignmentCommandError.unknownOption(token)) {
+            _ = try AssignmentCommand.validate(["-i", "{{input}}", token, "ass", "{{output}}.mkv"], outputExtension: "mkv")
+        }
+    }
+
     @Test("a command shaped like the server's is accepted and both tokens are substituted")
     func acceptsServerShape() throws {
         let command = try AssignmentCommand.validate(serverCommand, outputExtension: "mp4")
@@ -615,7 +652,7 @@ struct FakeLeadProbe: CommandRunner {
     var frames: (source: String?, candidate: String?) = (nil, nil)
 
     func run(_ executable: URL, _ arguments: [String]) async -> (exitCode: Int32, output: String) {
-        if arguments.contains("-count_packets") {
+        if arguments.contains("-count_frames") {
             let count = arguments.last!.contains("candidate") ? frames.candidate : frames.source
             return count.map { (0, $0) } ?? (1, "")
         }
@@ -1243,6 +1280,15 @@ struct MeasurementCommandTests {
         #expect(materialised[7] == "/scratch/source")
         #expect(materialised[9].contains("log_path=/scratch/vmaf-0.json"))
         #expect(!materialised.joined(separator: " ").contains("{{"))
+    }
+
+    @Test(arguments: ["{{encodedWidth}}", "{{encodedHeight}}", "{{encodedBitDepth}}"])
+    func candidateFormatCannotChangeOptions(token: String) {
+        let arguments = ["-i", "{{distorted}}", "-i", "{{reference}}", "-threads", token,
+            "-lavfi", "[d][r]libvmaf=log_path={{log}}", "-f", "null", "-"]
+        #expect(throws: MeasurementCommandError.strayPlaceholder(token)) {
+            try MeasurementCommand.validate(arguments)
+        }
     }
 
     @Test("inputs must be the two tokens in libvmaf's order, never a path")

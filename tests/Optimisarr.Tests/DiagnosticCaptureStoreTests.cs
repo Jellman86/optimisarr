@@ -10,6 +10,65 @@ namespace Optimisarr.Tests;
 
 public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
 {
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Valid_reports_retain_numeric_and_named_outcomes_in_current_and_historical_evidence(bool named)
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        if (named) options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        var json = System.Text.Json.JsonSerializer.Serialize(new VerificationReport([
+            new VerificationCheck("Decode health", CheckOutcome.Passed, "Synthetic evidence")]), options);
+        await using var db = Db();
+        var media = new MediaFile { Path = "/synthetic/report.mkv", RelativePath = "report.mkv" };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+        var job = new Job
+        {
+            MediaFileId = media.Id, VerificationReportJson = json,
+            AttemptHistoryJson = System.Text.Json.JsonSerializer.Serialize(new[]
+            {
+                new JobAttemptSnapshot(1, null, null, null, null, _now, true, json,
+                    _now, null, "Completed", "ManualRetry", null, null)
+            })
+        };
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        var session = await new DiagnosticCaptureStore(db).StartAsync(1, job.Id, false, _now, CancellationToken.None);
+        var bundle = await DiagnosticJobBundleQueries.BuildAsync(db, session.Id, job.Id, _now, CancellationToken.None);
+        Assert.NotNull(bundle.Job.CurrentReport);
+        Assert.True(bundle.Job.CurrentReport.Passed);
+        Assert.Equal("Decode health", Assert.Single(bundle.Job.CurrentReport.Checks).Name);
+        Assert.NotNull(Assert.Single(bundle.Attempts).Report);
+        Assert.True(Assert.Single(bundle.Attempts).Report!.Passed);
+    }
+
+    [Theory]
+    [InlineData("{\"checks\":null}")]
+    [InlineData("{\"checks\":[null]}")]
+    [InlineData("{}")]
+    [InlineData("{\"checks\":[]}")]
+    [InlineData("{\"checks\":[{\"name\":\"decode\",\"outcome\":17,\"detail\":\"unknown\"}]}")]
+    [InlineData("{broken")]
+    [InlineData("{\"checks\":[{\"name\":null,\"outcome\":0,\"detail\":\"bad name\"}]}")]
+    public async Task ReviewRegression_null_check_report_does_not_break_bundle(string report)
+    {
+        await using var db = Db();
+        var media = new MediaFile { Path = "/data/review.mkv", RelativePath = "review.mkv" };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+        var job = new Job { MediaFileId = media.Id, VerificationReportJson = report };
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        var session = await new DiagnosticCaptureStore(db).StartAsync(1, job.Id, false, _now, CancellationToken.None);
+        var error = await Record.ExceptionAsync(() => DiagnosticJobBundleQueries.BuildAsync(db, session.Id, job.Id, _now, CancellationToken.None));
+        Assert.Null(error);
+        var bundle = await DiagnosticJobBundleQueries.BuildAsync(db, session.Id, job.Id, _now, CancellationToken.None);
+        Assert.Null(bundle.Job.CurrentReport);
+        Assert.Contains(bundle.Manifest.Omissions, omission => omission.Contains("report"));
+    }
+
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
     private DbContextOptions<OptimisarrDbContext> _options = null!;
     private readonly DateTimeOffset _now = new(2026, 9, 23, 10, 0, 0, TimeSpan.Zero);
@@ -398,8 +457,31 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
 
         await using (var db = Db())
         {
+            var previousLease = await db.JobLeases.SingleAsync(lease => lease.Worker!.Name == "Mac");
+            previousLease.VerificationWorkJson = "{\"command\":\"Bearer secret-token\"}";
+            previousLease.VerificationContractJson = System.Text.Json.JsonSerializer.Serialize(
+                new RemoteVerificationContract(1, Guid.Parse("e0272676-6247-4d63-900f-6c931b449fe7"), false));
+            previousLease.QualitySourceSha256 = new string('a', 64);
+            previousLease.DeliveredSha256 = new string('b', 64);
+            previousLease.VerificationEvidenceJson = System.Text.Json.JsonSerializer.Serialize(
+                new RemoteVerificationEvidence(Guid.Parse("e0272676-6247-4d63-900f-6c931b449fe7"),
+                    new string('a', 64), new string('b', 64),
+                    SourceVideo: new TimestampCheckResult(true, 0, "Bearer secret-token", 1290.04, 32250)));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = Db())
+        {
             var bundle = await DiagnosticJobBundleQueries.BuildAsync(
                 db, sessionId, jobId, _now.AddMinutes(40), CancellationToken.None);
+            Assert.Equal(2, bundle.Manifest.SchemaVersion);
+            var previousEvidence = bundle.Leases[0].VerificationEvidence;
+            Assert.Equal("Available", previousEvidence.State);
+            Assert.Equal(1290.04, previousEvidence.SourceVideo!.LastPresentationSeconds);
+            Assert.Equal("Missing", bundle.Leases[1].VerificationEvidence.State);
+            Assert.Equal("CurrentWorkerRegistration", bundle.Leases[0].WorkerIdentitySource);
+            Assert.NotNull(bundle.Leases[0].VerificationWorkSha256);
+            Assert.DoesNotContain("secret-token", System.Text.Json.JsonSerializer.Serialize(bundle));
             Assert.Equal(2, bundle.Job.Attempt);
             Assert.Equal("AwaitingVerification", bundle.Job.Status);
             Assert.Equal("hevc_nvenc", bundle.Job.VideoEncoder);

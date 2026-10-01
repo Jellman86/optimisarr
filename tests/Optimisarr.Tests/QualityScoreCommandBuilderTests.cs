@@ -5,6 +5,28 @@ namespace Optimisarr.Tests;
 
 public sealed class QualityScoreCommandBuilderTests
 {
+    // Preserve coverage of persisted legacy jobs and GPU graphs. V1 defaults are tested in VmafProductionPolicyTests.
+    private static QualityMeasurementContext Legacy(QualityMeasurementContext context) => context with
+    {
+        ModelVersion = QualityScoreCommandBuilder.ModelVersionFor(context.ReferenceCrop?.Width ?? context.ReferenceWidth,
+            context.ReferenceCrop?.Height ?? context.ReferenceHeight, referenceIsHdr: true)
+    };
+
+    [Fact]
+    public void Equal_frame_vc1_windows_decode_sequentially_and_select_absolute_frame_numbers()
+    {
+        var context = Legacy(new QualityMeasurementContext(576, 432, false, false,
+            ReferenceStartSeconds: 635, DistortedStartSeconds: 635, MeasureDurationSeconds: 10,
+            ReferenceFrameRate: 25, PairFramesByNumber: true, ReferenceVideoCodec: "vc1"));
+        var command = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json", context, 2);
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.Contains("trim=start_frame=15875:end_frame=16125", command.FilterGraph);
+        Assert.Contains("sequential", command.Preprocessing);
+        var ordinary = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json",
+            context with { ReferenceVideoCodec = "h264" }, 2);
+        Assert.Contains("-ss", ordinary.Arguments);
+    }
+
     [Fact]
     public void Sdr_measurement_aligns_timebases_normalises_range_and_scales_bicubic()
     {
@@ -12,7 +34,7 @@ public sealed class QualityScoreCommandBuilderTests
             distortedPath: "/work/output.mkv",
             referencePath: "/data/original.mkv",
             logPath: "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false)),
             threads: 4);
 
         Assert.Equal("vmaf_v0.6.1", command.ModelVersion);
@@ -38,9 +60,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                FrameSubsample: 4),
+                FrameSubsample: 4)),
             threads: 2);
 
         Assert.Contains("n_subsample=4", command.FilterGraph);
@@ -52,7 +74,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", @"C:\Users\scott\AppData\Local\Temp\score.json",
-            new QualityMeasurementContext(1920, 1080, false, false), threads: 4);
+            Legacy(new QualityMeasurementContext(1920, 1080, false, false)), threads: 4);
 
         Assert.Contains(@"log_path=C\\:/Users/scott/AppData/Local/Temp/score.json", command.FilterGraph);
     }
@@ -62,9 +84,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                Acceleration: VmafAcceleration.Cuda),
+                Acceleration: VmafAcceleration.Cuda)),
             threads: 2);
 
         Assert.Equal(2, command.Arguments.Count(argument => argument == "-hwaccel"));
@@ -80,9 +102,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                Acceleration: VmafAcceleration.Qsv),
+                Acceleration: VmafAcceleration.Qsv)),
             threads: 2);
 
         Assert.Equal("qsv=hw", ValueAfter(command.Arguments, "-init_hw_device", occurrence: 1));
@@ -97,9 +119,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                Acceleration: VmafAcceleration.Vaapi),
+                Acceleration: VmafAcceleration.Vaapi)),
             threads: 2);
 
         Assert.Equal("/dev/dri/renderD128", ValueAfter(command.Arguments, "-vaapi_device", occurrence: 1));
@@ -112,9 +134,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: true, HdrConvertedToSdr: true,
-                Acceleration: VmafAcceleration.Cuda),
+                Acceleration: VmafAcceleration.Cuda)),
             threads: 2);
 
         Assert.DoesNotContain("-hwaccel", command.Arguments);
@@ -130,9 +152,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                FrameSubsample: frameSubsample),
+                FrameSubsample: frameSubsample)),
             threads: 1));
     }
 
@@ -141,7 +163,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false)),
             threads: 4);
 
         // -stats makes ffmpeg emit per-frame "time=" progress even at the error log level, which
@@ -154,10 +176,10 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 300, ReferenceStartSeconds: 300, MeasureDurationSeconds: 120,
-                ReferenceFrameRate: 24000d / 1001d),
+                ReferenceFrameRate: 24000d / 1001d)),
             threads: 4);
 
         var args = command.Arguments;
@@ -177,10 +199,10 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mp4", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 314, ReferenceStartSeconds: 314, MeasureDurationSeconds: 40,
-                ReferenceFrameRate: 480510000d / 20041271d),
+                ReferenceFrameRate: 480510000d / 20041271d)),
             threads: 4);
 
         // Accurate input seeking can retain the first source/output pictures at different offsets
@@ -201,13 +223,13 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
                 ReferenceFrameRate: 24000d / 1001d,
                 // The original's audio leads its video by 21 ms; the encode's video starts 41 ms
                 // into its container. Frame for frame the pictures are the same.
-                ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041),
+                ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041)),
             threads: 4);
         var args = command.Arguments;
         // 113 s falls between two reference pictures. Seeking to the nearest picture instant
@@ -230,11 +252,11 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "{{distorted}}", "{{reference}}", "{{log}}",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
                 ReferenceFrameRate: 24000d / 1001d,
-                ReferenceContainerLeadSeconds: 0.021, DistortedShiftToken: "{{distortedShift}}"),
+                ReferenceContainerLeadSeconds: 0.021, DistortedShiftToken: "{{distortedShift}}")),
             threads: 8);
         Assert.Equal("113.008875", ValueAfter(command.Arguments, "-ss", occurrence: 1));
         Assert.Contains("[0:v]settb=AVTB,setpts=PTS-{{distortedShift}}*1000000,fps=", command.FilterGraph);
@@ -250,12 +272,12 @@ public sealed class QualityScoreCommandBuilderTests
         // is compared with frame k instead.
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
                 ReferenceFrameRate: 24000d / 1001d,
                 ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041,
-                PairFramesByNumber: true),
+                PairFramesByNumber: true)),
             threads: 4);
 
         Assert.DoesNotContain("fps=fps", command.FilterGraph);
@@ -284,12 +306,12 @@ public sealed class QualityScoreCommandBuilderTests
         // the offset it needed. After numbering, one step is exactly one frame.
         var command = QualityScoreCommandBuilder.Build(
             "{{distorted}}", "{{reference}}", "{{log}}",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
                 ReferenceFrameRate: 24000d / 1001d,
                 ReferenceContainerLeadSeconds: 0.021, DistortedShiftToken: "{{distortedShift}}",
-                PairFramesByNumber: true),
+                PairFramesByNumber: true)),
             threads: 8);
 
         Assert.Contains(
@@ -306,7 +328,7 @@ public sealed class QualityScoreCommandBuilderTests
             new(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: cutClip ? null : 118, ReferenceStartSeconds: 118,
                 MeasureDurationSeconds: duration, ReferenceFrameRate: rate,
-                DistortedIsCutClip: cutClip, PairFramesByNumber: pair);
+                DistortedIsCutClip: cutClip, PairFramesByNumber: pair, ModelVersion: QualityScoreCommandBuilder.LegacyHdModelVersion);
         string Graph(QualityMeasurementContext context) => QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json", context, threads: 4).FilterGraph;
 
@@ -320,20 +342,20 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var equal = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
                 ReferenceFrameRate: 24000d / 1001d,
-                ReferenceContainerLeadSeconds: 0.041, DistortedContainerLeadSeconds: 0.041),
+                ReferenceContainerLeadSeconds: 0.041, DistortedContainerLeadSeconds: 0.041)),
             threads: 4);
         Assert.DoesNotContain("setpts=PTS-0", equal.FilterGraph);
 
         var unknown = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
-                ReferenceFrameRate: 24000d / 1001d),
+                ReferenceFrameRate: 24000d / 1001d)),
             threads: 4);
         Assert.Equal("113", ValueAfter(unknown.Arguments, "-ss", occurrence: 1));
         Assert.Contains("trim=start=5:duration=40", unknown.FilterGraph);
@@ -344,10 +366,10 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 ReferenceFrameRate: 25,
-                ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041),
+                ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041)),
             threads: 4);
         Assert.DoesNotContain("setpts=PTS-0.02", command.FilterGraph);
         Assert.DoesNotContain("-ss", command.Arguments);
@@ -358,9 +380,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                ReferenceFrameRate: 25),
+                ReferenceFrameRate: 25)),
             threads: 4);
 
         // Without a bounded seek, MP4 and Matroska may expose the same first picture at different
@@ -379,9 +401,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                ReferenceFrameRate: frameRate),
+                ReferenceFrameRate: frameRate)),
             threads: 1));
     }
 
@@ -390,9 +412,9 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                DistortedStartSeconds: 3, ReferenceStartSeconds: 3, MeasureDurationSeconds: 40),
+                DistortedStartSeconds: 3, ReferenceStartSeconds: 3, MeasureDurationSeconds: 40)),
             threads: 4);
 
         Assert.DoesNotContain("-ss", command.Arguments);
@@ -406,7 +428,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false)),
             threads: 4);
 
         Assert.DoesNotContain("-ss", command.Arguments);
@@ -418,7 +440,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(3840, 2160, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            Legacy(new QualityMeasurementContext(3840, 2160, ReferenceIsHdr: false, HdrConvertedToSdr: false)),
             threads: 2);
 
         Assert.Equal("vmaf_4k_v0.6.1", command.ModelVersion);
@@ -430,10 +452,10 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/preview.mkv", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(
+            Legacy(new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 ReferenceStartSeconds: 1770,
-                ReferenceFrameRate: 24000d / 1001d),
+                ReferenceFrameRate: 24000d / 1001d)),
             threads: 2);
 
         var firstInput = IndexOf(command.Arguments, "-i", occurrence: 1);
@@ -457,7 +479,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(3840, 1608, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            Legacy(new QualityMeasurementContext(3840, 1608, ReferenceIsHdr: false, HdrConvertedToSdr: false)),
             threads: 2);
 
         Assert.Equal("vmaf_4k_v0.6.1", command.ModelVersion);
@@ -468,7 +490,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: true, HdrConvertedToSdr: true),
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: true, HdrConvertedToSdr: true)),
             threads: 1);
 
         Assert.Equal("HDR reference tone-mapped to SDR", command.Preprocessing);
@@ -482,7 +504,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         var command = QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: true, HdrConvertedToSdr: false),
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: true, HdrConvertedToSdr: false)),
             threads: 1);
 
         Assert.Equal("HDR (matching transfer characteristics)", command.Preprocessing);
@@ -498,7 +520,7 @@ public sealed class QualityScoreCommandBuilderTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => QualityScoreCommandBuilder.Build(
             "output.mkv", "original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(width, height, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            Legacy(new QualityMeasurementContext(width, height, ReferenceIsHdr: false, HdrConvertedToSdr: false)),
             threads: 1));
     }
 
@@ -539,8 +561,8 @@ public sealed class QualityScoreCommandBuilderTests
             distortedPath: "/work/output.mkv",
             referencePath: "/data/original.mkv",
             logPath: "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(1920, 800, 0, 140)),
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(1920, 800, 0, 140))),
             threads: 4);
 
         Assert.Contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,crop=1920:800:0:140,scale=1920:800:", command.FilterGraph);
@@ -558,9 +580,9 @@ public sealed class QualityScoreCommandBuilderTests
         // target rate and is not thinned.
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 ReferenceFrameRate: 30,
-                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(60, 30, 2)),
+                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(60, 30, 2))),
             threads: 4);
 
         Assert.Contains(@"[1:v]select=not(mod(round(t*60)\,2)),settb=AVTB,setpts=PTS-STARTPTS,fps=fps=30", command.FilterGraph);
@@ -575,10 +597,10 @@ public sealed class QualityScoreCommandBuilderTests
         // preparation exactly, and a wrong frame pairing is worse than a slower measurement.
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 Acceleration: VmafAcceleration.Cuda,
                 ReferenceFrameRate: 30,
-                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(60, 30, 2)),
+                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(60, 30, 2))),
             threads: 4);
 
         Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
@@ -591,8 +613,8 @@ public sealed class QualityScoreCommandBuilderTests
         // 3840x1600 is the common cropped cinema master; it is still a 4K viewing picture.
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(3840, 2160, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(3840, 1600, 0, 280)),
+            Legacy(new QualityMeasurementContext(3840, 2160, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(3840, 1600, 0, 280))),
             threads: 4);
 
         Assert.Equal("vmaf_4k_v0.6.1", command.ModelVersion);
@@ -605,9 +627,9 @@ public sealed class QualityScoreCommandBuilderTests
         // the preparation exactly. Same trade HDR already makes.
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
-            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+            Legacy(new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
                 Acceleration: VmafAcceleration.Cuda,
-                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(1920, 800, 0, 140)),
+                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(1920, 800, 0, 140))),
             threads: 4);
 
         Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);

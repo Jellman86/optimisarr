@@ -32,8 +32,10 @@ This safeguard also avoids overwriting a separately managed developer installati
 
 MSI upgrades stop the worker and replace program files. Development previews permit upgrades
 with the same version so a corrected preview can replace the previous build; lower version
-numbers are blocked. Keep the previous MSI if a preview needs to be restored. After an upgrade,
-use **Start worker** (or reboot). Do not upgrade in the middle of work unless handing that job
+numbers are blocked. Keep the previous MSI if a preview needs to be restored. An upgrade starts
+the worker again when its retained `pairing.dat` exists. Fresh installations and unpaired upgrades
+stay stopped until pairing. Drain the worker and wait for its jobs before upgrading: an upgrade
+restarts even a previously stopped paired service. Do not upgrade in the middle of work unless handing that job
 back is acceptable. Uninstall removes program files and service registration but retains
 `%ProgramData%\Optimisarr\Sidecar` and scratch/media data. Pairing storage is restricted to
 Administrators and SYSTEM. Per-user preferences, including the sign-in setting, are user-owned;
@@ -55,11 +57,26 @@ For actual installation/uninstallation, use a disposable elevated Windows VM wit
 sidecar or pairing directory:
 
 ```powershell
-./sidecars/windows/installer/test-install.ps1 -Installer ./sidecars/windows/artifacts/OptimisarrSidecar-0.2.13-win-x64.msi
+./sidecars/windows/installer/test-evidence.ps1
+./sidecars/windows/installer/build.ps1 -BuildUpgradeTest
+./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName -UpgradeInstaller ./sidecars/windows/artifacts/upgrade-test/OptimisarrSidecar-upgrade-test.msi
 ```
 
 The test refuses an existing sidecar, installs silently, checks registration and private runtimes,
-renders the installed UI, checks native popover anchoring, then uninstalls and verifies retained data. The
+renders the installed UI and checks native popover anchoring. It verifies that an unpaired upgrade
+stays stopped, pairs against a loopback fixture using real DPAPI storage, and runs two paired
+upgrades with distinct MSI ProductCodes. Each must restart the service, preserve the pairing file
+byte for byte, and produce an authenticated check-in from the replacement process. The fixture
+always drains the worker and never assigns media work. Finally, uninstall must retain pairing
+and test data. Test credentials are cleaned up on this guarded disposable VM; MSI logs and
+heartbeat evidence remain. CI stores them under its uploaded runner temporary directory;
+failed runs also capture service registration and recent SCM/runtime events before uninstalling.
+The workflow verifies that the installation log exists in the uploaded directory.
+These diagnostics are limited to the guarded disposable test, not installed user machines.
+A separate non-installing regression test simulates startup and diagnostic-provider failures,
+proving that evidence is retained and collection never replaces the original error.
+The upgrade fixture shares the staged payload but lives outside
+published artifact globs. The
 `Windows sidecar installer` GitHub workflow builds and runs this test on a fresh Windows
 runner for relevant pull requests and manual dispatches. The live migration from a manually
 registered service to MSI was tested on a paired Windows PC: installation succeeded, retained

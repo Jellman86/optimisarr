@@ -29,7 +29,7 @@ public sealed class SampleMeasurementAlignmentTests
         MeasureDurationSeconds: 40,
         ReferenceFrameRate: 24000.0 / 1001.0,
         ReferenceContainerLeadSeconds: 0,
-        DistortedIsCutClip: cutClip);
+        DistortedIsCutClip: cutClip, EncodedVideo: new(1440, 1080, 8));
 
     private static string ReferenceBranch(QualityMeasurementContext context) =>
         QualityScoreCommandBuilder
@@ -169,7 +169,7 @@ public sealed class SampleMeasurementAlignmentTests
         var whole = new QualityMeasurementContext(
             ReferenceWidth: 1440, ReferenceHeight: 1080,
             ReferenceIsHdr: false, HdrConvertedToSdr: false,
-            ReferenceFrameRate: 24000.0 / 1001.0);
+            ReferenceFrameRate: 24000.0 / 1001.0, EncodedVideo: new(1440, 1080, 8));
 
         var with = QualityScoreCommandBuilder.Build("d.mkv", "r.mkv", "l.json", whole, 8).FilterGraph;
         var without = QualityScoreCommandBuilder

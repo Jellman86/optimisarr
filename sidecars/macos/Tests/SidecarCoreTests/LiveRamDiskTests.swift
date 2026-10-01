@@ -101,8 +101,11 @@ struct LiveRamDiskTests {
         defer {
             if FileManager.default.fileExists(atPath: path) { disk.destroy() }
         }
-        // Deliberately not destroyed: this is what a crash leaves.
-        RamDisk.sweepStrays()
+        let other = try #require(RamDisk.create(bytes: 32 * 1024 * 1024))
+        defer { other.destroy() }
+        // Exercise the actual sweep without touching a concurrently running sidecar's volumes.
+        RamDisk.sweepStrays(ownedVolumeNames: [disk.mountPoint.lastPathComponent])
+        #expect(FileManager.default.fileExists(atPath: other.mountPoint.path))
 
         #expect(!FileManager.default.fileExists(atPath: path))
     }

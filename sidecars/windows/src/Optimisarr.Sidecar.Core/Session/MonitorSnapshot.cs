@@ -1,8 +1,10 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Sidecar.Core.Session;
 
 /// <summary>A local, credential-free view of the worker for its tray companion.</summary>
 public sealed record MonitorJob(int JobId, string Title, string Encoder, RemoteStage Stage, double? EncodedSeconds,
-    byte[]? PreviewJpeg = null);
+    byte[]? PreviewJpeg = null, MediaKind Kind = MediaKind.Video);
 public sealed record MonitorSnapshot(
     string Machine, string State, string Detail, bool Paused, string? ServerAddress,
     MachineLoad? Load, long? FreeBytes, IReadOnlyList<MonitorJob> Jobs, string? LastOutcome,

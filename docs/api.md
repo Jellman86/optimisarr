@@ -197,7 +197,7 @@ exists in quarantine.
 | `GET` | `/api/diagnostics/capture` | Latest opt-in capture session, or `null`. |
 | `POST` | `/api/diagnostics/capture` | Start a session with `durationHours` (`1`, `24`, `168`, or `null` for until stopped), optional `scopedJobId`, and `includePaths` (default `false`). Returns `409` if another session is active. |
 | `POST` | `/api/diagnostics/capture/{id}/stop` | Stop a session; its evidence remains downloadable until retention removes it. |
-| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. The manifest lists omissions and whether full paths were included. |
+| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. Schema version 2 adds sanitized retained worker timestamp/decode measurements, record availability and hash comparisons. The manifest lists omissions, current-registration identity limits, unrecorded timeline methods and whether full paths were included. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
@@ -262,7 +262,8 @@ Settings fields include:
 }
 ```
 
-`remoteWorkersEnabled` enables the preview worker service when available.
+`remoteWorkersEnabled` controls the worker service when available; fresh installations enable it
+and upgrades preserve existing choices.
 `workerVerificationRequired` requires complete worker verification for newly issued remote
 full-file video assignments. It defaults on for new installations, while upgrades keep their
 previous choice, and is separate from per-library work placement.
@@ -381,7 +382,7 @@ An explicitly disabled VMAF gate keeps the omitted strategy on Fixed, as do non-
 libraries. An explicitly supplied `AdaptiveVmaf` is accepted only when
 `vmafQualityGateEnabled` is `true`; invalid combinations return `400` rather than silently changing
 the requested policy. `workPlacement` accepts `Anywhere` (the default when omitted), `LocalOnly`,
-`PreferWorker`, or `WorkerOnly`, and says where the library's video re-encodes may run once remote
+`PreferWorker`, or `WorkerOnly`, and says where the library's video and audio re-encodes may run once remote
 workers are switched on; it is stored but has no effect while they are off.
 
 Verification fields are owned by each library. The API accepts the complete shape for every media
@@ -586,15 +587,19 @@ The credential is returned exactly once, in the pairing response. Optimisarr sto
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
 outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
 
-Remote workers are a preview: the whole surface exists only when the container starts with
-`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`; without it every route below answers `403` with code
-`workers.unavailable`, and `PUT /api/settings` refuses `remoteWorkersEnabled: true` with `400`.
+Remote workers are available when the existing `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`
+environment variable is unset or explicitly enabled. A false, empty or unrecognised value
+makes worker routes return `403 workers.unavailable`; settings updates that try to newly enable
+workers then return `400`. An unchanged saved enabled choice may be preserved when updating
+other settings, but the deployment override still refuses every worker route. The environment
+variable name is retained for compatibility.
 
-Remote workers are opt-in. While the `workers.remoteEnabled` setting is off — the default, and the
-value any upgrade inherits — `POST /api/workers/pairing-code`, `POST /api/workers/pair`, and
-`POST /api/workers/heartbeat` all answer `403 workers.disabled`. `GET /api/workers` and
-`DELETE /api/workers/{id}` stay available so an operator can still see and remove what is paired
-after switching the feature off.
+Fresh databases start with `workers.remoteEnabled=true` and strict worker verification.
+Upgrades preserve saved choices, including the historical disabled default where a key is
+missing. While the saved switch is off, pairing and heartbeat routes return
+`403 workers.disabled`. `GET /api/workers` and `DELETE /api/workers/{id}` remain available
+when the deployment offers workers, so an operator can inspect or remove retained pairings.
+Availability never creates a pairing or changes a library's placement policy.
 
 Capabilities are named, not numbered. `vmaf` is `None`, `Cpu`, or `Cuda` (case-insensitive on the
 way in; omitting it means the worker claims no VMAF support). An unrecognised name is rejected with
@@ -804,3 +809,13 @@ for durable state; treat hub messages as a convenience stream.
   deliberate retention policy.
 - Do not expose these endpoints directly to the internet; use an authenticated
   reverse proxy.
+
+### Worker audio assignment compatibility
+
+Worker protocol 6 introduces standalone audio assignments. `kind` is the numeric
+`MediaKind` value (`1` video, `2` audio); audio carries `audioEncoder` and a null
+`videoEncoder`. Its quality contract has `measure: false` and no adaptive video
+search. Complete verification contract version `2` is audio; version `1` remains
+video. Audio evidence includes `sourceAudio` and `candidateAudio` packet spans
+rather than video spans. All required evidence is bound to the frozen contract and
+source/candidate hashes. Missing or contradictory evidence fails closed.

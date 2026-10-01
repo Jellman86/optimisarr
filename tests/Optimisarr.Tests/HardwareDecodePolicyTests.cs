@@ -5,6 +5,16 @@ namespace Optimisarr.Tests;
 
 public sealed class HardwareDecodePolicyTests
 {
+    [Theory]
+    [InlineData("High", true)]
+    [InlineData("Main", true)]
+    [InlineData("Constrained Baseline", true)]
+    [InlineData("High 4:4:4 Predictive", false)]
+    [InlineData("High 10", false)]
+    [InlineData(null, false)]
+    public void A_worker_only_hardware_decodes_profiles_covered_by_its_round_trip(string? profile, bool expected) =>
+        Assert.Equal(expected, HardwareDecodePolicy.SupportsProvedWorkerSource("h264", "yuv420p", profile));
+
     [Fact]
     public void Clipped_disposable_video_uses_software_decode_for_frame_exact_comparison()
     {

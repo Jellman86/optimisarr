@@ -252,8 +252,8 @@ worker's result; this is test evidence, not production server verification.
 
 This does not make the server idle. Scanning, initial probing, assignment preparation (including
 filter planning), transfers and hashes, database updates, policy evaluation and replacement still
-run there. Preview, calibration, audio-only and image jobs retain their existing local paths.
-The setting defaults off for compatibility with protocol-1 workers. Preserve an already selected
+run there. Preview, calibration, remux and image jobs retain their existing local paths.
+Fresh installations default to strict worker verification; the harness fleet tier also defaults to strict mode. Existing saved policies are preserved. Preserve an already selected
 strict policy during upgrades; unsupported workers cannot claim its assignments.
 
 ## What is asserted
@@ -303,3 +303,161 @@ Run harness self-tests with:
 ```bash
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 ```
+
+
+### Investigating frame pairing on retained files
+
+Use this read-only diagnostic when VMAF has very low individual frames despite passing decode and
+timeline checks. It compares independently sought windows with absolute decoded-frame windows,
+records both packet and decoded-frame counts, and saves commands, stderr and raw VMAF JSON.
+It supports SDR files with matching dimensions; scores are diagnostic and never authorize replacement.
+Use retained candidates or disposable copies, and give each run a new output directory.
+
+```bash
+python3 scripts/diagnose_frame_pairing.py \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
+  --source /evidence/source.mkv --candidate /evidence/candidate.mp4 \
+  --starts 123 635 1147 --seconds 10 --root /evidence/pairing-run-1
+```
+
+VC-1 Matroska regression: a retained equal-frame candidate scored 9.49 in a sought 10-second
+window and 94.25 when decoded sequentially. Three absolute-frame windows scored 94–95.
+The shared production command therefore avoids input seeking for complete, equal-frame VC-1
+comparisons. Other sources and disposable cut clips keep their existing policies. Sequential
+comparison costs more decoding time, especially for late windows.
+
+A separate Mac candidate had 32,283 packets but only 32,282 decoded frames. Packet equality must
+not select frame-number pairing. That candidate remained below the quality gate after a diagnostic
+one-frame alignment check, so this case does not justify lowering thresholds or automatic replacement.
+
+Retries now retain up to eight previous attempt reports. The failed-job log API also exposes
+worker window summaries and planned commands, or the observed and allowed size for budget failures.
+Legacy worker quality reports do not identify which pairing command they selected; diagnostics label
+that uncertainty explicitly. These summaries supplement the verification report rather than changing
+its verdict.
+
+### Subtitle container regression
+
+Use `--regression subtitle-mux` for a focused matrix of MP4 timed-text subtitles converted to
+Matroska ASS. The harness generates two Unicode subtitle tracks with language tags and lossless
+audio, verifies the complete output, independently compares subtitle text and timing, and exercises
+replacement and rollback. Fleet mode repeats this on each selected worker under strict sidecar
+verification. Per-track subtitle codec options require protocol 4; update sidecars alongside the
+server. Earlier protocols still receive ordinary jobs.
+
+```bash
+python3 scripts/media_acceptance.py --regression subtitle-mux \
+  --native src/Optimisarr.Api/bin/Release/net10.0/Optimisarr.Api.dll \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
+  --root /tmp/optimisarr-subtitle-regression-001
+```
+
+### Fractional timestamp regression
+
+Use `--regression fractional-timing` to encode a freely generated 24000/1001 H.264 Matroska
+fixture to MP4. Its video starts 21 ms after a subtitle cue at zero, and the container stores
+millisecond timestamps. Rounding these timestamps to the encoder's default frame timebase
+previously caused QSV duplicate-DTS failures and NVENC duplicate presentation timestamps.
+The fixture has no audio so audio priming and padding cannot disguise the picture-timing result;
+the normal matrix continues to check decoded lossless audio hashes.
+
+The focused run checks complete verification, every decoded picture, timestamp cadence,
+independent v0 VMAF, replacement and rollback. Fleet mode repeats it under strict sidecar
+verification on each selected worker. Container CI runs the focused CPU-to-MP4 regression
+against the final image and retains its report beside the ordinary media acceptance evidence.
+Use `--fixture-variant fractional` to include it in the
+normal Matroska matrix too. Frame-rate caps and the constant-rate AV1 NVENC timestamp exception
+are separate paths and retain their existing behavior.
+
+```bash
+python3 scripts/media_acceptance.py --regression fractional-timing \
+  --native src/Optimisarr.Api/bin/Release/net10.0/Optimisarr.Api.dll \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe --fixture-seconds 16 \
+  --root /tmp/optimisarr-fractional-regression-001
+```
+
+### Overlapping subtitle regression
+
+Use `--regression subtitle-overlap` to test MP4 planning with simultaneous English cues,
+partially overlapping Japanese cues and a compatible French track. Keeping all three must
+select Matroska and preserve every cue. Keeping only French must produce MP4 timed text.
+Both cases compare exact cue text, timestamps, languages and track order, perform full
+verification and independent VMAF/frame checks, and exercise replacement and rollback.
+The generated fixture contains no private media. CI runs both cases against the final image.
+
+```bash
+python3 scripts/media_acceptance.py --regression subtitle-overlap \
+  --native /build/server/Optimisarr.Api.dll --ffmpeg /tools/ffmpeg --ffprobe /tools/ffprobe \
+  --local-encoder libx265 --fixture-seconds 16 \
+  --root /tmp/optimisarr-subtitle-overlap-001
+```
+
+Add the fleet worker arguments described above to exercise strict sidecar verification.
+The server reads subtitle packet timestamps during planning, without decoding media or
+collecting cue text. It stops when an incompatible kept timeline is proved. Missing timing
+selects Matroska conservatively; a failed probe stops planning. Tracks removed by the
+library's language rules do not force a fallback. This uses existing sidecar protocol 4
+commands and leaves production verification gates unchanged.
+
+### Copied ALAC tail regression
+
+Use `--regression alac-copy` to check three generated-media output paths: Matroska ALAC must stay
+in Matroska when audio is copied; ALAC encoded directly into MP4 must remain eligible for MP4
+copy; and removing the ALAC track from a mixed FLAC/ALAC Matroska source must allow MP4.
+A fourth case excludes an unchanged fallback remux before queueing, with its reason and original intact.
+Each output case verifies the planned container, kept codecs/languages, complete verification,
+independent picture quality/cadence, exact decoded PCM hashes, size savings, replacement and
+rollback. Decoded-audio evidence is saved beside the quality report. Edit lists remain enabled.
+
+```bash
+python3 scripts/media_acceptance.py --regression alac-copy \
+  --native src/Optimisarr.Api/bin/Release/net10.0/Optimisarr.Api.dll \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
+  --local-encoder libx265 --fixture-seconds 16 \
+  --root /tmp/optimisarr-alac-copy-001
+```
+
+Fleet arguments exercise the same cases with strict worker verification. Final-container CI
+runs all four. The fixture has 768,000 audio samples at 48 kHz over 16 seconds, with a partial
+final ALAC packet. Normal copying from Matroska into MP4 reproduced a 2,048-sample loss during
+playback in the tested toolchains; these are present when edit lists are ignored, but globally
+ignoring edit lists would endanger other streams' valid priming and offsets. Container fallback
+preserves the copied samples instead. This is a planning safeguard for the evidenced Matroska
+copy path, not a new general PCM-equality production gate or a certification of every ALAC container.
+
+## Focused standalone audio matrix
+
+Use `--regression audio` on a fresh isolated instance. It tests local AAC, Opus,
+MP3 and MP3 cover preservation. `--tier fleet --worker-command …` or
+`--worker-image …` repeats all three codecs on every paired worker, plus stereo
+downmixing and MP3 cover retention. Every successful case independently decodes
+the whole candidate, checks codec/channels/artist/title, EBU R128 loudness and true
+peak, requires correct worker attribution and strict worker verification, then
+replaces and rolls back to the exact original hash. Missing encoders are reported
+as blocked coverage, never silently counted as passes.
+
+```sh
+python3 scripts/media_acceptance.py --image optimisarr:acceptance \
+  --root /tmp/optimisarr-audio-run --regression audio
+```
+
+Native runs work on macOS, Windows and Linux; cleanup targets only the owned
+server process and its children. Generated seeded pink-noise and test-pattern
+cover fixtures are created by the harness and contain no production media.
+The final server image and paired Linux sidecar image run this matrix in CI.
+Negative decode, packet regression, duration, channel loss, codec mismatch,
+loudness, clipping and incomplete evidence cases also have deterministic tests.
+
+### VMAF v1 evidence
+
+New ordinary SDR jobs use v1.0.16 HD/UHD; existing numeric floors remain policy choices, not a
+perceptual calibration guarantee. The independent oracle supplies the actual candidate width,
+height and 8/10-bit depth to CAMBI and measures at 10-bit precision. HDR/HFR and frame-rate
+conversions retain legacy policy. Protocol 7 workers must prove both v1 models and probe each
+candidate before scoring. A damaged CRF-45 fixture exercises rejection: a clean tiny fixture can
+legitimately reach 100, so a floor of 100 alone is not a negative control.
+
+`--vmaf-shadow` adds opt-in server research under both legacy and v1 models. The selected job
+model remains authoritative. Strict sidecar-only mode without that flag performs media scoring
+on its worker; the server still orchestrates transfers, validates evidence and replaces files.
+See the [implementation and NVIDIA plan](vmaf-v1-and-nvidia-plan.md).

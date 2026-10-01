@@ -62,13 +62,13 @@ public sealed class CapabilityProber(ICommandRunner runner, string platform = "w
 
         // No encoder means no work can be done here, whatever else is true, and reporting capacity
         // the server can never use only makes a healthy-looking worker that never takes anything.
-        if (video.Count == 0)
+        if (video.Count == 0 && audio.Count == 0)
         {
             return SidecarCapabilities.Nothing(name, platform) with { AudioEncoders = audio };
         }
 
-        var decoders = await ProveDecodersAsync(ffmpeg, video, cancellationToken);
-        var vmaf = await ProveVmafAsync(ffmpeg, video, cancellationToken);
+        var decoders = video.Count > 0 ? await ProveDecodersAsync(ffmpeg, video, cancellationToken) : [];
+        var vmaf = video.Count > 0 ? await ProveVmafAsync(ffmpeg, video, cancellationToken) : VmafCapability.None;
 
         return new SidecarCapabilities(
             name,
@@ -165,17 +165,20 @@ public sealed class CapabilityProber(ICommandRunner runner, string platform = "w
                 return VmafCapability.None;
             }
 
-            if (filters.Output.Contains("libvmaf_cuda", StringComparison.Ordinal))
+            foreach (var model in new[] { "vmaf_v1.0.16_3d0h", "vmaf_v1.0.16_1d5h_2160" })
             {
-                var cuda = await runner.RunAsync(measurement, ProbeCommands.CudaVmaf(clip), cancellationToken);
-                if (cuda.ExitCode == 0)
+                var log = Path.Combine(Path.GetTempPath(), $"optimisarr-vmaf-{Guid.NewGuid():N}.json");
+                try
                 {
-                    return VmafCapability.Cuda;
+                    var measured = await runner.RunAsync(measurement, ProbeCommands.V1Vmaf(clip, model, log), cancellationToken);
+                    if (measured.ExitCode != 0 || !File.Exists(log)
+                        || !V1ProbeEvidence.HasFiniteFrameScores(await File.ReadAllTextAsync(log, cancellationToken)))
+                        return VmafCapability.None;
                 }
+                finally { try { File.Delete(log); } catch (IOException) { } }
             }
-
-            var cpu = await runner.RunAsync(measurement, ProbeCommands.CpuVmaf(clip), cancellationToken);
-            return cpu.ExitCode == 0 ? VmafCapability.Cpu : VmafCapability.None;
+            // A working legacy CUDA filter does not prove v1's complete chroma/banding features.
+            return VmafCapability.Cpu;
         }
         finally
         {

@@ -7,6 +7,30 @@ namespace Optimisarr.Tests;
 
 public sealed class MediaProbeParseTests
 {
+    [Fact]
+    public void Subtitle_indexes_keep_absolute_stream_identity_and_relative_order()
+    {
+        var result = MediaProbeService.Parse("""
+            {"streams":[
+                {"index":0,"codec_type":"video","codec_name":"h264"},
+                {"index":2,"codec_type":"audio","codec_name":"aac"},
+                {"index":5,"codec_type":"subtitle","codec_name":"subrip"},
+                {"index":23,"codec_type":"subtitle","codec_name":"subrip"}
+            ]}
+            """);
+        Assert.Equal(new int?[] { 5, 23 }, result.SubtitleStreamIndexes);
+        Assert.Equal(new[] { "subrip", "subrip" }, result.SubtitleCodecs);
+    }
+
+    [Fact]
+    public void An_unknown_subtitle_stream_index_is_not_guessed_from_its_relative_position()
+    {
+        var result = MediaProbeService.Parse("""
+            {"streams":[{"codec_type":"subtitle","codec_name":"subrip"}]}
+            """);
+        Assert.Equal(new int?[] { null }, result.SubtitleStreamIndexes);
+    }
+
     private const string SampleJson = """
     {
       "streams": [
@@ -34,6 +58,7 @@ public sealed class MediaProbeParseTests
         Assert.Equal(new[] { "eac3", "aac" }, result.AudioCodecs);
         Assert.Equal(2, result.AudioTrackCount);
         Assert.Equal(1, result.SubtitleTrackCount);
+        Assert.Equal(["subrip"], result.SubtitleCodecs);
     }
 
     [Fact]

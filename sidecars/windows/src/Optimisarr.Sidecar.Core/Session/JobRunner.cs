@@ -1,4 +1,5 @@
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Sidecar.Core.Session;
 
@@ -41,12 +42,17 @@ public sealed class JobRunner(
         var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
         using var previewLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var previews = wantsPreview is not null && publishPreview is not null
-            ? new JobPreviewSampler(ffmpegPath, previewExtractor ?? new FfmpegFramePreviewExtractor(),
+            ? new JobPreviewSampler(ffmpegPath, previewExtractor ?? new FfmpegFramePreviewExtractor(assignment.Kind == MediaKind.Audio),
                 wantsPreview, jpeg => publishPreview(assignment.JobId, jpeg))
             : null;
 
         try
         {
+            if (assignment.RefuseMediaContract() is { } contractRefusal)
+            {
+                await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false, contractRefusal);
+            }
             report?.Invoke($"Job {assignment.JobId}: fetching {assignment.Title}");
             var declaredHash = await WhileRenewing(
                 pairing, assignment, RemoteStage.FetchingSource, null, cancellationToken,
@@ -94,7 +100,7 @@ public sealed class JobRunner(
                 return new JobOutcome(assignment.JobId, false, $"The encode command was refused. {refused.Reason}");
             }
 
-            report?.Invoke($"Job {assignment.JobId}: encoding with {assignment.VideoEncoder}");
+            report?.Invoke($"Job {assignment.JobId}: encoding with {assignment.Encoder}");
             var arguments = AssignmentPlaceholders.Resolve(encodeArguments, source, candidatePrefix);
 
             var encoded = 0d;
@@ -105,7 +111,7 @@ public sealed class JobRunner(
                     {
                         encoded = seconds;
                         observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title,
-                            assignment.VideoEncoder, RemoteStage.Encoding, seconds));
+                            assignment.Encoder, RemoteStage.Encoding, seconds, Kind: assignment.Kind));
                         if (previews is not null) _ = previews.TrySampleAsync(source, seconds, token);
                     }), token, assignment.MaxCandidateBytes is { } maximum
                         ? new OutputSizeBudget(candidate, maximum) : null));
@@ -331,7 +337,14 @@ public sealed class JobRunner(
         string candidate,
         CancellationToken cancellationToken)
     {
-        var commands = await ChooseCommandsAsync(assignment, source, candidate, cancellationToken);
+        var asked = await ChooseCommandsAsync(assignment, source, candidate, cancellationToken);
+        var commands = new List<IReadOnlyList<string>>(asked.Count);
+        foreach (var command in asked)
+        {
+            var prepared = await PrepareCandidateFormatAsync(command, candidate, cancellationToken);
+            if (prepared is null) return null;
+            commands.Add(prepared);
+        }
 
         // A dropped frame can change alignment later in the file. Each sampled window must
         // measure its own shift against the pictures it will score.
@@ -565,10 +578,12 @@ public sealed class JobRunner(
                     $"The command to score sample {index + 1} was refused. {refusedScore.Reason}");
             }
 
+            var prepared = await PrepareCandidateFormatAsync(step.Measurement.Commands[index], sample, cancellationToken);
+            if (prepared is null) return CandidateMeasurement.Failed("The sample's actual format could not be established for VMAF v1.");
             var scored = await transcoder.RunAsync(
                 measurementFfmpegPath ?? ffmpegPath,
                 MeasurementPlaceholders.Resolve(
-                    step.Measurement.Commands[index], sample, source, log),
+                    prepared, sample, source, log),
                 null,
                 cancellationToken);
             if (!scored.Succeeded)
@@ -605,6 +620,17 @@ public sealed class JobRunner(
         return CandidateMeasurement.Ok(windowBytes, logs);
     }
 
+    private async Task<IReadOnlyList<string>?> PrepareCandidateFormatAsync(
+        IReadOnlyList<string> command, string candidate, CancellationToken cancellationToken)
+    {
+        if (!CandidateVideoFormat.Required(command)) return command;
+        if (MeasurementCommand.Refuse(command) is not null || FfprobeBeside(ffmpegPath) is not { } probe) return null;
+        var result = await transcoder.ProbeAsync(probe, CandidateVideoFormat.ProbeArguments(candidate), cancellationToken);
+        var prepared = result.ExitCode == 0 ? CandidateVideoFormat.Resolve(command, result.Output) : null;
+        if (prepared is null) report?.Invoke("VMAF v1 requires a valid candidate width, height and 8/10-bit format; measurement stopped.");
+        return prepared;
+    }
+
     private static void TryDeleteFile(string path)
     {
         try
@@ -631,7 +657,7 @@ public sealed class JobRunner(
         CancellationToken cancellationToken,
         Func<CancellationToken, Task<T>> work)
     {
-        observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title, assignment.VideoEncoder, stage, encodedSeconds?.Invoke()));
+        observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title, assignment.Encoder, stage, encodedSeconds?.Invoke(), Kind: assignment.Kind));
         using var stageCancelled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Half the window the server allows, bounded: often enough that a slow renewal still lands
         // before the lease lapses, rarely enough not to be chatter.
@@ -650,7 +676,7 @@ public sealed class JobRunner(
                 try
                 {
                     await Task.Delay(interval, stageCancelled.Token);
-                    observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title, assignment.VideoEncoder, stage, encodedSeconds?.Invoke()));
+                    observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title, assignment.Encoder, stage, encodedSeconds?.Invoke(), Kind: assignment.Kind));
                     await client.RenewAsync(
                         pairing, assignment.LeaseId, stage, encodedSeconds?.Invoke(), load(),
                         stageCancelled.Token);

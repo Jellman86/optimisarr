@@ -106,19 +106,28 @@
       <Button Content="Open release page" HorizontalAlignment="Left" Padding="8,5" Click="OpenRelease_Click"/>
      </StackPanel></Border>
      <Border Style="{StaticResource Card}"><StackPanel>
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="112"/><ColumnDefinition/></Grid.ColumnDefinitions>
-       <Border Width="100" Height="64" CornerRadius="7" Background="{DynamicResource Ground}" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" ClipToBounds="True">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding PreviewColumnWidth}"/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <Border Visibility="{Binding ShowThumbnail, Converter={StaticResource BoolVisibility}}" Width="100" Height="64" CornerRadius="7" Background="{DynamicResource Ground}" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Stretch" ClipToBounds="True" ToolTip="{Binding PreviewDescription}">
         <Grid>
          <StackPanel VerticalAlignment="Center">
           <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="19" Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
           <TextBlock Text="{Binding PreviewLabel}" FontSize="8" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" Margin="0,3,0,0"/>
          </StackPanel>
-         <Image Source="{Binding Preview, Converter={StaticResource PreviewImage}}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Current media preview"/>
+         <Image Source="{Binding VideoPreview, Converter={StaticResource PreviewImage}}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Current media preview"/>
         </Grid>
        </Border>
        <StackPanel Grid.Column="1"><TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" ToolTip="{Binding Title}" MaxHeight="65" TextTrimming="CharacterEllipsis"/>
        <TextBlock Text="{Binding Stage}" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,6,0,0"/></StackPanel>
       </Grid>
+      <StackPanel Margin="0,12,0,0" Visibility="{Binding ActiveAudio, Converter={StaticResource BoolVisibility}}">
+       <TextBlock Text="SOURCE AUDIO · 0–24 kHz (log)" FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,0,0,5"/>
+       <Border Height="96" CornerRadius="6" ClipToBounds="True" Background="{DynamicResource Ground}">
+        <Grid><TextBlock Text="Waiting for source spectrum…" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+         <Image Source="{Binding Preview, Converter={StaticResource PreviewImage}}" Stretch="Fill" AutomationProperties.Name="Source audio spectrogram"/>
+        </Grid>
+       </Border>
+       <TextBlock Text="Up to 3 seconds near the encoding position. Brighter colour = stronger signal. Verification runs separately." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,5,0,0"/>
+      </StackPanel>
       <ProgressBar x:Name="WorkProgress" IsIndeterminate="True" Height="4" Margin="0,16,0,2" Foreground="{DynamicResource Accent}" Visibility="{Binding Working, Converter={StaticResource BoolVisibility}}"/>
      </StackPanel></Border>
      <UniformGrid Columns="3" Margin="0,22,0,20">
@@ -130,17 +139,16 @@
       <StackPanel Margin="0,12,0,0">
        <ItemsControl ItemsSource="{Binding JobRows}" Margin="0,0,0,8">
         <ItemsControl.ItemTemplate><DataTemplate>
-         <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition/></Grid.ColumnDefinitions>
-          <Border Width="56" Height="36" CornerRadius="5" BorderBrush="{DynamicResource Line}" BorderThickness="1" Background="{DynamicResource Ground}" HorizontalAlignment="Left" ClipToBounds="True">
-           <Grid><TextBlock Text="NO FRAME" FontSize="7" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+         <StackPanel Margin="0,0,0,12">
+          <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="290" ToolTip="{Binding Title}"/></StackPanel>
+          <TextBlock Text="{Binding Caption}" FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,3,0,6"/>
+          <Border Height="96" CornerRadius="6" BorderBrush="{DynamicResource Line}" BorderThickness="1" Background="{DynamicResource Ground}" HorizontalAlignment="Stretch" ClipToBounds="True">
+           <Grid><TextBlock Text="Waiting for source preview" FontSize="11" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             <Image Source="{Binding PreviewJpeg, Converter={StaticResource PreviewImage}}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
            </Grid>
           </Border>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center">
-           <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Title}"/>
-           <TextBlock Text="{Binding Caption}" FontSize="10" Foreground="{DynamicResource Muted}"/>
-          </StackPanel>
-         </Grid>
+          <TextBlock Text="{Binding PreviewDescription}" Foreground="{DynamicResource Muted}" FontSize="10" Margin="0,5,0,0"/>
+         </StackPanel>
         </DataTemplate></ItemsControl.ItemTemplate>
        </ItemsControl>
        <TextBlock Text="Receive → encode → verify when requested → return" Foreground="{DynamicResource Muted}" FontSize="12"/>

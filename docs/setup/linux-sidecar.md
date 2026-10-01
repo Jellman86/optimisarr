@@ -11,7 +11,8 @@ You need Docker with Compose on a Linux x86-64 host, a reachable Optimisarr serv
 working storage for source and candidate files. The published sidecar build currently targets
 `linux/amd64`; ARM64 publication and native/systemd installation are not provided by this workflow.
 
-1. On the **main server**, set `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`, redeploy through
+1. On the **main server**, ensure **Remote workers** is enabled. Remove any
+   `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override and redeploy through
    your normal stack manager, then enable **Remote workers** in **Settings → Files & safety**.
 2. Copy [compose.sidecar.example.yml](../../compose.sidecar.example.yml) into a separate worker
    stack and deploy it. Its default is CPU encoding with disk scratch. On managed hosts, commit
@@ -80,7 +81,9 @@ and workflows needing software filters can retain software decoding. CPU VMAF us
 bundled measurement binary even when encoding uses the GPU. Mapping `/dev/dri` does not expose
 an NVIDIA GPU; NVIDIA needs the host's container runtime and GPU configuration. See the
 [hardware evidence and limits](../engineering/hardware-validation/2026-09-27-linux-sidecar.md)
-before assuming a GPU or format is covered.
+before assuming a GPU or format is covered. A separate
+[Linux-container HEVC NVENC acceptance record](../engineering/hardware-validation/2026-09-30-linux-nvenc.md)
+records the published image on an RTX 4070; it does not certify every NVIDIA codec or driver.
 
 ## Optional RAM working storage
 

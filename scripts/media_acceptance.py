@@ -30,6 +30,16 @@ def strict_worker_verification_for_run(tier: str, server_verification: bool) -> 
     return tier == "fleet" and not server_verification
 
 
+def signal_owned_process(process, *, force=False):
+    """Stop only the disposable server launched by this run, including its own children."""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, timeout=30)
+    else:
+        os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True, help="New, empty run directory (never an existing library)")
@@ -39,10 +49,11 @@ def main():
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--vmaf", help="Independent reference FFmpeg with libvmaf (native mode)")
-    parser.add_argument("--vmaf-shadow", action="store_true", help="Require paired server v0/v1 research alongside unchanged verification")
+    parser.add_argument("--vmaf-shadow", action="store_true", help="Require paired server v0/v1 research alongside the selected production verification")
     verification = parser.add_mutually_exclusive_group()
     verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
     verification.add_argument("--server-verification", action="store_true", help="Explicitly test the legacy server-verification mode")
+    parser.add_argument("--regression", choices=("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy", "audio"), help="Run a focused real-media regression matrix")
     parser.add_argument("--tier", choices=("smoke", "fleet"), default="smoke")
     parser.add_argument("--corpus", type=Path, help="Checksum-locked corpus.json produced by acceptance_corpus.py")
     parser.add_argument("--expected-worker", action="append", default=[])
@@ -53,7 +64,7 @@ def main():
     worker_runtime.add_argument("--worker-command", help='JSON argument array for a local disposable worker, e.g. ["/path/AcceptanceWorker"]')
     parser.add_argument("--worker-encoder", action="append", default=[], help="Limit disposable worker discovery to these encoders")
     parser.add_argument("--local-encoder", action="append", default=[], help="Limit local encoding matrix (otherwise every available encoder)")
-    parser.add_argument("--fixture-variant", action="append", choices=("sdr", "vfr", "offset", "ten-bit"))
+    parser.add_argument("--fixture-variant", action="append", choices=("sdr", "vfr", "offset", "ten-bit", "fractional"))
     parser.add_argument("--soak-cycles", type=int, default=0, help="Repeat encode/verify/rollback on every selected worker on the same server")
     parser.add_argument("--fixture-seconds", type=int, default=8, help="Generated source duration, 8 to 600 seconds")
     parser.add_argument("--pairing-wait", type=int, default=0, help="Seconds to allow TEST sidecars to pair before starting")
@@ -171,7 +182,7 @@ def main():
             if container:
                 command(["docker", "restart", "--time", "0", container])
             else:
-                os.killpg(process.pid, signal.SIGKILL)
+                signal_owned_process(process, force=True)
                 process.wait(timeout=15)
                 process = subprocess.Popen(["dotnet", str(args.native.resolve())], env=env,
                     stdout=log, stderr=subprocess.STDOUT, cwd=root, start_new_session=True)
@@ -191,7 +202,7 @@ def main():
                            strict_worker_verification=strict_worker_verification_for_run(args.tier, args.server_verification),
                            corpus=corpus, expected_workers=args.expected_worker,
                            local_encoders=args.local_encoder, variants=args.fixture_variant,
-                           soak_cycles=args.soak_cycles, fixture_seconds=args.fixture_seconds)
+                           soak_cycles=args.soak_cycles, fixture_seconds=args.fixture_seconds, regression=args.regression)
     except KeyboardInterrupt:
         report.case("interrupted", lambda: (_ for _ in ()).throw(Blocked("Run interrupted; isolated server stopped")))
         exit_code = 130
@@ -202,11 +213,11 @@ def main():
         if workers:
             report.case("stop-disposable-workers", workers.stop)
         if process:
-            os.killpg(process.pid, signal.SIGTERM) if process.poll() is None else None
+            signal_owned_process(process)
             try:
                 process.wait(timeout=15)
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
+                signal_owned_process(process, force=True)
                 process.wait()
         if log:
             log.close()

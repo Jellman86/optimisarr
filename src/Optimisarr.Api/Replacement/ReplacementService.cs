@@ -1,3 +1,7 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
@@ -66,7 +70,7 @@ public sealed record BulkReplacementResult(
 /// place of an original — and makes it reversible. The original is moved to
 /// quarantine <em>first</em>, then the output is moved into place; a recorded
 /// <see cref="Data.Replacement"/> is the rollback path. If any step fails the
-/// original is restored from quarantine, so a failure never loses data.
+/// original is restored when paths are unambiguous; otherwise its quarantine and durable recovery record are retained.
 /// </summary>
 public sealed class ReplacementService
 {
@@ -202,10 +206,51 @@ public sealed class ReplacementService
         {
             return await ReplaceCoreAsync(jobId, cancellationToken);
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return ReplacementActionResult.Failed($"Replacement could not read or lock its files safely: {ex.Message}. The recorded original was kept.");
+        }
         finally
         {
             _coordinator.End(jobId, mediaFileId.Value);
         }
+    }
+
+    private async Task<ReplacementActionResult> RefuseIdentityAsync(Job job, string message, CancellationToken token)
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        { Converters = { new JsonStringEnumConverter() } };
+        var check = new VerificationCheck("File identity", CheckOutcome.Failed, message);
+        var report = new VerificationReport([check]);
+        if (job.VerificationReportJson is { } json)
+        {
+            try
+            {
+                var previous = JsonSerializer.Deserialize<VerificationReport>(json, options);
+                if (previous is not null && previous.HasValidStructure())
+                    report = previous with { Checks = [.. previous.Checks, check] };
+            }
+            catch (JsonException) { } // The new identity refusal is valid evidence on its own.
+        }
+        var reportJson = JsonSerializer.Serialize(report, options);
+        var now = DateTimeOffset.UtcNow;
+        // Make manual refusal retryable too. A concurrent cancel or newer attempt must not be
+        // overwritten, and historical quality measurements remain alongside the failed gate.
+        await _db.Jobs.Where(row => row.Id == job.Id && row.Status == JobStatus.ReadyToReplace
+                && row.ExecutionAttempt == job.ExecutionAttempt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(row => row.Status, JobStatus.Failed)
+                .SetProperty(row => row.VerificationPassed, false)
+                .SetProperty(row => row.VerificationReportJson, reportJson)
+                .SetProperty(row => row.VerifiedSourceSha256, (string?)null)
+                .SetProperty(row => row.VerifiedOutputSha256, (string?)null)
+                .SetProperty(row => row.ErrorMessage, message)
+                .SetProperty(row => row.FailureCategory, FailureCategory.Verification)
+                .SetProperty(row => row.VerifiedAt, now)
+                .SetProperty(row => row.FinishedAt, now)
+                .SetProperty(row => row.UpdatedAt, now), token);
+        await _db.Entry(job).ReloadAsync(token);
+        return ReplacementActionResult.Failed(message, permanent: true);
     }
 
     private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, CancellationToken cancellationToken)
@@ -347,6 +392,17 @@ public sealed class ReplacementService
             }
         }
 
+        if (!FileContentIdentity.IsHash(job.VerifiedSourceSha256) || !FileContentIdentity.IsHash(job.VerifiedOutputSha256))
+            return await RefuseIdentityAsync(job,
+                "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", cancellationToken);
+
+        await using var sourceGuard = FileContentIdentity.OpenGuard(media.Path);
+        await using var outputGuard = FileContentIdentity.OpenGuard(job.WorkOutputPath);
+        if (!await FileContentIdentity.MatchesAsync(media.Path, job.VerifiedSourceSha256, cancellationToken)
+            || !await FileContentIdentity.MatchesAsync(job.WorkOutputPath, job.VerifiedOutputSha256, cancellationToken))
+            return await RefuseIdentityAsync(job,
+                "Source or output bytes changed after verification. The original was left untouched; create a fresh verified attempt.", cancellationToken);
+
         var originalSize = new FileInfo(media.Path).Length;
         var outputSize = new FileInfo(job.WorkOutputPath).Length;
 
@@ -362,6 +418,8 @@ public sealed class ReplacementService
             FinalPath = plan.FinalPath,
             OriginalSizeBytes = originalSize,
             NewSizeBytes = outputSize,
+            OriginalSha256 = job.VerifiedSourceSha256,
+            OutputSha256 = job.VerifiedOutputSha256,
             Status = ReplacementStatus.Pending,
             ReplacedAt = DateTimeOffset.UtcNow
         };
@@ -374,24 +432,32 @@ public sealed class ReplacementService
             // every ordinary failure restores it; a process crash is handled by Pending recovery.
             var quarantineMove = _moveFile(media.Path, plan.QuarantinePath);
 
+            if (!await FileContentIdentity.MatchesAsync(plan.QuarantinePath, replacement.OriginalSha256, cancellationToken))
+                throw new IOException("The source changed at the quarantine boundary; the replacement was refused.");
+
+            if (File.Exists(plan.OriginalPath))
+                throw new IOException("A new file appeared at the original path after quarantine. Both originals are preserved; inspect the pending rollback before retrying.");
+
             // Step 2: move the verified output into the original's place.
             var move = _moveFile(job.WorkOutputPath, plan.FinalPath);
             replacement.CrossFilesystem = quarantineMove.CrossFilesystem || move.CrossFilesystem;
 
             // Step 3: a final-path integrity check — the placed file must exist and
             // match the output we verified, or we do not trust the replacement.
-            if (!File.Exists(plan.FinalPath) || new FileInfo(plan.FinalPath).Length != outputSize)
+            if (!File.Exists(plan.FinalPath) || new FileInfo(plan.FinalPath).Length != outputSize
+                || !await FileContentIdentity.MatchesAsync(plan.FinalPath, replacement.OutputSha256, cancellationToken)
+                || !await FileContentIdentity.MatchesAsync(plan.QuarantinePath, replacement.OriginalSha256, cancellationToken))
             {
                 throw new IOException("The replaced file is missing or its size does not match the verified output.");
             }
         }
         catch (Exception ex)
         {
-            var restored = RestoreFromQuarantine(plan, media.Path);
+            var restored = await RestoreFromQuarantineAsync(plan, media.Path, replacement.OutputSha256, replacement.OriginalSha256);
             if (restored)
             {
                 _db.Replacements.Remove(replacement);
-                await _db.SaveChangesAsync(cancellationToken);
+                await _db.SaveChangesAsync(CancellationToken.None);
             }
 
             _logger.LogError(
@@ -618,7 +684,7 @@ public sealed class ReplacementService
         }
     }
 
-    private bool RestoreFromQuarantine(ReplacementPlan plan, string originalPath)
+    private async Task<bool> RestoreFromQuarantineAsync(ReplacementPlan plan, string originalPath, string? expectedOutputHash, string? expectedOriginalHash)
     {
         // The original is only safe to restore if it actually reached quarantine. If the
         // quarantine move itself failed, the original is still at its own path — leave it be.
@@ -629,18 +695,25 @@ public sealed class ReplacementService
 
         try
         {
-            // A failed output move can leave a partial or complete output behind — including at the
-            // original's own path when the container is unchanged (FinalPath == originalPath). That
-            // remnant is disposable (the output is reproducible from /work) and must never be mistaken
-            // for the protected original, so clear both possible locations before restoring. Guarding
-            // the restore on "originalPath is empty" alone would skip it when such a remnant sits there,
-            // stranding the original in quarantine.
+            // Preserve every file if the recorded quarantine identity is no longer trustworthy.
+            // Legacy records without identities may still restore into an empty original path.
+            if (FileContentIdentity.IsHash(expectedOriginalHash)
+                && !await FileContentIdentity.MatchesAsync(plan.QuarantinePath, expectedOriginalHash, CancellationToken.None))
+                return false;
+            // Only a byte-identical verified candidate is disposable. An unrelated or partial
+            // file at either path may belong to another writer; keep both it and the quarantine
+            // with the pending recovery record rather than guessing which file to overwrite.
             if (File.Exists(originalPath))
             {
+                if (!string.Equals(plan.FinalPath, originalPath, StringComparison.Ordinal)
+                    || !await FileContentIdentity.MatchesAsync(originalPath, expectedOutputHash, CancellationToken.None))
+                    return false;
                 File.Delete(originalPath);
             }
             if (!string.Equals(plan.FinalPath, originalPath, StringComparison.Ordinal) && File.Exists(plan.FinalPath))
             {
+                if (!await FileContentIdentity.MatchesAsync(plan.FinalPath, expectedOutputHash, CancellationToken.None))
+                    return false;
                 File.Delete(plan.FinalPath);
             }
 
@@ -665,7 +738,9 @@ public sealed class ReplacementService
         var quarantineExists = File.Exists(replacement.QuarantinePath);
         var finalIsComplete = FileHasLength(replacement.FinalPath, replacement.NewSizeBytes);
 
-        if (quarantineExists && !workOutputExists && finalIsComplete)
+        if (quarantineExists && !workOutputExists && finalIsComplete
+            && await FileContentIdentity.MatchesAsync(replacement.FinalPath, replacement.OutputSha256, cancellationToken)
+            && await FileContentIdentity.MatchesAsync(replacement.QuarantinePath, replacement.OriginalSha256, cancellationToken))
         {
             await FinalizeRecoveredReplacementAsync(replacement, cancellationToken);
             return true;
@@ -677,7 +752,7 @@ public sealed class ReplacementService
                 replacement.OriginalPath,
                 replacement.FinalPath,
                 replacement.QuarantinePath);
-            if (RestoreFromQuarantine(plan, replacement.OriginalPath))
+            if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256))
             {
                 _db.Replacements.Remove(replacement);
                 await _db.SaveChangesAsync(cancellationToken);
@@ -756,7 +831,7 @@ public sealed class ReplacementService
                 replacement.OriginalPath,
                 replacement.FinalPath,
                 replacement.QuarantinePath);
-            if (RestoreFromQuarantine(plan, replacement.OriginalPath))
+            if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256))
             {
                 await FinalizeRecoveredRollbackAsync(replacement, cancellationToken);
                 return true;

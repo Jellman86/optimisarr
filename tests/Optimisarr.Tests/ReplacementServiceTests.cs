@@ -11,6 +11,141 @@ namespace Optimisarr.Tests;
 
 public sealed class ReplacementServiceTests : IDisposable
 {
+
+    [Fact]
+    public async Task Recovery_preserves_both_files_when_quarantine_identity_changed()
+    {
+        var (original, output) = WriteFiles("Recovery.avi", "Recovery.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(original, output, true);
+        var final = Path.ChangeExtension(original, ".mkv");
+        var quarantine = Path.Combine(_trashDir, "recovery", "Recovery.avi");
+        Directory.CreateDirectory(Path.GetDirectoryName(quarantine)!);
+        File.Move(original, quarantine);
+        File.Move(output, final);
+        await SeedPendingReplacementAsync(jobId, original, final, quarantine);
+        await File.WriteAllTextAsync(quarantine, "CORRUPT!");
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(0, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+        Assert.Equal("NEW", await File.ReadAllTextAsync(final));
+        Assert.Equal("CORRUPT!", await File.ReadAllTextAsync(quarantine));
+        Assert.Equal(ReplacementStatus.Pending, (await db.Replacements.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Cancellation_after_quarantine_restores_original_and_removes_pending_intent()
+    {
+        var (original, output) = WriteFiles("Cancelled.avi", "Cancelled.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(original, output, true);
+        using var cancellation = new CancellationTokenSource();
+        await using var db = new OptimisarrDbContext(_options);
+        var service = NewService(db, moveFile: (source, destination) =>
+        {
+            var move = FileMover.Move(source, destination);
+            if (source == original) cancellation.Cancel();
+            return move;
+        });
+        var result = await service.ReplaceAsync(jobId, cancellation.Token);
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("ORIGINAL", await File.ReadAllTextAsync(original));
+        Assert.Equal("NEW", await File.ReadAllTextAsync(output));
+        Assert.Empty(await db.Replacements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ReviewRegression_candidate_changed_after_verification_is_refused()
+    {
+        var (original, output) = WriteFiles("Review.avi", "Review.mkv", "ORIGINAL-DATA", "VERIFIED!");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var worker = new Worker { Name = "Review", OperatingSystem = "linux", Architecture = "x64" };
+            db.Workers.Add(worker);
+            await db.SaveChangesAsync();
+            db.JobLeases.Add(new JobLease
+            {
+                Id = Guid.NewGuid(), JobId = id, WorkerId = worker.Id,
+                State = Optimisarr.Core.Workers.LeaseState.Completed,
+                DeliveredSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("VERIFIED!"))).ToLowerInvariant()
+            });
+            await db.SaveChangesAsync();
+        }
+        File.WriteAllText(output, "CORRUPT!!"); // Same length, different bytes after verification.
+        var result = await ReplaceAsync(id);
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("ORIGINAL-DATA", File.ReadAllText(original));
+        Assert.Equal("CORRUPT!!", File.ReadAllText(output));
+        Assert.Empty(Directory.GetFiles(_trashDir, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task ReviewRegression_source_changed_after_verification_is_refused()
+    {
+        var (original, output) = WriteFiles("Review.avi", "Review.mkv", "ORIGINAL-DATA", "VERIFIED!");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var job = await db.Jobs.FindAsync(id);
+            job!.SourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("ORIGINAL-DATA"))).ToLowerInvariant();
+            await db.SaveChangesAsync();
+        }
+        File.WriteAllText(original, "UPGRADED-DATA");
+        var result = await ReplaceAsync(id);
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("UPGRADED-DATA", File.ReadAllText(original));
+        Assert.Equal("VERIFIED!", File.ReadAllText(output));
+    }
+
+    [Theory]
+    [InlineData(".avi")]
+    [InlineData(".mkv")]
+    public async Task Replacement_preserves_a_new_file_that_appears_after_quarantine(string sourceExtension)
+    {
+        var (original, output) = WriteFiles("Review" + sourceExtension, "Review.mkv", "ORIGINAL", "VERIFIED");
+        var jobId = await SeedReadyJobAsync(original, output, true);
+        var result = await ReplaceAsync(jobId, moveFile: (source, destination) =>
+        {
+            var moved = FileMover.Move(source, destination);
+            if (source == original) File.WriteAllText(original, "NEW-EXTERNAL-SOURCE");
+            return moved;
+        });
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("NEW-EXTERNAL-SOURCE", File.ReadAllText(original));
+        await using var db = new OptimisarrDbContext(_options);
+        var pending = await db.Replacements.SingleAsync();
+        Assert.Equal(ReplacementStatus.Pending, pending.Status);
+        Assert.Equal("ORIGINAL", File.ReadAllText(pending.QuarantinePath));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
+    [Fact]
+    public async Task Replacement_refuses_historical_ready_outputs_without_hash_identity()
+    {
+        var (original, output) = WriteFiles("Review.avi", "Review.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var row = await db.Jobs.FindAsync(id);
+            row!.VerificationReportJson = "{\"checks\":[{\"name\":\"Decode health\",\"outcome\":\"Passed\",\"detail\":\"Passed\"}]}";
+            row.VerifiedSourceSha256 = null;
+            row.VerifiedOutputSha256 = null;
+            await db.SaveChangesAsync();
+        }
+        var result = await ReplaceAsync(id);
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.True(result.Permanent);
+        Assert.Contains("fresh verified attempt", result.Message);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var failed = await db.Jobs.FindAsync(id);
+            Assert.Equal(JobStatus.Failed, failed!.Status);
+            Assert.False(failed.VerificationPassed);
+            Assert.Contains("File identity", failed.VerificationReportJson);
+            Assert.Contains("Decode health", failed.VerificationReportJson);
+        }
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<OptimisarrDbContext> _options;
     private readonly string _root;
@@ -281,12 +416,12 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Replace_restores_the_original_when_a_mid_move_failure_leaves_a_remnant_in_place()
+    public async Task Replace_retains_the_original_and_pending_record_when_an_ambiguous_remnant_occupies_its_path()
     {
         // Same-container replacement (FinalPath == the original's own path). Simulate a
         // cross-filesystem copy that fails partway, leaving a partial output sitting at that path —
-        // the exact case where a naive "restore only if the path is empty" guard would strand the
-        // original in quarantine. The original must come back and the remnant must be cleared.
+        // A partial copy is indistinguishable from an external writer's new file. Keep both
+        // files and the durable record rather than deleting unknown bytes to restore automatically.
         var (originalPath, outputPath) = WriteFiles("Show.mkv", "Show.mkv", "ORIGINAL-DATA", "NEW-OUTPUT");
         var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
 
@@ -304,8 +439,11 @@ public sealed class ReplacementServiceTests : IDisposable
         // A mid-move I/O failure can clear (disk frees up, permissions fixed), so it stays retryable.
         Assert.False(result.Permanent);
         Assert.True(File.Exists(originalPath));
-        Assert.Equal("ORIGINAL-DATA", File.ReadAllText(originalPath));   // the protected original, not the remnant
-        Assert.Empty(new OptimisarrDbContext(_options).Replacements);    // nothing recorded
+        Assert.Equal("PARTIAL-OUTPUT", File.ReadAllText(originalPath));
+        await using var db = new OptimisarrDbContext(_options);
+        var pending = await db.Replacements.SingleAsync();
+        Assert.Equal(ReplacementStatus.Pending, pending.Status);
+        Assert.Equal("ORIGINAL-DATA", File.ReadAllText(pending.QuarantinePath));
         Assert.Equal(LifetimeStats.Empty, await ReadLifetimeAsync());    // a failed replace saves nothing
     }
 
@@ -717,6 +855,8 @@ public sealed class ReplacementServiceTests : IDisposable
             Status = JobStatus.ReadyToReplace,
             WorkOutputPath = outputPath,
             VerificationPassed = verificationPassed,
+            VerifiedSourceSha256 = await FileContentIdentity.HashAsync(originalPath, CancellationToken.None),
+            VerifiedOutputSha256 = await FileContentIdentity.HashAsync(outputPath, CancellationToken.None),
             VerifiedAt = DateTimeOffset.UtcNow,
             Progress = 1.0
         };
@@ -769,6 +909,8 @@ public sealed class ReplacementServiceTests : IDisposable
             QuarantinePath = quarantinePath,
             OriginalSizeBytes = "ORIGINAL".Length,
             NewSizeBytes = "NEW".Length,
+            OriginalSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("ORIGINAL"))),
+            OutputSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("NEW"))),
             Status = ReplacementStatus.Pending
         });
         await db.SaveChangesAsync();

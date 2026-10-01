@@ -21,11 +21,11 @@ public static class FramePairing
     public static bool Applies(int? sourceFrames, int? candidateFrames) =>
         sourceFrames is > 0 && sourceFrames == candidateFrames;
 
-    /// <summary>What to ask ffprobe for, to count a file's pictures by reading its packets, not decoding them.</summary>
+    /// <summary>What to ask ffprobe for, to count a file's pictures by decoding frames; packet counts can include non-picture packets.</summary>
     public static IReadOnlyList<string> CountArguments(string file) =>
     [
-        "-v", "error", "-select_streams", TimestampIntegrityCheck.MovingPictureStreamSpecifier, "-count_packets",
-        "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", file,
+        "-v", "error", "-select_streams", TimestampIntegrityCheck.MovingPictureStreamSpecifier, "-count_frames",
+        "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", file,
     ];
 
     public static int? ParseCount(string output) =>

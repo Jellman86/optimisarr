@@ -216,6 +216,12 @@
             },
             "type": "array"
           },
+          "audioEncoder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "expiresUtc": {
             "format": "date-time",
             "type": "string"
@@ -237,6 +243,9 @@
               "integer",
               "string"
             ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MediaKind"
           },
           "leaseId": {
             "format": "uuid",
@@ -306,7 +315,10 @@
             "type": "string"
           },
           "videoEncoder": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "vmaf": {
             "type": "string"
@@ -1337,6 +1349,9 @@
         ],
         "type": "object"
       },
+      "MediaKind": {
+        "type": "integer"
+      },
       "NotificationTargetSnapshot": {
         "properties": {
           "enabled": {
@@ -1830,6 +1845,9 @@
             "format": "uuid",
             "type": "string"
           },
+          "kind": {
+            "$ref": "#/components/schemas/MediaKind"
+          },
           "measureAudio": {
             "type": "boolean"
           },
@@ -1851,6 +1869,16 @@
       },
       "RemoteVerificationEvidence": {
         "properties": {
+          "candidateAudio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampCheckResult"
+              }
+            ]
+          },
           "candidateLoudness": {
             "oneOf": [
               {
@@ -3474,7 +3502,7 @@
   "info": {
     "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
     "title": "Optimisarr API",
-    "version": "0.2.17.0"
+    "version": "0.2.18.0"
   },
   "openapi": "3.1.1",
   "paths": {

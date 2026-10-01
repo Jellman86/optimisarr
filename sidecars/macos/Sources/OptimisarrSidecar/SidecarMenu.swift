@@ -193,7 +193,9 @@ struct SidecarMenu: View {
                         if let progress = session.activeJobs[jobId] {
                             Text("Job #\(jobId) · \(progress.label)")
                                 .font(.caption).foregroundStyle(Instrument.phosphor)
-                            if let strip = session.filmStrips[jobId], !strip.isEmpty { FilmStripView(strip: strip) }
+                            if session.audioJobs.contains(jobId) {
+                                Text("Source spectrogram shown in the job card above.").font(.caption).foregroundStyle(Instrument.dim)
+                            } else if let strip = session.filmStrips[jobId], !strip.isEmpty { FilmStripView(strip: strip) }
                         }
                     }
                     Text("Receive → encode → verify when requested → return")
@@ -291,15 +293,17 @@ struct SidecarMenu: View {
     private func jobHead(jobId: Int, progress: JobProgress) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: 12) {
+                if !session.audioJobs.contains(jobId) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 7).fill(Instrument.cell)
                     if let data = session.filmStrips[jobId]?.frames.last, let image = NSImage(data: data) {
                         Image(nsImage: image).resizable().scaledToFill()
                     } else {
-                        Image(systemName: "film").foregroundStyle(Instrument.dim)
+                        Image(systemName: session.audioJobs.contains(jobId) ? "waveform" : "film").foregroundStyle(Instrument.dim)
                     }
                 }.frame(width: 54, height: 66).clipped().clipShape(RoundedRectangle(cornerRadius: 7))
                     .accessibilityLabel("Media preview")
+                }
                 VStack(alignment: .leading, spacing: 5) {
                 Text(session.jobTitles[jobId].flatMap { $0.isEmpty ? nil : $0 } ?? "Job #\(jobId)")
                     .font(.system(size: 15, weight: .semibold))
@@ -316,6 +320,9 @@ struct SidecarMenu: View {
                     .truncationMode(.middle)
             }
 
+            }
+            if session.audioJobs.contains(jobId) {
+                AudioSpectrumView(frame: session.filmStrips[jobId]?.frames.last)
             }
             if let storage = session.jobStorage[jobId] {
                 VStack(alignment: .leading, spacing: 3) {

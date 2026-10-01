@@ -118,7 +118,8 @@ class Harness:
             require(len(candidates) == 1 and not candidates[0]["eligible"]
                     and expected_ineligible in candidates[0]["reason"], f"Unsupported media was not safely excluded: {candidates}")
             require(sha256(source) == sha256(fixture), "Eligibility refusal changed the source")
-            return {"eligibility": candidates[0], "sourceUnchanged": True}
+            return {"libraryId": library_id, "mediaId": files[0]["id"],
+                    "eligibility": candidates[0], "sourceUnchanged": True}
         require(len(candidates) == 1 and candidates[0]["eligible"], f"Fixture ineligible: {candidates}")
         self.api.post(f"/api/libraries/{library_id}/enqueue")
         jobs = self.api.request(f"/api/jobs?libraryId={library_id}")
@@ -154,11 +155,42 @@ class Harness:
 
     def output(self, case):
         directory = inside(self.root / "work", self.root / "work" / str(case["mediaId"]))
-        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".webp", ".jpg", ".avif")]
+        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".opus", ".webp", ".jpg", ".avif")]
         require(len(files) == 1, f"Expected exactly one delivered candidate, found {files}")
         return inside(self.root / "work", files[0])
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False):
+    def subtitle_mux(self, name, source, encoder="libx265", worker=None):
+        fixture = self.root / "fixtures" / (name + ".mp4")
+        self.tools.subtitle_fixture(fixture, source)
+        return self.video(name, fixture, encoder, worker, check_subtitles=True)
+
+    def subtitle_overlap(self, name, source, encoder="libx265", worker=None, filtered=False):
+        fixture = self.root / "fixtures" / (name + ".mkv")
+        self.tools.overlapping_subtitle_fixture(fixture, source)
+        return self.video(name, fixture, encoder, worker, container="mp4",
+            rule_overrides={"keepSubtitleLanguages": "fra"} if filtered else None,
+            subtitle_expectations=(["mov_text"], ["fra"], [1]) if filtered
+                else (["subrip"] * 3, ["eng", "fra", "jpn"], [0, 1, 2]),
+            expected_container="mp4" if filtered else "mkv")
+
+    def alac_copy(self, name, source, encoder="libx265", worker=None, mode="matroska"):
+        fixture = self.root / "fixtures" / (name + (".mp4" if mode == "native-mp4" else ".mkv"))
+        self.tools.alac_fixture(fixture, source, mixed=mode == "filtered")
+        if mode == "remux-noop":
+            self.select_worker(worker)
+            case = self.create_job(name, fixture, encoder=encoder, worker=worker,
+                overrides={"ruleProfile": "RemuxCleanup", "targetVideoCodec": None, "targetContainer": "mp4"},
+                expected_ineligible="ALAC")
+            self.api.post(f"/api/libraries/{case['libraryId']}/enqueue")
+            jobs = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")
+            require(not jobs, "Unchanged ALAC remux was queued despite its ineligible reason")
+            return {**case, "excludedBeforeQueueing": True}
+        return self.video(name, fixture, encoder, worker, container="mp4",
+            rule_overrides={"keepAudioLanguages": "eng"} if mode == "filtered" else None,
+            audio_expectations=(["flac"], ["eng"], [0]) if mode == "filtered" else (["alac"], ["eng"], [0]),
+            expected_container="mkv" if mode == "matroska" else "mp4")
+
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -167,6 +199,10 @@ class Harness:
                                    expected_ineligible="limited to 8-bit sources")
         overrides = {"audioLoudnessGateEnabled": True, "maxLoudnessDriftLufs": 1,
                      "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0} if audio_gates else None
+        # A floor of 100 is attainable by v1; add measurable compression damage rather than
+        # assuming the model can never return its upper bound for a clean tiny fixture.
+        overrides = {**(overrides or {}), **({"qualityCrf": 45} if reject else {}),
+                     **(rule_overrides or {}), "targetContainer": container}
         case = self.create_job(name, fixture, encoder=encoder, worker=worker, strategy=strategy, gates=gates,
                                overrides=overrides)
         directory = self.report.root / name
@@ -182,6 +218,9 @@ class Harness:
             require(re.search(r"(?:^| )-hwaccel (qsv|vaapi|cuda|videotoolbox)(?: |$)", job["ffmpegArguments"] or ""),
                     "GPU decode was requested but the delivered encode used software decoding")
         require(sha256(case["source"]) == case["sourceSha256"], "Original changed before replacement")
+        if not reject:
+            require(job["status"] == "ReadyToReplace" and job["verificationPassed"] is True,
+                    f"Output failed application verification: {job['status']}: {job['errorMessage']}")
         require(job["workerName"] == (worker["name"] if worker else None), "Wrong worker executed job")
         if job["videoEncoder"] != encoder:
             raise Blocked(f"Requested coverage for {encoder}, scheduler selected {job['videoEncoder']}; not covered")
@@ -204,22 +243,42 @@ class Harness:
                         "Software-decode retry was not verified; fallback coverage is missing")
             return {"jobId": case["jobId"], "expectedRejection": True, "originalUnchanged": True,
                     "decodeRetry": verification.get("context", {}).get("decodeRetry")}
-        require(job["status"] == "ReadyToReplace" and job["verificationPassed"] is True,
-                f"Output failed application verification: {job['status']}: {job['errorMessage']}")
         candidate = self.output(case)
+        if expected_container:
+            require(candidate.suffix.lower() == "." + expected_container, "Unexpected planned output container")
         require(candidate.stat().st_size < case["source"].stat().st_size, "No size saving")
         expected_codec = CODECS.get(encoder, encoder.split("_")[0])
         streams = self.tools.probe(candidate)["streams"]
         require(next(s["codec_name"] for s in streams if s["codec_type"] == "video") == expected_codec,
                 "Delivered codec differs from requested codec")
         source_bytes, candidate_bytes = case["source"].stat().st_size, candidate.stat().st_size
-        scores = self.tools.measure(case["source"], candidate, directory)
+        scores = self.tools.measure(case["source"], candidate, directory,
+            kept_subtitle_indexes=subtitle_expectations[2] if subtitle_expectations else None,
+            kept_audio_indexes=audio_expectations[2] if audio_expectations else None)
         require(not quality_failures(scores, gates), f"Independent quality gate failed: {scores}")
         compare_report(verification, scores)
         if audio_gates:
             before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
             require(abs(before["lufs"] - after["lufs"]) <= 1, "Worker output loudness drift exceeds 1 LUFS")
             require(after["truePeak"] <= 0, "Worker output introduced clipping")
+        if audio_expectations:
+            codecs, languages, _ = audio_expectations
+            audio = [stream for stream in streams if stream["codec_type"] == "audio"]
+            require([stream["codec_name"] for stream in audio] == codecs, "Copied audio codec changed")
+            require([stream.get("tags", {}).get("language") for stream in audio] == languages,
+                    "Copied audio language or order changed")
+        if check_subtitles or subtitle_expectations:
+            codecs, languages, source_indexes = subtitle_expectations or (["ass", "ass"], ["eng", "fra"], [0, 1])
+            subtitles = [stream for stream in streams if stream["codec_type"] == "subtitle"]
+            require([stream["codec_name"] for stream in subtitles] == codecs,
+                    "Subtitle output codecs differ from the preserving plan")
+            require([stream.get("tags", {}).get("language") for stream in subtitles] == languages,
+                    "Subtitle language or order changed")
+            for index, source_index in enumerate(source_indexes):
+                before = self.tools.subtitle_cues(case["source"], source_index)
+                after = self.tools.subtitle_cues(candidate, index)
+                require(bool(before) and before == after, f"Subtitle {index} text or timing changed")
+                (directory / f"subtitle-{index}.srt").write_text(after, encoding="utf-8")
         self.replace_restore(case, candidate)
         return {"jobId": case["jobId"], "workerId": worker["id"] if worker else None,
                 "encoder": encoder, "strategy": strategy, "scores": scores, "restoredOriginal": True,
@@ -258,24 +317,47 @@ class Harness:
         finally:
             self.api.post("/api/queue/resume")
 
-    def audio(self):
-        self.select_worker(None)
-        fixture = self.root / "fixtures" / "audio.flac"
-        self.tools.encode(["-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.1:duration=45:sample_rate=48000:seed=42",
-            "-c:a", "flac", "-metadata", "artist=Optimisarr acceptance", self.tools.path(fixture)])
-        case = self.create_job("audio-aac", fixture, overrides={"mediaType": "Music", "audioTargetCodec": "aac",
+    def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False):
+        self.select_worker(worker)
+        name = f"worker-{worker['id']}-audio-{codec}" if worker else f"audio-{codec}"
+        if artwork: name += "-artwork"
+        if downmix: name += "-downmix"
+        fixture = self.root / "fixtures" / f"{name}.flac"
+        inputs = ["-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.1:duration=45:sample_rate=48000:seed=42"]
+        cover = []
+        if artwork:
+            image = self.root / "fixtures" / "audio-cover.jpg"
+            self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=128x128:rate=1", "-frames:v", "1", self.tools.path(image)])
+            inputs += ["-i", self.tools.path(image)]
+            cover = ["-map", "0:a", "-map", "1:v", "-c:v", "copy", "-disposition:v", "attached_pic"]
+        self.tools.encode(inputs + cover + ["-ac", "6" if downmix else "2", "-c:a", "flac",
+            "-metadata", "artist=Optimisarr acceptance", "-metadata", "title=Audio fixture", self.tools.path(fixture)])
+        case = self.create_job(name, fixture, worker=worker, overrides={"mediaType": "Music", "audioTargetCodec": codec,
+            "downmixToStereo": downmix,
             "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "audioLoudnessGateEnabled": True,
             "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0})
         job = self.wait_job(case)
-        save(self.report.root / "audio-aac" / "job.json", job)
+        save(self.report.root / name / "job.json", job)
         require(job["status"] == "ReadyToReplace", f"Audio failed: {job['errorMessage']}")
         candidate = self.output(case)
         before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
         require(abs(before["lufs"] - after["lufs"]) <= 1, "Audio loudness drift exceeds 1 LUFS")
         require(after["truePeak"] <= 0, "Audio re-encode introduced clipping")
         probe = self.tools.probe(candidate)
-        require(probe["streams"][0]["codec_name"] == "aac", "Wrong audio encoder output")
-        require(probe["format"].get("tags", {}).get("artist") == "Optimisarr acceptance", "Lost audio metadata")
+        audio = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+        require(len(audio) == 1 and audio[0]["codec_name"] == codec, "Wrong audio encoder output")
+        require(audio[0]["channels"] == 2, "Unexpected channel layout")
+        tags = {**probe["format"].get("tags", {}), **audio[0].get("tags", {})}
+        tags = {key.lower(): value for key, value in tags.items()}
+        require(tags.get("artist") == "Optimisarr acceptance" and tags.get("title") == "Audio fixture", "Lost audio metadata")
+        if artwork:
+            require(any(stream.get("disposition", {}).get("attached_pic") == 1 for stream in probe["streams"]), "Lost embedded cover art")
+        require(job["workerName"] == (worker["name"] if worker else None), "Audio ran on the wrong host")
+        verification = json.loads(job["verificationReportJson"] or "{}")
+        if worker and getattr(self, "strict_worker_verification", False):
+            require(verification.get("context", {}).get("verificationLocation") == "Worker", "Audio verification fell back to the server")
+        self.tools.run(self.tools.ffmpeg, ["-v", "error", "-xerror", "-i", self.tools.path(candidate), "-f", "null", "-"])
+        save(self.report.root / name / "independent-audio.json", {"source": before, "candidate": after, "probe": probe})
         self.replace_restore(case, candidate)
         return {"original": before, "encoded": after, "restoredOriginal": True}
 
@@ -532,7 +614,7 @@ class Harness:
         require(not errors, "Cleanup failed: " + "; ".join(errors))
 
     def run(self, *, tier="smoke", corpus=None, expected_workers=(), local_encoders=(), variants=None,
-            soak_cycles=0, fixture_seconds=8, strict_worker_verification=False):
+            soak_cycles=0, fixture_seconds=8, strict_worker_verification=False, regression=None):
         if self.report.case("preflight", self.preflight)["status"] != "passed":
             return self.report.exit_code
         self.strict_worker_verification = strict_worker_verification
@@ -543,6 +625,8 @@ class Harness:
         try:
             fixture_dir = self.root / "fixtures"
             variants = variants or (["sdr"] if tier == "smoke" else ["sdr", "vfr", "offset", "ten-bit"])
+            if regression == "fractional-timing" and "fractional" not in variants:
+                variants = [*variants, "fractional"]
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}
@@ -567,6 +651,63 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
+            if regression == "audio":
+                for codec in ("aac", "opus", "mp3"):
+                    self.report.case(f"local-audio-{codec}", lambda c=codec: self.audio(c))
+                self.report.case("local-audio-artwork", lambda: self.audio("mp3", artwork=True))
+                usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
+                if tier == "fleet" and not usable:
+                    self.report.case("audio-workers", lambda: (_ for _ in ()).throw(Blocked("No audio workers paired")))
+                for worker in usable:
+                    for codec, encoder in (("aac", "aac"), ("opus", "libopus"), ("mp3", "libmp3lame")):
+                        name = f"worker-{worker['id']}-audio-{codec}"
+                        if encoder not in worker["audioEncoders"]:
+                            self.report.case(name, lambda e=encoder: (_ for _ in ()).throw(Blocked(f"Audio encoder {e} was not proved")))
+                            continue
+                        self.report.case(name, lambda c=codec, w=worker: self.audio(c, w))
+                    self.report.case(f"worker-{worker['id']}-audio-downmix", lambda w=worker: self.audio("aac", w, downmix=True))
+                    self.report.case(f"worker-{worker['id']}-audio-artwork", lambda w=worker: self.audio("mp3", w, artwork=True))
+                return self.report.exit_code
+            if regression in ("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy"):
+                def regression_case(name, encoder, worker=None):
+                    if regression == "subtitle-mux":
+                        return self.subtitle_mux(name, primary, encoder, worker)
+                    if regression == "subtitle-overlap":
+                        return self.subtitle_overlap(name, primary, encoder, worker)
+                    if regression == "alac-copy":
+                        return self.alac_copy(name, primary, encoder, worker)
+                    require("fractional" in fixtures, "Fractional timestamp fixture could not be generated")
+                    return self.video(name, fixtures["fractional"], encoder, worker, container="mp4")
+                suffix = {"subtitle-mux": "mov-text-to-mkv", "fractional-timing": "fractional-to-mp4",
+                          "subtitle-overlap": "overlapping-cues-to-mkv", "alac-copy": "alac-to-mkv"}[regression]
+                for encoder in encoders:
+                    name = f"local-{encoder}-{suffix}"
+                    self.report.case(name, lambda n=name, e=encoder: regression_case(n, e))
+                    if regression == "subtitle-overlap":
+                        filtered_name = f"local-{encoder}-filtered-cues-to-mp4"
+                        self.report.case(filtered_name, lambda n=filtered_name, e=encoder: self.subtitle_overlap(n, primary, e, filtered=True))
+                    if regression == "alac-copy":
+                        for mode in ("native-mp4", "filtered", "remux-noop"):
+                            extra_name = f"local-{encoder}-{mode}-alac-copy"
+                            self.report.case(extra_name, lambda n=extra_name, e=encoder, m=mode: self.alac_copy(n, primary, e, mode=m))
+                if tier == "fleet":
+                    for name in missing_workers(self.workers, expected_workers):
+                        self.report.case("required-worker-" + name, lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
+                    usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
+                    if not usable:
+                        self.report.case("fleet-workers", lambda: (_ for _ in ()).throw(Blocked("No workers paired")))
+                    for worker in usable:
+                        for encoder in worker["videoEncoders"]:
+                            name = f"worker-{worker['id']}-{encoder}-{suffix}"
+                            self.report.case(name, lambda n=name, e=encoder, w=worker: regression_case(n, e, w))
+                            if regression == "subtitle-overlap":
+                                filtered_name = f"worker-{worker['id']}-{encoder}-filtered-cues-to-mp4"
+                                self.report.case(filtered_name, lambda n=filtered_name, e=encoder, w=worker: self.subtitle_overlap(n, primary, e, w, filtered=True))
+                            if regression == "alac-copy":
+                                for mode in ("native-mp4", "filtered", "remux-noop"):
+                                    extra_name = f"worker-{worker['id']}-{encoder}-{mode}-alac-copy"
+                                    self.report.case(extra_name, lambda n=extra_name, e=encoder, w=worker, m=mode: self.alac_copy(n, primary, e, w, mode=m))
+                return self.report.exit_code
             for encoder in encoders:
                 if encoder not in available:
                     self.report.case("local-" + encoder, lambda e=encoder: (_ for _ in ()).throw(Blocked(f"Required local encoder {e} is unavailable")))
@@ -577,6 +718,7 @@ class Harness:
                 if encoder.endswith(("_qsv", "_nvenc", "_vaapi", "_videotoolbox")):
                     self.report.case(f"local-{encoder}-decode-retry-rejection",
                                      lambda e=encoder: self.hardware_decode_rejection(e, primary))
+            self.report.case("local-mov-text-to-mkv", lambda: self.subtitle_mux("local-mov-text-to-mkv", primary))
             self.report.case("local-vmaf-rejection", lambda: self.video("local-vmaf-rejection", primary, reject=True))
             self.report.case("queued-cancellation", lambda: self.cancel(primary))
             self.report.case("running-cancellation", self.cancel_running)
@@ -614,6 +756,8 @@ class Harness:
                         for variant, fixture in fixtures.items():
                             name = f"worker-{worker['id']}-{encoder}-{variant}"
                             self.report.case(name, lambda n=name, f=fixture, e=encoder, w=worker: self.video(n, f, e, w))
+                        name = f"worker-{worker['id']}-{encoder}-mov-text-to-mkv"
+                        self.report.case(name, lambda n=name, e=encoder, w=worker: self.subtitle_mux(n, primary, e, w))
                         name = f"worker-{worker['id']}-{encoder}-adaptive"
                         self.report.case(name, lambda n=name, e=encoder, w=worker: self.video(n, primary, e, w, strategy="AdaptiveVmaf"))
                         name = f"worker-{worker['id']}-{encoder}-vmaf-rejection"

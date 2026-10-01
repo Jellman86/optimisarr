@@ -34,7 +34,7 @@ tests/                          Core and local pipe tests.
 monitor anchored to the notification-area screen. Preferences and diagnostics stay inside the panel.
 The active card shows a small frame from the worker's downloaded source while the activity panel
 is open; Processing details keeps each preview with its own job. Sampling is best-effort and never
-changes an encode. Unsupported or audio-only media keeps a stable fallback instead.
+changes an encode. Standalone audio shows a bounded source spectrogram; unsupported previews keep a labelled fallback.
 Changing pages or expanding **Processing details** keeps the rounded panel inside that screen’s
 working area. It dismisses on focus loss or Escape and is not an always-on-top window.
 The tray, panel, executable and Start shortcut share the main application’s Precession icon.
@@ -89,7 +89,7 @@ So each of these runs for real at service start:
 | Video encoders | Three frames of synthetic video, at a size that clears NVENC's minimum |
 | Audio encoders | A fifth of a second of silence |
 | Hardware decoders | Encode a clip, then decode it back with the accelerator engaged |
-| VMAF | Score a clip against itself: CUDA first, then CPU |
+| VMAF | Score both complete VMAF v1 HD/UHD models on the CPU; require finite frame evidence |
 
 Encoders looked for are libx264, libx265, libsvtav1, and the NVENC, Quick Sync and AMF families.
 Audio is narrowed to what Optimisarr can actually ask for, including `libopus` and `libmp3lame`,
@@ -142,12 +142,12 @@ the source). Updated Windows sidecars reject a smaller finished candidate before
 with a terminal **Compression ceiling** result; blank leaves compression unrestricted.
 
 Enable **Remote workers** under **Settings → Files & safety** on the server, then pair through
-**Settings → Remote workers**. If these controls are absent, the server operator must enable
-`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true` in its container environment through the normal
-deployment process. Each library chooses placement under **Choose files → Advanced eligibility →
-Where this library's work may run**. **Only on workers** keeps eligible video re-encodes off the
+**Settings → Remote workers**. Fresh installations enable workers; existing choices are preserved. If these controls are absent,
+remove any `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override and redeploy through the
+normal deployment process. Each library chooses placement under **Choose files → Advanced eligibility →
+Where this library's work may run**. **Only on workers** keeps eligible video and audio re-encodes off the
 container; **Prefer a worker** allows server fallback after ten minutes. Remote workers must remain
-enabled for these placement choices to apply. Remuxes, audio-only and image jobs remain server work.
+enabled for these placement choices to apply. Remuxes and image jobs remain server work. Standalone audio needs protocol 6 and its selected audio encoder.
 
 **Verify entirely on the sidecar** defaults on for new installations and applies to new assignments.
 It asks updated sidecars for source/candidate probes, complete candidate decode, timestamp checks,
@@ -195,7 +195,7 @@ The native check opens the actual monitor, changes pages and disclosure state, a
 working-area anchor. `--render-monitor <directory>` writes isolated fixture images without polling
 a live worker, including preview, fallback and two-job states. Set
 `OPTIMISARR_PREVIEW_FFMPEG` to an installed `ffmpeg.exe` before running the focused native preview
-test to exercise extraction from a synthetic video and audio-only fallback.
+test to exercise synthetic video frames, audio spectrograms and audio verification without a VMAF tool.
 [Installer validation](installer/README.md#validation) additionally exercises the
 installed binaries and private runtime. Real GPU and end-to-end media checks use the
 [media acceptance harness](../../docs/development/media-acceptance.md).
@@ -212,3 +212,8 @@ available. The Windows download remains explicitly an unsigned preview.
 The MSI version defaults to `Directory.Build.props`; `installer/build.ps1 -Version <version>`
 overrides it for an explicit build. Tag publication requires the tag and shared version to agree.
 Public distribution requirements are listed in the [installer notes](installer/README.md#distribution-status).
+
+Gated VMAF v1 jobs require protocol 7. The worker probes the candidate's actual format for banding
+measurement; NVENC can encode while complete v1 scoring runs on the same worker's CPU. A CUDA
+filter listing does not prove the missing upstream v1 feature extractors. Use the bundled pinned
+v3.2.1 toolchain; upstream score logs can still label that archive `3.2.0`.

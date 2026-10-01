@@ -36,6 +36,7 @@ public struct FullVerificationEvidence: Codable, Sendable {
     public var sourceVideo: VerificationTimestamps?
     public var candidateVideo: VerificationTimestamps?
     public var sourceAudio: VerificationTimestamps?
+    public var candidateAudio: VerificationTimestamps?
     public var sourceLoudness: VerificationLoudness?
     public var candidateLoudness: VerificationLoudness?
     public var error: String?
@@ -86,7 +87,7 @@ public struct FullVerification: Sendable {
                         candidate: URL, scratch: URL, sourceHash: String, candidateHash: String) async throws -> FullVerificationEvidence {
         var evidence = FullVerificationEvidence(contractId: contract.id, sourceSha256: sourceHash, candidateSha256: candidateHash)
         do {
-            guard contract.version == 1, let ffprobe else { throw Failure("This worker cannot run the requested full verification contract.") }
+            guard [1, 2].contains(contract.version), let ffprobe else { throw Failure("This worker cannot run the requested full verification contract.") }
             evidence.sourceProbe = try await probe(ffprobe, file: source, scratch: scratch, name: "source")
             evidence.candidateProbe = try await probe(ffprobe, file: candidate, scratch: scratch, name: "candidate")
             // The runner retains a bounded diagnostic tail. Stop on decode errors so a later
@@ -94,22 +95,29 @@ public struct FullVerification: Sendable {
             let decoded = try await runner.run(ffmpeg, ["-nostdin", "-xerror", "-v", "error", "-i", candidate.path,
                 "-map", "0:v?", "-map", "0:a?", "-f", "null", "-"]) { _ in }
             evidence.decode = Self.parseDecode(decoded.stderr, exitCode: decoded.exitCode)
-            evidence.sourceVideo = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "source-video", generateMissingPts: true)
-            evidence.candidateVideo = try await timestamps(ffprobe, file: candidate, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "candidate-video")
             evidence.sourceAudio = try await timestamps(ffprobe, file: source, stream: "a:0", scratch: scratch, name: "source-audio")
-            // Strict server verification consumes this evidence without re-reading media. Confirm
-            // a short source packet scan here so a transient read is not blamed on the original.
-            if Self.needsSourceVideoConfirmation(video: evidence.sourceVideo, audio: evidence.sourceAudio,
-                sourceProbe: evidence.sourceProbe) {
-                let confirmed = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier,
-                    scratch: scratch, name: "source-video-confirmation", generateMissingPts: true)
-                if confirmed.measured && confirmed.lastPresentationSeconds != nil { evidence.sourceVideo = confirmed }
+            if contract.version == 2 {
+                evidence.candidateAudio = try await timestamps(ffprobe, file: candidate, stream: "a:0", scratch: scratch, name: "candidate-audio")
+            } else {
+                evidence.sourceVideo = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "source-video", generateMissingPts: true)
+                evidence.candidateVideo = try await timestamps(ffprobe, file: candidate, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "candidate-video")
+                // Strict server verification consumes this evidence without re-reading media. Confirm
+                // a short source packet scan here so a transient read is not blamed on the original.
+                if Self.needsSourceVideoConfirmation(video: evidence.sourceVideo, audio: evidence.sourceAudio,
+                    sourceProbe: evidence.sourceProbe) {
+                    let confirmed = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier,
+                        scratch: scratch, name: "source-video-confirmation", generateMissingPts: true)
+                    if confirmed.measured && confirmed.lastPresentationSeconds != nil { evidence.sourceVideo = confirmed }
+                }
             }
             if contract.measureAudio {
                 evidence.sourceLoudness = try await loudness(ffmpeg, file: source)
                 evidence.candidateLoudness = try await loudness(ffmpeg, file: candidate)
             }
-            for (name, scan) in [("source-video", evidence.sourceVideo), ("candidate-video", evidence.candidateVideo)] {
+            let scans = contract.version == 2
+                ? [("source-audio", evidence.sourceAudio), ("candidate-audio", evidence.candidateAudio)]
+                : [("source-video", evidence.sourceVideo), ("candidate-video", evidence.candidateVideo)]
+            for (name, scan) in scans {
                 guard let scan, scan.measured, let endpoint = scan.lastPresentationSeconds, endpoint.isFinite else {
                     throw Failure("\(name): no complete presentation timestamp measurement was returned.")
                 }

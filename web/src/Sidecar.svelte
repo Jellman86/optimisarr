@@ -17,12 +17,12 @@
   type SourceMedia = { videoCodec: string | null; width: number | null; height: number | null; durationSeconds: number | null;
     audioCodecs: string | null; pixelFormat: string | null }
   type Job = { jobId: number; title: string; encoder: string; stage: string; encodedSeconds: number | null;
-    sourceBytes: number | null; outputExtension: string | null; hardwareDecoder: string | null; previewRevision: number;
+    kind?: string; sourceBytes: number | null; outputExtension: string | null; hardwareDecoder: string | null; previewRevision: number;
     hasArtwork: boolean; startedAt: string | null; sourceMedia: SourceMedia | null }
   type Snapshot = {
     name: string; state: string; serverAddress: string | null; scratchPath: string;
     storage: { kind: string; freeBytes: number; totalBytes: number }; concurrency: number;
-    capabilities: { videoEncoders: string[]; hardwareDecoders: string[]; vmaf: string } | null;
+    capabilities: { videoEncoders: string[]; audioEncoders?: string[]; hardwareDecoders: string[]; vmaf: string } | null;
     jobs: Job[]; recent: { jobId: number; title: string; delivered: boolean; finishedAt: string }[];
     metrics: { cpuPercent: number | null; gpuPercent: number | null; gpuEngine: string | null; sampledAt: string } | null;
     version: string; brandStyle: string;
@@ -261,7 +261,7 @@
             {@const left = job.stage === 'Encoding' ? remainingSeconds(job.encodedSeconds, duration, speed) : null}
             <article class="job" aria-label={job.title}>
               <div class="poster" data-thumbnail>
-                {#if job.hasArtwork}<img src={`/api/sidecar/jobs/${job.jobId}/artwork`} alt="" loading="lazy" />{:else}<Icon name="film" class="h-5 w-5 text-ink-5" />{/if}
+                {#if job.hasArtwork}<img src={`/api/sidecar/jobs/${job.jobId}/artwork`} alt="" loading="lazy" />{:else}<Icon name={job.kind === 'Audio' ? 'waveform' : 'film'} class="h-5 w-5 text-ink-5" />{/if}
               </div>
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
@@ -301,14 +301,17 @@
                   <span>Job {job.jobId}</span>
                 </div>
               </div>
-              <figure class="frame" class:frame-empty={job.previewRevision === 0}>
+              <figure class="frame" class:audio-spectrum={job.kind === 'Audio'} class:frame-empty={job.previewRevision === 0 && job.kind !== 'Audio'}>
                 {#if job.previewRevision > 0}
-                  <img src={`/api/sidecar/jobs/${job.jobId}/preview?v=${job.previewRevision}`} alt={`Latest frame of ${job.title}`} />
-                  <figcaption><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-bad" aria-hidden="true"></span>Live frame</figcaption>
+                  <img src={`/api/sidecar/jobs/${job.jobId}/preview?v=${job.previewRevision}`} alt={job.kind === 'Audio' ? `Source audio spectrogram of ${job.title}` : `Latest frame of ${job.title}`} />
+                  <figcaption><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-bad" aria-hidden="true"></span>{job.kind === 'Audio' ? 'Source spectrum' : 'Live frame'}</figcaption>
                 {:else}
-                  <span class="text-xs text-ink-3">{job.stage === 'FetchingSource' ? 'Frames appear once encoding starts' : 'Waiting for a frame'}</span>
+                  <span class="text-xs text-ink-3">{job.kind === 'Audio' ? 'Spectrum appears once encoding starts' : job.stage === 'FetchingSource' ? 'Frames appear once encoding starts' : 'Waiting for a frame'}</span>
                 {/if}
               </figure>
+              {#if job.kind === 'Audio'}
+                <p class="spectrum-caption text-xs text-ink-3">Source spectrogram · up to 3 s · frequency 0–24 kHz (log). Brighter colour means stronger signal; verification runs separately.</p>
+              {/if}
             </article>
           {:else}
             <div class="px-5 py-8 text-center">
@@ -332,9 +335,9 @@
           <li class="flow-server"><Icon name="server" class="h-4 w-4" /><span><strong>Server</strong> picks a job and keeps the original</span></li>
           {#each STAGES as stage, index}
             {@const active = status.jobs.some((job) => stageIndex(job.stage) === index)}
-            <li class:flow-active={active}><Icon name={index === 0 ? 'download' : index === 1 ? 'film' : index === 2 ? 'search' : 'upload'} class="h-4 w-4" /><span><strong>{stage.label}</strong> {index === 0 ? 'a copy here' : index === 1 ? 'on this hardware' : index === 2 ? 'quality (VMAF)' : 'the candidate'}</span></li>
+            <li class:flow-active={active}><Icon name={index === 0 ? 'download' : index === 1 ? 'film' : index === 2 ? 'search' : 'upload'} class="h-4 w-4" /><span><strong>{stage.label}</strong> {index === 0 ? 'a copy here' : index === 1 ? 'on this hardware' : index === 2 ? 'requested quality and verification checks' : 'the candidate'}</span></li>
           {/each}
-          <li class="flow-server"><Icon name="shield-check" class="h-4 w-4" /><span><strong>Server</strong> verifies, then replaces</span></li>
+          <li class="flow-server"><Icon name="shield-check" class="h-4 w-4" /><span><strong>Server</strong> validates results, then replaces</span></li>
         </ol>
       </section>
 
@@ -354,6 +357,8 @@
           {#if status.capabilities}
             <p class="label mt-3">Video encoders</p>
             <div class="flex flex-wrap gap-1.5">{#each status.capabilities.videoEncoders as encoder}<span class="badge tone-neutral font-mono">{encoder}</span>{:else}<span class="text-sm text-ink-3">None available</span>{/each}</div>
+            <p class="eyebrow mt-4 mb-2">Audio encoders</p>
+            <div class="flex flex-wrap gap-1.5">{#each status.capabilities.audioEncoders ?? [] as encoder}<span class="badge tone-neutral font-mono">{encoder}</span>{:else}<span class="text-sm text-ink-3">None reported</span>{/each}</div>
             <p class="label mt-3">Hardware decode</p>
             <div class="flex flex-wrap gap-1.5">{#each status.capabilities.hardwareDecoders as decoder}<span class="badge tone-ok font-mono">{decoder}</span>{:else}<span class="text-sm text-ink-3">Software only</span>{/each}</div>
             <p class="label mt-3">Quality measurement</p>
@@ -421,6 +426,8 @@
   .job-stages .stage-current { color: var(--accent); border-color: var(--accent); }
   .facts { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: 1rem; font: .72rem ui-monospace, monospace; color: var(--ink-3); }
   .frame { position: relative; margin: 0; aspect-ratio: 16 / 9; border-radius: .6rem; overflow: hidden; display: grid; place-items: center; background: var(--sunken); box-shadow: var(--inset-1); align-self: start; }
+  .spectrum-caption { grid-column: 2 / -1; }
+  .audio-spectrum { aspect-ratio: 10 / 3; }
   .frame img { width: 100%; height: 100%; object-fit: contain; background: #000; }
   .frame figcaption { position: absolute; left: .5rem; top: .5rem; display: flex; align-items: center; gap: .35rem; padding: .15rem .45rem; border-radius: 999px; background: rgba(0, 0, 0, .6); color: #fff; font: 600 .625rem ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
   .flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; padding: 1rem; }
@@ -436,6 +443,7 @@
   @media (max-width: 1023px) {
     .job { grid-template-columns: 6rem minmax(0, 1fr); }
     .poster { width: 6rem; }
+    .spectrum-caption { grid-column: 1 / -1; }
     .frame { grid-column: 1 / -1; max-width: 26rem; }
     .flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -29,6 +29,160 @@ namespace Optimisarr.Tests;
 [Collection(TokenedApiCollection.Name)]
 public sealed class WorkerResultUploadTests : IAsyncLifetime
 {
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public async Task ReviewRegression_state_change_during_upload_is_respected(int mode)
+    {
+        await EnableRemoteWorkers();
+        using var worker = await PairWorker("Review controlled transfer");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        if (mode is 2 or 3)
+        {
+            using var expiry = _api.Services.CreateScope();
+            var expiryDb = expiry.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var expiryRow = await expiryDb.JobLeases.FindAsync(Guid.Parse(leaseId));
+            expiryRow!.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(1);
+            await expiryDb.SaveChangesAsync();
+        }
+        var endpoint = Assert.Single(_api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
+            endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "DeliverResult");
+        using var scope = _api.Services.CreateScope();
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        context.RequestServices = scope.ServiceProvider;
+        context.Request.Method = "POST";
+        context.Request.Path = $"/api/workers/leases/{leaseId}/result";
+        context.Request.RouteValues["leaseId"] = leaseId;
+        context.Request.Headers.Authorization = worker.DefaultRequestHeaders.Authorization!.ToString();
+        context.Request.Headers["X-Optimisarr-Source-Sha256"] = sourceHash;
+        context.Request.Headers["X-Optimisarr-Candidate-Sha256"] = Sha256(CandidateBytes);
+        context.Request.ContentType = "application/octet-stream";
+        context.Request.Body = new ReviewCallbackStream(CandidateBytes, async () =>
+        {
+            if (mode == 2) { await Task.Delay(1500); return; }
+            using var change = _api.Services.CreateScope();
+            var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var lease = await db.JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
+            if (mode == 1) lease.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+            else if (mode == 3) lease.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(2);
+            else if (mode == 4)
+            {
+                var revoked = await db.Workers.FindAsync(lease.WorkerId);
+                revoked!.CredentialFingerprint = null;
+            }
+            else if (mode == 5) lease.Job!.ExecutionAttempt++;
+            else { lease.Job!.Status = JobStatus.Cancelled; lease.State = LeaseState.Released; }
+            await db.SaveChangesAsync();
+            if (mode == 3) await Task.Delay(1500);
+        });
+        context.Response.Body = new MemoryStream();
+        await endpoint.RequestDelegate!(context);
+        Assert.Equal(mode == 3 ? 202 : mode == 4 ? 401 : 409, context.Response.StatusCode);
+        using var read = _api.Services.CreateScope();
+        var row = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
+        Assert.Equal(mode == 0 ? JobStatus.Cancelled : mode == 3 ? JobStatus.AwaitingVerification : JobStatus.Leased, row.Job!.Status);
+    }
+
+    [Fact]
+    public async Task Concurrent_chunks_at_the_same_offset_append_only_once()
+    {
+        await EnableRemoteWorkers();
+        using var worker = await PairWorker("Concurrent transfer");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        var endpoint = Assert.Single(_api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
+            e => e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "AppendResultChunk");
+        using var firstScope = _api.Services.CreateScope();
+        using var secondScope = _api.Services.CreateScope();
+        Microsoft.AspNetCore.Http.DefaultHttpContext Context(IServiceProvider services, Stream body)
+        {
+            var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+            context.RequestServices = services;
+            context.Request.Method = "PATCH";
+            context.Request.RouteValues["leaseId"] = leaseId;
+            context.Request.Headers.Authorization = worker.DefaultRequestHeaders.Authorization!.ToString();
+            context.Request.Headers["X-Optimisarr-Offset"] = "0";
+            context.Request.Body = body;
+            context.Response.Body = new MemoryStream();
+            return context;
+        }
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = Context(firstScope.ServiceProvider, new ReviewCallbackStream(CandidateBytes, async () =>
+        {
+            started.SetResult();
+            await release.Task;
+        }));
+        var second = Context(secondScope.ServiceProvider, new MemoryStream(CandidateBytes));
+        var firstTask = endpoint.RequestDelegate!(first);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var secondTask = endpoint.RequestDelegate!(second);
+        release.SetResult();
+        await Task.WhenAll(firstTask, secondTask);
+        Assert.Equal(200, first.Response.StatusCode);
+        Assert.Equal(409, second.Response.StatusCode);
+        using var complete = Complete(leaseId, sourceHash, Sha256(CandidateBytes));
+        using var response = await worker.SendAsync(complete);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(ReplacementStatus.Pending)]
+    [InlineData(ReplacementStatus.RollbackPending)]
+    public async Task Clearing_errors_preserves_interrupted_recovery(ReplacementStatus status)
+    {
+        await QueueAJob();
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var libraryId = _createdLibraries.Last();
+        var job = await db.Jobs.SingleAsync(j => j.LibraryId == libraryId);
+        job.Status = JobStatus.Failed;
+        var replacement = new Optimisarr.Data.Replacement
+        {
+            JobId = job.Id, MediaFileId = job.MediaFileId, Status = status,
+            OriginalPath = "owned-original", QuarantinePath = "owned-quarantine", FinalPath = "owned-final"
+        };
+        db.Replacements.Add(replacement);
+        await db.SaveChangesAsync();
+        try
+        {
+            using var admin = Admin();
+            Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsync($"/api/jobs/{job.Id}/retry", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await admin.DeleteAsync($"/api/jobs/{job.Id}")).StatusCode);
+            (await admin.PostAsync("/api/jobs/clear?scope=errored", null)).EnsureSuccessStatusCode();
+            db.ChangeTracker.Clear();
+            Assert.True(await db.Jobs.AnyAsync(j => j.Id == job.Id));
+            Assert.Equal(status, (await db.Replacements.SingleAsync(r => r.Id == replacement.Id)).Status);
+            var retained = await db.Jobs.SingleAsync(j => j.Id == job.Id);
+            retained.Status = JobStatus.ReadyToReplace;
+            await db.SaveChangesAsync();
+            (await admin.PostAsync("/api/jobs/clear-pending", null)).EnsureSuccessStatusCode();
+            db.ChangeTracker.Clear();
+            Assert.True(await db.Jobs.AnyAsync(j => j.Id == job.Id));
+            Assert.Equal(status, (await db.Replacements.SingleAsync(r => r.Id == replacement.Id)).Status);
+        }
+        finally
+        {
+            await db.Replacements.Where(r => r.Id == replacement.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    private sealed class ReviewCallbackStream(byte[] bytes, Func<Task> callback) : MemoryStream(bytes)
+    {
+        private bool called;
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!called) { called = true; await callback(); }
+            return await base.ReadAsync(buffer, cancellationToken);
+        }
+    }
+
     private readonly AdminTokenAuthEndpointTests.TokenedApi _api;
     private readonly List<int> _createdLibraries = [];
 

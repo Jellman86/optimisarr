@@ -56,5 +56,9 @@ public sealed record VerificationReport(
     ColourEvidence? Colour = null,
     VmafShadowEvidence? ShadowVmaf = null)
 {
+    public bool HasValidStructure() => Checks is { Count: > 0 }
+        && Checks.All(check => check is not null && !string.IsNullOrWhiteSpace(check.Name)
+            && check.Detail is not null && Enum.IsDefined(check.Outcome));
+
     public bool Passed => Checks.All(check => check.Outcome == CheckOutcome.Passed);
 }

@@ -30,6 +30,19 @@ internal static class JobAttemptHistory
             ? []
             : JsonSerializer.Deserialize<List<JobAttemptSnapshot>>(json, JsonOptions) ?? [];
 
+    internal static void Archive(Job job, string reason, DateTimeOffset nowUtc,
+        string? workerName = null, string? hardwareDecoder = null, string? outcome = null)
+    {
+        var history = Read(job.AttemptHistoryJson).ToList();
+        var number = Math.Max(job.ExecutionAttempt, (history.LastOrDefault()?.Number ?? 0) + 1);
+        job.ExecutionAttempt = number;
+        history.Add(new JobAttemptSnapshot(number, workerName, job.VideoEncoder, hardwareDecoder,
+            job.StartedAt, job.FinishedAt ?? nowUtc, job.VerificationPassed, job.VerificationReportJson,
+            job.VerifiedAt, job.OutputSizeBytes, outcome ?? job.Status.ToString(), reason, job.FfmpegArguments,
+            job.ProcessLog is { Length: > 65536 } log ? log[^65536..] : job.ProcessLog));
+        job.AttemptHistoryJson = JsonSerializer.Serialize(history.TakeLast(8), JsonOptions);
+    }
+
     /// <summary>
     /// Archive the rejected candidate and clear all active-attempt facts in the same tracked Job.
     /// The caller saves once, so an API reader cannot see a queued retry with the prior verdict.
@@ -37,24 +50,7 @@ internal static class JobAttemptHistory
     internal static void RequeueAfterRejectedCandidate(
         Job job, string workerName, string? hardwareDecoder, DateTimeOffset nowUtc)
     {
-        var history = Read(job.AttemptHistoryJson).ToList();
-        job.ExecutionAttempt = Math.Max(job.ExecutionAttempt, history.Count + 1);
-        history.Add(new JobAttemptSnapshot(
-            job.ExecutionAttempt,
-            workerName,
-            job.VideoEncoder,
-            hardwareDecoder,
-            job.StartedAt,
-            nowUtc,
-            job.VerificationPassed,
-            job.VerificationReportJson,
-            job.VerifiedAt,
-            job.OutputSizeBytes,
-            "Rejected",
-            "HardwareDecodeCorruption",
-            job.FfmpegArguments,
-            job.ProcessLog));
-        job.AttemptHistoryJson = JsonSerializer.Serialize(history, JsonOptions);
+        Archive(job, "HardwareDecodeCorruption", nowUtc, workerName, hardwareDecoder, "Rejected");
         job.RetryReason = SoftwareDecodeReason;
         job.PreferSoftwareDecode = true;
         job.Status = JobStatus.Queued;
@@ -70,6 +66,9 @@ internal static class JobAttemptHistory
         job.VideoQualityMode = null;
         job.OutputSizeBytes = null;
         job.VerificationPassed = null;
+        job.SourceSha256 = null;
+        job.VerifiedSourceSha256 = null;
+        job.VerifiedOutputSha256 = null;
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
         job.StartedAt = null;

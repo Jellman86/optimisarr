@@ -7,6 +7,24 @@ namespace Optimisarr.Tests;
 public sealed class JobClearingTests
 {
     [Fact]
+    public void Retry_history_keeps_the_latest_eight_attempts_and_bounds_process_logs()
+    {
+        var job = new Job { Status = JobStatus.Failed, ProcessLog = new string('x', 100_000),
+            VerificationReportJson = "{\"passed\":false}", ErrorMessage = "quality failed" };
+        for (var i = 1; i <= 12; i++)
+        {
+            job.ExecutionAttempt = i;
+            JobAttemptHistory.Archive(job, "ManualRetry", DateTimeOffset.UtcNow);
+        }
+        var history = JobAttemptHistory.Read(job.AttemptHistoryJson);
+        Assert.Equal(8, history.Count);
+        Assert.Equal(5, history[0].Number);
+        Assert.Equal(12, history[^1].Number);
+        Assert.Equal(64 * 1024, history[^1].ProcessLog!.Length);
+        Assert.Equal(job.VerificationReportJson, history[^1].VerificationReportJson);
+    }
+
+    [Fact]
     public void A_new_attempt_clears_the_previous_attempts_failure_state()
     {
         var job = new Job

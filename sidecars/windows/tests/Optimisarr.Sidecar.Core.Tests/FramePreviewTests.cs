@@ -16,6 +16,18 @@ public sealed class FramePreviewTests
     }
 
     [Fact]
+    public void Audio_preview_measures_a_bounded_audio_window_with_no_video_track_dependency()
+    {
+        var args = FfmpegFramePreviewExtractor.Arguments("source with spaces", 12.5, audio: true).ToArray();
+        Assert.Contains("[spectrum]", args);
+        Assert.DoesNotContain("0:V:0", args);
+        Assert.Equal("9.50", args[Array.IndexOf(args, "-ss") + 1]);
+        Assert.Equal("3", args[Array.IndexOf(args, "-t") + 1]);
+        Assert.Contains("showspectrumpic", args[Array.IndexOf(args, "-filter_complex") + 1]);
+        Assert.Equal("pipe:1", args[^1]);
+    }
+
+    [Fact]
     public async Task Only_a_viewer_can_trigger_a_bounded_sample_and_failures_never_escape()
     {
         var now = DateTimeOffset.UtcNow;
@@ -69,10 +81,10 @@ public sealed class FramePreviewTests
     }
 
     [Fact]
-    public async Task Native_ffmpeg_extracts_a_small_frame_and_falls_back_for_audio_only()
+    public async Task Native_ffmpeg_extracts_video_and_audio_previews_and_verifies_audio_without_VMAF()
     {
         var ffmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_PREVIEW_FFMPEG");
-        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(ffmpeg)) return;
+        if (string.IsNullOrWhiteSpace(ffmpeg)) return;
         var root = Path.Combine(Path.GetTempPath(), "optimisarr-preview-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
@@ -91,6 +103,17 @@ public sealed class FramePreviewTests
             await CreateAsync(ffmpeg, ["-f", "lavfi", "-i", "sine=frequency=440:duration=2",
                 "-c:a", "pcm_s16le", audio]);
             Assert.Null(await new FfmpegFramePreviewExtractor().ExtractAsync(ffmpeg, audio, 1, CancellationToken.None));
+            var spectrum = await new FfmpegFramePreviewExtractor(audio: true).ExtractAsync(ffmpeg, audio, 1, CancellationToken.None);
+            Assert.NotNull(spectrum);
+            Assert.InRange(spectrum.Length, 4, MonitorProtocol.MaximumPreviewBytes);
+            var contract = new Optimisarr.Core.Workers.RemoteVerificationContract(2, Guid.NewGuid(), true);
+            var evidence = await FullVerification.MeasureAsync(ffmpeg, audio, audio, contract,
+                new string('a', 64), new string('a', 64), CancellationToken.None,
+                measurementFfmpeg: Path.Combine(root, "absent-video-vmaf-tool"));
+            Assert.Null(evidence.Error);
+            Assert.NotNull(evidence.CandidateAudio);
+            Assert.Null(evidence.CandidateVideo);
+            Assert.True(evidence.CandidateLoudness!.Measured);
         }
         finally { Directory.Delete(root, recursive: true); }
     }

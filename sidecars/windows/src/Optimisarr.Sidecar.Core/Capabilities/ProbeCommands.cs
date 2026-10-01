@@ -1,3 +1,5 @@
+using Optimisarr.Sidecar.Core.Session;
+
 namespace Optimisarr.Sidecar.Core.Capabilities;
 
 /// <summary>
@@ -72,6 +74,13 @@ public static class ProbeCommands
         "-hwaccel", "cuda", "-hwaccel_output_format", "cuda", "-i", path,
         "-lavfi", "[0:v][1:v]libvmaf_cuda=n_threads=1:n_subsample=5",
         "-f", "null", "-",
+    ];
+
+    public static IReadOnlyList<string> V1Vmaf(string path, string model, string log) =>
+    [
+        "-nostdin", "-hide_banner", "-v", "error", "-i", path, "-i", path,
+        "-lavfi", $"[0:v]format=yuv420p10le[d];[1:v]format=yuv420p10le[r];[d][r]libvmaf=model='version={model}\\:cambi.enc_width=320\\:cambi.enc_height=240\\:cambi.enc_bitdepth=8':n_threads=1:n_subsample=5:log_fmt=json:log_path={FilterPath.ForFilterOption(log)}:shortest=1:repeatlast=0",
+        "-f", "null", "-"
     ];
 
     /// <summary>The same, on the CPU, for a machine with no usable CUDA device.</summary>

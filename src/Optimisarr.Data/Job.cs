@@ -154,6 +154,9 @@ public sealed class Job
     /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
     public string? VideoQualityMode { get; set; }
 
+    /// <summary>The measurement model frozen when this execution was prepared, preserved across automatic retries.</summary>
+    public string? VmafModel { get; set; }
+
     /// <summary>Number of automatic or operator-requested higher-quality retries.</summary>
     public int QualityRetryCount { get; set; }
 
@@ -199,14 +202,17 @@ public sealed class Job
     public string? ProcessLog { get; set; }
 
     /// <summary>
-    /// SHA-256 of the source as it was when a remote worker first fetched it.
+    /// SHA-256 of the source before local encoding or when a remote worker first fetched it.
     ///
-    /// Computed once and kept, because hashing a multi-gigabyte file is not something to repeat per
-    /// request. It is what later binds a returned candidate and its quality evidence to the exact
+    /// Cached for delivery requests within one attempt, then checked again at verification. It is what later binds a returned candidate and its quality evidence to the exact
     /// bytes that were encoded: a result measured against a different source is not evidence about
     /// this one.
     /// </summary>
     public string? SourceSha256 { get; set; }
+
+    /// <summary>Exact bytes that earned the current verification verdict; absent on historical jobs.</summary>
+    public string? VerifiedSourceSha256 { get; set; }
+    public string? VerifiedOutputSha256 { get; set; }
 
     // --- Verification (Phase 4: populated once the output has been verified) ---
 

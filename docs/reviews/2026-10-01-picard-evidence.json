@@ -1,0 +1,822 @@
+{
+  "date": "2026-10-01",
+  "scope": "Generated fixtures and isolated test workers on physical Windows RTX 4070; selected matrix only. No production deployment or queue changes.",
+  "correctedSourceCommit": "da731fe6aa854aece9de053ebbb01e1fb8321d65",
+  "gpu": {
+    "model": "NVIDIA GeForce RTX 4070",
+    "memoryGiB": 12,
+    "driver": "617.14"
+  },
+  "matrices": [
+    {
+      "name": "Initial fleet: HEVC, H.264 and AV1 NVENC",
+      "sourceCommit": "9555c4b402c6cbc124dbacec2def358fb9f267bb",
+      "summary": {
+        "status": "passed",
+        "completed": true,
+        "passed": 69,
+        "failed": 0,
+        "blocked": 0,
+        "scope": "Selected matrix only; omitted hosts and hardware are not certified"
+      },
+      "strictWorkerVerification": true,
+      "cases": [
+        {
+          "name": "worker-discovery",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-hevc_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-h264_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-av1_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "preflight",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-offset",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-offset",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "local-mov-text-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "local-vmaf-rejection",
+          "status": "passed"
+        },
+        {
+          "name": "queued-cancellation",
+          "status": "passed"
+        },
+        {
+          "name": "running-cancellation",
+          "status": "passed"
+        },
+        {
+          "name": "low-disk-space",
+          "status": "passed"
+        },
+        {
+          "name": "audio-quality-and-rollback",
+          "status": "passed"
+        },
+        {
+          "name": "image-quality-and-rollback",
+          "status": "passed"
+        },
+        {
+          "name": "preview-quality-and-cleanup",
+          "status": "passed"
+        },
+        {
+          "name": "concurrent-isolation",
+          "status": "passed"
+        },
+        {
+          "name": "worker-protocol-faults",
+          "status": "passed"
+        },
+        {
+          "name": "local-adaptive",
+          "status": "passed"
+        },
+        {
+          "name": "calibration-playable-samples",
+          "status": "passed"
+        },
+        {
+          "name": "workers-reconnect-after-server-restart",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-unavailable-placement",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-running-cancel",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-gpu-decode",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-offset",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-mov-text-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-adaptive",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-vmaf-rejection",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-audio-gates",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-unavailable-placement",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-running-cancel",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-gpu-decode",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-offset",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-mov-text-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-adaptive",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-vmaf-rejection",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-audio-gates",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-unavailable-placement",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-running-cancel",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-gpu-decode",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-offset",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-mov-text-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-adaptive",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-vmaf-rejection",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-audio-gates",
+          "status": "passed"
+        },
+        {
+          "name": "oracle-rejects-black",
+          "status": "passed"
+        },
+        {
+          "name": "oracle-rejects-drop",
+          "status": "passed"
+        },
+        {
+          "name": "oracle-rejects-truncate",
+          "status": "passed"
+        },
+        {
+          "name": "restore-test-settings",
+          "status": "passed"
+        },
+        {
+          "name": "stop-disposable-workers",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "Corrected H.264 full fleet",
+      "sourceCommit": "da731fe6aa854aece9de053ebbb01e1fb8321d65",
+      "summary": {
+        "status": "passed",
+        "completed": true,
+        "passed": 43,
+        "failed": 0,
+        "blocked": 0,
+        "scope": "Selected matrix only; omitted hosts and hardware are not certified"
+      },
+      "strictWorkerVerification": true,
+      "cases": [
+        {
+          "name": "worker-discovery",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-h264_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "preflight",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-offset",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-offset",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "local-mov-text-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "local-vmaf-rejection",
+          "status": "passed"
+        },
+        {
+          "name": "queued-cancellation",
+          "status": "passed"
+        },
+        {
+          "name": "running-cancellation",
+          "status": "passed"
+        },
+        {
+          "name": "low-disk-space",
+          "status": "passed"
+        },
+        {
+          "name": "audio-quality-and-rollback",
+          "status": "passed"
+        },
+        {
+          "name": "image-quality-and-rollback",
+          "status": "passed"
+        },
+        {
+          "name": "preview-quality-and-cleanup",
+          "status": "passed"
+        },
+        {
+          "name": "concurrent-isolation",
+          "status": "passed"
+        },
+        {
+          "name": "worker-protocol-faults",
+          "status": "passed"
+        },
+        {
+          "name": "local-adaptive",
+          "status": "passed"
+        },
+        {
+          "name": "calibration-playable-samples",
+          "status": "passed"
+        },
+        {
+          "name": "workers-reconnect-after-server-restart",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-unavailable-placement",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-running-cancel",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-gpu-decode",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-offset",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-mov-text-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-adaptive",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-vmaf-rejection",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-h264_nvenc-audio-gates",
+          "status": "passed"
+        },
+        {
+          "name": "oracle-rejects-black",
+          "status": "passed"
+        },
+        {
+          "name": "oracle-rejects-drop",
+          "status": "passed"
+        },
+        {
+          "name": "oracle-rejects-truncate",
+          "status": "passed"
+        },
+        {
+          "name": "restore-test-settings",
+          "status": "passed"
+        },
+        {
+          "name": "stop-disposable-workers",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "Fractional timing in MP4: all three NVENC codecs",
+      "sourceCommit": "da731fe6aa854aece9de053ebbb01e1fb8321d65",
+      "summary": {
+        "status": "passed",
+        "completed": true,
+        "passed": 16,
+        "failed": 0,
+        "blocked": 0,
+        "scope": "Selected matrix only; omitted hosts and hardware are not certified"
+      },
+      "strictWorkerVerification": true,
+      "cases": [
+        {
+          "name": "worker-discovery",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-hevc_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-h264_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-av1_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "preflight",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-offset",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-fractional",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-fractional-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-fractional-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-fractional-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-fractional-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "restore-test-settings",
+          "status": "passed"
+        },
+        {
+          "name": "stop-disposable-workers",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "Overlapping subtitles: all three NVENC codecs",
+      "sourceCommit": "da731fe6aa854aece9de053ebbb01e1fb8321d65",
+      "summary": {
+        "status": "passed",
+        "completed": true,
+        "passed": 19,
+        "failed": 0,
+        "blocked": 0,
+        "scope": "Selected matrix only; omitted hosts and hardware are not certified"
+      },
+      "strictWorkerVerification": true,
+      "cases": [
+        {
+          "name": "worker-discovery",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-hevc_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-h264_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-av1_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "preflight",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-offset",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-overlapping-cues-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-filtered-cues-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-overlapping-cues-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-filtered-cues-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-overlapping-cues-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-filtered-cues-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-overlapping-cues-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-filtered-cues-to-mp4",
+          "status": "passed"
+        },
+        {
+          "name": "restore-test-settings",
+          "status": "passed"
+        },
+        {
+          "name": "stop-disposable-workers",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "Copied ALAC: all three NVENC codecs",
+      "sourceCommit": "da731fe6aa854aece9de053ebbb01e1fb8321d65",
+      "summary": {
+        "status": "passed",
+        "completed": true,
+        "passed": 27,
+        "failed": 0,
+        "blocked": 0,
+        "scope": "Selected matrix only; omitted hosts and hardware are not certified"
+      },
+      "strictWorkerVerification": true,
+      "cases": [
+        {
+          "name": "worker-discovery",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-hevc_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-h264_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "worker-start-av1_nvenc",
+          "status": "passed"
+        },
+        {
+          "name": "preflight",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-sdr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-vfr",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-offset",
+          "status": "passed"
+        },
+        {
+          "name": "fixture-ten-bit",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-alac-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-native-mp4-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-filtered-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "local-libx265-remux-noop-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-alac-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-native-mp4-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-filtered-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-1-hevc_nvenc-remux-noop-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-alac-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-native-mp4-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-filtered-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-2-h264_nvenc-remux-noop-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-alac-to-mkv",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-native-mp4-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-filtered-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "worker-3-av1_nvenc-remux-noop-alac-copy",
+          "status": "passed"
+        },
+        {
+          "name": "restore-test-settings",
+          "status": "passed"
+        },
+        {
+          "name": "stop-disposable-workers",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "backendBaselineComparison": {
+    "baselineCommit": "573ba821587db92b1958429b5045a376189fbe19",
+    "baselineTotal": 2451,
+    "baselinePassed": 2433,
+    "branchTotal": 2506,
+    "branchPassed": 2488,
+    "identicalFailures": [
+      "Optimisarr.Tests.AdminTokenAuthEndpointTests.Manual_queue_pause_and_resume_round_trip_through_the_real_api_contract",
+      "Optimisarr.Tests.HardLinkProbeTests.A_hardlinked_file_reports_both_links",
+      "Optimisarr.Tests.HardLinkProbeTests.A_plain_file_reports_a_single_link",
+      "Optimisarr.Tests.HardLinkProbeTests.A_symlink_is_not_counted_as_a_hard_link",
+      "Optimisarr.Tests.HardLinkProbeTests.Removing_a_link_drops_the_count_again",
+      "Optimisarr.Tests.LibraryInventoryServiceTests.A_link_added_after_the_first_scan_is_picked_up_by_the_next_one",
+      "Optimisarr.Tests.LibraryInventoryServiceTests.A_scan_records_how_many_names_point_at_each_discovered_file",
+      "Optimisarr.Tests.LibraryInventoryServiceTests.Rescanning_an_unchanged_link_count_still_updates_nothing",
+      "Optimisarr.Tests.LibraryRefreshRequestBuilderTests.Emby_uses_the_same_media_updated_endpoint",
+      "Optimisarr.Tests.LibraryRefreshRequestBuilderTests.Jellyfin_reports_the_changed_folder_as_modified",
+      "Optimisarr.Tests.ReadinessPathTests.Readiness_checks_configured_work_and_quarantine_paths_instead_of_container_defaults",
+      "Optimisarr.Tests.ReplacementPlannerTests.Final_path_equals_the_original_when_the_container_is_unchanged",
+      "Optimisarr.Tests.ReplacementPlannerTests.Final_path_keeps_the_original_directory_and_name_but_takes_the_output_extension",
+      "Optimisarr.Tests.ReplacementPlannerTests.Quarantine_path_is_under_a_timestamped_folder_in_the_trash_root",
+      "Optimisarr.Tests.ReplacementPlannerTests.Same_named_files_replaced_at_different_times_get_distinct_quarantine_paths",
+      "Optimisarr.Tests.SetupReadinessEvidenceTests.ParseMountInfo_uses_the_deepest_mount_and_decodes_escaped_paths",
+      "Optimisarr.Tests.SyntheticMediaIntegrationTests.Synthetic_audio_and_image_fixtures_flow_from_scan_to_candidates",
+      "Optimisarr.Tests.WorkPathsTests.Selects_the_deepest_mount_that_contains_the_work_path"
+    ],
+    "newFailures": []
+  },
+  "nativeSidecarTestsPassed": 258,
+  "fullRangeControl": {
+    "sourceRange": "pc",
+    "candidateRange": "pc",
+    "decodedFrames": 96,
+    "vmafMean": 99.972397
+  },
+  "cleanup": {
+    "ownedWorkersRemaining": 0,
+    "ownedScratchFilesRemaining": 0
+  }
+}
