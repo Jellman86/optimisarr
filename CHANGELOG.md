@@ -11,6 +11,7 @@
 
 ### Testing
 
+- Windows installer CI retains MSI logs in its uploaded evidence directory and captures service-start failure diagnostics before cleanup.
 - The UI layout audit now checks accessible names and WCAG contrast across all routes in desktop dark and phone light appearances.
 - Added a reusable full application review prompt, evidence-led review report and follow-up mitigation record.
 

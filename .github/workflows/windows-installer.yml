@@ -30,7 +30,15 @@ jobs:
       - run: dotnet build sidecars/windows/Optimisarr.Sidecar.slnx -c Release -warnaserror
       - run: dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build
       - run: ./sidecars/windows/installer/build.ps1 -BuildUpgradeTest
-      - run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName -UpgradeInstaller sidecars/windows/artifacts/upgrade-test/OptimisarrSidecar-upgrade-test.msi
+      - id: smoke
+        run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName -UpgradeInstaller sidecars/windows/artifacts/upgrade-test/OptimisarrSidecar-upgrade-test.msi
+      - name: Verify installer evidence is retained
+        if: always() && (steps.smoke.outcome == 'success' || steps.smoke.outcome == 'failure')
+        run: |
+          $evidence = @(Get-ChildItem $env:RUNNER_TEMP -Directory -Filter 'optimisarr-install-test-*')
+          if ($evidence.Count -ne 1 -or !(Test-Path (Join-Path $evidence[0].FullName 'install.log'))) {
+            throw 'Installer evidence is missing from the uploaded runner temporary directory.'
+          }
       - uses: actions/upload-artifact@v7
         if: always()
         with:

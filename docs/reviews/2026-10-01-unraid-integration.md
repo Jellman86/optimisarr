@@ -48,6 +48,17 @@ and [repository profile rules](https://ca.unraid.net/submit/help/repository-info
   incorrect worker defaults and work outside the common storage root. The new offline metadata
   validator is in the existing documentation CI gate. All 70 Python tests passed.
 
+The initial Windows installer CI attempt failed at SCM service startup, after successful native
+rendering, unpaired upgrade and pairing. No worker binary changes were in this branch. Its upload
+contained only the MSI/checksum: the harness wrote logs to the user TEMP directory while CI uploaded
+runner.temp. Corrected the evidence root and added failure-only service/event diagnostics before
+cleanup, without retrying or suppressing failed service starts. CI now verifies the retained
+installation log before uploading, on successful and failed smoke runs. The initial attempt
+would fail that evidence gate. PICARD passed native PowerShell parsing and proved that the
+existing-installed-host guard still refuses smoke installation before any mutation. The initial failure's cause cannot
+be established from the retained evidence; the passing final checks must not be described as a
+proven service-start bug fix.
+
 No command/protocol, codec, VMAF threshold, worker lease or replacement implementation changes
 are part of this default change. It does not auto-discover or trust another machine, re-enable
 upgraded installations, alter library placement, or start jobs while first-run dry-run is active.
