@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.18 — 2026-10-01
+
 ### Quality verification
 
 - Live Mac RAM-disk acceptance scopes cleanup to the test's owned volumes, preserving concurrent sidecar work.
