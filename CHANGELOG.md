@@ -1,11 +1,10 @@
 # Changelog
 
-## Unreleased
-
-- Pausing the queue prevents new worker assignments as well as container dispatch. Existing worker leases can renew and finish; resuming offers queued work again. Claims recheck pause under the shared transition lock before committing.
+## 0.2.19 — 2026-10-01
 
 ### Fixed
 
+- Pausing the queue prevents new worker assignments as well as container dispatch. Existing worker leases can renew and finish; resuming offers queued work again. Claims recheck pause under the shared transition lock before committing.
 - Queue's "Needs review" banner brings held jobs into view and moves keyboard focus to the review list, including on mobile with working jobs above it.
 - Windows and Linux sidecars drain FFmpeg's progress output during quality measurements even without a progress subscriber, preventing long VMAF measurements from blocking on a full pipe.
 
