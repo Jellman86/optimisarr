@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Remote workers are available and enabled on fresh installations without a preview flag. Existing saved choices are preserved, including older installations without a saved worker setting. Explicit pairing, library placement and strict verification remain required; the existing environment variable still supports disabling the service.
+- Unraid Community Apps metadata now describes video, audio, image and distributed processing, with setup, license and screenshot links. The install guide reflects the live listing and the shared current application icon.
+
 - H.264 NVIDIA encodes preserve explicitly probed limited/full colour range in the primary bitstream, including MP4 outputs with otherwise unspecified colour tags. HDR-to-SDR output keeps its deliberate limited range; copied streams and other encoders remain unchanged. Update sidecars too: the narrow range options require protocol 5, while older workers retain ordinary work.
 
 ### Testing

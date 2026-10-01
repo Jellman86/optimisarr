@@ -80,9 +80,8 @@
     }
   }
 
-  // Remote workers are opt-in and only exist when the server was started with the experimental
-  // switch on. Every worker route answers 403 otherwise, so the page asks the settings first and
-  // simply shows this server alone when the answer is no.
+  // Saved choices and explicit deployment overrides can disable workers. Ask settings before
+  // listing the fleet so a disabled service does not turn a valid local dashboard into an error.
   async function loadFleet() {
     try {
       const settings = await api.settings()

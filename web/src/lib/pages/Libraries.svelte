@@ -420,7 +420,7 @@
     if (!subtitleLanguageError) form.keepSubtitleLanguages = subtitleLanguageInput.normalised
   }
 
-  // Whether work can go to a remote worker at all: the switch on and the preview flag present.
+  // Work can go to a remote worker only when both the saved switch and deployment allow it.
   // Decides whether the placement choice is shown; the choice itself is stored either way.
   let remoteWorkersOn = $state(false)
   const placements: WorkPlacement[] = ['Anywhere', 'LocalOnly', 'PreferWorker', 'WorkerOnly']

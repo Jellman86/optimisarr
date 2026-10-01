@@ -53,6 +53,9 @@ jobs:
         working-directory: web
       - run: npm run test:e2e
         working-directory: web
+      - name: Validate documentation captures against the current UI
+        run: node scripts/capture-docs.mjs
+        working-directory: web
 
   docs:
     name: Documentation and Compose validation
@@ -67,6 +70,7 @@ jobs:
       - run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - run: python3 scripts/check_release_metadata.py
       - run: python3 scripts/check_docs.py
+      - run: python3 scripts/check_unraid_metadata.py
       - run: |
           for file in compose*.example.yml; do
             RENDER_GID=107 docker compose -f "$file" config --quiet

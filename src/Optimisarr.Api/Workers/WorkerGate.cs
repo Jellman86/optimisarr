@@ -20,8 +20,7 @@ internal static class WorkerGate
         {
             return Results.Json(
                 new ApiError("workers.unavailable",
-                    "Remote workers are groundwork in this release, not a feature. "
-                    + $"Set {RemoteWorkersFeature.EnvironmentVariable}=true to try the preview."),
+                    RemoteWorkersFeature.DisabledExplanation),
                 statusCode: StatusCodes.Status403Forbidden);
         }
 

@@ -21,12 +21,12 @@ Optimisarr's entire reason to exist is that it is safer than the alternatives.
   promise. Any change that could break it must be rejected.
 - Every destructive action (replace, delete, move-to-trash) must have a recorded
   rollback path before it runs, not after.
-- Defaults are conservative. When in doubt, do nothing and report why. There is
-  one recorded exception — Adaptive per-title VMAF is the default for new video
-  re-encode libraries while still labelled Experimental. It is deliberate and its
-  reasoning is documented in
-  [`docs/roadmap.md`](docs/roadmap.md) under adaptive per-title VMAF quality
-  targeting. Do not treat it as licence to default other unproven paths on;
+- Defaults are conservative. When in doubt, do nothing and report why. Recorded default
+  decisions include Adaptive per-title VMAF for new video re-encode libraries while still
+  labelled Experimental, and remote workers available/enabled for fresh installations with
+  explicit pairing and strict verification. Their reasoning is documented in
+  [`docs/roadmap.md`](docs/roadmap.md) under the corresponding roadmap entries. Do not treat
+  these as licence to default other unproven paths on;
   a new exception needs the same explicit reasoning and a matching record.
 - FFmpeg/ffprobe are invoked through explicit argument arrays
   (`ProcessStartInfo.ArgumentList`), **never** a shell string and never string
@@ -159,8 +159,10 @@ Then:
 dotnet build Optimisarr.slnx          # build everything
 dotnet test  Optimisarr.slnx          # run the suite
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+python3 scripts/check_unraid_metadata.py # template, icon and container-contract validation
 cd web && npm run check               # frontend type/lint check
 cd web && npm run test:e2e            # Playwright end-to-end suite (CI gate — run it)
+cd web && node scripts/capture-docs.mjs # isolated fabricated documentation UI captures
 cd web && npm run build               # emits static assets into Optimisarr.Api/wwwroot
 cd sidecars/macos && swift test        # macOS sidecar protocol and lifecycle suite
 cd sidecars/macos && OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk

@@ -2,7 +2,7 @@
 <CommunityApplications>
   <!-- Repository overview shown in Community Applications. Markdown is supported. -->
   <Profile>
-Optimisarr is a safe media-library optimiser that transcodes your movies and TV to reclaim space — and **never deletes or replaces an original until the converted file has passed explicit verification gates**, keeping the untouched original in quarantine for rollback. It supports CPU, Intel QSV/VA-API, and NVIDIA NVENC hardware transcoding and fits alongside a Sonarr/Radarr media stack.
+Optimisarr optimises video, audio and image libraries with verified FFmpeg output and quarantined originals for rollback. It supports CPU, Intel QSV/VA-API and NVIDIA NVENC processing, VMAF video quality checks, and paired Windows, macOS and Linux sidecars. The container remains the authority for replacement and integrates with Plex, Jellyfin, Emby, Sonarr and Radarr.
 
 This repository provides the Unraid Community Applications template for the Docker image (`ghcr.io/jellman86/optimisarr`).
 

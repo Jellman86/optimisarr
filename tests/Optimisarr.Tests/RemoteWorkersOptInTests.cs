@@ -6,9 +6,8 @@ using System.Text.Json;
 namespace Optimisarr.Tests;
 
 /// <summary>
-/// Remote workers are opt-in by design: the roadmap's constraint is that one container stays the
-/// complete, uncomplicated default. These tests hold that line — the feature must be inert until an
-/// operator turns it on, and turning it back off must not destroy what was already paired.
+/// Saved worker choices survive upgrades. Disabling stops pairing/check-ins without destroying
+/// credentials, and re-enabling restores the paired worker.
 /// </summary>
 [Collection(TokenedApiCollection.Name)]
 public sealed class RemoteWorkersOptInTests
@@ -42,7 +41,7 @@ public sealed class RemoteWorkersOptInTests
     }
 
     [Fact]
-    public async Task Remote_workers_are_off_until_an_operator_turns_them_on()
+    public async Task An_existing_installation_retains_its_disabled_worker_choice()
     {
         var settings = await (await Admin().GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
 

@@ -61,8 +61,8 @@ actually reclaimed.
 ### Out of scope for MVP
 
 - Distributed workers were outside the original MVP. Optional registered Windows, macOS and Linux
-  sidecars are now available as an opt-in preview; the main container remains the safety authority
-  and the complete single-host default (see [remote workers](setup/remote-workers.md)).
+  sidecars are now available by default, with explicit pairing and saved enable/disable controls.
+  The main container remains the safety authority and a complete single-host installation (see [remote workers](setup/remote-workers.md)).
 - Cloud storage.
 - Full plugin marketplace.
 - Automatic download client integration.

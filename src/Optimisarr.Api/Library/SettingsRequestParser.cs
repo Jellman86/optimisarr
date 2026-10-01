@@ -21,8 +21,7 @@ internal static class SettingsRequestParser
         {
             return Fail(
                 "workers.unavailable",
-                "Remote workers are groundwork in this release, not a feature. "
-                + $"Set {RemoteWorkersFeature.EnvironmentVariable}=true to try the preview.",
+                RemoteWorkersFeature.DisabledExplanation,
                 out error);
         }
 
