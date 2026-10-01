@@ -30,6 +30,16 @@ def strict_worker_verification_for_run(tier: str, server_verification: bool) -> 
     return tier == "fleet" and not server_verification
 
 
+def signal_owned_process(process, *, force=False):
+    """Stop only the disposable server launched by this run, including its own children."""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, timeout=30)
+    else:
+        os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True, help="New, empty run directory (never an existing library)")
@@ -43,7 +53,7 @@ def main():
     verification = parser.add_mutually_exclusive_group()
     verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
     verification.add_argument("--server-verification", action="store_true", help="Explicitly test the legacy server-verification mode")
-    parser.add_argument("--regression", choices=("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy"), help="Run a focused real-media regression matrix")
+    parser.add_argument("--regression", choices=("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy", "audio"), help="Run a focused real-media regression matrix")
     parser.add_argument("--tier", choices=("smoke", "fleet"), default="smoke")
     parser.add_argument("--corpus", type=Path, help="Checksum-locked corpus.json produced by acceptance_corpus.py")
     parser.add_argument("--expected-worker", action="append", default=[])
@@ -172,7 +182,7 @@ def main():
             if container:
                 command(["docker", "restart", "--time", "0", container])
             else:
-                os.killpg(process.pid, signal.SIGKILL)
+                signal_owned_process(process, force=True)
                 process.wait(timeout=15)
                 process = subprocess.Popen(["dotnet", str(args.native.resolve())], env=env,
                     stdout=log, stderr=subprocess.STDOUT, cwd=root, start_new_session=True)
@@ -203,11 +213,11 @@ def main():
         if workers:
             report.case("stop-disposable-workers", workers.stop)
         if process:
-            os.killpg(process.pid, signal.SIGTERM) if process.poll() is None else None
+            signal_owned_process(process)
             try:
                 process.wait(timeout=15)
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
+                signal_owned_process(process, force=True)
                 process.wait()
         if log:
             log.close()

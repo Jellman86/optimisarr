@@ -155,7 +155,7 @@ class Harness:
 
     def output(self, case):
         directory = inside(self.root / "work", self.root / "work" / str(case["mediaId"]))
-        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".webp", ".jpg", ".avif")]
+        files = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".webm", ".m4a", ".mp3", ".opus", ".webp", ".jpg", ".avif")]
         require(len(files) == 1, f"Expected exactly one delivered candidate, found {files}")
         return inside(self.root / "work", files[0])
 
@@ -314,24 +314,47 @@ class Harness:
         finally:
             self.api.post("/api/queue/resume")
 
-    def audio(self):
-        self.select_worker(None)
-        fixture = self.root / "fixtures" / "audio.flac"
-        self.tools.encode(["-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.1:duration=45:sample_rate=48000:seed=42",
-            "-c:a", "flac", "-metadata", "artist=Optimisarr acceptance", self.tools.path(fixture)])
-        case = self.create_job("audio-aac", fixture, overrides={"mediaType": "Music", "audioTargetCodec": "aac",
+    def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False):
+        self.select_worker(worker)
+        name = f"worker-{worker['id']}-audio-{codec}" if worker else f"audio-{codec}"
+        if artwork: name += "-artwork"
+        if downmix: name += "-downmix"
+        fixture = self.root / "fixtures" / f"{name}.flac"
+        inputs = ["-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.1:duration=45:sample_rate=48000:seed=42"]
+        cover = []
+        if artwork:
+            image = self.root / "fixtures" / "audio-cover.jpg"
+            self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=128x128:rate=1", "-frames:v", "1", self.tools.path(image)])
+            inputs += ["-i", self.tools.path(image)]
+            cover = ["-map", "0:a", "-map", "1:v", "-c:v", "copy", "-disposition:v", "attached_pic"]
+        self.tools.encode(inputs + cover + ["-ac", "6" if downmix else "2", "-c:a", "flac",
+            "-metadata", "artist=Optimisarr acceptance", "-metadata", "title=Audio fixture", self.tools.path(fixture)])
+        case = self.create_job(name, fixture, worker=worker, overrides={"mediaType": "Music", "audioTargetCodec": codec,
+            "downmixToStereo": downmix,
             "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "audioLoudnessGateEnabled": True,
             "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0})
         job = self.wait_job(case)
-        save(self.report.root / "audio-aac" / "job.json", job)
+        save(self.report.root / name / "job.json", job)
         require(job["status"] == "ReadyToReplace", f"Audio failed: {job['errorMessage']}")
         candidate = self.output(case)
         before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
         require(abs(before["lufs"] - after["lufs"]) <= 1, "Audio loudness drift exceeds 1 LUFS")
         require(after["truePeak"] <= 0, "Audio re-encode introduced clipping")
         probe = self.tools.probe(candidate)
-        require(probe["streams"][0]["codec_name"] == "aac", "Wrong audio encoder output")
-        require(probe["format"].get("tags", {}).get("artist") == "Optimisarr acceptance", "Lost audio metadata")
+        audio = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+        require(len(audio) == 1 and audio[0]["codec_name"] == codec, "Wrong audio encoder output")
+        require(audio[0]["channels"] == 2, "Unexpected channel layout")
+        tags = {**probe["format"].get("tags", {}), **audio[0].get("tags", {})}
+        tags = {key.lower(): value for key, value in tags.items()}
+        require(tags.get("artist") == "Optimisarr acceptance" and tags.get("title") == "Audio fixture", "Lost audio metadata")
+        if artwork:
+            require(any(stream.get("disposition", {}).get("attached_pic") == 1 for stream in probe["streams"]), "Lost embedded cover art")
+        require(job["workerName"] == (worker["name"] if worker else None), "Audio ran on the wrong host")
+        verification = json.loads(job["verificationReportJson"] or "{}")
+        if worker and getattr(self, "strict_worker_verification", False):
+            require(verification.get("context", {}).get("verificationLocation") == "Worker", "Audio verification fell back to the server")
+        self.tools.run(self.tools.ffmpeg, ["-v", "error", "-xerror", "-i", self.tools.path(candidate), "-f", "null", "-"])
+        save(self.report.root / name / "independent-audio.json", {"source": before, "candidate": after, "probe": probe})
         self.replace_restore(case, candidate)
         return {"original": before, "encoded": after, "restoredOriginal": True}
 
@@ -625,6 +648,23 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
+            if regression == "audio":
+                for codec in ("aac", "opus", "mp3"):
+                    self.report.case(f"local-audio-{codec}", lambda c=codec: self.audio(c))
+                self.report.case("local-audio-artwork", lambda: self.audio("mp3", artwork=True))
+                usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
+                if tier == "fleet" and not usable:
+                    self.report.case("audio-workers", lambda: (_ for _ in ()).throw(Blocked("No audio workers paired")))
+                for worker in usable:
+                    for codec, encoder in (("aac", "aac"), ("opus", "libopus"), ("mp3", "libmp3lame")):
+                        name = f"worker-{worker['id']}-audio-{codec}"
+                        if encoder not in worker["audioEncoders"]:
+                            self.report.case(name, lambda e=encoder: (_ for _ in ()).throw(Blocked(f"Audio encoder {e} was not proved")))
+                            continue
+                        self.report.case(name, lambda c=codec, w=worker: self.audio(c, w))
+                    self.report.case(f"worker-{worker['id']}-audio-downmix", lambda w=worker: self.audio("aac", w, downmix=True))
+                    self.report.case(f"worker-{worker['id']}-audio-artwork", lambda w=worker: self.audio("mp3", w, artwork=True))
+                return self.report.exit_code
             if regression in ("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy"):
                 def regression_case(name, encoder, worker=None):
                     if regression == "subtitle-mux":

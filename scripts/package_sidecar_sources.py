@@ -19,7 +19,12 @@ MAC_REPOS = {
     'svtav1': 'https://gitlab.com/AOMediaCodec/SVT-AV1.git',
     'dav1d': 'https://code.videolan.org/videolan/dav1d.git',
     'vmaf': 'https://github.com/Netflix/vmaf.git',
+    'opus': 'https://github.com/xiph/opus.git',
     'ffmpeg': 'https://github.com/FFmpeg/FFmpeg.git',
+}
+MAC_ARCHIVES = {
+    'lame': ('https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz',
+             'ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e'),
 }
 WINDOWS_RELEASE = 'autobuild-2026-09-14-13-17'
 WINDOWS_BINARY_ASSET = 'ffmpeg-n8.1.2-52-g5a03dfa0f6-win64-gpl-8.1.zip'
@@ -43,12 +48,12 @@ def read_mac_revisions(path):
         if line.startswith('built:') or not line.strip():
             continue
         fields = line.split()
-        if len(fields) != 3 or fields[0] not in MAC_REPOS or not re.fullmatch(r'[0-9a-f]{40}', fields[2]):
+        if len(fields) != 3 or fields[0] not in MAC_REPOS | MAC_ARCHIVES or not re.fullmatch(r'[0-9a-f]{64}' if fields[0] in MAC_ARCHIVES else r'[0-9a-f]{40}', fields[2]):
             raise ValueError(f'Invalid media source revision: {line}')
         if fields[0] in result:
             raise ValueError(f'Duplicate dependency: {fields[0]}')
         result[fields[0]] = fields[2]
-    if result.keys() != MAC_REPOS.keys():
+    if result.keys() != (MAC_REPOS | MAC_ARCHIVES).keys():
         raise ValueError('BUILD-INFO must identify every bundled Mac dependency')
     return result
 
@@ -192,11 +197,24 @@ def main():
             revisions = read_mac_revisions(args.mac_build_info)
             shutil.copy2(args.mac_build_info, args.output / 'BUILD-INFO.txt')
             for name, revision in revisions.items():
-                archive, resolved = git_source(name, MAC_REPOS[name], revision, stage,
-                    args.mac_sources / name if args.mac_sources else None)
+                if name in MAC_ARCHIVES:
+                    url, expected = MAC_ARCHIVES[name]
+                    archive = stage / Path(url).name
+                    local = args.mac_sources / archive.name if args.mac_sources else None
+                    if local and local.exists():
+                        shutil.copy2(local, archive)
+                    else:
+                        command('curl', '-fL', '--retry', '3', '-o', str(archive), url)
+                    if revision != expected or sha256(archive) != expected:
+                        raise ValueError(f'{name}: source archive checksum mismatch')
+                    resolved = expected
+                else:
+                    url = MAC_REPOS[name]
+                    archive, resolved = git_source(name, url, revision, stage,
+                        args.mac_sources / name if args.mac_sources else None)
                 copy_licenses(archive, args.output / 'licenses')
                 files.append(archive)
-                records.append({'name': name, 'repository': MAC_REPOS[name], 'revision': resolved, 'sha256': sha256(archive)})
+                records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive)})
         else:
             binary = validate_windows_toolchain(ROOT / 'sidecars/windows/scripts/fetch-ffmpeg.ps1')
             cache = args.windows_cache or stage / 'dependency-sources.zip'

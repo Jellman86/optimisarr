@@ -13,14 +13,15 @@ internal static class MonitorRenderer
     public static void Render(string directory)
     {
         Directory.CreateDirectory(directory);
-        foreach (var state in new[] { "idle", "encoding", "verifying", "offline", "light-encoding", "details", "light-details", "preferences", "light-preferences", "preview-fallback", "light-preview-fallback", "two-jobs", "light-two-jobs", "many-jobs", "light-many-jobs", "shutdown-countdown", "light-shutdown-countdown" })
+        foreach (var state in new[] { "idle", "encoding", "verifying", "offline", "light-encoding", "details", "light-details", "preferences", "light-preferences", "preview-fallback", "light-preview-fallback", "two-jobs", "light-two-jobs", "many-jobs", "light-many-jobs", "shutdown-countdown", "light-shutdown-countdown", "audio", "light-audio" })
         {
             var pose = state.Replace("light-", "");
             var model = new MonitorViewModel();
-            var preview = pose == "preview-fallback" ? null : DemoFrame(Color.FromRgb(24, 161, 182));
-            var jobs = pose is "encoding" or "verifying" or "details" or "preview-fallback" or "two-jobs" or "many-jobs"
-                ? new[] { new MonitorJob(42, "Prism Field · Demo clip", "hevc_nvenc",
-                    pose != "verifying" ? RemoteStage.Encoding : RemoteStage.Measuring, 92, preview) }
+            var spectrumPath = Environment.GetEnvironmentVariable("OPTIMISARR_RENDER_SPECTRUM");
+            var preview = pose == "audio" ? (spectrumPath is not null ? File.ReadAllBytes(spectrumPath) : null) : pose == "preview-fallback" ? null : DemoFrame(Color.FromRgb(24, 161, 182));
+            var jobs = pose is "encoding" or "verifying" or "details" or "preview-fallback" or "two-jobs" or "many-jobs" or "audio"
+                ? new[] { new MonitorJob(42, pose == "audio" ? "Audio Study · Generated fixture" : "Prism Field · Demo clip", pose == "audio" ? "libopus" : "hevc_nvenc",
+                    pose != "verifying" ? RemoteStage.Encoding : RemoteStage.Measuring, 92, preview, Kind: pose == "audio" ? Optimisarr.Core.Domain.MediaKind.Audio : Optimisarr.Core.Domain.MediaKind.Video) }
                 : [];
             if (pose == "two-jobs") jobs = [.. jobs, new MonitorJob(43, "Orbit Study · Demo clip", "hevc_nvenc",
                 RemoteStage.Encoding, 48, DemoFrame(Color.FromRgb(180, 120, 220)))];

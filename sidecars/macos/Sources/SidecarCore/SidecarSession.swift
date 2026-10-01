@@ -53,6 +53,7 @@ public final class SidecarSession: ObservableObject {
 
     /// What each running job is working on, keyed by job id. Empty when the server did not say.
     @Published public internal(set) var jobTitles: [Int: String] = [:]
+    @Published public internal(set) var audioJobs: Set<Int> = []
 
     /// The recent frames each running job was seen encoding. Only collected while the menu is
     /// open, and dropped as soon as the job ends.
@@ -370,6 +371,7 @@ public final class SidecarSession: ObservableObject {
         activeJobs = [:]
         jobStorage = [:]
         jobTitles = [:]
+        audioJobs = []
         transferRates = [:]
         rateMeters = [:]
         filmStrips = [:]
@@ -536,6 +538,7 @@ public final class SidecarSession: ObservableObject {
             let jobId = assignment.jobId
             activeJobs[jobId] = .fetchingSource(received: 0, total: assignment.sourceBytes)
             jobTitles[jobId] = assignment.title
+            if assignment.isAudio { audioJobs.insert(jobId) }
             refreshWorkingStatus()
             beginActivity()
             // The task holds the session for the job's duration, which is intended: a job is
@@ -690,6 +693,7 @@ public final class SidecarSession: ObservableObject {
         jobStorage[jobId] = nil
         setTickerRunning(!activeJobs.isEmpty || menuIsOpen)
         jobTitles[jobId] = nil
+        audioJobs.remove(jobId)
         transferRates[jobId] = nil
         rateMeters[jobId] = nil
         filmStrips[jobId] = nil
@@ -775,6 +779,7 @@ public extension SidecarSession {
         jobStorage: [Int: WorkStorage] = [:],
         transferRates: [Int: Double] = [:],
         filmStrips: [Int: FilmStrip] = [:],
+        audioJobs: Set<Int> = [],
         gpu: GpuUsage? = nil,
         lastOutcome: JobOutcome? = nil,
         shutdown: ShutdownCountdown = ShutdownCountdown(),
@@ -789,6 +794,7 @@ public extension SidecarSession {
         session.jobStorage = jobStorage
         session.transferRates = transferRates
         session.filmStrips = filmStrips
+        session.audioJobs = audioJobs
         session.gpu = gpu
         session.lastOutcome = lastOutcome
         session.shutdown = shutdown

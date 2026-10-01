@@ -382,7 +382,7 @@ An explicitly disabled VMAF gate keeps the omitted strategy on Fixed, as do non-
 libraries. An explicitly supplied `AdaptiveVmaf` is accepted only when
 `vmafQualityGateEnabled` is `true`; invalid combinations return `400` rather than silently changing
 the requested policy. `workPlacement` accepts `Anywhere` (the default when omitted), `LocalOnly`,
-`PreferWorker`, or `WorkerOnly`, and says where the library's video re-encodes may run once remote
+`PreferWorker`, or `WorkerOnly`, and says where the library's video and audio re-encodes may run once remote
 workers are switched on; it is stored but has no effect while they are off.
 
 Verification fields are owned by each library. The API accepts the complete shape for every media
@@ -809,3 +809,13 @@ for durable state; treat hub messages as a convenience stream.
   deliberate retention policy.
 - Do not expose these endpoints directly to the internet; use an authenticated
   reverse proxy.
+
+### Worker audio assignment compatibility
+
+Worker protocol 6 introduces standalone audio assignments. `kind` is the numeric
+`MediaKind` value (`1` video, `2` audio); audio carries `audioEncoder` and a null
+`videoEncoder`. Its quality contract has `measure: false` and no adaptive video
+search. Complete verification contract version `2` is audio; version `1` remains
+video. Audio evidence includes `sourceAudio` and `candidateAudio` packet spans
+rather than video spans. All required evidence is bound to the frozen contract and
+source/candidate hashes. Missing or contradictory evidence fails closed.

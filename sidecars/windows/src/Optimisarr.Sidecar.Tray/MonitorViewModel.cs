@@ -1,4 +1,5 @@
 using System;
+using Optimisarr.Core.Domain;
 using System.ComponentModel;
 using System.Linq;
 using System.Collections.Generic;
@@ -53,10 +54,16 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
     public IReadOnlyList<MonitorJobRow> JobRows => Jobs.Select(job => new MonitorJobRow(
         job.Title,
         $"Job #{job.JobId} · {StageName(job.Stage)}" + (job.EncodedSeconds is { } seconds ? $" · {TimeSpan.FromSeconds(Math.Max(0, seconds)):hh\\:mm\\:ss} encoded" : ""),
-        job.PreviewJpeg)).ToArray();
+        job.PreviewJpeg, job.Kind == MediaKind.Audio)).ToArray();
     public byte[]? Preview => Jobs.FirstOrDefault()?.PreviewJpeg;
+    public bool ActiveAudio => Jobs.FirstOrDefault()?.Kind == MediaKind.Audio;
+    public bool ShowThumbnail => !ActiveAudio;
+    public double PreviewColumnWidth => ActiveAudio ? 0 : 112;
+    public byte[]? VideoPreview => ActiveAudio ? null : Preview;
+    public string PreviewDescription => ActiveAudio ? "Source audio spectrogram; verification runs separately." : "Source frame";
     public bool PreviewMissing => Preview is null;
-    public string PreviewLabel => Working ? "WAITING FOR FRAME" : "NO ACTIVE MEDIA";
+    public string PreviewLabel => !Working ? "NO ACTIVE MEDIA"
+        : Jobs.FirstOrDefault()?.Kind == MediaKind.Audio ? "SOURCE AUDIO · SPECTROGRAM" : "WAITING FOR FRAME";
     public void Update(MonitorSnapshot snapshot) { Snapshot = snapshot; error = null; Changed(); }
     public void Disconnect(string reason) { error = reason; Changed(); }
     public void ClearPreviews()
@@ -77,4 +84,7 @@ internal sealed class MonitorViewModel : INotifyPropertyChanged
     };
 }
 
-internal sealed record MonitorJobRow(string Title, string Caption, byte[]? PreviewJpeg);
+internal sealed record MonitorJobRow(string Title, string Caption, byte[]? PreviewJpeg, bool IsAudio = false)
+{
+    public string PreviewDescription => IsAudio ? "Source spectrogram · up to 3 s · 0–24 kHz (log)" : "Source frame";
+}

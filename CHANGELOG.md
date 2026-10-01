@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Standalone audio can run on Mac, Windows and Linux sidecars: AAC, Opus and MP3 with per-library placement, proved encoders and complete strict worker verification. Updated protocol 6 sidecars are required for audio; existing video workers remain compatible.
+- Audio jobs display a measured source spectrogram in each sidecar monitor, with frequency/time labels, bounded sampling and an honest unavailable state. The Mac media bundle now includes pinned Opus and LAME with redistributable source/license records.
+- Real-media audio acceptance covers all three codecs, metadata, MP3 cover art, downmixing, independent decode/loudness/peak checks and exact rollback. Final server and paired Linux images run the matrix in CI.
+
 ### Changed
 
 - Remote workers are available and enabled on fresh installations without a preview flag. Existing saved choices are preserved, including older installations without a saved worker setting. Explicit pairing, library placement and strict verification remain required; the existing environment variable still supports disabling the service.

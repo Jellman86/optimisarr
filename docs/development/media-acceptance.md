@@ -252,8 +252,8 @@ worker's result; this is test evidence, not production server verification.
 
 This does not make the server idle. Scanning, initial probing, assignment preparation (including
 filter planning), transfers and hashes, database updates, policy evaluation and replacement still
-run there. Preview, calibration, audio-only and image jobs retain their existing local paths.
-The setting defaults off for compatibility with protocol-1 workers. Preserve an already selected
+run there. Preview, calibration, remux and image jobs retain their existing local paths.
+Fresh installations default to strict worker verification; the harness fleet tier also defaults to strict mode. Existing saved policies are preserved. Preserve an already selected
 strict policy during upgrades; unsupported workers cannot claim its assignments.
 
 ## What is asserted
@@ -424,3 +424,26 @@ playback in the tested toolchains; these are present when edit lists are ignored
 ignoring edit lists would endanger other streams' valid priming and offsets. Container fallback
 preserves the copied samples instead. This is a planning safeguard for the evidenced Matroska
 copy path, not a new general PCM-equality production gate or a certification of every ALAC container.
+
+## Focused standalone audio matrix
+
+Use `--regression audio` on a fresh isolated instance. It tests local AAC, Opus,
+MP3 and MP3 cover preservation. `--tier fleet --worker-command …` or
+`--worker-image …` repeats all three codecs on every paired worker, plus stereo
+downmixing and MP3 cover retention. Every successful case independently decodes
+the whole candidate, checks codec/channels/artist/title, EBU R128 loudness and true
+peak, requires correct worker attribution and strict worker verification, then
+replaces and rolls back to the exact original hash. Missing encoders are reported
+as blocked coverage, never silently counted as passes.
+
+```sh
+python3 scripts/media_acceptance.py --image optimisarr:acceptance \
+  --root /tmp/optimisarr-audio-run --regression audio
+```
+
+Native runs work on macOS, Windows and Linux; cleanup targets only the owned
+server process and its children. Generated seeded pink-noise and test-pattern
+cover fixtures are created by the harness and contain no production media.
+The final server image and paired Linux sidecar image run this matrix in CI.
+Negative decode, packet regression, duration, channel loss, codec mismatch,
+loudness, clipping and incomplete evidence cases also have deterministic tests.

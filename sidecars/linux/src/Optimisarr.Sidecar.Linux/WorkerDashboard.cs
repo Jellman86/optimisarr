@@ -16,7 +16,8 @@ public sealed record ScratchStorage(string Kind, long FreeBytes, long TotalBytes
 
 public sealed record DashboardJob(int JobId, string Title, string Encoder, RemoteStage Stage,
     double? EncodedSeconds, long? SourceBytes, WorkerMediaInfo? SourceMedia, string? OutputExtension,
-    string? HardwareDecoder, long PreviewRevision, bool HasArtwork, DateTimeOffset? StartedAt);
+    string? HardwareDecoder, long PreviewRevision, bool HasArtwork, DateTimeOffset? StartedAt,
+    string Kind = "Video");
 
 public sealed record FinishedJob(int JobId, string Title, bool Delivered, DateTimeOffset FinishedAt);
 
@@ -153,6 +154,6 @@ public sealed class WorkerDashboard(string name, string? serverAddress, string s
         return new(job.JobId, job.Title, job.Encoder, job.Stage, job.EncodedSeconds,
             assignment?.SourceBytes, assignment?.SourceMedia, assignment?.OutputExtension, decoder,
             _previews.GetValueOrDefault(job.JobId).Revision, _artwork.ContainsKey(job.JobId),
-            assignment is null ? null : started.StartedAt);
+            assignment is null ? null : started.StartedAt, job.Kind.ToString());
     }
 }

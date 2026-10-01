@@ -115,7 +115,7 @@ public struct CapabilityProber: Sendable {
             freeScratchBytes: freeScratchBytes(),
             // Nothing to offer means nothing to accept. Reporting concurrency while advertising no
             // encoder would have the server see a live worker it can never actually use.
-            maxConcurrency: proved.isEmpty ? 0 : maxConcurrency)
+            maxConcurrency: proved.isEmpty && provedAudio.isEmpty ? 0 : maxConcurrency)
     }
 
     /// Proves hardware decode rather than trusting the accelerator listing.

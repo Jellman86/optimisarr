@@ -55,14 +55,12 @@ struct LiveCapabilityTests {
 
     @Test("reports the audio encoders the bundled build really has, and no others")
     func provesAudioAgainstTheRealBuild() async {
-        // The bundled FFmpeg links no external audio libraries. If this ever starts reporting
-        // libopus or libmp3lame, either the build gained them or the probe stopped proving them —
-        // and the server would begin sending this machine work it cannot do.
+        // The pinned bundle must prove all three supported standalone audio targets.
         let capabilities = await CapabilityProber(ffmpeg: ffmpeg).probe(name: "Live")
 
         #expect(capabilities.audioEncoders.contains("aac"))
-        #expect(!capabilities.audioEncoders.contains("libopus"))
-        #expect(!capabilities.audioEncoders.contains("libmp3lame"))
+        #expect(capabilities.audioEncoders.contains("libopus"))
+        #expect(capabilities.audioEncoders.contains("libmp3lame"))
     }
 
     @Test("advertises the software AV1 encoder the bundled build now carries")

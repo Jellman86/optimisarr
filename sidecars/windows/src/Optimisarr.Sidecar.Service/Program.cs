@@ -137,7 +137,7 @@ public static class Program
             // Said plainly at pairing rather than left to be discovered as silence: the server's
             // capability matching is fail-closed, so a machine that proved no encoders is never
             // offered anything and would otherwise look simply ignored.
-            if (capabilities.VideoEncoders.Count == 0)
+            if (capabilities.VideoEncoders.Count == 0 && capabilities.AudioEncoders.Count == 0)
             {
                 Console.WriteLine(
                     "This machine proved no video encoders, so the server will not offer it work "

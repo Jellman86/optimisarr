@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Sidecar.Core.Session;
 
 /// <summary>
@@ -15,7 +17,7 @@ public sealed record Assignment(
     /// which of their files a machine is busy with.</summary>
     string Title,
     long SourceBytes,
-    string VideoEncoder,
+    string? VideoEncoder,
     string Vmaf,
     DateTimeOffset ExpiresUtc,
     int RenewWithinSeconds,
@@ -32,7 +34,22 @@ public sealed record Assignment(
     Optimisarr.Core.Workers.RemoteVerificationContract? FullVerification = null,
     long? MaxCandidateBytes = null,
     long? MinCandidateBytes = null,
-    Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null);
+    Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null,
+    MediaKind Kind = MediaKind.Video,
+    string? AudioEncoder = null)
+{
+    public string? RefuseMediaContract()
+    {
+        if (Kind is not (MediaKind.Video or MediaKind.Audio)) return "Unsupported media kind.";
+        if (string.IsNullOrWhiteSpace(Kind == MediaKind.Audio ? AudioEncoder : VideoEncoder)) return "The media encoder is missing.";
+        if (Kind == MediaKind.Audio && (Quality.Measure || Search is not null)) return "Audio jobs cannot request video quality measurements or searches.";
+        if (FullVerification is { } contract && contract.Version != (Kind == MediaKind.Audio ? 2 : 1))
+            return "The verification contract does not match the media kind.";
+        return null;
+    }
+
+    public string Encoder => Kind == MediaKind.Audio ? AudioEncoder ?? "Unknown audio encoder" : VideoEncoder ?? "Unknown video encoder";
+}
 
 /// <summary>
 /// One candidate quality the control plane wants measured on this machine.

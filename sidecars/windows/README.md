@@ -34,7 +34,7 @@ tests/                          Core and local pipe tests.
 monitor anchored to the notification-area screen. Preferences and diagnostics stay inside the panel.
 The active card shows a small frame from the worker's downloaded source while the activity panel
 is open; Processing details keeps each preview with its own job. Sampling is best-effort and never
-changes an encode. Unsupported or audio-only media keeps a stable fallback instead.
+changes an encode. Standalone audio shows a bounded source spectrogram; unsupported previews keep a labelled fallback.
 Changing pages or expanding **Processing details** keeps the rounded panel inside that screen’s
 working area. It dismisses on focus loss or Escape and is not an always-on-top window.
 The tray, panel, executable and Start shortcut share the main application’s Precession icon.
@@ -145,9 +145,9 @@ Enable **Remote workers** under **Settings → Files & safety** on the server, t
 **Settings → Remote workers**. Fresh installations enable workers; existing choices are preserved. If these controls are absent,
 remove any `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=false` override and redeploy through the
 normal deployment process. Each library chooses placement under **Choose files → Advanced eligibility →
-Where this library's work may run**. **Only on workers** keeps eligible video re-encodes off the
+Where this library's work may run**. **Only on workers** keeps eligible video and audio re-encodes off the
 container; **Prefer a worker** allows server fallback after ten minutes. Remote workers must remain
-enabled for these placement choices to apply. Remuxes, audio-only and image jobs remain server work.
+enabled for these placement choices to apply. Remuxes and image jobs remain server work. Standalone audio needs protocol 6 and its selected audio encoder.
 
 **Verify entirely on the sidecar** defaults on for new installations and applies to new assignments.
 It asks updated sidecars for source/candidate probes, complete candidate decode, timestamp checks,
@@ -195,7 +195,7 @@ The native check opens the actual monitor, changes pages and disclosure state, a
 working-area anchor. `--render-monitor <directory>` writes isolated fixture images without polling
 a live worker, including preview, fallback and two-job states. Set
 `OPTIMISARR_PREVIEW_FFMPEG` to an installed `ffmpeg.exe` before running the focused native preview
-test to exercise extraction from a synthetic video and audio-only fallback.
+test to exercise synthetic video frames, audio spectrograms and audio verification without a VMAF tool.
 [Installer validation](installer/README.md#validation) additionally exercises the
 installed binaries and private runtime. Real GPU and end-to-end media checks use the
 [media acceptance harness](../../docs/development/media-acceptance.md).

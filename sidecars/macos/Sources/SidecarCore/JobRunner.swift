@@ -509,7 +509,7 @@ public struct JobRunner: WorkExecutor {
         storage(location)
         SidecarLog.storage.info("Job \(assignment.jobId): \(location.summary, privacy: .public). \(fallback ?? root.path, privacy: .public)")
         SidecarLog.job.info("""
-            Job \(assignment.jobId) starting: encoder \(assignment.videoEncoder, privacy: .public), \
+            Job \(assignment.jobId) starting: encoder \(assignment.encoder, privacy: .public), \
             source \(assignment.sourceBytes) bytes, working in \(root.path, privacy: .public)
             """)
 
@@ -1175,7 +1175,7 @@ public struct JobRunner: WorkExecutor {
                         return
                     }
                     Task {
-                        if let frame = await previewSampler.frame(from: source, atSeconds: seconds) {
+                        if let frame = await previewSampler.frame(from: source, atSeconds: seconds, audio: assignment.isAudio) {
                             preview(frame)
                         }
                     }

@@ -4,13 +4,14 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance.core import Blocked, Report, inside, quality_failures, statistics
 from acceptance.media import compare_report, validate_shadow_report
 from acceptance.corpus import import_corpus
-from acceptance.runner import missing_workers
-from media_acceptance import strict_worker_verification_for_run
+from acceptance.runner import missing_workers, Harness
+from media_acceptance import strict_worker_verification_for_run, signal_owned_process
 
 
 def frames(values):
@@ -18,6 +19,25 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+    def test_native_cleanup_targets_only_the_owned_pid_on_windows(self):
+        process = Mock(pid=417, poll=Mock(return_value=None))
+        with patch("media_acceptance.os.name", "nt"), patch("media_acceptance.subprocess.run") as run:
+            signal_owned_process(process)
+            self.assertEqual(["taskkill", "/PID", "417", "/T", "/F"], run.call_args.args[0])
+        process.poll.return_value = 0
+        with patch("media_acceptance.subprocess.run") as run:
+            signal_owned_process(process)
+            run.assert_not_called()
+
+    def test_opus_candidate_is_discovered_as_an_audio_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "work" / "1" / "candidate.opus"
+            candidate.parent.mkdir(parents=True)
+            candidate.write_bytes(b"audio")
+            harness = Harness(None, None, root, None)
+            self.assertEqual(candidate.resolve(), harness.output({"mediaId": 1}))
+
     def test_shadow_acceptance_requires_complete_matching_pairs_and_baseline_authority(self):
         score = {"frameCount": 24, "vmafMean": 95, "vmafHarmonicMean": 94,
                  "vmafMin": 85, "vmafFifthPercentile": 90, "modelVersion": "vmaf_v0.6.1"}

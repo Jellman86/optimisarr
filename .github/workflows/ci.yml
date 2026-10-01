@@ -191,12 +191,21 @@ jobs:
             --root "$RUNNER_TEMP/optimisarr-alac-copy-acceptance" \
             --regression alac-copy --local-encoder libx265 --fixture-seconds 16
 
+      - name: Verify standalone audio codecs and cover art in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-audio-acceptance" --regression audio
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: media-acceptance
           path: |
+            ${{ runner.temp }}/optimisarr-audio-acceptance/report/
+            ${{ runner.temp }}/optimisarr-audio-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-audio-acceptance/image.json
             ${{ runner.temp }}/optimisarr-acceptance/report/
             ${{ runner.temp }}/optimisarr-acceptance/server.log
             ${{ runner.temp }}/optimisarr-acceptance/image.json

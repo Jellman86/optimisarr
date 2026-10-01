@@ -24,6 +24,16 @@ public class CapabilityProberTests
         """;
 
     [Fact]
+    public async Task A_worker_with_proved_audio_encoders_can_offer_capacity_without_a_video_encoder()
+    {
+        var runner = new ScriptedRunner { ["-encoders"] = (0, " A....D aac AAC") };
+        var capabilities = await new CapabilityProber(runner).ProbeAsync("Audio", "ffmpeg", 500, 2);
+        Assert.Empty(capabilities.VideoEncoders);
+        Assert.Contains("aac", capabilities.AudioEncoders);
+        Assert.Equal(2, capabilities.MaxConcurrency);
+    }
+
+    [Fact]
     public async Task A_listed_encoder_is_not_advertised_until_it_has_actually_encoded()
     {
         // The case this exists for: a build carrying NVENC on a machine with no NVIDIA card, or a
@@ -149,6 +159,7 @@ public class CapabilityProberTests
         var runner = new ScriptedRunner
         {
             ["-encoders"] = (0, " A....D aac  AAC"),
+            ["aac"] = (1, "Encoder unavailable"),
             ["-hwaccels"] = (0, "cuda"),
             ["-filters"] = (0, "libvmaf"),
         };
@@ -156,7 +167,7 @@ public class CapabilityProberTests
         var capabilities = await new CapabilityProber(runner).ProbeAsync("PC", "ffmpeg.exe", 500, 4);
 
         Assert.Equal(0, capabilities.MaxConcurrency);
-        Assert.Contains("aac", capabilities.AudioEncoders);
+        Assert.Empty(capabilities.AudioEncoders);
     }
 }
 

@@ -79,21 +79,20 @@ for tested paths and remaining limitations.
 ### Placement
 
 Open **Libraries → Configure → Choose files → Advanced eligibility → Where this library's work
-may run**. Placement is saved per library and applies to eligible video re-encodes.
+may run**. Placement is saved per library and applies to eligible video and audio re-encodes.
 
 | Setting | Effect |
 |---|---|
 | **Here or on a worker** | Either the container or a compatible worker can claim the job. |
 | **Only on this server** | Encode on the container. |
 | **Prefer a worker** | Give an online, non-draining worker first opportunity, then allow the container after up to ten minutes. The waiting window starts when the job becomes eligible to run, not when it was queued. |
-| **Only on workers** | Wait for a compatible worker; do not fall back to a local video encode. |
+| **Only on workers** | Wait for a compatible worker; do not fall back to a local encode. |
 
 ![Advanced eligibility page showing its library breadcrumb and all four work-placement choices](../images/optimisarr-library-advanced-eligibility-dark.png)
 
 Turning **Remote workers** off makes placement fall back to the container, including libraries
 saved as **Only on workers**. Keep remote workers enabled to enforce worker-only placement.
-Automation windows, pause rules, capability requirements, and disk checks still apply. Audio-only,
-image, preview, and personal quality-check workflows retain their existing local paths.
+Automation windows, pause rules, capability requirements, and disk checks still apply. Image, remux, preview, and personal quality-check workflows retain their existing local paths.
 
 Queue shows separate capacity for video work, audio/images, sidecar evidence checks, safe
 replacement, and workers. A strict worker result waits for the container to validate its evidence;
@@ -144,3 +143,38 @@ itself if the returned quality evidence cannot be used.
 The [acceptance guide](../development/media-acceptance.md) describes isolated end-to-end checks
 with freely licensed media. Dated [strict-verification evidence](../engineering/hardware-validation/2026-09-17-strict-sidecar-verification.md)
 records the hardware and formats actually tested; it does not certify every GPU or HDR workflow.
+
+## Standalone audio
+
+Protocol 6 sidecars can encode music to AAC/M4A, Opus or MP3 using the library’s
+selected audio encoder and bitrate. A worker must prove that encoder before it can
+claim the job; protocol 1–5 workers keep their existing video work. Music libraries
+use the same placement controls as video libraries. With **Only on workers** and
+strict verification enabled, an unsupported worker does not trigger local fallback.
+
+Strict audio verification uses source/candidate probes, complete candidate decode,
+primary-audio packet timestamps, channel/track/codec preservation, duration and size
+gates, and configured EBU R128 loudness and true-peak checks. VMAF measures pictures
+and does not apply to standalone audio. The server still scans/probes the library,
+transfers and hashes files, evaluates evidence, and handles replacement and rollback.
+
+Mac, Windows and Linux monitors display a source-audio spectrogram near the encode
+position. Frequency is logarithmic from 0–24 kHz; time spans up to three seconds;
+brighter colour means stronger signal. It samples only while a monitor is viewed,
+at most once per 1.5 seconds, with one bounded process per job. Preview failure is
+labelled and never fails an encode. The display is not a loudness or quality verdict.
+
+Embedded covers are preserved when encoding to MP3. AAC/Opus sources containing
+embedded cover art remain safely ineligible, with guidance to select MP3. Existing
+channel compatibility and timed-lyrics guards apply unchanged.
+
+![Mac Compact Monitor encoding a generated audio fixture with measured source spectrum](../images/optimisarr-sidecar-macos-audio.png)
+
+![Windows Compact Monitor encoding the same generated audio fixture](../images/optimisarr-sidecar-windows-audio.png)
+
+![Linux sidecar audio monitor with a generated fixture](../images/optimisarr-sidecar-linux-audio-dark.png)
+
+Documentation captures use fabricated jobs and a spectrogram measured from a
+three-second generated chirp, never private media. Native captures use the apps’
+`--render-menu` and `--render-monitor` modes. Linux captures can be regenerated with
+`cd web && node scripts/capture-audio-sidecar.mjs /absolute/path/generated-spectrum.jpg`.

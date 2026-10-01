@@ -45,7 +45,8 @@ public sealed record OriginalSnapshot(
     // expects exactly those tracks gone (and, unlike audio, tolerates zero remaining).
     IReadOnlyList<int>? RemovedSubtitleStreamIndexes = null,
     // True for a track-cleanup job, whose promise includes an unchanged container type.
-    bool ContainerMustMatch = false);
+    bool ContainerMustMatch = false,
+    string? ExpectedAudioCodec = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -106,13 +107,13 @@ public sealed class VerificationService(
         if (remoteEvidence is not null)
         {
             var objections = RemoteVerificationEvidenceValidator.ValidateMeasurements(remoteEvidence,
-                policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled);
+                policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled, original.Kind);
             if (objections.Count > 0)
                 throw new InvalidOperationException("Sidecar-only verification evidence is incomplete; server fallback is disabled. "
                     + string.Join(" ", objections));
         }
-        if (remoteEvidence is not null && original.Kind != MediaKind.Video)
-            throw new InvalidOperationException("This sidecar verification contract supports video assignments only.");
+        if (remoteEvidence is not null && original.Kind is not (MediaKind.Video or MediaKind.Audio))
+            throw new InvalidOperationException("This sidecar verification contract supports video and audio assignments only.");
         if (remoteEvidence is not null && clip is not null)
             throw new InvalidOperationException("Sidecar-only verification does not accept disposable reference clips.");
         if (remoteEvidence is not null && policy.RequiresVmaf(original.Kind, original.VideoReencoded) && remoteQuality is null)
@@ -129,8 +130,8 @@ public sealed class VerificationService(
             // it replaceable. Keep already-supplied sidecar evidence for diagnosis, but do not
             // read both large files repeatedly after an AV1 parser error on the server.
             var inspectFullFile = decodeResult.Healthy || remoteEvidence is not null;
-            // Packet-timestamp integrity is a video concern; skip it for an audio output.
-            var timestampResult = remoteEvidence?.CandidateVideo ?? (!inspectFullFile || reference.Kind == MediaKind.Audio
+            // Strict audio evidence has its own packet scan; legacy local audio keeps its existing path.
+            var timestampResult = (reference.Kind == MediaKind.Audio ? remoteEvidence?.CandidateAudio : remoteEvidence?.CandidateVideo) ?? (!inspectFullFile || reference.Kind == MediaKind.Audio
                 ? TimestampCheckResult.NotMeasured
                 : await timestamps.CheckAsync(outputPath, cancellationToken));
             var outputProbe = remoteEvidence is null
@@ -181,7 +182,9 @@ public sealed class VerificationService(
                 }
             }
             var sourceTimelineIndeterminate = SourceTimelineIndeterminate(originalTimestampResult);
-            var referenceVideoDuration = ReferenceVideoDurationForVerification(
+            var referenceVideoDuration = reference.Kind == MediaKind.Audio && remoteEvidence is not null
+                ? Math.Max(0, remoteEvidence.SourceAudio!.LastPresentationSeconds!.Value - (originalProbe.AudioStartSeconds ?? 0))
+                : ReferenceVideoDurationForVerification(
                 originalProbe,
                 sourceTimelineIndeterminate ? TimestampCheckResult.NotMeasured : originalTimestampResult,
                 reference.DurationSeconds,
@@ -318,7 +321,9 @@ public sealed class VerificationService(
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
                 OriginalDurationSeconds: referenceVideoDuration,
-                OutputDurationSeconds: OutputDurationForVerification(
+                OutputDurationSeconds: reference.Kind == MediaKind.Audio && remoteEvidence is not null
+                    ? Math.Max(0, remoteEvidence.CandidateAudio!.LastPresentationSeconds!.Value - (outputProbe.AudioStartSeconds ?? 0))
+                    : OutputDurationForVerification(
                     outputProbe,
                     reference.Kind,
                     timestampResult),
@@ -426,7 +431,8 @@ public sealed class VerificationService(
                         originalProbe.AudioTracks.Select(track => track.Codec).ToList(),
                         reference.RemovedAudioStreamIndexes)
                     : null,
-                OutputAudioCodecs: reference.ContainerMustMatch
+                ExpectedAudioCodec: reference.ExpectedAudioCodec,
+                OutputAudioCodecs: reference.ContainerMustMatch || reference.Kind == MediaKind.Audio
                     ? outputProbe.AudioTracks.Select(track => track.Codec).ToList()
                     : null);
 

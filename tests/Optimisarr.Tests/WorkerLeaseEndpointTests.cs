@@ -62,7 +62,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         return client;
     }
 
-    private async Task EnableRemoteWorkers()
+    private async Task EnableRemoteWorkers(bool strict = false)
     {
         var admin = Admin();
         var current = await (await admin.GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
@@ -75,7 +75,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         payload["remoteWorkersEnabled"] = true;
         // This fixture pairs protocol-1 workers. Explicitly disable the fresh-install strict
         // default instead of relying on another test having changed shared settings first.
-        payload["workerVerificationRequired"] = false;
+        payload["workerVerificationRequired"] = strict;
         (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
     }
 
@@ -186,6 +186,39 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
         return job.Id;
+    }
+
+    [Theory]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.WorkerOnly, true)]
+    [InlineData("aac", "aac", "m4a", 5, WorkPlacement.WorkerOnly, false)]
+    [InlineData("aac", "libopus", "m4a", 6, WorkPlacement.WorkerOnly, false)]
+    [InlineData("aac", "aac", "m4a", 6, WorkPlacement.LocalOnly, false)]
+    [InlineData("opus", "libopus", "opus", 6, WorkPlacement.WorkerOnly, true)]
+    [InlineData("mp3", "libmp3lame", "mp3", 6, WorkPlacement.WorkerOnly, true)]
+    public async Task Audio_claims_require_placement_protocol_and_the_proved_encoder(string codec, string encoder, string extension, int protocol, WorkPlacement placement, bool claim)
+    {
+        await EnableRemoteWorkers(strict: true);
+        var worker = await PairWorker("Audio only", 1, [], [], [encoder], protocolMaximum: protocol);
+        var id = await QueueAJob(videoEncoder: null, placement: placement, qualityGate: true, fileName: "track.flac");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == id);
+            var media = job.MediaFile!;
+            media.MediaKind = MediaKind.Audio; media.VideoCodec = null; media.Width = null; media.Height = null;
+            media.AudioCodecs = "flac"; media.AudioTrackCount = 1; media.MaxAudioChannels = 2;
+            media.Library!.AudioTargetCodec = codec;
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        if (!claim) { Assert.Equal(HttpStatusCode.NoContent, response.StatusCode); return; }
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var assignment = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal((int)MediaKind.Audio, assignment.GetProperty("kind").GetInt32());
+        Assert.Equal(encoder, assignment.GetProperty("audioEncoder").GetString());
+        Assert.Equal(extension, assignment.GetProperty("outputExtension").GetString());
+        Assert.False(assignment.GetProperty("quality").GetProperty("measure").GetBoolean());
+        Assert.Equal(2, assignment.GetProperty("fullVerification").GetProperty("version").GetInt32());
     }
 
     private async Task<int> WorkerIdNamed(string name)
