@@ -110,8 +110,8 @@ complete WCAG conformance.
 
 | Surface | Result and scope |
 |---|---|
-| Local Mac backend | 2,490 tests pass; Release build has zero warnings/errors. |
-| Quark Linux backend | 2,490 tests pass; Release build has zero warnings/errors, from an isolated copy of the final application/test sources. |
+| Local Mac backend | 2,491 tests pass; Release build has zero warnings/errors. |
+| Quark Linux backend | 2,491 tests pass; Release build has zero warnings/errors, from an isolated copy of the final application/test sources. |
 | Shared sidecar core on Quark | 246 tests pass. This is portable worker logic, not Windows native UI certification. |
 | Linux sidecar on Quark | 29 tests pass. |
 | Mac sidecar | Swift suite reports 235 test declarations in 49 suites; opt-in live suites are separately gated. Release AcceptanceWorker builds. |
