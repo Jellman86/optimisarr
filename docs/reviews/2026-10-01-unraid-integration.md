@@ -29,8 +29,12 @@ and [repository profile rules](https://ca.unraid.net/submit/help/repository-info
 
 - New startup/default tests failed before the implementation. They now prove fresh enabled,
   explicitly unavailable, historical missing-key disabled, saved true/false and repeated startup.
-- Mac and Quark Linux each passed 2,511 backend tests with zero-warning Release builds. PICARD
-  passed all 29 changed worker-control/settings tests with a zero-warning native backend build.
+- Mac and Quark Linux each passed 2,516 backend tests with zero-warning Release builds. PICARD
+  passed all 44 affected worker-control/settings/parser tests with a zero-warning native backend build.
+- Second-order review reproduced an unrelated-settings save failure when an explicitly disabled
+  deployment retained a saved enabled worker choice. Parser and real endpoint regressions failed
+  first, then proved unchanged-choice preservation, editable CPU settings and refused pairing.
+  Newly enabling workers remains rejected while availability is disabled.
 - An isolated real API, with no worker environment override, proved availability, fresh enabled
   workers, strict verification, dry-run, admin-protected PIN issuance and explicit pairing. Saving
   disabled blocked heartbeat while retaining pairing. Restart preserved disabled; an explicitly

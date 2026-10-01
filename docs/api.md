@@ -589,8 +589,10 @@ outright because an absent fingerprint matches nothing; the row is kept for the 
 
 Remote workers are available when the existing `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`
 environment variable is unset or explicitly enabled. A false, empty or unrecognised value
-makes worker routes return `403 workers.unavailable`; settings updates that try to enable
-workers then return `400`. The environment variable name is retained for compatibility.
+makes worker routes return `403 workers.unavailable`; settings updates that try to newly enable
+workers then return `400`. An unchanged saved enabled choice may be preserved when updating
+other settings, but the deployment override still refuses every worker route. The environment
+variable name is retained for compatibility.
 
 Fresh databases start with `workers.remoteEnabled=true` and strict worker verification.
 Upgrades preserve saved choices, including the historical disabled default where a key is

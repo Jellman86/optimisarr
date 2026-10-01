@@ -89,6 +89,37 @@ public sealed class RemoteWorkersAvailabilityTests
     }
 
     [Fact]
+    public async Task Deployment_disable_preserves_enabled_choice_and_allows_unrelated_settings_updates()
+    {
+        using var host = WithWorkersExplicitlyUnavailable();
+        var admin = Admin(host);
+        using var scope = host.Services.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<Optimisarr.Api.Library.SettingsStore>();
+        var original = await store.GetQueueSettingsAsync(CancellationToken.None);
+        try
+        {
+            await store.SetQueueSettingsAsync(original with { RemoteWorkersEnabled = true }, CancellationToken.None);
+            var current = await admin.GetFromJsonAsync<SettingsDto>("/api/settings");
+            Assert.NotNull(current);
+            using var saved = await admin.PutAsJsonAsync("/api/settings", current with { CpuThreadLimit = 2 });
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+            var result = await saved.Content.ReadFromJsonAsync<SettingsDto>();
+            Assert.NotNull(result);
+            Assert.True(result.RemoteWorkersEnabled);
+            Assert.False(result.RemoteWorkersAvailable);
+            Assert.Equal(2, result.CpuThreadLimit);
+            using var pairing = await admin.PostAsync("/api/workers/pairing-code", null);
+            Assert.Equal(HttpStatusCode.Forbidden, pairing.StatusCode);
+        }
+        finally
+        {
+            using var restore = host.Services.CreateScope();
+            await restore.ServiceProvider.GetRequiredService<Optimisarr.Api.Library.SettingsStore>()
+                .SetQueueSettingsAsync(original, CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task When_explicitly_disabled_every_worker_route_refuses()
     {
         using var host = WithWorkersExplicitlyUnavailable();

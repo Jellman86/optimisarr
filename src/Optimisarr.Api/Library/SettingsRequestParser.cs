@@ -17,7 +17,10 @@ internal static class SettingsRequestParser
         QueueSettings? currentSettings = null)
     {
         settings = default!;
-        if (request.RemoteWorkersEnabled && !remoteWorkersAvailable)
+        // A deployment override must not trap unrelated saves when the stored choice is on.
+        // Preserve that choice without allowing a disabled installation to newly enable workers.
+        if (request.RemoteWorkersEnabled && !remoteWorkersAvailable
+            && currentSettings?.RemoteWorkersEnabled != true)
         {
             return Fail(
                 "workers.unavailable",
