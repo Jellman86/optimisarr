@@ -163,17 +163,15 @@ public sealed class ProcessTranscoder : ITranscoder
     private static async Task ReadProgressAsync(
         Process process, IProgress<double>? encodedSeconds, CancellationToken cancellationToken)
     {
-        if (encodedSeconds is null)
-        {
-            return;
-        }
-
+        // Measurements have no progress subscriber, but their redirected pipe still needs
+        // draining: otherwise a long-running producer blocks once the OS buffer fills.
         try
         {
             while (await process.StandardOutput.ReadLineAsync(cancellationToken) is { } line)
             {
                 // out_time_us=123456789
-                if (line.StartsWith("out_time_us=", StringComparison.Ordinal)
+                if (encodedSeconds is not null
+                    && line.StartsWith("out_time_us=", StringComparison.Ordinal)
                     && long.TryParse(line.AsSpan(12), NumberStyles.Integer, CultureInfo.InvariantCulture, out var micro)
                     && micro > 0)
                 {
