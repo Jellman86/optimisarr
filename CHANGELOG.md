@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.18 — 2026-10-01
 
 ### Quality verification
 
