@@ -61,6 +61,10 @@ public sealed class HostTests
             if (args.Any(a => a.Contains("libvmaf")))
             {
                 Scored = executable == "measurement";
+                var graph = args[args.ToList().IndexOf("-lavfi") + 1];
+                var start = graph.IndexOf("log_path=", StringComparison.Ordinal) + "log_path=".Length;
+                var end = graph.IndexOf(":shortest=", start, StringComparison.Ordinal);
+                if (Scored) File.WriteAllText(graph[start..end], "{\"version\":\"3.2.0\",\"frames\":[{\"metrics\":{\"vmaf\":100}}]}");
                 return Task.FromResult((Scored ? 0 : 1, ""));
             }
             return Task.FromResult((executable == "encoding" ? 0 : 1, ""));

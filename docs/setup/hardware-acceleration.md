@@ -116,3 +116,12 @@ Contributors with a physical NVIDIA system can run the packaged
 mapped storage root, leaves all supplied clips unchanged, and produces one anonymous text report for
 [issue #37](https://github.com/Jellman86/optimisarr/issues/37). The comparison does not alter normal
 Optimisarr encoding settings.
+
+### Quality scoring with VMAF v1
+
+Ordinary SDR uses complete VMAF v1 on CPU, including on remote workers. NVENC, VideoToolbox,
+QSV and VAAPI can still encode; this does not mean v1's quality features run on the GPU. Current
+upstream CUDA lacks the full v1 feature set. The optional CUDA configuration above applies only
+to compatible legacy models. Update sidecars with the server: protocol 7 proves both HD/UHD v1
+models and supplies the candidate's actual encoded format. HDR, high frame rates and conversions
+retain legacy scoring until their v1 policies are validated.

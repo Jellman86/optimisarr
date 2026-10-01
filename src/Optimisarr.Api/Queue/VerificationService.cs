@@ -46,7 +46,9 @@ public sealed record OriginalSnapshot(
     IReadOnlyList<int>? RemovedSubtitleStreamIndexes = null,
     // True for a track-cleanup job, whose promise includes an unchanged container type.
     bool ContainerMustMatch = false,
-    string? ExpectedAudioCodec = null);
+    string? ExpectedAudioCodec = null,
+    // Frozen with a prepared job. Absent in pre-v1 snapshots, which retain legacy scoring.
+    string? VmafModel = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
@@ -239,6 +241,7 @@ public sealed class VerificationService(
                         reference,
                         outputPath,
                         originalProbe,
+                        outputProbe,
                         // A preview's stream-copied clip is not the file VMAF reads, so its
                         // container lead says nothing about the reference actually decoded.
                         clip is null ? QueueDispatcher.ContainerLeadSeconds(originalProbe) : null,
@@ -546,6 +549,7 @@ public sealed class VerificationService(
         OriginalSnapshot reference,
         string outputPath,
         MediaProbeResult originalProbe,
+        MediaProbeResult outputProbe,
         double? referenceContainerLeadSeconds,
         double? distortedContainerLeadSeconds,
         QualityScoreService quality,
@@ -586,7 +590,11 @@ public sealed class VerificationService(
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
             DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
             PairFramesByNumber: pairFramesByNumber,
-            ReferenceVideoCodec: originalProbe.VideoCodec);
+            ReferenceVideoCodec: originalProbe.VideoCodec,
+            ModelVersion: reference.VmafModel ?? QualityScoreCommandBuilder.LegacyModelVersionFor(
+                reference.Crop?.Width ?? originalProbe.Width.Value, reference.Crop?.Height ?? originalProbe.Height.Value),
+            EncodedVideo: PixelFormatInfo.Parse(outputProbe.PixelFormat, outputProbe.BitsPerRawSample)?.BitDepth is { } depth
+                && outputProbe.Width is { } width && outputProbe.Height is { } height ? new(width, height, depth) : null);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

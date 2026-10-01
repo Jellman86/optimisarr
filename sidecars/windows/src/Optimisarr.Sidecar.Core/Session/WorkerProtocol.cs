@@ -12,6 +12,6 @@ namespace Optimisarr.Sidecar.Core.Session;
 public static class WorkerProtocol
 {
     public const int Minimum = 1;
-    // Protocol 6 supports standalone audio and its complete sidecar verification.
-    public const int Maximum = 6;
+    // Protocol 7 supports actual-candidate CAMBI parameters for VMAF v1.
+    public const int Maximum = 7;
 }

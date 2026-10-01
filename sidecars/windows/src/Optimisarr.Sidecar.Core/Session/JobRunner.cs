@@ -337,7 +337,14 @@ public sealed class JobRunner(
         string candidate,
         CancellationToken cancellationToken)
     {
-        var commands = await ChooseCommandsAsync(assignment, source, candidate, cancellationToken);
+        var asked = await ChooseCommandsAsync(assignment, source, candidate, cancellationToken);
+        var commands = new List<IReadOnlyList<string>>(asked.Count);
+        foreach (var command in asked)
+        {
+            var prepared = await PrepareCandidateFormatAsync(command, candidate, cancellationToken);
+            if (prepared is null) return null;
+            commands.Add(prepared);
+        }
 
         // A dropped frame can change alignment later in the file. Each sampled window must
         // measure its own shift against the pictures it will score.
@@ -571,10 +578,12 @@ public sealed class JobRunner(
                     $"The command to score sample {index + 1} was refused. {refusedScore.Reason}");
             }
 
+            var prepared = await PrepareCandidateFormatAsync(step.Measurement.Commands[index], sample, cancellationToken);
+            if (prepared is null) return CandidateMeasurement.Failed("The sample's actual format could not be established for VMAF v1.");
             var scored = await transcoder.RunAsync(
                 measurementFfmpegPath ?? ffmpegPath,
                 MeasurementPlaceholders.Resolve(
-                    step.Measurement.Commands[index], sample, source, log),
+                    prepared, sample, source, log),
                 null,
                 cancellationToken);
             if (!scored.Succeeded)
@@ -609,6 +618,17 @@ public sealed class JobRunner(
         }
 
         return CandidateMeasurement.Ok(windowBytes, logs);
+    }
+
+    private async Task<IReadOnlyList<string>?> PrepareCandidateFormatAsync(
+        IReadOnlyList<string> command, string candidate, CancellationToken cancellationToken)
+    {
+        if (!CandidateVideoFormat.Required(command)) return command;
+        if (MeasurementCommand.Refuse(command) is not null || FfprobeBeside(ffmpegPath) is not { } probe) return null;
+        var result = await transcoder.ProbeAsync(probe, CandidateVideoFormat.ProbeArguments(candidate), cancellationToken);
+        var prepared = result.ExitCode == 0 ? CandidateVideoFormat.Resolve(command, result.Output) : null;
+        if (prepared is null) report?.Invoke("VMAF v1 requires a valid candidate width, height and 8/10-bit format; measurement stopped.");
+        return prepared;
     }
 
     private static void TryDeleteFile(string path)

@@ -82,8 +82,7 @@ public sealed record QualityMeasurementContext(
     // A whole-file candidate is not affected: there both streams are seeked and trimmed the same
     // way, so whatever the cadence filter does to one it does to the other.
     bool DistortedIsCutClip = false,
-    // A VMAF model chosen by the caller instead of the automatic HD/4K choice. Only the model
-    // study uses it, to score the same windows under two models; verification never sets it.
+    // An explicit model preserves an existing job/lease or selects a research comparison.
     string? ModelVersion = null,
     // True when both files hold the same number of frames, so each sampled window compares frame
     // k with frame k instead of rounding timestamps onto a cadence grid. See FramePairing. It needs
@@ -91,7 +90,9 @@ public sealed record QualityMeasurementContext(
     bool PairFramesByNumber = false,
     // CAMBI needs the encode's format before measurement rescaling or conversion to 10-bit.
     VmafEncodedVideo? EncodedVideo = null,
-    string? ReferenceVideoCodec = null);
+    string? ReferenceVideoCodec = null,
+    // A worker fills these fixed CAMBI tokens from its actual candidate probe before scoring.
+    bool EncodedVideoFromWorker = false);
 
 public sealed record VmafEncodedVideo(int Width, int Height, int BitDepth);
 
@@ -110,25 +111,50 @@ public sealed record QualityScoreCommand(
 /// </summary>
 public static class QualityScoreCommandBuilder
 {
-    public const string HdModelVersion = "vmaf_v0.6.1";
-    public const string UhdModelVersion = "vmaf_4k_v0.6.1";
+    public const string HdModelVersion = "vmaf_v1.0.16_3d0h";
+    public const string UhdModelVersion = "vmaf_v1.0.16_1d5h_2160";
+    public const string LegacyHdModelVersion = "vmaf_v0.6.1";
+    public const string LegacyUhdModelVersion = "vmaf_4k_v0.6.1";
     public const int MaximumFrameSubsample = 10;
 
     public static bool IsV1(string? model) => model?.StartsWith("vmaf_v1.", StringComparison.Ordinal) == true;
 
     // The accelerated graphs currently use 8-bit surfaces. V1's banding features must see the
-    // same 10-bit pixels as the calibrated software path, including when choosing the executable.
+    // same 10-bit pixels as the software path, including when choosing the executable.
     public static VmafAcceleration EffectiveAcceleration(QualityMeasurementContext context) =>
         context.ReferenceIsHdr || context.ReferenceCrop is not null || context.ReferenceDecimation is not null
-            || IsV1(context.ModelVersion) ? VmafAcceleration.None : context.Acceleration;
+            || IsV1(SelectedModel(context)) ? VmafAcceleration.None : context.Acceleration;
 
     /// <summary>
     /// The viewing model for a picture of this size. Cropped cinema masters are commonly
     /// 3840x1600-ish while still intended for a 4K display, so either UHD axis selects the 4K
     /// model. Public so an assignment can tell a remote worker which model its evidence must name.
     /// </summary>
-    public static string ModelVersionFor(int referenceWidth, int referenceHeight) =>
-        referenceWidth >= 3840 || referenceHeight >= 2160 ? UhdModelVersion : HdModelVersion;
+    public static string ModelVersionFor(int referenceWidth, int referenceHeight,
+        bool referenceIsHdr = false, double? referenceFrameRate = null, bool frameRateConverted = false)
+    {
+        var uhd = referenceWidth >= 3840 || referenceHeight >= 2160;
+        // These workflows keep the established preparation until their v1 policies are tested.
+        return referenceIsHdr || referenceFrameRate >= 45 || frameRateConverted
+            ? uhd ? LegacyUhdModelVersion : LegacyHdModelVersion
+            : uhd ? UhdModelVersion : HdModelVersion;
+    }
+
+    public static string LegacyModelVersionFor(int width, int height) =>
+        width >= 3840 || height >= 2160 ? LegacyUhdModelVersion : LegacyHdModelVersion;
+
+    public static string ModelForJob(string? recordedModel, bool candidateExists, int width, int height,
+        bool isHdr, double? frameRate, bool frameRateConverted, bool qualityWasSelected = false) => recordedModel is not null
+            ? ValidatedModelName(recordedModel)
+            : candidateExists || qualityWasSelected || frameRate is null || !double.IsFinite(frameRate.Value) || frameRate <= 0
+                ? LegacyModelVersionFor(width, height)
+            : ModelVersionFor(width, height, isHdr, frameRate, frameRateConverted);
+
+    private static string SelectedModel(QualityMeasurementContext context) => context.ModelVersion is { } chosen
+        ? ValidatedModelName(chosen)
+        : ModelVersionFor(context.ReferenceCrop?.Width ?? context.ReferenceWidth,
+            context.ReferenceCrop?.Height ?? context.ReferenceHeight, context.ReferenceIsHdr,
+            context.ReferenceFrameRate, context.ReferenceDecimation is not null);
 
     /// <summary>
     /// A model name goes into the filter graph verbatim, where a colon or bracket would start a new
@@ -189,16 +215,18 @@ public static class QualityScoreCommandBuilder
         var referenceWidth = context.ReferenceCrop?.Width ?? context.ReferenceWidth;
         var referenceHeight = context.ReferenceCrop?.Height ?? context.ReferenceHeight;
 
-        var model = context.ModelVersion is { } chosen
-            ? ValidatedModelName(chosen)
-            : ModelVersionFor(referenceWidth, referenceHeight);
+        var model = SelectedModel(context);
         var v1 = IsV1(model);
-        if (v1 && (context.ReferenceIsHdr || context.EncodedVideo is not { Width: > 0, Height: > 0, BitDepth: 8 or 10 }))
+        if (v1 && (context.ReferenceIsHdr
+            || context.EncodedVideoFromWorker && context.EncodedVideo is not null
+            || !context.EncodedVideoFromWorker && context.EncodedVideo is not { Width: > 0, Height: > 0, BitDepth: 8 or 10 }))
         {
             throw new ArgumentException("VMAF v1 requires SDR and the actual encoded width, height and 8- or 10-bit depth.", nameof(context));
         }
         var modelOptions = v1
-            ? FormattableString.Invariant($"{model}\\:cambi.enc_width={context.EncodedVideo!.Width}\\:cambi.enc_height={context.EncodedVideo.Height}\\:cambi.enc_bitdepth={context.EncodedVideo.BitDepth}")
+            ? context.EncodedVideoFromWorker
+                ? $"{model}\\:cambi.enc_width={Workers.RemoteQualityContract.EncodedWidthPlaceholder}\\:cambi.enc_height={Workers.RemoteQualityContract.EncodedHeightPlaceholder}\\:cambi.enc_bitdepth={Workers.RemoteQualityContract.EncodedBitDepthPlaceholder}"
+                : FormattableString.Invariant($"{model}\\:cambi.enc_width={context.EncodedVideo!.Width}\\:cambi.enc_height={context.EncodedVideo.Height}\\:cambi.enc_bitdepth={context.EncodedVideo.BitDepth}")
             : model;
         var colourPreprocessing = context.ReferenceIsHdr
             ? context.HdrConvertedToSdr

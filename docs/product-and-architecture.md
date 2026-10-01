@@ -436,3 +436,17 @@ layout is suboptimal.
   media stream inspection:
   https://www.ffmpeg.org/ffmpeg.html
   https://ffmpeg.org/ffprobe.html
+
+### Current video quality model
+
+New ordinary SDR video jobs use VMAF v1.0.16 (HD or UHD viewing model) for adaptive selection
+and final verification. Preset/custom numerical floors are unchanged heuristic policy, not a
+subjective calibration guarantee. HDR, 45 fps or higher and frame-rate conversions retain legacy
+scoring. Each started job freezes its model; existing candidates and pre-upgrade adaptive choices
+keep legacy policy. Explicit retries start under the current policy.
+
+Protocol 7 sidecars measure at 10-bit precision and use actual candidate geometry/depth for CAMBI
+banding features. Both models must pass real capability probes. Strict worker verification keeps
+complete CPU scoring on that sidecar; the server still owns orchestration, evidence validation,
+replacement and quarantine. Full v1 CUDA is deferred pending missing upstream features and an
+exact artifact/parity/license audit. See the [VMAF/NVIDIA plan](development/vmaf-v1-and-nvidia-plan.md).

@@ -1,6 +1,12 @@
 # Decision: collect VMAF v1 observations before changing replacement gates
 
-Accepted: 27 September 2026. Related: [model study](vmaf-model-study.md), issue #114.
+Accepted: 27 September 2026. Related: [model study](vmaf-model-study.md), [PR #114](https://github.com/Jellman86/optimisarr/pull/114).
+
+The [1 October practical migration and NVIDIA plan](vmaf-v1-and-nvidia-plan.md) proposes starting
+with existing numerical floors, automated validation and targeted anomaly review. It does not
+require a subjective calibration study or legacy-verdict agreement, and does not yet change
+production behaviour or enable research. The original conditions below record the September
+decision; implementation planning now follows the simplified migration plan.
 
 ## Decision
 

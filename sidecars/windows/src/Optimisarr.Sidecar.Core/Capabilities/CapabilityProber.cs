@@ -165,17 +165,20 @@ public sealed class CapabilityProber(ICommandRunner runner, string platform = "w
                 return VmafCapability.None;
             }
 
-            if (filters.Output.Contains("libvmaf_cuda", StringComparison.Ordinal))
+            foreach (var model in new[] { "vmaf_v1.0.16_3d0h", "vmaf_v1.0.16_1d5h_2160" })
             {
-                var cuda = await runner.RunAsync(measurement, ProbeCommands.CudaVmaf(clip), cancellationToken);
-                if (cuda.ExitCode == 0)
+                var log = Path.Combine(Path.GetTempPath(), $"optimisarr-vmaf-{Guid.NewGuid():N}.json");
+                try
                 {
-                    return VmafCapability.Cuda;
+                    var measured = await runner.RunAsync(measurement, ProbeCommands.V1Vmaf(clip, model, log), cancellationToken);
+                    if (measured.ExitCode != 0 || !File.Exists(log)
+                        || !V1ProbeEvidence.HasFiniteFrameScores(await File.ReadAllTextAsync(log, cancellationToken)))
+                        return VmafCapability.None;
                 }
+                finally { try { File.Delete(log); } catch (IOException) { } }
             }
-
-            var cpu = await runner.RunAsync(measurement, ProbeCommands.CpuVmaf(clip), cancellationToken);
-            return cpu.ExitCode == 0 ? VmafCapability.Cpu : VmafCapability.None;
+            // A working legacy CUDA filter does not prove v1's complete chroma/banding features.
+            return VmafCapability.Cpu;
         }
         finally
         {

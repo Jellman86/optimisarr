@@ -20,10 +20,12 @@ public sealed class VmafShadowService(
     {
         if (!enabled) return null;
         cancellationToken.ThrowIfCancellationRequested();
-        var baselineModel = QualityScoreCommandBuilder.ModelVersionFor(
+        var selectedModel = QualityScoreCommandBuilder.ModelVersionFor(
             context.ReferenceCrop?.Width ?? context.ReferenceWidth,
             context.ReferenceCrop?.Height ?? context.ReferenceHeight);
-        var candidateModel = baselineModel == QualityScoreCommandBuilder.UhdModelVersion
+        var baselineModel = selectedModel == QualityScoreCommandBuilder.UhdModelVersion
+            ? QualityScoreCommandBuilder.LegacyUhdModelVersion : QualityScoreCommandBuilder.LegacyHdModelVersion;
+        var candidateModel = baselineModel == QualityScoreCommandBuilder.LegacyUhdModelVersion
             ? VmafShadowPlan.UhdModel : VmafShadowPlan.HdModel;
         var windows = new List<VmafShadowWindow>();
         VmafShadowEvidence Result(string status, string? detail = null) =>

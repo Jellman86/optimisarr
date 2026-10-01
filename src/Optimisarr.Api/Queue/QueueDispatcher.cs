@@ -1005,7 +1005,8 @@ public sealed class QueueDispatcher(
         int jobId,
         int quality,
         WorkerCapabilities worker,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? vmafModel = null)
     {
         // Loaded for the worker that will run it, never for this machine. Resolving the encoder
         // from this server's probe would plan the search on the wrong encoder entirely — the exact
@@ -1068,7 +1069,8 @@ public sealed class QueueDispatcher(
             loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate ?? sourceProbe.VideoFrameRate,
             ContainerLeadSeconds(sourceProbe),
             loaded.Spec.CropTo,
-            loaded.Spec.FrameRate);
+            loaded.Spec.FrameRate,
+            vmafModel ?? loaded.Original.VmafModel);
     }
 
     /// <summary>
@@ -1152,6 +1154,7 @@ public sealed class QueueDispatcher(
             }
 
             var preparedWork = work.Value;
+            await WithJobAsync(jobId, job => job.VmafModel = preparedWork.Original.VmafModel, cancellationToken);
             if (ShouldSelectAdaptiveQuality(
                 preparedWork.VideoQualityStrategy,
                 preparedWork.Spec.VideoCodec is not null,
@@ -1482,7 +1485,8 @@ public sealed class QueueDispatcher(
         int jobId,
         WorkerCapabilities worker,
         CancellationToken cancellationToken,
-        bool forceStrictVerification = false)
+        bool forceStrictVerification = false,
+        string? vmafModel = null)
     {
         JobWork? prepared;
         try
@@ -1498,6 +1502,9 @@ public sealed class QueueDispatcher(
         {
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
         }
+
+        if (vmafModel is not null)
+            work = work with { Original = work.Original with { VmafModel = vmafModel } };
 
         if (!WorkPlacementPolicy.MayRunOnWorker(work.Placement))
         {
@@ -1522,7 +1529,7 @@ public sealed class QueueDispatcher(
         if (work.Spec.Kind != MediaKind.Audio && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
             search = work.VideoQuality is { } baseline
-                ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken)
+                ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken, work.Original.VmafModel)
                 : null;
 
             // A search that cannot be expressed as commands — no quality gate, no readable source
@@ -1567,7 +1574,8 @@ public sealed class QueueDispatcher(
                 referenceContainerLead,
                 work.Spec.CropTo,
                 work.Spec.FrameRate,
-                referenceVideoCodec)
+                referenceVideoCodec,
+                work.Original.VmafModel)
             : null;
 
         return RemoteWorkPlan.For(new RemoteAssignment(
@@ -1575,7 +1583,8 @@ public sealed class QueueDispatcher(
             work.Arguments,
             Path.GetExtension(work.Spec.OutputPath).TrimStart('.'),
             work.VerificationPolicy,
-            QualityScoreCommandBuilder.ModelVersionFor(width, height),
+            quality?.Model ?? work.Original.VmafModel ?? QualityScoreCommandBuilder.ModelVersionFor(width, height,
+                work.Original.IsHdr, referenceFrameRate, work.Spec.FrameRate is not null),
             quality,
             work.UsedHardwareDecode && work.VideoEncoder is not null ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
             work.Spec.AudioEncoder,
@@ -1860,6 +1869,17 @@ public sealed class QueueDispatcher(
             };
         }
 
+        // Inventory has no frame-rate field. Model selection needs a fresh rate even for MKV
+        // without subtitles, otherwise high-frame-rate sources silently enter the SDR v1 path.
+        var modelSourceProbe = freshSourceProbe;
+        if (isVideoJob && rules.TargetVideoCodec is not null && modelSourceProbe is null)
+        {
+            modelSourceProbe = await scope.ServiceProvider.GetRequiredService<IMediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!modelSourceProbe.Success)
+                throw new InvalidOperationException("Fresh source probe required for VMAF model selection failed.");
+        }
+
         var original = new OriginalSnapshot(
             media.Path,
             media.SizeBytes,
@@ -1893,7 +1913,11 @@ public sealed class QueueDispatcher(
             // Track cleanup (no codec, no target container) promises the container type
             // is untouched; verification holds the output to that promise.
             ContainerMustMatch: rules.TargetVideoCodec is null && rules.TargetContainer is null,
-            ExpectedAudioCodec: spec.Kind == MediaKind.Audio ? rules.TargetAudioCodec : null);
+            ExpectedAudioCodec: spec.Kind == MediaKind.Audio ? rules.TargetAudioCodec : null,
+            VmafModel: QualityScoreCommandBuilder.ModelForJob(job.VmafModel, job.WorkOutputPath is not null,
+                spec.CropTo?.Width ?? modelSourceProbe?.Width ?? media.Width ?? 0,
+                spec.CropTo?.Height ?? modelSourceProbe?.Height ?? media.Height ?? 0,
+                media.IsHdr || modelSourceProbe?.IsHdr == true, modelSourceProbe?.VideoFrameRate, spec.FrameRate is not null, job.AdaptiveVideoQuality is not null));
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,
@@ -2000,8 +2024,8 @@ public sealed class QueueDispatcher(
         // New GPU-surface paths start with the source format actually proved by the worker's
         // H.264 round-trip probe. Other codecs/profiles keep software decode and GPU encode.
         if (remoteHardwareDecoder is "qsv" or "vaapi" or "cuda"
-            && !(string.Equals(media.VideoCodec, "h264", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(media.PixelFormat, "yuv420p", StringComparison.OrdinalIgnoreCase)))
+            && !HardwareDecodePolicy.SupportsProvedWorkerSource(media.VideoCodec, media.PixelFormat,
+                modelSourceProbe?.VideoProfile ?? media.VideoProfile))
             remoteHardwareDecoder = null;
         var hardwareDecode = !job.PreferSoftwareDecode
             && (placement.IsRemote ? remoteHardwareDecoder is not null : true)
@@ -2271,6 +2295,7 @@ public sealed class QueueDispatcher(
                     sourceProbe,
                     policy,
                     qualityService,
+                    probeService,
                     scratchRoot,
                     cancellationToken);
                 if (candidate is null)
@@ -2324,6 +2349,7 @@ public sealed class QueueDispatcher(
         MediaProbeResult sourceProbe,
         VerificationPolicy policy,
         QualityScoreService qualityService,
+        MediaProbeService probeService,
         string scratchRoot,
         CancellationToken cancellationToken)
     {
@@ -2402,6 +2428,8 @@ public sealed class QueueDispatcher(
             }
             windowBytesMeasured.Add(windowBytes);
 
+            var candidateProbe = await probeService.ProbeAsync(outputPath, cancellationToken);
+            var candidateDepth = PixelFormatInfo.Parse(candidateProbe.PixelFormat, candidateProbe.BitsPerRawSample)?.BitDepth;
             var context = new QualityMeasurementContext(
                 sourceProbe.Width!.Value,
                 sourceProbe.Height!.Value,
@@ -2422,7 +2450,10 @@ public sealed class QueueDispatcher(
                 ReferenceDecimation: work.Spec.FrameRate,
                 // As on a worker: the candidate is a clip cut out of the source, so the reference
                 // window is cut before its cadence is normalised rather than after.
-                DistortedIsCutClip: true);
+                DistortedIsCutClip: true,
+                ModelVersion: work.Original.VmafModel,
+                EncodedVideo: candidateDepth is { } bits && candidateProbe.Width is { } width && candidateProbe.Height is { } height
+                    ? new(width, height, bits) : null);
             var measurementProgress = new Progress<double>(progress =>
             {
                 var mapped = AdaptiveQualityProgress.Map(

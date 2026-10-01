@@ -34,6 +34,9 @@ public sealed record RemoteQualityContract(
     // presents each picture later than the source, measured from both files' container and video
     // starts once the encode exists. See QualityMeasurementContext.DistortedShiftToken.
     public const string DistortedShiftPlaceholder = "{{distortedShift}}";
+    public const string EncodedWidthPlaceholder = "{{encodedWidth}}";
+    public const string EncodedHeightPlaceholder = "{{encodedHeight}}";
+    public const string EncodedBitDepthPlaceholder = "{{encodedBitDepth}}";
 
     public int WindowCount => Commands.Count;
 }

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Quality verification
+
+- Workers use software decode for H.264 profiles beyond their proved Baseline/Main/High support, including lossless High 4:4:4 Predictive. GPU encoding and strict worker verification still run on the worker.
+- Native Windows image verification escapes SSIM log paths and sends literal Unicode filenames to ExifTool through UTF-8 argument input. This fixes false failures for filenames containing brackets and non-Latin characters.
+- New ordinary SDR video jobs use VMAF v1 HD/UHD models for adaptive selection and final verification. Numeric preset/custom floors stay unchanged; scores can change because v1 detects banding and chroma artifacts. HDR, sources at 45 fps or above, frame-rate conversions and already-started legacy jobs retain their existing model.
+- VMAF v1 uses 10-bit measurement and the candidate's actual encoded dimensions/depth. Update sidecars together with the server: gated v1 work requires protocol 7 and real HD/UHD model probes. Strict worker verification keeps scoring on the worker; incomplete evidence cannot approve replacement.
+- Container/Linux measurement now pins libvmaf v3.2.1, matching the Mac bundle. The Windows bundle pins a verified upstream revision eight commits later. Both include long-measurement backpressure fixes. NVIDIA encoding/decode remain supported; complete v1 scoring runs on the CPU because upstream CUDA lacks its full feature set.
+
 ### Added
 
 - Standalone audio can run on Mac, Windows and Linux sidecars: AAC, Opus and MP3 with per-library placement, proved encoders and complete strict worker verification. Updated protocol 6 sidecars are required for audio; existing video workers remain compatible.
@@ -44,7 +52,7 @@
 - Worker claims scan past unsuitable jobs instead of stopping at the first 25. Higher priorities run first, equal-priority libraries take turns, and an idle worker with queued work gets a throttled explanation in server logs.
 - MP4 timed-text subtitles are converted to ASS when a video encode or remux targets Matroska, including automatic container fallbacks. Other subtitle tracks stay copied, with stream indexes adjusted correctly after language filtering. Update sidecars too: these jobs require protocol 4, while older clients can still receive ordinary work.
 
-- Windows installer builds recover the same pinned FFmpeg tools and notices from the checksum-verified 0.2.17 installer when upstream removes its expiring autobuild release.
+- Windows installer builds reject stale media bundles instead of silently reusing the older 0.2.17 tools. Expired upstream artifacts require a matching binary/source mirror before release.
 
 - Full-file VC-1 verification with matching frame counts now samples absolute decoded frame numbers instead of seeking independently into the two files. This avoids false low VMAF scores observed on VC-1 Matroska sources. Sidecars count decoded frames rather than assuming one packet always contains one picture.
 

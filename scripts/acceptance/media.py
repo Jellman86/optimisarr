@@ -10,6 +10,26 @@ import re
 from .core import Blocked, command, require, save, sha256, statistics
 
 
+def vmaf_policy(reference_video, encoded_video, rate):
+    """Independent viewing policy; CAMBI describes bytes before rescaling to reference size."""
+    uhd = reference_video["width"] >= 3840 or reference_video["height"] >= 2160
+    if rate >= 45:
+        model = "vmaf_4k_v0.6.1" if uhd else "vmaf_v0.6.1"
+        return model, "version=" + model, "yuv420p"
+    model = "vmaf_v1.0.16_1d5h_2160" if uhd else "vmaf_v1.0.16_3d0h"
+    pixel = encoded_video.get("pix_fmt", "")
+    depths = {"yuv420p": 8, "yuvj420p": 8, "yuv422p": 8, "yuv444p": 8, "nv12": 8,
+              "yuv420p10le": 10, "yuv422p10le": 10, "yuv444p10le": 10, "p010le": 10}
+    depth = depths.get(pixel)
+    require(depth in (8, 10) and encoded_video.get("width", 0) > 0 and encoded_video.get("height", 0) > 0,
+            "V1 requires actual supported candidate format")
+    raw = encoded_video.get("bits_per_raw_sample", "0")
+    require(str(raw).isdigit() and int(raw) in (0, depth), "Inconsistent encoded bit depth")
+    options = (f"'version={model}\\:cambi.enc_width={encoded_video['width']}"
+               f"\\:cambi.enc_height={encoded_video['height']}\\:cambi.enc_bitdepth={depth}'")
+    return model, options, "yuv420p10le"
+
+
 def validate_shadow_report(report):
     shadow = report.get("shadowVmaf") or {}
     require(shadow.get("status") == "Measured", f"Research coverage incomplete: {shadow}")
@@ -18,8 +38,8 @@ def validate_shadow_report(report):
     candidate = shadow.get("candidateModel")
     require(baseline in ("vmaf_v0.6.1", "vmaf_4k_v0.6.1"), "Research baseline changed")
     require(candidate in ("vmaf_v1.0.16_3d0h", "vmaf_v1.0.16_1d5h_2160"), "Research candidate changed")
-    require((report.get("vmaf") or {}).get("scores", {}).get("modelVersion") == baseline,
-            "Authoritative verification stopped using the baseline model")
+    require((report.get("vmaf") or {}).get("scores", {}).get("modelVersion") == candidate,
+            "Authoritative SDR verification stopped using the v1 model")
     windows = shadow.get("windows") or []
     require(0 < len(windows) <= 3, "Missing or unbounded research windows")
     for window in windows:
@@ -212,15 +232,17 @@ class Tools:
         self.run(self.ffmpeg, ["-nostdin", "-v", "error", "-xerror", "-i", self.path(candidate), "-f", "null", "-"])
         if rv.get("color_transfer") in ("smpte2084", "arib-std-b67"):
             raise Blocked("HDR needs an explicitly reviewed reference transform; SDR VMAF is not HDR certification")
-        model = "vmaf_4k_v0.6.1" if rv["width"] >= 3840 or rv["height"] >= 2160 else "vmaf_v0.6.1"
         # Frame correspondence was checked above. Full sequential decode avoids seek/keyframe bugs.
         rate = Fraction(rv.get("avg_frame_rate", "0/1"))
         if rate <= 0:
             rate = Fraction(rv["r_frame_rate"])
         require(0 < rate <= 240, "Reference has no trustworthy picture cadence")
-        graph = (f"[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps={rate}:start_time=0,format=yuv420p[d];"
-                 f"[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps={rate}:start_time=0,format=yuv420p[r];"
-                 f"[d][r]libvmaf=model=version={model}:n_threads=2:n_subsample=1:"
+        model, options, pixel = vmaf_policy(rv, ov, float(rate))
+        prep = (f"fps={rate}:start_time=0,scale={rv['width']}:{rv['height']}:"
+                f"flags=bicubic:in_range=auto:out_range=tv,format={pixel}")
+        graph = (f"[0:v]settb=AVTB,setpts=PTS-STARTPTS,{prep}[d];"
+                 f"[1:v]settb=AVTB,setpts=PTS-STARTPTS,{prep}[r];"
+                 f"[d][r]libvmaf=model={options}:n_threads=2:n_subsample=1:"
                  "log_fmt=json:log_path=vmaf.json:shortest=1:repeatlast=0")
         args = ["-nostdin", "-v", "error", "-i", self.path(candidate), "-i", self.path(reference),
                 "-lavfi", graph, "-f", "null", "-"]

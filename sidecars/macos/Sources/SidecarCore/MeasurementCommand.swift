@@ -96,7 +96,7 @@ public struct MeasurementCommand: Sendable, Equatable {
 
     private static func checkValue(_ value: String, allowingLog: Bool) throws {
         if value.contains(distortedPlaceholder) || value.contains(referencePlaceholder)
-            || (!allowingLog && (value.contains(logPlaceholder) || value.contains(distortedShiftPlaceholder))) {
+            || (!allowingLog && (value.contains(logPlaceholder) || value.contains(distortedShiftPlaceholder) || CandidateVideoFormat.required([value]))) {
             throw MeasurementCommandError.strayPlaceholder(value)
         }
         if value.contains("/") || value.hasPrefix("~") || AssignmentCommand.hasPathLikeBackslash(value) {

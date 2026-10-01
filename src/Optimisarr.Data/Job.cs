@@ -154,6 +154,9 @@ public sealed class Job
     /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
     public string? VideoQualityMode { get; set; }
 
+    /// <summary>The measurement model frozen when this execution was prepared, preserved across automatic retries.</summary>
+    public string? VmafModel { get; set; }
+
     /// <summary>Number of automatic or operator-requested higher-quality retries.</summary>
     public int QualityRetryCount { get; set; }
 

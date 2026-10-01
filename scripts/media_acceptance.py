@@ -49,7 +49,7 @@ def main():
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--vmaf", help="Independent reference FFmpeg with libvmaf (native mode)")
-    parser.add_argument("--vmaf-shadow", action="store_true", help="Require paired server v0/v1 research alongside unchanged verification")
+    parser.add_argument("--vmaf-shadow", action="store_true", help="Require paired server v0/v1 research alongside the selected production verification")
     verification = parser.add_mutually_exclusive_group()
     verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
     verification.add_argument("--server-verification", action="store_true", help="Explicitly test the legacy server-verification mode")
