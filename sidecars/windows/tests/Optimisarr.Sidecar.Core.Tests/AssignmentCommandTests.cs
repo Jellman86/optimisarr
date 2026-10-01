@@ -21,6 +21,42 @@ public sealed class AssignmentCommandTests
     private static CommandRefusal? Refuse(IReadOnlyList<string> arguments, string extension = "mkv") =>
         AssignmentCommand.Refuse(arguments, extension);
 
+    [Theory]
+    [InlineData("tv", "mp4")]
+    [InlineData("pc", "mp4")]
+    [InlineData("tv", "mkv")]
+    [InlineData("pc", "mkv")]
+    public void Actual_server_H264_range_commands_fit_the_advertised_sidecar_contract(string range, string extension)
+    {
+        var spec = new Optimisarr.Core.Queue.TranscodeSpec("{{input}}", "{{output}}." + extension,
+            "h264", 18, "p4", false) { SourceColorRange = range };
+        var arguments = Optimisarr.Core.Queue.FfmpegCommandBuilder.Build(spec, videoEncoder: "h264_nvenc");
+
+        Assert.Null(Refuse(arguments, extension));
+        Assert.True(WorkerProtocol.Maximum >= Optimisarr.Core.Workers.WorkerProtocol.MinimumForEncodeCommand(arguments));
+    }
+
+    [Theory]
+    [InlineData("tv", "0")]
+    [InlineData("pc", "1")]
+    public void Declared_primary_H264_range_options_are_accepted(string range, string flag)
+    {
+        Assert.Null(Refuse(["-i", "{{input}}", "-c:v:0", "h264_nvenc",
+            "-color_range:v:0", range, "-bsf:v:0", "h264_metadata=video_full_range_flag=" + flag, "{{output}}.mkv"]));
+    }
+
+    [Theory]
+    [InlineData("-color_range:v:0", "unknown")]
+    [InlineData("-color_range:v:0", "tv:pc")]
+    [InlineData("-bsf:v:0", "h264_metadata=video_full_range_flag=2")]
+    [InlineData("-bsf:v:0", "h264_metadata=video_full_range_flag=0,trace_headers")]
+    [InlineData("-bsf:v:0", "h264_metadata=sei_user_data=anything")]
+    [InlineData("-bsf:v", "h264_metadata=video_full_range_flag=0")]
+    public void Range_support_does_not_allow_other_bitstream_actions(string option, string value)
+    {
+        Assert.NotNull(Refuse(["-i", "{{input}}", option, value, "{{output}}.mkv"]));
+    }
+
     [Fact]
     public void Indexed_subtitle_codec_overrides_are_accepted()
     {

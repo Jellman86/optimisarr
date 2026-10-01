@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Verification;
@@ -100,7 +101,8 @@ internal static class DiagnosticJobBundleQueries
 
     private static readonly JsonSerializerOptions ReportOptions = new(JsonSerializerDefaults.Web)
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     public static async Task<DiagnosticJobBundle> BuildAsync(
@@ -121,10 +123,11 @@ internal static class DiagnosticJobBundleQueries
         var job = await db.Jobs.AsNoTracking().Include(candidate => candidate.MediaFile)
             .FirstOrDefaultAsync(candidate => candidate.Id == jobId, cancellationToken)
             ?? throw new KeyNotFoundException("Job not found.");
-        var allLeases = await db.JobLeases.AsNoTracking().Include(lease => lease.Worker)
-            .Where(lease => lease.JobId == jobId)
-            .ToListAsync(cancellationToken);
-        var leases = allLeases.OrderBy(lease => lease.AcquiredAt).TakeLast(MaximumLeases).ToList();
+        var leaseQuery = db.JobLeases.AsNoTracking().Where(lease => lease.JobId == jobId);
+        var leaseCount = await leaseQuery.CountAsync(cancellationToken);
+        var leases = await leaseQuery.Include(lease => lease.Worker)
+            .OrderByDescending(lease => EF.Property<long>(lease, "AcquiredUtcTicks"))
+            .ThenByDescending(lease => lease.Id).Take(MaximumLeases).ToListAsync(cancellationToken);
         var events = await db.DiagnosticEvents.AsNoTracking()
             .Where(entry => entry.SessionId == sessionId && entry.JobId == jobId)
             .OrderBy(entry => entry.Id)
@@ -141,7 +144,7 @@ internal static class DiagnosticJobBundleQueries
             "Only retries already archived in job attempt history are listed as historical attempts; the current attempt is summarised on the job.",
             "Each verification report includes at most 100 check names and outcomes; raw check details are omitted."
         };
-        if (allLeases.Count > MaximumLeases)
+        if (leaseCount > MaximumLeases)
         {
             omissions.Add("Older worker leases were omitted to bound bundle size.");
         }
@@ -180,7 +183,7 @@ internal static class DiagnosticJobBundleQueries
             job.OutputSizeBytes,
             job.VerificationPassed,
             job.FailureCategory?.ToString(),
-            SummariseReport(job.VerificationReportJson));
+            SummariseReport(job.VerificationReportJson, omissions));
         return new DiagnosticJobBundle(
             new DiagnosticBundleManifest(2, session.Id, nowUtc, session.IncludePaths,
                 session.EventLimitReached, omissions),
@@ -195,7 +198,7 @@ internal static class DiagnosticJobBundleQueries
                 DiagnosticSafeFields.AttemptOutcome(attempt.Outcome),
                 DiagnosticSafeFields.AttemptReason(attempt.Reason),
                 attempt.VerificationPassed,
-                SummariseReport(attempt.VerificationReportJson))).ToList(),
+                SummariseReport(attempt.VerificationReportJson, omissions))).ToList(),
             leases.OrderBy(lease => lease.AcquiredAt).Select(lease => new DiagnosticLeaseSummary(
                 lease.Id,
                 lease.WorkerId,
@@ -242,7 +245,7 @@ internal static class DiagnosticJobBundleQueries
         return matches.Length == 1 ? matches[0] : null;
     }
 
-    private static DiagnosticReportSummary? SummariseReport(string? json)
+    private static DiagnosticReportSummary? SummariseReport(string? json, List<string> omissions)
     {
         if (string.IsNullOrWhiteSpace(json) || json.Length > MaximumStoredReportCharacters)
         {
@@ -252,7 +255,12 @@ internal static class DiagnosticJobBundleQueries
         try
         {
             var report = JsonSerializer.Deserialize<VerificationReport>(json, ReportOptions);
-            return report is null ? null : new DiagnosticReportSummary(
+            if (report is null || !report.HasValidStructure())
+            {
+                AddUnreadableReportOmission(omissions);
+                return null;
+            }
+            return new DiagnosticReportSummary(
                 report.Passed,
                 report.Checks.Take(MaximumChecksPerReport).Select(check => new DiagnosticCheckSummary(
                     DiagnosticSafeFields.CheckName(check.Name), check.Outcome.ToString())).ToList(),
@@ -265,8 +273,15 @@ internal static class DiagnosticJobBundleQueries
         }
         catch (JsonException)
         {
+            AddUnreadableReportOmission(omissions);
             return null;
         }
+    }
+
+    private static void AddUnreadableReportOmission(List<string> omissions)
+    {
+        const string reason = "A stored verification report was unreadable or structurally invalid and was omitted.";
+        if (!omissions.Contains(reason)) omissions.Add(reason);
     }
 
     private static double? Finite(double? value) =>

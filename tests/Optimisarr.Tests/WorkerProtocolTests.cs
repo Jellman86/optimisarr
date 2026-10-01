@@ -10,6 +10,16 @@ namespace Optimisarr.Tests;
 public class WorkerProtocolTests
 {
     [Fact]
+    public void Explicit_range_commands_require_protocol_five_without_upgrading_ordinary_commands()
+    {
+        Assert.Equal(5, WorkerProtocol.MinimumForEncodeCommand(["-bsf:v:0", "h264_metadata=video_full_range_flag=0"]));
+        Assert.Equal(5, WorkerProtocol.MinimumForEncodeCommand(["-color_range:v:0", "pc", "-c:s:0", "ass"]));
+        Assert.Equal(4, WorkerProtocol.MinimumForEncodeCommand(["-c:s:0", "ass"]));
+        Assert.Equal(1, WorkerProtocol.MinimumForEncodeCommand(["-c:v:0", "hevc_nvenc"]));
+        Assert.Equal(4, WorkerProtocol.Negotiate(1, 4).AgreedVersion);
+    }
+
+    [Fact]
     public void Indexed_subtitle_overrides_require_the_new_command_contract()
     {
         Assert.Equal(4, WorkerProtocol.MinimumForEncodeCommand(["-c:s:0", "ass"]));

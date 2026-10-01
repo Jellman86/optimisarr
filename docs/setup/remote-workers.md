@@ -37,6 +37,14 @@ quitting the Mac app returns its held jobs. **Pause new jobs** lets held jobs fi
 when the worker/app restarts. A server-requested **Drain** also stops new claims while existing
 leases finish; use it before an update and resume the worker afterward.
 
+## Keep worker command support current
+
+Update sidecars alongside the server. H.264 NVIDIA jobs that preserve a declared
+colour range require worker protocol 5; an older sidecar stays available for
+ordinary work and reports that an update is needed for those jobs. Timed-text
+subtitle conversion to Matroska requires protocol 4. Unsupported commands are
+held before a lease is issued, rather than sent to the worker to fail.
+
 ## Choose where a library runs
 
 ### RAM storage and GPU processing

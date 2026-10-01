@@ -321,6 +321,16 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int>("QualityRetryCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long>("QueueEffectiveUtcTicks")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("INTEGER")
+                        .HasComputedColumnSql("(CAST(strftime('%s', substr(COALESCE(FinishedAt, EnqueuedAt), 1, 19) || substr(COALESCE(FinishedAt, EnqueuedAt), -6)) AS INTEGER) * 10000000 + 621355968000000000 + CASE WHEN substr(COALESCE(FinishedAt, EnqueuedAt), 20, 1) = '.' THEN CAST(substr(substr(COALESCE(FinishedAt, EnqueuedAt), 21, length(COALESCE(FinishedAt, EnqueuedAt)) - 26) || '0000000', 1, 7) AS INTEGER) ELSE 0 END)");
+
+                    b.Property<long>("QueueEnqueuedUtcTicks")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("INTEGER")
+                        .HasComputedColumnSql("(CAST(strftime('%s', substr(EnqueuedAt, 1, 19) || substr(EnqueuedAt, -6)) AS INTEGER) * 10000000 + 621355968000000000 + CASE WHEN substr(EnqueuedAt, 20, 1) = '.' THEN CAST(substr(substr(EnqueuedAt, 21, length(EnqueuedAt) - 26) || '0000000', 1, 7) AS INTEGER) ELSE 0 END)");
+
                     b.Property<int?>("RequestedAudioBitrateKbps")
                         .HasColumnType("INTEGER");
 
@@ -368,6 +378,14 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset?>("VerifiedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VerifiedOutputSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerifiedSourceSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("VideoEncoder")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
@@ -390,6 +408,11 @@ namespace Optimisarr.Data.Migrations
 
                     b.HasIndex("Priority", "EnqueuedAt");
 
+                    b.HasIndex("Type", "QueueEffectiveUtcTicks");
+
+                    b.HasIndex("Type", "Priority", "QueueEnqueuedUtcTicks", "Id")
+                        .IsDescending(false, true, false, false);
+
                     b.ToTable("Jobs");
                 });
 
@@ -401,6 +424,11 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<DateTimeOffset>("AcquiredAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<long>("AcquiredUtcTicks")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("INTEGER")
+                        .HasComputedColumnSql("(CAST(strftime('%s', substr(AcquiredAt, 1, 19) || substr(AcquiredAt, -6)) AS INTEGER) * 10000000 + 621355968000000000 + CASE WHEN substr(AcquiredAt, 20, 1) = '.' THEN CAST(substr(substr(AcquiredAt, 21, length(AcquiredAt) - 26) || '0000000', 1, 7) AS INTEGER) ELSE 0 END)");
 
                     b.Property<int?>("AdaptiveAskedQuality")
                         .HasColumnType("INTEGER");
@@ -493,6 +521,8 @@ namespace Optimisarr.Data.Migrations
                         .HasFilter("\"State\" = 'Held'");
 
                     b.HasIndex("WorkerId");
+
+                    b.HasIndex("JobId", "AcquiredUtcTicks", "Id");
 
                     b.ToTable("JobLeases");
                 });
@@ -951,8 +981,16 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OriginalSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("OriginalSizeBytes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("OutputSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("PurgedAt")
                         .HasColumnType("TEXT");

@@ -365,10 +365,13 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
-                    if (worker.ProtocolVersion < WorkerProtocol.MinimumForEncodeCommand(assignment.Arguments))
+                    var requiredProtocol = WorkerProtocol.MinimumForEncodeCommand(assignment.Arguments);
+                    if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = "This job converts MP4 timed-text subtitles to Matroska. Update the sidecar to support protocol 4.";
+                        lastReason = requiredProtocol >= 5
+                            ? "This H.264 encode preserves declared colour range. Update the sidecar to support protocol 5."
+                            : "This job converts MP4 timed-text subtitles to Matroska. Update the sidecar to support protocol 4.";
                         WorkerProblems.Record(worker, lastReason, now);
                         await db.SaveChangesAsync(cancellationToken);
                         continue;
@@ -478,6 +481,9 @@ internal static class WorkerLeaseEndpoints
                     job.WorkOutputPath = null;
                     job.OutputSizeBytes = null;
                     job.VerificationPassed = null;
+                    job.SourceSha256 = null;
+                    job.VerifiedSourceSha256 = null;
+                    job.VerifiedOutputSha256 = null;
                     job.VerificationReportJson = null;
                     job.VerifiedAt = null;
                     // The queue shows these for every job. For a remote job they must be what the

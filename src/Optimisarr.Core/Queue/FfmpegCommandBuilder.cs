@@ -59,6 +59,9 @@ public sealed record TranscodeSpec(
     /// <summary>Probed precision to preserve when uploading software-decoded frames.</summary>
     public int? SourceBitDepth { get; init; }
 
+    /// <summary>Declared range from the fresh source probe; null when unspecified.</summary>
+    public string? SourceColorRange { get; init; }
+
     /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
     public double? TargetFrameRate => FrameRate?.TargetFps;
 
@@ -382,6 +385,22 @@ public static class FfmpegCommandBuilder
 
         args.Add("-c:v:0");
         args.Add(encoder!);
+
+        // NVENC can omit the H.264 limited-range VUI when other colour tags are unknown.
+        // Preserve only a declared range (or the deliberate SDR transform), on the primary
+        // stream. The metadata filter changes the signal, never the encoded pictures.
+        if (encoder == "h264_nvenc"
+            && (spec.TonemapToSdr
+                || string.Equals(spec.SourceColorRange, "tv", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(spec.SourceColorRange, "pc", StringComparison.OrdinalIgnoreCase)))
+        {
+            var limited = spec.TonemapToSdr
+                || string.Equals(spec.SourceColorRange, "tv", StringComparison.OrdinalIgnoreCase);
+            args.Add("-color_range:v:0");
+            args.Add(limited ? "tv" : "pc");
+            args.Add("-bsf:v:0");
+            args.Add(limited ? "h264_metadata=video_full_range_flag=0" : "h264_metadata=video_full_range_flag=1");
+        }
 
         AppendQualityArguments(args, family, spec.Crf);
 

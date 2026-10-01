@@ -45,6 +45,83 @@ public sealed class JobQueriesTests : IDisposable
         Assert.True(result.SidecarVerification);
     }
 
+    [Fact]
+    public async Task Paged_queries_apply_database_limit_before_loading_report_json()
+    {
+        var commands = new List<string>();
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite(_connection)
+            .LogTo(commands.Add, [Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted]).Options;
+        await using var db = new OptimisarrDbContext(options);
+        var library = new Library { Name = "Scale", Path = "/data/scale" };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(MediaFile(library.Id, 1));
+        await db.SaveChangesAsync();
+        for (var i = 0; i < 40; i++)
+        {
+            var job = Job(i + 1, i % 3, DateTimeOffset.UtcNow.AddMinutes(-i));
+            job.MediaFileId = 1;
+            job.VerificationReportJson = new string('x', 16384);
+            db.Jobs.Add(job);
+        }
+        await db.SaveChangesAsync();
+        commands.Clear();
+        var result = await JobQueries.QueryAsync(db, new JobQuery { PageSize = 5, Page = 2 }, CancellationToken.None);
+        Assert.Equal(40, result.Total);
+        Assert.Equal(5, result.Items.Count);
+        var hydration = Assert.Single(commands, command => command.Contains("SELECT") && command.Contains("VerificationReportJson"));
+        Assert.Contains("LIMIT", hydration);
+        Assert.Contains("OFFSET", hydration);
+    }
+
+    [Theory]
+    [InlineData(-14, 1)]
+    [InlineData(14, 9999999)]
+    [InlineData(0, 0)]
+    [InlineData(5, 1234567)]
+    public async Task Queue_timestamp_indexes_preserve_offset_and_submillisecond_ticks(int offsetHours, int fractionalTicks)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Time", Path = "/data/time" };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(MediaFile(library.Id, 1));
+        await db.SaveChangesAsync();
+        var instant = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero).AddTicks(fractionalTicks)
+            .ToOffset(TimeSpan.FromHours(offsetHours));
+        var job = Job(1, 0, instant);
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        var ticks = await db.Jobs.Select(row => EF.Property<long>(row, "QueueEnqueuedUtcTicks")).SingleAsync();
+        Assert.Equal(instant.UtcTicks, ticks);
+        Assert.Single((await JobQueries.QueryAsync(db, new JobQuery { Since = instant, Until = instant }, CancellationToken.None)).Items);
+        Assert.Empty((await JobQueries.QueryAsync(db, new JobQuery { Since = instant.AddTicks(1) }, CancellationToken.None)).Items);
+        job.FinishedAt = instant.AddTicks(3);
+        await db.SaveChangesAsync();
+        Assert.Equal(instant.UtcTicks + 3, await db.Jobs.Select(row => EF.Property<long>(row, "QueueEffectiveUtcTicks")).SingleAsync());
+    }
+
+    [Theory]
+    [InlineData(ReplacementStatus.Pending)]
+    [InlineData(ReplacementStatus.RollbackPending)]
+    [InlineData(ReplacementStatus.Replaced)]
+    public async Task Pending_rollback_paths_are_never_presented_as_clearable(ReplacementStatus status)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Recovery", Path = "/data/recovery" };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(MediaFile(library.Id, 1));
+        await db.SaveChangesAsync();
+        var job = Job(1, 0, DateTimeOffset.UtcNow);
+        job.Status = JobStatus.Failed;
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        db.Replacements.Add(new Replacement { JobId = job.Id, MediaFileId = 1, Status = status });
+        await db.SaveChangesAsync();
+        Assert.False(Assert.Single(await JobQueries.ListAsync(db, CancellationToken.None)).Clearable);
+    }
+
     public JobQueriesTests()
     {
         _connection = new SqliteConnection("DataSource=:memory:;Foreign Keys=True");

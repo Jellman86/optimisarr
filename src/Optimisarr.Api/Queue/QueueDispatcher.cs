@@ -895,6 +895,8 @@ public sealed class QueueDispatcher(
                     "Job {JobId}: quality evidence from {Worker} accepted; VMAF will not be re-measured here",
                     jobId, deliveredBy.Name);
             }
+            if (!await FileContentIdentity.MatchesAsync(candidatePath, deliveredLease.DeliveredSha256, cancellationToken))
+                throw new InvalidOperationException("The delivered candidate changed after upload; verification cannot trust different bytes.");
             var disposition = await VerifyAndFinishAsync(
                 jobId, candidatePath, work.Value, cancellationToken,
                 // A worker's hardware decode can corrupt frames as a local one can; the retry
@@ -1138,6 +1140,17 @@ public sealed class QueueDispatcher(
                 }
             }
 
+            if (!work.Value.IsDisposable)
+            {
+                var sourceHash = await FileContentIdentity.HashAsync(work.Value.Original.Path, cancellationToken);
+                await WithJobAsync(jobId, job =>
+                {
+                    job.SourceSha256 = sourceHash;
+                    job.VerifiedSourceSha256 = null;
+                    job.VerifiedOutputSha256 = null;
+                }, cancellationToken);
+            }
+
             var preparedWork = work.Value;
             if (ShouldSelectAdaptiveQuality(
                 preparedWork.VideoQualityStrategy,
@@ -1313,15 +1326,7 @@ public sealed class QueueDispatcher(
                         UsedHardwareToneMap = false,
                         SoftwareDecodeRetryReason = HardwareDecodeFallback.SoftwareDecodeRetryReason
                     };
-                    await WithJobAsync(jobId, job =>
-                    {
-                        job.Status = JobStatus.Transcoding;
-                        job.Progress = 0;
-                        job.VerificationPassed = null;
-                        job.VerifiedAt = null;
-                        job.OutputSizeBytes = null;
-                        job.UpdatedAt = DateTimeOffset.UtcNow;
-                    }, cancellationToken);
+                    await WithJobAsync(jobId, job => ResetForSoftwareDecode(job, DateTimeOffset.UtcNow), cancellationToken);
                     await BeginTranscodeAsync(
                         jobId,
                         spec.OutputPath,
@@ -1901,7 +1906,11 @@ public sealed class QueueDispatcher(
             var sourceBitDepth = PixelFormatInfo.Parse(
                 freshSourceProbe?.PixelFormat ?? media.PixelFormat,
                 freshSourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth;
-            spec = spec with { SourceBitDepth = sourceBitDepth };
+            spec = spec with
+            {
+                SourceBitDepth = sourceBitDepth,
+                SourceColorRange = freshSourceProbe?.Success == true ? freshSourceProbe.ColorRange : null
+            };
             // A worker's encoder is chosen from what it proved, in the same preference order this
             // machine uses for its own hardware. The queue's encoder mode describes this machine's
             // GPU and says nothing about the worker's, so Auto is the only honest mode there.
@@ -3112,6 +3121,19 @@ public sealed class QueueDispatcher(
         }
     }
 
+    internal static void ResetForSoftwareDecode(Job job, DateTimeOffset nowUtc)
+    {
+        job.Status = JobStatus.Transcoding;
+        job.Progress = 0;
+        job.VerificationPassed = null;
+        // This is the same source attempt, with a different decoder; retain its identity.
+        job.VerifiedSourceSha256 = null;
+        job.VerifiedOutputSha256 = null;
+        job.VerifiedAt = null;
+        job.OutputSizeBytes = null;
+        job.UpdatedAt = nowUtc;
+    }
+
     // Begin a fresh attempt on a claimed job. A retry must not carry the previous attempt's
     // failure state: clearing the error and its classification means a job that later succeeds is
     // no longer grouped as a failure (the stale-category bug), and a retry in flight never shows a
@@ -3135,6 +3157,9 @@ public sealed class QueueDispatcher(
         job.WorkOutputPath = null;
         job.OutputSizeBytes = null;
         job.VerificationPassed = null;
+        job.SourceSha256 = null;
+        job.VerifiedSourceSha256 = null;
+        job.VerifiedOutputSha256 = null;
         job.VerificationReportJson = null;
         job.VerifiedAt = null;
         job.FinishedAt = null;
@@ -3236,6 +3261,23 @@ public sealed class QueueDispatcher(
         }, cancellationToken);
         await NotifyAsync();
 
+        await using var sourceGuard = work.IsDisposable ? null : FileContentIdentity.OpenGuard(work.Original.Path);
+        await using var outputGuard = work.IsDisposable ? null : FileContentIdentity.OpenGuard(outputPath);
+        string? verifiedSource = null;
+        string? verifiedOutput = null;
+        if (!work.IsDisposable)
+        {
+            await using var identityScope = scopeFactory.CreateAsyncScope();
+            var identityDb = identityScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var expected = await identityDb.Jobs.AsNoTracking().Where(job => job.Id == jobId)
+                .Select(job => job.SourceSha256).SingleAsync(cancellationToken);
+            verifiedSource = await FileContentIdentity.HashAsync(work.Original.Path, cancellationToken);
+            if (!FileContentIdentity.IsHash(expected)
+                || !string.Equals(expected, verifiedSource, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The source changed since this attempt began, or its identity is missing. The original was kept; create a fresh verified attempt.");
+            verifiedOutput = await FileContentIdentity.HashAsync(outputPath, cancellationToken);
+        }
+
         var settings = await GetQueueSettingsAsync(cancellationToken);
         var policy = work.VerificationPolicy;
         if (work.IsCalibration)
@@ -3287,6 +3329,11 @@ public sealed class QueueDispatcher(
                 remoteQuality,
                 remoteEvidence);
         }
+        if (!work.IsDisposable
+            && (!await FileContentIdentity.MatchesAsync(work.Original.Path, verifiedSource, cancellationToken)
+                || !await FileContentIdentity.MatchesAsync(outputPath, verifiedOutput, cancellationToken)))
+            throw new InvalidOperationException("Source or candidate bytes changed during verification. The original was kept; create a fresh verified attempt.");
+
         outcome = outcome with
         {
             Report = outcome.Report with
@@ -3313,6 +3360,8 @@ public sealed class QueueDispatcher(
             job.OutputSizeBytes = outcome.OutputSizeBytes;
             job.VerificationReportJson = reportJson;
             job.VerificationPassed = outcome.Report.Passed;
+            job.VerifiedSourceSha256 = outcome.Report.Passed ? verifiedSource : null;
+            job.VerifiedOutputSha256 = outcome.Report.Passed ? verifiedOutput : null;
             job.CalibrationReferenceStartSeconds = work.IsCalibration
                 ? outcome.ReferenceStartSeconds
                 : null;
@@ -3428,6 +3477,9 @@ public sealed class QueueDispatcher(
             job.WorkOutputPath = null;
             job.OutputSizeBytes = null;
             job.VerificationPassed = null;
+            job.SourceSha256 = null;
+            job.VerifiedSourceSha256 = null;
+            job.VerifiedOutputSha256 = null;
             job.VerificationReportJson = null;
             job.VerifiedAt = null;
             job.FinishedAt = null;
@@ -3768,8 +3820,10 @@ public sealed class QueueDispatcher(
 
         // A delivered candidate that has not been verified is pending work too: clearing the queue
         // discards it along with the rest, since nothing has been earned by it yet.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var pending = await db.Jobs
             .Where(job => job.Type == JobType.Normal
+                && !db.Replacements.Any(r => r.JobId == job.Id && JobClearing.LiveReplacementStatuses.Contains(r.Status))
                 && (job.Status == JobStatus.Queued
                     || job.Status == JobStatus.AwaitingVerification
                     || job.Status == JobStatus.AwaitingSizeReview
@@ -3787,6 +3841,7 @@ public sealed class QueueDispatcher(
 
         db.Jobs.RemoveRange(pending);
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         await NotifyAsync();
         return pending.Count;
     }

@@ -77,6 +77,7 @@ internal static class WorkerResultEndpoints
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
+            using var uploadLock = await LeaseUploadLock.AcquireAsync(leaseId, cancellationToken);
             var resolved = await ResolveHeldLeaseAsync(leaseId, http, settings, db, cancellationToken);
             if (resolved.Refusal is { } refusal)
             {
@@ -97,7 +98,7 @@ internal static class WorkerResultEndpoints
             }
 
             var finalPath = FinalPathFor(environment, job, lease);
-            var stagingPath = finalPath + ".partial";
+            var stagingPath = finalPath + $".{Guid.NewGuid():N}.partial";
 
             // Written under a temporary name and hashed on the way in, so a transfer that dies
             // part-way never leaves something that looks like a finished candidate.
@@ -113,7 +114,7 @@ internal static class WorkerResultEndpoints
                 throw;
             }
 
-            return await AcceptAsync(db, worker, lease, job, stagingPath, finalPath, written, actualHash, claimedCandidate, cancellationToken);
+            return await AcceptAsync(db, worker, lease, job, stagingPath, finalPath, written, actualHash, claimedCandidate, http, settings, cancellationToken);
         })
         .WithName("DeliverResult")
         // A candidate is a whole film. Kestrel's default 30 MB body cap exists for form posts, and
@@ -136,6 +137,7 @@ internal static class WorkerResultEndpoints
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
+            using var uploadLock = await LeaseUploadLock.AcquireAsync(leaseId, cancellationToken);
             var resolved = await ResolveHeldLeaseAsync(leaseId, http, settings, db, cancellationToken);
             if (resolved.Refusal is { } refusal)
             {
@@ -157,6 +159,7 @@ internal static class WorkerResultEndpoints
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
+            using var uploadLock = await LeaseUploadLock.AcquireAsync(leaseId, cancellationToken);
             var resolved = await ResolveHeldLeaseAsync(leaseId, http, settings, db, cancellationToken);
             if (resolved.Refusal is { } refusal)
             {
@@ -212,6 +215,7 @@ internal static class WorkerResultEndpoints
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
+            using var uploadLock = await LeaseUploadLock.AcquireAsync(leaseId, cancellationToken);
             var resolved = await ResolveHeldLeaseAsync(leaseId, http, settings, db, cancellationToken);
             if (resolved.Refusal is { } refusal)
             {
@@ -239,7 +243,7 @@ internal static class WorkerResultEndpoints
             }
 
             var (written, actualHash) = await HashFileAsync(stagingPath, cancellationToken);
-            return await AcceptAsync(db, worker, lease, job, stagingPath, FinalPathFor(environment, job, lease), written, actualHash, claimedCandidate, cancellationToken);
+            return await AcceptAsync(db, worker, lease, job, stagingPath, FinalPathFor(environment, job, lease), written, actualHash, claimedCandidate, http, settings, cancellationToken);
         })
         .WithName("CompleteResultUpload")
         .Produces<ResultAcceptedDto>(StatusCodes.Status202Accepted)
@@ -356,6 +360,8 @@ internal static class WorkerResultEndpoints
         long written,
         string actualHash,
         string claimedCandidate,
+        HttpRequest http,
+        SettingsStore settings,
         CancellationToken cancellationToken)
     {
         if (!string.Equals(actualHash, claimedCandidate, StringComparison.OrdinalIgnoreCase))
@@ -371,31 +377,74 @@ internal static class WorkerResultEndpoints
                 "The uploaded candidate does not match the hash the worker declared.");
         }
 
-        TryDelete(finalPath);
-        File.Move(stagingPath, finalPath);
+        // A crash can leave a promoted file with an uncommitted lease. Hash that file before
+        // reserving the writer as well; transfers for this lease are serialized above.
+        var existingMatches = false;
+        if (File.Exists(finalPath))
+        {
+            var (_, existingHash) = await HashFileAsync(finalPath, cancellationToken);
+            existingMatches = string.Equals(existingHash, actualHash, StringComparison.OrdinalIgnoreCase);
+        }
 
-        job.WorkOutputPath = finalPath;
-        lease.DeliveredSha256 = actualHash;
-
-        // Deliberately not ReadyToReplace. Verification has not run, and a candidate produced
-        // elsewhere earns nothing until every local gate has been repeated against it. Nor
-        // Verifying: that means verification is running here now, and restart recovery would
-        // rightly discard it as interrupted. The dispatcher picks this status up in its turn.
-        job.Status = JobStatus.AwaitingVerification;
-
+        // SQLite's non-deferred transaction reserves the writer before re-reading. Cancellation,
+        // revocation, reassignment and renewals serialize with this short acceptance transaction;
+        // no database lock is held while streaming or hashing the upload.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        db.ChangeTracker.Clear();
+        var current = await ResolveHeldLeaseAsync(lease.Id, http, settings, db, cancellationToken);
+        if (current.Refusal is { } refusal)
+        {
+            TryDelete(stagingPath);
+            return refusal;
+        }
+        var currentLease = current.Lease!;
+        var currentJob = current.Job!;
         var completedAt = DateTimeOffset.UtcNow;
-        lease.Apply(lease.ToDomain().Complete(worker.Id, completedAt).Lease, completedAt);
-        await db.SaveChangesAsync(cancellationToken);
+        var completion = currentLease.ToDomain().Complete(worker.Id, completedAt);
+        if (completion.Outcome != LeaseOutcome.Completed
+            || currentJob.ExecutionAttempt != job.ExecutionAttempt
+            || !string.Equals(currentJob.SourceSha256, job.SourceSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            TryDelete(stagingPath);
+            return ApiErrors.Conflict("worker.result.attemptEnded", "This assignment ended during delivery; the candidate was not accepted.");
+        }
 
-        // Accepted rather than OK: the candidate is delivered and intact, not yet judged.
-        return Results.Accepted(value: new ResultAcceptedDto(job.Id, written, actualHash));
+        var promoted = false;
+        try
+        {
+            if (File.Exists(finalPath))
+            {
+                // Recover a crash between promotion and database commit, without overwriting any
+                // other bytes. Final names belong to a lease, not a job reused by future attempts.
+                if (!existingMatches)
+                    return ApiErrors.Conflict("worker.result.candidateExists", "A different candidate already occupies this assignment's path.");
+                TryDelete(stagingPath);
+            }
+            else
+            {
+                File.Move(stagingPath, finalPath);
+                promoted = true;
+            }
+            currentJob.WorkOutputPath = finalPath;
+            currentJob.Status = JobStatus.AwaitingVerification;
+            currentLease.DeliveredSha256 = actualHash;
+            currentLease.Apply(completion.Lease, completedAt);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            if (promoted) TryDelete(finalPath);
+            throw;
+        }
+        return Results.Accepted(value: new ResultAcceptedDto(currentJob.Id, written, actualHash));
     }
 
     private static string FinalPathFor(IHostEnvironment environment, Job job, JobLease lease)
     {
         var outputRoot = WorkOutputRoot.ForMediaFile(WorkPaths.Resolve(environment), job.MediaFileId);
         Directory.CreateDirectory(outputRoot);
-        return RemoteCandidate.PathFor(outputRoot, job.Id, "." + lease.OutputExtension!.TrimStart('.'));
+        return RemoteCandidate.PathFor(outputRoot, job.Id, $".{lease.Id:N}." + lease.OutputExtension!.TrimStart('.'));
     }
 
     /// <summary>Named by lease, so a resumed upload can only continue its own transfer.</summary>

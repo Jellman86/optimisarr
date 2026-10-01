@@ -385,37 +385,37 @@ internal static class MediaAndQueueEndpoints
                 _ => new[] { JobStatus.Completed, JobStatus.Failed, JobStatus.Cancelled },
             };
 
-            var liveRollbackJobIds = (await db.Replacements
-                    .Where(r => r.Status == ReplacementStatus.Replaced)
-                    .Select(r => r.JobId)
-                    .ToListAsync(cancellationToken))
-                .ToHashSet();
-
-            var terminal = await db.Jobs
-                // Failed preview/calibration rows keep only diagnostic evidence. Clearing errored
-                // removes those rows alongside normal failures without exposing them in the queue.
+            var terminalIds = await db.Jobs.AsNoTracking()
                 .Where(j => statuses.Contains(j.Status)
                     && (j.Type == JobType.Normal || j.Status == JobStatus.Failed))
-                .ToListAsync(cancellationToken);
-
-            var clearable = terminal.Where(j => JobClearing.IsClearable(j, liveRollbackJobIds)).ToList();
-            // Delete owned scratch output before its database owner. A cleanup failure keeps the
-            // corresponding row so the output remains visible and retryable instead of orphaned.
-            clearable = clearable
-                .Where(job => dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
-                .ToList();
-            var clearableIds = clearable.Select(job => job.Id).ToList();
-
-            // The Job→Replacement FK is Restrict, so spent rollback records (rolled back or purged)
-            // for these jobs must be removed before their parent job.
-            var spentReplacements = await db.Replacements
-                .Where(r => clearableIds.Contains(r.JobId))
-                .ToListAsync(cancellationToken);
-            db.Replacements.RemoveRange(spentReplacements);
-            db.Jobs.RemoveRange(clearable);
-            await db.SaveChangesAsync(cancellationToken);
-
-            return Results.Ok(new { cleared = clearable.Count });
+                .Select(j => j.Id).ToListAsync(cancellationToken);
+            var cleared = 0;
+            // Reserve the SQLite writer before rechecking each small batch. A recovery record
+            // cannot appear between this check and deletion, and the full history is never locked.
+            foreach (var batch in terminalIds.Chunk(64))
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+                var protectedIds = (await db.Replacements.AsNoTracking()
+                    .Where(r => batch.Contains(r.JobId) && JobClearing.LiveReplacementStatuses.Contains(r.Status))
+                    .Select(r => r.JobId).ToListAsync(cancellationToken)).ToHashSet();
+                var terminal = await db.Jobs
+                    .Where(j => batch.Contains(j.Id) && statuses.Contains(j.Status)
+                        && (j.Type == JobType.Normal || j.Status == JobStatus.Failed))
+                    .ToListAsync(cancellationToken);
+                var clearable = terminal.Where(j => JobClearing.IsClearable(j, protectedIds)
+                    && dispatcher.TryDiscardWorkOutput(j.WorkOutputPath)).ToList();
+                var ids = clearable.Select(j => j.Id).ToArray();
+                var spent = await db.Replacements.Where(r => ids.Contains(r.JobId)
+                    && (r.Status == ReplacementStatus.RolledBack || r.Status == ReplacementStatus.Purged))
+                    .ToListAsync(cancellationToken);
+                db.Replacements.RemoveRange(spent);
+                db.Jobs.RemoveRange(clearable);
+                await db.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                cleared += clearable.Count;
+            }
+            return Results.Ok(new { cleared });
         })
         .WithName("ClearJobs");
 
@@ -515,6 +515,7 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(
                 j => j.Id == id && j.Type == JobType.Normal,
                 cancellationToken);
@@ -528,6 +529,11 @@ internal static class MediaAndQueueEndpoints
                 return ApiErrors.BadRequest("job.remove.active", "Stop an active job before removing it from the queue.");
             }
 
+            if (await db.Replacements.AnyAsync(r => r.JobId == id
+                && JobClearing.LiveReplacementStatuses.Contains(r.Status), cancellationToken))
+                return ApiErrors.Conflict("job.recoveryPending",
+                    "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
+
             if (!dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
             {
                 return ApiErrors.Conflict(
@@ -537,6 +543,7 @@ internal static class MediaAndQueueEndpoints
 
             db.Jobs.Remove(job);
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Results.NoContent();
         })
         .WithName("RemoveResettableJob");
@@ -551,6 +558,7 @@ internal static class MediaAndQueueEndpoints
             CancellationToken cancellationToken,
             bool higherQuality = false) =>
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(
                 j => j.Id == id && j.Type == JobType.Normal,
                 cancellationToken);
@@ -572,6 +580,11 @@ internal static class MediaAndQueueEndpoints
                 return ApiErrors.Conflict("job.retry.excluded",
                     "This file is excluded. Remove its exclusion from the library's Excluded tab before retrying.");
             }
+
+            if (await db.Replacements.AnyAsync(r => r.JobId == id
+                && JobClearing.LiveReplacementStatuses.Contains(r.Status), cancellationToken))
+                return ApiErrors.Conflict("job.recoveryPending",
+                    "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
 
             if (!dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
             {
@@ -598,10 +611,14 @@ internal static class MediaAndQueueEndpoints
             job.WorkOutputPath = null;
             job.OutputSizeBytes = null;
             job.VerificationPassed = null;
+            job.SourceSha256 = null;
+            job.VerifiedSourceSha256 = null;
+            job.VerifiedOutputSha256 = null;
             job.VerificationReportJson = null;
             job.VerifiedAt = null;
             job.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             dispatcher.Wake();
             return Results.Ok(new { id = job.Id, status = job.Status.ToString() });

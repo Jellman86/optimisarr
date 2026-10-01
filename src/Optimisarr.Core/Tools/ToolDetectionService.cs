@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Optimisarr.Core.Tools;
 
 public sealed class ToolDetectionService(
@@ -73,39 +71,11 @@ public sealed class ToolDetectionService(
         Func<string, ToolCheckResult> success,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = command,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            foreach (var argument in arguments)
-            {
-                process.StartInfo.ArgumentList.Add(argument);
-            }
-
-            process.Start();
-
-            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-
-            if (process.ExitCode != 0)
-            {
-                return new ToolCheckResult(name, command, false, required, null, FirstLine(stderr) ?? $"Exited with code {process.ExitCode}");
-            }
-
-            return success(stdout);
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return new ToolCheckResult(name, command, false, required, null, ex.Message);
-        }
+        var result = await BoundedToolProcess.RunAsync(command, arguments, cancellationToken);
+        return result.ExitCode == 0
+            ? success(result.Output)
+            : new ToolCheckResult(name, command, false, required, null,
+                result.Error ?? $"Exited with code {result.ExitCode}");
     }
 
     private static string? FirstLine(string value)

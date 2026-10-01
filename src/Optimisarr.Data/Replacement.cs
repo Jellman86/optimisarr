@@ -52,6 +52,10 @@ public sealed class Replacement
     /// <summary>Where the verified output was placed (the original's directory, output extension).</summary>
     public string FinalPath { get; set; } = string.Empty;
 
+    /// <summary>Frozen identity used by replacement and crash recovery, never inferred from length.</summary>
+    public string? OriginalSha256 { get; set; }
+    public string? OutputSha256 { get; set; }
+
     public long OriginalSizeBytes { get; set; }
 
     public long NewSizeBytes { get; set; }

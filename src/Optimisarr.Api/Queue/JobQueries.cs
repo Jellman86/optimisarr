@@ -88,9 +88,8 @@ public static class JobQueries
 
     /// <summary>
     /// Filtered, optionally paged job query for the queue feed and diagnostics. SQL-translatable
-    /// filters (status, library, failure category) run in the database; the date filter, ordering, and
-    /// paging run in memory because SQLite cannot translate an ORDER BY or comparison over a
-    /// <see cref="DateTimeOffset"/> column. <see cref="JobQueryResult.Total"/> is the match count
+    /// filters, date ranges, ordering and paging run in the database. Indexed computed UTC tick
+    /// columns preserve exact offset-aware ordering without hydrating report/attempt histories. <see cref="JobQueryResult.Total"/> is the match count
     /// before paging, so a caller can show "page N of M".
     /// </summary>
     public static async Task<JobQueryResult> QueryAsync(
@@ -99,13 +98,6 @@ public static class JobQueries
         CancellationToken cancellationToken,
         WorkerAvailability? availability = null)
     {
-        var liveRollbackJobIds = (await db.Replacements
-                .AsNoTracking()
-                .Where(replacement => replacement.Status == ReplacementStatus.Replaced)
-                .Select(replacement => replacement.JobId)
-                .ToListAsync(cancellationToken))
-            .ToHashSet();
-
         var query = db.Jobs
             .AsNoTracking()
             // Previews are throwaway settings comparisons, surfaced in their own UI, not the queue.
@@ -128,6 +120,18 @@ public static class JobQueries
         {
             query = query.Where(job => job.FailureCategory == category);
         }
+
+        if (filter.Since is { } since)
+            query = query.Where(job => EF.Property<long>(job, "QueueEffectiveUtcTicks") >= since.UtcTicks);
+        if (filter.Until is { } until)
+            query = query.Where(job => EF.Property<long>(job, "QueueEffectiveUtcTicks") <= until.UtcTicks);
+        var total = await query.CountAsync(cancellationToken);
+        query = query.OrderByDescending(job => job.Priority)
+            .ThenBy(job => EF.Property<long>(job, "QueueEnqueuedUtcTicks"))
+            .ThenBy(job => job.Id);
+        if (filter.PageSize > 0)
+            query = query.Skip((int)Math.Min(Math.Max((long)filter.Page - 1, 0) * filter.PageSize, int.MaxValue))
+                .Take(filter.PageSize);
 
         var jobs = await query
             .Select(job => new JobDto(
@@ -160,6 +164,10 @@ public static class JobQueries
                 job.AttemptHistoryJson))
             .ToListAsync(cancellationToken);
 
+        var pageIds = jobs.Select(job => job.Id).ToArray();
+        var liveRollbackJobIds = (await db.Replacements.AsNoTracking()
+            .Where(replacement => pageIds.Contains(replacement.JobId) && JobClearing.LiveReplacementStatuses.Contains(replacement.Status))
+            .Select(replacement => replacement.JobId).ToListAsync(cancellationToken)).ToHashSet();
         var remote = await RemoteFactsAsync(db, jobs, cancellationToken);
         var waiting = await WaitingForWorkerAsync(db, jobs, availability, cancellationToken);
 
@@ -174,17 +182,9 @@ public static class JobQueries
                 WaitingForWorker = waiting.Contains(job.Id),
                 SidecarVerification = remote.GetValueOrDefault(job.Id).SidecarVerification,
             })
-            // A job's effective time is when it finished, or when it was enqueued if it hasn't.
-            .Where(job => WithinRange(job.FinishedAt ?? job.EnqueuedAt, filter.Since, filter.Until))
-            .OrderByDescending(job => job.Priority)
-            .ThenBy(job => job.EnqueuedAt)
             .ToList();
 
-        var page = filter.PageSize > 0
-            ? ordered.Skip(Math.Max(filter.Page - 1, 0) * filter.PageSize).Take(filter.PageSize).ToList()
-            : ordered;
-
-        return new JobQueryResult(page, ordered.Count);
+        return new JobQueryResult(ordered, total);
     }
 
     /// <summary>
@@ -279,9 +279,6 @@ public static class JobQueries
             .ToHashSet();
     }
 
-    private static bool WithinRange(DateTimeOffset value, DateTimeOffset? since, DateTimeOffset? until) =>
-        (since is not { } from || value >= from) && (until is not { } to || value <= to);
-
     private const int FailureSamplesPerCategory = 5;
 
     /// <summary>
@@ -351,13 +348,15 @@ public static class JobQueries
 
         try
         {
-            return JsonSerializer.Deserialize<VerificationReport>(json, VerificationJsonOptions)?.Checks
+            var report = JsonSerializer.Deserialize<VerificationReport>(json, VerificationJsonOptions);
+            if (report is null || !report.HasValidStructure()) return [];
+            return report.Checks
                 .Where(check => check.Outcome == CheckOutcome.Failed)
                 .Select(check => new FailureVerificationCheckDto(
                     check.Name,
                     check.Outcome.ToString(),
                     check.Detail))
-                .ToList() ?? [];
+                .ToList();
         }
         catch (JsonException)
         {

@@ -2,11 +2,23 @@
 
 ## Unreleased
 
+- H.264 NVIDIA encodes preserve explicitly probed limited/full colour range in the primary bitstream, including MP4 outputs with otherwise unspecified colour tags. HDR-to-SDR output keeps its deliberate limited range; copied streams and other encoders remain unchanged. Update sidecars too: the narrow range options require protocol 5, while older workers retain ordinary work.
+
 ### Testing
+
+- The UI layout audit now checks accessible names and WCAG contrast across all routes in desktop dark and phone light appearances.
+- Added a reusable full application review prompt, evidence-led review report and follow-up mitigation record.
 
 - The published Linux sidecar image has hardware acceptance on an RTX 4070 for HEVC NVENC and CUDA decoding, with strict worker verification, independent media checks, RAM cleanup, cancellation and reconnect evidence. This does not extend certification to every NVIDIA codec, driver or media format.
 
 ### Fixed
+
+- Replacement now checks the exact source and candidate bytes that passed verification, before and after moving them. Old ready outputs without recorded identities record a failed file-identity gate and can be retried with a fresh verified attempt. Interrupted recovery preserves conflicting files and the quarantined original, and queue clearing/retention protect pending recovery evidence.
+- Worker delivery rechecks current credentials, lease expiry, cancellation and execution attempt after transfer. Lease-specific candidate paths and serialized resumable chunks prevent retry collisions; file hashing stays outside database write locks.
+- Tool discovery drains both process pipes concurrently, bounds captured output and execution time, and reaps its owned process on cancellation.
+- Malformed historical verification reports no longer break diagnostic exports or failure summaries; missing evidence is labelled. Valid numeric and named outcomes remain visible, including archived attempts.
+- Queue pages and diagnostic lease histories are bounded in SQL before loading reports. Indexed UTC ticks preserve exact offset-aware ordering and inclusive date filters.
+- Sidebar progress indicators have accessible names, and status text and Quarantine guidance use legible theme colours without changing card textures or hover shadows.
 
 - Opt-in job diagnostic exports now retain safe worker packet/decode measurements, frozen work/contract fingerprints and file-hash comparisons. Missing or unreadable evidence is labelled explicitly; current worker registration is distinguished from historical identity, and unrecorded timestamp methods are not guessed. Native sidecar versions with full Git revision or Mac numeric build suffixes are retained.
 

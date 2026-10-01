@@ -41,9 +41,14 @@ The core promise is:
   4. Probe output.
   5. Run health verification.
   6. Compare stream policy.
-  7. Replace original atomically when possible.
-  8. Move original to quarantine.
-  9. Record rollback metadata.
+  7. Bind the passing verdict to SHA-256 identities of the source and candidate.
+  8. Record a pending rollback path before any filesystem change.
+  9. Move the original to quarantine.
+  10. Place the verified candidate at the library path.
+  11. Check both final identities and commit, or retain the original and recovery record.
+
+Same-filesystem moves are atomic individually; the whole sequence is recovered
+from the durable pending record if interrupted.
 
 The timed retention sweep runs at startup and every six hours. One cleanup window
 covers quarantined originals and failed `/work` outputs. It never removes active or
@@ -55,7 +60,7 @@ actually reclaimed.
 
 ### Out of scope for MVP
 
-- Distributed workers were outside the original MVP. Optional registered Windows and macOS
+- Distributed workers were outside the original MVP. Optional registered Windows, macOS and Linux
   sidecars are now available as an opt-in preview; the main container remains the safety authority
   and the complete single-host default (see [remote workers](setup/remote-workers.md)).
 - Cloud storage.

@@ -5,6 +5,66 @@ namespace Optimisarr.Tests;
 
 public sealed class FfmpegCommandBuilderTests
 {
+    [Theory]
+    [InlineData("tv", "0")]
+    [InlineData("pc", "1")]
+    [InlineData("TV", "0")]
+    public void H264_nvenc_records_declared_range_in_the_primary_bitstream(string range, string flag)
+    {
+        var spec = Reencode() with { VideoCodec = "h264", OutputPath = "/work/output.mp4", SourceColorRange = range };
+        var args = FfmpegCommandBuilder.Build(spec, videoEncoder: "h264_nvenc");
+
+        Assert.Equal("h264_metadata=video_full_range_flag=" + flag, args[IndexOf(args, "-bsf:v:0") + 1]);
+        Assert.Equal(flag == "0" ? "tv" : "pc", args[IndexOf(args, "-color_range:v:0") + 1]);
+        Assert.True(IndexOf(args, "-bsf:v:0") > IndexOf(args, "-i"));
+        Assert.DoesNotContain("-bsf:v", args);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("unknown")]
+    [InlineData("unspecified")]
+    [InlineData("tv:video_full_range_flag=1")]
+    public void H264_nvenc_does_not_guess_or_interpolate_an_unknown_range(string? range)
+    {
+        var spec = Reencode() with { VideoCodec = "h264", SourceColorRange = range };
+        var args = FfmpegCommandBuilder.Build(spec, videoEncoder: "h264_nvenc");
+
+        Assert.DoesNotContain("-bsf:v:0", args);
+        Assert.DoesNotContain("-color_range:v:0", args);
+    }
+
+    [Theory]
+    [InlineData("libx264")]
+    [InlineData("hevc_nvenc")]
+    [InlineData("av1_nvenc")]
+    public void Other_encoders_do_not_receive_the_H264_range_workaround(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { SourceColorRange = "tv" }, videoEncoder: encoder);
+
+        Assert.DoesNotContain("-bsf:v:0", args);
+        Assert.DoesNotContain("-color_range:v:0", args);
+    }
+
+    [Fact]
+    public void H264_nvenc_tone_mapping_records_limited_output_instead_of_the_source_range()
+    {
+        var spec = Reencode() with { VideoCodec = "h264", SourceColorRange = "pc", TonemapToSdr = true };
+        var args = FfmpegCommandBuilder.Build(spec, videoEncoder: "h264_nvenc");
+
+        Assert.Equal("h264_metadata=video_full_range_flag=0", args[IndexOf(args, "-bsf:v:0") + 1]);
+        Assert.Equal("tv", args[IndexOf(args, "-color_range:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Copied_video_is_not_retagged_by_the_H264_range_workaround()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { VideoCodec = null, SourceColorRange = "pc" }, videoEncoder: "h264_nvenc");
+
+        Assert.DoesNotContain("-bsf:v:0", args);
+        Assert.DoesNotContain("-color_range:v:0", args);
+    }
+
     [Fact]
     public void Every_job_requests_machine_readable_progress_without_human_stats()
     {

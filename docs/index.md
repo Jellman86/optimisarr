@@ -39,6 +39,8 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Code signing policy](../CODE_SIGNING_POLICY.md) - signed Windows release scope, approvals, privacy and verification.
 - [Support](../SUPPORT.md)
 - [Contributing](development/contributing.md)
+- [Full application review prompt](development/application-review-prompt.md) - a repeatable, evidence-led cross-platform review.
+- [Application review](reviews/2026-09-30-full-application-review.md) and [tested mitigations](reviews/2026-10-01-review-mitigations.md).
 - [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.
 
 ## UI Map
