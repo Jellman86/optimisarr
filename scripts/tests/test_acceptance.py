@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance.core import Blocked, Report, inside, quality_failures, statistics
-from acceptance.media import compare_report, validate_shadow_report
+from acceptance.media import compare_report, validate_shadow_report, vmaf_policy
 from acceptance.corpus import import_corpus
 from acceptance.runner import missing_workers, Harness
 from media_acceptance import strict_worker_verification_for_run, signal_owned_process
@@ -19,6 +19,18 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+    def test_v1_oracle_uses_candidate_format_and_legacy_only_for_high_frame_rates(self):
+        source = {"width": 3840, "height": 1600}
+        encoded = {"width": 1280, "height": 720, "pix_fmt": "yuv420p", "bits_per_raw_sample": "0"}
+        model, options, pixel = vmaf_policy(source, encoded, 24)
+        self.assertEqual("vmaf_v1.0.16_1d5h_2160", model)
+        self.assertIn("cambi.enc_width=1280", options)
+        self.assertIn("cambi.enc_bitdepth=8", options)
+        self.assertEqual("yuv420p10le", pixel)
+        self.assertEqual("vmaf_4k_v0.6.1", vmaf_policy(source, encoded, 60)[0])
+        with self.assertRaises(AssertionError):
+            vmaf_policy(source, {**encoded, "pix_fmt": "yuv420p12le"}, 24)
+
     def test_native_cleanup_targets_only_the_owned_pid_on_windows(self):
         process = Mock(pid=417, poll=Mock(return_value=None))
         with patch("media_acceptance.os.name", "nt"), patch("media_acceptance.subprocess.run") as run:
@@ -38,10 +50,10 @@ class AcceptanceTests(unittest.TestCase):
             harness = Harness(None, None, root, None)
             self.assertEqual(candidate.resolve(), harness.output({"mediaId": 1}))
 
-    def test_shadow_acceptance_requires_complete_matching_pairs_and_baseline_authority(self):
+    def test_shadow_acceptance_requires_complete_matching_pairs_and_v1_authority(self):
         score = {"frameCount": 24, "vmafMean": 95, "vmafHarmonicMean": 94,
                  "vmafMin": 85, "vmafFifthPercentile": 90, "modelVersion": "vmaf_v0.6.1"}
-        report = {"vmaf": {"scores": score}, "shadowVmaf": {"status": "Measured", "measurementLocation": "Server",
+        report = {"vmaf": {"scores": {**score, "modelVersion": "vmaf_v1.0.16_3d0h"}}, "shadowVmaf": {"status": "Measured", "measurementLocation": "Server",
                   "baselineModel": "vmaf_v0.6.1", "candidateModel": "vmaf_v1.0.16_3d0h",
                   "windows": [{"baseline": score, "candidate": {**score, "modelVersion": "vmaf_v1.0.16_3d0h"}}]}}
         self.assertEqual(1, validate_shadow_report(report)["pairs"])

@@ -447,3 +447,17 @@ cover fixtures are created by the harness and contain no production media.
 The final server image and paired Linux sidecar image run this matrix in CI.
 Negative decode, packet regression, duration, channel loss, codec mismatch,
 loudness, clipping and incomplete evidence cases also have deterministic tests.
+
+### VMAF v1 evidence
+
+New ordinary SDR jobs use v1.0.16 HD/UHD; existing numeric floors remain policy choices, not a
+perceptual calibration guarantee. The independent oracle supplies the actual candidate width,
+height and 8/10-bit depth to CAMBI and measures at 10-bit precision. HDR/HFR and frame-rate
+conversions retain legacy policy. Protocol 7 workers must prove both v1 models and probe each
+candidate before scoring. A damaged CRF-45 fixture exercises rejection: a clean tiny fixture can
+legitimately reach 100, so a floor of 100 alone is not a negative control.
+
+`--vmaf-shadow` adds opt-in server research under both legacy and v1 models. The selected job
+model remains authoritative. Strict sidecar-only mode without that flag performs media scoring
+on its worker; the server still orchestrates transfers, validates evidence and replaces files.
+See the [implementation and NVIDIA plan](vmaf-v1-and-nvidia-plan.md).

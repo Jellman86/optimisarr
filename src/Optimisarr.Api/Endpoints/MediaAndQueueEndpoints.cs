@@ -496,6 +496,7 @@ internal static class MediaAndQueueEndpoints
 
             job.BypassSizePreflight = true;
             job.AdaptiveVideoQuality = null;
+            job.VmafModel = null;
             job.ErrorMessage = null;
             job.Progress = 0;
             job.Status = JobStatus.Queued;
@@ -601,6 +602,7 @@ internal static class MediaAndQueueEndpoints
             // A retry must re-evaluate the samples against the current settings and whichever
             // encoder claims the job. Reusing the old selected quality also skips size preflight.
             job.AdaptiveVideoQuality = null;
+            job.VmafModel = null;
             if (higherQuality)
             {
                 job.QualityRetryCount += 1;

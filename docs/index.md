@@ -40,6 +40,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Support](../SUPPORT.md)
 - [Contributing](development/contributing.md)
 - [Full application review prompt](development/application-review-prompt.md) - a repeatable, evidence-led cross-platform review.
+- [VMAF v1 and NVIDIA plan](development/vmaf-v1-and-nvidia-plan.md) - proposed perceptual-quality migration, GPU qualification and licensing gates; current production models remain unchanged.
 - [Application review](reviews/2026-09-30-full-application-review.md) and [tested mitigations](reviews/2026-10-01-review-mitigations.md).
 - [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.
 

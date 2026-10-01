@@ -108,7 +108,7 @@ public class CapabilityProberTests
     }
 
     [Fact]
-    public async Task Cuda_vmaf_is_claimed_only_after_scoring_something_on_the_gpu()
+    public async Task A_legacy_cuda_filter_does_not_prove_complete_v1_gpu_scoring()
     {
         // The one capability that cannot be inferred: a build can carry libvmaf_cuda while the
         // machine has no usable CUDA device, and the server will send a GPU measurement command on
@@ -122,7 +122,7 @@ public class CapabilityProberTests
 
         var capabilities = await new CapabilityProber(runner).ProbeAsync("PC", "ffmpeg.exe", 500, 2);
 
-        Assert.Equal(VmafCapability.Cuda, capabilities.Vmaf);
+        Assert.Equal(VmafCapability.Cpu, capabilities.Vmaf);
     }
 
     [Fact]
@@ -139,6 +139,23 @@ public class CapabilityProberTests
         var capabilities = await new CapabilityProber(runner).ProbeAsync("PC", "ffmpeg.exe", 500, 2);
 
         Assert.Equal(VmafCapability.Cpu, capabilities.Vmaf);
+    }
+
+    [Fact]
+    public async Task An_archive_built_from_v3_2_1_can_report_3_2_0_in_its_score_log()
+    {
+        var runner = new ScriptedRunner { ["-encoders"] = (0, Listing), ["-filters"] = (0, "libvmaf"), ["libvmaf"] = (0, "old library") };
+        Assert.Equal(VmafCapability.Cpu, (await new CapabilityProber(runner).ProbeAsync("PC", "ffmpeg.exe", 500, 2)).Vmaf);
+    }
+
+    [Theory]
+    [InlineData("vmaf_v1.0.16_3d0h")]
+    [InlineData("vmaf_v1.0.16_1d5h_2160")]
+    public async Task Both_v1_models_must_produce_frame_scores_before_VMAF_is_advertised(string model)
+    {
+        var runner = new ScriptedRunner { ["-encoders"] = (0, Listing), ["-filters"] = (0, "libvmaf"), [model] = (0, "no scores") };
+        var capabilities = await new CapabilityProber(runner).ProbeAsync("PC", "ffmpeg.exe", 500, 2);
+        Assert.Equal(VmafCapability.None, capabilities.Vmaf);
     }
 
     [Fact]
@@ -193,7 +210,16 @@ public sealed class ScriptedRunner : Dictionary<string, (int ExitCode, string Ou
         if (filter is not null)
         {
             var key = filter.Contains("libvmaf_cuda") ? "libvmaf_cuda" : "libvmaf";
-            return Task.FromResult(TryGet(key) ?? (0, ""));
+            var model = filter.Contains("vmaf_v1.0.16_1d5h_2160") ? "vmaf_v1.0.16_1d5h_2160" : "vmaf_v1.0.16_3d0h";
+            var result = TryGet(model) ?? TryGet(key) ?? (0, "");
+            var logAt = arguments.ToList().IndexOf("-lavfi") + 1;
+            var logMatch = System.Text.RegularExpressions.Regex.Match(arguments[logAt], @"log_path=(.*?):shortest=");
+            if (logMatch.Success)
+            {
+                var path = logMatch.Groups[1].Value.Replace(@"\\:", ":");
+                File.WriteAllText(path, result.Item2 == "no scores" ? "{}" : "{\"version\":\"" + (result.Item2 == "old library" ? "3.2.0" : "3.2.1") + "\",\"frames\":[{\"metrics\":{\"vmaf\":100}}]}");
+            }
+            return Task.FromResult(result);
         }
 
         // A decode probe names its accelerator.

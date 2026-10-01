@@ -36,7 +36,8 @@ internal static class AdaptiveSearchPlanner
         double? referenceFrameRate,
         double? referenceContainerLeadSeconds,
         CropRect? crop,
-        FrameRateDecimation? decimation)
+        FrameRateDecimation? decimation,
+        string? modelVersion = null)
     {
         // The gate being off is checked here as well as by the caller, to match
         // `RemoteQualityPlanner`. A search whose evidence will never be judged is a set of sample
@@ -102,7 +103,9 @@ internal static class AdaptiveSearchPlanner
                 DistortedShiftToken: RemoteQualityContract.DistortedShiftPlaceholder,
                 // The distorted stream here is a 40-second clip the worker cuts and encodes, not
                 // an encode of the whole title.
-                DistortedIsCutClip: true);
+                DistortedIsCutClip: true,
+                EncodedVideoFromWorker: true,
+                ModelVersion: modelVersion);
 
             measurements.Add(QualityScoreCommandBuilder.Build(
                 RemoteQualityContract.DistortedPlaceholder,
@@ -112,9 +115,9 @@ internal static class AdaptiveSearchPlanner
                 WorkerThreads).Arguments);
         }
 
-        var model = QualityScoreCommandBuilder.ModelVersionFor(
+        var model = modelVersion ?? QualityScoreCommandBuilder.ModelVersionFor(
             crop?.Width ?? referenceWidth,
-            crop?.Height ?? referenceHeight);
+            crop?.Height ?? referenceHeight, referenceIsHdr, referenceFrameRate, decimation is not null);
 
         return new AdaptiveSearchStep(
             quality,

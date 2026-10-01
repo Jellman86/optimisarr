@@ -25,13 +25,9 @@ public sealed record ModelComparison(
     IReadOnlyList<ThresholdMapping> Thresholds);
 
 /// <summary>
-/// Compares two VMAF models on the same windows so a gate tuned on one can be stated on the other.
-///
-/// <para>Optimisarr's gates — harmonic mean, fifth percentile and the catastrophic floor — and every
-/// calibration were set on vmaf_v0.6.1. A different model scores the same pictures on its own
-/// scale, so switching models without restating the gates would silently make them stricter or
-/// more lenient. This is the arithmetic the model study harness reports; the data has to come from
-/// real encodes across the quality range.</para>
+/// Reports diagnostic score mappings and verdict differences between models.
+/// These fits describe this sample set; they do not establish perceptual equivalence or
+/// justify changing production thresholds to preserve the legacy model's acceptance rate.
 /// </summary>
 public static class VmafModelComparison
 {

@@ -59,9 +59,9 @@ public sealed class VmafV1PreparationTests
     }
 
     [Fact]
-    public void Existing_production_measurements_keep_their_calibrated_model_and_precision()
+    public void Explicit_legacy_measurements_keep_their_original_model_and_precision()
     {
-        var command = QualityScoreCommandBuilder.Build("d", "r", "l", Context with { ModelVersion = null }, 4);
+        var command = QualityScoreCommandBuilder.Build("d", "r", "l", Context with { ModelVersion = QualityScoreCommandBuilder.LegacyHdModelVersion }, 4);
         Assert.Equal("vmaf_v0.6.1", command.ModelVersion);
         Assert.DoesNotContain("10le", command.FilterGraph);
         Assert.DoesNotContain("cambi", command.FilterGraph);

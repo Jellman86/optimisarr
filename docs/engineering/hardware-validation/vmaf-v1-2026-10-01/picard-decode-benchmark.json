@@ -1,0 +1,94 @@
+{
+  "records": [
+    {
+      "gpuDecode": false,
+      "cpuV1": true,
+      "frames": 48,
+      "seconds": 0.75,
+      "mean": 96.545136,
+      "arguments": [
+        "-i",
+        "candidate.mp4",
+        "-i",
+        "reference.mp4",
+        "-lavfi",
+        "[0:v]format=yuv420p10le[d];[1:v]format=yuv420p10le[r];[d][r]libvmaf=model='version=vmaf_v1.0.16_3d0h\\:cambi.enc_width=1920\\:cambi.enc_height=1080\\:cambi.enc_bitdepth=8':n_threads=2:log_fmt=json:log_path=score-0.json:shortest=1:repeatlast=0",
+        "-f",
+        "null",
+        "-"
+      ]
+    },
+    {
+      "gpuDecode": true,
+      "cpuV1": true,
+      "frames": 48,
+      "seconds": 0.8280000000013388,
+      "mean": 96.545136,
+      "arguments": [
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
+        "-i",
+        "candidate.mp4",
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
+        "-i",
+        "reference.mp4",
+        "-lavfi",
+        "[0:v]hwdownload,format=nv12,format=yuv420p10le[d];[1:v]hwdownload,format=nv12,format=yuv420p10le[r];[d][r]libvmaf=model='version=vmaf_v1.0.16_3d0h\\:cambi.enc_width=1920\\:cambi.enc_height=1080\\:cambi.enc_bitdepth=8':n_threads=2:log_fmt=json:log_path=score-1.json:shortest=1:repeatlast=0",
+        "-f",
+        "null",
+        "-"
+      ]
+    },
+    {
+      "gpuDecode": false,
+      "cpuV1": true,
+      "frames": 48,
+      "seconds": 0.7809999999990396,
+      "mean": 96.545136,
+      "arguments": [
+        "-i",
+        "candidate.mp4",
+        "-i",
+        "reference.mp4",
+        "-lavfi",
+        "[0:v]format=yuv420p10le[d];[1:v]format=yuv420p10le[r];[d][r]libvmaf=model='version=vmaf_v1.0.16_3d0h\\:cambi.enc_width=1920\\:cambi.enc_height=1080\\:cambi.enc_bitdepth=8':n_threads=2:log_fmt=json:log_path=score-2.json:shortest=1:repeatlast=0",
+        "-f",
+        "null",
+        "-"
+      ]
+    },
+    {
+      "gpuDecode": true,
+      "cpuV1": true,
+      "frames": 48,
+      "seconds": 0.8440000000009604,
+      "mean": 96.545136,
+      "arguments": [
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
+        "-i",
+        "candidate.mp4",
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
+        "-i",
+        "reference.mp4",
+        "-lavfi",
+        "[0:v]hwdownload,format=nv12,format=yuv420p10le[d];[1:v]hwdownload,format=nv12,format=yuv420p10le[r];[d][r]libvmaf=model='version=vmaf_v1.0.16_3d0h\\:cambi.enc_width=1920\\:cambi.enc_height=1080\\:cambi.enc_bitdepth=8':n_threads=2:log_fmt=json:log_path=score-3.json:shortest=1:repeatlast=0",
+        "-f",
+        "null",
+        "-"
+      ]
+    }
+  ],
+  "maxFeatureDifference": 1e-06,
+  "completeFeatureParity": true
+}

@@ -10,6 +10,14 @@ namespace Optimisarr.Tests;
 public class WorkerProtocolTests
 {
     [Fact]
+    public void V1_measurements_require_candidate_format_protocol_but_legacy_jobs_remain_compatible()
+    {
+        Assert.Equal(7, WorkerProtocol.MinimumForAssignment(["-c:v:0", "hevc_nvenc"], Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", true));
+        Assert.Equal(1, WorkerProtocol.MinimumForAssignment(["-c:v:0", "hevc_nvenc"], Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v0.6.1", true));
+        Assert.Equal(1, WorkerProtocol.MinimumForAssignment(["-c:v:0", "hevc_nvenc"], Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", false));
+    }
+
+    [Fact]
     public void Explicit_range_commands_require_protocol_five_without_upgrading_ordinary_commands()
     {
         Assert.Equal(5, WorkerProtocol.MinimumForEncodeCommand(["-bsf:v:0", "h264_metadata=video_full_range_flag=0"]));

@@ -1282,6 +1282,15 @@ struct MeasurementCommandTests {
         #expect(!materialised.joined(separator: " ").contains("{{"))
     }
 
+    @Test(arguments: ["{{encodedWidth}}", "{{encodedHeight}}", "{{encodedBitDepth}}"])
+    func candidateFormatCannotChangeOptions(token: String) {
+        let arguments = ["-i", "{{distorted}}", "-i", "{{reference}}", "-threads", token,
+            "-lavfi", "[d][r]libvmaf=log_path={{log}}", "-f", "null", "-"]
+        #expect(throws: MeasurementCommandError.strayPlaceholder(token)) {
+            try MeasurementCommand.validate(arguments)
+        }
+    }
+
     @Test("inputs must be the two tokens in libvmaf's order, never a path")
     func refusesRealInputs() {
         var swapped = measurementCommand

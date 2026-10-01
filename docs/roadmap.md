@@ -505,11 +505,9 @@ the replacement workflow is trustworthy.
      Intel (QSV/VAAPI), AMD, Vulkan, OpenCL, or NPU/OpenVINO backend for the VMAF feature
      extractors; Intel/AMD silicon can hardware-accelerate decode and scaling but not the scoring.
      Document this plainly so users don't expect QSV/VAAPI/NPU VMAF that does not exist.
-   - **Optional CUDA VMAF when an NVIDIA GPU is present: done.** Detect the filter and switch to NVDEC
+   - **Legacy CUDA VMAF: implemented; complete v1 CUDA deferred.** Detect the filter and switch to NVDEC
      decode + `scale_cuda` + `libvmaf_cuda` (CUDA frames end to end), falling back to the CPU path
-     otherwise. Reported ~4.4× throughput. Needs an ffmpeg built with `--enable-nonfree`
-     `--enable-libvmaf` and `--enable-ffnvcodec` (and the CUDA VMAF library), so it is a build/runtime capability check,
-     not an assumption.
+     otherwise. The earlier ~4.4× result applies to the legacy model, not v1. Complete v1 lacks required upstream CUDA feature extractors and uses CPU scoring. `libvmaf_cuda` itself does not mandate `--enable-nonfree`; CUDA NVCC/SDK/NPP build routes do. An accelerated redistributable v1 artifact still requires a feature/parity/license audit. See the [practical plan](development/vmaf-v1-and-nvidia-plan.md).
    - **CPU-side wins for everyone else (the N100 case): done.** In impact order: score a short
      representative **clip** instead of the whole file (reuse the preview-clip mechanism — the
      biggest single win); optionally **hardware-decode the two inputs** with QSV/VAAPI to offload

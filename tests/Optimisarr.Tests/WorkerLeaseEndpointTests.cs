@@ -1,3 +1,4 @@
+using Optimisarr.Core.Workers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -73,7 +74,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             payload[property.Name] = JsonSerializer.Deserialize<object?>(property.Value.GetRawText());
         }
         payload["remoteWorkersEnabled"] = true;
-        // This fixture pairs protocol-1 workers. Explicitly disable the fresh-install strict
+        // Explicitly disable the fresh-install strict
         // default instead of relying on another test having changed shared settings first.
         payload["workerVerificationRequired"] = strict;
         (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
@@ -83,6 +84,31 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private Task<HttpClient> PairCapableWorker(string name, int concurrency = 1) =>
         PairWorkerWithEncoders(name, concurrency, "libx265");
 
+    [Fact]
+    public async Task A_protocol_6_worker_cannot_claim_v1_but_can_claim_ungated_work()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Previous worker", 1, ["libx265"], [], protocolMaximum: 6);
+        var gated = await QueueAJob(qualityGate: true);
+        var ungated = await QueueAJob(qualityGate: false);
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        Assert.Equal(JobStatus.Queued, await StatusOf(gated));
+        Assert.Equal(JobStatus.Leased, await StatusOf(ungated));
+    }
+
+    [Fact]
+    public async Task A_high_frame_rate_Matroska_source_keeps_legacy_without_a_subtitle_probe()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("HFR policy");
+        await QueueAJob(qualityGate: true, fileName: "high-fps.mkv");
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("vmaf_v0.6.1", assignment.GetProperty("quality").GetProperty("model").GetString());
+    }
+
     private Task<HttpClient> PairWorkerWithEncoders(string name, params string[] encoders) =>
         PairWorkerWithEncoders(name, 1, encoders);
 
@@ -91,7 +117,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
 
     private async Task<HttpClient> PairWorker(
         string name, int concurrency, string[] encoders, string[] decoders, string[]? audioEncoders = null,
-        string operatingSystem = "linux", string? sidecarVersion = null, int protocolMaximum = 1)
+        string operatingSystem = "linux", string? sidecarVersion = null, int protocolMaximum = WorkerProtocol.Current)
     {
         var admin = Admin();
         var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -169,6 +195,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             PixelFormat = "yuv420p",
             Width = 1920,
             Height = 1080,
+            VideoProfile = "High",
             // Known so a worker's encoded seconds can become a fraction of the whole.
             DurationSeconds = 100,
         };
@@ -305,7 +332,11 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library)
                 .SingleAsync(j => j.Id == id);
             if (reason == "encoder") job.MediaFile!.Library!.TargetVideoCodec = "av1";
-            if (reason == "audio") job.MediaFile!.MediaKind = MediaKind.Audio;
+            if (reason == "audio")
+            {
+                job.MediaFile!.MediaKind = MediaKind.Audio;
+                job.MediaFile.Library!.AudioTargetCodec = "opus";
+            }
             if (reason == "handback") db.JobLeases.Add(new JobLease
             {
                 Id = Guid.NewGuid(), JobId = id, WorkerId = workerId,
@@ -743,7 +774,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var command = Assert.Single(quality.GetProperty("commands").EnumerateArray()).EnumerateArray().Select(a => a.GetString()!).ToList();
         Assert.Contains("{{distorted}}", command);
         Assert.Contains("{{reference}}", command);
-        Assert.Contains(command, arg => arg.Contains("log_path={{log}}") && arg.Contains("model=version=vmaf_v0.6.1"));
+        Assert.Contains(command, arg => arg.Contains("log_path={{log}}") && arg.Contains("model='version=vmaf_v1.0.16_3d0h"));
         Assert.Equal("-", command[^1]);
     }
 
@@ -1109,7 +1140,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.False(assignment.TryGetProperty("sourcePath", out _));
 
         var quality = assignment.GetProperty("quality");
-        Assert.Equal("vmaf_v0.6.1", quality.GetProperty("model").GetString());
+        Assert.Equal("vmaf_v1.0.16_3d0h", quality.GetProperty("model").GetString());
         Assert.True(quality.GetProperty("minimumHarmonicMean").GetDouble() > 0);
     }
 

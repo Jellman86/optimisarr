@@ -5,6 +5,11 @@ namespace Optimisarr.Core.Queue;
 /// <summary>Chooses when source decoding may safely use the selected hardware decoder.</summary>
 public static class HardwareDecodePolicy
 {
+    public static bool SupportsProvedWorkerSource(string? codec, string? pixelFormat, string? profile) =>
+        string.Equals(codec, "h264", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(pixelFormat, "yuv420p", StringComparison.OrdinalIgnoreCase)
+        && profile?.ToLowerInvariant() is "baseline" or "constrained baseline" or "main" or "high";
+
     /// <summary>
     /// Keeps short interactive video comparisons on software decode. Some hardware decoders expose
     /// reordered frames before an input seek (notably QSV with long-GOP H.264), so the encoded clip

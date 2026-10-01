@@ -30,7 +30,8 @@ internal static class RemoteQualityPlanner
         double? referenceContainerLeadSeconds,
         CropRect? crop,
         FrameRateDecimation? decimation,
-        string? referenceVideoCodec = null)
+        string? referenceVideoCodec = null,
+        string? modelVersion = null)
     {
         if (!policy.QualityGateEnabled || referenceWidth <= 0 || referenceHeight <= 0)
         {
@@ -68,7 +69,9 @@ internal static class RemoteQualityPlanner
                 ReferenceDecimation: decimation,
                 ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
                 DistortedShiftToken: RemoteQualityContract.DistortedShiftPlaceholder,
-                ReferenceVideoCodec: referenceVideoCodec);
+                ReferenceVideoCodec: referenceVideoCodec,
+                EncodedVideoFromWorker: true,
+                ModelVersion: modelVersion);
             var command = QualityScoreCommandBuilder.Build(
                 RemoteQualityContract.DistortedPlaceholder,
                 RemoteQualityContract.ReferencePlaceholder,
@@ -84,9 +87,9 @@ internal static class RemoteQualityPlanner
                 WorkerThreads).Arguments);
         }
 
-        var model = QualityScoreCommandBuilder.ModelVersionFor(
+        var model = modelVersion ?? QualityScoreCommandBuilder.ModelVersionFor(
             crop?.Width ?? referenceWidth,
-            crop?.Height ?? referenceHeight);
+            crop?.Height ?? referenceHeight, referenceIsHdr, referenceFrameRate, decimation is not null);
         return new RemoteQualityContract(
             model,
             sampling,

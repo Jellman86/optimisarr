@@ -14,6 +14,16 @@ final class ScriptedRunner: CommandRunner, @unchecked Sendable {
         lock.withLock {
             if arguments.contains("-encoders") { return replies["encoders"] ?? (1, "") }
             if arguments.contains("-filters") { return replies["filters"] ?? (1, "") }
+            if let index = arguments.firstIndex(of: "-lavfi"), index + 1 < arguments.count {
+                let graph = arguments[index + 1]
+                let model = graph.contains("vmaf_v1.0.16_1d5h_2160") ? "vmaf_v1.0.16_1d5h_2160" : "vmaf_v1.0.16_3d0h"
+                let response = replies[model] ?? (0, "")
+                if let start = graph.range(of: "log_path='"), let end = graph[start.upperBound...].firstIndex(of: "'") {
+                    let path = String(graph[start.upperBound..<end])
+                    try? (response.1 == "no scores" ? "{}" : "{\"version\":\"\(response.1 == "old library" ? "3.2.0" : "3.2.1")\",\"frames\":[{\"metrics\":{\"vmaf\":100}}]}").write(toFile: path, atomically: true, encoding: .utf8)
+                }
+                return response
+            }
             if arguments.contains("-hwaccels") { return replies["hwaccels"] ?? (1, "") }
             // The decode half of the hardware round trip.
             if arguments.contains("-hwaccel") { return replies["decode"] ?? (1, "") }
@@ -121,13 +131,25 @@ struct CapabilityProberTests {
         #expect(capabilities.videoEncoders.contains("libx265"))
     }
 
-    @Test("reports CPU VMAF when the filter is present")
+    @Test("reports CPU VMAF after both v1 models score pictures")
     func detectsVmaf() async {
         let runner = ScriptedRunner([
             "encoders": (0, listing), "filters": (0, "libvmaf"), "hevc_videotoolbox": (0, ""),
         ])
 
         #expect(await prober(runner).probe(name: "Mac").vmaf == .cpu)
+    }
+
+    @Test("the v3.2.1 archive can report 3.2.0 in its score log")
+    func acceptsUpstreamArchiveVersion() async {
+        let runner = ScriptedRunner(["encoders": (0, listing), "filters": (0, "libvmaf"), "vmaf_v1.0.16_3d0h": (0, "old library")])
+        #expect(await prober(runner).probe(name: "Mac").vmaf == .cpu)
+    }
+
+    @Test("missing v1 model scores prevent VMAF advertisement", arguments: ["vmaf_v1.0.16_3d0h", "vmaf_v1.0.16_1d5h_2160"])
+    func refusesUnprovedV1(model: String) async {
+        let runner = ScriptedRunner(["encoders": (0, listing), "filters": (0, "libvmaf"), model: (0, "no scores")])
+        #expect(await prober(runner).probe(name: "Mac").vmaf == .none)
     }
 
     @Test("advertises no concurrency when it has no encoder to offer")

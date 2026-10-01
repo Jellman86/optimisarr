@@ -199,7 +199,10 @@ class Harness:
                                    expected_ineligible="limited to 8-bit sources")
         overrides = {"audioLoudnessGateEnabled": True, "maxLoudnessDriftLufs": 1,
                      "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0} if audio_gates else None
-        overrides = {**(overrides or {}), **(rule_overrides or {}), "targetContainer": container}
+        # A floor of 100 is attainable by v1; add measurable compression damage rather than
+        # assuming the model can never return its upper bound for a clean tiny fixture.
+        overrides = {**(overrides or {}), **({"qualityCrf": 45} if reject else {}),
+                     **(rule_overrides or {}), "targetContainer": container}
         case = self.create_job(name, fixture, encoder=encoder, worker=worker, strategy=strategy, gates=gates,
                                overrides=overrides)
         directory = self.report.root / name

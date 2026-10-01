@@ -108,7 +108,8 @@ public static class MeasurementCommand
 
         if (!allowingLog
             && (value.Contains(MeasurementPlaceholders.Log, StringComparison.Ordinal)
-                || value.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)))
+                || value.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)
+                || CandidateVideoFormat.Required([value])))
         {
             return new CommandRefusal($"A filter placeholder appears outside the filter: '{value}'.");
         }

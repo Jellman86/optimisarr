@@ -371,5 +371,5 @@ test. It creates a temporary generated video and audio-only file and leaves the 
 
 | Half | Makes it possible to prove |
 | --- | --- |
-| Native | Proved hardware encoding/decode, CPU VMAF in the bundled redistributable toolchain, service lifecycle, MSI installation, tray behaviour and real jobs against the server. CUDA VMAF requires a separately compatible toolchain and a successful probe. |
-| Container | Real media acceptance and, when the image carries a compatible CUDA VMAF build, GPU measurement on a passed-through NVIDIA device. See the [acceptance harness](../../../docs/development/media-acceptance.md). |
+| Native | Proved hardware encoding/decode, CPU VMAF in the bundled redistributable toolchain, service lifecycle, MSI installation, tray behaviour and real jobs against the server. Complete VMAF v1 runs on the CPU; upstream CUDA extractors do not yet cover its full model. |
+| Container | Real media acceptance, NVIDIA encode/decode on a passed-through device and complete CPU VMAF v1 on that worker. A CUDA filter listing does not prove complete v1 scoring. See the [acceptance harness](../../../docs/development/media-acceptance.md). |

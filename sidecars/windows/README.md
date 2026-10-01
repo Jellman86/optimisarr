@@ -89,7 +89,7 @@ So each of these runs for real at service start:
 | Video encoders | Three frames of synthetic video, at a size that clears NVENC's minimum |
 | Audio encoders | A fifth of a second of silence |
 | Hardware decoders | Encode a clip, then decode it back with the accelerator engaged |
-| VMAF | Score a clip against itself: CUDA first, then CPU |
+| VMAF | Score both complete VMAF v1 HD/UHD models on the CPU; require finite frame evidence |
 
 Encoders looked for are libx264, libx265, libsvtav1, and the NVENC, Quick Sync and AMF families.
 Audio is narrowed to what Optimisarr can actually ask for, including `libopus` and `libmp3lame`,
@@ -212,3 +212,8 @@ available. The Windows download remains explicitly an unsigned preview.
 The MSI version defaults to `Directory.Build.props`; `installer/build.ps1 -Version <version>`
 overrides it for an explicit build. Tag publication requires the tag and shared version to agree.
 Public distribution requirements are listed in the [installer notes](installer/README.md#distribution-status).
+
+Gated VMAF v1 jobs require protocol 7. The worker probes the candidate's actual format for banding
+measurement; NVENC can encode while complete v1 scoring runs on the same worker's CPU. A CUDA
+filter listing does not prove the missing upstream v1 feature extractors. Use the bundled pinned
+v3.2.1 toolchain; upstream score logs can still label that archive `3.2.0`.

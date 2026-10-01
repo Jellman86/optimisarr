@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.Verification;
 
@@ -47,16 +49,19 @@ public sealed class ImageMetadataService(string? exiftoolCommand = null)
     {
         try
         {
+            var command = ExifToolCommand.Build(arguments, OperatingSystem.IsWindows());
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _exiftool,
+                RedirectStandardInput = command.StandardInput is not null,
+                StandardInputEncoding = command.StandardInput is not null ? new UTF8Encoding(false) : null,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            foreach (var argument in arguments)
+            foreach (var argument in command.Arguments)
             {
                 process.StartInfo.ArgumentList.Add(argument);
             }
@@ -67,6 +72,11 @@ public sealed class ImageMetadataService(string? exiftoolCommand = null)
 
             try
             {
+                if (command.StandardInput is { } input)
+                {
+                    await process.StandardInput.WriteAsync(input.AsMemory(), cancellationToken);
+                    process.StandardInput.Close();
+                }
                 await process.WaitForExitAsync(cancellationToken);
             }
             catch (OperationCanceledException)

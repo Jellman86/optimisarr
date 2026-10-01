@@ -394,6 +394,10 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VmafModel")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("WorkOutputPath")
                         .HasMaxLength(1024)
                         .HasColumnType("TEXT");

@@ -37,6 +37,11 @@ public sealed class MigrationTests : IDisposable
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         var job = await db.Jobs.SingleAsync();
         Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Null(job.VmafModel);
+        job.VmafModel = "vmaf_v0.6.1";
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        Assert.Equal("vmaf_v0.6.1", (await db.Jobs.AsNoTracking().SingleAsync()).VmafModel);
         Assert.Null(job.VerifiedSourceSha256);
         Assert.Null(job.VerifiedOutputSha256);
         var expected = new DateTimeOffset(2026, 1, 1, 7, 0, 0, TimeSpan.Zero).AddTicks(1).UtcTicks;

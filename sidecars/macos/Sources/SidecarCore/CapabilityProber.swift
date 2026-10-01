@@ -102,7 +102,8 @@ public struct CapabilityProber: Sendable {
         }
 
         let filters = await runner.run(ffmpeg, ["-hide_banner", "-filters"])
-        let vmaf = filters.exitCode == 0 ? VmafSupportParser.parse(filters.output) : VmafCapability.none
+        let vmaf = filters.exitCode == 0 && VmafSupportParser.parse(filters.output) != .none
+            ? await provedV1(ffmpeg: ffmpeg) : VmafCapability.none
 
         let decoders = await provedHardwareDecoders(ffmpeg: ffmpeg, provedEncoders: proved)
 
@@ -116,6 +117,26 @@ public struct CapabilityProber: Sendable {
             // Nothing to offer means nothing to accept. Reporting concurrency while advertising no
             // encoder would have the server see a live worker it can never actually use.
             maxConcurrency: proved.isEmpty && provedAudio.isEmpty ? 0 : maxConcurrency)
+    }
+
+    private func provedV1(ffmpeg: URL) async -> VmafCapability {
+        for model in ["vmaf_v1.0.16_3d0h", "vmaf_v1.0.16_1d5h_2160"] {
+            let log = scratchDirectory.appendingPathComponent("optimisarr-vmaf-\(UUID().uuidString).json")
+            defer { try? FileManager.default.removeItem(at: log) }
+            let graph = "[0:v][1:v]libvmaf=model='version=\(model)\\:cambi.enc_width=320\\:cambi.enc_height=240\\:cambi.enc_bitdepth=10':n_threads=1:log_fmt=json:log_path='\(log.path)':shortest=1:repeatlast=0"
+            let result = await runner.run(ffmpeg, ["-nostdin", "-v", "error",
+                "-f", "lavfi", "-i", "testsrc2=s=320x240:r=24:d=0.25,format=yuv420p10le",
+                "-f", "lavfi", "-i", "testsrc2=s=320x240:r=24:d=0.25,format=yuv420p10le",
+                "-lavfi", graph, "-f", "null", "-"])
+            guard result.exitCode == 0, let data = try? Data(contentsOf: log),
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let frames = root["frames"] as? [[String: Any]], !frames.isEmpty,
+                  frames.allSatisfy({ frame in
+                      guard let metrics = frame["metrics"] as? [String: Any], let score = metrics["vmaf"] as? Double else { return false }
+                      return score.isFinite && score >= 0 && score <= 100
+                  }) else { return .none }
+        }
+        return .cpu
     }
 
     /// Proves hardware decode rather than trusting the accelerator listing.

@@ -367,11 +367,14 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
-                    var requiredProtocol = WorkerProtocol.MinimumForEncodeCommand(assignment.Arguments, assignment.Kind);
+                    var requiredProtocol = WorkerProtocol.MinimumForAssignment(assignment.Arguments, assignment.Kind, assignment.VmafModel,
+                        assignment.Quality is not null || assignment.Search is not null);
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == 6
+                        lastReason = requiredProtocol == 7
+                            ? "VMAF v1 requires an updated sidecar with proved HD/UHD models and candidate-format probing (protocol 7)."
+                            : requiredProtocol == 6
                             ? "Standalone audio requires an updated sidecar (protocol 6)."
                             : requiredProtocol >= 5
                             ? "This H.264 encode preserves declared colour range. Update the sidecar to support protocol 5."
@@ -498,6 +501,7 @@ internal static class WorkerLeaseEndpoints
                     job.RequestedVideoQuality = assignment.RequestedVideoQuality;
                     job.EffectiveVideoQuality = assignment.EffectiveVideoQuality;
                     job.VideoQualityMode = assignment.VideoQualityMode;
+                    job.VmafModel = assignment.VmafModel;
 
                     try
                     {
@@ -805,7 +809,7 @@ internal static class WorkerLeaseEndpoints
                 // arguments were fixed before the search and name the library's value.
                 var settled = await dispatcher.PrepareRemoteWorkAsync(
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
-                    forceStrictVerification: lease.VerificationContractJson is not null);
+                    forceStrictVerification: lease.VerificationContractJson is not null, vmafModel: contract.Model);
 
                 lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
                 await db.SaveChangesAsync(cancellationToken);
@@ -819,7 +823,7 @@ internal static class WorkerLeaseEndpoints
             // Planned for this worker, so every candidate is measured on the encoder that will do
             // the real encode — which is the whole reason the search travels with the job.
             var next = await dispatcher.PlanAdaptiveStepAsync(
-                lease.JobId, progress.Decision.NextQuality!.Value, worker.ToCapabilities(), cancellationToken);
+                lease.JobId, progress.Decision.NextQuality!.Value, worker.ToCapabilities(), cancellationToken, contract.Model);
             if (next is null)
             {
                 // The search cannot be expressed any further, so it ends where it stands rather
@@ -833,7 +837,7 @@ internal static class WorkerLeaseEndpoints
                 await db.SaveChangesAsync(cancellationToken);
                 var fallback = await dispatcher.PrepareRemoteWorkAsync(
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
-                    forceStrictVerification: lease.VerificationContractJson is not null);
+                    forceStrictVerification: lease.VerificationContractJson is not null, vmafModel: contract.Model);
                 lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
                 await db.SaveChangesAsync(cancellationToken);
                 return Results.Ok(new AdaptiveProbeDirectionDto(

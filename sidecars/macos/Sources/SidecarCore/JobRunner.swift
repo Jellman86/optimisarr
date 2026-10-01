@@ -956,9 +956,13 @@ public struct JobRunner: WorkExecutor {
             // A sample begins at its own first picture, so there is no lead to remove — unlike a
             // finished candidate, where the window is a slice of a whole file.
             let log = scratch.appendingPathComponent("sample-vmaf-q\(step.quality)-\(index).json", isDirectory: false)
+            guard let prepared = await prepareCandidateFormat(measurements[index].arguments, candidate: encoded),
+                  let measurement = try? MeasurementCommand.validate(prepared) else {
+                return .failed("the sample's actual format could not be established for VMAF v1")
+            }
             guard let scored = try? await runner.run(
                 ffmpeg,
-                measurements[index].materialise(
+                measurement.materialise(
                     distorted: encoded, reference: source, log: log, distortedShift: nil),
                 progress: { _ in })
             else {
@@ -997,8 +1001,12 @@ public struct JobRunner: WorkExecutor {
     ) async -> [String]? {
         var logs: [String] = []
         let asked = await chooseCommands(assignment, source: source, candidate: candidate)
-        let commands = asked.compactMap { try? MeasurementCommand.validate($0) }
-        guard commands.count == asked.count else { return nil }
+        var commands: [MeasurementCommand] = []
+        for arguments in asked {
+            guard let prepared = await prepareCandidateFormat(arguments, candidate: candidate),
+                  let command = try? MeasurementCommand.validate(prepared) else { return nil }
+            commands.append(command)
+        }
         let frameSeconds = commands.contains(where: \.needsDistortedShift)
             ? await TimelineAlignment.frameSeconds(ffprobe: ffprobe, file: source, runner: leadProbe) ?? (1.0 / 25.0)
             : nil
@@ -1033,6 +1041,14 @@ public struct JobRunner: WorkExecutor {
             logs.append(contents)
         }
         return logs
+    }
+
+    private func prepareCandidateFormat(_ command: [String], candidate: URL) async -> [String]? {
+        guard CandidateVideoFormat.required(command) else { return command }
+        guard (try? MeasurementCommand.validate(command)) != nil, let ffprobe else { return nil }
+        let result = await leadProbe.run(ffprobe, CandidateVideoFormat.probeArguments(candidate))
+        guard result.exitCode == 0 else { return nil }
+        return CandidateVideoFormat.resolve(command, probeJSON: result.output)
     }
 
     /// The frame-by-frame windows when the candidate holds exactly the source's frames, otherwise
