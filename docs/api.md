@@ -310,7 +310,7 @@ and limit. See [coverage and controls](setup/configuration.md#audio-quality-repo
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/library-options` | Available media types, rule profiles, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
+| `GET` | `/api/library-options` | Available media types, rule profiles with video/standalone-audio defaults, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
 | `GET` | `/api/libraries` | List configured libraries. |
 | `GET` | `/api/libraries/{id}/access` | Check whether the configured path exists and is readable/writable. |
 | `POST` | `/api/libraries` | Create a library. |

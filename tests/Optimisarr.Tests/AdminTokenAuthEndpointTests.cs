@@ -422,6 +422,14 @@ public sealed class AdminTokenAuthEndpointTests
         Assert.Equal("aac", scotts["videoAudioCodec"]!.GetValue<string>());
         Assert.Equal(96, scotts["videoAudioBitrateKbps"]!.GetValue<int>());
         Assert.True(scotts["downmixToStereo"]!.GetValue<bool>());
+        foreach (var value in specs)
+        {
+            var spec = value!.AsObject();
+            var profile = Enum.Parse<RuleProfile>(spec["profile"]!.GetValue<string>());
+            var rules = Optimisarr.Core.Rules.RuleProfileDefaults.For(profile);
+            Assert.Equal(rules.TargetAudioCodec, spec["audioTargetCodec"]!.GetValue<string>());
+            Assert.Equal(rules.AudioBitrateKbps, spec["audioBitrateKbps"]!.GetValue<int>());
+        }
     }
 
     [Fact]

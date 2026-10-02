@@ -242,6 +242,42 @@ threshold. Cancelled work and jobs interrupted by a worker restart do not count 
 
 ## Audio quality reports and gates (development)
 
+### Choose the encoding settings
+
+Open **Configure → Encode → Audio & subtitles**. Choose the **Target codec** for standalone
+audio, or an explicit **Re-encode to** choice under **Audio track** for video. The horizontal
+**Audio encoding quality** control changes the bitrate for the selected codec:
+
+| Preset | AAC | Opus | MP3 |
+|---|---:|---:|---:|
+| Space saver | 96 kbps | 96 kbps | 128 kbps |
+| Balanced | 128 kbps | 128 kbps | 192 kbps |
+| High | 192 kbps | 160 kbps | 256 kbps |
+| Very high | 256 kbps | 192 kbps | 320 kbps |
+
+These are encoding starting points. They are not calibrated listening grades, equal-quality
+claims across codecs, or audio gate thresholds. Higher budgets usually use more space. AAC
+standalone output uses `.m4a`, Opus uses `.opus`, and MP3 uses `.mp3`. Video keeps its separately
+chosen video container. Retained surround receives this budget per channel pair; downmixing
+to stereo keeps the selected budget.
+
+**Default** clears the bitrate override and follows the selected profile: standalone audio is
+normally 128 kbps, or 96 kbps under Scott's Settings; video uses that profile's soundtrack bitrate. **Custom** opens
+Advanced audio, where you can enter your own bitrate. Opening or saving a library does not
+change existing values. A preset you choose during the edit follows a subsequent codec change;
+a loaded or custom bitrate is preserved. The saved policy stores codec and bitrate, so there
+is no persistent link to a preset after saving.
+When an explicit saved bitrate matches the profile default, the control explains that it
+remains saved. Choose **Default** to clear that override and follow future profile changes.
+
+Presets do not enable or change the audio quality gate. They use the existing fixed-bitrate
+encode path, with no automatic sample search or quality retry. Copied video audio is unchanged.
+Video soundtrack perceptual assessment remains planned.
+
+![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
+
+### Collect reports or require a result
+
 In a music library, open **Configure → Verify** and enable **Audio quality report** to collect
 experimental Zimtohrli observations. It starts off. Single-track mono/stereo files are supported;
 video soundtracks, multiple tracks and surround are not assessed yet. Up to 90 seconds are
@@ -261,7 +297,8 @@ candidate into place. See the [development evidence and limits](../development/p
 ![Audio quality report showing separate channel distances, assessed duration, worker location and the report-only safety note](../images/optimisarr-audio-report-dark.png)
 
 To make audio quality a replacement requirement, enable **Require audio quality** in the same
-view and choose **Maximum audio difference**. Both controls start off, and the limit starts blank.
+view, then open **Advanced verification** and choose **Maximum audio difference**. Both switches
+start off, and the limit starts blank. Verify shows the current limit; Advanced verification holds its control.
 The horizontal control has clickable numeric points, with lower values on the left. The points
 are shortcuts, not calibrated quality levels. Choose **Custom** to enter any value from 0 to 1;
 lower values are stricter. There is no calibrated default or conversion

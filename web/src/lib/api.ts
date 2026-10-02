@@ -322,6 +322,8 @@ export type RuleProfileSpec = {
   hdrHandling: string
   videoAudioCodec: string | null
   videoAudioBitrateKbps: number
+  audioTargetCodec?: string
+  audioBitrateKbps?: number
   downmixToStereo: boolean
 }
 

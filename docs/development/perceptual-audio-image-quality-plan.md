@@ -1,7 +1,7 @@
 # Perceptual quality for audio and still images
 
 Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans.
-Status: **opt-in audio reports, library controls and strict worker measurement implemented on a development branch; automatic gates, surround support and dedupe remain planned**.
+Status: **opt-in audio reports, operator-selected audio gates and strict worker measurement implemented in dev; adaptive audio quality selection and surround support remain planned**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
 [personal blind comparisons](../usage/personal-quality-check.md).
@@ -373,3 +373,52 @@ mono/stereo track and up to 90 assessed seconds. See the
 [controls and limits](../setup/configuration.md#audio-quality-reports-and-gates-development).
 A universal threshold, full-duration assessment, surround support and audio quality search
 remain future work. This operator-selected gate does not claim an inaudibility guarantee.
+
+### Audio preset design review, 2 October 2026
+
+The horizontal gate control is implemented. The prototype that named its numeric limits as
+quality tiers was rejected during design review. The replacement slice uses codec-aware encoding
+presets that change actual bitrate, with the experimental difference limit in Advanced
+verification. Changing a verification limit alone does not change the encoded output.
+
+The freely licensed speech acceptance cases provide a concrete counterexample to simply naming
+the existing numeric points: deliberately silent mono output and a stereo output with its right
+channel silenced both measured approximately `0.0645978451` on Mac, Windows, Linux sidecar and
+server-container tools. Their other configured checks passed. A maximum of `0.1` would approve
+those damaged candidates. It must not be presented as an endorsed quality preset. The tested
+gate limit `0.01` blocked them; this fixture result does not establish a universal threshold.
+The [gate acceptance in PR #345](https://github.com/Jellman86/optimisarr/pull/345)
+records those good/bad, worker/server and cleanup checks. The separate
+[encoding preset evidence](../reviews/evidence/2026-10-02-audio-encoding-presets.json)
+records each proposed codec/bitrate/channel combination using installed tools; those encode,
+probe and decode checks do not establish a perceptual-quality threshold.
+
+Design and remaining pipeline work:
+
+1. Keep output codec/container selection as a playback-compatibility choice.
+2. Give quality presets encoder-appropriate starting settings. An optional bounded sample
+   search can choose a bitrate that meets the selected target before the full encode.
+3. Retain the final quality gate and the existing decode, duration, channel, metadata and
+   replacement checks. Reports expose the actual selected limit and sample coverage.
+4. Keep exact distance limits in advanced controls, with no automatic reinterpretation of
+   existing saved policies.
+
+The metric compares decoded audio, so AAC, Opus and MP3 can use the same assessment preparation;
+their settings and the bitrate needed to meet a target differ. A future sample search must
+measure actual candidates rather than assume a bitrate produces the same quality in each codec.
+
+The encoding control offers Space saver, Balanced, High and Very high, plus Default and Custom.
+The [configuration reference](../setup/configuration.md#audio-quality-reports-and-gates-development)
+records each codec's bitrate. These are explicit starting points, without cross-codec quality
+equivalence or a claimed listening grade. Existing saved bitrates and gate limits stay unchanged.
+An explicitly chosen tier follows codec changes during the current edit; after saving, the
+stored policy remains codec and bitrate. Automatic sample search is future work.
+
+The same measurement engine can later assess audio tracks inside video containers. The current
+parser deliberately rejects ordinary video streams, multiple audio tracks and surround, and
+the pipeline invokes the gate only for standalone audio. Extending it needs explicit retained
+source/output track mapping, language/commentary handling, an appropriately transformed reference
+for intentional downmixes, and independent timing/lip-sync checks. Copied audio needs preservation
+checks; re-encoded audio needs its own quality result alongside VMAF. Start with proved mono/stereo
+track cases before claiming surround coverage. Strict worker mode must retain all media analysis
+on the worker. See [Zimtohrli's project goals and signal preparation](https://github.com/google/zimtohrli).

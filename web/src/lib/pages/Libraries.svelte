@@ -12,6 +12,8 @@
   import CandidateTable from '../components/CandidateTable.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ActionMenu from '../components/ActionMenu.svelte'
+  import AudioEncodingPreset from '../components/AudioEncodingPreset.svelte'
+  import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
 
   let {
     embeddedEditorId = null,
@@ -125,6 +127,8 @@
     hdrHandling: string
     videoAudioCodec: string | null
     videoAudioBitrateKbps: number
+    audioTargetCodec: string
+    audioBitrateKbps: number
     downmixToStereo: boolean
   }
   const FALLBACK_SPEC: PresetSpec = {
@@ -134,6 +138,8 @@
     hdrHandling: 'Exclude',
     videoAudioCodec: 'aac',
     videoAudioBitrateKbps: 160,
+    audioTargetCodec: 'aac',
+    audioBitrateKbps: 128,
     downmixToStereo: false,
   }
 
@@ -150,6 +156,10 @@
         hdrHandling: spec.hdrHandling,
         videoAudioCodec: spec.videoAudioCodec,
         videoAudioBitrateKbps: spec.videoAudioBitrateKbps,
+        audioTargetCodec: spec.audioTargetCodec ?? 'aac',
+        // Older API responses omit standalone defaults. Retain their known profile values
+        // during rolling updates until the new server-owned fields are available.
+        audioBitrateKbps: spec.audioBitrateKbps ?? (spec.profile === 'ScottsSettings' ? 96 : 128),
         downmixToStereo: spec.downmixToStereo,
       }
     }
@@ -200,6 +210,39 @@
   function setAudioDifferenceStop(index: number) {
     audioDifferenceCustomSelected = index === audioDifferenceStops.length
     if (!audioDifferenceCustomSelected) form.maximumAudioQualityDistance = audioDifferenceStops[index]
+  }
+
+  let audioEncodingSelection = $state<AudioEncodingMode | null>(null)
+  let videoAudioEncodingSelection = $state<AudioEncodingMode | null>(null)
+
+  function chooseAudioEncoding(mode: AudioEncodingMode, video = false) {
+    if (video) {
+      videoAudioEncodingSelection = mode
+      if (mode === 'custom') {
+        form.videoAudioBitrateKbps ??= specFor(form.ruleProfile).videoAudioBitrateKbps
+        goRoom('encode/audio/advanced')
+      }
+      else form.videoAudioBitrateKbps = mode === 'default' ? null : audioPresetBitrate(form.videoAudioCodec ?? 'aac', mode) ?? form.videoAudioBitrateKbps
+    } else {
+      audioEncodingSelection = mode
+      if (mode === 'custom') {
+        form.audioBitrateKbps ??= specFor(form.ruleProfile).audioBitrateKbps
+        goRoom('encode/audio/advanced')
+      }
+      else form.audioBitrateKbps = mode === 'default' ? null : audioPresetBitrate(form.audioTargetCodec ?? specFor(form.ruleProfile).audioTargetCodec, mode) ?? form.audioBitrateKbps
+    }
+  }
+
+  function changeAudioCodec(codec: string, video = false) {
+    if (video) {
+      form.videoAudioBitrateKbps = audioBitrateAfterCodecChange(form.videoAudioCodec ?? 'copy', codec || 'copy', form.videoAudioBitrateKbps, videoAudioEncodingSelection)
+      form.videoAudioCodec = codec || null
+      if (!codec || codec === 'copy') videoAudioEncodingSelection = null
+    } else {
+      const defaultCodec = specFor(form.ruleProfile).audioTargetCodec
+      form.audioBitrateKbps = audioBitrateAfterCodecChange(form.audioTargetCodec ?? defaultCodec, codec || defaultCodec, form.audioBitrateKbps, audioEncodingSelection)
+      form.audioTargetCodec = codec || null
+    }
   }
 
   const vmafMode = $derived.by<VmafMode>(() => {
@@ -653,6 +696,7 @@
 
   function resetToPreset() {
     const preset = specFor(form.ruleProfile)
+    videoAudioEncodingSelection = null
     form.targetVideoCodec = null
     form.targetContainer = null
     form.hdrHandling = preset.hdrHandling
@@ -761,11 +805,11 @@
       'encode/video/advanced': ['targetVideoCodec', 'targetContainer', 'encoderPreset', 'qualityCrf', 'contentTune', 'maxBitrateKbps', 'minBitrateKbps', 'strongerAdaptiveQuantisation'],
       'encode/audio/advanced': ['audioBitrateKbps', 'videoAudioBitrateKbps', 'reencodeLossyAudio'],
       'encode/images/advanced': ['imageQuality', 'reencodeLossyImages'],
-      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
+      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample', 'maximumAudioQualityDistance'],
     }
     const keys = fields[target] ?? Object.entries(fields).filter(([key]) => key.startsWith(target + '/')).flatMap(([, fields]) => fields)
     return keys.filter(key => {
-      const baseline = key === 'videoAudioBitrateKbps' ? specFor(form.ruleProfile).videoAudioBitrateKbps : defaults[key]
+      const baseline = key === 'videoAudioBitrateKbps' ? specFor(form.ruleProfile).videoAudioBitrateKbps : key === 'audioBitrateKbps' ? specFor(form.ruleProfile).audioBitrateKbps : defaults[key]
       return form[key] != null && form[key] !== baseline
     }).length
       + (target.startsWith('source') && sameCodecGb !== '' ? 1 : 0)
@@ -941,6 +985,8 @@
     customSelected = false
     vmafCustomSelected = false
     audioDifferenceCustomSelected = false
+    audioEncodingSelection = null
+    videoAudioEncodingSelection = null
     minSizeMb = ''
     sameCodecGb = ''
     activeTab = 'rules'
@@ -1055,6 +1101,8 @@
     customSelected = false
     vmafCustomSelected = false
     audioDifferenceCustomSelected = false
+    audioEncodingSelection = null
+    videoAudioEncodingSelection = null
     activeTab = 'rules'
     editingId = library.id
     markPristine()
@@ -1790,6 +1838,7 @@
                 <Toggle bind:checked={form.audioQualityGateEnabled}
                   label={i18n.m.audio_quality.gate_label} hint={i18n.m.audio_quality.gate_hint} />
                 {#if form.audioQualityGateEnabled}
+                  {#if room === 'verify/advanced'}
                   <div class="mt-4 min-w-0" data-audio-quality-limit>
                     <label class="label" for="lib-audio-quality-slider">{i18n.m.audio_quality.maximum}
                       <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.audio_quality.maximum })} text={i18n.m.audio_quality.limit_hint} />
@@ -1827,6 +1876,10 @@
                     {/if}
                     <p id="lib-audio-quality-help" class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.limit_hint}</p>
                   </div>
+                  {:else}
+                    {#if form.maximumAudioQualityDistance != null}<p class="mt-3 text-xs leading-relaxed text-ink-3">{t(i18n.m.audio_quality.gate_limit, { limit: form.maximumAudioQualityDistance })}</p>{/if}
+                    <button type="button" class="btn mt-3 min-h-11" onclick={() => goRoom('verify/advanced')}>{i18n.m.audio_encoding.set_limit}</button>
+                  {/if}
                   <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
                 {/if}
               </div>
@@ -2411,8 +2464,8 @@
 {#if showVideoOptions}{#if !isNoEncodeProfile}        <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-video-audio-codec">{i18n.m.libraries.audio_track} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.audio_track })} text={i18n.m.libraries.audio_track_tip} /></label>
-            <select id="lib-video-audio-codec" aria-label={i18n.m.libraries.audio_track} class="input" bind:value={form.videoAudioCodec}>
-              <option value={null}>{i18n.m.libraries.audio_profile_default}</option>
+            <select id="lib-video-audio-codec" aria-label={i18n.m.libraries.audio_track} class="input" value={form.videoAudioCodec ?? ''} onchange={event => changeAudioCodec(event.currentTarget.value, true)}>
+              <option value="">{i18n.m.libraries.audio_profile_default}</option>
               <option value="copy">{i18n.m.libraries.audio_copy}</option>
               {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
             </select>
@@ -2425,20 +2478,27 @@
               type="number"
               min="32"
               max="512"
-              placeholder={i18n.m.libraries.audio_bitrate_ph}
+              placeholder={`${i18n.m.audio_encoding.default} (${specFor(form.ruleProfile).videoAudioBitrateKbps} kbps)`}
               disabled={!form.videoAudioCodec || form.videoAudioCodec === 'copy'}
+              oninput={() => { videoAudioEncodingSelection = 'custom' }}
               bind:value={form.videoAudioBitrateKbps}
             />
           </div>{/if}
         </div>
+        {#if form.videoAudioCodec && form.videoAudioCodec !== 'copy'}
+          <AudioEncodingPreset id="lib-video-audio-preset" codec={form.videoAudioCodec}
+            bitrate={form.videoAudioBitrateKbps} defaultBitrate={specFor(form.ruleProfile).videoAudioBitrateKbps}
+            mode={audioEncodingMode(form.videoAudioCodec, form.videoAudioBitrateKbps, videoAudioEncodingSelection, specFor(form.ruleProfile).videoAudioBitrateKbps)}
+            video onselect={mode => chooseAudioEncoding(mode, true)} />
+        {/if}
 {/if}{@render keepLanguageFields()}{/if}{#if showAudioOptions}      <div class="rounded-lg border border-line bg-lit p-4">
         <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.audio}</h3>
         <p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.libraries.music_note}</p>
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_codec })} text={i18n.m.libraries.audio_codec_tip} /></label>
-            <select id="lib-audio-codec" aria-label={i18n.m.libraries.target_codec} class="input" bind:value={form.audioTargetCodec}>
-              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
+            <select id="lib-audio-codec" aria-label={i18n.m.libraries.target_codec} class="input" value={form.audioTargetCodec ?? ''} onchange={event => changeAudioCodec(event.currentTarget.value)}>
+              <option value="">{i18n.m.audio_encoding.default} ({specFor(form.ruleProfile).audioTargetCodec.toUpperCase()})</option>
               {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
             </select>
           </div>
@@ -2450,11 +2510,16 @@
               type="number"
               min="32"
               max="512"
-              placeholder={i18n.m.libraries.bitrate_ph}
+              placeholder={`${i18n.m.audio_encoding.default} (${specFor(form.ruleProfile).audioBitrateKbps} kbps)`}
+              oninput={() => { audioEncodingSelection = 'custom' }}
               bind:value={form.audioBitrateKbps}
             />
           </div>{/if}
         </div>
+        <AudioEncodingPreset id="lib-audio-preset" codec={form.audioTargetCodec ?? specFor(form.ruleProfile).audioTargetCodec}
+          bitrate={form.audioBitrateKbps} defaultBitrate={specFor(form.ruleProfile).audioBitrateKbps}
+          mode={audioEncodingMode(form.audioTargetCodec ?? specFor(form.ruleProfile).audioTargetCodec, form.audioBitrateKbps, audioEncodingSelection, specFor(form.ruleProfile).audioBitrateKbps)}
+          onselect={mode => chooseAudioEncoding(mode)} />
         {#if room === 'encode/audio/advanced'}<label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
           <span>
