@@ -468,8 +468,9 @@ public sealed class VerificationService(
                     reference.Path, outputPath, shadowContext, shadowSkip, cancellationToken) };
 
             report = report with { AudioQuality = await (audioQuality ?? new AudioQualityObservationService(null)).ObserveAsync(
-                policy.AudioQualityReportingEnabled, reference.Kind, decodeResult.Healthy, clip is not null,
+                policy.RequiresAudioQuality(reference.Kind), reference.Kind, decodeResult.Healthy, clip is not null,
                 reference.Path, outputPath, remoteEvidence, cancellationToken) };
+            report = AudioQualityGate.Apply(report, reference.Kind, policy, preview: clip is not null);
 
             return new VerificationOutcome(
                 report,

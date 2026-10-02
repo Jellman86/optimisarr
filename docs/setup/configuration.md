@@ -240,7 +240,7 @@ the same applies when size and VMAF both fail because higher quality would worse
 quality would worsen VMAF. Other technical or transient failures retain the three-terminal-failure
 threshold. Cancelled work and jobs interrupted by a worker restart do not count toward exclusion.
 
-## Audio quality reports (development)
+## Audio quality reports and gates (development)
 
 In a music library, open **Configure → Verify** and enable **Audio quality report** to collect
 experimental Zimtohrli observations. It starts off. Single-track mono/stereo files are supported;
@@ -254,11 +254,35 @@ calibrated listening score or pass threshold. An **Unavailable** report explains
 unsupported files or incomplete evidence. Strict worker jobs stay on the worker with no server
 fallback. In server verification mode, the server measures.
 
-Reports do not change replacement decisions. Existing decode, duration, stream, metadata and
+With **Require audio quality** off, reports do not change replacement decisions. Existing decode, duration, stream, metadata and
 size checks still apply, and verified replacement quarantines the original before moving the
 candidate into place. See the [development evidence and limits](../development/perceptual-audio-image-quality-plan.md#integrated-report-controls-in-development).
 
 ![Audio quality report showing separate channel distances, assessed duration, worker location and the report-only safety note](../images/optimisarr-audio-report-dark.png)
+
+To make audio quality a replacement requirement, enable **Require audio quality** in the same
+view and choose **Maximum audio difference**. Both controls start off, and the limit starts blank.
+The horizontal control has clickable numeric points, with lower values on the left. The points
+are shortcuts, not calibrated quality levels. Choose **Custom** to enter any value from 0 to 1;
+lower values are stricter. There is no calibrated default or conversion
+from VMAF. Use your reports and listening examples to choose a limit for that library.
+
+The largest distance in every assessed channel and sample must be at or below your limit.
+A missing tool, unsupported input or incomplete worker measurement blocks replacement when the
+gate is enabled. Enabling the gate requests measurement even if **Audio quality report** is off.
+Strict sidecar verification keeps those measurements on the worker; the server compares their
+validated results with the selected limit. The gate applies to standalone audio in music and
+mixed libraries, with one mono or stereo track. It does not assess video soundtracks or surround.
+Files up to 90 seconds are fully assessed; longer files use three 30-second samples, so the gate
+cannot prove the quality of unassessed sections.
+
+Job details show **Passed** or **Blocked**, the limit used for that job and each channel’s largest
+distance. A failed gate leaves the original unchanged. This does not add an automatic audio
+quality retry or change the other safety checks.
+
+![Audio quality gate controls with an explicit maximum difference](../images/optimisarr-audio-quality-settings-dark.png)
+
+![Blocked audio quality report showing the selected limit](../images/optimisarr-audio-gate-dark.png)
 
 ## Rule profiles (presets)
 
@@ -391,6 +415,10 @@ and provider credentials in plain text. Store it as sensitive material: do not
 commit, share, or leave it in an unprotected download directory.
 
 ![Backup and restore card explaining export contents and providing Export config and Import config controls](../images/optimisarr-settings-backup-dark.png)
+
+New exports use configuration format version 2. Older builds reject them rather than silently
+lose the new audio quality gate. Version 1 backups remain importable on this build and preserve an existing audio gate when
+they omit that setting.
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,

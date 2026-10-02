@@ -28,15 +28,27 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     {
         await using (var db = CreateDb())
         {
-            db.Libraries.Add(new Library { Name = "Music", Path = "/data/music", AudioQualityReportingEnabled = true });
+            db.Libraries.Add(new Library { Name = "Music", Path = "/data/music", MediaType = MediaType.Music,
+                AudioQualityReportingEnabled = true, AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.005 });
             await db.SaveChangesAsync();
         }
         var snapshot = await ExportAsync();
         Assert.True(Assert.Single(snapshot.Libraries).AudioQualityReportingEnabled);
+        Assert.True(Assert.Single(snapshot.Libraries).AudioQualityGateEnabled);
+        Assert.Equal(0.005, Assert.Single(snapshot.Libraries).MaximumAudioQualityDistance);
         Assert.True((await ImportAsync(snapshot)).Applied);
         Assert.True((await ImportAsync(snapshot)).Applied);
+        var legacy = snapshot with
+        {
+            Version = 1,
+            Libraries = snapshot.Libraries.Select(library => library with
+                { AudioQualityGateEnabled = null, MaximumAudioQualityDistance = null }).ToArray()
+        };
+        Assert.True((await ImportAsync(legacy)).Applied);
         await using var restored = CreateDb();
         Assert.True((await restored.Libraries.SingleAsync()).AudioQualityReportingEnabled);
+        Assert.True((await restored.Libraries.SingleAsync()).AudioQualityGateEnabled);
+        Assert.Equal(0.005, (await restored.Libraries.SingleAsync()).MaximumAudioQualityDistance);
     }
 
     [Fact]

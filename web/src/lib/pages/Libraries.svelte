@@ -188,6 +188,20 @@
   // a named preset. Loaded libraries still derive Custom from any non-preset values.
   let vmafCustomSelected = $state(false)
 
+  // These are numeric shortcuts, not calibrated quality tiers. Equal spacing follows orders of
+  // magnitude so useful small distances do not bunch together at the end of a linear 0–1 range.
+  const audioDifferenceStops = [0, 0.0001, 0.001, 0.01, 0.1] as const
+  let audioDifferenceCustomSelected = $state(false)
+  const audioDifferenceStop = $derived.by(() => {
+    if (audioDifferenceCustomSelected) return audioDifferenceStops.length
+    const index = audioDifferenceStops.findIndex(value => value === form.maximumAudioQualityDistance)
+    return index < 0 ? audioDifferenceStops.length : index
+  })
+  function setAudioDifferenceStop(index: number) {
+    audioDifferenceCustomSelected = index === audioDifferenceStops.length
+    if (!audioDifferenceCustomSelected) form.maximumAudioQualityDistance = audioDifferenceStops[index]
+  }
+
   const vmafMode = $derived.by<VmafMode>(() => {
     if (form.vmafQualityGateEnabled !== true) return 'off'
     if (vmafCustomSelected) return 'custom'
@@ -257,6 +271,11 @@
       || Number(form.minimumImageSsim) < 0
       || Number(form.minimumImageSsim) > 1) {
       return i18n.m.settings.validation_ssim
+    }
+    if (showAudioOptions && form.audioQualityGateEnabled
+      && (form.maximumAudioQualityDistance == null || !Number.isFinite(Number(form.maximumAudioQualityDistance))
+        || Number(form.maximumAudioQualityDistance) < 0 || Number(form.maximumAudioQualityDistance) > 1)) {
+      return i18n.m.audio_quality.validation
     }
     return null
   })
@@ -732,7 +751,7 @@
   const workflowStages = $derived([
     { room: 'source' as const, title: roomNames.source, icon: 'folder' as const, summary: `${mediaTypeLabel(form.mediaType, i18n.m)} · ${i18n.m.libraries.queue_priority}: ${priorityLabel(form.priority)}` },
     { room: 'encode' as const, title: roomNames.encode, icon: 'sliders' as const, summary: showVideoOptions ? isCustom ? i18n.m.libraries.stop_custom : profileLabel(form.ruleProfile) : showImageOptions ? (form.targetImageFormat ?? 'jpeg').toUpperCase() : (form.audioTargetCodec ?? 'aac').toUpperCase() },
-    { room: 'verify' as const, title: roomNames.verify, icon: 'shield-check' as const, summary: showVideoOptions && !isNoEncodeProfile ? `${i18n.m.settings.vmaf_label}: ${vmafMode === 'off' ? i18n.m.common.off : form.minVmafHarmonicMean}` : showImageOptions ? `${i18n.m.settings.ssim_label}: ${form.imageQualityGateEnabled ? form.minimumImageSsim : i18n.m.common.off}` : i18n.m.settings.always_on },
+    { room: 'verify' as const, title: roomNames.verify, icon: 'shield-check' as const, summary: (showVideoOptions && !isNoEncodeProfile ? `${i18n.m.settings.vmaf_label}: ${vmafMode === 'off' ? i18n.m.common.off : form.minVmafHarmonicMean}` : showImageOptions ? `${i18n.m.settings.ssim_label}: ${form.imageQualityGateEnabled ? form.minimumImageSsim : i18n.m.common.off}` : i18n.m.settings.always_on) + (showAudioOptions && form.audioQualityGateEnabled ? ` · ${i18n.m.audio_quality.gate_label}: ${form.maximumAudioQualityDistance ?? '?'}` : '') },
     { room: 'automate' as const, title: roomNames.automate, icon: 'clock' as const, summary: scheduleLabel(form as Library) },
   ])
   function overrideCount(target: LibraryRoom): number {
@@ -921,6 +940,7 @@
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
     customSelected = false
     vmafCustomSelected = false
+    audioDifferenceCustomSelected = false
     minSizeMb = ''
     sameCodecGb = ''
     activeTab = 'rules'
@@ -1008,6 +1028,8 @@
       maxLoudnessDriftLufs:
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
       audioQualityReportingEnabled: library.audioQualityReportingEnabled ?? false,
+      audioQualityGateEnabled: library.audioQualityGateEnabled ?? false,
+      maximumAudioQualityDistance: library.maximumAudioQualityDistance ?? null,
       audioClippingGateEnabled:
         library.audioClippingGateEnabled ?? defaults.audioClippingGateEnabled,
       maxTruePeakDbtp:
@@ -1032,6 +1054,7 @@
     // (isCustom derives that); the explicit flag starts clear so it doesn't leak between edits.
     customSelected = false
     vmafCustomSelected = false
+    audioDifferenceCustomSelected = false
     activeTab = 'rules'
     editingId = library.id
     markPristine()
@@ -1091,6 +1114,8 @@
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
+      audioQualityGateEnabled: showAudioOptions && form.audioQualityGateEnabled,
+      maximumAudioQualityDistance: toNullableNumber(form.maximumAudioQualityDistance ?? null),
       durationTolerancePercent: Number(form.durationTolerancePercent),
       minimumSizeSavingPercent: form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
         ? toNullableNumber(form.minimumSizeSavingPercent) : null,
@@ -1758,9 +1783,53 @@
             <div class="mb-5 border-b border-line pb-4">
               <Toggle bind:checked={form.audioQualityReportingEnabled}
                 label={i18n.m.audio_quality.title} hint={i18n.m.audio_quality.hint} />
-              {#if form.audioQualityReportingEnabled}
+              {#if form.audioQualityReportingEnabled && !form.audioQualityGateEnabled}
                 <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
               {/if}
+              <div class="mt-4 border-t border-line-soft pt-4">
+                <Toggle bind:checked={form.audioQualityGateEnabled}
+                  label={i18n.m.audio_quality.gate_label} hint={i18n.m.audio_quality.gate_hint} />
+                {#if form.audioQualityGateEnabled}
+                  <div class="mt-4 min-w-0" data-audio-quality-limit>
+                    <label class="label" for="lib-audio-quality-slider">{i18n.m.audio_quality.maximum}
+                      <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.audio_quality.maximum })} text={i18n.m.audio_quality.limit_hint} />
+                    </label>
+                    <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
+                      <div class="mx-[8.333%]">
+                        <input id="lib-audio-quality-slider" class="block h-11 w-full cursor-pointer accent-cyan-600"
+                          type="range" min="0" max={audioDifferenceStops.length} step="1" value={audioDifferenceStop}
+                          aria-label={i18n.m.audio_quality.maximum}
+                          aria-valuetext={audioDifferenceStop === audioDifferenceStops.length ? i18n.m.libraries.stop_custom : String(audioDifferenceStops[audioDifferenceStop])}
+                          aria-describedby="lib-audio-quality-help"
+                          oninput={event => setAudioDifferenceStop(Number(event.currentTarget.value))} />
+                      </div>
+                      <div class="grid grid-cols-6">
+                        {#each [...audioDifferenceStops.map(String), i18n.m.libraries.stop_custom] as label, index}
+                          <button type="button" class="flex min-h-11 min-w-0 flex-col items-center justify-center gap-2 rounded-md px-0.5 text-[10px] tabular-nums transition-colors hover:bg-lit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:text-xs"
+                            class:text-accent={audioDifferenceStop === index} class:text-ink-3={audioDifferenceStop !== index}
+                            aria-pressed={audioDifferenceStop === index} onclick={() => setAudioDifferenceStop(index)}>
+                            <span class="h-1.5 w-1.5 rounded-full" class:bg-accent={audioDifferenceStop === index} class:bg-line={audioDifferenceStop !== index} aria-hidden="true"></span>
+                            <span class="max-w-full break-words font-medium">{label}</span>
+                          </button>
+                        {/each}
+                      </div>
+                    </div>
+                    {#if audioDifferenceStop === audioDifferenceStops.length}
+                      <div class="mt-3 max-w-sm">
+                        <label class="label" for="lib-audio-quality-limit">{i18n.m.libraries.stop_custom}</label>
+                        <input id="lib-audio-quality-limit" aria-label={i18n.m.audio_quality.maximum}
+                          class="input w-full" type="number" min="0" max="1" step="any"
+                          aria-invalid={verificationError === i18n.m.audio_quality.validation}
+                          aria-describedby="lib-audio-quality-help lib-verification-error"
+                          oninput={() => { audioDifferenceCustomSelected = true }}
+                          bind:value={form.maximumAudioQualityDistance} />
+                      </div>
+                    {/if}
+                    <p id="lib-audio-quality-help" class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.limit_hint}</p>
+                  </div>
+                  <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
+                {/if}
+              </div>
             </div>
           {/if}
           <Toggle

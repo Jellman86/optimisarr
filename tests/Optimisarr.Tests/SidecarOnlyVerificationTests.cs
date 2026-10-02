@@ -156,6 +156,34 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
 
 
     [Fact]
+    public async Task Audio_gate_checks_valid_worker_measurements_and_rejects_a_report_for_different_files()
+    {
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "gated-candidate.m4a");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot("unread-source.flac", 1000, 8, 1, 0, false, false,
+            Kind: MediaKind.Audio, VideoReencoded: false);
+        var evidence = Evidence() with { SourceProbe = audio, CandidateProbe = audio,
+            SourceVideo = null, CandidateVideo = null, SourceAudio = new(true, 0, null, 8), CandidateAudio = new(true, 0, null, 8) };
+        var policy = AudioQualityGateTests.Policy(0.01);
+        foreach (var distance in new[] { 0.005, 0.02 })
+        {
+            var assessment = new AudioQualityAssessmentResult(true, null, new(8, 2, 48000, "stereo"), new(8, 2, 48000, "stereo"),
+                evidence.SourceSha256, evidence.CandidateSha256, new('c', 64), new('d', 64), new('e', 64),
+                [new(new(0, 8), new(384000, [0, distance]))], 1);
+            var outcome = await Service().VerifyAsync(original, output, policy, default,
+                remoteEvidence: evidence with { AudioQuality = RemoteAudioQualityEvidence.From(assessment) });
+            Assert.Equal(distance <= 0.01, outcome.Report.Passed);
+            Assert.Equal("Worker", outcome.Report.AudioQuality!.MeasurementLocation);
+            var mismatched = await Service().VerifyAsync(original, output, policy, default,
+                remoteEvidence: evidence with { AudioQuality = RemoteAudioQualityEvidence.From(assessment with { ReferenceSha256 = new('f', 64) }) });
+            Assert.False(mismatched.Report.Passed);
+            Assert.Contains("delivered files", mismatched.Report.AudioQuality!.UnavailableReason);
+        }
+    }
+
+    [Fact]
     public async Task Opt_in_audio_reporting_never_reads_remote_media_when_the_worker_omits_observations()
     {
         const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
@@ -173,6 +201,13 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
         Assert.True(actual.Report.Passed);
         Assert.Equal("Worker", actual.Report.AudioQuality!.MeasurementLocation);
         Assert.Contains("no audio quality report", actual.Report.AudioQuality.UnavailableReason);
+        var gated = await Service().VerifyAsync(original, output,
+            VerificationPolicy.Default with { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 },
+            default, remoteEvidence: evidence);
+        Assert.False(gated.Report.Passed);
+        Assert.Contains(gated.Report.Checks, check => check.Name == AudioQualityGate.CheckName && check.Outcome == CheckOutcome.Failed);
+        Assert.Equal("Worker", gated.Report.AudioQuality!.MeasurementLocation);
+        Assert.False(gated.Report.AudioQuality.GatePassed);
     }
 
     [Fact]

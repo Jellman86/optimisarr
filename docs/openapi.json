@@ -1390,6 +1390,12 @@
               "boolean"
             ]
           },
+          "audioQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioQualityReportingEnabled": {
             "type": [
               "null",
@@ -1559,6 +1565,15 @@
             ]
           },
           "maxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumAudioQualityDistance": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -2700,6 +2715,12 @@
               "boolean"
             ]
           },
+          "audioQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioQualityReportingEnabled": {
             "type": [
               "null",
@@ -2884,6 +2905,15 @@
             ]
           },
           "maxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumAudioQualityDistance": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [

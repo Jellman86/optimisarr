@@ -26,7 +26,9 @@ public sealed record VerificationPolicyOverrides(
     bool? ImageMetadataGateEnabled = null,
     double? MinimumSizeSavingPercent = null,
     double? MaximumSizeSavingPercent = null,
-    bool? AudioQualityReportingEnabled = null);
+    bool? AudioQualityReportingEnabled = null,
+    bool? AudioQualityGateEnabled = null,
+    double? MaximumAudioQualityDistance = null);
 
 public static class VerificationPolicyResolver
 {
@@ -37,6 +39,8 @@ public static class VerificationPolicyResolver
         return baseline with
         {
             AudioQualityReportingEnabled = overrides.AudioQualityReportingEnabled ?? baseline.AudioQualityReportingEnabled,
+            AudioQualityGateEnabled = overrides.AudioQualityGateEnabled ?? baseline.AudioQualityGateEnabled,
+            MaximumAudioQualityDistance = overrides.MaximumAudioQualityDistance ?? baseline.MaximumAudioQualityDistance,
             DurationTolerancePercent = ClampMinimum(overrides.DurationTolerancePercent, 0)
                 ?? baseline.DurationTolerancePercent,
             RequireAudioRetained = overrides.RequireAudioRetained ?? baseline.RequireAudioRetained,

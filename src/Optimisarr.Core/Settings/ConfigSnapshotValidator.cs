@@ -2,6 +2,7 @@ using System.Globalization;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Core.Settings;
 
@@ -136,6 +137,12 @@ public static class ConfigSnapshotValidator
             {
                 errors.Add($"{where} minimum useful saving cannot exceed maximum allowed saving.");
             }
+            if (library.AudioQualityGateEnabled == true && snapshot.Version < 2)
+                errors.Add($"{where} enforced audio quality requires config format version 2.");
+            if ((library.MaximumAudioQualityDistance is not null && !AudioQualityGate.ValidLimit(library.MaximumAudioQualityDistance))
+                || (library.AudioQualityGateEnabled == true && (!AudioQualityGate.ValidLimit(library.MaximumAudioQualityDistance)
+                    || mediaType is not (MediaType.Music or MediaType.Other))))
+                errors.Add($"{where} audio quality gate requires a music or mixed library and a maximum difference between 0 and 1.");
             RequireRange(library.MaxLoudnessDriftLufs, 0, double.MaxValue, $"{where} loudness drift tolerance", errors);
             RequireFinite(library.MaxTruePeakDbtp, $"{where} true-peak ceiling", errors);
             RequireRange(library.MinimumImageSsim, 0, 1, $"{where} image SSIM floor", errors);

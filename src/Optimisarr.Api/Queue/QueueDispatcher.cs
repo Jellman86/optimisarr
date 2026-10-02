@@ -1474,7 +1474,9 @@ public sealed class QueueDispatcher(
                 library?.ImageMetadataGateEnabled,
                 library?.MinimumSizeSavingPercent,
                 library?.MaximumSizeSavingPercent,
-                library?.AudioQualityReportingEnabled));
+                library?.AudioQualityReportingEnabled,
+                library?.AudioQualityGateEnabled,
+                library?.MaximumAudioQualityDistance));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
@@ -1592,7 +1594,7 @@ public sealed class QueueDispatcher(
             search,
             strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2 : 1, Guid.NewGuid(),
                 work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled,
-                work.Spec.Kind == MediaKind.Audio && work.VerificationPolicy.AudioQualityReportingEnabled) : null,
+                work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind)) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
@@ -3326,6 +3328,7 @@ public sealed class QueueDispatcher(
                 MeasureVmaf = work.Spec.Kind == MediaKind.Video,
                 AudioLoudnessGateEnabled = false,
                 AudioClippingGateEnabled = false,
+                AudioQualityGateEnabled = false,
                 ImageQualityGateEnabled = false
             };
         }

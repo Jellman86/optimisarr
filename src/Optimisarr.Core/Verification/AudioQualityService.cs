@@ -21,7 +21,7 @@ public sealed record AudioQualityAssessmentResult(
         ? Windows.Max(w => w.Distances.WorstChannelDistance) : null;
 }
 
-/// <summary>Opt-in qualification measurements. Results never authorize replacement.</summary>
+/// <summary>Bounded measurements. Replacement decisions belong to the verification policy.</summary>
 public sealed class AudioQualityService
 {
     private readonly string _ffmpeg;

@@ -184,6 +184,8 @@ export type LibraryRules = {
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
   audioQualityReportingEnabled?: boolean
+  audioQualityGateEnabled?: boolean
+  maximumAudioQualityDistance?: number | null
   audioClippingGateEnabled: boolean
   maxTruePeakDbtp: number
   imageQualityGateEnabled: boolean
@@ -296,6 +298,8 @@ export function newLibraryDefaults(): SaveLibrary {
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
     audioQualityReportingEnabled: false,
+    audioQualityGateEnabled: false,
+    maximumAudioQualityDistance: null,
     audioClippingGateEnabled: false,
     maxTruePeakDbtp: 0,
     imageQualityGateEnabled: true,
@@ -459,6 +463,9 @@ export type VerificationReport = {
 
 export type AudioQualityReport = {
   measurementLocation: 'Server' | 'Worker'
+  gateEnabled?: boolean
+  maximumDistance?: number | null
+  gatePassed?: boolean | null
   unavailableReason: string | null
   evidence: {
     metric: string

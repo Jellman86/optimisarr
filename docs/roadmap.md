@@ -1075,10 +1075,14 @@ the replacement workflow is trustworthy.
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: planned, researched 2026-10-02.** Add
+14. **Perceptual quality for audio and still images: audio reporting and explicit gate implemented in development; broader work planned, 2026-10-02.** Add
     understandable, optional quality evidence alongside the existing structural, timing,
     loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
-    introduce enforced gates only after the metric, coverage and threshold policy are proved.
+    An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with
+    no preset cutoff. Every assessed channel/sample must pass; unavailable evidence blocks
+    replacement. Coverage and supported inputs are documented in
+    [configuration](setup/configuration.md#audio-quality-reports-and-gates-development).
+    Broader coverage and a calibrated default remain future work.
     The [research and implementation plan](development/perceptual-audio-image-quality-plan.md)
     records the sources, tradeoffs and platform qualification still needed.
     Track delivery in [issue #332](https://github.com/Jellman86/optimisarr/issues/332).

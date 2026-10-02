@@ -3,7 +3,7 @@ using Optimisarr.Core.Workers;
 
 namespace Optimisarr.Core.Verification;
 
-/// <summary>Observations remain separate from gates, and remote work never falls back to server reads.</summary>
+/// <summary>Measurements remain separate from gate decisions; remote work never falls back to server reads.</summary>
 public sealed class AudioQualityObservationService(
     Func<string, string, CancellationToken, Task<AudioQualityAssessmentResult>>? measure)
 {

@@ -93,6 +93,31 @@ public sealed class AdminTokenAuthEndpointTests
     }
 
     [Fact]
+    public async Task Audio_gate_policy_survives_legacy_updates_and_rejected_limits_cannot_weaken_it()
+    {
+        var root = Path.Combine(_api.LibraryDirectory, "audio-gate-" + Guid.NewGuid()); Directory.CreateDirectory(root);
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var created = await client.PostAsJsonAsync("/api/libraries", new { name = "Audio gate test", path = root,
+            mediaType = "Music", ruleProfile = "ConservativeHevc", enabled = false,
+            audioQualityGateEnabled = true, maximumAudioQualityDistance = 0.005 });
+        created.EnsureSuccessStatusCode();
+        var dto = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = dto.GetProperty("id").GetInt32();
+        var oldUpdate = new { name = "Renamed audio gate test", path = root, mediaType = "Music", ruleProfile = "ConservativeHevc", enabled = false };
+        (await client.PutAsJsonAsync($"/api/libraries/{id}", oldUpdate)).EnsureSuccessStatusCode();
+        var invalid = await client.PutAsJsonAsync($"/api/libraries/{id}", new { name = "Invalid", path = root,
+            mediaType = "Music", ruleProfile = "ConservativeHevc", enabled = false,
+            audioQualityGateEnabled = true, maximumAudioQualityDistance = 2 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var saved = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Libraries.FindAsync(id);
+        Assert.True(saved!.AudioQualityGateEnabled);
+        Assert.Equal(0.005, saved.MaximumAudioQualityDistance);
+        Assert.Equal(oldUpdate.name, saved.Name);
+    }
+
+    [Fact]
     public async Task Duplicate_scan_uses_inventory_scope_and_skips_unfinished_jobs_without_writing_media()
     {
         var root = Path.Combine(_api.LibraryDirectory, "duplicates-" + Guid.NewGuid()); Directory.CreateDirectory(root);

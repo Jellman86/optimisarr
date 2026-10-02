@@ -228,6 +228,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.AudioClippingGateEnabled = snapshot.AudioClippingGateEnabled
                 ?? legacyVerificationPolicy.AudioClippingGateEnabled;
             library.AudioQualityReportingEnabled = snapshot.AudioQualityReportingEnabled ?? false;
+            library.AudioQualityGateEnabled = snapshot.AudioQualityGateEnabled
+                ?? (library.MediaType is MediaType.Music or MediaType.Other && library.AudioQualityGateEnabled);
+            library.MaximumAudioQualityDistance = snapshot.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance;
             library.MaxTruePeakDbtp = snapshot.MaxTruePeakDbtp
                 ?? legacyVerificationPolicy.MaxTruePeakDbtp;
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
@@ -553,7 +556,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.WorkPlacement.ToString(),
         library.MinimumSizeSavingPercent,
         library.MaximumSizeSavingPercent,
-        library.AudioQualityReportingEnabled);
+        library.AudioQualityReportingEnabled,
+        library.AudioQualityGateEnabled,
+        library.MaximumAudioQualityDistance);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

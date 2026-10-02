@@ -326,7 +326,7 @@ view shares the same choice; breadcrumb navigation retains the draft. Queue job 
 Quarantine show the same report panel, with the largest distance per channel across samples,
 covered seconds and whether the measurement ran on the server or worker.
 
-This first integration is experimental and report-only. It does not supply a replacement gate,
+Report-only mode is experimental. When the explicit audio gate is off, reports do not enforce replacement,
 change retries or override decode, duration, channel, metadata or size checks. Originals still
 require all configured gates before replacement, and replacement retains the quarantine rollback
 path. Missing tools, incompatible input and incomplete worker evidence are displayed as
@@ -359,3 +359,17 @@ server fallback that would throw if invoked. All scratch was removed and both co
 remained healthy with zero restarts. The native Swift path also passed using the installed
 Mac media tools and the new metric. These were isolated test executables, not a production
 upgrade or a claim that the deployed 0.2.19 jobs already record these reports.
+
+
+### Explicit audio gate in development
+
+The report-only integration now also supports an opt-in, per-library Zimtohrli gate. It starts
+off and requires an explicit finite maximum distance between 0 and 1; there is no preset or
+calibrated threshold. Every validated channel/sample distance must meet the inclusive limit.
+Missing or unsupported measurements fail the gate, and strict worker jobs do not fall back to
+server assessment. Gate-enabled jobs request measurement independently of the report toggle.
+Historical report-only jobs keep their original verdict. Coverage remains limited to one
+mono/stereo track and up to 90 assessed seconds. See the
+[controls and limits](../setup/configuration.md#audio-quality-reports-and-gates-development).
+A universal threshold, full-duration assessment, surround support and audio quality search
+remain future work. This operator-selected gate does not claim an inaudibility guarantee.

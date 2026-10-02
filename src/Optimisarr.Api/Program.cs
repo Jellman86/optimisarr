@@ -448,7 +448,9 @@ internal sealed record SaveLibraryRequest(
     bool? ImageQualityGateEnabled = null,
     double? MinimumImageSsim = null,
     bool? ImageMetadataGateEnabled = null,
-    bool? AudioQualityReportingEnabled = null);
+    bool? AudioQualityReportingEnabled = null,
+    bool? AudioQualityGateEnabled = null,
+    double? MaximumAudioQualityDistance = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -525,6 +527,8 @@ internal sealed record LibraryDto(
     double MinimumImageSsim,
     bool ImageMetadataGateEnabled,
     bool AudioQualityReportingEnabled,
+    bool AudioQualityGateEnabled,
+    double? MaximumAudioQualityDistance,
     string VideoQualityStrategy,
     string WorkPlacement,
     bool AutoEnqueueEnabled,
@@ -600,6 +604,8 @@ internal sealed record LibraryDto(
         library.MinimumImageSsim,
         library.ImageMetadataGateEnabled,
         library.AudioQualityReportingEnabled,
+        library.AudioQualityGateEnabled,
+        library.MaximumAudioQualityDistance,
         library.VideoQualityStrategy.ToString(),
         library.WorkPlacement.ToString(),
         library.AutoEnqueueEnabled,

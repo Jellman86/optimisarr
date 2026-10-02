@@ -74,6 +74,31 @@ public sealed class LibraryRequestParserTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData(-0.01)]
+    [InlineData(1.01)]
+    [InlineData(double.NaN)]
+    public void Audio_gate_requires_an_explicit_finite_limit(double? limit)
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Music",
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = limit }, out _, out var error));
+        Assert.Contains("audio", error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Audio_gate_preserves_zero_and_supports_music_and_mixed_libraries()
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with {
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 }, out _, out _));
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = "Music",
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0 }, out var parsed, out _));
+        Assert.True(parsed.AudioQualityGateEnabled);
+        Assert.Equal(0, parsed.MaximumAudioQualityDistance);
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = "Other",
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 }, out _, out _));
+    }
+
+    [Theory]
     [InlineData("5")]
     [InlineData("999")]
     [InlineData("-1")]

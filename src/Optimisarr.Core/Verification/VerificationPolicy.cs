@@ -58,7 +58,9 @@ public sealed record VerificationPolicy(
     bool MeasureVmaf = false,
     double? MinimumSizeSavingPercent = null,
     double? MaximumSizeSavingPercent = null,
-    bool AudioQualityReportingEnabled = false)
+    bool AudioQualityReportingEnabled = false,
+    bool AudioQualityGateEnabled = false,
+    double? MaximumAudioQualityDistance = null)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -81,4 +83,7 @@ public sealed record VerificationPolicy(
 
     public bool RequiresVmaf(MediaKind kind, bool videoReencoded) =>
         (QualityGateEnabled || MeasureVmaf) && kind == MediaKind.Video && videoReencoded;
+
+    public bool RequiresAudioQuality(MediaKind kind) =>
+        (AudioQualityReportingEnabled || AudioQualityGateEnabled) && kind == MediaKind.Audio;
 }
