@@ -51,7 +51,9 @@ public static class FullVerification
                 SourceAudio = sourceAudio,
                 CandidateAudio = candidateAudio,
                 SourceLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(source, cancellationToken) : null,
-                CandidateLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(candidate, cancellationToken) : null
+                CandidateLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(candidate, cancellationToken) : null,
+                AudioQuality = contract.MeasureAudioQuality && contract.Kind == MediaKind.Audio && decode.Healthy
+                    ? await MeasureAudioQualityAsync(ffmpeg, ffprobe, source, candidate, cancellationToken) : null
             };
             var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio, contract.Kind);
             return completed with { Error = missing.Count == 0 ? null : "Full verification could not complete: " + string.Join(" ", missing) };
@@ -60,6 +62,24 @@ public static class FullVerification
         catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return evidence with { Error = "Full verification could not complete: " + ex.Message };
+        }
+    }
+
+    private static async Task<RemoteAudioQualityEvidence?> MeasureAudioQualityAsync(
+        string ffmpeg, string ffprobe, string source, string candidate, CancellationToken token)
+    {
+        var metric = Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY")
+            ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!,
+                OperatingSystem.IsWindows() ? "optimisarr-audio-quality.exe" : "optimisarr-audio-quality");
+        var service = AudioQualityTools.Create(ffmpeg, ffprobe, metric,
+            Path.Combine(Path.GetDirectoryName(candidate)!, "audio-quality"));
+        if (service is null) return null;
+        try { return RemoteAudioQualityEvidence.From(await service.MeasureAsync(source, candidate, token)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            return RemoteAudioQualityEvidence.From(new(false, "Audio quality could not be measured: " + ex.Message,
+                null, null, null, null, null, null, null, [], 0));
         }
     }
 

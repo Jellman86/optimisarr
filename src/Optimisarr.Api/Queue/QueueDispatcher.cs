@@ -1473,7 +1473,8 @@ public sealed class QueueDispatcher(
                 library?.MinimumImageSsim,
                 library?.ImageMetadataGateEnabled,
                 library?.MinimumSizeSavingPercent,
-                library?.MaximumSizeSavingPercent));
+                library?.MaximumSizeSavingPercent,
+                library?.AudioQualityReportingEnabled));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
@@ -1590,7 +1591,8 @@ public sealed class QueueDispatcher(
             work.Spec.AudioEncoder,
             search,
             strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2 : 1, Guid.NewGuid(),
-                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
+                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled,
+                work.Spec.Kind == MediaKind.Audio && work.VerificationPolicy.AudioQualityReportingEnabled) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,

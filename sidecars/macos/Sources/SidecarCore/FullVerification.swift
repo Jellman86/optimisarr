@@ -4,6 +4,7 @@ public struct FullVerificationContract: Codable, Sendable, Equatable {
     public let version: Int
     public let id: String
     public let measureAudio: Bool
+    public var measureAudioQuality: Bool? = nil
 }
 
 public struct VerificationDecode: Codable, Sendable, Equatable {
@@ -39,6 +40,7 @@ public struct FullVerificationEvidence: Codable, Sendable {
     public var candidateAudio: VerificationTimestamps?
     public var sourceLoudness: VerificationLoudness?
     public var candidateLoudness: VerificationLoudness?
+    public var audioQuality: RemoteAudioQualityEvidence?
     public var error: String?
 }
 
@@ -113,6 +115,15 @@ public struct FullVerification: Sendable {
             if contract.measureAudio {
                 evidence.sourceLoudness = try await loudness(ffmpeg, file: source)
                 evidence.candidateLoudness = try await loudness(ffmpeg, file: candidate)
+            }
+            if contract.version == 2, contract.measureAudioQuality == true, evidence.decode?.healthy == true,
+               let sourceProbe = evidence.sourceProbe, let candidateProbe = evidence.candidateProbe {
+                let override = ProcessInfo.processInfo.environment["OPTIMISARR_AUDIO_QUALITY"]
+                let metric = override.map { URL(fileURLWithPath: $0) }
+                    ?? ffmpeg.deletingLastPathComponent().appendingPathComponent("optimisarr-audio-quality")
+                evidence.audioQuality = try await AudioQualityAssessment(runner: runner).measure(
+                    ffmpeg: ffmpeg, ffprobe: ffprobe, metric: metric, source: source, candidate: candidate,
+                    sourceProbe: sourceProbe, candidateProbe: candidateProbe, scratch: scratch)
             }
             let scans = contract.version == 2
                 ? [("source-audio", evidence.sourceAudio), ("candidate-audio", evidence.candidateAudio)]

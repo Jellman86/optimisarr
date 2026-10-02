@@ -57,7 +57,8 @@ public sealed record VerificationPolicy(
     int VmafFrameSubsample = 1,
     bool MeasureVmaf = false,
     double? MinimumSizeSavingPercent = null,
-    double? MaximumSizeSavingPercent = null)
+    double? MaximumSizeSavingPercent = null,
+    bool AudioQualityReportingEnabled = false)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,

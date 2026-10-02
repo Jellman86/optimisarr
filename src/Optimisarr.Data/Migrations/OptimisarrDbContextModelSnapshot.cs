@@ -546,6 +546,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("AudioLoudnessGateEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("AudioQualityReportingEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("AudioTargetCodec")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");

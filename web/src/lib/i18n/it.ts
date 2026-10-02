@@ -1,6 +1,16 @@
 import type { Messages } from './en'
 
 export const it: Messages = {
+  audio_quality: {
+    title: "Rapporto sulla qualità audio",
+    hint: "Confronta ogni canale con Zimtohrli. Supporta audio mono e stereo con una traccia. Misura fino a 90 secondi usando CPU e disco del dispositivo che verifica. I risultati sono nei dettagli del processo. I processi remoti restano sul worker. È sperimentale e non approva o rifiuta il risultato.",
+    note: "Solo rapporto. I controlli di sicurezza esistenti continuano a decidere se sostituire l’originale.",
+    badge: "Solo rapporto",
+    unavailable: "Non disponibile",
+    coverage: "{seconds}s analizzati · {windows} campioni",
+    channel: "Canale {channel}",
+    distance_note: "Ogni canale mostra la distanza maggiore tra i campioni. Distanze minori indicano audio più simile. Non sono un voto di ascolto né una soglia di approvazione.",
+  },
   common: {
     loading: 'Caricamento di Optimisarr...',
     loading_short: 'Caricamento…',

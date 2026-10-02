@@ -1007,6 +1007,7 @@
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
+      audioQualityReportingEnabled: library.audioQualityReportingEnabled ?? false,
       audioClippingGateEnabled:
         library.audioClippingGateEnabled ?? defaults.audioClippingGateEnabled,
       maxTruePeakDbtp:
@@ -1753,6 +1754,15 @@
             {i18n.m.libraries.audio}
           </legend>
 
+          {#if showAudioOptions}
+            <div class="mb-5 border-b border-line pb-4">
+              <Toggle bind:checked={form.audioQualityReportingEnabled}
+                label={i18n.m.audio_quality.title} hint={i18n.m.audio_quality.hint} />
+              {#if form.audioQualityReportingEnabled}
+                <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
+              {/if}
+            </div>
+          {/if}
           <Toggle
             bind:checked={form.audioLoudnessGateEnabled}
             label={i18n.m.settings.loudness_label}

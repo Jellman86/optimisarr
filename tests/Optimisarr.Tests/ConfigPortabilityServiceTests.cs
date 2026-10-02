@@ -24,6 +24,22 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Audio_quality_reporting_survives_export_restore_and_repeated_import()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Music", Path = "/data/music", AudioQualityReportingEnabled = true });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(Assert.Single(snapshot.Libraries).AudioQualityReportingEnabled);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using var restored = CreateDb();
+        Assert.True((await restored.Libraries.SingleAsync()).AudioQualityReportingEnabled);
+    }
+
+    [Fact]
     public async Task Export_omits_secrets_and_includes_settings_and_definitions()
     {
         await using (var db = CreateDb())

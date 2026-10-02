@@ -93,7 +93,8 @@ public sealed class VerificationService(
     ImageQualityService imageQuality,
     ImageMetadataService imageMetadata,
     TranscodeOptions transcodeOptions,
-    VmafShadowService? shadow = null)
+    VmafShadowService? shadow = null,
+    AudioQualityObservationService? audioQuality = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -465,6 +466,10 @@ public sealed class VerificationService(
             if (shadow is not null)
                 report = report with { ShadowVmaf = await shadow.ObserveAsync(
                     reference.Path, outputPath, shadowContext, shadowSkip, cancellationToken) };
+
+            report = report with { AudioQuality = await (audioQuality ?? new AudioQualityObservationService(null)).ObserveAsync(
+                policy.AudioQualityReportingEnabled, reference.Kind, decodeResult.Healthy, clip is not null,
+                reference.Path, outputPath, remoteEvidence, cancellationToken) };
 
             return new VerificationOutcome(
                 report,

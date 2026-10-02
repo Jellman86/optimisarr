@@ -27,11 +27,11 @@ with (contents / 'Info.plist').open('rb') as stream:
 if info.get('CFBundleShortVersionString') != sys.argv[2]:
     raise SystemExit('Packaged application version does not match the release.')
 resources = contents / 'Resources'
-for name in ['ffmpeg', 'ffprobe', 'AppIcon.icns']:
+for name in ['ffmpeg', 'ffprobe', 'optimisarr-audio-quality', 'AppIcon.icns']:
     path = resources / name
     if not path.is_file() or path.stat().st_size == 0:
         raise SystemExit(f'Missing packaged resource: {name}')
-    if name in ('ffmpeg', 'ffprobe') and not os.access(path, os.X_OK):
+    if name in ('ffmpeg', 'ffprobe', 'optimisarr-audio-quality') and not os.access(path, os.X_OK):
         raise SystemExit(f'Packaged media tool is not executable: {name}')
 for name in ['BrandMark.png', 'BrandMarkLight.png', 'BrandMotion.png', 'BrandMotionLight.png']:
     matches = list(resources.glob(f'OptimisarrSidecar_OptimisarrSidecar.bundle/**/{name}'))

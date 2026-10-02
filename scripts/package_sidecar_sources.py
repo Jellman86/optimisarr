@@ -22,6 +22,10 @@ MAC_REPOS = {
     'opus': 'https://github.com/xiph/opus.git',
     'ffmpeg': 'https://github.com/FFmpeg/FFmpeg.git',
 }
+AUDIO_SOURCES = {
+    'zimtohrli': ('https://github.com/google/zimtohrli.git', 'f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3'),
+    'highway': ('https://github.com/google/highway.git', '7fff3c667fb62475cdfb2b6c441452c8223c1a67'),
+}
 MAC_ARCHIVES = {
     'lame': ('https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz',
              'ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e'),
@@ -233,6 +237,11 @@ def main():
                 copy_licenses(archive, args.output / 'licenses')
                 files.append(archive)
                 records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive)})
+        for name, (url, revision) in AUDIO_SOURCES.items():
+            archive, resolved = git_source(name, url, revision, stage)
+            copy_licenses(archive, args.output / 'licenses')
+            files.append(archive)
+            records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive)})
         # The exact application tree includes every packaging/build script used for this release.
         app_revision = command('git', 'rev-parse', 'HEAD', cwd=ROOT).decode().strip()
         app_source = stage / f'optimisarr-{app_revision}.tar'
@@ -243,7 +252,7 @@ def main():
         manifest.write_text(json.dumps({'platform': args.platform, 'version': version, 'sources': records}, indent=2) + '\n')
         notices = args.output / 'THIRD-PARTY-NOTICES.txt'
         notices.write_text(
-        'Optimisarr bundles FFmpeg and codec libraries. Their exact source archives, build scripts,\n'
+        'Optimisarr bundles FFmpeg, codec libraries, Zimtohrli and Highway. Their exact source archives, build scripts,\n'
         'revision manifest and SHA-256 checksums are supplied with this release. Source archives retain\n'
         'their upstream licences. Additional licence copies are provided in the licenses directory.\n'
         'See source-manifest.json for the exact source revisions and download provenance.\n')

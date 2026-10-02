@@ -33,6 +33,12 @@ for resource in "$(dirname "${BINARY}")"/*.bundle; do
   [[ -d "${resource}" ]] && cp -R "${resource}" "${BUNDLE}/Contents/Resources/"
 done
 
+# Keep the native metric next to FFmpeg so the worker owns all opt-in audio reads.
+../../scripts/build_audio_quality.sh "$(pwd)/build/audio-quality" "$(pwd)/build/audio-quality-install"
+cp build/audio-quality-install/bin/optimisarr-audio-quality "${BUNDLE}/Contents/Resources/"
+mkdir -p "${BUNDLE}/Contents/Resources/licenses/audio-quality"
+cp build/audio-quality-install/share/optimisarr-audio-quality/* "${BUNDLE}/Contents/Resources/licenses/audio-quality/"
+
 # Build the Finder icon from the shared Precession artwork.
 if [[ -f Resources/AppIcon.png ]]; then
   ./scripts/make-icon.sh >/dev/null
@@ -116,7 +122,7 @@ if [[ -n "${SIGNING_IDENTITY}" ]]; then
   # Inside out: the bundled ffmpeg and ffprobe are separate Mach-O executables and must each carry
   # their own signature before the bundle that contains them is sealed. The hardened runtime and a
   # secure timestamp are both required for notarisation.
-  for tool in ffmpeg ffprobe; do
+  for tool in ffmpeg ffprobe optimisarr-audio-quality; do
     if [[ -f "${BUNDLE}/Contents/Resources/${tool}" ]]; then
       codesign --force --options runtime --timestamp \
         --sign "${SIGNING_IDENTITY}" "${BUNDLE}/Contents/Resources/${tool}"

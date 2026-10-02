@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added
+
+- Experimental audio quality reports can be enabled per library under Verify. Reports compare
+  each mono/stereo channel with pinned Zimtohrli, show coverage and measurement location in
+  Queue and Quarantine, and record file/tool identity. Reports do not change replacement gates.
+  Strict worker jobs measure on Mac, Windows and Linux workers without server fallback.
+- The container and sidecar packages include the native audio metric, licences and corresponding
+  source records. Existing libraries keep reports off.
+
+### Fixed
+
+- Queue detail styles no longer remove padding from nested measurement cards.
+- Windows installer tests wait for the installer process with a deadline, allowing upgraded
+  workers to stay running. A regression test covers live descendants, exit codes and timeouts.
+
+### Development tools
+
+- Added an opt-in audio quality assessment tool using pinned Zimtohrli and per-channel
+  distances. It reports media/tool hashes, measured windows and errors for mono/stereo
+  audio, with bounded preparation, cancellation and cleanup. It does not enable a library
+  gate or change any replacement decision.
+
+### Documentation
+
+- Added a roadmap item for opt-in duplicate detection and safe dedupe across image, audio,
+  video and mixed libraries, with researched matching tools, review, rollback and resource limits.
+- Expanded the planned audio/image quality checks with pipeline placement, settings,
+  cost estimates and a licensed/private test-fixture starting set. These features are planned.
+
 ## 0.2.19 — 2026-10-01
 
 ### Fixed

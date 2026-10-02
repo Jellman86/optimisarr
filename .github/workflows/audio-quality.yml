@@ -1,0 +1,52 @@
+name: Audio quality qualification
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'tools/audio-quality-native/**'
+      - 'scripts/build_audio_quality.sh'
+      - 'tools/Optimisarr.AudioStudy/**'
+      - 'src/Optimisarr.Core/Verification/AudioQuality*'
+      - 'tests/Optimisarr.Tests/AudioQuality*'
+      - 'tests/Optimisarr.Tests/AudioStudy*'
+      - '.github/workflows/audio-quality.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'tools/audio-quality-native/**'
+      - 'scripts/build_audio_quality.sh'
+      - '.github/workflows/audio-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native metric (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # An older glibc baseline also runs on the supported Debian server hosts.
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: cmake -S tools/audio-quality-native -B native-build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build native-build --config Release --parallel 2
+      - run: ctest --test-dir native-build -C Release --output-on-failure
+      - run: cmake --install native-build --config Release --prefix native-install
+      - uses: actions/upload-artifact@v6
+        with:
+          name: audio-quality-${{ runner.os }}
+          path: native-install/
+          retention-days: 7

@@ -339,6 +339,259 @@
         ],
         "type": "object"
       },
+      "AudioQualityAssessmentResult": {
+        "properties": {
+          "candidate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "candidateSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "coveredSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "durationDriftSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "elapsedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ffmpegSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ffprobeSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "metric": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "metricSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "preparation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "referenceSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sampled": {
+            "type": "boolean"
+          },
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/AudioQualityWindowMeasurement"
+            },
+            "type": "array"
+          },
+          "worstChannelDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "error",
+          "reference",
+          "candidate",
+          "referenceSha256",
+          "candidateSha256",
+          "metricSha256",
+          "ffmpegSha256",
+          "ffprobeSha256",
+          "windows",
+          "elapsedSeconds"
+        ],
+        "type": "object"
+      },
+      "AudioQualityDistances": {
+        "properties": {
+          "channelDistances": {
+            "items": {
+              "format": "double",
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "type": "array"
+          },
+          "frames": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "worstChannelDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "frames",
+          "channelDistances"
+        ],
+        "type": "object"
+      },
+      "AudioQualityInput": {
+        "properties": {
+          "channelLayout": {
+            "type": "string"
+          },
+          "channels": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "durationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "sampleRate": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "durationSeconds",
+          "channels",
+          "sampleRate",
+          "channelLayout"
+        ],
+        "type": "object"
+      },
+      "AudioQualityWindow": {
+        "properties": {
+          "durationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "startSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "startSeconds",
+          "durationSeconds"
+        ],
+        "type": "object"
+      },
+      "AudioQualityWindowMeasurement": {
+        "properties": {
+          "distances": {
+            "$ref": "#/components/schemas/AudioQualityDistances"
+          },
+          "window": {
+            "$ref": "#/components/schemas/AudioQualityWindow"
+          }
+        },
+        "required": [
+          "window",
+          "distances"
+        ],
+        "type": "object"
+      },
       "BulkReplacementFailure": {
         "properties": {
           "jobId": {
@@ -883,6 +1136,12 @@
             ]
           },
           "audioLoudnessGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "audioQualityReportingEnabled": {
             "type": [
               "null",
               "boolean"
@@ -1839,6 +2098,29 @@
         ],
         "type": "object"
       },
+      "RemoteAudioQualityEvidence": {
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/AudioQualityAssessmentResult"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "preparation": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "revision",
+          "preparation",
+          "assessment"
+        ],
+        "type": "object"
+      },
       "RemoteVerificationContract": {
         "properties": {
           "id": {
@@ -1849,6 +2131,10 @@
             "$ref": "#/components/schemas/MediaKind"
           },
           "measureAudio": {
+            "type": "boolean"
+          },
+          "measureAudioQuality": {
+            "default": false,
             "type": "boolean"
           },
           "version": {
@@ -1869,6 +2155,16 @@
       },
       "RemoteVerificationEvidence": {
         "properties": {
+          "audioQuality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteAudioQualityEvidence"
+              }
+            ]
+          },
           "candidateAudio": {
             "oneOf": [
               {
@@ -2150,6 +2446,12 @@
             ]
           },
           "audioLoudnessGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "audioQualityReportingEnabled": {
             "type": [
               "null",
               "boolean"

@@ -8,6 +8,7 @@
   import Icon from '../components/Icon.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
+  import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import MediaCompare from '../components/MediaCompare.svelte'
 
   let replacements = $state<Replacement[]>([])
@@ -173,6 +174,11 @@
     return Math.round((1 - r.newSizeBytes / r.originalSizeBytes) * 100)
   }
 
+  function audioReport(detail: ReplacementDetail | null | undefined) {
+    try { return detail?.verificationReportJson ? (JSON.parse(detail.verificationReportJson) as VerificationReport).audioQuality ?? null : null }
+    catch { return null }
+  }
+
   function parseChecks(detail: ReplacementDetail | undefined): VerificationCheck[] | null {
     if (!detail?.verificationReportJson) return null
     try {
@@ -240,6 +246,7 @@
         <div class="mb-4 flex flex-wrap items-center gap-3"><h2 id="quarantine-verification" class="text-base font-semibold">{i18n.m.quarantine.verification}</h2>
           {#if r.verificationPassed !== null}<span class="badge {r.verificationPassed ? 'tone-ok' : 'tone-bad'}">{r.verificationPassed ? i18n.m.quarantine.passed : i18n.m.quarantine.failed}</span>{/if}
         </div>
+        <AudioQualityReport report={audioReport(detail)} />
         {#if checks}<VerificationChecks {checks} />{:else}<p class="text-sm text-ink-3">{i18n.m.quarantine.no_report}</p>{/if}
       </section>
       {#if r.status === 'Replaced'}

@@ -156,6 +156,26 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
 
 
     [Fact]
+    public async Task Opt_in_audio_reporting_never_reads_remote_media_when_the_worker_omits_observations()
+    {
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.m4a");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot("unread-source.flac", 1000, 8, 1, 0, false, false,
+            Kind: MediaKind.Audio, VideoReencoded: false);
+        var evidence = Evidence() with { SourceProbe = audio, CandidateProbe = audio,
+            SourceVideo = null, CandidateVideo = null, SourceAudio = new(true, 0, null, 8), CandidateAudio = new(true, 0, null, 8) };
+        var baseline = await Service().VerifyAsync(original, output, VerificationPolicy.Default, default, remoteEvidence: evidence);
+        var actual = await Service().VerifyAsync(original, output,
+            VerificationPolicy.Default with { AudioQualityReportingEnabled = true }, default, remoteEvidence: evidence);
+        Assert.Equal(baseline.Report.Checks, actual.Report.Checks);
+        Assert.True(actual.Report.Passed);
+        Assert.Equal("Worker", actual.Report.AudioQuality!.MeasurementLocation);
+        Assert.Contains("no audio quality report", actual.Report.AudioQuality.UnavailableReason);
+    }
+
+    [Fact]
     public async Task Audio_worker_evidence_is_evaluated_without_server_media_tools_or_VMAF()
     {
         const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";

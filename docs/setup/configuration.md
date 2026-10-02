@@ -240,6 +240,26 @@ the same applies when size and VMAF both fail because higher quality would worse
 quality would worsen VMAF. Other technical or transient failures retain the three-terminal-failure
 threshold. Cancelled work and jobs interrupted by a worker restart do not count toward exclusion.
 
+## Audio quality reports (development)
+
+In a music library, open **Configure → Verify** and enable **Audio quality report** to collect
+experimental Zimtohrli observations. It starts off. Single-track mono/stereo files are supported;
+video soundtracks, multiple tracks and surround are not assessed yet. Up to 90 seconds are
+compared per channel. This adds CPU work, temporary PCM files and reads of both complete files
+for their hashes on the verifying host.
+
+Queue job details and Quarantine display the largest sample distance for each channel,
+coverage and measurement location. Smaller distances indicate closer audio, without a
+calibrated listening score or pass threshold. An **Unavailable** report explains missing tools,
+unsupported files or incomplete evidence. Strict worker jobs stay on the worker with no server
+fallback. In server verification mode, the server measures.
+
+Reports do not change replacement decisions. Existing decode, duration, stream, metadata and
+size checks still apply, and verified replacement quarantines the original before moving the
+candidate into place. See the [development evidence and limits](../development/perceptual-audio-image-quality-plan.md#integrated-report-controls-in-development).
+
+![Audio quality report showing separate channel distances, assessed duration, worker location and the report-only safety note](../images/optimisarr-audio-report-dark.png)
+
 ## Rule profiles (presets)
 
 Each library picks an **optimisation preset** that sets its codec, container, and a

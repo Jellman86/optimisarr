@@ -1,6 +1,16 @@
 import type { Messages } from './en'
 
 export const zh: Messages = {
+  audio_quality: {
+    title: "音频质量报告",
+    hint: "使用 Zimtohrli 比较每个声道。支持单音轨的单声道和立体声音频。最多测量90秒，占用验证设备的CPU和磁盘。结果显示在任务详情中。工作节点任务在节点上测量。此功能为实验性功能，不判定输出是否合格。",
+    note: "仅报告。现有安全检查仍决定能否替换原文件。",
+    badge: "仅报告",
+    unavailable: "不可用",
+    coverage: "已测量{seconds}秒 · {windows}个片段",
+    channel: "声道{channel}",
+    distance_note: "每个声道显示片段中的最大距离。距离越小表示音频越接近。这不是听感评分，也不是合格阈值。",
+  },
   common: {
     loading: "正在加载 Optimisarr...",
     loading_short: "加载中…",
