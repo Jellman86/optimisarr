@@ -1,6 +1,32 @@
 import type { Messages } from './en'
 
 export const zh: Messages = {
+  duplicates: {
+    title: "完全相同的副本",
+    subtitle: "在一个媒体库中查找字节完全相同的文件。",
+    choose: "选择媒体库",
+    scan: "查找相同副本",
+    cancel: "取消扫描",
+    cost: "在此服务器上以最高约8 MiB/秒读取已入库的同尺寸文件。可能需要数小时。有未完成任务的文件会跳过。",
+    safe: "不会删除或修改任何文件。",
+    snapshot: "报告可能会过时。最近十份报告保留到服务器重启。文件变更后请重新扫描。",
+    progress: "已检查{total}个候选中的{checked}个 · 跳过{skipped}个 · 已读取{bytes}",
+    empty: "没有相同副本。不同格式、标签或编码不会匹配。",
+    truncated: "最多显示200组，每组100个副本。缩略组不显示合计。",
+    copies: "{count}个相同副本",
+    fullBytes: "完整文件匹配",
+    linked: "{count}个名称共享这些字节",
+    unknown: "链接数量未知",
+    independent: "报告为单一文件名",
+    spaceUnknown: "额外磁盘空间未知",
+    extra: "额外副本合计{bytes}。实际节省空间取决于文件系统。",
+    NotStarted: "准备扫描",
+    Queued: "等待扫描",
+    Running: "正在读取文件",
+    Completed: "扫描完成",
+    Cancelled: "已取消",
+    Failed: "扫描失败",
+  },
   audio_quality: {
     title: "音频质量报告",
     hint: "使用 Zimtohrli 比较每个声道。支持单音轨的单声道和立体声音频。最多测量90秒，占用验证设备的CPU和磁盘。结果显示在任务详情中。工作节点任务在节点上测量。此功能为实验性功能，不判定输出是否合格。",

@@ -1,6 +1,32 @@
 import type { Messages } from './en'
 
 export const es: Messages = {
+  duplicates: {
+    title: "Copias exactas",
+    subtitle: "Busca archivos con bytes idénticos en una biblioteca.",
+    choose: "Elige una biblioteca",
+    scan: "Buscar copias exactas",
+    cancel: "Cancelar análisis",
+    cost: "Lee archivos del inventario del mismo tamaño en este servidor hasta unos 8 MiB/s. Puede tardar horas. Omite archivos con trabajos pendientes.",
+    safe: "No se elimina ni cambia nada.",
+    snapshot: "Los informes pueden quedar obsoletos. Los últimos diez se conservan hasta reiniciar el servidor. Analiza de nuevo tras cambios.",
+    progress: "{checked} de {total} candidatos comprobados · {skipped} omitidos · {bytes} leídos",
+    empty: "No hay copias exactas. Distintos formatos, etiquetas o codificaciones no coinciden.",
+    truncated: "Muestra hasta 200 grupos y 100 copias por grupo. Oculta totales de grupos recortados.",
+    copies: "{count} copias idénticas",
+    fullBytes: "Coincidencia de todo el archivo",
+    linked: "{count} nombres comparten estos bytes",
+    unknown: "Número de enlaces desconocido",
+    independent: "Se indica un nombre de archivo",
+    spaceUnknown: "El espacio adicional es desconocido",
+    extra: "{bytes} en copias adicionales. El ahorro depende del sistema de archivos.",
+    NotStarted: "Listo para analizar",
+    Queued: "Esperando análisis",
+    Running: "Leyendo archivos",
+    Completed: "Análisis terminado",
+    Cancelled: "Cancelado",
+    Failed: "Error de análisis",
+  },
   audio_quality: {
     title: "Informe de calidad de audio",
     hint: "Compara cada canal con Zimtohrli. Admite audio mono y estéreo con una pista. Mide hasta 90 segundos y utiliza CPU y disco del equipo que verifica. Los resultados aparecen en los detalles del trabajo. Los trabajos remotos se analizan en el trabajador. Es experimental y no aprueba ni rechaza la salida.",

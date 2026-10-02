@@ -3,6 +3,32 @@ import type { Messages } from './en'
 // German. Typed as `Messages`, so it must define exactly the English key set —
 // omitting or misnaming a key fails `npm run check`.
 export const de: Messages = {
+  duplicates: {
+    title: "Exakte Kopien",
+    subtitle: "Dateien mit identischen Bytes in einer Bibliothek finden.",
+    choose: "Bibliothek wählen",
+    scan: "Exakte Kopien finden",
+    cancel: "Scan abbrechen",
+    cost: "Liest gleich große inventarisierte Dateien auf diesem Server mit bis zu etwa 8 MiB/s. Große Bibliotheken können Stunden dauern. Dateien mit offenen Aufträgen werden übersprungen.",
+    safe: "Nichts wird entfernt oder geändert.",
+    snapshot: "Berichte können veralten. Die letzten zehn bleiben bis zum Serverneustart erhalten. Nach Änderungen erneut scannen.",
+    progress: "{checked} von {total} Kandidaten geprüft · {skipped} übersprungen · {bytes} gelesen",
+    empty: "Keine exakten Kopien gefunden. Andere Formate, Tags oder Kodierungen stimmen nicht überein.",
+    truncated: "Zeigt höchstens 200 Gruppen und 100 Kopien pro Gruppe. Summen gekürzter Gruppen werden ausgeblendet.",
+    copies: "{count} identische Kopien",
+    fullBytes: "Vollständige Datei identisch",
+    linked: "{count} Namen teilen diese Bytes",
+    unknown: "Anzahl der Verknüpfungen unbekannt",
+    independent: "Ein Dateiname gemeldet",
+    spaceUnknown: "Zusätzlicher Speicherplatz unbekannt",
+    extra: "{bytes} in zusätzlichen Dateikopien. Die Ersparnis hängt vom Dateisystem ab.",
+    NotStarted: "Bereit zum Scannen",
+    Queued: "Scan wartet",
+    Running: "Dateien werden gelesen",
+    Completed: "Scan abgeschlossen",
+    Cancelled: "Abgebrochen",
+    Failed: "Scan fehlgeschlagen",
+  },
   audio_quality: {
     title: "Audioqualitätsbericht",
     hint: "Vergleicht jeden Kanal mit Zimtohrli. Für Mono- und Stereo-Audio mit einer Spur. Misst bis zu 90 Sekunden und benötigt CPU und Datenträger auf dem prüfenden Gerät. Ergebnisse stehen in den Auftragsdetails. Worker-Aufträge bleiben auf dem Worker. Experimentell, ohne Bestehen oder Durchfallen.",

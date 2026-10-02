@@ -1,4 +1,16 @@
 // Fabricated documentation fixtures. No production endpoints, credentials, media or artwork.
+export const duplicateReport = {
+  libraryId: 1, status: 'Completed', startedAt: '2026-09-17T11:30:00Z', finishedAt: '2026-09-17T11:47:00Z',
+  progress: { checked: 12, skipped: 1, total: 13, bytesRead: 8_400_000_000 }, error: null,
+  result: { checked: 12, skipped: 1, total: 13, bytesRead: 8_400_000_000, truncated: false, groups: [
+    { sha256: 'a'.repeat(64), sizeBytes: 2_100_000_000, extraCopyBytes: 2_100_000_000, copies: [
+      { id: 1, relativePath: 'Lumen Coast/Lumen Coast.mkv', hardLinkCount: 1 },
+      { id: 3, relativePath: 'Archive/Lumen Coast copy.mkv', hardLinkCount: 1 }] },
+    { sha256: 'b'.repeat(64), sizeBytes: 780_000_000, extraCopyBytes: null, copies: [
+      { id: 2, relativePath: 'Night Survey/Night Survey.mkv', hardLinkCount: 2 },
+      { id: 4, relativePath: 'Shared/Night Survey.mkv', hardLinkCount: 2 }] }
+  ] }
+}
 import { readFileSync } from 'node:fs'
 export const applicationVersion = readFileSync(new URL('../../Directory.Build.props', import.meta.url), 'utf8').match(/<Version>([^<]+)<\/Version>/)?.[1]
 if (!applicationVersion) throw new Error('Application version is missing from Directory.Build.props')

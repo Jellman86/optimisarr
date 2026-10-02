@@ -91,6 +91,9 @@ builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
+builder.Services.AddSingleton<ExactDuplicateScanner>();
+builder.Services.AddSingleton<ExactDuplicateCoordinator>();
+builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordinator>());
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
@@ -249,6 +252,7 @@ app.MapLibraryEndpoints();
 app.MapCalibrationEndpoints();
 
 app.MapMediaAndQueueEndpoints();
+app.MapExactDuplicateEndpoints();
 
 app.MapStatsEndpoints(configDirectory);
 

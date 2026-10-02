@@ -74,6 +74,7 @@ try {
   if(path==='/api/jobs/failures')return json(route,[{category:'Verification',description:'The output did not meet a required verification gate.',count:1,samples:[{jobId:6,mediaFileId:6,relativePath:f.files[5].relativePath,jobType:'Normal',errorMessage:f.jobs[5].errorMessage,verificationChecks:[]}]}])
   if(path==='/api/queue/status')return json(route,f.queue)
   if(path==='/api/libraries')return json(route,f.libraries)
+  if(path==='/api/libraries/1/duplicates')return json(route,f.duplicateReport)
   if(path==='/api/library-options')return json(route,f.options)
   if(/^\/api\/libraries\/\d+\/access$/.test(path)) {const library=f.libraries[Number(path.split('/')[3])-1];return json(route,{path:library.path,exists:true,readable:true,writable:true,ok:true,message:'Ready',issue:'none',fileSystemId:'documentation',mountId:'1',mountPoint:'/data',fileSystemType:'ext4',availableBytes:680e9,totalBytes:2e12,atomicWithWork:true,atomicWithQuarantine:true})}
   if(path==='/api/candidates/summary')return json(route,f.libraries.map(l=>({libraryId:l.id,eligible:l.id===1?7:12,skipped:l.fileCount-(l.id===1?7:12)})))
@@ -111,6 +112,7 @@ try {
  for(const [route,name]of[['source','library-choose-files'],['source/advanced','library-advanced-eligibility'],['encode','library-encode'],['encode/video/advanced','library-advanced-encoding'],['verify/advanced','library-advanced-verification'],['automate','library-automation']]){await go('/libraries/1/configure/'+route);await shot(name)}
  await go('/libraries/1/configure');await page.getByRole('button',{name:/^Candidates/}).click();await shot('library-candidates');await page.getByRole('button',{name:/^Excluded/}).click();await shot('library-excluded')
  await go('/inventory');await expect(page.getByRole('button',{name:/Lumen Coast.mkv/})).toBeVisible();await shot('inventory',null);await shot('inventory-main');await page.getByRole('button',{name:/Lumen Coast.mkv/}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('inventory-detail','dialog')
+ await page.setViewportSize({width:1440,height:1400});await go('/inventory/duplicates');await page.getByLabel('Library',{exact:true}).selectOption('1');await expect(page.getByText('Archive/Lumen Coast copy.mkv',{exact:true})).toBeVisible();await shot('exact-copies','.duplicate-view');await page.setViewportSize({width:1440,height:1000})
  await go('/queue');await expect(page.getByRole('region',{name:'Working now'})).toBeVisible();await shot('queue',null);await shot('queue-main');await shot('queue-working-job','[aria-label="Working now"]');await page.getByRole('region',{name:'Working now'}).getByRole('button',{name:'View job',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('queue-detail','dialog');await page.keyboard.press('Escape')
  await page.setViewportSize({width:390,height:1000});await shot('queue-mobile',null);await page.setViewportSize({width:1440,height:1000})
  await page.route('**/api/libraries',route=>json(route,f.libraries.map(library=>library.id===1?{...library,autoEnqueueEnabled:true,autoReplace:true}:library)))

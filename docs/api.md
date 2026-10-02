@@ -312,6 +312,9 @@ deleting anything so the operator can review and confirm the new preview.
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
 | `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts. |
+| `GET` | `/api/libraries/{id}/duplicates` | Current in-memory exact-copy scan status and bounded snapshot for this library. |
+| `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Returns `202`, or `409` if busy or over the 50,000-candidate preview limit. |
+| `DELETE` | `/api/libraries/{id}/duplicates` | Cancel this library's running scan. Does not delete files or results. Returns `202`, or `409` if the scan has stopped. |
 
 Create and update library bodies use the same shape. Common fields:
 

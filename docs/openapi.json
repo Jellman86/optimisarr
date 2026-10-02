@@ -782,6 +782,255 @@
         ],
         "type": "object"
       },
+      "ExactDuplicateFile": {
+        "properties": {
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hardLinkCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "relativePath",
+          "sizeBytes",
+          "sha256",
+          "hardLinkCount",
+          "checkedAt"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateGroup": {
+        "properties": {
+          "copies": {
+            "items": {
+              "$ref": "#/components/schemas/ExactDuplicateFile"
+            },
+            "type": "array"
+          },
+          "extraCopyBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "totalCopies": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "sha256",
+          "sizeBytes",
+          "copies",
+          "extraCopyBytes"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateProgress": {
+        "properties": {
+          "bytesRead": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "checked": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "skipped": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "total": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "checked",
+          "skipped",
+          "total",
+          "bytesRead"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateResult": {
+        "properties": {
+          "bytesRead": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "checked": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ExactDuplicateGroup"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "total": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "checked",
+          "skipped",
+          "total",
+          "bytesRead",
+          "groups",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateStatus": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ExactDuplicateProgress"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExactDuplicateResult"
+              }
+            ]
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "libraryId",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "progress",
+          "result",
+          "error"
+        ],
+        "type": "object"
+      },
       "ExcludeRequest": {
         "properties": {
           "mediaFileId": {
@@ -5317,6 +5566,112 @@
           },
           "401": {
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/libraries/{id}/duplicates": {
+      "delete": {
+        "operationId": "CancelExactDuplicateScan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      },
+      "get": {
+        "operationId": "GetExactDuplicates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExactDuplicateStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      },
+      "post": {
+        "operationId": "ScanExactDuplicates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExactDuplicateStatus"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           }
         },
         "tags": [

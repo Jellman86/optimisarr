@@ -1126,7 +1126,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+export interface ExactDuplicateStatus {
+  libraryId: number
+  status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed'
+  startedAt: string | null
+  finishedAt: string | null
+  progress: { checked: number; skipped: number; total: number; bytesRead: number }
+  error: string | null
+  result: null | { checked: number; skipped: number; total: number; bytesRead: number; truncated: boolean;
+    groups: { sha256: string; sizeBytes: number; extraCopyBytes: number | null; totalCopies?: number;
+      copies: { id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string }[] }[] }
+}
+
 export const api = {
+  exactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`),
+  scanExactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`, { method: 'POST' }),
+  cancelExactDuplicates: (id: number) => request<void>(`/api/libraries/${id}/duplicates`, { method: 'DELETE' }),
   diagnosticCapture: () => request<DiagnosticCapture | null>('/api/diagnostics/capture'),
   startDiagnosticCapture: (body: { durationHours: number | null; scopedJobId: number | null; includePaths: boolean }) =>
     request<DiagnosticCapture>('/api/diagnostics/capture', { method: 'POST', body: JSON.stringify(body) }),
