@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Optimisarr.Core\Optimisarr.Core.csproj" />
     <ProjectReference Include="..\..\src\Optimisarr.Api\Optimisarr.Api.csproj" />
     <ProjectReference Include="../../tools/Optimisarr.VmafStudy/Optimisarr.VmafStudy.csproj" />
+    <ProjectReference Include="../../tools/Optimisarr.AudioStudy/Optimisarr.AudioStudy.csproj" />
   </ItemGroup>
 
 </Project>

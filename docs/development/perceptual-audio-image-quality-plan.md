@@ -1,6 +1,8 @@
 # Perceptual quality for audio and still images
 
-Researched **1 October 2026**. Status: **planned; no new metric or gate is shipped**.
+Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans.
+Status: **audio qualification tool implemented on a development branch; library gates,
+worker integration and dedupe remain planned**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
 [personal blind comparisons](../usage/personal-quality-check.md).
@@ -104,3 +106,208 @@ Research starting points, not committed production tool pins:
   aggregation cannot hide dropped media, clipping, channel damage or transparency loss.
 - Documentation and UI distinguish reporting from an enforced gate. Existing installations
   retain their settings; no roadmap entry claims this capability is already available.
+
+## Pipeline, settings and cost
+
+Measure in the existing verification stage after encoding and before a candidate becomes
+ready for replacement. Run the existing structural/decode checks first. Cover standalone
+audio and re-encoded audio tracks inside video; identify each reference/output track explicitly.
+Proved decoded-PCM identity can avoid a perceptual calculation for unchanged audio, while
+timing, channel and stream checks still apply. Reuse preparation only when its hash, track,
+window, decoder and preparation policy match. Keep bounded scratch data within the job.
+
+Workers prepare and measure their local source/candidate pair before delivery, returning
+hash-bound evidence. The server validates that evidence and owns the replacement decision.
+Confirm coverage for each media kind in every implementation: an existing audio/video
+capability does not prove image measurement. CPU measurement may follow GPU encoding;
+show this clearly in the queue and sidecar monitor. Use the existing non-video/evidence
+lane budgets and library placement rules. Benchmark overlap before increasing concurrency.
+
+| Setting level | Proposed control | Behaviour |
+| --- | --- | --- |
+| Library, ordinary controls | Perceptual quality: Off / Report / Require | Off initially. Report records scores and measurement errors without introducing a new blocking gate; existing gates still decide replacement. Require is offered only after qualification and refuses missing evidence. |
+| Library, advanced controls | Metric-specific limit and coverage | Audio exposes a maximum distance; images expose a minimum score. Record covered channels/windows and any omissions. Sampled evidence must be labelled sampled. Preserve saved SSIM settings. |
+| Server, work settings | Placement, measurement concurrency, RAM/scratch/time budgets | One policy governs container and workers. Strict worker-only placement never falls back to server measurement. Capacity exhaustion waits; a failed required measurement holds/fails the job with its reason. |
+| Worker monitor | Capability, progress and resource availability | Report supported metrics/coverage and the current stage. Worker UI cannot weaken the assigned library policy. |
+
+Zimtohrli works at 48 kHz; its documented distance runs from zero for identity towards one
+for strong differences. Upstream reports about 70 seconds of audio compared per second on
+one 2.5 GHz core. This is an upstream performance claim, not a measurement on our machines.
+Decoding, channel count, preparation and scratch I/O add cost. [Zimtohrli documentation](https://github.com/google/zimtohrli).
+
+Memory estimates from raw buffer sizes, excluding tool features and decoder overhead:
+
+- A 30-second float32 stereo buffer at 48 kHz is 11.52 MB; a reference/candidate pair is
+  23.04 MB. Six channels need 69.12 MB for the pair. Full-track buffers would grow with duration.
+- A 24-megapixel float32 RGB image is 288 MB; two are 576 MB before multiscale features,
+  alpha, decoder buffers and colour conversion. Bound dimensions and concurrent images.
+- SSIMULACRA2 uses six image scales and returns scores up to 100, with negative scores
+  possible. Keep its raw units and reject malformed/non-finite output; never clamp it to
+  VMAF's range. [SSIMULACRA2 documentation](https://github.com/cloudinary/ssimulacra2).
+
+These are sizing calculations, not measured peak RAM. Record wall time, CPU time, peak RAM,
+scratch bytes and extra transfer bytes separately on Mac, PICARD, Quark and Riker/container.
+Compare encoding with and without measurement under idle and concurrent load. Start with
+audio provider qualification, then image qualification using the same evidence contract.
+Neither metric requires a hosted service or per-measurement fee; local compute, packaging
+and storage costs remain. Defer automatic quality-search retries until that cost is known.
+
+### First development slice: audio qualification tool
+
+The [AudioStudy CLI](../../tools/Optimisarr.AudioStudy/Optimisarr.AudioStudy.csproj) now calls a
+reusable [assessment provider](../../src/Optimisarr.Core/Verification/AudioQualityService.cs).
+A [small native wrapper](../../tools/audio-quality-native/CMakeLists.txt) builds the pinned
+Zimtohrli core and its exact Highway submodule revision, without the upstream ViSQOL adapter
+or a Python/ML production runtime. The native wrapper uses the core's default 78.3 dB
+reference setting, rather than the upstream compare CLI's different default setting.
+
+```bash
+cmake -S tools/audio-quality-native -B /tmp/optimisarr-audio-native -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/optimisarr-audio-native --config Release --parallel 2
+ctest --test-dir /tmp/optimisarr-audio-native -C Release --output-on-failure
+dotnet run --project tools/Optimisarr.AudioStudy -c Release -- \
+  --reference ./reference.wav --candidate ./candidate.opus \
+  --ffmpeg /path/to/ffmpeg --ffprobe /path/to/ffprobe \
+  --metric /tmp/optimisarr-audio-native/optimisarr-audio-quality \
+  --report ./new-audio-report.json
+```
+
+On a multi-configuration Windows build, the executable is under `Release` and ends in
+`.exe`. Pass absolute executable paths. The report path must be new; originals, tools and
+existing evidence are never overwritten. Build dependencies need network access once;
+measurement itself is offline. `cmake --install` retains the upstream tool notices.
+
+The first provider supports a single mono/stereo audio track, including audio with attached
+cover art. Video, multiple audio tracks, surround and unknown channel layouts are explicit
+unsupported cases for this slice. Resample both files to 48 kHz float PCM without downmixing
+or gain matching. Measure up to three disjoint windows, each at most 30 seconds: cover tracks
+up to 90 seconds, and sample beginning/middle/end for longer tracks. Report covered seconds,
+duration drift, raw per-channel distances, worst channel distance, metric/preparation revisions,
+input/tool hashes and elapsed time. A 100 ms duration tolerance allows qualification of normal
+codec padding; it is not a new production duration policy or permission to accept lost audio.
+No manual delay correction or calibrated quality verdict is provided yet.
+
+Each native call verifies PCM shape, equal frame counts, finite samples in the metric's
+documented range and complete per-channel output. Preparation has byte limits, process
+deadlines and cancellation; concurrent runs own separate scratch directories. Changed inputs
+or tools invalidate results. Reports explicitly say no quality gate was evaluated and no
+replacement was authorized. The tool never reads a production database or creates a job.
+
+Initial real Mac qualification covers freely usable music encoded with AAC/MP3 at 128 kbps,
+Opus at 160/16 kbps, music/speech identities, a stereo swap and deliberate truncation. Identities
+return zero; low-rate Opus has greater distance than high-rate Opus; truncation is refused.
+The 19-second music assessments took roughly 0.8 to 0.9 seconds each in this small local run,
+including preparation and hashes. These timings and relative scores are fixture observations,
+not a throughput guarantee or calibrated quality threshold. Quark's native tests pass; the same
+decoded Opus/swap fixtures match Mac distances to within about `6e-8`.
+
+A Quark-built binary initially failed on Riker because its newer glibc/libstdc++ dependencies
+were unavailable there. This demonstrates why a build on one Linux host is insufficient.
+The qualification workflow targets an older Ubuntu baseline and includes Mac/Windows native
+builds. Test those exact artefacts on the actual hosts before claiming fleet qualification.
+Native tools are not bundled into the production server or installers in this slice.
+
+### Fixture preparation recorded on 2 October 2026
+
+Downloaded [Samplelib WAV fixtures](https://samplelib.com/sample-wav.html) under its
+[free-use licence](https://samplelib.com/license.html), retaining the source/license pages,
+SHA-256 hashes and FFprobe results privately. Actual probed durations:
+
+- `sample-15s.wav`: 19.174 seconds, stereo music.
+- `sample-speech-1m.wav`: 60 seconds, mono speech.
+- `sample-3s-stereo.wav`: 3 seconds, distinct left/right tones.
+
+Also copied eight JPEGs from the operator's Immich library on Riker into private local
+test storage. Source files were read only; private paths/photos stay outside Git and public
+reports. This is a starting set, not representative coverage or a completed metric benchmark.
+Add lawful longer music/mixed recordings and generated silence/channel controls, plus
+public synthetic gradients/text/alpha and colour-managed fixtures. Produce known-good and
+deliberately degraded candidates, including swaps, truncation, clipping and low bitrates.
+
+## Duplicate detection for all library types
+
+Status: **roadmap research; no dedupe implementation is shipped**. Cover image, audio,
+video and mixed libraries. Quality measurements compare a known source with its encode;
+duplicate detection first needs to establish whether two independently discovered files
+contain matching media. A quality score alone cannot establish that relationship.
+
+### Delivery sequence and researched candidates
+
+1. **Exact copies across every type.** Filter by file size and calculate full-file SHA-256
+   where needed; reuse existing hashes only while their file identities remain valid.
+   Cache incrementally with algorithm/version, file identity and scan time, through additive
+   migrations. Recheck both files before a cleanup action. Treat symlinks, hard links and
+   overlapping library paths as references to investigate; they may offer no recoverable space.
+2. **Image candidates.** Qualify [PDQ](https://github.com/facebook/ThreatExchange/blob/main/pdq/README.md)
+   using one consistent decoder, orientation and colour preparation. It includes a feature
+   quality indicator, useful for rejecting unreliable blank/low-detail comparisons. Test its
+   rotation variants rather than assuming a canonical hash is rotation invariant. Treat
+   upstream distance examples as research starting points, never deletion thresholds.
+   For harder resized/cropped/edited candidates, evaluate optional local
+   [SigLIP 2 image features](https://huggingface.co/google/siglip2-base-patch16-224), followed
+   by correspondence checks and human review. Its retrieval capability is established;
+   its fitness for our dedupe cases still needs measurement. Related scenes and photo bursts
+   remain distinct choices. Protect RAW/JPEG, Live Photo companions, alpha, animation,
+   ICC/EXIF and edits. A larger file is insufficient evidence that it is the best version.
+3. **Audio candidates.** Qualify [Chromaprint](https://github.com/acoustid/chromaprint)
+   locally for near-identical recordings across encodes. It is designed for this narrower
+   task and trades precision/robustness for speed. Confirm duration, aligned content,
+   channels/tracks and tags; protect remasters, live recordings, alternate mixes and album
+   versions. Short speech, silence and sound effects need explicit qualification. Use full
+   content coverage before any cleanup recommendation; a shared excerpt cannot prove identity.
+4. **Video candidates.** Evaluate [TMK+PDQF and vPDQ](https://github.com/facebook/ThreatExchange/blob/main/vpdq/README.md).
+   TMK targets same-length content; vPDQ can retrieve clips/subsequences. Its reference
+   comparison treats frames as an unordered collection, so add ordered timeline checks
+   before suggesting whole-file duplicates. Compare audio tracks, languages, subtitles,
+   duration, cuts and HDR/SDR characteristics. Shared intros, reordered scenes, trailers,
+   matching artwork and partial clips must not approve removal of a complete edition.
+5. **Review, then safe actions.** Use previews, side-by-side metadata/stream differences,
+   paths, confidence reasons and estimated recoverable space. Support keeping several
+   versions and remembering ignored pairs. Check every proposed removal against its chosen
+   retained file: similarity is not transitive, so an A/B match and B/C match cannot prove A/C.
+   Validate the retained copy, record rollback before quarantine and recheck identities
+   under the replacement/action lock. Read-only libraries allow detection only. Connected
+   Immich/media-manager references, albums, tags and sidecars need supported reconciliation
+   before removal; block the action when it cannot preserve those relationships. Never
+   overwrite a manager's database directly. Automatic deletion and hard-link conversion
+   are outside the first delivery.
+
+[Immich's duplicate review](https://docs.immich.app/features/duplicates-utility/) is a useful
+UI reference: it finds visually similar assets, lets users keep several, and preserves
+selected metadata during resolution. Any Optimisarr integration needs its own tested API
+contract. Detection in an external library does not grant permission to delete its files.
+
+### Settings, costs and qualification
+
+Default to off. Offer per-library **Exact copies** and later **Possible matches**, plus an
+explicit cross-library scope, scan schedule and review screen. Keep sensitivity and resource
+limits in Advanced with clear tooltips. Detection runs as low-priority cancellable background
+work with existing placement/lane limits; it never holds an encoding job waiting for a match.
+Strict worker placement applies to expensive fingerprint/feature generation too. Content
+and features stay local; do not require cloud uploads or a new database service.
+
+Exact hashing is principally an I/O cost. A first scan reads the selected bytes; incremental
+scans reuse validated identities. PDQ stores compact hashes, while learned features add model
+download/bundle size, inference and index costs. Compare a native hash-only baseline with the
+optional image encoder on CPU and available GPU hardware before selecting its export/runtime.
+For scale planning, 100,000 vectors of 768 float32 values occupy 307.2 MB before any index or
+database overhead; this is an example sizing assumption. Avoid all-pairs comparisons as a
+default. Video decoding and fingerprint storage grow with duration and sampling density;
+candidate filtering must expose its coverage limits. Measure end-to-end wall time, disk reads,
+peak RAM, index size, candidate recall and false positives on labelled tests, including large
+incremental rescans. Do not copy performance numbers from another product into our defaults.
+
+Audit exact packaged artefacts before shipping: PDQ/vPDQ's project has a
+[BSD licence](https://github.com/facebook/ThreatExchange/blob/main/LICENSE), SigLIP 2's model
+card lists Apache-2.0, and [Chromaprint's licence](https://github.com/acoustid/chromaprint/blob/master/LICENSE.md)
+includes LGPL-2.1 considerations for incorporated FFmpeg code and external FFT libraries.
+Pin revisions, model hashes, preparation versions and notices; invalidate derived indexes
+when any relevant preparation/model changes.
+
+Test first for changed files, collision candidates, low-detail images, bursts, edited crops,
+track/channel loss, partial clips, reordered scenes, similarity chains, Unicode paths,
+hard links, symlinks, read-only mounts, duplicate library paths and concurrent encode/replace.
+Prove ignored-pair persistence, cancellation, disconnect/retry, restart recovery,
+cross-filesystem quarantine and exact rollback on available platforms. Private Immich copies
+can qualify image behaviour; public CI uses attributed free or synthetic fixtures. Publish
+aggregate results and synthetic examples. No private media or paths enter documentation.
