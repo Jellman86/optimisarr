@@ -50,7 +50,7 @@ RUN dotnet publish sidecars/linux/src/Optimisarr.Sidecar.Linux --configuration R
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS audio-quality-build
 WORKDIR /src
-RUN apt-get update && apt-get install -y --no-install-recommends cmake g++ git python3 \
+RUN apt-get update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
     && rm -rf /var/lib/apt/lists/*
 COPY tools/audio-quality-native/ tools/audio-quality-native/
 COPY scripts/build_audio_quality.sh scripts/build_audio_quality.sh

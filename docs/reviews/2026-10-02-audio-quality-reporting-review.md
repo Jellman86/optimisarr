@@ -34,6 +34,9 @@ future work. Production hosts were not upgraded during these tests.
    Sign it inside the Mac bundle, include it in the Windows MSI and Docker runtimes, and add
    pinned Zimtohrli/Highway sources to the sidecar corresponding-source records.
 
+5. The first Docker build proved that the minimal SDK image does not include Make. Add the
+   build driver explicitly alongside CMake and the compiler; require the final-image CI gate.
+
 ## Validation
 
 | Area | Evidence |
