@@ -130,6 +130,15 @@ try {
  await go('/libraries/3/configure/verify/advanced');await expect(page.getByRole('spinbutton',{name:'Maximum audio difference',exact:true})).toHaveValue('0.005');await shot('audio-quality-settings','fieldset:not([data-library-workflow]):has(#lib-audio-quality-limit)')
  await page.route('**/api/jobs?*',route=>json(route,[f.audioGatedJob]));await page.route('**/api/jobs',route=>json(route,[f.audioGatedJob]));
  await go('/queue');await page.locator('tbody tr').first().getByRole('button').first().click();await expect(page.getByRole('region',{name:'Audio quality report',exact:true})).toContainText('Blocked');await shot('audio-gate','[aria-label="Audio quality report"]');await page.keyboard.press('Escape')
+
+ await page.route('**/api/jobs?*',route=>json(route,[f.soundtrackJob]));await page.route('**/api/jobs',route=>json(route,[f.soundtrackJob]));
+ await page.setViewportSize({width:1440,height:1900});await go('/queue');await page.reload();await page.getByRole('button',{name:'View job',exact:true}).first().click();
+ await expect(page.locator('[aria-label="Soundtrack quality report"]')).toContainText('Director commentary');
+ await shot('soundtrack-report','[aria-label="Soundtrack quality report"]');await page.keyboard.press('Escape');await page.setViewportSize({width:1440,height:1000});
+ await page.route('**/api/libraries',route=>json(route,f.libraries.map(library=>library.id===1?{...library,
+   soundtrackQualityReportingEnabled:true,soundtrackQualityGateEnabled:true,maximumSoundtrackQualityDistance:0.005}:library)));
+ await go('/libraries/1/configure/verify/advanced');await expect(page.locator('#lib-soundtrack-quality-limit')).toHaveValue('0.005');
+ await shot('soundtrack-quality-settings','fieldset:not([data-library-workflow]):has(#lib-soundtrack-quality-limit)');
  if(errors.length)throw Error('UI errors: '+errors.join('\n'))
  if(unexpected.size)throw Error('Unmocked requests: '+[...unexpected].join(', '))
  await writeFile(resolve(output,'web-screenshot-manifest.json'),JSON.stringify({description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',command:'cd web && node scripts/capture-docs.mjs',viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},images:captured.map(name=>`optimisarr-${name}-dark.png`)},null,2)+'\n')

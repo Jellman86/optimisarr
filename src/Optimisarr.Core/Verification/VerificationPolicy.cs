@@ -60,7 +60,10 @@ public sealed record VerificationPolicy(
     double? MaximumSizeSavingPercent = null,
     bool AudioQualityReportingEnabled = false,
     bool AudioQualityGateEnabled = false,
-    double? MaximumAudioQualityDistance = null)
+    double? MaximumAudioQualityDistance = null,
+    bool SoundtrackQualityReportingEnabled = false,
+    bool SoundtrackQualityGateEnabled = false,
+    double? MaximumSoundtrackQualityDistance = null)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -86,4 +89,7 @@ public sealed record VerificationPolicy(
 
     public bool RequiresAudioQuality(MediaKind kind) =>
         (AudioQualityReportingEnabled || AudioQualityGateEnabled) && kind == MediaKind.Audio;
+
+    public bool RequiresSoundtrackQuality(bool audioReencoded) =>
+        (SoundtrackQualityReportingEnabled || SoundtrackQualityGateEnabled) && audioReencoded;
 }

@@ -212,6 +212,17 @@
     if (!audioDifferenceCustomSelected) form.maximumAudioQualityDistance = audioDifferenceStops[index]
   }
 
+  let soundtrackDifferenceCustomSelected = $state(false)
+  const soundtrackDifferenceStop = $derived.by(() => {
+    if (soundtrackDifferenceCustomSelected) return audioDifferenceStops.length
+    const index = audioDifferenceStops.findIndex(value => value === form.maximumSoundtrackQualityDistance)
+    return index < 0 ? audioDifferenceStops.length : index
+  })
+  function setSoundtrackDifferenceStop(index: number) {
+    soundtrackDifferenceCustomSelected = index === audioDifferenceStops.length
+    if (!soundtrackDifferenceCustomSelected) form.maximumSoundtrackQualityDistance = audioDifferenceStops[index]
+  }
+
   let audioEncodingSelection = $state<AudioEncodingMode | null>(null)
   let videoAudioEncodingSelection = $state<AudioEncodingMode | null>(null)
 
@@ -314,6 +325,11 @@
       || Number(form.minimumImageSsim) < 0
       || Number(form.minimumImageSsim) > 1) {
       return i18n.m.settings.validation_ssim
+    }
+    if (showVideoOptions && form.soundtrackQualityGateEnabled
+      && (form.maximumSoundtrackQualityDistance == null || !Number.isFinite(Number(form.maximumSoundtrackQualityDistance))
+        || Number(form.maximumSoundtrackQualityDistance) < 0 || Number(form.maximumSoundtrackQualityDistance) > 1)) {
+      return i18n.m.soundtrack_quality.validation
     }
     if (showAudioOptions && form.audioQualityGateEnabled
       && (form.maximumAudioQualityDistance == null || !Number.isFinite(Number(form.maximumAudioQualityDistance))
@@ -805,7 +821,7 @@
       'encode/video/advanced': ['targetVideoCodec', 'targetContainer', 'encoderPreset', 'qualityCrf', 'contentTune', 'maxBitrateKbps', 'minBitrateKbps', 'strongerAdaptiveQuantisation'],
       'encode/audio/advanced': ['audioBitrateKbps', 'videoAudioBitrateKbps', 'reencodeLossyAudio'],
       'encode/images/advanced': ['imageQuality', 'reencodeLossyImages'],
-      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample', 'maximumAudioQualityDistance'],
+      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample', 'maximumAudioQualityDistance', 'maximumSoundtrackQualityDistance'],
     }
     const keys = fields[target] ?? Object.entries(fields).filter(([key]) => key.startsWith(target + '/')).flatMap(([, fields]) => fields)
     return keys.filter(key => {
@@ -985,6 +1001,7 @@
     customSelected = false
     vmafCustomSelected = false
     audioDifferenceCustomSelected = false
+    soundtrackDifferenceCustomSelected = false
     audioEncodingSelection = null
     videoAudioEncodingSelection = null
     minSizeMb = ''
@@ -1073,6 +1090,9 @@
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
+      soundtrackQualityReportingEnabled: library.soundtrackQualityReportingEnabled ?? false,
+      soundtrackQualityGateEnabled: library.soundtrackQualityGateEnabled ?? false,
+      maximumSoundtrackQualityDistance: library.maximumSoundtrackQualityDistance ?? null,
       audioQualityReportingEnabled: library.audioQualityReportingEnabled ?? false,
       audioQualityGateEnabled: library.audioQualityGateEnabled ?? false,
       maximumAudioQualityDistance: library.maximumAudioQualityDistance ?? null,
@@ -1101,6 +1121,7 @@
     customSelected = false
     vmafCustomSelected = false
     audioDifferenceCustomSelected = false
+    soundtrackDifferenceCustomSelected = false
     audioEncodingSelection = null
     videoAudioEncodingSelection = null
     activeTab = 'rules'
@@ -1162,6 +1183,9 @@
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
+      soundtrackQualityReportingEnabled: showVideoOptions && form.soundtrackQualityReportingEnabled,
+      soundtrackQualityGateEnabled: showVideoOptions && form.soundtrackQualityGateEnabled,
+      maximumSoundtrackQualityDistance: toNullableNumber(form.maximumSoundtrackQualityDistance ?? null),
       audioQualityGateEnabled: showAudioOptions && form.audioQualityGateEnabled,
       maximumAudioQualityDistance: toNullableNumber(form.maximumAudioQualityDistance ?? null),
       durationTolerancePercent: Number(form.durationTolerancePercent),
@@ -1883,6 +1907,65 @@
                   <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
                 {/if}
               </div>
+            </div>
+          {/if}
+          {#if showVideoOptions}
+            <div class="mb-5 border-b border-line pb-4">
+              <Toggle bind:checked={form.soundtrackQualityReportingEnabled}
+                label={i18n.m.soundtrack_quality.title} hint={i18n.m.soundtrack_quality.hint} />
+              {#if form.soundtrackQualityReportingEnabled && !form.soundtrackQualityGateEnabled}
+                <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
+              {/if}
+              <div class="mt-4 border-t border-line-soft pt-4">
+                <Toggle bind:checked={form.soundtrackQualityGateEnabled}
+                  label={i18n.m.soundtrack_quality.gate_label} hint={i18n.m.soundtrack_quality.gate_hint} />
+                {#if form.soundtrackQualityGateEnabled}
+                  {#if room === 'verify/advanced'}
+                  <div class="mt-4 min-w-0" data-soundtrack-quality-limit>
+                    <label class="label" for="lib-soundtrack-quality-slider">{i18n.m.soundtrack_quality.maximum}
+                      <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.soundtrack_quality.maximum })} text={i18n.m.audio_quality.limit_hint} />
+                    </label>
+                    <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
+                      <div class="mx-[8.333%]">
+                        <input id="lib-soundtrack-quality-slider" class="block h-11 w-full cursor-pointer accent-cyan-600"
+                          type="range" min="0" max={audioDifferenceStops.length} step="1" value={soundtrackDifferenceStop}
+                          aria-label={i18n.m.soundtrack_quality.maximum}
+                          aria-valuetext={soundtrackDifferenceStop === audioDifferenceStops.length ? i18n.m.libraries.stop_custom : String(audioDifferenceStops[soundtrackDifferenceStop])}
+                          aria-describedby="lib-soundtrack-quality-help"
+                          oninput={event => setSoundtrackDifferenceStop(Number(event.currentTarget.value))} />
+                      </div>
+                      <div class="grid grid-cols-6">
+                        {#each [...audioDifferenceStops.map(String), i18n.m.libraries.stop_custom] as label, index}
+                          <button type="button" class="flex min-h-11 min-w-0 flex-col items-center justify-center gap-2 rounded-md px-0.5 text-[10px] tabular-nums transition-colors hover:bg-lit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:text-xs"
+                            class:text-accent={soundtrackDifferenceStop === index} class:text-ink-3={soundtrackDifferenceStop !== index}
+                            aria-pressed={soundtrackDifferenceStop === index} onclick={() => setSoundtrackDifferenceStop(index)}>
+                            <span class="h-1.5 w-1.5 rounded-full" class:bg-accent={soundtrackDifferenceStop === index} class:bg-line={soundtrackDifferenceStop !== index} aria-hidden="true"></span>
+                            <span class="max-w-full break-words font-medium">{label}</span>
+                          </button>
+                        {/each}
+                      </div>
+                    </div>
+                    {#if soundtrackDifferenceStop === audioDifferenceStops.length}
+                      <div class="mt-3 max-w-sm">
+                        <label class="label" for="lib-soundtrack-quality-limit">{i18n.m.libraries.stop_custom}</label>
+                        <input id="lib-soundtrack-quality-limit" aria-label={i18n.m.soundtrack_quality.maximum}
+                          class="input w-full" type="number" min="0" max="1" step="any"
+                          aria-invalid={verificationError === i18n.m.soundtrack_quality.validation}
+                          aria-describedby="lib-soundtrack-quality-help lib-verification-error"
+                          oninput={() => { soundtrackDifferenceCustomSelected = true }}
+                          bind:value={form.maximumSoundtrackQualityDistance} />
+                      </div>
+                    {/if}
+                    <p id="lib-soundtrack-quality-help" class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.limit_hint}</p>
+                  </div>
+                  {:else}
+                    {#if form.maximumSoundtrackQualityDistance != null}<p class="mt-3 text-xs leading-relaxed text-ink-3">{t(i18n.m.audio_quality.gate_limit, { limit: form.maximumSoundtrackQualityDistance })}</p>{/if}
+                    <button type="button" class="btn mt-3 min-h-11" onclick={() => goRoom('verify/advanced')}>{i18n.m.audio_encoding.set_limit}</button>
+                  {/if}
+                  <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
+                {/if}
+              </div>
+              <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.soundtrack_quality.coverage_note}</p>
             </div>
           {/if}
           <Toggle

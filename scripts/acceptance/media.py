@@ -10,6 +10,36 @@ import re
 from .core import Blocked, command, require, save, sha256, statistics
 
 
+def validate_soundtrack_report(report, source_indexes, location, limit, *, passes=True):
+    """Check retained-track coverage and every channel independently of the server verdict."""
+    require(report and not report.get("unavailableReason"), "Soundtrack assessment unavailable")
+    tracks = report.get("tracks") or []
+    require(len(tracks) == len(source_indexes) and tracks, "Missing retained soundtrack evidence")
+    measured_passes = []
+    for index, (item, source_index) in enumerate(zip(tracks, source_indexes)):
+        mapping, quality = item.get("track") or {}, item.get("report") or {}
+        require(mapping.get("sourceAudioIndex") == source_index and mapping.get("candidateAudioIndex") == index,
+                "Incorrect retained soundtrack mapping")
+        require(quality.get("measurementLocation") == location and not quality.get("unavailableReason"),
+                "Soundtrack measurement ran on the wrong host or was unavailable")
+        evidence = quality.get("evidence") or {}
+        assessment = evidence.get("assessment") or {}
+        require(evidence.get("preparation") == "audio-f32le-48k-video-timeline-v1" and assessment.get("measured"),
+                "Missing versioned soundtrack evidence")
+        require(assessment.get("referenceAudioIndex") == source_index and assessment.get("candidateAudioIndex") == index,
+                "Score belongs to a different soundtrack")
+        windows = assessment.get("windows") or []
+        require(0 < len(windows) <= 3, "Missing or unbounded soundtrack windows")
+        values = [value for window in windows for value in (window.get("distances") or {}).get("channelDistances", [])]
+        require(values and all(isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 1 for value in values),
+                "Invalid channel distances")
+        passed = all(value <= limit for value in values)
+        require(quality.get("gateEnabled") is True and quality.get("gatePassed") == passed, "Incorrect per-track gate verdict")
+        measured_passes.append(passed)
+    require(report.get("gateEnabled") is True and report.get("gatePassed") == all(measured_passes) == passes,
+            "Incorrect aggregate soundtrack gate verdict")
+
+
 def vmaf_policy(reference_video, encoded_video, rate):
     """Independent viewing policy; CAMBI describes bytes before rescaling to reference size."""
     uhd = reference_video["width"] >= 3840 or reference_video["height"] >= 2160

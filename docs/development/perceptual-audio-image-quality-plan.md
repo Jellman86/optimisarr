@@ -1,7 +1,7 @@
 # Perceptual quality for audio and still images
 
 Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans.
-Status: **opt-in audio reports, operator-selected audio gates and strict worker measurement implemented in dev; adaptive audio quality selection and surround support remain planned**.
+Status: **opt-in standalone audio and video soundtrack reports, separate operator-selected gates and strict worker measurement implemented in dev; adaptive audio quality selection and surround support remain planned**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
 [personal blind comparisons](../usage/personal-quality-check.md).
@@ -414,11 +414,57 @@ equivalence or a claimed listening grade. Existing saved bitrates and gate limit
 An explicitly chosen tier follows codec changes during the current edit; after saving, the
 stored policy remains codec and bitrate. Automatic sample search is future work.
 
-The same measurement engine can later assess audio tracks inside video containers. The current
-parser deliberately rejects ordinary video streams, multiple audio tracks and surround, and
-the pipeline invokes the gate only for standalone audio. Extending it needs explicit retained
-source/output track mapping, language/commentary handling, an appropriately transformed reference
-for intentional downmixes, and independent timing/lip-sync checks. Copied audio needs preservation
-checks; re-encoded audio needs its own quality result alongside VMAF. Start with proved mono/stereo
-track cases before claiming surround coverage. Strict worker mode must retain all media analysis
-on the worker. See [Zimtohrli's project goals and signal preparation](https://github.com/google/zimtohrli).
+### Video soundtrack reports and gate in development
+
+The shared metric now supports explicitly selected audio streams in video containers. The
+standalone parser still rejects moving video and multiple audio tracks; the video path uses
+its own planner and separate reporting, gate and maximum-distance settings. Both switches
+start off. The gate requires an explicit finite limit from 0 to 1 and requests measurement
+independently of reporting. Configuration exports use format 3; older imports and update
+requests preserve omitted soundtrack choices. See the
+[operator controls](../setup/configuration.md#assess-re-encoded-video-soundtracks).
+
+The frozen encode's removed source audio indexes determine the mapping. Each retained source
+track maps to the next output audio position, and every retained track must be present. The
+planner checks canonical language, exact title and commentary disposition, compatible duration
+and channel layout; it refuses reordered, missing or extra tracks, invalid removals and more
+than eight retained tracks. Mono/stereo tracks are supported. Surround, including an intentional
+surround downmix, remains unavailable rather than being compared with an untransformed reference.
+
+Start-time differences over 50 ms and duration differences over 100 ms are refused. PCM
+preparation uses the picture/container lead (bounded to 0–100 ms) and the versioned
+`audio-f32le-48k-video-timeline-v1` preparation. This accounts for bounded container priming;
+it is not perceptual alignment that may erase a timing error, and does not establish lip-sync
+quality. Existing independent video timing, retention, decode, metadata, loudness/clipping,
+size and VMAF checks still apply. Copied audio, remuxes and previews skip soundtrack observation
+and its gate. No automatic bitrate search or quality retry is added.
+
+Each retained track gets its own channel measurements and up to 90 seconds of coverage. Tracks
+up to 90 seconds use the complete duration in at most three windows; longer tracks use 30 seconds
+at the start, middle and end. The server recomputes the largest distance from every validated
+channel/window; all tracks must meet the inclusive selected limit. Missing tools, unsupported
+profiles, invalid mapping, changed files or incomplete evidence cannot pass a configured gate.
+Report-only mode shows these limits without changing replacement decisions. This is sampled
+experimental evidence, without a calibrated listening grade or quality guarantee.
+
+Strict worker jobs require protocol 8 and full-verification contract 3, which freezes the removal
+mapping. Mac and shared Windows/Linux workers measure before delivery. The server validates the
+contract, file/tool hashes, metric pin and preparation, exact track mapping/profiles/indexes,
+complete windows/channel counts and finite distances. It computes the verdict against the frozen
+policy rather than trusting a worker verdict. Older workers cannot claim a soundtrack-assessment
+contract, and missing evidence never triggers server media analysis. Server verification mode
+measures on the server.
+
+Cost scales with retained tracks: up to 24 serial metric windows across eight tracks, two bounded
+PCM files at a time (at most 11.52 MB each), and full source/candidate and tool hashes before and
+after each track's measurement. Shared-provider probes have 30-second deadlines and decode/metric
+commands have 90-second deadlines; these are command limits, not a total-job runtime guarantee.
+Scratch is removed on success, failure and cancellation. Turning both controls off or copying
+audio adds no soundtrack assessment processes, hashes or PCM scratch. Existing verification
+slots bound concurrency. These implementation and unit-test checks do not replace final package,
+real-media or cross-platform acceptance evidence.
+
+Every configured gate must pass before replacement. A failure leaves the original untouched;
+a successful replacement records rollback and quarantines the original before installing the
+verified output. Quarantine is not a backup, and purge removes rollback. Dry-run permits
+assessment while blocking replacement and purge.

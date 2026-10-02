@@ -18,6 +18,7 @@
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
+  import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import FailuresPanel from '../components/FailuresPanel.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
 
@@ -685,6 +686,7 @@
         <div class="mt-4 border-t border-line-soft pt-4 border-line">
           {#if checks}<VerificationChecks {checks} />{/if}
           <AudioQualityReport report={fullReport(selectedJob)?.audioQuality ?? null} />
+          <SoundtrackQualityReport report={fullReport(selectedJob)?.soundtrackQuality ?? null} />
         </div>
       {/if}
       {#if earlierAttempts.length > 0}

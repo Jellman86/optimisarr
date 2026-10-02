@@ -13,5 +13,5 @@ public static class WorkerProtocol
 {
     public const int Minimum = 1;
     // Protocol 7 supports actual-candidate CAMBI parameters for VMAF v1.
-    public const int Maximum = 7;
+    public const int Maximum = 8;
 }

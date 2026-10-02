@@ -55,6 +55,14 @@ Do this:
 8. Use the overview or breadcrumbs to move between stages. The draft is retained, and **Save**
    applies changes from all stages together. Advanced pages are optional refinements.
 
+For explicitly re-encoded video audio, **Verify** also offers **Soundtrack quality report**
+and **Require soundtrack quality**, both off by default and separate from standalone audio.
+When enabling the gate, choose **Maximum soundtrack difference** in **Advanced verification**.
+Reports alone do not block replacement; a configured gate needs every retained supported track
+and sample to pass. Copied audio and previews skip this assessment. Review the
+[supported tracks, sample coverage and cost](../setup/configuration.md#assess-re-encoded-video-soundtracks)
+before using it on a library.
+
 The library overview groups controls by processing stage. Each stage opens its own page, and
 breadcrumbs return to the overview without discarding your draft.
 

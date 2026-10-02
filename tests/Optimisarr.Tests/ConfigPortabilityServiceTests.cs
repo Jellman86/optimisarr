@@ -23,6 +23,39 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         db.Database.EnsureCreated();
     }
 
+
+    [Fact]
+    public async Task Soundtrack_settings_roundtrip_and_legacy_import_preserves_only_applicable_gates()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film,
+                SoundtrackQualityReportingEnabled = true, SoundtrackQualityGateEnabled = true, MaximumSoundtrackQualityDistance = 0 });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.Equal(3, snapshot.Version);
+        var exported = Assert.Single(snapshot.Libraries);
+        Assert.True(exported.SoundtrackQualityGateEnabled);
+        Assert.Equal(0, exported.MaximumSoundtrackQualityDistance);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        var legacy = snapshot with { Version = 2, Libraries = [exported with {
+            SoundtrackQualityReportingEnabled = null, SoundtrackQualityGateEnabled = null, MaximumSoundtrackQualityDistance = null }] };
+        Assert.True((await ImportAsync(legacy)).Applied);
+        await using (var restored = CreateDb())
+        {
+            var library = await restored.Libraries.SingleAsync();
+            Assert.True(library.SoundtrackQualityReportingEnabled);
+            Assert.True(library.SoundtrackQualityGateEnabled);
+            Assert.Equal(0, library.MaximumSoundtrackQualityDistance);
+        }
+        Assert.True((await ImportAsync(legacy with { Libraries = [legacy.Libraries[0] with { MediaType = "Music" }] })).Applied);
+        await using var changed = CreateDb();
+        Assert.False((await changed.Libraries.SingleAsync()).SoundtrackQualityGateEnabled);
+        Assert.False((await changed.Libraries.SingleAsync()).SoundtrackQualityReportingEnabled);
+    }
+
     [Fact]
     public async Task Audio_quality_reporting_survives_export_restore_and_repeated_import()
     {

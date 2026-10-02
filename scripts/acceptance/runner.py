@@ -9,7 +9,7 @@ import shutil
 import time
 
 from .core import Blocked, inside, quality_failures, require, save, sha256
-from .media import compare_report, validate_shadow_report
+from .media import compare_report, validate_shadow_report, validate_soundtrack_report
 
 TERMINAL = {"ReadyToReplace", "Completed", "Failed", "Cancelled"}
 MODES = {"libx264": "Cpu", "libx265": "Cpu", "libsvtav1": "Cpu",
@@ -316,6 +316,48 @@ class Harness:
             return {"jobId": case["jobId"], "originalUnchanged": True}
         finally:
             self.api.post("/api/queue/resume")
+
+
+    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False):
+        self.select_worker(worker)
+        name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
+        name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
+        fixture = self.root / "fixtures" / (name + ".mkv")
+        self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=8",
+            "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.1:duration=8:sample_rate=48000:seed=42",
+            "-f", "lavfi", "-i", "sine=frequency=700:sample_rate=48000:duration=8",
+            "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", "-c:a", "pcm_s16le", "-ac", "2",
+            "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=Main",
+            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=Commentary", self.tools.path(fixture)])
+        # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
+        limit = 0 if reject else 1
+        case = self.create_job(name, fixture, encoder="libx264", worker=worker, overrides={
+            "targetVideoCodec": None, "targetContainer": "mkv", "videoAudioCodec": "copy" if copied else codec,
+            "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
+            "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,
+            "keepAudioLanguages": "fra" if filtered else None})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        verification = json.loads(job["verificationReportJson"] or "{}")
+        require(job["workerName"] == (worker["name"] if worker else None), "Soundtrack ran on the wrong host")
+        require(sha256(case["source"]) == case["sourceSha256"], "Assessment changed the source")
+        require(job["status"] == ("Failed" if reject else "ReadyToReplace"), f"Unexpected soundtrack job verdict: {job['errorMessage']}")
+        if copied:
+            require(not verification.get("soundtrackQuality"), "Copied audio launched perceptual assessment")
+        else:
+            location = "Worker" if worker and self.strict_worker_verification else "Server"
+            validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject)
+        if reject:
+            require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Failed gate replaced media")
+            return {"originalUnchanged": True, "gateBlocked": True}
+        candidate = self.output(case)
+        probe = self.tools.probe(candidate)
+        tracks = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+        require([track.get("tags", {}).get("language") for track in tracks] == (["fra"] if filtered else ["eng", "fra"]),
+                "Retained soundtrack language changed")
+        self.tools.run(self.tools.ffmpeg, ["-v", "error", "-xerror", "-i", self.tools.path(candidate), "-f", "null", "-"])
+        self.replace_restore(case, candidate)
+        return {"originalUnchanged": True, "restoredOriginal": True, "tracks": len(tracks), "copied": copied}
 
     def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False):
         self.select_worker(worker)
@@ -651,6 +693,18 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
+
+            if regression == "soundtrack-quality":
+                for worker in [None, *[w for w in self.workers if w["online"] and not w["revokedAt"]]]:
+                    label = f"worker-{worker['id']}" if worker else "local"
+                    for codec in ("aac", "opus", "mp3"):
+                        self.report.case(label + "-soundtrack-" + codec, lambda c=codec, w=worker: self.soundtrack(c, w))
+                    self.report.case(label + "-soundtrack-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True))
+                    self.report.case(label + "-soundtrack-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True))
+                    self.report.case(label + "-soundtrack-copied", lambda w=worker: self.soundtrack("aac", w, copied=True))
+                if tier == "fleet" and not any(w["online"] and not w["revokedAt"] for w in self.workers):
+                    self.report.case("soundtrack-workers", lambda: (_ for _ in ()).throw(Blocked("No soundtrack workers paired")))
+                return self.report.exit_code
             if regression == "audio":
                 for codec in ("aac", "opus", "mp3"):
                     self.report.case(f"local-audio-{codec}", lambda c=codec: self.audio(c))

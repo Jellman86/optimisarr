@@ -238,9 +238,10 @@ Health response:
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
 | `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
 
-Configuration exports use format version `2` to preserve enforced audio gates. Imports
-accept legacy version `1` without new enforced-gate fields and preserve an existing audio
-gate when those fields are omitted. Older builds reject version `2`.
+Configuration exports use format version `3` to preserve soundtrack reporting and gates. Imports
+accept legacy versions `1` and `2` and preserve existing soundtrack controls when omitted.
+Version `1` imports also preserve an existing standalone audio gate when its fields are omitted.
+Older builds reject version `3`.
 
 Settings fields include:
 
@@ -307,6 +308,17 @@ limit from 0 to 1 and a `Music` or `Other` library. It applies only to standalon
 Gate-enabled jobs measure even with reporting off; every assessed channel/sample must meet the
 limit, and missing measurements block replacement. Older update requests preserve the saved gate
 and limit. See [coverage and controls](setup/configuration.md#audio-quality-reports-and-gates-development).
+
+Video soundtrack controls are separate: `soundtrackQualityReportingEnabled`,
+`soundtrackQualityGateEnabled` and `maximumSoundtrackQualityDistance`. Both switches default
+`false`; the limit defaults `null`. Enabling the gate requires a Film, TV or Other library
+(`Film`, `Tv` or `Other`) and an explicit finite limit from 0 to 1. It applies only to retained,
+explicitly re-encoded audio in full video jobs. Copied audio and previews bypass this assessment.
+Every channel/sample of every retained track must meet the limit, and unavailable evidence
+blocks a gated job. Reporting alone leaves the verification verdict unchanged. Omitted update
+fields preserve saved soundtrack controls. Configuration format `3` carries them; imports of
+versions `1` and `2` preserve existing controls when omitted. See
+[supported tracks and safety limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
 
 | Method | Endpoint | Purpose |
 |---|---|---|

@@ -231,6 +231,11 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.AudioQualityGateEnabled = snapshot.AudioQualityGateEnabled
                 ?? (library.MediaType is MediaType.Music or MediaType.Other && library.AudioQualityGateEnabled);
             library.MaximumAudioQualityDistance = snapshot.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance;
+            library.SoundtrackQualityReportingEnabled = library.MediaType is not (MediaType.Music or MediaType.Photo)
+                && (snapshot.SoundtrackQualityReportingEnabled ?? library.SoundtrackQualityReportingEnabled);
+            library.SoundtrackQualityGateEnabled = library.MediaType is not (MediaType.Music or MediaType.Photo)
+                && (snapshot.SoundtrackQualityGateEnabled ?? library.SoundtrackQualityGateEnabled);
+            library.MaximumSoundtrackQualityDistance = snapshot.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance;
             library.MaxTruePeakDbtp = snapshot.MaxTruePeakDbtp
                 ?? legacyVerificationPolicy.MaxTruePeakDbtp;
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
@@ -558,7 +563,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MaximumSizeSavingPercent,
         library.AudioQualityReportingEnabled,
         library.AudioQualityGateEnabled,
-        library.MaximumAudioQualityDistance);
+        library.MaximumAudioQualityDistance,
+        library.SoundtrackQualityReportingEnabled,
+        library.SoundtrackQualityGateEnabled,
+        library.MaximumSoundtrackQualityDistance);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

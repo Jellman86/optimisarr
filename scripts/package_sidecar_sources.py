@@ -218,7 +218,8 @@ def main():
                         args.mac_sources / name if args.mac_sources else None)
                 copy_licenses(archive, args.output / 'licenses')
                 files.append(archive)
-                records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive)})
+                records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive),
+                    **({'patches': ['FFmpeg/FFmpeg@618fc15e65 (scripts/patch_ffmpeg_opus.py)']} if args.platform == 'macos' and name == 'ffmpeg' else {})})
         else:
             binary = validate_windows_toolchain(ROOT / 'sidecars/windows/scripts/fetch-ffmpeg.ps1')
             cache = args.windows_cache or stage / 'dependency-sources.zip'

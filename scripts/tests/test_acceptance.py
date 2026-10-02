@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance.core import Blocked, Report, inside, quality_failures, statistics
-from acceptance.media import compare_report, validate_shadow_report, vmaf_policy
+from acceptance.media import compare_report, validate_shadow_report, vmaf_policy, validate_soundtrack_report
 from acceptance.corpus import import_corpus
 from acceptance.runner import missing_workers, Harness
 from media_acceptance import strict_worker_verification_for_run, signal_owned_process
@@ -19,6 +19,23 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+
+    def test_soundtrack_report_checks_each_channel_track_mapping_and_measurement_host(self):
+        def track(index, distance=0.01):
+            return {"track": {"sourceAudioIndex": index, "candidateAudioIndex": index, "language": "eng"},
+                    "report": {"measurementLocation": "Worker", "gateEnabled": True, "gatePassed": distance <= 0.1,
+                        "evidence": {"preparation": "audio-f32le-48k-video-timeline-v1", "assessment": {
+                            "measured": True, "referenceAudioIndex": index, "candidateAudioIndex": index,
+                            "windows": [{"distances": {"channelDistances": [distance, distance]}}]}}}}
+        report = {"gateEnabled": True, "gatePassed": True, "tracks": [track(0), track(1)]}
+        validate_soundtrack_report(report, [0, 1], "Worker", 0.1)
+        for changed in [{**report, "tracks": [track(0)]}, {**report, "tracks": [track(1), track(0)]},
+                        {**report, "tracks": [track(0), track(1, 0.2)]}]:
+            with self.assertRaises(AssertionError): validate_soundtrack_report(changed, [0, 1], "Worker", 0.1)
+        with self.assertRaises(AssertionError): validate_soundtrack_report(report, [0, 1], "Server", 0.1)
+        bad = {**report, "gatePassed": False, "tracks": [track(0), track(1, 0.2)]}
+        validate_soundtrack_report(bad, [0, 1], "Worker", 0.1, passes=False)
+
     def test_v1_oracle_uses_candidate_format_and_legacy_only_for_high_frame_rates(self):
         source = {"width": 3840, "height": 1600}
         encoded = {"width": 1280, "height": 720, "pix_fmt": "yuv420p", "bits_per_raw_sample": "0"}

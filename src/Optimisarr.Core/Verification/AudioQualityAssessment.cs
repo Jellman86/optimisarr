@@ -7,9 +7,11 @@ public sealed record AudioQualityWindow(double StartSeconds, double DurationSeco
 
 public static class AudioQualityWindowPlanner
 {
-    public static IReadOnlyList<AudioQualityWindow> Plan(double durationSeconds)
+    public static IReadOnlyList<AudioQualityWindow> Plan(double durationSeconds, bool soundtrack = false)
     {
         if (!double.IsFinite(durationSeconds) || durationSeconds < 1 || durationSeconds > 86400) return [];
+        // Container duration can include encoder padding. Keep soundtrack samples clear of that boundary.
+        if (soundtrack) durationSeconds -= Math.Min(0.1, durationSeconds - 1);
         var duration = Math.Floor(durationSeconds * 48000) / 48000;
         if (duration <= 90)
         {
@@ -26,18 +28,21 @@ public static class AudioQualityWindowPlanner
     }
 }
 
-public sealed record AudioQualityInput(double DurationSeconds, int Channels, int SampleRate, string ChannelLayout)
+public sealed record AudioQualityInput(double DurationSeconds, int Channels, int SampleRate, string ChannelLayout, double ContainerLeadSeconds = 0)
 {
     public static AudioQualityInput? Parse(string json)
+        => ParseTrack(json, 0, standalone: true);
+
+    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
             var streams = doc.RootElement.GetProperty("streams").EnumerateArray().ToArray();
             var audio = streams.Where(s => s.GetProperty("codec_type").GetString() == "audio").ToArray();
-            if (audio.Length != 1 || streams.Any(s => s.GetProperty("codec_type").GetString() == "video"
-                && (!s.TryGetProperty("disposition", out var d) || !d.TryGetProperty("attached_pic", out var p) || p.GetInt32() != 1))) return null;
-            var track = audio[0];
+            if (audioIndex < 0 || audioIndex >= audio.Length || (standalone && (audio.Length != 1 || streams.Any(s => s.GetProperty("codec_type").GetString() == "video"
+                && (!s.TryGetProperty("disposition", out var d) || !d.TryGetProperty("attached_pic", out var p) || p.GetInt32() != 1))))) return null;
+            var track = audio[audioIndex];
             var channels = track.GetProperty("channels").GetInt32();
             var sampleRate = int.Parse(track.GetProperty("sample_rate").GetString()!, CultureInfo.InvariantCulture);
             var durationText = track.TryGetProperty("duration", out var t) && t.GetString() != "N/A"
@@ -47,7 +52,18 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
             var expectedLayout = channels == 1 ? "mono" : "stereo";
             var layout = track.TryGetProperty("channel_layout", out var l) ? l.GetString() : null;
             if (!string.IsNullOrEmpty(layout) && layout != expectedLayout) return null;
-            return new(duration, channels, sampleRate, expectedLayout);
+            var lead = 0.0;
+            if (!standalone)
+            {
+                static double Start(JsonElement value) => value.TryGetProperty("start_time", out var t) && t.GetString() != "N/A"
+                    ? double.Parse(t.GetString()!, CultureInfo.InvariantCulture) : throw new FormatException("Unknown picture timeline.");
+                var video = streams.FirstOrDefault(s => s.GetProperty("codec_type").GetString() == "video"
+                    && (!s.TryGetProperty("disposition", out var d) || !d.TryGetProperty("attached_pic", out var p) || p.GetInt32() != 1));
+                if (video.ValueKind != JsonValueKind.Undefined)
+                    lead = Start(video) - Start(doc.RootElement.GetProperty("format"));
+                if (!double.IsFinite(lead) || lead is < 0 or > 0.1) return null;
+            }
+            return new(duration, channels, sampleRate, expectedLayout, lead);
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException or ArgumentNullException)
         { return null; }
@@ -63,13 +79,20 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
 
 public static class AudioQualityCommandBuilder
 {
-    public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window) =>
-    [
+    public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window, int audioIndex = 0, double containerLeadSeconds = 0, bool soundtrack = false)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(audioIndex);
+        if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
+        var seek = window.StartSeconds + containerLeadSeconds;
+        var frames = (long)Math.Round(window.DurationSeconds * 48000);
+        return [
         "-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-        "-ss", window.StartSeconds.ToString("0.########", CultureInfo.InvariantCulture),
-        "-i", source, "-map", "0:a:0", "-t", window.DurationSeconds.ToString("0.########", CultureInfo.InvariantCulture),
-        "-vn", "-sn", "-dn", "-ar", "48000", "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
-    ];
+        .. soundtrack && seek == 0 ? Array.Empty<string>() : ["-ss", seek.ToString("0.########", CultureInfo.InvariantCulture)],
+        "-i", source, "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
+        "-vn", "-sn", "-dn", "-ar", "48000",
+        .. soundtrack ? new[] { "-af", $"aresample=48000,atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [], "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
+        ];
+    }
 }
 
 public sealed record AudioQualityDistances(int Frames, IReadOnlyList<double> ChannelDistances)
@@ -81,6 +104,7 @@ public static class AudioQualityResultParser
 {
     public const string Revision = "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3";
     public const string Preparation = "audio-f32le-48k-native-defaults-v1";
+    public const string SoundtrackPreparation = "audio-f32le-48k-video-timeline-v1";
 
     public static AudioQualityDistances? Parse(string json, int channels, double durationSeconds)
     {

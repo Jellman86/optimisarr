@@ -8,7 +8,7 @@ import Foundation
 /// working across a server upgrade.
 public enum WorkerProtocol {
     public static let minimum = 1
-    public static let maximum = 7
+    public static let maximum = 8
 }
 
 /// What this machine has *proved* it can do.
@@ -250,7 +250,8 @@ public struct Assignment: Sendable, Equatable {
         if let raw = json["fullVerification"], !(raw is NSNull) {
             guard let data = try? JSONSerialization.data(withJSONObject: raw),
                   let contract = try? JSONDecoder().decode(FullVerificationContract.self, from: data) else { return nil }
-            guard contract.version == (kind == "Audio" ? 2 : 1) else { return nil }
+            guard (kind == "Audio" ? contract.version == 2 : [1, 3].contains(contract.version)),
+                  contract.version != 3 || contract.soundtrackQuality != nil else { return nil }
             fullVerification = contract
         }
         self.init(
