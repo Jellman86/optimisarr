@@ -203,9 +203,16 @@ decoded Opus/swap fixtures match Mac distances to within about `6e-8`.
 
 A Quark-built binary initially failed on Riker because its newer glibc/libstdc++ dependencies
 were unavailable there. This demonstrates why a build on one Linux host is insufficient.
-The qualification workflow targets an older Ubuntu baseline and includes Mac/Windows native
-builds. Test those exact artefacts on the actual hosts before claiming fleet qualification.
-Native tools are not bundled into the production server or installers in this slice.
+The qualification workflow now passes on Ubuntu 22.04, Mac and Windows. Its Linux artefact
+runs on Riker's Debian host and inside the live Riker server and Quark sidecar containers.
+The Windows artefact and CLI run on PICARD with its installed media tools. Music identities,
+AAC/MP3 at 128 kbps, Opus at 160/16 kbps, stereo swaps and rejected truncation pass these
+small runtime checks across all four machines. Digests and full reports are retained privately.
+This qualifies the tested reporting cases; it does not establish surround, full-length library
+coverage, gating thresholds or worker-protocol support. Windows warm runs were about 1.4 seconds
+for the music cases, with the first identity run taking about 14.7 seconds; cold and warm costs
+must be distinguished in later benchmarks. Test fixture areas inside the containers were removed
+after collecting reports. Native tools are not bundled into production packages in this slice.
 
 ### Fixture preparation recorded on 2 October 2026
 
