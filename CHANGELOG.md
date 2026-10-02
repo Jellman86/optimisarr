@@ -4,6 +4,12 @@
 
 ### Added
 
+- Audio encoding has codec-aware Space saver, Balanced, High and Very high bitrate presets
+  for AAC, Opus and MP3, including explicitly re-encoded video soundtracks. Custom settings
+  and defaults remain available. Presets change the encode budget without changing the audio
+  quality gate. Experimental difference limits now live in Advanced verification; existing
+  saved bitrates and limits remain unchanged until edited.
+
 - Add an optional audio quality gate to music and mixed libraries. Set your own maximum
   difference with a horizontal control, clickable numeric points or Custom; every assessed channel/sample must pass, and missing measurements block
   replacement. Strict sidecar verification keeps measurement on the worker. Job details

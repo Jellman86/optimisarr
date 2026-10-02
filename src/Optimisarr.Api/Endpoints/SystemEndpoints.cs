@@ -96,7 +96,7 @@ internal static class SystemEndpoints
         {
             mediaTypes = Enum.GetNames<MediaType>(),
             ruleProfiles = Enum.GetNames<RuleProfile>(),
-            // The complete video bundle each profile resolves to, straight from RuleProfileDefaults,
+            // The complete encoding bundle each profile resolves to, straight from RuleProfileDefaults,
             // so the preset slider can apply and show exactly what every position selects without the UI
             // hard-coding (and drifting from) the backend's choices.
             ruleProfileSpecs = Enum.GetValues<RuleProfile>().Select(profile =>
@@ -111,6 +111,8 @@ internal static class SystemEndpoints
                     hdrHandling = rules.Hdr.ToString(),
                     videoAudioCodec = rules.VideoAudioCodec,
                     videoAudioBitrateKbps = rules.VideoAudioBitrateKbps,
+                    audioTargetCodec = rules.TargetAudioCodec,
+                    audioBitrateKbps = rules.AudioBitrateKbps,
                     downmixToStereo = rules.DownmixToStereo
                 };
             }),

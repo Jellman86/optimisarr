@@ -36,7 +36,7 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
         { profile: 'CompatibilityH264', codec: 'h264', container: 'mp4', crf: 20, hdrHandling: 'Exclude', videoAudioCodec: 'aac', videoAudioBitrateKbps: 160, downmixToStereo: false },
         { profile: 'ConservativeHevc', codec: 'hevc', container: 'mp4', crf: 24, hdrHandling: 'Exclude', videoAudioCodec: 'aac', videoAudioBitrateKbps: 160, downmixToStereo: false },
         { profile: 'ExperimentalAv1', codec: 'av1', container: 'mkv', crf: 30, hdrHandling: 'Preserve', videoAudioCodec: null, videoAudioBitrateKbps: 160, downmixToStereo: false },
-        { profile: 'ScottsSettings', codec: 'hevc', container: 'mp4', crf: 24, hdrHandling: 'TonemapToSdr', videoAudioCodec: 'aac', videoAudioBitrateKbps: 96, downmixToStereo: true },
+        { profile: 'ScottsSettings', codec: 'hevc', container: 'mp4', crf: 24, hdrHandling: 'TonemapToSdr', videoAudioCodec: 'aac', videoAudioBitrateKbps: 96, audioTargetCodec: 'aac', audioBitrateKbps: 96, downmixToStereo: true },
         { profile: 'RemuxCleanup', codec: null, container: 'mkv', crf: null, hdrHandling: 'Preserve', videoAudioCodec: null, videoAudioBitrateKbps: 160, downmixToStereo: false },
         { profile: 'TrackCleanup', codec: null, container: null, crf: null, hdrHandling: 'Preserve', videoAudioCodec: null, videoAudioBitrateKbps: 160, downmixToStereo: false },
       ],
@@ -261,6 +261,49 @@ test('ordinary controls and advanced pages have distinct homes for every media k
   await page.getByRole('button', { name: 'Images', exact: true }).click()
   await expect(page.locator('#lib-image-downscale')).toBeVisible()
   await expect(page.locator('#lib-image-quality')).toHaveCount(0)
+})
+
+test('audio encoding presets change the codec budget while leaving the quality gate unchanged', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music', audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.005 })
+  await page.goto('/#/libraries/1/configure/encode/audio')
+  const control = page.locator('[data-audio-encoding-preset]')
+  await control.getByRole('button', { name: 'High', exact: true }).click()
+  await expect(control).toContainText('192 kbps')
+  await page.getByLabel('Target codec', { exact: true }).selectOption('opus')
+  await expect(control).toContainText('160 kbps')
+  await page.getByLabel('Target codec', { exact: true }).selectOption('mp3')
+  await expect(control).toContainText('256 kbps')
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ audioTargetCodec: 'mp3', audioBitrateKbps: 256, audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.005 })
+})
+
+test('existing audio budgets stay unchanged when a library is opened or its format changes', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music', audioBitrateKbps: 173 })
+  await page.goto('/#/libraries/1/configure/encode/audio')
+  await expect(page.locator('[data-audio-encoding-preset]')).toContainText('173 kbps')
+  await page.getByLabel('Target codec', { exact: true }).selectOption('mp3')
+  await expect(page.locator('[data-audio-encoding-preset]')).toContainText('173 kbps')
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ audioBitrateKbps: 173 })
+})
+
+test('video soundtrack presets apply only to explicit re-encoding and preserve audio copy', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/encode/audio')
+  await expect(page.locator('[data-audio-encoding-preset]')).toHaveCount(0)
+  await page.getByLabel('Audio track', { exact: true }).selectOption('mp3')
+  const control = page.locator('[data-audio-encoding-preset]')
+  await control.getByRole('button', { name: 'Very high', exact: true }).click()
+  await expect(control).toContainText('320 kbps')
+  await page.getByLabel('Audio track', { exact: true }).selectOption('opus')
+  await expect(control).toContainText('192 kbps')
+  await page.getByLabel('Audio track', { exact: true }).selectOption('copy')
+  await expect(control).toHaveCount(0)
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ videoAudioCodec: 'copy', videoAudioBitrateKbps: 192 })
 })
 
 test('optional verification thresholds follow their switches on the advanced page', async ({ page }) => {
@@ -530,12 +573,18 @@ test('audio quality gate requires an explicit limit and survives verification na
   const gate = page.getByRole('checkbox', { name: 'Require audio quality', exact: true })
   await expect(gate).not.toBeChecked()
   await gate.check()
+  await expect(page.locator('[data-audio-quality-limit]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Set the limit in Advanced verification', exact: true }).click()
   const limit = page.getByRole('spinbutton', { name: 'Maximum audio difference', exact: true })
   await expect(limit).toBeEmpty()
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
   await limit.fill('0')
   await expect(limit).toBeVisible()
   await limit.fill('0.005')
+  await stage(page, 'Verify').click()
+  await expect(limit).toHaveCount(0)
+  await expect(page.getByText('Maximum allowed difference: 0.005', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Advanced verification', exact: true }).click()
   await expect(gate).toBeChecked()
   await expect(limit).toHaveValue('0.005')
@@ -558,6 +607,7 @@ for (const width of [375, 1440]) {
       await mockLibraries(page, { ...library, mediaType: 'Music' })
       await page.goto('/#/libraries/1/configure/verify')
       await page.getByRole('checkbox', { name: 'Require audio quality', exact: true }).check()
+      await page.getByRole('button', { name: 'Advanced verification', exact: true }).click()
       const control = page.locator('[data-audio-quality-limit]')
       const slider = control.getByRole('slider', { name: 'Maximum audio difference', exact: true })
       const custom = control.getByRole('spinbutton', { name: 'Maximum audio difference', exact: true })
@@ -571,6 +621,7 @@ for (const width of [375, 1440]) {
       await control.getByRole('button', { name: 'Custom', exact: true }).click()
       await expect(custom).toHaveValue('0.01')
       await custom.fill('0.005')
+      await stage(page, 'Verify').click()
       await page.getByRole('button', { name: 'Advanced verification', exact: true }).click()
       await expect(custom).toHaveValue('0.005')
       await control.scrollIntoViewIfNeeded()
@@ -581,6 +632,114 @@ for (const width of [375, 1440]) {
       const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
       await page.getByRole('button', { name: 'Save', exact: true }).click()
       expect((await saved).postDataJSON()).toMatchObject({ audioQualityGateEnabled: true, maximumAudioQualityDistance: 0 })
+    })
+  }
+}
+
+for (const [codec, budgets] of [['aac', [96, 128, 192, 256]], ['opus', [96, 128, 160, 192]], ['mp3', [128, 192, 256, 320]]] as const) {
+  for (const [index, label] of ['Space saver', 'Balanced', 'High', 'Very high'].entries()) {
+    test(`${codec} ${label} saves its encoding budget with the audio gate off`, async ({ page }) => {
+      await mockLibraries(page, { ...library, mediaType: 'Music', audioTargetCodec: codec })
+      await page.goto('/#/libraries/1/configure/encode/audio')
+      const control = page.locator('[data-audio-encoding-preset]')
+      await control.getByRole('button', { name: label, exact: true }).click()
+      await expect(control).toContainText(`${budgets[index]} kbps`)
+      const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+      await page.getByRole('button', { name: 'Save', exact: true }).click()
+      expect((await saved).postDataJSON()).toMatchObject({ audioBitrateKbps: budgets[index], audioQualityGateEnabled: false, maximumAudioQualityDistance: null })
+    })
+  }
+}
+
+test('Custom audio bitrate and Default remain distinct across formats and navigation', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/encode/audio')
+  const control = page.locator('[data-audio-encoding-preset]')
+  await expect(control.getByRole('button', { name: 'Default', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await control.getByRole('button', { name: 'Custom', exact: true }).click()
+  await expect(page).toHaveURL(/encode\/audio\/advanced$/)
+  await expect(page.locator('#lib-audio-bitrate')).toHaveValue('128')
+  await page.locator('#lib-audio-bitrate').fill('173')
+  await page.getByLabel('Target codec', { exact: true }).selectOption('mp3')
+  await expect(page.locator('#lib-audio-bitrate')).toHaveValue('173')
+  await expect(control.getByRole('button', { name: 'Custom', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await control.getByRole('button', { name: 'Default', exact: true }).click()
+  await expect(page.locator('#lib-audio-bitrate')).toBeEmpty()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ audioTargetCodec: 'mp3', audioBitrateKbps: null, maximumAudioQualityDistance: null })
+})
+
+for (const mediaType of ['Music', 'Other']) {
+  test(`${mediaType} Default shows the server profile's standalone budget and saves no override`, async ({ page }) => {
+    await mockLibraries(page, { ...library, mediaType, ruleProfile: 'ScottsSettings' })
+    await page.goto('/#/libraries/1/configure/encode/audio')
+    const control = page.locator('[data-audio-encoding-preset]').last()
+    await expect(control.getByRole('button', { name: 'Default', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(control).toContainText('AAC · 96 kbps')
+    await control.getByRole('button', { name: 'High', exact: true }).click()
+    await control.getByRole('button', { name: 'Default', exact: true }).click()
+    await page.locator('#lib-audio-codec').selectOption('aac')
+    const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    expect((await saved).postDataJSON()).toMatchObject({ audioBitrateKbps: null })
+  })
+}
+
+test('choosing a video profile shows its soundtrack baseline as Default', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/encode')
+  await page.getByRole('radio', { name: /Scott's/ }).check()
+  await page.getByRole('button', { name: 'Audio & subtitles', exact: true }).click()
+  const control = page.locator('[data-audio-encoding-preset]')
+  await expect(control.getByRole('button', { name: 'Default', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(control).toContainText('AAC · 96 kbps')
+  await stage(page, 'Encode').click()
+  await page.getByRole('radio', { name: /Balanced/ }).check()
+  await page.getByRole('button', { name: 'Audio & subtitles', exact: true }).click()
+  await expect(control.getByRole('button', { name: 'Default', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(control).toContainText('AAC · 160 kbps')
+})
+
+for (const bitrate of [null, 128]) {
+  test(`mixed library ${bitrate == null ? 'inherited' : 'saved'} audio budget stays clear after a profile change`, async ({ page }) => {
+    await mockLibraries(page, { ...library, mediaType: 'Other', audioBitrateKbps: bitrate })
+    await page.goto('/#/libraries/1/configure/encode/audio')
+    const control = page.locator('[data-audio-encoding-preset]').last()
+    const note = control.getByText('Saved bitrate. Choose Default to follow the profile if it changes.', { exact: true })
+    if (bitrate == null) await expect(note).toHaveCount(0)
+    else await expect(note).toBeVisible()
+    await stage(page, 'Encode').click()
+    await page.getByRole('radio', { name: /Scott's/ }).check()
+    await page.getByRole('button', { name: 'Audio & subtitles', exact: true }).click()
+    await expect(control).toContainText(`AAC · ${bitrate ?? 96} kbps`)
+    await control.getByRole('button', { name: 'Default', exact: true }).click()
+    await expect(control).toContainText('AAC · 96 kbps')
+    await expect(note).toHaveCount(0)
+  })
+}
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
+    test(`audio encoding presets fit at ${width}px in ${theme} and work by keyboard`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1100 })
+      await page.addInitScript(selected => localStorage.setItem('optimisarr-theme', selected), theme)
+      await mockLibraries(page, { ...library, mediaType: 'Music' })
+      await page.goto('/#/libraries/1/configure/encode/audio')
+      const control = page.locator('[data-audio-encoding-preset]')
+      await control.getByRole('button', { name: 'Balanced', exact: true }).click()
+      const slider = control.getByRole('slider', { name: 'Audio encoding quality', exact: true })
+      await slider.focus()
+      await slider.press('ArrowRight')
+      await expect(slider).toHaveAttribute('aria-valuetext', 'High · AAC · 192 kbps')
+      expect(await control.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      for (const button of await control.getByRole('button').all()) {
+        const bounds = (await button.boundingBox())!
+        expect(bounds.height).toBeGreaterThanOrEqual(44)
+        expect(bounds.width).toBeGreaterThanOrEqual(44)
+      }
+      await test.info().attach('Audio encoding presets', { body: await control.screenshot(), contentType: 'image/png' })
     })
   }
 }

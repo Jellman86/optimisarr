@@ -1097,6 +1097,16 @@ the replacement workflow is trustworthy.
       an optional offline comparator, not a required shipped dependency or runtime fallback.
       This selection does not claim a universal benchmark winner. Mono aggregation must not hide
       missing/swapped channels or override timing, loudness and clipping checks.
+    - **Encoding presets:** codec-aware bitrate starting points are implemented in development
+      for standalone audio and explicitly re-encoded video soundtracks. They preserve existing
+      settings and never choose a quality gate limit. A bounded sample search for a suitable
+      bitrate remains planned; include cancellation, cost reporting, source-bitrate and size
+      checks, and final verification before replacement.
+    - **Video soundtracks:** planned track-specific assessment of retained re-encoded audio,
+      with source/output language and track matching, an intended downmix reference, independent
+      lip-sync checks and strict worker evidence. Copied tracks require preservation checks.
+      Prove mono/stereo first; surround needs separate qualification. Record each track's
+      coverage and verdict, and require every configured video and audio gate before replacement.
     - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
       additive/idempotent evidence storage and a versioned worker capability/evidence contract.
       Strict sidecar-only verification must complete the required metric on the worker, with

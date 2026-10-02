@@ -1,0 +1,805 @@
+{
+  "description": "Isolated encode/probe/decode acceptance using installed media tools. This is codec compatibility evidence, not listening calibration or perceptual-quality assessment.",
+  "fixture": {
+    "name": "Samplelib sample-speech-1m.wav",
+    "source": "https://samplelib.com/sample-wav.html",
+    "licence": "https://samplelib.com/license.html",
+    "sha256": "6409c241837703313894b7e8ef18eae39e2d0ab86f4f48179da60dc33d914d04",
+    "excerptSeconds": 8,
+    "stereoPreparation": "Duplicate the mono channel into left and right."
+  },
+  "hosts": {
+    "macos": {
+      "cases": [
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 101167,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 139335,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 191894,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 192031,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 112419,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 148862,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 184191,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 218056,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 129192,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 193767,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 258341,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 322916,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 99712,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 130595,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 195485,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 239670,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 93250,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 122069,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 151872,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 185343,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 129192,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 193767,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 258341,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 322916,
+          "decodes": true
+        }
+      ],
+      "originalUnchanged": true,
+      "ffmpegSha256": "8B3C3D1EE0A09EEA896DBF382D44A7D442420F998DEAE83CECA0FD41241438F2"
+    },
+    "windows": {
+      "cases": [
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 99473,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 132979,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 180188,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 180418,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 113573,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 150273,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 185870,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 220010,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 129193,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 193768,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 258342,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 322917,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 98769,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 130518,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 193904,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 227381,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 94589,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 123525,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 153510,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 187281,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 129193,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 193768,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 258342,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 322917,
+          "decodes": true
+        }
+      ],
+      "originalUnchanged": true,
+      "ffmpegSha256": "C6CAA1894D3276556C84B36ACC1D219D69F972C0A7525B23F1CAD2BDF05C4231"
+    },
+    "linux-worker": {
+      "cases": [
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 101557,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 139231,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 191924,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 192136,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 112424,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 148871,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 184199,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 218067,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 129192,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 193767,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 258341,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 322916,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 99863,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 130427,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 195080,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 239195,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 93269,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 122085,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 151841,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 185355,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 129192,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 193767,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 258341,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 322916,
+          "decodes": true
+        }
+      ],
+      "originalUnchanged": true,
+      "ffmpegSha256": "8BD3F5728E3753BCCAE5FD34AAA5648D349AD8E1137C6DC2F8633E0C56016DE5"
+    },
+    "server-container": {
+      "cases": [
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 101557,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 139231,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 191924,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8,
+          "bytes": 192136,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 112424,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 148871,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 184199,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8.0065,
+          "bytes": 218067,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 129192,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 193767,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 258341,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 1,
+          "duration": 8.045714,
+          "bytes": 322916,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 99863,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 130427,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 195080,
+          "decodes": true
+        },
+        {
+          "codec": "aac",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8,
+          "bytes": 239195,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 96,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 93269,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 122085,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 160,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 151841,
+          "decodes": true
+        },
+        {
+          "codec": "opus",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8.0065,
+          "bytes": 185355,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 128,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 129192,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 192,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 193767,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 256,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 258341,
+          "decodes": true
+        },
+        {
+          "codec": "mp3",
+          "bitrate": 320,
+          "channels": 2,
+          "duration": 8.045714,
+          "bytes": 322916,
+          "decodes": true
+        }
+      ],
+      "originalUnchanged": true,
+      "ffmpegSha256": "8BD3F5728E3753BCCAE5FD34AAA5648D349AD8E1137C6DC2F8633E0C56016DE5"
+    }
+  }
+}
