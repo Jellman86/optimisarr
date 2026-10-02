@@ -4,6 +4,11 @@
 
 ### Added
 
+- Inventory has an opt-in **Exact copies** review for every library type. It compares complete
+  file hashes within a selected library, shows paths and link counts, and supports cancellation.
+  Reads are limited to about 8 MiB/s on the server. Reports are temporary snapshots; no files
+  are removed or changed. Disk savings are unknown for linked or unclassified storage.
+
 - Experimental audio quality reports can be enabled per library under Verify. Reports compare
   each mono/stereo channel with pinned Zimtohrli, show coverage and measurement location in
   Queue and Quarantine, and record file/tool identity. Reports do not change replacement gates.

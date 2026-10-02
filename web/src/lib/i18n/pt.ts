@@ -1,6 +1,32 @@
 import type { Messages } from './en'
 
 export const pt: Messages = {
+  duplicates: {
+    title: "Cópias exatas",
+    subtitle: "Encontre ficheiros com bytes idênticos numa biblioteca.",
+    choose: "Escolha uma biblioteca",
+    scan: "Encontrar cópias exatas",
+    cancel: "Cancelar análise",
+    cost: "Lê ficheiros indexados do mesmo tamanho neste servidor até cerca de 8 MiB/s. Pode demorar horas. Ignora ficheiros com tarefas incompletas.",
+    safe: "Nada é removido ou alterado.",
+    snapshot: "Os relatórios podem ficar desatualizados. Os últimos dez ficam até reiniciar o servidor. Analise de novo após alterações.",
+    progress: "{checked} de {total} candidatos verificados · {skipped} ignorados · {bytes} lidos",
+    empty: "Nenhuma cópia exata encontrada. Formatos, etiquetas ou codificações diferentes não coincidem.",
+    truncated: "Mostra até 200 grupos e 100 cópias por grupo. Oculta totais dos grupos reduzidos.",
+    copies: "{count} cópias idênticas",
+    fullBytes: "Ficheiro completo idêntico",
+    linked: "{count} nomes partilham estes bytes",
+    unknown: "Número de ligações desconhecido",
+    independent: "Um nome de ficheiro indicado",
+    spaceUnknown: "Espaço adicional desconhecido",
+    extra: "{bytes} em cópias adicionais. A poupança depende do sistema de ficheiros.",
+    NotStarted: "Pronto para analisar",
+    Queued: "À espera da análise",
+    Running: "A ler ficheiros",
+    Completed: "Análise concluída",
+    Cancelled: "Cancelada",
+    Failed: "Falha na análise",
+  },
   audio_quality: {
     title: "Relatório de qualidade de áudio",
     hint: "Compara cada canal com Zimtohrli. Suporta áudio mono e estéreo com uma faixa. Mede até 90 segundos e usa CPU e disco do equipamento que verifica. Os resultados ficam nos detalhes da tarefa. As tarefas remotas ficam no worker. É experimental e não aprova nem rejeita a saída.",

@@ -3,6 +3,32 @@
 // keys — a missing or misspelled key fails `npm run check` (the CI completeness gate).
 // Use `{token}` placeholders for interpolation; resolve them with `t(...)`.
 export const en = {
+  duplicates: {
+    title: "Exact copies",
+    subtitle: "Find files with identical bytes in one library.",
+    choose: "Choose a library",
+    scan: "Find exact copies",
+    cancel: "Cancel scan",
+    cost: "Reads same-sized inventory files on this server at up to about 8 MiB/s. Large libraries can take hours. Files with unfinished jobs are skipped.",
+    safe: "Nothing is removed or changed.",
+    snapshot: "Reports show the files as checked, and can become outdated. The last ten library reports remain until the server restarts. Scan again after files change.",
+    progress: "{checked} of {total} candidates checked · {skipped} skipped · {bytes} read",
+    empty: "No exact copies found among the checked files. Different formats, tags or encodes will not match.",
+    truncated: "Shows at most 200 groups and 100 copies per group. Totals are hidden for shortened groups.",
+    copies: "{count} identical copies",
+    fullBytes: "Complete file match",
+    linked: "{count} names share these bytes",
+    unknown: "Link count unknown",
+    independent: "One file name reported",
+    spaceUnknown: "Extra disk space is unknown",
+    extra: "{bytes} in extra file copies. Actual disk savings depend on the filesystem.",
+    NotStarted: "Ready to scan",
+    Queued: "Waiting to scan",
+    Running: "Reading files",
+    Completed: "Scan complete",
+    Cancelled: "Cancelled",
+    Failed: "Scan failed",
+  },
   audio_quality: {
     title: "Audio quality report",
     hint: "Compares each channel using Zimtohrli. Supports mono and stereo audio with one track. Measures up to 90 seconds, adds CPU and disk work on the verifying host, and records results in job details. Worker jobs stay on the worker. This is experimental and does not pass or fail an output.",

@@ -1,6 +1,32 @@
 import type { Messages } from './en'
 
 export const it: Messages = {
+  duplicates: {
+    title: "Copie esatte",
+    subtitle: "Trova file con byte identici in una libreria.",
+    choose: "Scegli una libreria",
+    scan: "Trova copie esatte",
+    cancel: "Annulla analisi",
+    cost: "Legge file indicizzati della stessa dimensione su questo server fino a circa 8 MiB/s. Può richiedere ore. Salta file con lavori incompleti.",
+    safe: "Niente viene rimosso o modificato.",
+    snapshot: "I rapporti possono diventare obsoleti. Gli ultimi dieci restano fino al riavvio del server. Ripeti dopo le modifiche.",
+    progress: "{checked} di {total} candidati controllati · {skipped} saltati · {bytes} letti",
+    empty: "Nessuna copia esatta trovata. Formati, tag o codifiche diversi non coincidono.",
+    truncated: "Mostra fino a 200 gruppi e 100 copie per gruppo. I totali dei gruppi abbreviati sono nascosti.",
+    copies: "{count} copie identiche",
+    fullBytes: "File completo identico",
+    linked: "{count} nomi condividono questi byte",
+    unknown: "Numero di collegamenti sconosciuto",
+    independent: "Segnalato un nome file",
+    spaceUnknown: "Spazio aggiuntivo sconosciuto",
+    extra: "{bytes} nelle copie aggiuntive. Il risparmio dipende dal file system.",
+    NotStarted: "Pronto per l’analisi",
+    Queued: "In attesa di analisi",
+    Running: "Lettura dei file",
+    Completed: "Analisi completata",
+    Cancelled: "Annullata",
+    Failed: "Analisi fallita",
+  },
   audio_quality: {
     title: "Rapporto sulla qualità audio",
     hint: "Confronta ogni canale con Zimtohrli. Supporta audio mono e stereo con una traccia. Misura fino a 90 secondi usando CPU e disco del dispositivo che verifica. I risultati sono nei dettagli del processo. I processi remoti restano sul worker. È sperimentale e non approva o rifiuta il risultato.",

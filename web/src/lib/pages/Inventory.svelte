@@ -129,7 +129,7 @@
   {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
   <div class="inventory-toolbar">
     <div class="inventory-filters">{#each filters as filter}<button class="focus-ring" class:filter-active={show === filter.key} aria-pressed={show === filter.key} onclick={() => selectFilter(filter.key)}>{filter.label}</button>{/each}</div>
-    <span class="inventory-loading" role="status">{loading ? i18n.m.common.loading_short : ''}</span>
+    <div class="flex flex-wrap items-center gap-3"><span class="inventory-loading" role="status">{loading ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
   </div>
   <div class="inventory-surface" aria-busy={loading}>
     {#if rows.length}

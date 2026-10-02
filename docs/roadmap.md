@@ -1104,8 +1104,13 @@ the replacement workflow is trustworthy.
       Thresholds are explicit policies, not a conversion from VMAF or SSIM's numeric scale.
       No listening-panel programme or promised release date is required.
 
-15. **Duplicate detection and safe dedupe for every library type: planned, researched
-    2026-10-02.** Cover image, audio, video and mixed libraries. Find exact file copies first,
+15. **Duplicate detection and safe dedupe for every library type: first read-only slice
+    implemented, broader matching and cleanup planned, 2026-10-02.** The manual
+    [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within one
+    selected library. Scans are cancellable, rate limited and bounded; reports remain until
+    restart or eviction after ten libraries. It makes no changes to media. Persistent caching,
+    incremental indexing, cross-library scope and safe cleanup remain future work.
+    Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.
     The [research and delivery plan](development/perceptual-audio-image-quality-plan.md#duplicate-detection-for-all-library-types)

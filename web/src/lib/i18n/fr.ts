@@ -1,6 +1,32 @@
 import type { Messages } from './en'
 
 export const fr: Messages = {
+  duplicates: {
+    title: "Copies exactes",
+    subtitle: "Trouvez des fichiers aux octets identiques dans une bibliothèque.",
+    choose: "Choisir une bibliothèque",
+    scan: "Trouver les copies exactes",
+    cancel: "Annuler l’analyse",
+    cost: "Lit les fichiers indexés de même taille sur ce serveur à environ 8 Mio/s maximum. Cela peut prendre des heures. Ignore les fichiers avec des tâches inachevées.",
+    safe: "Rien n’est supprimé ni modifié.",
+    snapshot: "Les rapports peuvent vieillir. Les dix derniers restent jusqu’au redémarrage du serveur. Relancez après des modifications.",
+    progress: "{checked} sur {total} candidats vérifiés · {skipped} ignorés · {bytes} lus",
+    empty: "Aucune copie exacte trouvée. Des formats, balises ou encodages différents ne correspondent pas.",
+    truncated: "Affiche au plus 200 groupes et 100 copies par groupe. Les totaux des groupes raccourcis sont masqués.",
+    copies: "{count} copies identiques",
+    fullBytes: "Fichier entier identique",
+    linked: "{count} noms partagent ces octets",
+    unknown: "Nombre de liens inconnu",
+    independent: "Un nom de fichier signalé",
+    spaceUnknown: "Espace disque supplémentaire inconnu",
+    extra: "{bytes} dans les copies supplémentaires. Le gain dépend du système de fichiers.",
+    NotStarted: "Prêt à analyser",
+    Queued: "Analyse en attente",
+    Running: "Lecture des fichiers",
+    Completed: "Analyse terminée",
+    Cancelled: "Annulée",
+    Failed: "Échec de l’analyse",
+  },
   audio_quality: {
     title: "Rapport de qualité audio",
     hint: "Compare chaque canal avec Zimtohrli. Prend en charge une piste mono ou stéréo. Mesure jusqu’à 90 secondes et utilise le processeur et le disque de la machine qui vérifie. Résultats dans les détails du travail. Les travaux distants restent sur le worker. Expérimental, sans valider ni refuser la sortie.",

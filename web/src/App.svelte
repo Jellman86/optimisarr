@@ -13,6 +13,7 @@
   import Libraries from './lib/pages/Libraries.svelte'
   import QualityLab from './lib/pages/QualityLab.svelte'
   import Inventory from './lib/pages/Inventory.svelte'
+  import ExactDuplicates from './lib/pages/ExactDuplicates.svelte'
   import Queue from './lib/pages/Queue.svelte'
   import Quarantine from './lib/pages/Quarantine.svelte'
   import Schedule from './lib/pages/Schedule.svelte'
@@ -27,6 +28,7 @@
     if (/^\/libraries\/\d+\/quality-check$/.test(path)) return QualityLab
     if (path.startsWith('/libraries')) return Libraries
     // Inventory absorbed the Candidates view; the old /candidates route still lands there.
+    if (path === '/inventory/duplicates') return ExactDuplicates
     if (path.startsWith('/inventory') || path.startsWith('/candidates')) return Inventory
     if (path.startsWith('/queue')) return Queue
     if (path.startsWith('/quarantine')) return Quarantine
