@@ -23,7 +23,7 @@ FetchContent_Declare(highway
 FetchContent_MakeAvailable(highway)
 
 add_library(zimtohrli_metric STATIC "${zimtohrli_SOURCE_DIR}/cpp/zimt/zimtohrli.cc")
-target_include_directories(zimtohrli_metric PUBLIC "${zimtohrli_SOURCE_DIR}/cpp")
+target_include_directories(zimtohrli_metric SYSTEM PUBLIC "${zimtohrli_SOURCE_DIR}/cpp")
 target_link_libraries(zimtohrli_metric PRIVATE hwy)
 add_executable(optimisarr-audio-quality main.cpp)
 target_link_libraries(optimisarr-audio-quality PRIVATE zimtohrli_metric)
