@@ -14,6 +14,8 @@
 ### Fixed
 
 - Queue detail styles no longer remove padding from nested measurement cards.
+- Windows installer tests wait for the installer process with a deadline, allowing upgraded
+  workers to stay running. A regression test covers live descendants, exit codes and timeouts.
 
 ### Development tools
 

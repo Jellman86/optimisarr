@@ -17,8 +17,19 @@ $logRoot = Join-Path $evidenceRoot ('optimisarr-install-test-' + [guid]::NewGuid
 New-Item -ItemType Directory $logRoot | Out-Null
 Write-Output "Installer evidence: $logRoot"
 function Invoke-Msi([string] $Action, [string] $Name, [string] $Path) {
-    $process = Start-Process msiexec.exe -ArgumentList @($Action, ('"'+$Path+'"'), '/qn', '/norestart', '/l*v', ('"'+$logRoot+'\'+$Name+'.log"')) -Wait -PassThru
-    if ($process.ExitCode -notin @(0,3010)) { throw "MSI $Name failed: $($process.ExitCode). Logs: $logRoot" }
+    Write-Output "MSI $($Name): starting. Logs: $logRoot"
+    # Start-Process -Wait also waits for descendants. An upgraded worker must stay alive.
+    # Wait only for this msiexec instance, with a deadline, and inspect its own exit code.
+    $process = Start-Process msiexec.exe -ArgumentList @($Action, ('"'+$Path+'"'), '/qn', '/norestart', '/l*v', ('"'+$logRoot+'\'+$Name+'.log"')) -PassThru
+    try {
+        if (!$process.WaitForExit(600000)) {
+            try { $process.Kill() } catch { Write-Warning "Could not stop timed-out installer: $_" }
+            throw "MSI $Name timed out. Logs: $logRoot"
+        }
+        if ($process.ExitCode -notin @(0,3010)) { throw "MSI $Name failed: $($process.ExitCode). Logs: $logRoot" }
+        Write-Output "MSI $($Name): completed with $($process.ExitCode)."
+    }
+    finally { $process.Dispose() }
 }
 function Get-ProductCode([string] $Path) {
     $engine = New-Object -ComObject WindowsInstaller.Installer

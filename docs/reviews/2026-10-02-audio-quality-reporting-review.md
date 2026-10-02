@@ -36,6 +36,11 @@ future work. Production hosts were not upgraded during these tests.
 
 5. The first Docker build proved that the minimal SDK image does not include Make. Add the
    build driver explicitly alongside CMake and the compiler; require the final-image CI gate.
+6. Repeated installer CI stalls exposed an unbounded process-tree wait in the smoke harness.
+   PowerShell's `Start-Process -Wait` waits for descendants as well as the installer
+   ([Microsoft documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/start-process)).
+   Wait for the owned installer process with a deadline, preserve exit codes and add a safe
+   real-parent/live-child regression plus timeout cases. Bound the outer CI step as well.
 
 ## Validation
 
