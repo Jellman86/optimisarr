@@ -18,12 +18,13 @@ public static class AudioQualityReporting
     public static bool ShouldMeasureLocally(bool enabled, MediaKind kind, bool healthy, bool clip, bool remote) =>
         enabled && kind == MediaKind.Audio && healthy && !clip && !remote;
 
-    public static string? Validate(RemoteAudioQualityEvidence? evidence, string? referenceHash, string? candidateHash)
+    public static string? Validate(RemoteAudioQualityEvidence? evidence, string? referenceHash, string? candidateHash,
+        string preparation = AudioQualityResultParser.Preparation)
     {
         if (evidence?.Assessment is not { } result) return "The worker returned no audio quality report.";
         if (!result.Measured) return result.Error ?? "Audio quality could not be measured.";
         if (evidence.Metric != "zimtohrli" || evidence.Revision != AudioQualityResultParser.Revision
-            || evidence.Preparation != AudioQualityResultParser.Preparation)
+            || evidence.Preparation != preparation)
             return "The audio metric or preparation does not match this release.";
         if (result.Error is not null || result.Reference is not { } reference || result.Candidate is not { } candidate
             || !ValidInput(reference) || !ValidInput(candidate) || AudioQualityInput.Incompatibility(reference, candidate) is not null
@@ -32,7 +33,7 @@ public static class AudioQualityReporting
         if (!Matches(referenceHash, result.ReferenceSha256) || !Matches(candidateHash, result.CandidateSha256)
             || !Hash(result.MetricSha256) || !Hash(result.FfmpegSha256) || !Hash(result.FfprobeSha256))
             return "The audio report is not bound to the delivered files and tools.";
-        var windows = AudioQualityWindowPlanner.Plan(Math.Min(reference.DurationSeconds, candidate.DurationSeconds));
+        var windows = AudioQualityWindowPlanner.Plan(Math.Min(reference.DurationSeconds, candidate.DurationSeconds), soundtrack: preparation == AudioQualityResultParser.SoundtrackPreparation);
         if (result.Windows is null || result.Windows.Count != windows.Count)
             return "The audio report does not contain every assigned sample.";
         for (var index = 0; index < windows.Count; index++)
@@ -52,6 +53,7 @@ public static class AudioQualityReporting
     }
 
     private static bool ValidInput(AudioQualityInput input) => input.Channels is 1 or 2
+        && double.IsFinite(input.ContainerLeadSeconds) && input.ContainerLeadSeconds is >= 0 and <= 0.1
         && input.SampleRate is >= 8000 and <= 384000
         && input.ChannelLayout == (input.Channels == 1 ? "mono" : "stereo")
         && AudioQualityWindowPlanner.Plan(input.DurationSeconds).Count > 0;

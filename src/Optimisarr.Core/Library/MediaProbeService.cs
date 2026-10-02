@@ -54,6 +54,8 @@ public sealed record MediaProbeResult(
     public IReadOnlyList<string?> SubtitleCodecs { get; init; } = [];
     /// <summary>Absolute stream indexes in the same subtitle-relative order, when reported.</summary>
     public IReadOnlyList<int?> SubtitleStreamIndexes { get; init; } = [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? RawJson { get; init; }
 
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
@@ -369,7 +371,7 @@ public sealed class MediaProbeService : IMediaProbeService
             null,
             videoFrameRate,
             containerStart,
-            colorRange) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes };
+            colorRange) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, RawJson = json };
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still

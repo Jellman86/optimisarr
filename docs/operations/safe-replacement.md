@@ -49,6 +49,13 @@ storage I/O; strict sidecar verification does not mean zero server work.
 Auto-replace is per-library, disabled by default, and runs only after every
 verification gate passes. It does not bypass quarantine or rollback.
 
+The optional **Require soundtrack quality** gate applies to retained re-encoded video audio.
+Every supported track/channel/sample must meet your explicit limit; unavailable evidence
+blocks replacement. Reporting alone leaves the verdict unchanged, and copied audio uses the
+existing retention checks. Sampled evidence does not guarantee unassessed sections or lip-sync.
+See [soundtrack controls and limits](../setup/configuration.md#assess-re-encoded-video-soundtracks).
+Strict soundtrack assessment requires protocol 8/contract 3 and stays on the worker.
+
 Dry-run mode is global. When enabled in **Settings → Files & safety → Replacement and cleanup**, Optimisarr
 still scans, queues, transcodes, and verifies, but replacement and quarantine
 purge actions are refused. Verified outputs stop at **Ready to replace** so you

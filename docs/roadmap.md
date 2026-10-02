@@ -1075,7 +1075,7 @@ the replacement workflow is trustworthy.
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: audio reporting and explicit gate implemented in development; broader work planned, 2026-10-02.** Add
+14. **Perceptual quality for audio and still images: audio and video soundtrack reporting and explicit gates implemented in development; broader work planned, 2026-10-02.** Add
     understandable, optional quality evidence alongside the existing structural, timing,
     loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
     An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with
@@ -1102,11 +1102,14 @@ the replacement workflow is trustworthy.
       settings and never choose a quality gate limit. A bounded sample search for a suitable
       bitrate remains planned; include cancellation, cost reporting, source-bitrate and size
       checks, and final verification before replacement.
-    - **Video soundtracks:** planned track-specific assessment of retained re-encoded audio,
-      with source/output language and track matching, an intended downmix reference, independent
-      lip-sync checks and strict worker evidence. Copied tracks require preservation checks.
-      Prove mono/stereo first; surround needs separate qualification. Record each track's
-      coverage and verdict, and require every configured video and audio gate before replacement.
+    - **Video soundtracks:** opt-in reporting and a separate explicit gate are implemented in
+      development for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
+      source tracks to output order, with language/title/commentary identity and timing checks.
+      Copied audio retains existing preservation checks. Protocol 8/contract 3 keeps strict worker
+      measurement on the worker; unavailable evidence blocks a configured gate. Each track has
+      up to 90 seconds of assessed coverage. Surround/downmix assessment, broader timing/lip-sync
+      qualification and calibrated defaults remain future work. See
+      [coverage and limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
     - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
       additive/idempotent evidence storage and a versioned worker capability/evidence contract.
       Strict sidecar-only verification must complete the required metric on the worker, with

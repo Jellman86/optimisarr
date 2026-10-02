@@ -5,6 +5,7 @@ public struct FullVerificationContract: Codable, Sendable, Equatable {
     public let id: String
     public let measureAudio: Bool
     public var measureAudioQuality: Bool? = nil
+    public var soundtrackQuality: SoundtrackQualityRequest? = nil
 }
 
 public struct VerificationDecode: Codable, Sendable, Equatable {
@@ -41,6 +42,7 @@ public struct FullVerificationEvidence: Codable, Sendable {
     public var sourceLoudness: VerificationLoudness?
     public var candidateLoudness: VerificationLoudness?
     public var audioQuality: RemoteAudioQualityEvidence?
+    public var soundtrackQuality: SoundtrackQualityReport?
     public var error: String?
 }
 
@@ -89,7 +91,7 @@ public struct FullVerification: Sendable {
                         candidate: URL, scratch: URL, sourceHash: String, candidateHash: String) async throws -> FullVerificationEvidence {
         var evidence = FullVerificationEvidence(contractId: contract.id, sourceSha256: sourceHash, candidateSha256: candidateHash)
         do {
-            guard [1, 2].contains(contract.version), let ffprobe else { throw Failure("This worker cannot run the requested full verification contract.") }
+            guard [1, 2, 3].contains(contract.version), contract.version != 3 || contract.soundtrackQuality != nil, let ffprobe else { throw Failure("This worker cannot run the requested full verification contract.") }
             evidence.sourceProbe = try await probe(ffprobe, file: source, scratch: scratch, name: "source")
             evidence.candidateProbe = try await probe(ffprobe, file: candidate, scratch: scratch, name: "candidate")
             // The runner retains a bounded diagnostic tail. Stop on decode errors so a later
@@ -124,6 +126,15 @@ public struct FullVerification: Sendable {
                 evidence.audioQuality = try await AudioQualityAssessment(runner: runner).measure(
                     ffmpeg: ffmpeg, ffprobe: ffprobe, metric: metric, source: source, candidate: candidate,
                     sourceProbe: sourceProbe, candidateProbe: candidateProbe, scratch: scratch)
+            }
+            if contract.version == 3, let request = contract.soundtrackQuality,
+               let sourceProbe = evidence.sourceProbe, let candidateProbe = evidence.candidateProbe {
+                let metric = ProcessInfo.processInfo.environment["OPTIMISARR_AUDIO_QUALITY"].map { URL(fileURLWithPath: $0) }
+                    ?? ffmpeg.deletingLastPathComponent().appendingPathComponent("optimisarr-audio-quality")
+                evidence.soundtrackQuality = try await SoundtrackQualityAssessment(runner: runner).measure(
+                    ffmpeg: ffmpeg, ffprobe: ffprobe, metric: metric, source: source, candidate: candidate,
+                    sourceProbe: sourceProbe, candidateProbe: candidateProbe, request: request,
+                    healthy: evidence.decode?.healthy == true, scratch: scratch)
             }
             let scans = contract.version == 2
                 ? [("source-audio", evidence.sourceAudio), ("candidate-audio", evidence.candidateAudio)]

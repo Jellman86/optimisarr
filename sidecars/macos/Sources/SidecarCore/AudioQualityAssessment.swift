@@ -5,6 +5,20 @@ public struct AudioQualityProfile: Codable, Sendable {
     let channels: Int
     let sampleRate: Int
     let channelLayout: String
+    var containerLeadSeconds: Double = 0
+    enum CodingKeys: String, CodingKey { case durationSeconds, channels, sampleRate, channelLayout, containerLeadSeconds }
+    init(durationSeconds: Double, channels: Int, sampleRate: Int, channelLayout: String, containerLeadSeconds: Double = 0) {
+        self.durationSeconds = durationSeconds; self.channels = channels; self.sampleRate = sampleRate
+        self.channelLayout = channelLayout; self.containerLeadSeconds = containerLeadSeconds
+    }
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        durationSeconds = try values.decode(Double.self, forKey: .durationSeconds)
+        channels = try values.decode(Int.self, forKey: .channels)
+        sampleRate = try values.decode(Int.self, forKey: .sampleRate)
+        channelLayout = try values.decode(String.self, forKey: .channelLayout)
+        containerLeadSeconds = try values.decodeIfPresent(Double.self, forKey: .containerLeadSeconds) ?? 0
+    }
 }
 public struct AudioQualitySample: Codable, Sendable {
     let startSeconds: Double
@@ -30,11 +44,29 @@ public struct AudioQualityResult: Codable, Sendable {
     var ffprobeSha256: String?
     var windows: [AudioQualityWindowResult] = []
     var elapsedSeconds = 0.0
+    var referenceAudioIndex: Int?
+    var candidateAudioIndex: Int?
 }
 public struct RemoteAudioQualityEvidence: Codable, Sendable {
     let metric = "zimtohrli"
     let revision = AudioQualityAssessment.revision
-    let preparation = "audio-f32le-48k-native-defaults-v1"
+    var preparation: String { assessment.referenceAudioIndex == nil ? "audio-f32le-48k-native-defaults-v1" : "audio-f32le-48k-video-timeline-v1" }
+    enum CodingKeys: String, CodingKey { case metric, revision, preparation, assessment }
+    public init(assessment: AudioQualityResult) { self.assessment = assessment }
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assessment = try container.decode(AudioQualityResult.self, forKey: .assessment)
+        guard try container.decode(String.self, forKey: .metric) == metric,
+              try container.decode(String.self, forKey: .revision) == revision,
+              try container.decode(String.self, forKey: .preparation) == preparation else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unsupported audio assessment preparation."))
+        }
+    }
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(metric, forKey: .metric); try container.encode(revision, forKey: .revision)
+        try container.encode(preparation, forKey: .preparation); try container.encode(assessment, forKey: .assessment)
+    }
     let assessment: AudioQualityResult
 }
 
@@ -44,8 +76,9 @@ public struct AudioQualityAssessment: Sendable {
     let runner: any TranscodeRunner
     public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner }
 
-    static func plan(_ seconds: Double) -> [AudioQualitySample] {
-        guard seconds.isFinite, seconds >= 1, seconds <= 86400 else { return [] }
+    static func plan(_ durationSeconds: Double, soundtrack: Bool = false) -> [AudioQualitySample] {
+        guard durationSeconds.isFinite, durationSeconds >= 1, durationSeconds <= 86400 else { return [] }
+        let seconds = durationSeconds - (soundtrack ? min(0.1, durationSeconds - 1) : 0)
         let frames = Int(floor(seconds * 48000)), duration = Double(frames) / 48000
         if duration > 90 {
             return [.init(startSeconds: 0, durationSeconds: 30),
@@ -58,22 +91,31 @@ public struct AudioQualityAssessment: Sendable {
             durationSeconds: Double(length + (index < remainder ? 1 : 0)) / 48000) }
     }
 
-    static func profile(_ json: String) -> AudioQualityProfile? {
+    static func profile(_ json: String, audioIndex: Int? = nil) -> AudioQualityProfile? {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let streams = object["streams"] as? [[String: Any]] else { return nil }
         let audio = streams.filter { $0["codec_type"] as? String == "audio" }
-        guard audio.count == 1, !streams.contains(where: { stream in
+        let selected = audioIndex ?? 0
+        guard selected >= 0, selected < audio.count, (audioIndex != nil || (audio.count == 1 && !streams.contains(where: { stream in
             stream["codec_type"] as? String == "video" && (stream["disposition"] as? [String: Any])?["attached_pic"] as? Int != 1
-        }), let channels = audio[0]["channels"] as? Int, [1, 2].contains(channels),
-              let rateText = audio[0]["sample_rate"] as? String, let rate = Int(rateText), (8000...384000).contains(rate) else { return nil }
+        }))), let channels = audio[selected]["channels"] as? Int, [1, 2].contains(channels),
+              let rateText = audio[selected]["sample_rate"] as? String, let rate = Int(rateText), (8000...384000).contains(rate) else { return nil }
         let layout = channels == 1 ? "mono" : "stereo"
-        if let named = audio[0]["channel_layout"] as? String, !named.isEmpty && named != layout { return nil }
-        let streamDuration = audio[0]["duration"] as? String
+        if let named = audio[selected]["channel_layout"] as? String, !named.isEmpty && named != layout { return nil }
+        let streamDuration = audio[selected]["duration"] as? String
         let formatDuration = (object["format"] as? [String: Any])?["duration"] as? String
         guard let text = streamDuration == nil || streamDuration == "N/A" ? formatDuration : streamDuration,
               let seconds = Double(text), !plan(seconds).isEmpty else { return nil }
-        return .init(durationSeconds: seconds, channels: channels, sampleRate: rate, channelLayout: layout)
+        var lead = 0.0
+        if audioIndex != nil, let video = streams.first(where: { $0["codec_type"] as? String == "video"
+            && ($0["disposition"] as? [String: Any])?["attached_pic"] as? Int != 1 }) {
+            let videoStart = Double(video["start_time"] as? String ?? "N/A") ?? .nan
+            let containerStart = Double((object["format"] as? [String: Any])?["start_time"] as? String ?? "N/A") ?? .nan
+            lead = videoStart - containerStart
+            guard lead.isFinite, (0...0.1).contains(lead) else { return nil }
+        }
+        return .init(durationSeconds: seconds, channels: channels, sampleRate: rate, channelLayout: layout, containerLeadSeconds: lead)
     }
 
     static func parse(_ json: String, channels: Int, seconds: Double) -> AudioQualityDistances? {
@@ -91,13 +133,15 @@ public struct AudioQualityAssessment: Sendable {
     }
 
     public func measure(ffmpeg: URL, ffprobe: URL, metric: URL, source: URL, candidate: URL,
-                        sourceProbe: String, candidateProbe: String, scratch: URL) async throws -> RemoteAudioQualityEvidence {
+                        sourceProbe: String, candidateProbe: String, scratch: URL, sourceAudioIndex: Int? = nil, candidateAudioIndex: Int? = nil) async throws -> RemoteAudioQualityEvidence {
         try Task.checkCancellation()
         let started = Date(), owned = scratch.appendingPathComponent("audio-assessment-" + UUID().uuidString)
         var result = AudioQualityResult()
+        result.referenceAudioIndex = sourceAudioIndex
+        result.candidateAudioIndex = candidateAudioIndex
         defer { try? FileManager.default.removeItem(at: owned) }
         do {
-            guard let reference = Self.profile(sourceProbe), let output = Self.profile(candidateProbe) else {
+            guard let reference = Self.profile(sourceProbe, audioIndex: sourceAudioIndex), let output = Self.profile(candidateProbe, audioIndex: candidateAudioIndex) else {
                 throw Failure("Assessment requires one known-duration mono/stereo audio track without video or unproved channel layouts.")
             }
             result.reference = reference; result.candidate = output
@@ -112,18 +156,31 @@ public struct AudioQualityAssessment: Sendable {
             result.ffprobeSha256 = try JobRunner.sha256(of: ffprobe)
             try FileManager.default.createDirectory(at: owned, withIntermediateDirectories: false,
                 attributes: [.posixPermissions: 0o700])
-            for window in Self.plan(min(reference.durationSeconds, output.durationSeconds)) {
+            for window in Self.plan(min(reference.durationSeconds, output.durationSeconds), soundtrack: sourceAudioIndex != nil) {
                 let a = owned.appendingPathComponent("reference.raw"), b = owned.appendingPathComponent("candidate.raw")
-                for (input, pcm) in [(source, a), (candidate, b)] {
+                for (input, pcm, audioIndex, lead) in [(source, a, sourceAudioIndex ?? 0, reference.containerLeadSeconds), (candidate, b, candidateAudioIndex ?? 0, output.containerLeadSeconds)] {
+                    let seek = window.startSeconds + lead
+                    let soundtrack = sourceAudioIndex != nil
+                    let seekArgs = soundtrack && seek == 0 ? [] : ["-ss", String(seek)]
+                    let filterArgs = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(Int((window.durationSeconds * 48000).rounded()))"] : []
                     let decoded = try await run(ffmpeg, ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-                        "-ss", String(window.startSeconds), "-i", input.path, "-map", "0:a:0", "-t", String(window.durationSeconds),
-                        "-vn", "-sn", "-dn", "-ar", "48000", "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", pcm.path])
+                        ] + seekArgs + ["-i", input.path, "-map", "0:a:\(audioIndex)", "-t", String(window.durationSeconds + (soundtrack ? 0.1 : 0)),
+                        "-vn", "-sn", "-dn", "-ar", "48000"] + filterArgs + ["-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", pcm.path])
                     guard decoded.exitCode == 0 else { throw Failure("Audio preparation failed: \(decoded.stderr)") }
                     let bytes = try size(pcm), stride = Int64(reference.channels * 4)
                     guard bytes >= 192000, bytes <= 11520000, bytes % stride == 0,
                           abs(Double(bytes / stride) - window.durationSeconds * 48000) <= 64 else { throw Failure("Prepared audio does not cover the assigned frames.") }
                 }
-                guard try size(a) == size(b) else { throw Failure("Prepared reference and candidate frame counts differ.") }
+                if try size(a) != size(b) {
+                    guard sourceAudioIndex != nil else { throw Failure("Prepared reference and candidate frame counts differ.") }
+                    // Each input has passed the rounding budget. Trim excess samples; never pad.
+                    let common = try min(size(a), size(b))
+                    for pcm in [a, b] {
+                        let handle = try FileHandle(forWritingTo: pcm)
+                        defer { try? handle.close() }
+                        try handle.truncate(atOffset: UInt64(common))
+                    }
+                }
                 let report = owned.appendingPathComponent("metric.json")
                 let scored = try await run(metric, [a.path, b.path, String(reference.channels), "--report", report.path])
                 guard scored.exitCode == 0, try size(report) <= 8192,

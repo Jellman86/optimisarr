@@ -94,7 +94,8 @@ public sealed class VerificationService(
     ImageMetadataService imageMetadata,
     TranscodeOptions transcodeOptions,
     VmafShadowService? shadow = null,
-    AudioQualityObservationService? audioQuality = null)
+    AudioQualityObservationService? audioQuality = null,
+    SoundtrackQualityObservationService? soundtrackQuality = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -471,6 +472,15 @@ public sealed class VerificationService(
                 policy.RequiresAudioQuality(reference.Kind), reference.Kind, decodeResult.Healthy, clip is not null,
                 reference.Path, outputPath, remoteEvidence, cancellationToken) };
             report = AudioQualityGate.Apply(report, reference.Kind, policy, preview: clip is not null);
+            if (reference.Kind == MediaKind.Video)
+            {
+                var soundtrackReencoded = reference.AudioReencoded && reference.AudioTrackCount > (reference.RemovedAudioStreamIndexes?.Count ?? 0);
+                report = report with { SoundtrackQuality = await (soundtrackQuality ?? new SoundtrackQualityObservationService(null)).ObserveAsync(
+                    policy.RequiresSoundtrackQuality(soundtrackReencoded), soundtrackReencoded, decodeResult.Healthy, clip is not null,
+                    reference.Path, outputPath, originalProbe.RawJson ?? "", outputProbe.RawJson ?? "",
+                    new(reference.RemovedAudioStreamIndexes ?? []), remoteEvidence, cancellationToken) };
+                report = SoundtrackQualityGate.Apply(report, policy, soundtrackReencoded, preview: clip is not null);
+            }
 
             return new VerificationOutcome(
                 report,

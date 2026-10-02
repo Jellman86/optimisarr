@@ -16,7 +16,8 @@ public static class FullVerification
         var evidence = new RemoteVerificationEvidence(contract.Id, sourceHash, candidateHash);
         try
         {
-            if (contract.Version is not (1 or 2)) throw new InvalidOperationException("Unsupported full verification contract.");
+            if (contract.Version is not (1 or 2 or 3) || (contract.Version == 3 && contract.SoundtrackQuality is null))
+                throw new InvalidOperationException("Unsupported full verification contract.");
             var ffprobe = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!,
                 OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
             var timestamps = new TimestampIntegrityCheck(ffprobe);
@@ -55,6 +56,15 @@ public static class FullVerification
                 AudioQuality = contract.MeasureAudioQuality && contract.Kind == MediaKind.Audio && decode.Healthy
                     ? await MeasureAudioQualityAsync(ffmpeg, ffprobe, source, candidate, cancellationToken) : null
             };
+            if (contract.Version == 3 && contract.SoundtrackQuality is { } soundtrackRequest)
+            {
+                var metric = Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY")
+                    ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!,
+                        OperatingSystem.IsWindows() ? "optimisarr-audio-quality.exe" : "optimisarr-audio-quality");
+                var service = AudioQualityTools.Create(ffmpeg, ffprobe, metric, Path.Combine(Path.GetDirectoryName(candidate)!, "audio-quality"));
+                completed = completed with { SoundtrackQuality = await new SoundtrackQualityObservationService(service is null ? null : service.MeasureTrackAsync)
+                    .ObserveAsync(true, true, decode.Healthy, false, source, candidate, sourceProbe, candidateProbe, soundtrackRequest, null, cancellationToken) };
+            }
             var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio, contract.Kind);
             return completed with { Error = missing.Count == 0 ? null : "Full verification could not complete: " + string.Join(" ", missing) };
         }

@@ -23,6 +23,24 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     private RemoteVerificationEvidence Evidence() => new(Guid.NewGuid(), new('a', 64), new('b', 64),
         Probe, Probe, DecodeHealthResult.Ok, new(true, 0, null, 8), new(true, 0, null, 8), TimestampCheckResult.NotMeasured);
 
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public async Task Silent_video_skips_soundtrack_quality_but_a_missing_expected_soundtrack_fails(int sourceTracks, bool passes)
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "silent-candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot(Path.Combine(_root, "unread-source.mkv"), 1000, 8, sourceTracks, 0, false, false,
+            AudioReencoded: true, ExpectedVideoCodec: "hevc");
+        var outcome = await Service().VerifyAsync(original, output, VerificationPolicy.Default with {
+            SoundtrackQualityGateEnabled = true, MaximumSoundtrackQualityDistance = 0.01 }, default, remoteEvidence: Evidence());
+        Assert.Equal(passes, outcome.Report.Passed);
+        if (passes) Assert.Null(outcome.Report.SoundtrackQuality);
+        else Assert.Contains(outcome.Report.Checks, check => check.Outcome == CheckOutcome.Failed);
+    }
+
     [Fact]
     public async Task Full_remote_evidence_passes_all_applicable_gates_without_any_installed_media_tools()
     {

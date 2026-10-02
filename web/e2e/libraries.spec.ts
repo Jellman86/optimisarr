@@ -743,3 +743,30 @@ for (const width of [375, 1440]) {
     })
   }
 }
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
+    test(`soundtrack gate stays separate and retains its explicit limit at ${width}px in ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), theme)
+      await mockLibraries(page)
+      await page.goto('/#/libraries/1/configure/verify')
+      const report = page.getByRole('checkbox', { name: 'Soundtrack quality report', exact: true })
+      const gate = page.getByRole('checkbox', { name: 'Require soundtrack quality', exact: true })
+      await expect(report).not.toBeChecked()
+      await expect(gate).not.toBeChecked()
+      await gate.check()
+      await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+      await page.getByRole('button', { name: 'Set the limit in Advanced verification', exact: true }).click()
+      const limit = page.getByRole('spinbutton', { name: 'Maximum soundtrack difference', exact: true })
+      await limit.fill('0.005')
+      await stage(page, 'Verify').click()
+      await expect(gate).toBeChecked()
+      const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+      await page.getByRole('button', { name: 'Save', exact: true }).click()
+      expect((await saved).postDataJSON()).toMatchObject({ soundtrackQualityGateEnabled: true,
+        maximumSoundtrackQualityDistance: 0.005, soundtrackQualityReportingEnabled: false, audioQualityGateEnabled: false })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    })
+  }
+}

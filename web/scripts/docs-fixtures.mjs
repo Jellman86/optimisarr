@@ -183,3 +183,22 @@ export const audioGatedJob = { ...audioJob, verificationReportJson: JSON.stringi
   checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Failed', detail: 'Largest measured audio difference 0.005678; maximum allowed 0.005. Above the selected limit. The original is unchanged.' }],
   audioQuality: { ...JSON.parse(audioJob.verificationReportJson).audioQuality, gateEnabled: true, gatePassed: false, maximumDistance: 0.005 }
 }) }
+
+export const soundtrackJob = { ...jobs[1], id: 41, mediaFileId: 41, status: "Verifying", verificationPassed: false, relativePath: "Lumen Coast soundtrack.mkv", verificationReportJson: JSON.stringify({ checks: [
+  { name: 'Decode health', outcome: 'Passed', detail: 'Decoded cleanly.' },
+  { name: 'Soundtrack 2: Perceptual audio quality', outcome: 'Failed', detail: 'Commentary exceeds the selected limit. The original is unchanged.' }
+], soundtrackQuality: { gateEnabled: true, gatePassed: false, maximumDistance: 0.005, unavailableReason: null,
+  tracks: ['Main soundtrack', 'Director commentary'].map((title, i) => ({
+    track: { sourceAudioIndex: i, candidateAudioIndex: i, language: i ? 'fra' : 'eng', title },
+    report: { ...JSON.parse(audioJob.verificationReportJson).audioQuality, gateEnabled: true,
+      gatePassed: !i, maximumDistance: 0.005, evidence: {
+        ...JSON.parse(audioJob.verificationReportJson).audioQuality.evidence,
+        preparation: 'audio-f32le-48k-video-timeline-v1', assessment: {
+          ...JSON.parse(audioJob.verificationReportJson).audioQuality.evidence.assessment,
+          windows: [0,45,90].map(start => ({ window: {startSeconds:start,durationSeconds:30},
+            distances: {frames:1440000,channelDistances:i ? [0.003,0.008] : [0.002,0.004]} }))
+        }
+      }
+    }
+  }))
+} }) }

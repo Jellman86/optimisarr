@@ -70,6 +70,9 @@ internal readonly record struct ParsedLibrary(
     bool AudioQualityReportingEnabled,
     bool AudioQualityGateEnabled,
     double? MaximumAudioQualityDistance,
+    bool SoundtrackQualityReportingEnabled,
+    bool SoundtrackQualityGateEnabled,
+    double? MaximumSoundtrackQualityDistance,
     VideoQualityStrategy VideoQualityStrategy,
     WorkPlacement WorkPlacement,
     bool AutoEnqueueEnabled,
@@ -295,6 +298,14 @@ internal static class LibraryRequestParser
         if (request.AudioQualityGateEnabled == true && mediaType is not (MediaType.Music or MediaType.Other))
         {
             error = "The audio quality gate is available for music and mixed libraries only.";
+            return false;
+        }
+
+        if ((request.MaximumSoundtrackQualityDistance is not null && !AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance))
+            || (request.SoundtrackQualityGateEnabled == true && (!AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance)
+                || mediaType is MediaType.Music or MediaType.Photo)))
+        {
+            error = "The soundtrack quality gate requires a video or mixed library and a maximum difference between 0 and 1.";
             return false;
         }
 
@@ -557,6 +568,9 @@ internal static class LibraryRequestParser
             request.AudioQualityReportingEnabled ?? false,
             request.AudioQualityGateEnabled ?? false,
             request.MaximumAudioQualityDistance,
+            request.SoundtrackQualityReportingEnabled ?? false,
+            request.SoundtrackQualityGateEnabled ?? false,
+            request.MaximumSoundtrackQualityDistance,
             videoQualityStrategy,
             workPlacement,
             request.AutoEnqueueEnabled ?? false,

@@ -183,6 +183,9 @@ export type LibraryRules = {
   maximumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
+  soundtrackQualityReportingEnabled?: boolean
+  soundtrackQualityGateEnabled?: boolean
+  maximumSoundtrackQualityDistance?: number | null
   audioQualityReportingEnabled?: boolean
   audioQualityGateEnabled?: boolean
   maximumAudioQualityDistance?: number | null
@@ -297,6 +300,9 @@ export function newLibraryDefaults(): SaveLibrary {
     maximumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
+    soundtrackQualityReportingEnabled: false,
+    soundtrackQualityGateEnabled: false,
+    maximumSoundtrackQualityDistance: null,
     audioQualityReportingEnabled: false,
     audioQualityGateEnabled: false,
     maximumAudioQualityDistance: null,
@@ -459,8 +465,17 @@ export type VerificationCheck = {
 
 export type VerificationReport = {
   checks: VerificationCheck[]
+  soundtrackQuality?: SoundtrackQualityReport | null
   audioQuality?: AudioQualityReport | null
   context?: VerificationContext | null
+}
+
+export type SoundtrackQualityReport = {
+  unavailableReason: string | null
+  gateEnabled?: boolean
+  maximumDistance?: number | null
+  gatePassed?: boolean | null
+  tracks: { track: { sourceAudioIndex: number; candidateAudioIndex: number; language: string | null; title: string | null }; report: AudioQualityReport }[]
 }
 
 export type AudioQualityReport = {

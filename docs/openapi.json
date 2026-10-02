@@ -351,6 +351,15 @@
               }
             ]
           },
+          "candidateAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "candidateSha256": {
             "type": [
               "null",
@@ -429,6 +438,15 @@
               {
                 "$ref": "#/components/schemas/AudioQualityInput"
               }
+            ]
+          },
+          "referenceAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
             ]
           },
           "referenceSha256": {
@@ -527,6 +545,15 @@
               "string"
             ]
           },
+          "containerLeadSeconds": {
+            "default": 0,
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
           "durationSeconds": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
@@ -549,6 +576,54 @@
           "channels",
           "sampleRate",
           "channelLayout"
+        ],
+        "type": "object"
+      },
+      "AudioQualityReport": {
+        "properties": {
+          "evidence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteAudioQualityEvidence"
+              }
+            ]
+          },
+          "gateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "gatePassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "maximumDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measurementLocation": {
+            "type": "string"
+          },
+          "unavailableReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measurementLocation",
+          "evidence",
+          "unavailableReason"
         ],
         "type": "object"
       },
@@ -1591,6 +1666,15 @@
               "string"
             ]
           },
+          "maximumSoundtrackQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "mediaType": {
             "type": "string"
           },
@@ -1732,6 +1816,18 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "soundtrackQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "soundtrackQualityReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "strongerAdaptiveQuantisation": {
@@ -2401,6 +2497,16 @@
             "default": false,
             "type": "boolean"
           },
+          "soundtrackQuality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SoundtrackQualityRequest"
+              }
+            ]
+          },
           "version": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2486,6 +2592,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "soundtrackQuality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SoundtrackQualityReport"
+              }
             ]
           },
           "sourceAudio": {
@@ -2931,6 +3047,15 @@
               "string"
             ]
           },
+          "maximumSoundtrackQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "mediaType": {
             "type": [
               "null",
@@ -3103,6 +3228,18 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "soundtrackQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "soundtrackQualityReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "strongerAdaptiveQuantisation": {
@@ -3498,6 +3635,127 @@
         },
         "required": [
           "observedBytes"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityPair": {
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/AudioQualityInput"
+          },
+          "candidateAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reference": {
+            "$ref": "#/components/schemas/AudioQualityInput"
+          },
+          "sourceAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "sourceAudioIndex",
+          "candidateAudioIndex",
+          "language",
+          "title",
+          "reference",
+          "candidate"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityReport": {
+        "properties": {
+          "gateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "gatePassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "maximumDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/SoundtrackQualityTrack"
+            },
+            "type": "array"
+          },
+          "unavailableReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "tracks",
+          "unavailableReason"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityRequest": {
+        "properties": {
+          "removedSourceAudioIndexes": {
+            "items": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "removedSourceAudioIndexes"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityTrack": {
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/AudioQualityReport"
+          },
+          "track": {
+            "$ref": "#/components/schemas/SoundtrackQualityPair"
+          }
+        },
+        "required": [
+          "track",
+          "report"
         ],
         "type": "object"
       },

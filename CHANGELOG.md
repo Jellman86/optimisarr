@@ -2,7 +2,19 @@
 
 ## Unreleased
 
+- macOS bundled FFmpeg includes the upstream Opus parser EOF fix, preventing a false corruption report for valid Opus soundtracks.
+
 ### Added
+
+- Video libraries can opt into **Soundtrack quality report** and **Require soundtrack quality**
+  separately, with an explicit maximum difference in Advanced verification. Reports
+  cover every retained re-encoded mono/stereo track, up to eight tracks and 90 seconds each.
+  Intentional removals preserve source/output mapping and language/title/commentary identity;
+  unsupported tracks or missing evidence block an enabled gate. Copied audio and previews skip
+  the assessment. Queue and Quarantine show track coverage and verdicts. This is experimental
+  sampled evidence without a calibrated threshold or listening-quality guarantee. Strict worker
+  assessment requires updated protocol 8 sidecars and verification contract 3, with no server
+  fallback. Configuration exports use format 3; older imports preserve omitted settings.
 
 - Audio encoding has codec-aware Space saver, Balanced, High and Very high bitrate presets
   for AAC, Opus and MP3, including explicitly re-encoded video soundtracks. Custom settings

@@ -51,6 +51,7 @@ if [[ -x vendor/ffmpeg ]]; then
   cp vendor/ffmpeg "${BUNDLE}/Contents/Resources/ffmpeg"
   [[ -x vendor/ffprobe ]] && cp vendor/ffprobe "${BUNDLE}/Contents/Resources/ffprobe"
   [[ -f vendor/BUILD-INFO.txt ]] && cp vendor/BUILD-INFO.txt "${BUNDLE}/Contents/Resources/"
+  [[ -f vendor/BUILD-PATCHES.txt ]] && cp vendor/BUILD-PATCHES.txt "${BUNDLE}/Contents/Resources/"
   echo "Bundled ffmpeg: $(vendor/ffmpeg -hide_banner -version | head -1)"
 else
   echo "warning: no vendor/ffmpeg — run scripts/build-ffmpeg.sh; the app will prove no encoders" >&2

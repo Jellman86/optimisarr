@@ -161,6 +161,9 @@ internal static class LibraryEndpoints
                 AudioQualityReportingEnabled = parsed.AudioQualityReportingEnabled,
                 AudioQualityGateEnabled = parsed.AudioQualityGateEnabled,
                 MaximumAudioQualityDistance = parsed.MaximumAudioQualityDistance,
+                SoundtrackQualityReportingEnabled = parsed.SoundtrackQualityReportingEnabled,
+                SoundtrackQualityGateEnabled = parsed.SoundtrackQualityGateEnabled,
+                MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance,
                 MaxTruePeakDbtp = parsed.MaxTruePeakDbtp,
                 ImageQualityGateEnabled = parsed.ImageQualityGateEnabled,
                 MinimumImageSsim = parsed.MinimumImageSsim,
@@ -194,7 +197,9 @@ internal static class LibraryEndpoints
             request = request with
             {
                 AudioQualityGateEnabled = request.AudioQualityGateEnabled ?? library.AudioQualityGateEnabled,
-                MaximumAudioQualityDistance = request.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance
+                MaximumAudioQualityDistance = request.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance,
+                SoundtrackQualityGateEnabled = request.SoundtrackQualityGateEnabled ?? library.SoundtrackQualityGateEnabled,
+                MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance
             };
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
@@ -267,6 +272,9 @@ internal static class LibraryEndpoints
             library.AudioQualityReportingEnabled = request.AudioQualityReportingEnabled ?? library.AudioQualityReportingEnabled;
             library.AudioQualityGateEnabled = parsed.AudioQualityGateEnabled;
             library.MaximumAudioQualityDistance = parsed.MaximumAudioQualityDistance;
+            library.SoundtrackQualityReportingEnabled = request.SoundtrackQualityReportingEnabled ?? library.SoundtrackQualityReportingEnabled;
+            library.SoundtrackQualityGateEnabled = parsed.SoundtrackQualityGateEnabled;
+            library.MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance;
             library.MaxTruePeakDbtp = parsed.MaxTruePeakDbtp;
             library.ImageQualityGateEnabled = parsed.ImageQualityGateEnabled;
             library.MinimumImageSsim = parsed.MinimumImageSsim;

@@ -704,3 +704,27 @@ test('a measured passing audio gate shows its verdict and limit', async ({ page 
   await expect(panel.getByRole('tooltip')).toContainText('Blocks replacement')
   await expect(panel.getByRole('tooltip')).not.toContainText('does not pass or fail')
 })
+
+for (const width of [375, 1440]) {
+  test(`soundtrack results identify separate languages and a failed channel at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const waiting = job(4, 'Verifying', null)
+    waiting.verificationReportJson = JSON.stringify({ checks: [{ name: 'Soundtrack 2', outcome: 'Failed', detail: 'Above limit' }],
+      soundtrackQuality: { gateEnabled: true, gatePassed: false, maximumDistance: .005, unavailableReason: null,
+        tracks: ['eng', 'fra'].map((language, index) => ({
+          track: { sourceAudioIndex: index, candidateAudioIndex: index, language, title: index ? 'Commentary' : 'Main' },
+          report: { measurementLocation: 'Worker', unavailableReason: null, gateEnabled: true, gatePassed: index === 0, maximumDistance: .005,
+            evidence: { assessment: { measured: true, coveredSeconds: 3, windows: [{ distances: { channelDistances: index ? [.1, .2] : [.001, .002] } }] } } }
+        })) } })
+    await mockWorkingQueue(page, { jobs: [waiting] })
+    await page.goto('/#/queue')
+    await page.getByRole('button', { name: 'View job', exact: true }).click()
+    const panel = page.getByRole('region', { name: 'Soundtrack quality report', exact: true })
+    await expect(panel).toBeVisible()
+    await expect(panel.getByText('Soundtrack 1 · eng', { exact: true })).toBeVisible()
+    await expect(panel.getByText('Soundtrack 2 · fra', { exact: true })).toBeVisible()
+    await expect(panel.getByText('Commentary', { exact: true })).toBeVisible()
+    await expect(panel.getByText('0.2', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
+}

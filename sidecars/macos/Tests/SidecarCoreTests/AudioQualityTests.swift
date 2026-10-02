@@ -4,6 +4,12 @@ import Testing
 
 @Suite("Audio quality reporting")
 struct AudioQualityTests {
+
+    @Test("older audio profiles decode with a zero container lead")
+    func oldProfile() throws {
+        let json = #"{"durationSeconds":3,"channels":2,"sampleRate":48000,"channelLayout":"stereo"}"#
+        #expect(try JSONDecoder().decode(AudioQualityProfile.self, from: Data(json.utf8)).containerLeadSeconds == 0)
+    }
     @Test("sample windows match the shared worker contract")
     func windows() {
         #expect(AudioQualityAssessment.plan(0.5).isEmpty)

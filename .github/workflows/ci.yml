@@ -197,12 +197,21 @@ jobs:
           python3 scripts/media_acceptance.py --image "$first_tag" \
             --root "$RUNNER_TEMP/optimisarr-audio-acceptance" --regression audio
 
+      - name: Verify retained video soundtracks and quality gates in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-soundtrack-acceptance" --regression soundtrack-quality
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: media-acceptance
           path: |
+            ${{ runner.temp }}/optimisarr-soundtrack-acceptance/report/
+            ${{ runner.temp }}/optimisarr-soundtrack-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-soundtrack-acceptance/image.json
             ${{ runner.temp }}/optimisarr-audio-acceptance/report/
             ${{ runner.temp }}/optimisarr-audio-acceptance/server.log
             ${{ runner.temp }}/optimisarr-audio-acceptance/image.json

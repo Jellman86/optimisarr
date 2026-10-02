@@ -98,6 +98,22 @@ public sealed class LibraryRequestParserTests
             AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 }, out _, out _));
     }
 
+    [Fact]
+    public void Soundtrack_gate_is_separate_optional_and_requires_a_video_library_and_explicit_limit()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var baseline, out _));
+        Assert.False(baseline.SoundtrackQualityReportingEnabled);
+        Assert.False(baseline.SoundtrackQualityGateEnabled);
+        Assert.False(LibraryRequestParser.TryParse(Request() with { SoundtrackQualityGateEnabled = true }, out _, out _));
+        Assert.True(LibraryRequestParser.TryParse(Request() with { SoundtrackQualityGateEnabled = true,
+            MaximumSoundtrackQualityDistance = 0 }, out var parsed, out _));
+        Assert.True(parsed.SoundtrackQualityGateEnabled);
+        Assert.Equal(0, parsed.MaximumSoundtrackQualityDistance);
+        Assert.False(parsed.AudioQualityGateEnabled);
+        Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Music", SoundtrackQualityGateEnabled = true,
+            MaximumSoundtrackQualityDistance = 0.01 }, out _, out _));
+    }
+
     [Theory]
     [InlineData("5")]
     [InlineData("999")]

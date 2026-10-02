@@ -38,6 +38,33 @@ public sealed class AudioQualityServiceTests : IDisposable
             $$"""{"schema":1,"metric":"zimtohrli","revision":"{{AudioQualityResultParser.Revision}}","sampleRate":48000,"channels":2,"frames":144000,"fullScaleSineDb":78.3,"distances":[0.01,0.02]}""", null));
     }
 
+
+    [Theory]
+    [InlineData(13, true)]
+    [InlineData(64, true)]
+    [InlineData(65, false)]
+    public async Task Selected_soundtracks_allow_only_bounded_resampler_rounding_without_padding_missing_audio(int shortfall, bool passes)
+    {
+        async Task<ToolProcessResult> Runner(string c, IReadOnlyList<string> args, CancellationToken token, TimeSpan? timeout)
+        {
+            var result = await Run(c, args, token, timeout);
+            if (c == Tool("ffprobe")) return new(0, SoundtrackQualityTests.Probe(SoundtrackQualityTests.Track()), null);
+            if (c == Tool("ffmpeg")) File.WriteAllBytes(args[^1], new byte[139200 * 8]);
+            if (c == Tool("ffmpeg") && args.Contains(Candidate)) File.WriteAllBytes(args[^1], new byte[(139200 - shortfall) * 8]);
+            if (c == Tool("metric"))
+            {
+                Assert.Equal(new FileInfo(args[0]).Length, new FileInfo(args[1]).Length);
+                Assert.Equal((139200 - shortfall) * 8, new FileInfo(args[0]).Length);
+                return result with { Output = result.Output.Replace("\"frames\":144000", $"\"frames\":{139200 - shortfall}") };
+            }
+            return result;
+        }
+        var measured = await Service(Runner).MeasureTrackAsync(Reference, Candidate, 0, 0, default);
+        Assert.Equal(passes, measured.Measured);
+        if (!passes) Assert.DoesNotContain("metric", _called);
+        Assert.Empty(Directory.GetDirectories(_root));
+    }
+
     [Fact]
     public async Task Successful_measurement_binds_files_tools_coverage_and_cleans_only_owned_scratch()
     {

@@ -28,7 +28,10 @@ public sealed record VerificationPolicyOverrides(
     double? MaximumSizeSavingPercent = null,
     bool? AudioQualityReportingEnabled = null,
     bool? AudioQualityGateEnabled = null,
-    double? MaximumAudioQualityDistance = null);
+    double? MaximumAudioQualityDistance = null,
+    bool? SoundtrackQualityReportingEnabled = null,
+    bool? SoundtrackQualityGateEnabled = null,
+    double? MaximumSoundtrackQualityDistance = null);
 
 public static class VerificationPolicyResolver
 {
@@ -38,6 +41,9 @@ public static class VerificationPolicyResolver
     {
         return baseline with
         {
+            SoundtrackQualityReportingEnabled = overrides.SoundtrackQualityReportingEnabled ?? baseline.SoundtrackQualityReportingEnabled,
+            SoundtrackQualityGateEnabled = overrides.SoundtrackQualityGateEnabled ?? baseline.SoundtrackQualityGateEnabled,
+            MaximumSoundtrackQualityDistance = overrides.MaximumSoundtrackQualityDistance ?? baseline.MaximumSoundtrackQualityDistance,
             AudioQualityReportingEnabled = overrides.AudioQualityReportingEnabled ?? baseline.AudioQualityReportingEnabled,
             AudioQualityGateEnabled = overrides.AudioQualityGateEnabled ?? baseline.AudioQualityGateEnabled,
             MaximumAudioQualityDistance = overrides.MaximumAudioQualityDistance ?? baseline.MaximumAudioQualityDistance,

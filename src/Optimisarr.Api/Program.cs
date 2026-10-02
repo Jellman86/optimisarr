@@ -86,6 +86,12 @@ builder.Services.AddSingleton(_ =>
     return new AudioQualityObservationService(service is null ? null : service.MeasureAsync);
 });
 builder.Services.AddSingleton<VerificationService>();
+builder.Services.AddSingleton(_ =>
+{
+    var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY"),
+        Path.Combine(Path.GetTempPath(), "optimisarr-soundtrack-quality"));
+    return new SoundtrackQualityObservationService(service is null ? null : service.MeasureTrackAsync);
+});
 builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<DiagnosticCaptureStore>();
@@ -450,7 +456,10 @@ internal sealed record SaveLibraryRequest(
     bool? ImageMetadataGateEnabled = null,
     bool? AudioQualityReportingEnabled = null,
     bool? AudioQualityGateEnabled = null,
-    double? MaximumAudioQualityDistance = null);
+    double? MaximumAudioQualityDistance = null,
+    bool? SoundtrackQualityReportingEnabled = null,
+    bool? SoundtrackQualityGateEnabled = null,
+    double? MaximumSoundtrackQualityDistance = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -529,6 +538,9 @@ internal sealed record LibraryDto(
     bool AudioQualityReportingEnabled,
     bool AudioQualityGateEnabled,
     double? MaximumAudioQualityDistance,
+    bool SoundtrackQualityReportingEnabled,
+    bool SoundtrackQualityGateEnabled,
+    double? MaximumSoundtrackQualityDistance,
     string VideoQualityStrategy,
     string WorkPlacement,
     bool AutoEnqueueEnabled,
@@ -606,6 +618,9 @@ internal sealed record LibraryDto(
         library.AudioQualityReportingEnabled,
         library.AudioQualityGateEnabled,
         library.MaximumAudioQualityDistance,
+        library.SoundtrackQualityReportingEnabled,
+        library.SoundtrackQualityGateEnabled,
+        library.MaximumSoundtrackQualityDistance,
         library.VideoQualityStrategy.ToString(),
         library.WorkPlacement.ToString(),
         library.AutoEnqueueEnabled,

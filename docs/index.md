@@ -41,7 +41,8 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Contributing](development/contributing.md)
 - [Full application review prompt](development/application-review-prompt.md) - a repeatable, evidence-led cross-platform review.
 - [VMAF v1 and NVIDIA plan](development/vmaf-v1-and-nvidia-plan.md) - implemented SDR model policy, hardware evidence and remaining complete-CUDA feasibility work; installations change only when updated.
-- [Perceptual quality and dedupe plan](development/perceptual-audio-image-quality-plan.md) - audio/image quality checks, pipeline placement and costs, plus duplicate detection across all library types; planned, not shipped.
+- [Perceptual quality and dedupe plan](development/perceptual-audio-image-quality-plan.md) - implemented development audio/soundtrack reports and gates, pipeline costs, and remaining image/quality and dedupe work.
+- [Soundtrack quality validation](development/soundtrack-quality-validation.md) - automated checks, real-machine evidence and assessment limits.
 - [Application review](reviews/2026-09-30-full-application-review.md) and [tested mitigations](reviews/2026-10-01-review-mitigations.md).
 - [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.
 

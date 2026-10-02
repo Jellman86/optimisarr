@@ -9,11 +9,12 @@ public sealed record AudioQualityWindowMeasurement(AudioQualityWindow Window, Au
 public sealed record AudioQualityAssessmentResult(
     bool Measured, string? Error, AudioQualityInput? Reference, AudioQualityInput? Candidate,
     string? ReferenceSha256, string? CandidateSha256, string? MetricSha256, string? FfmpegSha256,
-    string? FfprobeSha256, IReadOnlyList<AudioQualityWindowMeasurement> Windows, double ElapsedSeconds)
+    string? FfprobeSha256, IReadOnlyList<AudioQualityWindowMeasurement> Windows, double ElapsedSeconds,
+    int? ReferenceAudioIndex = null, int? CandidateAudioIndex = null)
 {
     public string Metric => "zimtohrli";
     public string Revision => AudioQualityResultParser.Revision;
-    public string Preparation => AudioQualityResultParser.Preparation;
+    public string Preparation => ReferenceAudioIndex is null ? AudioQualityResultParser.Preparation : AudioQualityResultParser.SoundtrackPreparation;
     public bool Sampled => Reference is not null && Reference.DurationSeconds > 90;
     public double CoveredSeconds => Windows?.Where(w => w?.Distances is not null).Sum(w => w.Distances.Frames / 48000.0) ?? 0;
     public double? DurationDriftSeconds => Reference is null || Candidate is null ? null : Candidate.DurationSeconds - Reference.DurationSeconds;
@@ -43,7 +44,15 @@ public sealed class AudioQualityService
         _run = run;
     }
 
-    public async Task<AudioQualityAssessmentResult> MeasureAsync(string referencePath, string candidatePath, CancellationToken token)
+    public Task<AudioQualityAssessmentResult> MeasureAsync(string referencePath, string candidatePath, CancellationToken token) =>
+        MeasureAsync(referencePath, candidatePath, null, null, token);
+
+    public Task<AudioQualityAssessmentResult> MeasureTrackAsync(string referencePath, string candidatePath,
+        int referenceAudioIndex, int candidateAudioIndex, CancellationToken token) =>
+        MeasureAsync(referencePath, candidatePath, referenceAudioIndex, candidateAudioIndex, token);
+
+    private async Task<AudioQualityAssessmentResult> MeasureAsync(string referencePath, string candidatePath,
+        int? referenceAudioIndex, int? candidateAudioIndex, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         referencePath = Path.GetFullPath(referencePath);
@@ -54,7 +63,8 @@ public sealed class AudioQualityService
         var windows = new List<AudioQualityWindowMeasurement>();
         string? scratch = null;
         AudioQualityAssessmentResult Result(bool measured, string? error) => new(measured, error, reference, candidate,
-            referenceHash, candidateHash, metricHash, ffmpegHash, ffprobeHash, windows.ToArray(), watch.Elapsed.TotalSeconds);
+            referenceHash, candidateHash, metricHash, ffmpegHash, ffprobeHash, windows.ToArray(), watch.Elapsed.TotalSeconds,
+            referenceAudioIndex, candidateAudioIndex);
         try
         {
             referenceHash = await HashAsync(referencePath, token);
@@ -64,13 +74,13 @@ public sealed class AudioQualityService
             ffprobeHash = await HashAsync(_ffprobe, token);
             var a = await _run(_ffprobe, ProbeArguments(referencePath), token, TimeSpan.FromSeconds(30));
             var b = await _run(_ffprobe, ProbeArguments(candidatePath), token, TimeSpan.FromSeconds(30));
-            reference = a.ExitCode == 0 ? AudioQualityInput.Parse(a.Output) : null;
-            candidate = b.ExitCode == 0 ? AudioQualityInput.Parse(b.Output) : null;
+            reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(a.Output, ai) : AudioQualityInput.Parse(a.Output) : null;
+            candidate = b.ExitCode == 0 ? candidateAudioIndex is { } bi ? AudioQualityInput.ParseTrack(b.Output, bi) : AudioQualityInput.Parse(b.Output) : null;
             if (reference is null || candidate is null)
                 return Result(false, "Assessment requires one known-duration mono/stereo audio track, without video or unproved channel layouts.");
             if (AudioQualityInput.Incompatibility(reference, candidate) is { } mismatch) return Result(false, mismatch);
             // Never decode beyond the shorter track; missing duration is still exposed above.
-            var plan = AudioQualityWindowPlanner.Plan(Math.Min(reference.DurationSeconds, candidate.DurationSeconds));
+            var plan = AudioQualityWindowPlanner.Plan(Math.Min(reference.DurationSeconds, candidate.DurationSeconds), soundtrack: referenceAudioIndex is not null);
             Directory.CreateDirectory(_scratchRoot);
             scratch = Path.Combine(_scratchRoot, "audio-assessment-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(scratch);
@@ -80,9 +90,10 @@ public sealed class AudioQualityService
                 token.ThrowIfCancellationRequested();
                 var referencePcm = Path.Combine(scratch, "reference.raw");
                 var candidatePcm = Path.Combine(scratch, "candidate.raw");
-                foreach (var pair in new[] { (referencePath, referencePcm), (candidatePath, candidatePcm) })
+                foreach (var pair in new[] { (referencePath, referencePcm, referenceAudioIndex ?? 0, reference.ContainerLeadSeconds),
+                    (candidatePath, candidatePcm, candidateAudioIndex ?? 0, candidate.ContainerLeadSeconds) })
                 {
-                    var decode = await _run(_ffmpeg, AudioQualityCommandBuilder.Decode(pair.Item1, pair.Item2, window),
+                    var decode = await _run(_ffmpeg, AudioQualityCommandBuilder.Decode(pair.Item1, pair.Item2, window, pair.Item3, pair.Item4, soundtrack: referenceAudioIndex is not null),
                         token, TimeSpan.FromSeconds(90));
                     if (decode.ExitCode != 0) return Result(false, decode.Error ?? "Audio preparation failed.");
                     if (!File.Exists(pair.Item2) || new FileInfo(pair.Item2).Length is < 192000 or > 11520000)
@@ -93,7 +104,16 @@ public sealed class AudioQualityService
                         return Result(false, "Prepared audio does not cover the requested channel/frame count.");
                 }
                 if (new FileInfo(referencePcm).Length != new FileInfo(candidatePcm).Length)
-                    return Result(false, "Prepared reference and candidate frame counts differ.");
+                {
+                    if (referenceAudioIndex is null) return Result(false, "Prepared reference and candidate frame counts differ.");
+                    // Each input has already passed the 64-frame rounding budget. Never pad a short decode.
+                    var commonBytes = Math.Min(new FileInfo(referencePcm).Length, new FileInfo(candidatePcm).Length);
+                    foreach (var pcm in new[] { referencePcm, candidatePcm })
+                    {
+                        using var prepared = new FileStream(pcm, FileMode.Open, FileAccess.Write);
+                        prepared.SetLength(commonBytes);
+                    }
+                }
                 var measured = await _run(_metric, [referencePcm, candidatePcm, reference.Channels.ToString(System.Globalization.CultureInfo.InvariantCulture)],
                     token, TimeSpan.FromSeconds(90));
                 if (measured.ExitCode != 0) return Result(false, measured.Error ?? "Audio metric failed.");

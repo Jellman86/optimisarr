@@ -93,6 +93,9 @@ clone_at "https://gitlab.com/AOMediaCodec/SVT-AV1.git" "${SVTAV1_TAG}" svtav1
 clone_at "https://code.videolan.org/videolan/dav1d.git" "${DAV1D_TAG}" dav1d
 clone_at "https://github.com/Netflix/vmaf.git" "${VMAF_TAG}" vmaf
 clone_at "https://github.com/FFmpeg/FFmpeg.git" "${FFMPEG_TAG}" ffmpeg
+# Upstream 618fc15e65 fixes a false Opus packet error at EOF in 8.0's complete-frame parser.
+python3 ../../scripts/patch_ffmpeg_opus.py "${BUILD}/ffmpeg"
+printf '%s\n' 'FFmpeg Opus parser backport: upstream 618fc15e65; scripts/patch_ffmpeg_opus.py' > "${VENDOR}/BUILD-PATCHES.txt"
 clone_at "https://github.com/xiph/opus.git" "${OPUS_TAG}" opus
 if [[ ! -f "${BUILD}/lame-${LAME_VERSION}.tar.gz" ]]; then
   curl -fL --retry 3 -o "${BUILD}/lame-${LAME_VERSION}.tar.gz" \

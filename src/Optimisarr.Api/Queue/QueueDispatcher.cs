@@ -1476,7 +1476,10 @@ public sealed class QueueDispatcher(
                 library?.MaximumSizeSavingPercent,
                 library?.AudioQualityReportingEnabled,
                 library?.AudioQualityGateEnabled,
-                library?.MaximumAudioQualityDistance));
+                library?.MaximumAudioQualityDistance,
+                library?.SoundtrackQualityReportingEnabled,
+                library?.SoundtrackQualityGateEnabled,
+                library?.MaximumSoundtrackQualityDistance));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
@@ -1592,9 +1595,12 @@ public sealed class QueueDispatcher(
             work.UsedHardwareDecode && work.VideoEncoder is not null ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
             work.Spec.AudioEncoder,
             search,
-            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2 : 1, Guid.NewGuid(),
+            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2
+                : work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded) ? 3 : 1, Guid.NewGuid(),
                 work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled,
-                work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind)) : null,
+                work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind),
+                work.Spec.Kind == MediaKind.Video && work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded)
+                    ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
@@ -1895,7 +1901,8 @@ public sealed class QueueDispatcher(
             media.MediaKind,
             // A video job whose audio was re-encoded (not copied) may legitimately normalise
             // the sample rate, so the audio-fidelity gate must treat it like an audio job.
-            AudioReencoded: media.MediaKind != MediaKind.Audio && spec.AudioEncoder is not null,
+            AudioReencoded: media.MediaKind != MediaKind.Audio && spec.AudioEncoder is not null
+                && media.AudioTrackCount > (spec.RemoveAudioStreamIndexes?.Count ?? 0),
             // An operator-requested stereo downmix is an intentional channel reduction.
             AudioDownmixed: spec.DownmixToStereo,
             // A requested image downscale is an intentional dimension reduction, not corruption.
