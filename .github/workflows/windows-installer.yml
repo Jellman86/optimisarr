@@ -7,6 +7,8 @@ on:
     branches: [dev, main]
     paths:
       - 'sidecars/windows/**'
+      - 'scripts/build_audio_quality.sh'
+      - 'tools/audio-quality-native/**'
       - '.github/workflows/windows-installer.yml'
       - 'src/Optimisarr.Core/**'
       - 'Directory.Build.props'

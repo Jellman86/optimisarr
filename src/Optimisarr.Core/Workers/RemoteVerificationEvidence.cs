@@ -6,7 +6,7 @@ using Optimisarr.Core.Verification;
 namespace Optimisarr.Core.Workers;
 
 /// <summary>Lease-specific measurement request. Thresholds remain authoritative on the server.</summary>
-public sealed record RemoteVerificationContract(int Version, Guid Id, bool MeasureAudio)
+public sealed record RemoteVerificationContract(int Version, Guid Id, bool MeasureAudio, bool MeasureAudioQuality = false)
 {
     // Version 1 remains the video contract; version 2 adds standalone audio.
     public MediaKind Kind => Version == 2 ? MediaKind.Audio : MediaKind.Video;
@@ -26,7 +26,8 @@ public sealed record RemoteVerificationEvidence(
     LoudnessResult? SourceLoudness = null,
     LoudnessResult? CandidateLoudness = null,
     string? Error = null,
-    TimestampCheckResult? CandidateAudio = null);
+    TimestampCheckResult? CandidateAudio = null,
+    RemoteAudioQualityEvidence? AudioQuality = null);
 
 public static class RemoteVerificationEvidenceValidator
 {

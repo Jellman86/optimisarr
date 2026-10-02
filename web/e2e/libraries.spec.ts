@@ -503,3 +503,23 @@ test('unknown bookmarked stages return to the overview instead of rendering an e
   await expect(page.getByRole('button', { name: /Choose files/ })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Films', exact: true, level: 1 })).toBeVisible()
 })
+
+test('audio quality reporting is opt-in and persists across verification breadcrumbs', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/verify')
+  const toggle = page.getByRole('checkbox', { name: 'Audio quality report', exact: true })
+  await expect(toggle).not.toBeChecked()
+  await toggle.check()
+  await expect(page.getByText('Report only. Existing safety checks still decide whether an output can replace the original.', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Advanced verification', exact: true }).click()
+  await expect(toggle).toBeChecked()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ audioQualityReportingEnabled: true })
+})
+
+test('video libraries do not advertise standalone audio quality reports', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/verify')
+  await expect(page.getByRole('checkbox', { name: 'Audio quality report', exact: true })).toHaveCount(0)
+})

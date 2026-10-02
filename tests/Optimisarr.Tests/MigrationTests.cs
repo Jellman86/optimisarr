@@ -72,6 +72,29 @@ public sealed class MigrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Existing_music_libraries_keep_reporting_off_and_repeated_migration_preserves_opt_in()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261001112013_FreezeJobVmafModel");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES ('Music', '/data/music', 'Music', 'ConservativeHevc', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        var library = await db.Libraries.SingleAsync();
+        Assert.False(library.AudioQualityReportingEnabled);
+        library.AudioQualityReportingEnabled = true;
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        Assert.True((await db.Libraries.SingleAsync()).AudioQualityReportingEnabled);
+    }
+
+    [Fact]
     public async Task Existing_libraries_migrate_to_the_fixed_quality_path()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);

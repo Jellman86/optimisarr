@@ -15,9 +15,9 @@ public sealed record AudioQualityAssessmentResult(
     public string Revision => AudioQualityResultParser.Revision;
     public string Preparation => AudioQualityResultParser.Preparation;
     public bool Sampled => Reference is not null && Reference.DurationSeconds > 90;
-    public double CoveredSeconds => Windows.Sum(w => w.Distances.Frames / 48000.0);
+    public double CoveredSeconds => Windows?.Where(w => w?.Distances is not null).Sum(w => w.Distances.Frames / 48000.0) ?? 0;
     public double? DurationDriftSeconds => Reference is null || Candidate is null ? null : Candidate.DurationSeconds - Reference.DurationSeconds;
-    public double? WorstChannelDistance => Measured && Windows.Count > 0
+    public double? WorstChannelDistance => Measured && Windows is { Count: > 0 } && Windows.All(w => w?.Distances?.ChannelDistances is { Count: > 0 })
         ? Windows.Max(w => w.Distances.WorstChannelDistance) : null;
 }
 

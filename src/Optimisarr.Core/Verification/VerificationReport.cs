@@ -54,7 +54,8 @@ public sealed record VerificationReport(
     VerificationContext? Context = null,
     VmafEvidence? Vmaf = null,
     ColourEvidence? Colour = null,
-    VmafShadowEvidence? ShadowVmaf = null)
+    VmafShadowEvidence? ShadowVmaf = null,
+    AudioQualityReport? AudioQuality = null)
 {
     public bool HasValidStructure() => Checks is { Count: > 0 }
         && Checks.All(check => check is not null && !string.IsNullOrWhiteSpace(check.Name)

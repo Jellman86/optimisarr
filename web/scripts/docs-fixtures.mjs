@@ -155,3 +155,13 @@ export function artwork(id,wide=false) {
  if(wide) return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#2b6583"/><stop offset="1" stop-color="#c2b890"/></linearGradient></defs><rect width="1200" height="675" fill="url(#sky)"/><circle cx="875" cy="188" r="81" fill="#e6daba"/><path d="M0 400L150 300l200 130 200-160 200 115 250-85v375H0" fill="#426779"/><path d="M0 510L180 375l260 155 220-145 230 150 310-100v240H0" fill="#284d61"/><path d="M0 540l200-75 250 160 220-70 240 65 290-100v155H0" fill="#163345"/><text x="38" y="637" font-family="sans-serif" font-size="21" fill="#dce8df">LUMEN LANDSCAPE · FABRICATED DOCUMENTATION MEDIA</text></svg>`
  return `<svg xmlns="http://www.w3.org/2000/svg" width="${wide?1200:400}" height="${wide?675:600}" viewBox="0 0 400 600"><defs><linearGradient id="s" x2="1" y2="1"><stop stop-color="${color}"/><stop offset="1" stop-color="#0b1323"/></linearGradient></defs><rect width="400" height="600" fill="url(#s)"/><circle cx="260" cy="190" r="115" fill="#e3d9b7" opacity=".75"/><path d="M0 380L125 270l100 95 100-85 75 95v225H0" fill="#193947"/><path d="M0 440l130-90 130 80 140-60v230H0" fill="#0d2434"/><path d="M0 470q100-35 210 0t190 0M0 495q100-35 210 0t190 0" fill="none" stroke="#bde2d2" opacity=".3"/><text x="28" y="535" font-family="sans-serif" font-size="22" fill="#f2eee2">${titles[i]}</text><text x="28" y="567" font-family="sans-serif" font-size="10" letter-spacing="3" fill="#b9d0d8">DOCUMENTATION FICTION</text></svg>`
 }
+
+export const audioJob = { ...jobs[1], id: 31, mediaFileId: 31, libraryId: 3,
+  relativePath: 'Field recording.opus', videoEncoder: null, requestedVideoQuality: null,
+  effectiveVideoQuality: null, videoQualityMode: null, workerName: 'Audio worker',
+  verificationReportJson: JSON.stringify({ checks: [{ name: 'Decode health', outcome: 'Passed', detail: 'Decoded cleanly.' }],
+    audioQuality: { measurementLocation: 'Worker', unavailableReason: null,
+      evidence: { metric: 'zimtohrli', revision: 'f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3', preparation: 'audio-f32le-48k-native-defaults-v1',
+        assessment: { measured: true, coveredSeconds: 90, elapsedSeconds: 2,
+          windows: [0,45,90].map(start => ({ window: { startSeconds: start, durationSeconds: 30 },
+            distances: { frames: 1440000, channelDistances: [0.001234,0.005678] } })) } } } }) }

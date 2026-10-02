@@ -1,6 +1,16 @@
 import type { Messages } from './en'
 
 export const ja: Messages = {
+  audio_quality: {
+    title: "音声品質レポート",
+    hint: "Zimtohrliで各チャンネルを比較します。1トラックのモノラル・ステレオ音声に対応。最大90秒を測定し、検証する端末のCPUとディスクを使用します。結果はジョブの詳細に表示されます。ワーカーのジョブはワーカーで測定します。実験的な機能で、出力の合否は判定しません。",
+    note: "レポートのみ。元ファイルを置き換えられるかは既存の安全性チェックで判定します。",
+    badge: "レポートのみ",
+    unavailable: "利用不可",
+    coverage: "{seconds}秒を測定 · {windows}サンプル",
+    channel: "チャンネル{channel}",
+    distance_note: "各チャンネルにサンプルの最大距離を表示します。距離が小さいほど音声が近いことを示します。聴感評価や合格基準ではありません。",
+  },
   common: {
     loading: "Optimisarrをロード中...",
     loading_short: "読み込み中…",

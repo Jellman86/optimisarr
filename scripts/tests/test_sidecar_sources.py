@@ -17,6 +17,12 @@ class SidecarSourceTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    def test_audio_dependencies_match_the_native_build_pins(self):
+        cmake = (source.ROOT / 'tools/audio-quality-native/CMakeLists.txt').read_text()
+        for repository, revision in source.AUDIO_SOURCES.values():
+            self.assertIn(repository, cmake)
+            self.assertIn('GIT_TAG ' + revision, cmake)
+
     def test_missing_dependency_cannot_certify_mac_sources(self):
         info = self.root / 'BUILD-INFO.txt'
         info.write_text('x264 stable ' + 'a' * 40 + '\n')

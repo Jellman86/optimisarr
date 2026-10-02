@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.27)
+if(CMAKE_HOST_APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Match the macOS sidecar deployment floor" FORCE)
+endif()
 project(OptimisarrAudioQuality LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -5,6 +5,7 @@ on:
     branches: [dev, main]
     paths:
       - 'tools/audio-quality-native/**'
+      - 'scripts/build_audio_quality.sh'
       - 'tools/Optimisarr.AudioStudy/**'
       - 'src/Optimisarr.Core/Verification/AudioQuality*'
       - 'tests/Optimisarr.Tests/AudioQuality*'
@@ -14,6 +15,7 @@ on:
     branches: [dev, main]
     paths:
       - 'tools/audio-quality-native/**'
+      - 'scripts/build_audio_quality.sh'
       - '.github/workflows/audio-quality.yml'
   workflow_dispatch:
 

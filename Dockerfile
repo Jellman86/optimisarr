@@ -48,6 +48,14 @@ COPY src/Optimisarr.Api/Metrics/LinuxSystemMetrics.cs src/Optimisarr.Api/Metrics
 RUN dotnet publish sidecars/linux/src/Optimisarr.Sidecar.Linux --configuration Release \
     -p:UseAppHost=false -warnaserror --output /app/sidecar
 
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS audio-quality-build
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends cmake g++ git python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY tools/audio-quality-native/ tools/audio-quality-native/
+COPY scripts/build_audio_quality.sh scripts/build_audio_quality.sh
+RUN bash scripts/build_audio_quality.sh /audio-build /audio-install
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS media-runtime
 WORKDIR /app
 
@@ -76,6 +84,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends jellyfin-ffmpeg7 \
     && rm -rf /var/lib/apt/lists/*
 
+COPY --from=audio-quality-build /audio-install/bin/optimisarr-audio-quality /app/optimisarr-audio-quality
+COPY --from=audio-quality-build /audio-install/share/optimisarr-audio-quality/ /app/licenses/audio-quality/
 COPY --from=vmaf-ffmpeg /ffmpeg /usr/local/lib/optimisarr/ffmpeg-vmaf
 RUN /usr/local/lib/optimisarr/ffmpeg-vmaf -hide_banner -filters 2>&1 \
     | grep -Eq '^[[:space:]].*[[:space:]]libvmaf[[:space:]]'
@@ -87,6 +97,7 @@ COPY --chmod=0755 sidecars/linux/entrypoint.sh /entrypoint.sh
 ENV OPTIMISARR_CONFIG_DIR=/config \
     OPTIMISARR_SIDECAR_WORK=/work \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
+    OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
     PUID=1000 PGID=1000 UMASK=077 \
     OPTIMISARR_WEB_ENABLED=true ASPNETCORE_URLS=http://0.0.0.0:8788
@@ -106,6 +117,7 @@ ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_CONFIG_DIR=/config \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     OPTIMISARR_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe \
+    OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
     PUID=1000 \
     PGID=1000 \

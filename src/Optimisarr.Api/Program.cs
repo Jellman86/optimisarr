@@ -78,6 +78,13 @@ builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpe
 // -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
 builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton(new ImageMetadataService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
+builder.Services.AddSingleton(_ =>
+{
+    var metric = Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY");
+    var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, metric,
+        Path.Combine(Path.GetTempPath(), "optimisarr-audio-quality"));
+    return new AudioQualityObservationService(service is null ? null : service.MeasureAsync);
+});
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
@@ -436,7 +443,8 @@ internal sealed record SaveLibraryRequest(
     double? MaxTruePeakDbtp = null,
     bool? ImageQualityGateEnabled = null,
     double? MinimumImageSsim = null,
-    bool? ImageMetadataGateEnabled = null);
+    bool? ImageMetadataGateEnabled = null,
+    bool? AudioQualityReportingEnabled = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -512,6 +520,7 @@ internal sealed record LibraryDto(
     bool ImageQualityGateEnabled,
     double MinimumImageSsim,
     bool ImageMetadataGateEnabled,
+    bool AudioQualityReportingEnabled,
     string VideoQualityStrategy,
     string WorkPlacement,
     bool AutoEnqueueEnabled,
@@ -586,6 +595,7 @@ internal sealed record LibraryDto(
         library.ImageQualityGateEnabled,
         library.MinimumImageSsim,
         library.ImageMetadataGateEnabled,
+        library.AudioQualityReportingEnabled,
         library.VideoQualityStrategy.ToString(),
         library.WorkPlacement.ToString(),
         library.AutoEnqueueEnabled,

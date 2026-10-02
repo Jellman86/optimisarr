@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- Experimental audio quality reports can be enabled per library under Verify. Reports compare
+  each mono/stereo channel with pinned Zimtohrli, show coverage and measurement location in
+  Queue and Quarantine, and record file/tool identity. Reports do not change replacement gates.
+  Strict worker jobs measure on Mac, Windows and Linux workers without server fallback.
+- The container and sidecar packages include the native audio metric, licences and corresponding
+  source records. Existing libraries keep reports off.
+
+### Fixed
+
+- Queue detail styles no longer remove padding from nested measurement cards.
+
 ### Development tools
 
 - Added an opt-in audio quality assessment tool using pinned Zimtohrli and per-channel

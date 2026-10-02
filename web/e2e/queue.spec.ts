@@ -606,3 +606,47 @@ test('a missing working poster stays settled through refreshes and recovers for 
   await expect(working.locator('img')).toHaveJSProperty('naturalWidth', 192)
   await expect(working.locator('img')).toHaveCSS('opacity', '1')
 })
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
+    test(`audio report fits the job dialog at ${width}px in ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)
+      const report = {
+        checks: [{ name: 'Decode health', outcome: 'Passed', detail: 'Decoded cleanly.' }],
+        audioQuality: { measurementLocation: 'Worker', unavailableReason: null,
+          evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: {
+            measured: true, coveredSeconds: 90, elapsedSeconds: 2,
+            windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234, 0.005678] } }],
+          } },
+        },
+      }
+      await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), relativePath: 'Free music.opus', verificationReportJson: JSON.stringify(report) }] })
+      await page.goto('/#/queue')
+      await page.getByRole('button', { name: 'View job', exact: true }).click()
+      const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+      await expect(panel).toContainText('0.001234')
+      await expect(panel).toContainText('0.005678')
+      await expect(panel).toContainText('Report only')
+      expect(await panel.locator('dl > div').first().evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(12)
+      await panel.scrollIntoViewIfNeeded()
+      const box = await panel.boundingBox()
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+      expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath('audio-report.png'), fullPage: true })
+    })
+  }
+}
+
+test('missing worker audio evidence shows an unavailable report with the reason', async ({ page }) => {
+  const report = { checks: [{ name: 'Decode health', outcome: 'Passed', detail: 'Decoded cleanly.' }],
+    audioQuality: { measurementLocation: 'Worker', evidence: null, unavailableReason: 'The worker returned no audio quality report.' } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'View job', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+  await expect(panel).toContainText('Unavailable')
+  await expect(panel).toContainText('The worker returned no audio quality report.')
+  await expect(panel).not.toContainText('Channel 1')
+})

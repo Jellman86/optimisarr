@@ -1,8 +1,7 @@
 # Perceptual quality for audio and still images
 
 Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans.
-Status: **audio qualification tool implemented on a development branch; library gates,
-worker integration and dedupe remain planned**.
+Status: **opt-in audio reports, library controls and strict worker measurement implemented on a development branch; automatic gates, surround support and dedupe remain planned**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
 [personal blind comparisons](../usage/personal-quality-check.md).
@@ -318,3 +317,45 @@ Prove ignored-pair persistence, cancellation, disconnect/retry, restart recovery
 cross-filesystem quarantine and exact rollback on available platforms. Private Immich copies
 can qualify image behaviour; public CI uses attributed free or synthetic fixtures. Publish
 aggregate results and synthetic examples. No private media or paths enter documentation.
+
+## Integrated report controls in development
+
+Enable **Audio quality report** under **Libraries → Configure → Verify** for a music library
+(or a mixed library containing standalone audio). It defaults off. The advanced verification
+view shares the same choice; breadcrumb navigation retains the draft. Queue job details and
+Quarantine show the same report panel, with the largest distance per channel across samples,
+covered seconds and whether the measurement ran on the server or worker.
+
+This first integration is experimental and report-only. It does not supply a replacement gate,
+change retries or override decode, duration, channel, metadata or size checks. Originals still
+require all configured gates before replacement, and replacement retains the quarantine rollback
+path. Missing tools, incompatible input and incomplete worker evidence are displayed as
+unavailable; these observations never become a pass verdict.
+
+Strict sidecar verification requests the observation in the frozen audio contract. Both worker
+implementations measure before delivery using the same pin and 48 kHz preparation. The server
+validates hashes, profiles, sample positions, complete channel counts and finite distances, then
+stores the observation separately from verification checks. Missing or incompatible reports
+never trigger server media reads. Older workers can complete their existing verification and
+return an unavailable report until upgraded. In server verification mode, the server measures.
+
+The opt-in cost includes hashing both complete media files before and after assessment,
+resampling two streams and scoring at most three serial windows covering up to 90 seconds.
+Each command has a 90-second deadline (probes use 30 seconds in the shared provider). Scratch
+is at most two 11.52 MB PCM files per assessment and is removed on success, failure and
+cancellation. Concurrent jobs share the existing verification/worker slots. Turning reporting
+off adds no audio assessment processes, hashes or scratch files.
+
+Packages build the pinned metric core without Python at runtime. Python, CMake 3.27 or newer,
+Git and a C++17 compiler are build dependencies. Mac packaging now signs the metric alongside
+FFmpeg and ffprobe. Windows packaging includes it in the MSI; Docker builds include it in both
+runtime targets. Sidecar corresponding-source archives include Zimtohrli and Highway.
+`OPTIMISARR_AUDIO_QUALITY` can name an explicit native executable. It is an operator override,
+not a UI setting; unproved metric revisions are refused.
+
+Real pipeline acceptance passed with freely reusable Samplelib music on this Mac, PICARD,
+Quark's running sidecar and Riker's running container. Evidence was consumed with an injected
+server fallback that would throw if invoked. All scratch was removed and both containers
+remained healthy with zero restarts. The native Swift path also passed using the installed
+Mac media tools and the new metric. These were isolated test executables, not a production
+upgrade or a claim that the deployed 0.2.19 jobs already record these reports.

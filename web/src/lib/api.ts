@@ -183,6 +183,7 @@ export type LibraryRules = {
   maximumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
+  audioQualityReportingEnabled?: boolean
   audioClippingGateEnabled: boolean
   maxTruePeakDbtp: number
   imageQualityGateEnabled: boolean
@@ -294,6 +295,7 @@ export function newLibraryDefaults(): SaveLibrary {
     maximumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
+    audioQualityReportingEnabled: false,
     audioClippingGateEnabled: false,
     maxTruePeakDbtp: 0,
     imageQualityGateEnabled: true,
@@ -451,7 +453,25 @@ export type VerificationCheck = {
 
 export type VerificationReport = {
   checks: VerificationCheck[]
+  audioQuality?: AudioQualityReport | null
   context?: VerificationContext | null
+}
+
+export type AudioQualityReport = {
+  measurementLocation: 'Server' | 'Worker'
+  unavailableReason: string | null
+  evidence: {
+    metric: string
+    revision: string
+    preparation: string
+    assessment: {
+      measured: boolean
+      elapsedSeconds: number
+      coveredSeconds: number
+      worstChannelDistance: number | null
+      windows: { window: { startSeconds: number; durationSeconds: number }; distances: { frames: number; channelDistances: number[] } }[]
+    }
+  } | null
 }
 
 export type VerificationContext = {

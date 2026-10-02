@@ -3,6 +3,16 @@ import type { Messages } from './en'
 // German. Typed as `Messages`, so it must define exactly the English key set —
 // omitting or misnaming a key fails `npm run check`.
 export const de: Messages = {
+  audio_quality: {
+    title: "Audioqualitätsbericht",
+    hint: "Vergleicht jeden Kanal mit Zimtohrli. Für Mono- und Stereo-Audio mit einer Spur. Misst bis zu 90 Sekunden und benötigt CPU und Datenträger auf dem prüfenden Gerät. Ergebnisse stehen in den Auftragsdetails. Worker-Aufträge bleiben auf dem Worker. Experimentell, ohne Bestehen oder Durchfallen.",
+    note: "Nur Bericht. Die bestehenden Sicherheitsprüfungen entscheiden weiterhin über den Austausch des Originals.",
+    badge: "Nur Bericht",
+    unavailable: "Nicht verfügbar",
+    coverage: "{seconds}s geprüft · {windows} Ausschnitte",
+    channel: "Kanal {channel}",
+    distance_note: "Pro Kanal wird der größte Abstand der Ausschnitte angezeigt. Kleinere Abstände bedeuten ähnlicheres Audio. Dies ist keine Hörbewertung oder Bestehensgrenze.",
+  },
   common: {
     loading: 'Optimisarr wird geladen …',
     loading_short: 'Wird geladen …',

@@ -56,6 +56,29 @@ class NativeAssessmentTests(unittest.TestCase):
             output.truncate(48000 * 31 * 2 * 4)
         self.assertNotEqual(self.run_metric().returncode, 0)
 
+    def test_owned_report_file_is_written_once_without_overwriting_inputs(self):
+        self.write(self.candidate, self.samples)
+        report = self.root / "report 日本語.json"
+        args = [EXECUTABLE, str(self.reference), str(self.candidate), "2", "--report", str(report)]
+        first = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(json.loads(report.read_text()), json.loads(first.stdout))
+        before = report.read_bytes()
+        self.assertNotEqual(subprocess.run(args, capture_output=True, timeout=30).returncode, 0)
+        self.assertEqual(report.read_bytes(), before)
+        original = self.reference.read_bytes()
+        args[-1] = str(self.reference)
+        self.assertNotEqual(subprocess.run(args, capture_output=True, timeout=30).returncode, 0)
+        self.assertEqual(self.reference.read_bytes(), original)
+
+    @unittest.skipUnless(sys.platform == "darwin", "Mach-O deployment metadata")
+    def test_macos_binary_matches_the_sidecars_supported_deployment_floor(self):
+        import re
+        info = subprocess.run(["otool", "-l", EXECUTABLE], capture_output=True, text=True, check=True).stdout
+        versions = re.findall(r"\bminos ([0-9.]+)", info)
+        self.assertTrue(versions)
+        self.assertTrue(all(int(value.split(".")[0]) <= 14 for value in versions))
+
     def test_version_reports_the_pinned_metric(self):
         result = subprocess.run([EXECUTABLE, "--version"], capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout)["revision"], "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3")

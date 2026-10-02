@@ -284,6 +284,9 @@ public sealed class Library
     /// <summary>Whether an encode that introduces true-peak clipping is rejected.</summary>
     public bool AudioClippingGateEnabled { get; set; }
 
+    /// <summary>Opt-in perceptual observations for standalone mono/stereo audio. Never a replacement gate.</summary>
+    public bool AudioQualityReportingEnabled { get; set; }
+
     /// <summary>True-peak ceiling in dBTP used by the clipping gate.</summary>
     public double MaxTruePeakDbtp { get; set; }
 

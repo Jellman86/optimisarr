@@ -158,6 +158,7 @@ internal static class LibraryEndpoints
                 AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled,
                 MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs,
                 AudioClippingGateEnabled = parsed.AudioClippingGateEnabled,
+                AudioQualityReportingEnabled = parsed.AudioQualityReportingEnabled,
                 MaxTruePeakDbtp = parsed.MaxTruePeakDbtp,
                 ImageQualityGateEnabled = parsed.ImageQualityGateEnabled,
                 MinimumImageSsim = parsed.MinimumImageSsim,
@@ -255,6 +256,7 @@ internal static class LibraryEndpoints
             library.AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled;
             library.MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs;
             library.AudioClippingGateEnabled = parsed.AudioClippingGateEnabled;
+            library.AudioQualityReportingEnabled = request.AudioQualityReportingEnabled ?? library.AudioQualityReportingEnabled;
             library.MaxTruePeakDbtp = parsed.MaxTruePeakDbtp;
             library.ImageQualityGateEnabled = parsed.ImageQualityGateEnabled;
             library.MinimumImageSsim = parsed.MinimumImageSsim;

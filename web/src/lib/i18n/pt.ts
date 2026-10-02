@@ -1,6 +1,16 @@
 import type { Messages } from './en'
 
 export const pt: Messages = {
+  audio_quality: {
+    title: "Relatório de qualidade de áudio",
+    hint: "Compara cada canal com Zimtohrli. Suporta áudio mono e estéreo com uma faixa. Mede até 90 segundos e usa CPU e disco do equipamento que verifica. Os resultados ficam nos detalhes da tarefa. As tarefas remotas ficam no worker. É experimental e não aprova nem rejeita a saída.",
+    note: "Apenas relatório. As verificações de segurança existentes continuam a decidir se o original pode ser substituído.",
+    badge: "Apenas relatório",
+    unavailable: "Indisponível",
+    coverage: "{seconds}s analisados · {windows} amostras",
+    channel: "Canal {channel}",
+    distance_note: "Cada canal mostra a maior distância entre as amostras. Distâncias menores indicam áudio mais parecido. Não são uma nota de escuta nem um limite de aprovação.",
+  },
   common: {
     loading: "Carregando Optimisarr...",
     loading_short: "Carregando…",

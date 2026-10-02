@@ -30,6 +30,20 @@ try {
     # is not evidence that a redistributable binary matches the pinned archive.
     & (Join-Path $PSScriptRoot '..\scripts\fetch-ffmpeg.ps1') -Destination $payload -Force
     Assert-Exit 'Media tool staging'
+    $audioBuild = Join-Path $work 'audio-quality-build'
+    $audioInstall = Join-Path $work 'audio-quality-install'
+    cmake -S (Join-Path $repo 'tools\audio-quality-native') -B $audioBuild -A x64
+    Assert-Exit 'Native audio configuration'
+    cmake --build $audioBuild --config Release --parallel 2
+    Assert-Exit 'Native audio build'
+    ctest --test-dir $audioBuild -C Release --output-on-failure
+    Assert-Exit 'Native audio qualification'
+    cmake --install $audioBuild --config Release --prefix $audioInstall
+    Assert-Exit 'Native audio install'
+    Copy-Item (Join-Path $audioInstall 'bin\optimisarr-audio-quality.exe') $payload
+    $audioLicences = Join-Path $payload 'licenses\audio-quality'
+    New-Item -ItemType Directory -Force $audioLicences | Out-Null
+    Copy-Item (Join-Path $audioInstall 'share\optimisarr-audio-quality\*') $audioLicences
     $zip = Join-Path $work 'runtime.zip'
     $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest $runtimeUrl -OutFile $zip -TimeoutSec 600
@@ -45,9 +59,11 @@ try {
     Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $payload 'LICENSE.txt')
     @"
 Optimisarr Sidecar ${Version}: GPL-3.0. Source: https://github.com/Jellman86/optimisarr
+Zimtohrli and Highway: Apache-2.0. Licences are in licenses/audio-quality.
+Pinned source and wrapper build: https://github.com/Jellman86/optimisarr/tree/main/tools/audio-quality-native
 FFmpeg: GPL build pinned in BUILD-INFO.txt. Copyright the FFmpeg contributors.
 Build scripts and corresponding upstream build-source release:
-https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-14-13-17
+https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-30-13-08
 https://github.com/BtbN/FFmpeg-Builds
 https://ffmpeg.org/legal.html
 .NET runtime 10.0.12: Microsoft and contributors. MIT and third-party licences

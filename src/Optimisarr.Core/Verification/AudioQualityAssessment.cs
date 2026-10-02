@@ -74,7 +74,7 @@ public static class AudioQualityCommandBuilder
 
 public sealed record AudioQualityDistances(int Frames, IReadOnlyList<double> ChannelDistances)
 {
-    public double WorstChannelDistance => ChannelDistances.Max();
+    public double? WorstChannelDistance => ChannelDistances is { Count: > 0 } ? ChannelDistances.Max() : null;
 }
 
 public static class AudioQualityResultParser

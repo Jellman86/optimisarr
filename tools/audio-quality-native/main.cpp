@@ -1,4 +1,6 @@
 #include <cmath>
+#include <cstdio>
+#include <sstream>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -48,8 +50,9 @@ int Assess(const std::vector<std::filesystem::path>& args) {
       std::cout << "{\"schema\":1,\"metric\":\"zimtohrli\",\"revision\":\"" << revision << "\"}\n";
       return 0;
     }
-    if (args.size() != 3 || (args[2] != "1" && args[2] != "2"))
-      throw std::runtime_error("Usage: optimisarr-audio-quality reference.f32le candidate.f32le channels(1|2)");
+    if ((args.size() != 3 && args.size() != 5) || (args.size() == 5 && args[3] != "--report")
+        || (args[2] != "1" && args[2] != "2"))
+      throw std::runtime_error("Usage: optimisarr-audio-quality reference.f32le candidate.f32le channels(1|2) [--report new-file.json]");
     const size_t channels = args[2] == "1" ? 1 : 2;
     auto reference = Read(args[0], channels);
     auto candidate = Read(args[1], channels);
@@ -64,14 +67,29 @@ int Assess(const std::vector<std::filesystem::path>& args) {
         throw std::runtime_error("Metric returned an invalid distance.");
       distances.push_back(distance);
     }
-    std::cout << std::setprecision(9) << "{\"schema\":1,\"metric\":\"zimtohrli\",\"revision\":\""
+    std::ostringstream json;
+    json << std::setprecision(9) << "{\"schema\":1,\"metric\":\"zimtohrli\",\"revision\":\""
         << revision << "\",\"sampleRate\":48000,\"fullScaleSineDb\":" << metric.full_scale_sine_db
         << ",\"channels\":" << channels << ",\"frames\":" << reference[0].size() << ",\"distances\":[";
     for (size_t channel = 0; channel < channels; ++channel) {
-      if (channel) std::cout << ',';
-      std::cout << distances[channel];
+      if (channel) json << ',';
+      json << distances[channel];
     }
-    std::cout << "]}\n";
+    json << "]}\n";
+    const auto output = json.str();
+    if (args.size() == 5) {
+      FILE* report = nullptr;
+#ifdef _WIN32
+      _wfopen_s(&report, args[4].c_str(), L"wx");
+#else
+      report = std::fopen(args[4].c_str(), "wx");
+#endif
+      if (!report) throw std::runtime_error("Cannot create report; the destination must not exist.");
+      const auto written = std::fwrite(output.data(), 1, output.size(), report);
+      const auto closed = std::fclose(report);
+      if (written != output.size() || closed != 0) throw std::runtime_error("Cannot complete report.");
+    }
+    std::cout << output;
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

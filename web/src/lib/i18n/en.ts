@@ -3,6 +3,16 @@
 // keys — a missing or misspelled key fails `npm run check` (the CI completeness gate).
 // Use `{token}` placeholders for interpolation; resolve them with `t(...)`.
 export const en = {
+  audio_quality: {
+    title: "Audio quality report",
+    hint: "Compares each channel using Zimtohrli. Supports mono and stereo audio with one track. Measures up to 90 seconds, adds CPU and disk work on the verifying host, and records results in job details. Worker jobs stay on the worker. This is experimental and does not pass or fail an output.",
+    note: "Report only. Existing safety checks still decide whether an output can replace the original.",
+    badge: "Report only",
+    unavailable: "Unavailable",
+    coverage: "{seconds}s assessed · {windows} samples",
+    channel: "Channel {channel}",
+    distance_note: "Each channel shows its largest sample distance. Smaller distances mean closer audio. These values are not a listening score or a pass threshold.",
+  },
   common: {
     loading: 'Loading Optimisarr...',
     loading_short: 'Loading…',

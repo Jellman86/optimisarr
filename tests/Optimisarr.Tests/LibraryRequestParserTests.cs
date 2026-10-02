@@ -64,6 +64,15 @@ public sealed class LibraryRequestParserTests
         AutoReplace: null,
         VideoQualityStrategy: null);
 
+    [Fact]
+    public void Audio_quality_reporting_requires_explicit_opt_in()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var baseline, out _));
+        Assert.False(baseline.AudioQualityReportingEnabled);
+        Assert.True(LibraryRequestParser.TryParse(Request() with { AudioQualityReportingEnabled = true }, out var enabled, out _));
+        Assert.True(enabled.AudioQualityReportingEnabled);
+    }
+
     [Theory]
     [InlineData("5")]
     [InlineData("999")]
