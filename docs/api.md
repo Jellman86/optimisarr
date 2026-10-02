@@ -238,6 +238,10 @@ Health response:
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
 | `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
 
+Configuration exports use format version `2` to preserve enforced audio gates. Imports
+accept legacy version `1` without new enforced-gate fields and preserve an existing audio
+gate when those fields are omitted. Older builds reject version `2`.
+
 Settings fields include:
 
 ```json
@@ -296,6 +300,13 @@ or background sweep changed the policy, counts, or bytes, it returns `409` witho
 deleting anything so the operator can review and confirm the new preview.
 
 ## Libraries and Inventory
+
+Library create/update requests accept `audioQualityReportingEnabled`, `audioQualityGateEnabled`
+and `maximumAudioQualityDistance`. The gate starts off. Enabling it requires an explicit finite
+limit from 0 to 1 and a `Music` or `Other` library. It applies only to standalone audio jobs.
+Gate-enabled jobs measure even with reporting off; every assessed channel/sample must meet the
+limit, and missing measurements block replacement. Older update requests preserve the saved gate
+and limit. See [coverage and controls](setup/configuration.md#audio-quality-reports-and-gates-development).
 
 | Method | Endpoint | Purpose |
 |---|---|---|

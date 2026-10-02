@@ -4,6 +4,13 @@
 
 ### Added
 
+- Add an optional audio quality gate to music and mixed libraries. Set your own maximum
+  difference with a horizontal control, clickable numeric points or Custom; every assessed channel/sample must pass, and missing measurements block
+  replacement. Strict sidecar verification keeps measurement on the worker. Job details
+  show the verdict and selected limit. Existing libraries retain their previous settings.
+  New configuration backups protect the gate from being silently lost on older builds;
+  older backups remain importable.
+
 - Inventory has an opt-in **Exact copies** review for every library type. It compares complete
   file hashes within a selected library, shows paths and link counts, and supports cancellation.
   Reads are limited to about 8 MiB/s on the server. Reports are temporary snapshots; no files

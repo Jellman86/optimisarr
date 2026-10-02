@@ -103,7 +103,7 @@ export const when = '2026-09-17T12:00:00Z'
 export const titles = ['Lumen Coast', 'The Glass Observatory', 'Amber Transit', 'Signal Garden', 'The Quiet Meridian', 'Paper Satellites', 'Silver Canopy', 'Tidal Atlas']
 export const libraries = [library,
   { ...library, id: 2, name: 'Nature series', path: '/data/series', mediaType: 'Tv', fileCount: 126, autoEnqueueEnabled: true, autoEnqueueWindowStart: '01:00', autoEnqueueWindowEnd: '06:00' },
-  { ...library, id: 3, name: 'Field recordings', path: '/data/audio', mediaType: 'Music', fileCount: 64, audioTargetCodec: 'opus', audioBitrateKbps: 128 },
+  { ...library, id: 3, name: 'Field recordings', path: '/data/audio', mediaType: 'Music', fileCount: 64, audioTargetCodec: 'opus', audioBitrateKbps: 128, audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.005 },
   { ...library, id: 4, name: 'Landscape studies', path: '/data/photos', mediaType: 'Photo', fileCount: 240, targetImageFormat: 'webp', imageQuality: 82 },
 ]
 export const options = {
@@ -177,3 +177,9 @@ export const audioJob = { ...jobs[1], id: 31, mediaFileId: 31, libraryId: 3,
         assessment: { measured: true, coveredSeconds: 90, elapsedSeconds: 2,
           windows: [0,45,90].map(start => ({ window: { startSeconds: start, durationSeconds: 30 },
             distances: { frames: 1440000, channelDistances: [0.001234,0.005678] } })) } } } }) }
+
+export const audioGatedJob = { ...audioJob, verificationReportJson: JSON.stringify({
+  ...JSON.parse(audioJob.verificationReportJson),
+  checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Failed', detail: 'Largest measured audio difference 0.005678; maximum allowed 0.005. Above the selected limit. The original is unchanged.' }],
+  audioQuality: { ...JSON.parse(audioJob.verificationReportJson).audioQuality, gateEnabled: true, gatePassed: false, maximumDistance: 0.005 }
+}) }

@@ -87,11 +87,17 @@ public sealed class MigrationTests : IDisposable
         await migrator.MigrateAsync();
         var library = await db.Libraries.SingleAsync();
         Assert.False(library.AudioQualityReportingEnabled);
+        Assert.False(library.AudioQualityGateEnabled);
+        Assert.Null(library.MaximumAudioQualityDistance);
         library.AudioQualityReportingEnabled = true;
+        library.AudioQualityGateEnabled = true;
+        library.MaximumAudioQualityDistance = 0.005;
         await db.SaveChangesAsync();
         await migrator.MigrateAsync();
         db.ChangeTracker.Clear();
         Assert.True((await db.Libraries.SingleAsync()).AudioQualityReportingEnabled);
+        Assert.True((await db.Libraries.SingleAsync()).AudioQualityGateEnabled);
+        Assert.Equal(0.005, (await db.Libraries.SingleAsync()).MaximumAudioQualityDistance);
     }
 
     [Fact]

@@ -650,3 +650,57 @@ test('missing worker audio evidence shows an unavailable report with the reason'
   await expect(panel).toContainText('The worker returned no audio quality report.')
   await expect(panel).not.toContainText('Channel 1')
 })
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
+    test(`audio gate verdict and selected limit stay clear at ${width}px in ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1100 })
+      await page.addInitScript(selected => localStorage.setItem('optimisarr-theme', selected), theme)
+      const report = { checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Failed', detail: 'Above the selected limit. The original is unchanged.' }],
+        audioQuality: { measurementLocation: 'Worker', unavailableReason: null, gateEnabled: true, gatePassed: false, maximumDistance: 0.005,
+          evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: { measured: true, coveredSeconds: 90,
+            windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234, 0.005678] } }] } } } }
+      await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+      await page.goto('/#/queue')
+      await page.getByRole('button', { name: 'View job', exact: true }).click()
+      const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+      await expect(panel).toContainText('Blocked')
+      await expect(panel).toContainText('Maximum allowed difference: 0.005')
+      await expect(panel).not.toContainText('Report only')
+      await expect(panel.locator('.badge')).toHaveClass(/tone-bad/)
+      await panel.scrollIntoViewIfNeeded()
+      expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    })
+  }
+}
+
+test('audio gate blocks missing evidence', async ({ page }) => {
+  const report = { checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Failed', detail: 'Missing evidence.' }],
+    audioQuality: { measurementLocation: 'Worker', evidence: null, unavailableReason: 'The worker returned no audio quality report.',
+      gateEnabled: true, gatePassed: false, maximumDistance: 0 } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'View job', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+  await expect(panel).toContainText('Blocked')
+  await expect(panel).toContainText('Maximum allowed difference: 0')
+  await expect(panel).toContainText('The worker returned no audio quality report.')
+})
+
+test('a measured passing audio gate shows its verdict and limit', async ({ page }) => {
+  const report = { checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Passed', detail: 'Within the selected limit.' }],
+    audioQuality: { measurementLocation: 'Worker', unavailableReason: null, gateEnabled: true, gatePassed: true, maximumDistance: 0.005,
+      evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: { measured: true, coveredSeconds: 30,
+        windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234] } }] } } } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'View job', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+  await expect(panel.locator('.badge')).toHaveText('Passed')
+  await expect(panel.locator('.badge')).toHaveClass(/tone-ok/)
+  await expect(panel).toContainText('Maximum allowed difference: 0.005')
+  await expect(panel).not.toContainText('Report only')
+  await panel.getByRole('button').click()
+  await expect(panel.getByRole('tooltip')).toContainText('Blocks replacement')
+  await expect(panel.getByRole('tooltip')).not.toContainText('does not pass or fail')
+})

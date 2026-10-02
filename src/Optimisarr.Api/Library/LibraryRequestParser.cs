@@ -68,6 +68,8 @@ internal readonly record struct ParsedLibrary(
     double MinimumImageSsim,
     bool ImageMetadataGateEnabled,
     bool AudioQualityReportingEnabled,
+    bool AudioQualityGateEnabled,
+    double? MaximumAudioQualityDistance,
     VideoQualityStrategy VideoQualityStrategy,
     WorkPlacement WorkPlacement,
     bool AutoEnqueueEnabled,
@@ -281,6 +283,18 @@ internal static class LibraryRequestParser
             && minimumTarget > maximumTarget)
         {
             error = "Minimum useful saving cannot exceed maximum allowed saving.";
+            return false;
+        }
+
+        if ((request.MaximumAudioQualityDistance is not null && !AudioQualityGate.ValidLimit(request.MaximumAudioQualityDistance))
+            || (request.AudioQualityGateEnabled == true && !AudioQualityGate.ValidLimit(request.MaximumAudioQualityDistance)))
+        {
+            error = "Set a maximum audio difference between 0 and 1 before enabling the audio quality gate.";
+            return false;
+        }
+        if (request.AudioQualityGateEnabled == true && mediaType is not (MediaType.Music or MediaType.Other))
+        {
+            error = "The audio quality gate is available for music and mixed libraries only.";
             return false;
         }
 
@@ -541,6 +555,8 @@ internal static class LibraryRequestParser
             request.MinimumImageSsim ?? VerificationPolicy.Default.MinimumImageSsim,
             request.ImageMetadataGateEnabled ?? VerificationPolicy.Default.ImageMetadataGateEnabled,
             request.AudioQualityReportingEnabled ?? false,
+            request.AudioQualityGateEnabled ?? false,
+            request.MaximumAudioQualityDistance,
             videoQualityStrategy,
             workPlacement,
             request.AutoEnqueueEnabled ?? false,

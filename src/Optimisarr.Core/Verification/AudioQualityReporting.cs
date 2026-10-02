@@ -2,7 +2,7 @@ using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Core.Verification;
 
-/// <summary>Versioned, file-bound measurements. These are observations, never replacement gates.</summary>
+/// <summary>Versioned, file-bound measurements used for reports and an explicitly enabled gate.</summary>
 public sealed record RemoteAudioQualityEvidence(string Metric, string Revision, string Preparation,
     AudioQualityAssessmentResult Assessment)
 {
@@ -11,7 +11,7 @@ public sealed record RemoteAudioQualityEvidence(string Metric, string Revision, 
 }
 
 public sealed record AudioQualityReport(string MeasurementLocation, RemoteAudioQualityEvidence? Evidence,
-    string? UnavailableReason);
+    string? UnavailableReason, bool GateEnabled = false, double? MaximumDistance = null, bool? GatePassed = null);
 
 public static class AudioQualityReporting
 {
