@@ -125,4 +125,7 @@ public sealed record VerificationInput(
     IReadOnlyList<string?>? ExpectedAudioCodecs = null,
     IReadOnlyList<string?>? OutputAudioCodecs = null,
     bool SourceTimelineIndeterminate = false,
-    string? ExpectedAudioCodec = null);
+    string? ExpectedAudioCodec = null,
+    bool RequireVideoFrameRetention = false,
+    int? OriginalDecodedFrameCount = null,
+    int? OutputDecodedFrameCount = null);

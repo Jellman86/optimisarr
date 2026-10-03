@@ -46,7 +46,7 @@ leases finish; use it before an update and resume the worker afterward.
 Update sidecars alongside the server. H.264 NVIDIA jobs that preserve a declared
 colour range require worker protocol 5; an older sidecar stays available for
 ordinary work and reports that an update is needed for those jobs. Timed-text
-subtitle conversion to Matroska requires protocol 4. Unsupported commands are
+subtitle conversion to Matroska requires protocol 4. MP4 timing corrections and strict decoded-picture evidence require protocol 9. Unsupported commands are
 held before a lease is issued, rather than sent to the worker to fail.
 
 ## Choose where a library runs
@@ -107,20 +107,20 @@ slots. Queue names the waiting lane and its reason when work cannot start yet.
 are enabled. Existing installations retain their saved or previous value. You can change it under
 **Settings → Files & safety → Remote workers**; changes apply to newly issued assignments. Updated sidecars
 negotiate protocol 2 or newer on heartbeat; they do not need a new pairing. Older workers cannot claim an
-assignment that requires full verification. Protocol 3 additionally enables GPU-surface decode commands
+assignment that requires full verification. Video assignments keeping the source frame rate now require protocol 9 for decoded-picture counts. Update all sidecars alongside the server; pairing is retained. Protocol 3 additionally enables GPU-surface decode commands
 for Windows and Linux workers that proved the matching hardware decoder. This is negotiated
 independently of the sidecar release number.
 
 ![Files and safety settings with Remote workers enabled and Verify entirely on the sidecar selected](../images/optimisarr-settings-files-dark.png)
 
 The worker performs both media probes, the complete candidate decode, packet-timestamp checks,
-VMAF when required, and requested audio loudness/true-peak measurements. The server validates the
+decoded-picture counts for full videos keeping their source frame rate, VMAF when required, and requested audio loudness/true-peak measurements. Picture counts must match exactly; absent counts, lost pictures or added pictures block replacement. Intentional frame-rate conversions and previews use their existing checks. The server validates the
 contract, source/candidate hashes, evidence, and configured policy before a candidate can become
 ready to replace. Missing, malformed, or mismatched evidence fails the job. Strict verification
 never silently repeats those media-tool checks on the container.
 
 Combine this setting with **Only on workers** to keep the applicable video encode and verification
-media processing on workers. It does **not** make the server idle: scanning and initial probes,
+media processing on workers. It does **not** make the server idle: scanning and initial probes (including a bounded timestamp head read for applicable MP4 re-encodes),
 assignment/filter preparation, file transfers and hashing, database updates, policy evaluation,
 replacement, quarantine, and rollback remain on the container.
 

@@ -6,6 +6,7 @@ public struct FullVerificationContract: Codable, Sendable, Equatable {
     public let measureAudio: Bool
     public var measureAudioQuality: Bool? = nil
     public var soundtrackQuality: SoundtrackQualityRequest? = nil
+    public var countVideoFrames: Bool? = nil
 }
 
 public struct VerificationDecode: Codable, Sendable, Equatable {
@@ -44,6 +45,8 @@ public struct FullVerificationEvidence: Codable, Sendable {
     public var audioQuality: RemoteAudioQualityEvidence?
     public var soundtrackQuality: SoundtrackQualityReport?
     public var error: String?
+    public var sourceDecodedFrameCount: Int?
+    public var candidateDecodedFrameCount: Int?
 }
 
 /// Reduces arbitrarily long packet streams without returning them to the server or retaining them in RAM.
@@ -143,6 +146,14 @@ public struct FullVerification: Sendable {
                     sourceProbe: sourceProbe, candidateProbe: candidateProbe, request: request,
                     healthy: evidence.decode?.healthy == true, scratch: scratch)
             }
+            if contract.countVideoFrames == true {
+                guard contract.version != 2 else { throw Failure("Picture counts require a video contract.") }
+                evidence.sourceDecodedFrameCount = try await pictureCount(ffprobe, file: source, scratch: scratch, name: "source")
+                evidence.candidateDecodedFrameCount = try await pictureCount(ffprobe, file: candidate, scratch: scratch, name: "candidate")
+                guard evidence.sourceDecodedFrameCount != nil, evidence.candidateDecodedFrameCount != nil else {
+                    throw Failure("Complete decoded picture counts are required; packet counts cannot prove picture retention.")
+                }
+            }
             let scans = contract.version == 2
                 ? [("source-audio", evidence.sourceAudio), ("candidate-audio", evidence.candidateAudio)]
                 : [("source-video", evidence.sourceVideo), ("candidate-video", evidence.candidateVideo)]
@@ -155,6 +166,27 @@ public struct FullVerification: Sendable {
           catch { evidence.error = "Full verification could not complete: \(error)" }
         try Task.checkCancellation()
         return evidence
+    }
+
+    static func parsePictureCount(_ text: String) -> Int? {
+        guard let value = Int(text.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ","))),
+              value > 0, value <= Int32.max else { return nil }
+        return value
+    }
+
+    static func pictureCountArguments(file: URL, output: URL) -> [String] {
+        ["-v", "error", "-select_streams", movingPictureStreamSpecifier, "-count_frames",
+         "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", "-o", output.path, file.path]
+    }
+
+    private func pictureCount(_ ffprobe: URL, file: URL, scratch: URL, name: String) async throws -> Int? {
+        let output = scratch.appendingPathComponent("verification-\(name)-pictures.csv")
+        defer { try? FileManager.default.removeItem(at: output) }
+        let result = try await runner.run(ffprobe, Self.pictureCountArguments(file: file, output: output)) { _ in }
+        guard result.exitCode == 0 else { throw Failure("\(name) picture count failed (\(result.exitCode)).") }
+        let size = (try FileManager.default.attributesOfItem(atPath: output.path)[.size] as? NSNumber)?.intValue ?? 0
+        guard size > 0, size <= 128 else { return nil }
+        return Self.parsePictureCount(try String(contentsOf: output, encoding: .utf8))
     }
 
     private func probe(_ ffprobe: URL, file: URL, scratch: URL, name: String) async throws -> String {

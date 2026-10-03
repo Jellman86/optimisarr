@@ -21,8 +21,32 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     }
 
     private RemoteVerificationEvidence Evidence() => new(Guid.NewGuid(), new('a', 64), new('b', 64),
-        Probe, Probe, DecodeHealthResult.Ok, new(true, 0, null, 8), new(true, 0, null, 8), TimestampCheckResult.NotMeasured);
+        Probe, Probe, DecodeHealthResult.Ok, new(true, 0, null, 8), new(true, 0, null, 8), TimestampCheckResult.NotMeasured,
+        SourceDecodedFrameCount: 96, CandidateDecodedFrameCount: 96);
 
+
+    [Fact]
+    public async Task Missing_picture_evidence_refuses_strict_verification_without_server_fallback()
+    {
+        var original = new OriginalSnapshot("unread-source", 1000, 8, 0, 0, false, false);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Service().VerifyAsync(original, "candidate",
+            VerificationPolicy.Default, default, remoteEvidence: Evidence() with { SourceDecodedFrameCount = null }));
+        Assert.Contains("picture counts", error.Message);
+    }
+
+    [Fact]
+    public async Task Lost_initial_pictures_fail_even_when_worker_duration_and_decode_pass()
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot("unread-source", 1000, 8, 0, 0, false, false, ExpectedVideoCodec: "hevc");
+        var result = await Service().VerifyAsync(original, output, VerificationPolicy.Default, default,
+            remoteEvidence: Evidence() with { CandidateDecodedFrameCount = 94 });
+        Assert.False(result.Report.Passed);
+        Assert.Contains(result.Report.Checks, c => c.Name == "Duration" && c.Outcome == CheckOutcome.Passed);
+        Assert.Contains(result.Report.Checks, c => c.Name == "Picture retention" && c.Outcome == CheckOutcome.Failed);
+    }
 
     [Theory]
     [InlineData(0, true)]

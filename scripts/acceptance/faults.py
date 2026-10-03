@@ -25,7 +25,7 @@ def worker_faults(harness, fixture):
     pin = api.post("/api/workers/pairing-code")["code"]
     pair = api.post("/api/workers/pair", {"code": pin, "name": "acceptance-protocol-faults",
         "operatingSystem": "test-protocol-client", "architecture": "test",
-        "protocolMinimum": 1, "protocolMaximum": 7, "videoEncoders": ["libx265"],
+        "protocolMinimum": 1, "protocolMaximum": 9, "videoEncoders": ["libx265"],
         "audioEncoders": ["aac"], "hardwareDecoders": [], "vmaf": "Cpu",
         "freeScratchBytes": 10_000_000_000, "maxConcurrency": 1})
     token = pair["credential"]
@@ -33,7 +33,7 @@ def worker_faults(harness, fixture):
     try:
         code, _, _ = wire(api, "/api/workers/heartbeat", token=token, method="POST",
             body=json.dumps({"freeScratchBytes": 10_000_000_000, "maxConcurrency": 1,
-                             "protocolMinimum": 1, "protocolMaximum": 7}).encode(),
+                             "protocolMinimum": 1, "protocolMaximum": 9}).encode(),
             headers={"Content-Type": "application/json"})
         require(code == 200, "Protocol fixture heartbeat failed")
         case = harness.create_job("protocol-faults", fixture, worker=pair)

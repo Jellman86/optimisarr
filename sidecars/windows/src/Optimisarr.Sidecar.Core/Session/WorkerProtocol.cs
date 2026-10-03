@@ -12,6 +12,6 @@ namespace Optimisarr.Sidecar.Core.Session;
 public static class WorkerProtocol
 {
     public const int Minimum = 1;
-    // Protocol 7 supports actual-candidate CAMBI parameters for VMAF v1.
-    public const int Maximum = 8;
+    // Protocol 9 supports preserving MP4 timestamps and decoded-picture evidence.
+    public const int Maximum = 9;
 }

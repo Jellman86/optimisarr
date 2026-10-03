@@ -46,6 +46,53 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-color_range:v:0", args);
     }
 
+    [Theory]
+    [InlineData("mp4")]
+    [InlineData("m4v")]
+    [InlineData("mov")]
+    public void Mp4_video_encodes_keep_negative_leading_pictures(string extension)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/output." + extension, InputTimestampOffsetSeconds = 0.391 });
+        Assert.Equal("0.391", args[IndexOf(args, "-itsoffset") + 1]);
+        Assert.True(IndexOf(args, "-itsoffset") < IndexOf(args, "-i"));
+        Assert.DoesNotContain("-use_editlist", args);
+    }
+
+    [Fact]
+    public void Input_correction_does_not_change_other_containers_remuxes_previews_or_media_types()
+    {
+        foreach (var spec in new[]
+        {
+            Reencode() with { OutputPath = "/work/output.mkv" },
+            Reencode() with { OutputPath = "/work/output.mp4", VideoCodec = null },
+            Reencode() with { OutputPath = "/work/output.mp4", ClipSeconds = 12 },
+            Reencode() with { OutputPath = "/work/output.mp4", ClipStartSeconds = 4 },
+            Reencode() with { OutputPath = "/work/output.mp4", FrameRate = new(60, 30, 2) },
+            AudioReencode() with { OutputPath = "/work/output.mp4" },
+            ImageReencode()
+        })
+            Assert.DoesNotContain("-itsoffset", FfmpegCommandBuilder.Build(spec with { InputTimestampOffsetSeconds = 0.391 }));
+
+        Assert.DoesNotContain("-itsoffset", FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/output.mp4" }));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(-0.04)]
+    [InlineData(86401)]
+    public void Invalid_input_corrections_cannot_reach_the_encoder(double offset) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => FfmpegCommandBuilder.Build(
+            Reencode() with { OutputPath = "/work/output.mp4", InputTimestampOffsetSeconds = offset }));
+
+    [Fact]
+    public void Tiny_input_correction_uses_ffmpeg_decimal_duration_syntax()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+            { OutputPath = "/work/output.mp4", InputTimestampOffsetSeconds = 0.000001 });
+        Assert.Equal("0.000001", args[IndexOf(args, "-itsoffset") + 1]);
+    }
+
     [Fact]
     public void H264_nvenc_tone_mapping_records_limited_output_instead_of_the_source_range()
     {

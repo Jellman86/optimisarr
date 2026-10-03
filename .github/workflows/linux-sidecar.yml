@@ -68,6 +68,14 @@ jobs:
           python3 scripts/media_acceptance.py --image optimisarr:sidecar-acceptance \
             --worker-image "$first_tag" --tier fleet --worker-encoder libx265 \
             --regression soundtrack-quality --root /tmp/optimisarr-sidecar-soundtrack-acceptance
+      - name: Accept initial pictures with strict sidecar verification
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image optimisarr:sidecar-acceptance \
+            --tier fleet --worker-image "$first_tag" \
+            --worker-encoder libx265 --local-encoder libx265 \
+            --regression initial-pictures --fixture-seconds 16 \
+            --root /tmp/optimisarr-sidecar-initial-pictures-acceptance
       - name: Accept uneven timing with strict sidecar verification
         run: |
           first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
@@ -82,6 +90,8 @@ jobs:
           path: |
             /tmp/optimisarr-sidecar-soundtrack-acceptance/report
             /tmp/optimisarr-sidecar-soundtrack-acceptance/*.log
+            /tmp/optimisarr-sidecar-initial-pictures-acceptance/report
+            /tmp/optimisarr-sidecar-initial-pictures-acceptance/*.log
             /tmp/optimisarr-sidecar-uneven-acceptance/report
             /tmp/optimisarr-sidecar-uneven-acceptance/*.log
             /tmp/optimisarr-sidecar-audio-acceptance/report

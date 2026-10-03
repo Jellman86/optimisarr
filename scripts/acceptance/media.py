@@ -7,6 +7,7 @@ from fractions import Fraction
 from pathlib import Path
 import re
 
+from .dts_fixture import vfw_matroska
 from .core import Blocked, command, require, save, sha256, statistics
 
 
@@ -150,6 +151,8 @@ class Tools:
     def fixture(self, path, variant="sdr", seconds=8, source=None, start=0):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        if variant in ("dts-only", "dts-only-no-subtitles"):
+            return self.dts_only_fixture(path, seconds, subtitles=variant == "dts-only")
         if source:
             inputs = ["-ss", str(start), "-i", self.path(source)]
             mapping = ["-map", "0:v:0", "-map", "0:a?"]
@@ -191,6 +194,32 @@ class Tools:
             evidence["timing"] = validate_uneven_timing_fixture(evidence["probe"], self.frame_times(path))
         return evidence
 
+    def dts_only_fixture(self, path, seconds, *, subtitles=True):
+        avi, flac = path.with_suffix(".avi"), path.with_suffix(".flac")
+        self.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=25:duration={seconds}",
+                     "-c:v", "mpeg4", "-bf", "2", "-q:v", "3", self.path(avi)])
+        self.encode(["-f", "lavfi", "-i", f"sine=frequency=880:sample_rate=48000:duration={seconds}",
+                     "-c:a", "flac", self.path(flac)])
+        def packets(file):
+            return json.loads(self.run(self.ffprobe, ["-v", "error", "-show_packets", "-show_entries",
+                "packet=pts_time,dts_time,pos,size,flags", "-of", "json", self.path(file)]))["packets"]
+        video, audio = packets(avi), packets(flac)
+        path.write_bytes(vfw_matroska(avi.read_bytes(), video, flac.read_bytes(), audio, seconds, subtitles=subtitles))
+        probe = self.probe(path, True)
+        moving = next(stream for stream in probe["streams"] if stream["codec_type"] == "video")
+        source_packets = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "V:0",
+            "-show_entries", "packet=pts_time,dts_time", "-of", "json", self.path(path)]))["packets"]
+        require(source_packets and "pts_time" not in source_packets[0] and all("dts_time" in packet for packet in source_packets),
+                "DTS-only fixture no longer carries decode timestamps alone")
+        require(int(moving["nb_read_frames"]) == round(seconds * 25), "Generated fixture lost pictures")
+        require(sum(stream["codec_type"] == "subtitle" for stream in probe["streams"]) == int(subtitles),
+                "Generated fixture has the wrong subtitle coverage")
+        first_picture = json.loads(self.run(self.ffprobe, ["-v", "error", "-fflags", "+genpts", "-select_streams", "V:0",
+            "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))["frames"][0]
+        require(float(first_picture["best_effort_timestamp_time"]) < float(probe["format"]["start_time"]),
+                "Generated picture no longer precedes the declared input start")
+        return {"path": str(path), "sha256": sha256(path), "variant": "dts-only", "seconds": seconds, "probe": probe}
+
     def alac_fixture(self, path, source, *, mixed=False):
         path = Path(path)
         maps = ["-map", "0:v:0", "-map", "0:a:0"]
@@ -216,8 +245,10 @@ class Tools:
             "-metadata:s:s:1", "language=fra", self.path(path)])
         return {"sha256": sha256(path), "probe": self.probe(path)}
 
-    def subtitle_cues(self, path, index):
-        text = self.run(self.ffmpeg, ["-v", "error", "-i", self.path(path), "-map", f"0:s:{index}",
+    def subtitle_cues(self, path, index, *, picture_origin=False, generate_pts=False):
+        origin = self.first_av_timestamps(path, generate_pts=generate_pts)["video"] if picture_origin else None
+        flags = ["-copyts", "-itsoffset", str(-origin)] if origin is not None else []
+        text = self.run(self.ffmpeg, ["-v", "error", *flags, "-i", self.path(path), "-map", f"0:s:{index}",
             "-c:s", "srt", "-f", "srt", "-"])
         return text.strip().replace("\r\n", "\n")
 
@@ -238,8 +269,27 @@ class Tools:
         self.encode(inputs + maps + ["-c", "copy", "-c:s", "srt", *metadata, self.path(path)])
         return path
 
-    def frame_times(self, path):
-        result = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "v:0",
+    def first_av_timestamps(self, path, *, generate_pts=False):
+        frames = json.loads(self.run(self.ffprobe, ["-v", "error", *(["-fflags", "+genpts"] if generate_pts else []),
+            "-read_intervals", "%+#32", "-show_entries", "frame=media_type,best_effort_timestamp_time", "-of", "json",
+            self.path(path)]))["frames"]
+        starts = {}
+        for frame in frames:
+            kind = frame.get("media_type")
+            if kind in ("video", "audio") and kind not in starts and "best_effort_timestamp_time" in frame:
+                starts[kind] = float(frame["best_effort_timestamp_time"])
+        require(set(starts) == {"video", "audio"}, "Missing decoded A/V start evidence")
+        return starts
+
+    def check_av_start_offset(self, source, candidate, directory):
+        before = self.first_av_timestamps(source, generate_pts=True)
+        after = self.first_av_timestamps(candidate)
+        delta = abs((after["video"] - after["audio"]) - (before["video"] - before["audio"]))
+        save(Path(directory) / "decoded-av-offset.json", {"source": before, "candidate": after, "offsetChangeSeconds": delta})
+        require(delta <= .003, "Changed decoded picture/audio alignment")
+
+    def frame_times(self, path, *, generate_pts=False):
+        result = json.loads(self.run(self.ffprobe, ["-v", "error", *(["-fflags", "+genpts"] if generate_pts else []), "-select_streams", "V:0",
             "-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))
         times = [float(frame["best_effort_timestamp_time"]) for frame in result["frames"]]
         require(bool(times), "No decoded picture timestamps")
@@ -255,7 +305,7 @@ class Tools:
         rv = next(x for x in ref["streams"] if x["codec_type"] == "video")
         ov = next(x for x in out["streams"] if x["codec_type"] == "video")
         # A score must not erase lost pictures by blindly resetting, duplicating or trimming frames.
-        rt, ot = self.frame_times(reference), self.frame_times(candidate)
+        rt, ot = self.frame_times(reference, generate_pts=True), self.frame_times(candidate)
         require(len(rt) == len(ot), f"Frame loss/duplication: {len(rt)} reference, {len(ot)} output")
         drift = max(abs(a - b) for a, b in zip(rt, ot))
         require(drift <= .003, f"Picture cadence drift {drift:.6f}s")

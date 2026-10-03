@@ -8,7 +8,7 @@ import Foundation
 /// working across a server upgrade.
 public enum WorkerProtocol {
     public static let minimum = 1
-    public static let maximum = 8
+    public static let maximum = 9
 }
 
 /// What this machine has *proved* it can do.

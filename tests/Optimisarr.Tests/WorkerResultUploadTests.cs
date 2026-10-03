@@ -235,7 +235,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
     }
 
-    private async Task<HttpClient> PairWorker(string name, int protocolMaximum = 1)
+    private async Task<HttpClient> PairWorker(string name, int protocolMaximum = Optimisarr.Core.Workers.WorkerProtocol.Current)
     {
         var admin = Admin();
         var pin = (await (await admin.PostAsync("/api/workers/pairing-code", null))
@@ -286,12 +286,12 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Strict_mode_issues_a_contract_and_frozen_work_only_to_protocol_two_workers()
+    public async Task Strict_mode_issues_a_contract_and_frozen_work_only_to_protocol_nine_workers()
     {
         await EnableRemoteWorkers(strictVerification: true);
         try
         {
-            var worker = await PairWorker("Strict verifier", protocolMaximum: 2);
+            var worker = await PairWorker("Strict verifier", protocolMaximum: 9);
             await QueueAJob();
 
             var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
@@ -299,6 +299,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             Assert.NotEqual(JsonValueKind.Null, assignment.ValueKind);
             Assert.True(assignment.TryGetProperty("fullVerification", out var contract));
             Assert.Equal(1, contract.GetProperty("version").GetInt32());
+            Assert.True(contract.GetProperty("countVideoFrames").GetBoolean());
             Assert.True(contract.GetProperty("id").GetGuid() != Guid.Empty);
 
             using var scope = _api.Services.CreateScope();
@@ -337,7 +338,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         await EnableRemoteWorkers(strictVerification: null);
         try
         {
-            var worker = await PairWorker("Default complete verifier", protocolMaximum: 2);
+            var worker = await PairWorker("Default complete verifier", protocolMaximum: 9);
             await QueueAJob();
             var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
                 .Content.ReadFromJsonAsync<JsonElement>();

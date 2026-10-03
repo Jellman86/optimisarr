@@ -373,11 +373,13 @@ internal static class WorkerLeaseEndpoints
                     }
 
                     var requiredProtocol = WorkerProtocol.MinimumForAssignment(assignment.Arguments, assignment.Kind, assignment.VmafModel,
-                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null);
+                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null, assignment.FullVerification?.CountVideoFrames == true);
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == 8
+                        lastReason = requiredProtocol == 9
+                            ? "Picture preservation requires an updated sidecar (protocol 9)."
+                            : requiredProtocol == 8
                             ? "Soundtrack quality assessment requires an updated sidecar (protocol 8)."
                             : requiredProtocol == 7
                             ? "VMAF v1 requires an updated sidecar with proved HD/UHD models and candidate-format probing (protocol 7)."

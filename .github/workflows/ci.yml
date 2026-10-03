@@ -177,6 +177,12 @@ jobs:
             --root "$RUNNER_TEMP/optimisarr-fractional-acceptance" \
             --regression fractional-timing --local-encoder libx265 --fixture-seconds 16
 
+      - name: Verify initial picture retention in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-initial-pictures-acceptance" \
+            --regression initial-pictures --local-encoder libx265 --fixture-seconds 16
       - name: Verify uneven timing regression in the final container
         run: |
           first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
@@ -228,6 +234,9 @@ jobs:
             ${{ runner.temp }}/optimisarr-fractional-acceptance/report/
             ${{ runner.temp }}/optimisarr-fractional-acceptance/server.log
             ${{ runner.temp }}/optimisarr-fractional-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-initial-pictures-acceptance/report/
+            ${{ runner.temp }}/optimisarr-initial-pictures-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-initial-pictures-acceptance/image.json
             ${{ runner.temp }}/optimisarr-uneven-acceptance/report/
             ${{ runner.temp }}/optimisarr-uneven-acceptance/server.log
             ${{ runner.temp }}/optimisarr-uneven-acceptance/image.json

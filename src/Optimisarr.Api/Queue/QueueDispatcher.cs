@@ -1600,7 +1600,8 @@ public sealed class QueueDispatcher(
                 work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled,
                 work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind),
                 work.Spec.Kind == MediaKind.Video && work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded)
-                    ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null) : null,
+                    ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null,
+                CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
@@ -1812,6 +1813,20 @@ public sealed class QueueDispatcher(
             sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
             sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null);
+
+        if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null
+            && TranscodeSpecResolver.IsMp4Container(Path.GetExtension(spec.OutputPath)))
+        {
+            freshSourceProbe ??= await scope.ServiceProvider.GetRequiredService<IMediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
+                throw new InvalidOperationException("Fresh source probe required for safe MP4 picture timing failed: " + freshSourceProbe.Error);
+            // Correct the common input origin before hardware encoders see negative pictures.
+            // This metadata-only head read shifts every retained track together.
+            if (freshSourceProbe.ContainerStartSeconds is > 0)
+                spec = spec with { InputTimestampOffsetSeconds = await scope.ServiceProvider.GetRequiredService<InputTimestampOffset>()
+                    .MeasureAsync(media.Path, freshSourceProbe.ContainerStartSeconds, cancellationToken) };
+        }
 
         if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
             && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.Path),
