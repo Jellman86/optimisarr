@@ -4,19 +4,21 @@ This policy defines which Optimisarr release artifacts may be signed, how their
 source and build are established, who may approve signing, and what information
 the software sends over a network.
 
-Optimisarr intends to use the SignPath Foundation open-source programme for its
-Windows releases. Approval and production signing are currently pending. The
-required attribution for artifacts signed through that programme is:
+Windows builds remain unsigned development previews. The SignPath Foundation
+application was declined because the project did not have enough established
+reputation. Approval is not pending, and no production signing service is in use.
+
+The process below describes the requirements for any future SignPath signing
+arrangement. It is not an implemented workflow or evidence that a download is
+signed. If that arrangement becomes available, signed artifacts would require
+this attribution:
 
 > Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 
 See [SignPath.io](https://signpath.io/) and the
 [SignPath Foundation](https://signpath.org/) for the service and certificate
-programme.
-
-Until SignPath has accepted the project and a release passes every control in
-this policy, Windows downloads remain unsigned previews and must be labelled as
-such. This policy is not evidence that a particular file has been signed.
+programme. Unsigned downloads must be labelled clearly. Windows application
+control may block them even when their installer and CI tests pass.
 
 ## Signing scope
 
@@ -77,9 +79,10 @@ release version. The SignPath artifact configuration must enforce those values.
 
 ## Team roles and account security
 
-Optimisarr is currently a single-maintainer signing project. The same maintainer
-holds the required roles, while each signing request remains a distinct manual
-decision after the automated build:
+Optimisarr is a single-maintainer project. The roles below describe the intended
+arrangement if production signing becomes available; they do not represent
+current SignPath access. Every future signing request must remain a distinct
+manual decision after the automated build:
 
 | Role | Member | Responsibility |
 | --- | --- | --- |
@@ -91,8 +94,9 @@ Anyone later granted a repository or SignPath role must use multi-factor
 authentication for both services. Signing tokens and identifiers belong in
 protected GitHub Actions secrets or variables and must not be printed in logs,
 stored in release artifacts, or made available to pull-request code. The
-certificate private key remains in SignPath's protected infrastructure and is
-never exported to the repository or a runner.
+certificate private key for any future SignPath arrangement must remain in
+SignPath's protected infrastructure and must never be exported to the repository
+or a runner.
 
 Changes to the installer, signing workflow, artifact configuration, release
 permissions or this policy receive the same review and required CI checks as
@@ -123,8 +127,9 @@ person installing or operating it:
   not exposed to the browser.
 - Installation and release tooling may download pinned build dependencies from
   their documented upstream hosts. That is a maintainer build-time operation,
-  not an end-user telemetry path. SignPath receives release build artifacts and
-  trusted-build metadata for signing; it does not receive runtime user data.
+  not an end-user telemetry path. If a future SignPath signing workflow is
+  enabled, it would send release build artifacts and trusted-build metadata to
+  SignPath for signing. It must never send runtime user data.
 
 Credentials, pairing data, job state and logs are stored on systems controlled
 by the operator. Configuration exports can contain provider secrets and must be
