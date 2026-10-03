@@ -17,9 +17,45 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it. The converse matters too: an entry left
   describing finished work as outstanding sends effort at an item that has none.
-- Status claims last verified against the repository: **2026-08-24**.
+- Current sidecar priorities and evidence were reviewed on **2026-09-28**. Older phase
+  entries retain their dated context; this is not a fresh audit of every historical claim.
 
-## Up next (priority order, updated 2026-08-24)
+## Up next (priority order, updated 2026-09-28)
+
+Start with the [sidecar hardening handoff](development/sidecar-hardening-handoff.md).
+It records the deployed commit, the completed 20-job trial, evidence locations and acceptance
+criteria. The trial ended with **10 verified completions, 4 failures and 6 size-review holds**;
+the monitor has stopped. These results do not justify releasing the remaining failures.
+
+1. **Reproduce the main-container QSV timestamp failure.** After successful adaptive samples,
+   job 5693 failed at the start of the full encode with duplicate output DTS and an MP4 mux error.
+   Inspect source and decoded timestamps, then compare hardware and software decode in isolation.
+   Establish the cause before changing timestamp handling or fallback classification. Add a
+   regression that exercises the beginning of the full file, and preserve strict error handling.
+2. **Investigate late-window VMAF failures on the Windows worker.** Jobs 5687 and 5689 scored
+   well in early/middle windows and collapsed in the late window. Frame alignment is a hypothesis,
+   not a confirmed cause. Compare identical decoded frames before changing quality. The merged
+   VC-1 sequential-comparison fix does not cover these H.264 cases.
+3. **Turn confirmed failures into harness coverage.** Exercise the corrected path in the main
+   container and affected sidecars, with decoded-frame/timestamp evidence, original preservation,
+   RAM cleanup and explicit blocked results for unavailable hardware. Keep the six size-review
+   holds and the quality/size rejection in job 5971 as expected policy outcomes unless new evidence
+   demonstrates a defect. Retain the selected comparison mode/offset in future worker diagnostics;
+   current logs contain planned commands but cannot prove which mode the worker selected.
+4. **Resume VMAF v1 calibration after measurement correctness is established.** Keep v0
+   authoritative and v1 optional research, following the [recorded decision](development/vmaf-shadow-decision.md).
+   Calibration needs independent held-out titles and explicit handling of incomplete pairs.
+   A release follows the normal exact-tag checks; the current changes are deployed `dev` work,
+   not a new public release after 0.2.17.
+
+**Already delivered:** 0.2.17 includes the Linux sidecar preview, browser pairing, media/CPU/GPU
+monitoring, RAM working storage and paired acceptance tests. Use the
+[Linux setup guide](setup/linux-sidecar.md) for Compose examples. PR #312 is merged into `dev`:
+current eligibility checks now apply to sidecar claims, retries retain attempt evidence, worker
+logs record per-window VMAF/size diagnostics, and matching-frame VC-1 comparisons decode
+sequentially. Do not rebuild these features as new work.
+
+## Wider roadmap (historical phase baseline: 2026-08-24)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -78,7 +114,8 @@ the replacement workflow is trustworthy.
      produced by a single document transformer over a pure route→tag/protection mapping.
 
    - **Pipeline robustness pass: done.** The behaviour that carries product risk is now
-     covered by adversarial tests, and every known live failure class is represented.
+     covered by adversarial tests, and the live failure classes identified in that pass are
+     represented. The September 28 trial exposed additional cases listed under **Up next**.
      `FfmpegCommandBuilder` stream/container permutations — attachments, data streams,
      cover art, image-based subtitles (the MP4→MKV fallback that avoids the `mov_text`
      trap), audio-only, still image, HDR tone-map, remux, and MP4/MKV — are tested.
@@ -162,8 +199,9 @@ the replacement workflow is trustworthy.
         MP4→MKV when a source carries audio MP4 cannot mux (Dolby TrueHD, Blu-ray/DVD LPCM) and that
         audio is being copied rather than re-encoded to a compatible codec — the same pattern already
         used for image-based subtitles. (Unmanic #454.)
-     4. **Robustness polish: partly done.** Done: every video job regenerates presentation timestamps
-        (`-fflags +genpts`) so a source with missing/non-monotonic DTS muxes cleanly; and a hardware
+     4. **Robustness polish: partly done.** Done: video jobs request missing presentation timestamps
+        (`-fflags +genpts`). This does not guarantee valid output DTS: the September 28 local QSV
+        failure remains open under **Up next**. A hardware
         encode now drops data streams (timecode/GPMF) even for a Matroska output (Tdarr's `-dn` fix
         generalised). Deferred as speculative without hardware to reproduce against: a classified
         NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
