@@ -112,6 +112,31 @@ struct FullVerificationTests {
         #expect(parser.result.lastPresentationSeconds == nil)
     }
 
+    @Test("an earlier decode span does not extend the last presented picture")
+    func earlierDecodeSpan() {
+        var parser = VerificationTimestampAccumulator()
+        for line in ["1371.370000,1275.899625,95.470375", "1397.020625,1396.853792,0.041708", "1396.937208,1396.937208,0.041708"] {
+            parser.append(line)
+        }
+        #expect(parser.result.measured)
+        #expect(parser.result.nonMonotonicCount == 0)
+        #expect(abs(parser.result.lastPresentationSeconds! - 1397.062333) < 0.000001)
+    }
+
+    @Test("a genuinely extended final picture keeps its duration")
+    func extendedFinalPicture() {
+        var parser = VerificationTimestampAccumulator()
+        for line in ["0,0,1", "1,1,1", "2,2,5"] { parser.append(line) }
+        #expect(parser.result.lastPresentationSeconds == 7)
+    }
+
+    @Test("repeated final presentation time keeps the longest final duration")
+    func repeatedFinalPicture() {
+        var parser = VerificationTimestampAccumulator()
+        for line in ["0,0,1", "2,1,0.01", "2,2,0.04", "1,3,9"] { parser.append(line) }
+        #expect(parser.result.lastPresentationSeconds == 2.04)
+    }
+
     @Test("loudness uses the final integrated summary, not intermediate readings")
     func loudness() {
         let result = FullVerification.parseLoudness("I: -12.0 LUFS\nI: -19.5 LUFS\nPeak: -1.2 dBFS\n", exitCode: 0)

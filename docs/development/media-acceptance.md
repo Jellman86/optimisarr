@@ -44,6 +44,43 @@ Native orchestration is for macOS/Linux. FFmpeg must support the tested codecs, 
 file can be decoded or that a required bit depth is supported; these are acceptance failures.
 For image metadata coverage, use the application's normal ExifTool installation.
 
+## Uneven timing regression
+
+Run the focused regression against a new disposable instance:
+
+```bash
+python3 scripts/media_acceptance.py --image optimisarr:test \
+  --root /tmp/optimisarr-uneven-001 --regression uneven-timing \
+  --local-encoder libx265 --fixture-seconds 16
+```
+
+The generated H.264 source declares equal 24 fps rates but contains 1 ms frame pairs and a long
+pause. The harness verifies that those properties survived fixture creation. It then checks the
+application verdict, every decoded picture timestamp, independent quality evidence, replacement
+of its own fixture copy and byte-for-byte rollback. Add the normal fleet/worker arguments to run
+it through strict worker verification. Both final-container and paired Linux-worker CI run this
+case before publishing images.
+
+This covers a duration measurement error exposed by [issue #289](https://github.com/Jellman86/optimisarr/issues/289).
+Reordered packets can report a long decode span on a picture presented before the final picture.
+Adding that span to each presentation time and taking the largest result can falsely extend the
+video. The endpoint is the latest presentation timestamp plus that packet's duration. A genuinely
+long final picture still counts in full. Duration tolerances, size gates and replacement safeguards
+are unchanged. The regression uses generated media; private investigation inputs are not included.
+
+Hardware checks on 3 October 2026 reproduced the same error with that generated source on
+NVIDIA NVENC: the old packet calculation reported 20.199 seconds, while the corrected endpoint
+was 15.982 seconds. Mac VideoToolbox, Intel QSV in the running server container, NVIDIA NVENC
+and the Linux worker's libx265 each retained all 192 decoded pictures. Their largest timestamp
+difference from the source was 0.063 ms. Quality and strict worker verification passed with the
+existing gates. An isolated Mac fleet run also passed replacement and rollback.
+
+For the longer input behind #289, a fresh NVIDIA candidate retained all 22,567 pictures with
+identical decoded timestamps. Its corrected endpoint was 1,397.062 seconds rather than the old
+calculation's 1,466.840 seconds. Fresh VMAF v1 samples passed the existing quality limits, but the
+candidate was 93.1% larger and remained rejected by the size gate. Historical reports were kept
+unchanged, and no production job or original was replaced during these checks.
+
 ## Openly licensed corpus
 
 ```bash

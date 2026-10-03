@@ -1045,6 +1045,28 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Duration"));
     }
 
+    [Theory]
+    [InlineData("1371.370000,1275.899625,95.470375\n1397.020625,1396.853792,0.041708", CheckOutcome.Passed)]
+    [InlineData("1371.370000,1275.899625,95.470375\n1397.020625,1396.853792,70.000000", CheckOutcome.Failed)]
+    public void Duration_gate_uses_the_final_presented_picture_and_still_rejects_a_long_final_hold(
+        string packets, CheckOutcome expected)
+    {
+        var endpoint = PacketTimestampParser.Parse(packets).LastPresentationSeconds;
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 1397.062,
+            OutputDurationSeconds = endpoint,
+            OriginalAudioLastPresentationSeconds = null,
+            OutputLastPresentationSeconds = endpoint,
+            TimestampsMeasured = true
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(expected, Outcome(report, "Duration"));
+        Assert.Equal(expected == CheckOutcome.Passed, report.Passed);
+    }
+
     [Fact]
     public void Duration_drift_beyond_tolerance_fails()
     {

@@ -51,6 +51,7 @@ struct VerificationTimestampAccumulator {
     var count = 0
     var regressions = 0
     var previousDts: Double?
+    var latestPts: Double?
     var lastPresentation: Double?
     var firstRegression: String?
 
@@ -64,7 +65,13 @@ struct VerificationTimestampAccumulator {
         if pts != nil || dts != nil { count += 1 }
         if let pts {
             let endpoint = pts + max(0, number(2) ?? 0)
-            lastPresentation = max(lastPresentation ?? endpoint, endpoint)
+            // Reordered packets can carry a long decode span that does not extend presentation.
+            if latestPts == nil || pts > latestPts! {
+                latestPts = pts
+                lastPresentation = endpoint
+            } else if pts == latestPts {
+                lastPresentation = max(lastPresentation ?? endpoint, endpoint)
+            }
         }
         if let dts {
             if let previousDts, dts < previousDts {

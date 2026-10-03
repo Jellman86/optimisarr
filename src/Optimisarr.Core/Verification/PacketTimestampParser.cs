@@ -8,7 +8,7 @@ namespace Optimisarr.Core.Verification;
 /// <param name="TimestampCount">How many packets carried a readable presentation or decode timestamp.</param>
 /// <param name="NonMonotonicCount">How many packets stepped backward in decode order.</param>
 /// <param name="FirstRegressionDetail">A human-readable description of the first backward step, or null.</param>
-/// <param name="LastPresentationSeconds">The latest packet endpoint seen, or null — i.e. where the selected media timeline actually ends.</param>
+/// <param name="LastPresentationSeconds">The latest presentation timestamp plus that packet's duration, or null.</param>
 public sealed record TimestampIntegrity(
     int TimestampCount,
     int NonMonotonicCount,
@@ -64,9 +64,10 @@ internal sealed class PacketTimestampAccumulator
     private int _regressions;
     private string? _firstRegression;
     private double? _previousDts;
-    private double? _maxPresentation;
+    private double? _latestPts;
+    private double? _lastPresentationEndpoint;
 
-    public TimestampIntegrity Result => new(_timestampCount, _regressions, _firstRegression, _maxPresentation);
+    public TimestampIntegrity Result => new(_timestampCount, _regressions, _firstRegression, _lastPresentationEndpoint);
 
     public void AddLine(string line)
     {
@@ -85,7 +86,17 @@ internal sealed class PacketTimestampAccumulator
             var endpoint = fields.Length > 2 && TryParseSeconds(fields[2], out var duration)
                 ? pts + Math.Max(duration, 0)
                 : pts;
-            if (_maxPresentation is not { } max || endpoint > max) _maxPresentation = endpoint;
+            // With reordered frames, packet duration can span a large gap in decode order.
+            // An earlier picture's PTS plus that span is not the presentation endpoint.
+            if (_latestPts is not { } latest || pts > latest)
+            {
+                _latestPts = pts;
+                _lastPresentationEndpoint = endpoint;
+            }
+            else if (pts == latest && endpoint > _lastPresentationEndpoint)
+            {
+                _lastPresentationEndpoint = endpoint;
+            }
         }
 
         if (!hasDts) return;
@@ -101,5 +112,6 @@ internal sealed class PacketTimestampAccumulator
     }
 
     private static bool TryParseSeconds(string field, out double value) =>
-        double.TryParse(field, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        double.TryParse(field, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+        && double.IsFinite(value);
 }
