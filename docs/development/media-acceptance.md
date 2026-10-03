@@ -104,7 +104,7 @@ Other containers, remuxes, previews and intentional frame-rate conversions retai
 commands. The server performs this small planning probe even in strict worker mode.
 
 Full video verification without an intentional frame-rate change now checks exact decoded-picture
-counts. Packet counts are not a substitute. Loss, duplication or unavailable counts blocks
+counts. Packet counts are not a substitute. A count mismatch or unavailable counts blocks
 replacement. Counting adds one full decode of the source and candidate; sampled VMAF reuses those
 counts for frame pairing. Strict verification requests this evidence from protocol 9 sidecars,
 with no server media-tool fallback. Older sidecars can still handle compatible assignments.
@@ -120,6 +120,9 @@ Windows NVIDIA NVENC, Intel QSV in the server container and libx265 in the Linux
 Local and strict worker verification passed on each, with the configured quality and size gates.
 The application-level Mac checks also cover the subtitle-free source, replacement and rollback.
 These results cover the tested encoders and generated inputs, rather than every timestamp format.
+Matching counts alone do not prove picture identity or identical timing. Quality and timing checks
+remain separate. DTS-only sources without original presentation timestamps can have ambiguous
+reconstructed timing; exact cadence preservation needs additional evidence for those inputs.
 
 ## Openly licensed corpus
 

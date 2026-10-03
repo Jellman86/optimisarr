@@ -107,7 +107,7 @@ public static class VerificationEvaluator
             {
                 checks.Add(input.OriginalDecodedFrameCount is > 0 && input.OutputDecodedFrameCount is > 0
                     ? input.OriginalDecodedFrameCount == input.OutputDecodedFrameCount
-                        ? Pass("Picture retention", $"All {input.OriginalDecodedFrameCount} decoded pictures were retained.")
+                        ? Pass("Picture retention", $"Source and output each have {input.OriginalDecodedFrameCount} decoded pictures. Counts match.")
                         : Fail("Picture retention", $"Original has {input.OriginalDecodedFrameCount} decoded pictures; output has {input.OutputDecodedFrameCount}. Pictures were lost or added.")
                     : Fail("Picture retention", "Complete decoded picture counts are unavailable; preservation could not be verified."));
             }
