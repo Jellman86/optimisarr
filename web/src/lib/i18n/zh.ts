@@ -29,7 +29,7 @@ export const zh: Messages = {
   },
   soundtrack_quality: {
     title: "音轨质量报告",
-    hint: "使用 Zimtohrli 将每条保留且重新编码的单声道／立体声音轨与原音轨比较。仅报告不会阻止替换。",
+    hint: "使用 Zimtohrli 将每条保留且重新编码的单声道／立体声音轨与原音轨比较。仅报告不会阻止替换。启用报告或质量检查时，旧版边车无法接收这些任务。",
     gate_label: "要求音轨质量",
     gate_hint: "若测量的声道或片段超过上限，或缺少证据，则阻止替换。实验性功能；在指定的验证主机上测量。",
     maximum: "音轨差异上限",
@@ -675,7 +675,8 @@ export const zh: Messages = {
     status_failed: "失败",
     status_cancelled: "已取消",
     job_failed: "处理任务失败",
-    failure_size_saving: '编码后的文件超出了配置的节省大小范围。',
+    failure_size_saving: '本次处理未满足配置的大小规则。',
+    failure_size_prediction: '采样预测输出会超过大小上限。未执行完整编码。',
     failure_verification: "编码文件未通过安全或质量检查。",
     failure_container_incompatibility: "目标容器不能容纳一个或多个源流。",
     failure_bitmap_subtitles: "基于图像的字幕无法安全转换。",

@@ -1289,7 +1289,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Worker_samples_can_hold_an_oversized_full_encode_without_failing_the_job()
+    public async Task Worker_samples_fail_a_predicted_oversize_job_without_running_the_full_encode()
     {
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker("Size reviewer");
@@ -1336,13 +1336,18 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         }
         Assert.NotNull(last);
         Assert.Equal(HttpStatusCode.Conflict, last.StatusCode);
-        Assert.Contains("worker.search.sizeReview", await last.Content.ReadAsStringAsync());
+        Assert.Contains("worker.search.predictedSize", await last.Content.ReadAsStringAsync());
         last.Dispose();
 
         using var check = _api.Services.CreateScope();
         var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         var held = await result.Jobs.SingleAsync(j => j.Id == jobId);
-        Assert.Equal(JobStatus.AwaitingSizeReview, held.Status);
+        Assert.Equal(JobStatus.Failed, held.Status);
+        Assert.Equal(FailureCategory.SizeSaving, held.FailureCategory);
+        Assert.NotNull(held.FinishedAt);
+        Assert.Contains("prediction", held.ErrorMessage);
+        Assert.Null(held.VerificationPassed);
+        Assert.Null(held.WorkOutputPath);
         Assert.NotNull(held.ErrorMessage);
         Assert.Equal(Optimisarr.Core.Workers.LeaseState.Released,
             (await result.JobLeases.SingleAsync(l => l.Id == Guid.Parse(leaseId))).State);
@@ -1377,6 +1382,67 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Existing_size_reviews_become_failures_once_and_local_cancellation_is_preserved()
+    {
+        var jobId = await QueueAJob();
+        var dispatcher = _api.Services.GetRequiredService<Optimisarr.Api.Queue.QueueDispatcher>();
+        string path;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+            path = job.MediaFile!.Path;
+            job.Status = JobStatus.AwaitingSizeReview;
+            job.ErrorMessage = "Samples project a file at 130%. The full encode is held until you choose to run it.";
+            await db.SaveChangesAsync();
+        }
+        await dispatcher.FailLegacySizeReviewsAsync(CancellationToken.None);
+        await dispatcher.FailLegacySizeReviewsAsync(CancellationToken.None);
+        using (var check = _api.Services.CreateScope())
+        {
+            var db = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var failed = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Failed, failed.Status);
+            Assert.Equal(1, failed.MediaFile!.FailureCount);
+            Assert.Contains("prediction", failed.ErrorMessage);
+            Assert.DoesNotContain("held until", failed.ErrorMessage);
+            Assert.Null(failed.WorkOutputPath);
+            Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(path));
+            failed.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+        await dispatcher.RejectPredictedSizeAsync(jobId, 22, new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
+        using var last = _api.Services.CreateScope();
+        Assert.Equal(JobStatus.Cancelled, (await last.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId)).Status);
+    }
+
+    [Fact]
+    public async Task A_stale_size_prediction_cannot_fail_a_cancelled_and_reassigned_attempt()
+    {
+        var (worker, jobId, leaseId, quality, _) = await ClaimASizeGatedSearch("Stale forecast", 97);
+        using var staleScope = _api.Services.CreateScope();
+        var stale = staleScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = await stale.JobLeases.Include(l => l.Job).SingleAsync(l => l.Id == Guid.Parse(leaseId));
+        using var cancel = await Admin().PostAsync($"/api/jobs/{jobId}/cancel", null);
+        cancel.EnsureSuccessStatusCode();
+        using var retry = await Admin().PostAsync($"/api/jobs/{jobId}/retry", null);
+        retry.EnsureSuccessStatusCode();
+        var nextWorker = await PairCapableWorker("New attempt worker");
+        using var claim = await nextWorker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var nextLease = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+        Assert.False(await Optimisarr.Api.Queue.SizePredictionFailure.RejectWorkerAsync(stale, lease,
+            lease.WorkerId, quality, "Size saving prediction: stale estimate", "[]", CancellationToken.None));
+        using var check = _api.Services.CreateScope();
+        var db = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Leased, job.Status);
+        Assert.Null(job.ErrorMessage);
+        Assert.Equal(0, job.MediaFile!.FailureCount);
+        Assert.Equal(LeaseState.Held, (await db.JobLeases.SingleAsync(l => l.Id == nextLease)).State);
+    }
+
+    [Fact]
     public async Task A_worker_sample_that_misses_vmaf_and_cannot_fit_ends_the_search_at_once()
     {
         // The fixed source spent 100 MB per window on its picture. These samples are 100%, 110%
@@ -1393,37 +1459,33 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         });
 
         Assert.Equal(HttpStatusCode.Conflict, report.StatusCode);
-        Assert.Contains("worker.search.sizeReview", await report.Content.ReadAsStringAsync());
+        Assert.Contains("worker.search.predictedSize", await report.Content.ReadAsStringAsync());
         using var check = _api.Services.CreateScope();
         var held = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>()
             .Jobs.SingleAsync(j => j.Id == jobId);
-        Assert.Equal(JobStatus.AwaitingSizeReview, held.Status);
+        Assert.Equal(JobStatus.Failed, held.Status);
+        Assert.Equal(FailureCategory.SizeSaving, held.FailureCategory);
+        Assert.NotNull(held.FinishedAt);
+        Assert.Contains("prediction", held.ErrorMessage);
+        Assert.Null(held.VerificationPassed);
+        Assert.Null(held.WorkOutputPath);
         Assert.Contains("missed the VMAF target", held.ErrorMessage);
         Assert.Contains("100%, 110%, 120% across the 3 samples", held.ErrorMessage);
     }
 
     [Fact]
-    public async Task Encode_anyway_offers_a_size_held_job_straight_back_to_the_worker_that_measured_it()
+    public async Task Predicted_size_failure_is_terminal_and_an_explicit_retry_can_use_the_same_worker()
     {
-        // The worker did nothing wrong: it measured what it was asked and the server chose to
-        // pause. Counting that as a refusal would park an approved job behind the handback
-        // cooldown, and three such holds would bar it from every worker.
-        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Approved worker", 97);
-        using (var held = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Retry worker", 97);
+        using var failed = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
         {
-            quality,
-            encodedBytes = 330_000_000L,
-            logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
-        }))
-        {
-            Assert.Equal(HttpStatusCode.Conflict, held.StatusCode);
-        }
-
-        using (var approve = await Admin().PostAsync($"/api/jobs/{jobId}/approve-size-preflight", null))
-        {
-            approve.EnsureSuccessStatusCode();
-        }
-
+            quality, encodedBytes = 330_000_000L, logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+        });
+        Assert.Equal(HttpStatusCode.Conflict, failed.StatusCode);
+        using var empty = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, empty.StatusCode);
+        using var retry = await Admin().PostAsync($"/api/jobs/{jobId}/retry", null);
+        retry.EnsureSuccessStatusCode();
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         Assert.Equal(jobId, (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("jobId").GetInt32());

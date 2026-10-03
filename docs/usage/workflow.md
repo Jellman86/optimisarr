@@ -202,15 +202,18 @@ ratio is applied to the source's picture, with copied audio and subtitles counte
 unchanged and re-encoded audio estimated from its target bitrate.
 
 If the chosen quality's samples forecast a file larger than the library allows,
-the job moves to **Needs review** instead of spending a full encode. A sample
-that misses the VMAF target and still does not fit also stops the search at once,
-because any quality that passes would be larger. Open the job to read the
-estimate and how each sampled scene compared. **Encode anyway** repeats the
-quality search on the assigned encoder and permits one full encode; the final
-size and quality checks still apply. **Stop and remove** clears the held job.
-The forecast is an estimate from three scenes, so the rest of the video can
-differ. No original file changes while a job waits for review. Searches on Mac
-and Windows sidecars are forecast the same way.
+Optimisarr marks the job **Failed** before running the full encode. A sample
+that misses the VMAF target and still does not fit also stops the search, because
+raising its quality would normally require a larger file. Open the failed job to
+read the **Size saving prediction**, estimated growth and sampled scene ratios.
+The reason states that this is a prediction and the full encode did not run.
+
+The forecast samples three scenes, so the rest of the video can differ. If you
+want to try again, adjust the library's size or quality settings and use **Retry**.
+A retry repeats the samples and keeps the final size and quality gates. Originals
+are unchanged. Predictions on container, Mac, Windows and Linux workers follow
+the same rule. On upgrade, jobs previously held for size review become predicted
+size failures; their reasons remain available in the failure history.
 
 Use **Pause queue** at the top right of the Queue page when you need Optimisarr to yield the server
 for maintenance or other work. It stops new jobs and automatic replacements from starting. On the

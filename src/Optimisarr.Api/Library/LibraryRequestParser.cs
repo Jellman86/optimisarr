@@ -301,6 +301,11 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (request.SoundtrackQualityReportingEnabled == true && mediaType is MediaType.Music or MediaType.Photo)
+        {
+            error = "Soundtrack quality reporting is available for video and mixed libraries only.";
+            return false;
+        }
         if ((request.MaximumSoundtrackQualityDistance is not null && !AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance))
             || (request.SoundtrackQualityGateEnabled == true && (!AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance)
                 || mediaType is MediaType.Music or MediaType.Photo)))

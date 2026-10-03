@@ -45,10 +45,36 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
             var track = audio[audioIndex];
             var channels = track.GetProperty("channels").GetInt32();
             var sampleRate = int.Parse(track.GetProperty("sample_rate").GetString()!, CultureInfo.InvariantCulture);
-            var durationText = track.TryGetProperty("duration", out var t) && t.GetString() != "N/A"
-                ? t.GetString() : doc.RootElement.GetProperty("format").GetProperty("duration").GetString();
-            if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out var duration)
-                || AudioQualityWindowPlanner.Plan(duration).Count == 0 || channels is not (1 or 2) || sampleRate is < 8000 or > 384000) return null;
+            var durationText = track.TryGetProperty("duration", out var t) && t.GetString() != "N/A" ? t.GetString() : null;
+            double duration;
+            if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out duration))
+            {
+                if (!standalone && track.TryGetProperty("tags", out var tags)
+                    && tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("DURATION", StringComparison.OrdinalIgnoreCase)).Value is { ValueKind: JsonValueKind.String } end)
+                {
+                    var parts = end.GetString()!.Split(':');
+                    if (parts.Length != 3 || !int.TryParse(parts[0], out var hours) || !int.TryParse(parts[1], out var minutes)
+                        || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                        || hours < 0 || minutes is < 0 or > 59 || seconds is < 0 or >= 60
+                        || !track.TryGetProperty("start_time", out var start)
+                        || !double.TryParse(start.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var began)) return null;
+                    var statistics = tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("_STATISTICS_WRITING_APP", StringComparison.OrdinalIgnoreCase)).Value;
+                    var format = doc.RootElement.GetProperty("format");
+                    var encoder = format.TryGetProperty("tags", out var formatTags)
+                        ? formatTags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("encoder", StringComparison.OrdinalIgnoreCase)).Value : default;
+                    var statisticsLength = statistics.ValueKind == JsonValueKind.String
+                        && (statistics.GetString()!.StartsWith("mkvmerge", StringComparison.OrdinalIgnoreCase)
+                            || statistics.GetString()!.StartsWith("mkvpropedit", StringComparison.OrdinalIgnoreCase));
+                    // FFmpeg can retain stale statistics, or mkvpropedit can refresh them after muxing.
+                    if (statisticsLength && encoder.ValueKind == JsonValueKind.String
+                        && encoder.GetString()!.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase) && began != 0) return null;
+                    // MKVToolNix statistics store elapsed time; FFmpeg rewrites DURATION as an end timestamp.
+                    duration = hours * 3600.0 + minutes * 60 + seconds - (statisticsLength ? 0 : began);
+                }
+                else if (!standalone || !double.TryParse(doc.RootElement.GetProperty("format").GetProperty("duration").GetString(),
+                    NumberStyles.Float, CultureInfo.InvariantCulture, out duration)) return null;
+            }
+            if (AudioQualityWindowPlanner.Plan(duration).Count == 0 || channels is not (1 or 2) || sampleRate is < 8000 or > 384000) return null;
             var expectedLayout = channels == 1 ? "mono" : "stereo";
             var layout = track.TryGetProperty("channel_layout", out var l) ? l.GetString() : null;
             if (!string.IsNullOrEmpty(layout) && layout != expectedLayout) return null;

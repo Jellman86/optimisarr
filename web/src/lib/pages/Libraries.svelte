@@ -1185,7 +1185,7 @@
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
       soundtrackQualityReportingEnabled: showVideoOptions && form.soundtrackQualityReportingEnabled,
       soundtrackQualityGateEnabled: showVideoOptions && form.soundtrackQualityGateEnabled,
-      maximumSoundtrackQualityDistance: toNullableNumber(form.maximumSoundtrackQualityDistance ?? null),
+      maximumSoundtrackQualityDistance: soundtrackLimitForSave(),
       audioQualityGateEnabled: showAudioOptions && form.audioQualityGateEnabled,
       maximumAudioQualityDistance: toNullableNumber(form.maximumAudioQualityDistance ?? null),
       durationTolerancePercent: Number(form.durationTolerancePercent),
@@ -1203,6 +1203,11 @@
     if (value === null || (value as unknown) === '') return null
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : null
+  }
+
+  function soundtrackLimitForSave(): number | null {
+    const limit = toNullableNumber(form.maximumSoundtrackQualityDistance ?? null)
+    return form.soundtrackQualityGateEnabled || limit == null || (limit >= 0 && limit <= 1) ? limit : null
   }
 
   async function save() {

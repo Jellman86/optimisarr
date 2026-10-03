@@ -62,7 +62,7 @@ public static class FullVerification
                     ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!,
                         OperatingSystem.IsWindows() ? "optimisarr-audio-quality.exe" : "optimisarr-audio-quality");
                 var service = AudioQualityTools.Create(ffmpeg, ffprobe, metric, Path.Combine(Path.GetDirectoryName(candidate)!, "audio-quality"));
-                completed = completed with { SoundtrackQuality = await new SoundtrackQualityObservationService(service is null ? null : service.MeasureTrackAsync)
+                completed = completed with { SoundtrackQuality = await new SoundtrackQualityObservationService(null, service is null ? null : service.MeasureTracksAsync, "Worker")
                     .ObserveAsync(true, true, decode.Healthy, false, source, candidate, sourceProbe, candidateProbe, soundtrackRequest, null, cancellationToken) };
             }
             var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio, contract.Kind);

@@ -31,7 +31,7 @@ export const de: Messages = {
   },
   soundtrack_quality: {
     title: "Tonspur-Qualitätsbericht",
-    hint: "Vergleicht jede beibehaltene, neu kodierte Mono-/Stereo-Tonspur mit Zimtohrli mit der Quelle. Ein Bericht allein blockiert den Austausch nicht.",
+    hint: "Vergleicht jede beibehaltene, neu kodierte Mono-/Stereo-Tonspur mit Zimtohrli mit der Quelle. Ein Bericht allein blockiert den Austausch nicht. Ältere Sidecars können diese Aufträge nicht übernehmen, solange Bericht oder Qualitätsprüfung aktiviert sind.",
     gate_label: "Tonspurqualität verlangen",
     gate_hint: "Blockiert den Austausch, wenn ein gemessener Kanal oder Abschnitt den Grenzwert überschreitet oder Nachweise fehlen. Experimentell; Messung auf dem zugewiesenen Prüfhost.",
     maximum: "Maximale Tonspurabweichung",
@@ -706,7 +706,8 @@ export const de: Messages = {
     status_failed: 'Fehlgeschlagen',
     status_cancelled: 'Abgebrochen',
     job_failed: 'Aufgabe fehlgeschlagen',
-    failure_size_saving: 'Die kodierte Datei lag außerhalb des eingestellten Größenbereichs.',
+    failure_size_saving: 'Der Versuch hat die eingestellte Größenregel nicht erfüllt.',
+    failure_size_prediction: 'Die Stichproben sagen eine Ausgabe über dem Größenlimit voraus. Die vollständige Kodierung wurde nicht ausgeführt.',
     failure_verification: 'Die kodierte Datei hat eine Sicherheits- oder Qualitätsprüfung nicht bestanden.',
     failure_container_incompatibility: 'Der Zielcontainer kann mindestens einen Quellstream nicht aufnehmen.',
     failure_bitmap_subtitles: 'Bildbasierte Untertitel können nicht sicher konvertiert werden.',

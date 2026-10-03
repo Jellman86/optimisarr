@@ -2,7 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- Adaptive quality samples that predict an output above the library’s size limit now fail the job before the full encode. The failure reason clearly identifies the estimate. Existing size-review holds become failures on startup; originals remain unchanged. Container and worker paths behave alike.
+- Soundtrack assessment uses per-track duration, shares file identity checks across retained tracks, and formats tiny Mac seek offsets consistently. Long and short soundtrack workflows have additional regression coverage. Tracks without a usable duration or with conflicting Matroska duration writers are reported as unavailable and block an enabled gate.
 - macOS bundled FFmpeg includes the upstream Opus parser EOF fix, preventing a false corruption report for valid Opus soundtracks.
+
+- Queue detail styles no longer remove padding from nested measurement cards.
+- Windows installer tests wait for the installer process with a deadline, allowing upgraded
+  workers to stay running. A regression test covers live descendants, exit codes and timeouts.
 
 ### Added
 
@@ -41,11 +49,6 @@
 - The container and sidecar packages include the native audio metric, licences and corresponding
   source records. Existing libraries keep reports off.
 
-### Fixed
-
-- Queue detail styles no longer remove padding from nested measurement cards.
-- Windows installer tests wait for the installer process with a deadline, allowing upgraded
-  workers to stay running. A regression test covers live descendants, exit codes and timeouts.
 
 ### Development tools
 

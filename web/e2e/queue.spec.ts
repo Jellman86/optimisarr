@@ -305,6 +305,24 @@ test('a size preflight hold explains the estimate and requeues only after confir
   expect(approvals).toBe(1)
 })
 
+test('predicted oversize is a failure with its estimate and no encode-anyway action', async ({ page }) => {
+  const failed = { ...job(19, 'Failed', null), progress: 0, outputSizeBytes: null,
+    failureCategory: 'SizeSaving',
+    errorMessage: 'Size saving prediction: samples project 130% of the source. The full encode was not run. The original is unchanged.' }
+  await mockWorkingQueue(page, { jobs: [failed] })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/queue')
+  await expect(page.locator('.queue-review-alert')).toHaveCount(0)
+  await page.locator('#queue-job-19').click()
+  const dialog = page.locator('#queue-job-dialog')
+  await expect(dialog.getByText(/Size saving prediction: samples project 130%/)).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Encode anyway' })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+  const box = await dialog.boundingBox()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+})
+
 test('Now and next keeps working jobs separate and opens a keyboard-accessible job dialog', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [{ ...job(1, 'Transcoding', null), progress: .9999 }, job(2, 'Queued', null)] })
   await page.goto('/#/queue')

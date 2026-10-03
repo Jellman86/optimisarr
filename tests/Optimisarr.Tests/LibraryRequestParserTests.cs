@@ -103,6 +103,7 @@ public sealed class LibraryRequestParserTests
     {
         Assert.True(LibraryRequestParser.TryParse(Request(), out var baseline, out _));
         Assert.False(baseline.SoundtrackQualityReportingEnabled);
+        Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Music", SoundtrackQualityReportingEnabled = true }, out _, out _));
         Assert.False(baseline.SoundtrackQualityGateEnabled);
         Assert.False(LibraryRequestParser.TryParse(Request() with { SoundtrackQualityGateEnabled = true }, out _, out _));
         Assert.True(LibraryRequestParser.TryParse(Request() with { SoundtrackQualityGateEnabled = true,

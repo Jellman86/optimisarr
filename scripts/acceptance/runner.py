@@ -318,21 +318,25 @@ class Harness:
             self.api.post("/api/queue/resume")
 
 
-    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False):
+    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False):
         self.select_worker(worker)
         name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
+        name += "-long" if long else "-short-mp4" if short else ""
+        seconds = 120 if long else 12 if short else 8
+        audio_seconds = seconds - 0.5 if short else seconds
+        commentary_seconds = seconds - 2.5 if long else audio_seconds
         fixture = self.root / "fixtures" / (name + ".mkv")
-        self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=8",
-            "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.1:duration=8:sample_rate=48000:seed=42",
-            "-f", "lavfi", "-i", "sine=frequency=700:sample_rate=48000:duration=8",
+        self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
+            "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42",
+            "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
             "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", "-c:a", "pcm_s16le", "-ac", "2",
-            "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=Main",
-            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=Commentary", self.tools.path(fixture)])
+            "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=" if short else "title=Main",
+            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary", self.tools.path(fixture)])
         # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
         limit = 0 if reject else 1
         case = self.create_job(name, fixture, encoder="libx264", worker=worker, overrides={
-            "targetVideoCodec": None, "targetContainer": "mkv", "videoAudioCodec": "copy" if copied else codec,
+            "targetVideoCodec": None, "targetContainer": "mp4" if short else "mkv", "videoAudioCodec": "copy" if copied else codec,
             "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
             "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,
             "keepAudioLanguages": "fra" if filtered else None})
@@ -347,6 +351,12 @@ class Harness:
         else:
             location = "Worker" if worker and self.strict_worker_verification else "Server"
             validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject)
+            if long:
+                for track in verification["soundtrackQuality"]["tracks"]:
+                    assessment = track["report"]["evidence"]["assessment"]
+                    require(len(assessment["windows"]) == 3, "Long soundtrack did not sample beginning, middle and end")
+                    require(abs(sum(w["window"]["durationSeconds"] for w in assessment["windows"]) - 90) < 1e-6,
+                            "Long soundtrack exceeds the assigned 90-second budget")
         if reject:
             require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Failed gate replaced media")
             return {"originalUnchanged": True, "gateBlocked": True}
@@ -702,6 +712,8 @@ class Harness:
                     self.report.case(label + "-soundtrack-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True))
                     self.report.case(label + "-soundtrack-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True))
                     self.report.case(label + "-soundtrack-copied", lambda w=worker: self.soundtrack("aac", w, copied=True))
+                    self.report.case(label + "-soundtrack-short", lambda w=worker: self.soundtrack("aac", w, short=True))
+                    self.report.case(label + "-soundtrack-long", lambda w=worker: self.soundtrack("aac", w, long=True))
                 if tier == "fleet" and not any(w["online"] and not w["revokedAt"] for w in self.workers):
                     self.report.case("soundtrack-workers", lambda: (_ for _ in ()).throw(Blocked("No soundtrack workers paired")))
                 return self.report.exit_code

@@ -779,29 +779,20 @@ internal static class WorkerLeaseEndpoints
                 progress.Decision,
                 lease.MaxCandidateBytes,
                 bypassSizePreflight);
-            if (sizeReview.ShouldHold && lease.Job is { Status: JobStatus.Leased } heldJob)
+            if (sizeReview.ShouldReject && lease.Job is { Status: JobStatus.Leased } heldJob)
             {
-                var now = DateTimeOffset.UtcNow;
-                var release = lease.ToDomain().Release(worker.Id, now);
-                if (release.Outcome != LeaseOutcome.Released)
+                if (!await SizePredictionFailure.RejectWorkerAsync(db, lease, worker.Id,
+                    progress.Decision.SelectedQuality, sizeReview.Reason!,
+                    JsonSerializer.Serialize(progress.Probes, EvidenceJson), cancellationToken))
                 {
                     return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
                 }
-                lease.AdaptiveAskedQuality = null;
-                lease.Apply(release.Lease, now);
-                lease.EndReason = LeaseEndReason.HeldForSizeReview;
-                heldJob.Status = JobStatus.AwaitingSizeReview;
-                heldJob.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
-                heldJob.Progress = 0;
-                heldJob.ErrorMessage = sizeReview.Reason;
-                heldJob.UpdatedAt = now;
-                await db.SaveChangesAsync(cancellationToken);
                 logger.LogInformation(
-                    "Job {JobId}: worker quality search held the full encode for size review; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
+                    "Job {JobId}: worker quality search rejected the full encode on a size prediction; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
                     heldJob.Id, sizeReview.VideoRatio, sizeReview.ProjectedBytes);
                 dispatcher.Wake();
                 await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
-                return ApiErrors.Conflict("worker.search.sizeReview", sizeReview.Reason!);
+                return ApiErrors.Conflict("worker.search.predictedSize", sizeReview.Reason!);
             }
 
             if (progress.Decision.Complete)

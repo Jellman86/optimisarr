@@ -31,7 +31,7 @@ export const en = {
   },
   soundtrack_quality: {
     title: "Soundtrack quality report",
-    hint: "Compares every retained, re-encoded mono/stereo soundtrack with its source using Zimtohrli. Reporting alone does not block replacement.",
+    hint: "Compares every retained, re-encoded mono/stereo soundtrack with its source using Zimtohrli. Reporting alone does not block replacement. Older sidecars cannot take these jobs while reporting or gating is enabled.",
     gate_label: "Require soundtrack quality",
     gate_hint: "Blocks replacement if any assessed soundtrack channel or sample exceeds your limit, or evidence is missing. Experimental; measurements run on the assigned verification host.",
     maximum: "Maximum soundtrack difference",
@@ -842,7 +842,8 @@ export const en = {
     status_failed: 'Failed',
     status_cancelled: 'Cancelled',
     job_failed: 'Job failed',
-    failure_size_saving: 'The encoded file fell outside the configured size-saving range.',
+    failure_size_saving: 'The attempt failed the configured size rule.',
+    failure_size_prediction: 'Samples predict an output above the size limit. The full encode did not run.',
     failure_verification: 'The encoded file did not pass a safety or quality check.',
     failure_container_incompatibility: 'The target container cannot hold one or more source streams.',
     failure_bitmap_subtitles: 'Image-based subtitles cannot be converted safely.',

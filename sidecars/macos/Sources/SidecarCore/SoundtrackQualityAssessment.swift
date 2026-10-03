@@ -28,7 +28,9 @@ public struct SoundtrackQualityReport: Codable, Sendable {
 /// Tracks stay ordered by the frozen removal contract. The server validates identities against both full probes.
 public struct SoundtrackQualityAssessment: Sendable {
     let runner: any TranscodeRunner
-    public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner }
+    let hash: @Sendable (URL) throws -> String
+    public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner; self.hash = JobRunner.sha256 }
+    init(runner: any TranscodeRunner, hash: @escaping @Sendable (URL) throws -> String) { self.runner = runner; self.hash = hash }
 
     static func plan(sourceProbe: String, candidateProbe: String, request: SoundtrackQualityRequest) throws -> [SoundtrackQualityPair] {
         func tracks(_ json: String) throws -> [[String: Any]] {
@@ -69,15 +71,23 @@ public struct SoundtrackQualityAssessment: Sendable {
         let pairs: [SoundtrackQualityPair]
         do { pairs = try Self.plan(sourceProbe: sourceProbe, candidateProbe: candidateProbe, request: request) }
         catch { return .init(tracks: [], unavailableReason: String(describing: error)) }
-        var results: [SoundtrackQualityTrack] = []
-        for pair in pairs {
-            let evidence = try await AudioQualityAssessment(runner: runner).measure(ffmpeg: ffmpeg, ffprobe: ffprobe,
-                metric: metric, source: source, candidate: candidate, sourceProbe: sourceProbe, candidateProbe: candidateProbe,
-                scratch: scratch, sourceAudioIndex: pair.sourceAudioIndex, candidateAudioIndex: pair.candidateAudioIndex)
-            results.append(.init(track: pair, report: .init(evidence: evidence.assessment.measured ? evidence : nil,
-                unavailableReason: evidence.assessment.error)))
-        }
-        return .init(tracks: results, unavailableReason: nil)
+        do {
+            let hashes = try AudioQualityFileHashes.read(source: source, candidate: candidate, metric: metric, ffmpeg: ffmpeg, ffprobe: ffprobe, hash: hash)
+            var results: [SoundtrackQualityTrack] = []
+            for pair in pairs {
+                let evidence = try await AudioQualityAssessment(runner: runner, hash: hash).measure(ffmpeg: ffmpeg, ffprobe: ffprobe,
+                    metric: metric, source: source, candidate: candidate, sourceProbe: sourceProbe, candidateProbe: candidateProbe,
+                    scratch: scratch, sourceAudioIndex: pair.sourceAudioIndex, candidateAudioIndex: pair.candidateAudioIndex, sharedHashes: hashes)
+                results.append(.init(track: pair, report: .init(evidence: evidence.assessment.measured ? evidence : nil,
+                    unavailableReason: evidence.assessment.error)))
+            }
+            guard try AudioQualityFileHashes.read(source: source, candidate: candidate, metric: metric, ffmpeg: ffmpeg, ffprobe: ffprobe, hash: hash) == hashes else {
+                return .init(tracks: [], unavailableReason: "A media file or tool changed during soundtrack assessment.")
+            }
+            try Task.checkCancellation()
+            return .init(tracks: results, unavailableReason: nil)
+        } catch is CancellationError { throw CancellationError() }
+          catch { return .init(tracks: [], unavailableReason: String(describing: error)) }
     }
     private struct Failure: Error, CustomStringConvertible { let description: String; init(_ message: String) { description = message } }
 }

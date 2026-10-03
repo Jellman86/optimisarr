@@ -1,0 +1,150 @@
+{
+  "sourceProbe": "{\"streams\":[{\"index\":0,\"codec_name\":\"h264\",\"codec_long_name\":\"H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10\",\"profile\":\"High\",\"codec_type\":\"video\",\"codec_tag_string\":\"[0][0][0][0]\",\"codec_tag\":\"0x0000\",\"width\":64,\"height\":64,\"coded_width\":64,\"coded_height\":64,\"has_b_frames\":2,\"sample_aspect_ratio\":\"1:1\",\"display_aspect_ratio\":\"1:1\",\"pix_fmt\":\"yuv420p\",\"level\":10,\"color_range\":\"tv\",\"chroma_location\":\"left\",\"field_order\":\"progressive\",\"refs\":1,\"is_avc\":\"true\",\"nal_length_size\":\"4\",\"r_frame_rate\":\"10/1\",\"avg_frame_rate\":\"10/1\",\"time_base\":\"1/1000\",\"start_pts\":0,\"start_time\":\"0.000000\",\"bits_per_raw_sample\":\"8\",\"extradata_size\":45,\"disposition\":{\"default\":0,\"dub\":0,\"original\":0,\"comment\":0,\"lyrics\":0,\"karaoke\":0,\"forced\":0,\"hearing_impaired\":0,\"visual_impaired\":0,\"clean_effects\":0,\"attached_pic\":0,\"timed_thumbnails\":0,\"non_diegetic\":0,\"captions\":0,\"descriptions\":0,\"metadata\":0,\"dependent\":0,\"still_image\":0,\"multilayer\":0},\"tags\":{\"ENCODER\":\"Lavc62.11.103 libx264\",\"DURATION\":\"00:00:08.000000000\"}},{\"index\":1,\"codec_name\":\"pcm_s16le\",\"codec_long_name\":\"PCM signed 16-bit little-endian\",\"codec_type\":\"audio\",\"codec_tag_string\":\"[0][0][0][0]\",\"codec_tag\":\"0x0000\",\"sample_fmt\":\"s16\",\"sample_rate\":\"44100\",\"channels\":2,\"bits_per_sample\":16,\"initial_padding\":0,\"r_frame_rate\":\"0/0\",\"avg_frame_rate\":\"0/0\",\"time_base\":\"1/1000\",\"start_pts\":0,\"start_time\":\"0.000000\",\"bit_rate\":\"1411200\",\"disposition\":{\"default\":1,\"dub\":0,\"original\":0,\"comment\":0,\"lyrics\":0,\"karaoke\":0,\"forced\":0,\"hearing_impaired\":0,\"visual_impaired\":0,\"clean_effects\":0,\"attached_pic\":0,\"timed_thumbnails\":0,\"non_diegetic\":0,\"captions\":0,\"descriptions\":0,\"metadata\":0,\"dependent\":0,\"still_image\":0,\"multilayer\":0},\"tags\":{\"language\":\"eng\",\"title\":\"Main\",\"ENCODER\":\"Lavc62.11.103 pcm_s16le\",\"DURATION\":\"00:00:08.000000000\"}},{\"index\":2,\"codec_name\":\"pcm_s16le\",\"codec_long_name\":\"PCM signed 16-bit little-endian\",\"codec_type\":\"audio\",\"codec_tag_string\":\"[0][0][0][0]\",\"codec_tag\":\"0x0000\",\"sample_fmt\":\"s16\",\"sample_rate\":\"48000\",\"channels\":2,\"bits_per_sample\":16,\"initial_padding\":0,\"r_frame_rate\":\"0/0\",\"avg_frame_rate\":\"0/0\",\"time_base\":\"1/1000\",\"start_pts\":0,\"start_time\":\"0.000000\",\"bit_rate\":\"1536000\",\"disposition\":{\"default\":0,\"dub\":0,\"original\":0,\"comment\":0,\"lyrics\":0,\"karaoke\":0,\"forced\":0,\"hearing_impaired\":0,\"visual_impaired\":0,\"clean_effects\":0,\"attached_pic\":0,\"timed_thumbnails\":0,\"non_diegetic\":0,\"captions\":0,\"descriptions\":0,\"metadata\":0,\"dependent\":0,\"still_image\":0,\"multilayer\":0},\"tags\":{\"language\":\"fra\",\"title\":\"Commentary\",\"ENCODER\":\"Lavc62.11.103 pcm_s16le\",\"DURATION\":\"00:00:08.000000000\"}}],\"format\":{\"nb_streams\":3,\"nb_programs\":0,\"nb_stream_groups\":0,\"format_name\":\"matroska,webm\",\"format_long_name\":\"Matroska / WebM\",\"start_time\":\"0.000000\",\"duration\":\"8.000000\",\"size\":\"2953860\",\"bit_rate\":\"2953860\",\"probe_score\":100,\"tags\":{\"ENCODER\":\"Lavf62.3.103\"}}}",
+  "candidateProbe": "{\"streams\":[{\"index\":0,\"codec_name\":\"h264\",\"codec_long_name\":\"H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10\",\"profile\":\"High\",\"codec_type\":\"video\",\"codec_tag_string\":\"[0][0][0][0]\",\"codec_tag\":\"0x0000\",\"width\":64,\"height\":64,\"coded_width\":64,\"coded_height\":64,\"has_b_frames\":2,\"sample_aspect_ratio\":\"1:1\",\"display_aspect_ratio\":\"1:1\",\"pix_fmt\":\"yuv420p\",\"level\":10,\"color_range\":\"tv\",\"chroma_location\":\"left\",\"field_order\":\"progressive\",\"refs\":1,\"is_avc\":\"true\",\"nal_length_size\":\"4\",\"r_frame_rate\":\"10/1\",\"avg_frame_rate\":\"10/1\",\"time_base\":\"1/1000\",\"start_pts\":0,\"start_time\":\"0.000000\",\"bits_per_raw_sample\":\"8\",\"extradata_size\":45,\"disposition\":{\"default\":0,\"dub\":0,\"original\":0,\"comment\":0,\"lyrics\":0,\"karaoke\":0,\"forced\":0,\"hearing_impaired\":0,\"visual_impaired\":0,\"clean_effects\":0,\"attached_pic\":0,\"timed_thumbnails\":0,\"non_diegetic\":0,\"captions\":0,\"descriptions\":0,\"metadata\":0,\"dependent\":0,\"still_image\":0,\"multilayer\":0},\"tags\":{\"ENCODER\":\"Lavc62.11.103 libx264\",\"DURATION\":\"00:00:08.000000000\"}},{\"index\":1,\"codec_name\":\"aac\",\"codec_long_name\":\"AAC (Advanced Audio Coding)\",\"profile\":\"LC\",\"codec_type\":\"audio\",\"codec_tag_string\":\"[0][0][0][0]\",\"codec_tag\":\"0x0000\",\"sample_fmt\":\"fltp\",\"sample_rate\":\"44100\",\"channels\":2,\"channel_layout\":\"stereo\",\"bits_per_sample\":0,\"initial_padding\":1024,\"r_frame_rate\":\"0/0\",\"avg_frame_rate\":\"0/0\",\"time_base\":\"1/1000\",\"start_pts\":-23,\"start_time\":\"-0.023000\",\"extradata_size\":5,\"disposition\":{\"default\":1,\"dub\":0,\"original\":0,\"comment\":0,\"lyrics\":0,\"karaoke\":0,\"forced\":0,\"hearing_impaired\":0,\"visual_impaired\":0,\"clean_effects\":0,\"attached_pic\":0,\"timed_thumbnails\":0,\"non_diegetic\":0,\"captions\":0,\"descriptions\":0,\"metadata\":0,\"dependent\":0,\"still_image\":0,\"multilayer\":0},\"tags\":{\"language\":\"eng\",\"title\":\"Main\",\"ENCODER\":\"Lavc62.11.103 aac\",\"DURATION\":\"00:00:08.023000000\"}},{\"index\":2,\"codec_name\":\"aac\",\"codec_long_name\":\"AAC (Advanced Audio Coding)\",\"profile\":\"LC\",\"codec_type\":\"audio\",\"codec_tag_string\":\"[0][0][0][0]\",\"codec_tag\":\"0x0000\",\"sample_fmt\":\"fltp\",\"sample_rate\":\"48000\",\"channels\":2,\"channel_layout\":\"stereo\",\"bits_per_sample\":0,\"initial_padding\":1024,\"r_frame_rate\":\"0/0\",\"avg_frame_rate\":\"0/0\",\"time_base\":\"1/1000\",\"start_pts\":-21,\"start_time\":\"-0.021000\",\"extradata_size\":5,\"disposition\":{\"default\":0,\"dub\":0,\"original\":0,\"comment\":0,\"lyrics\":0,\"karaoke\":0,\"forced\":0,\"hearing_impaired\":0,\"visual_impaired\":0,\"clean_effects\":0,\"attached_pic\":0,\"timed_thumbnails\":0,\"non_diegetic\":0,\"captions\":0,\"descriptions\":0,\"metadata\":0,\"dependent\":0,\"still_image\":0,\"multilayer\":0},\"tags\":{\"language\":\"fra\",\"title\":\"Commentary\",\"ENCODER\":\"Lavc62.11.103 aac\",\"DURATION\":\"00:00:08.021000000\"}}],\"format\":{\"nb_streams\":3,\"nb_programs\":0,\"nb_stream_groups\":0,\"format_name\":\"matroska,webm\",\"format_long_name\":\"Matroska / WebM\",\"start_time\":\"-0.023000\",\"duration\":\"8.023000\",\"size\":\"264932\",\"bit_rate\":\"264172\",\"probe_score\":100,\"tags\":{\"ENCODER\":\"Lavf62.3.103\"}}}",
+  "sourceSha256": "116152bd0e388019af6421a51da9dea00eb24372be486b98d98791b3a4f052a9",
+  "candidateSha256": "b58a49c6fb7c7faf1e497eacd13efa1a4360c8daf4ea65e4f0d6035d9cef6837",
+  "soundtrackQuality": {
+    "tracks": [
+      {
+        "track": {
+          "reference": {
+            "channels": 2,
+            "durationSeconds": 8,
+            "channelLayout": "stereo",
+            "sampleRate": 44100,
+            "containerLeadSeconds": 0
+          },
+          "title": "Main",
+          "candidate": {
+            "channels": 2,
+            "durationSeconds": 8.046,
+            "channelLayout": "stereo",
+            "sampleRate": 44100,
+            "containerLeadSeconds": 0.023
+          },
+          "sourceAudioIndex": 0,
+          "language": "eng",
+          "candidateAudioIndex": 0
+        },
+        "report": {
+          "measurementLocation": "Worker",
+          "evidence": {
+            "metric": "zimtohrli",
+            "preparation": "audio-f32le-48k-video-timeline-v1",
+            "assessment": {
+              "candidateSha256": "b58a49c6fb7c7faf1e497eacd13efa1a4360c8daf4ea65e4f0d6035d9cef6837",
+              "referenceAudioIndex": 0,
+              "measured": true,
+              "candidate": {
+                "channelLayout": "stereo",
+                "channels": 2,
+                "sampleRate": 44100,
+                "containerLeadSeconds": 0.023,
+                "durationSeconds": 8.046
+              },
+              "ffprobeSha256": "7131636be6cade4bb341436cf7d65535e121ec8e2df0c23ae3f2410e03a3b439",
+              "windows": [
+                {
+                  "distances": {
+                    "channelDistances": [
+                      0.000404953957,
+                      0.000384390354
+                    ],
+                    "frames": 379200
+                  },
+                  "window": {
+                    "startSeconds": 0,
+                    "durationSeconds": 7.9
+                  }
+                }
+              ],
+              "elapsedSeconds": 0.25370705127716064,
+              "candidateAudioIndex": 0,
+              "metricSha256": "394b0b9f5df0b58a56f819457c6204e00cc588cc9d95fd2eb1a4d8a0272d17f6",
+              "reference": {
+                "channelLayout": "stereo",
+                "channels": 2,
+                "sampleRate": 44100,
+                "containerLeadSeconds": 0,
+                "durationSeconds": 8
+              },
+              "ffmpegSha256": "3dbe2288d96bd1f55ee798678cc376437c8597f96881f127be332b180770768d",
+              "referenceSha256": "116152bd0e388019af6421a51da9dea00eb24372be486b98d98791b3a4f052a9"
+            },
+            "revision": "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3"
+          }
+        }
+      },
+      {
+        "track": {
+          "reference": {
+            "channels": 2,
+            "durationSeconds": 8,
+            "channelLayout": "stereo",
+            "sampleRate": 48000,
+            "containerLeadSeconds": 0
+          },
+          "title": "Commentary",
+          "candidate": {
+            "channels": 2,
+            "durationSeconds": 8.042000000000002,
+            "channelLayout": "stereo",
+            "sampleRate": 48000,
+            "containerLeadSeconds": 0.023
+          },
+          "sourceAudioIndex": 1,
+          "language": "fra",
+          "candidateAudioIndex": 1
+        },
+        "report": {
+          "measurementLocation": "Worker",
+          "evidence": {
+            "metric": "zimtohrli",
+            "preparation": "audio-f32le-48k-video-timeline-v1",
+            "assessment": {
+              "candidateSha256": "b58a49c6fb7c7faf1e497eacd13efa1a4360c8daf4ea65e4f0d6035d9cef6837",
+              "referenceAudioIndex": 1,
+              "measured": true,
+              "candidate": {
+                "channelLayout": "stereo",
+                "channels": 2,
+                "sampleRate": 48000,
+                "containerLeadSeconds": 0.023,
+                "durationSeconds": 8.042000000000002
+              },
+              "ffprobeSha256": "7131636be6cade4bb341436cf7d65535e121ec8e2df0c23ae3f2410e03a3b439",
+              "windows": [
+                {
+                  "distances": {
+                    "channelDistances": [
+                      0.00330525637,
+                      0.00330525637
+                    ],
+                    "frames": 379200
+                  },
+                  "window": {
+                    "startSeconds": 0,
+                    "durationSeconds": 7.9
+                  }
+                }
+              ],
+              "elapsedSeconds": 0.2210400104522705,
+              "candidateAudioIndex": 1,
+              "metricSha256": "394b0b9f5df0b58a56f819457c6204e00cc588cc9d95fd2eb1a4d8a0272d17f6",
+              "reference": {
+                "channelLayout": "stereo",
+                "channels": 2,
+                "sampleRate": 48000,
+                "containerLeadSeconds": 0,
+                "durationSeconds": 8
+              },
+              "ffmpegSha256": "3dbe2288d96bd1f55ee798678cc376437c8597f96881f127be332b180770768d",
+              "referenceSha256": "116152bd0e388019af6421a51da9dea00eb24372be486b98d98791b3a4f052a9"
+            },
+            "revision": "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3"
+          }
+        }
+      }
+    ]
+  }
+}

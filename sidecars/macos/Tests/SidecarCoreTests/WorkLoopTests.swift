@@ -1697,8 +1697,8 @@ struct AdaptiveSearchWorkLoopTests {
         if case .released = outcome {} else { Issue.record("expected the job to be handed back") }
     }
 
-    @Test("size review from the server stops a worker before the full encode")
-    func sizeReviewStopsBeforeEncode() async throws {
+    @Test("a predicted size failure stops a worker before the full encode")
+    func predictedSizeStopsBeforeEncode() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
         server.probeStatus = 409
         let runner = JobRunner(
@@ -1714,7 +1714,7 @@ struct AdaptiveSearchWorkLoopTests {
         #expect(server.probeReports.count == 1)
         #expect(server.deliveredFile == nil)
         #expect(!server.released)
-        if case .leaseLost = outcome {} else { Issue.record("expected size review to end the lease, got \(outcome)") }
+        if case .leaseLost = outcome {} else { Issue.record("expected the size prediction to end the lease, got \(outcome)") }
     }
 
     @Test("the lease is renewed while a candidate is being measured")
