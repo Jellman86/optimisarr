@@ -33,6 +33,7 @@ jobs:
       - run: dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build
       - run: ./sidecars/windows/installer/test-evidence.ps1
       - run: ./sidecars/windows/installer/test-process.ps1
+      - run: ./sidecars/windows/installer/test-health.ps1
       - run: ./sidecars/windows/installer/build.ps1 -BuildUpgradeTest
       - name: Exercise the bundled audio verifier and spectrogram
         run: |
@@ -41,7 +42,7 @@ jobs:
           $env:OPTIMISARR_PREVIEW_FFMPEG = Join-Path $tools 'ffmpeg.exe'
           dotnet test sidecars/windows/tests/Optimisarr.Sidecar.Core.Tests -c Release --no-build --filter Native_ffmpeg
       - id: smoke
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: ./sidecars/windows/installer/test-install.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName -UpgradeInstaller sidecars/windows/artifacts/upgrade-test/OptimisarrSidecar-upgrade-test.msi
       - name: Verify installer evidence is retained
         if: always() && (steps.smoke.outcome == 'success' || steps.smoke.outcome == 'failure')
@@ -57,6 +58,7 @@ jobs:
           path: |
             sidecars/windows/artifacts/*.msi
             sidecars/windows/artifacts/*.sha256
+            sidecars/windows/artifacts/*-update.zip
             ${{ runner.temp }}/optimisarr-install-test-*/**
 
   publish:
@@ -77,6 +79,8 @@ jobs:
           files: |
             artifacts/**/*.msi
             artifacts/**/*.msi.sha256
+            artifacts/**/*-update.zip
+            artifacts/**/*-update.zip.sha256
           fail_on_unmatched_files: true
           draft: true
           make_latest: false

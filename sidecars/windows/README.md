@@ -109,6 +109,9 @@ folder, and optionally WSL with Docker for testing the server image against an N
 Use the [MSI installer](installer/README.md) for a normal installation. It includes FFmpeg, ffprobe,
 the service, the tray companion and private Microsoft .NET/Windows Desktop runtimes. No separate
 runtime installation is needed. First installation leaves the worker stopped until it is paired.
+For a paired MSI update, use the [checked update route](installer/README.md#checked-updates-and-recovery).
+It requires sustained service health and fresh server check-ins, and keeps the previous installer
+for verified recovery. File installation alone is not a completed worker update.
 
 1. Open **Optimisarr Sidecar** from Start and click its notification-area icon.
 2. In **Preferences**, choose **Pair this PC**, enter the server address and its short-lived pairing
