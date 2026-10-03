@@ -74,6 +74,20 @@ public sealed class LibraryRequestParserTests
     }
 
     [Theory]
+    [InlineData("Film")]
+    [InlineData("Tv")]
+    [InlineData("Music")]
+    [InlineData("Photo")]
+    [InlineData("Other")]
+    public void Automatic_acceptance_is_off_by_default_for_every_library_type(string mediaType)
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = mediaType }, out var parsed, out _));
+        Assert.False(parsed.AutoReplace);
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = mediaType, AutoReplace = true }, out var enabled, out _));
+        Assert.True(enabled.AutoReplace);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData(-0.01)]
     [InlineData(1.01)]

@@ -5,6 +5,7 @@
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
+  import AutoAccept from '../components/AutoAccept.svelte'
   import Icon from '../components/Icon.svelte'
   import InfoTip from '../components/InfoTip.svelte'
   import Banner from '../components/Banner.svelte'
@@ -2155,11 +2156,7 @@
       </div>
     {/if}
 
-    <Toggle
-      bind:checked={form.autoReplace}
-      label={i18n.m.libraries.auto_replace_label}
-      hint={i18n.m.libraries.auto_replace_hint}
-    />
+    <AutoAccept bind:checked={form.autoReplace} libraryName={form.name} />
 
       <section class="border-t border-line pt-5">
         <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.completed_output}</h3>

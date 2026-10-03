@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 
 const library = {
   id: 1, name: 'Films', path: '/media/films', mediaType: 'Tv', ruleProfile: 'ConservativeHevc',
@@ -24,11 +25,12 @@ const library = {
 }
 
 async function mockLibraries(page: Page, configuredLibrary = library) {
+  let currentLibrary = { ...configuredLibrary }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
-    if (path === '/api/libraries') return json(route, [configuredLibrary])
+    if (path === '/api/libraries') return json(route, [currentLibrary])
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings', 'RemuxCleanup', 'TrackCleanup'],
@@ -54,7 +56,8 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
       atomicWithWork: true, atomicWithQuarantine: true,
     })
     if (path === '/api/libraries/1' && route.request().method() === 'PUT') {
-      return json(route, { ...configuredLibrary, ...route.request().postDataJSON() })
+      currentLibrary = { ...currentLibrary, ...route.request().postDataJSON() }
+      return json(route, currentLibrary)
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
   })
@@ -62,6 +65,108 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
 
 function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+}
+
+for (const mediaType of ['Film', 'TV', 'Music', 'Photo', 'Other']) {
+  test(`${mediaType} auto-accept needs risk acknowledgement and confirmation before saving`, async ({ page }) => {
+    await mockLibraries(page, { ...library, mediaType })
+    await page.goto('/#/libraries/1/configure/automate')
+    const setting = page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })
+    await expect(setting).not.toBeChecked()
+    await expect(page.getByText(/Misconfigured settings can leave you with broken files/)).toBeVisible()
+    await setting.click()
+    const dialog = page.getByRole('dialog', { name: 'Do you really, really mean it?' })
+    await expect(dialog).toBeVisible()
+    await expect(setting).not.toBeChecked()
+    await expect(dialog.getByText(/Originals stay in Quarantine/)).toBeVisible()
+    const enable = dialog.getByRole('button', { name: 'Yes, really. Enable auto-accept' })
+    await expect(enable).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Keep it off' })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible()
+    await expect(setting).not.toBeChecked()
+    await expect(setting).toBeFocused()
+    await setting.click()
+    await expect(enable).toBeDisabled()
+    await dialog.getByRole('checkbox', { name: 'I understand that incorrect settings can damage my media.' }).check()
+    await enable.click()
+    await expect(dialog).not.toBeVisible()
+    await expect(setting).toBeChecked()
+    const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    expect((await saved).postDataJSON()).toMatchObject({ autoReplace: true, mediaType })
+  })
+}
+
+test('auto-accept can be switched off without confirmation and the saved choice stays off', async ({ page }) => {
+  await mockLibraries(page, { ...library, autoReplace: true })
+  await page.goto('/#/libraries/1/configure/automate')
+  const setting = page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })
+  await expect(setting).toBeChecked()
+  await setting.uncheck()
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ autoReplace: false })
+  await expect(page.getByText('Updated library "Films".', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-library-workflow]')).toBeEnabled()
+  await expect(setting).not.toBeChecked()
+})
+
+test('new libraries keep auto-accept off even when an existing library has it on', async ({ page }) => {
+  await mockLibraries(page, { ...library, autoReplace: true })
+  await page.goto('/#/libraries/new/automate')
+  await expect(page).toHaveURL(/#\/libraries\/new\/automate$/)
+  await expect(page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })).not.toBeChecked()
+})
+
+test('auto-accept confirmation fits a phone and stops pulsing with reduced motion', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/automate')
+  await page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Do you really, really mean it?' })
+  await expect(dialog).toBeVisible()
+  expect(await dialog.locator('[data-auto-accept-warning]').evaluate(element => getComputedStyle(element).animationName)).toBe('none')
+  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await expect(dialog.getByRole('button', { name: 'Keep it off' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Keep it off' }).click()
+  await expect(page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })).not.toBeChecked()
+})
+
+for (const [theme, viewport] of [
+  ['light', { width: 1440, height: 900 }],
+  ['dark', { width: 667, height: 375 }],
+] as const) {
+  test(`auto-accept ${theme} confirmation stays accessible and cancellation never saves`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport)
+    await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)
+    await mockLibraries(page, { ...library, name: 'A long library name '.repeat(6) })
+    const writes: string[] = []
+    page.on('request', request => { if (request.method() === 'PUT') writes.push(request.url()) })
+    await page.goto('/#/libraries/1/configure/automate')
+    const setting = page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })
+    await setting.click()
+    const dialog = page.getByRole('dialog', { name: 'Do you really, really mean it?' })
+    await expect(dialog).toBeVisible()
+    const box = await dialog.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.height).toBeLessThanOrEqual(viewport.height)
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    const accessibility = await new AxeBuilder({ page }).include('dialog').analyze()
+    expect(accessibility.violations).toEqual([])
+    await page.screenshot({ path: testInfo.outputPath(`auto-accept-${theme}.png`), animations: 'disabled' })
+    await dialog.getByRole('checkbox', { name: 'I understand that incorrect settings can damage my media.' }).check()
+    await page.mouse.click(2, 2)
+    await expect(dialog).not.toBeVisible()
+    await expect(setting).not.toBeChecked()
+    expect(writes).toEqual([])
+    await setting.click()
+    await expect(dialog.getByRole('button', { name: 'Yes, really. Enable auto-accept' })).toBeDisabled()
+    await dialog.getByRole('button', { name: 'Keep it off' }).click()
+    expect(writes).toEqual([])
+  })
 }
 
 test('workflow pages preserve drafts across breadcrumbs and browser history', async ({ page }) => {

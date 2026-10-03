@@ -340,7 +340,7 @@ public sealed class QueueDispatcher(
 
     // Replaces jobs already in ReadyToReplace whose library auto-replaces. This makes "Replace
     // automatically" apply retrospectively (a job that verified before the toggle was on, or was
-    // left ready by a transient replace failure). ReplaceAsync still quarantines the original and
+    // left ready by a transient replace failure). ReplaceAutomaticallyAsync still quarantines the original and
     // records a rollback first, so the safety model is unchanged; a failure leaves the job ready
     // for the next cycle to retry.
     private async Task ReconcileAutoReplaceAsync(CancellationToken cancellationToken)
@@ -386,7 +386,7 @@ public sealed class QueueDispatcher(
             {
                 await using var replaceScope = scopeFactory.CreateAsyncScope();
                 var replacement = replaceScope.ServiceProvider.GetRequiredService<ReplacementService>();
-                return await replacement.ReplaceAsync(jobId, cancellationToken);
+                return await replacement.ReplaceAutomaticallyAsync(jobId, cancellationToken);
             }, cancellationToken);
             if (!guarded.Started)
             {
@@ -3606,7 +3606,7 @@ public sealed class QueueDispatcher(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();
-                return await replacement.ReplaceAsync(jobId, CancellationToken.None);
+                return await replacement.ReplaceAutomaticallyAsync(jobId, CancellationToken.None);
             }, CancellationToken.None);
             if (!guarded.Started)
             {
