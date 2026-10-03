@@ -13,8 +13,9 @@ namespace Optimisarr.Core.Verification;
 /// 92–94 (#269). When the counts differ a frame was lost or added, every later number is off by
 /// it, and the timestamps are the better guide, so pairing by number applies only to equal counts.</para>
 ///
-/// <para>Mispairing can only lower a VMAF score, never raise it, so choosing the wrong way fails a
-/// good candidate rather than passing a bad one.</para>
+/// <para>Equal counts permit sequential comparison but do not prove picture identity or timing.
+/// Structure, decoded-picture retention, timing, quality and replacement checks remain independent.
+/// Generated acceptance fixtures also prove ordered picture identities.</para>
 /// </summary>
 public static class FramePairing
 {

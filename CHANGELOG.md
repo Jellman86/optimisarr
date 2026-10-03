@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Full-file video quality checks compare corresponding decoded pictures when their counts match. Repeated timestamps can no longer make a clean short encode fail VMAF by comparing neighbouring pictures. The container and worker commands use the same comparison; quality limits and the other verification gates are unchanged.
+
 - MP4 video encodes keep initial pictures whose reconstructed timestamps precede the source’s declared start. Full video verification also checks decoded picture counts, so silent picture loss or duplication blocks replacement even when duration and quality pass. Strict video verification that keeps the source frame rate needs protocol 9 sidecars; intentional frame-rate changes and disposable previews keep their own checks.
 
 - Duration checks use the last presented picture and its duration. A long decode span on an earlier NVIDIA packet no longer makes a complete video appear too long. Container and worker checks agree; genuinely extended final frames and oversized outputs still fail.
@@ -18,6 +20,8 @@
   workers to stay running. A regression test covers live descendants, exit codes and timeouts.
 
 ### Added
+
+- The initial-picture acceptance tests include a generated source with repeated timestamps and numbered pictures. They check every picture's identity and order alongside timing, quality, audio, subtitles and rollback. Equal-time fixture packets keep their bitstream order; production verification settings are unchanged.
 
 - Every library type has **Auto-accept passed jobs** under **Schedule & replace**. It is off by default. Enabling it requires a risk acknowledgement and a **Do you really, really mean it?** confirmation with a gentle red pulse that respects reduced-motion settings. Originals stay in Quarantine; approval or retention cleanup still removes rollback ability. Existing saved choices are preserved.
 - Video libraries can opt into **Soundtrack quality report** and **Require soundtrack quality**

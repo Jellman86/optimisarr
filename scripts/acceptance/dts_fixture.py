@@ -54,7 +54,8 @@ def vfw_matroska(avi, video_packets, flac, audio_packets, seconds, audio_start_m
     if subtitles:
         packets += [(1081, 3, True, b"Generated timestamp regression", 1000)]
     clusters, blocks, origin = [], [], None
-    for timestamp, track, keyframe, payload, duration in sorted(packets):
+    # Equal decode timestamps must retain the bitstream's packet order.
+    for timestamp, track, keyframe, payload, duration in sorted(packets, key=lambda packet: packet[0]):
         if origin is None or timestamp - origin >= 2000:
             if origin is not None:
                 clusters.append(element("1f43b675", integer("e7", origin) + b"".join(blocks)))

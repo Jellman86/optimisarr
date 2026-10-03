@@ -89,11 +89,15 @@ python3 scripts/media_acceptance.py --image optimisarr:test \
   --local-encoder libx265 --fixture-seconds 16
 ```
 
-This generates two MPEG-4 sources in VFW Matroska, with and without subtitles. Their initial
+This generates three MPEG-4 sources in VFW Matroska, with and without subtitles. Their initial
 packets carry decode timestamps without presentation timestamps, using the same demuxer path
 that exposed [issue #351](https://github.com/Jellman86/optimisarr/issues/351) with VC-1. Each source
-has 400 pictures and lossless FLAC audio starting later than its first picture. One also contains
-a timed text cue. No private source media is included in CI.
+has 400 pictures and lossless FLAC audio starting later than its first picture. Two also contain
+a timed text cue. The third repeats an initial decode timestamp and puts a binary luminance
+identifier on every picture. This proves picture order and identity independently of the frame
+count. Equal-time packets retain their original bitstream order. Use 8 to 40 seconds for this
+focused regression so its identifiers and evidence stay bounded. No private source media is
+included in CI.
 
 A full MP4-family video re-encode keeping the original frame rate checks the fresh source start.
 For a positive declared start, a head probe reconstructs the first 128 video packet timestamps,
@@ -105,7 +109,7 @@ commands. The server performs this small planning probe even in strict worker mo
 
 Full video verification without an intentional frame-rate change now checks exact decoded-picture
 counts. Packet counts are not a substitute. A count mismatch or unavailable counts blocks
-replacement. Counting adds one full decode of the source and candidate; sampled VMAF reuses those
+replacement. Counting adds one full decode of the source and candidate; full-file and sampled VMAF reuse those
 counts for frame pairing. Strict verification requests this evidence from protocol 9 sidecars,
 with no server media-tool fallback. Older sidecars can still handle compatible assignments.
 
@@ -114,6 +118,27 @@ quality, copied audio samples, the actual audio/picture start offset and retaine
 It then replaces only its own fixture copy and proves byte-for-byte rollback. Source timestamp
 reconstruction is explicit; the candidate is never repaired or read with edit lists disabled.
 Both the final-container and paired Linux-worker CI gates run this regression.
+
+Only the numbered repeated-timestamp fixture permits equal timestamps in the independent
+oracle. It first requires complete picture identities in their expected order, then checks the
+written candidate presentation timestamps against the known reconstructed source times with
+the same 3 ms limit. Both presentation and best-effort fields are retained as evidence: FFmpeg
+can choose decode timestamps for its best-effort field after repeated presentation times
+([FFmpeg's selection code](https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/decode.c)).
+Ordinary fixtures retain their existing strictly increasing timestamp checks. A negative control
+damages the body of one repeated-time picture while keeping its identifier, and proves VMAF
+measures it. Quality compares every decoded picture sequentially after count/timing checks, including
+uneven sources. The numbered fixture also requires picture identity before measurement.
+This test does not repair candidates or change production verification limits.
+[Issue #353](https://github.com/Jellman86/optimisarr/issues/353) tracks the separate VC-1 timing
+investigation; passing this generated regression alone does not settle that source's timing.
+
+Production full-file VMAF also uses sequential picture comparison when source and candidate
+decoded counts are equal and the encode keeps the source frame rate. Workers receive this
+alternative and select it only after measuring both counts. Missing or unequal counts retain
+the previous comparison, and the picture-retention gate still fails. Previews and intentional
+frame-rate conversions retain their own preparation. Sampled windows keep their existing
+selection. Timing and quality are separate checks; equal counts alone do not prove identity.
 
 Hardware checks on 3 October 2026 retained all 400 generated pictures using Mac VideoToolbox,
 Windows NVIDIA NVENC, Intel QSV in the server container and libx265 in the Linux worker.

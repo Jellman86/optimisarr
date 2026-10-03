@@ -90,6 +90,8 @@ def main():
         parser.error("--worker-scratch-root requires --worker-command")
     if args.timeout <= 0 or args.pairing_wait < 0:
         parser.error("Timeout must be positive and pairing wait non-negative")
+    if args.regression == "initial-pictures" and args.fixture_seconds > 40:
+        parser.error("Numbered DTS picture fixtures require 8 to 40 seconds")
     if args.corpus and not args.corpus.resolve().is_relative_to(args.root.resolve()):
         # Corpus imports are copied below before starting the server, never mounted from arbitrary paths.
         require(args.corpus.is_file(), "Corpus manifest does not exist")

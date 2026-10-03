@@ -5,6 +5,30 @@ namespace Optimisarr.Tests;
 
 public sealed class QualityScoreCommandBuilderTests
 {
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(0, null)]
+    [InlineData(0, 0)]
+    public void Complete_equal_frame_files_compare_every_decoded_picture_without_cadence_conversion(int? referenceStart, int? candidateStart)
+    {
+        var context = Legacy(new QualityMeasurementContext(320, 180, false, false,
+            ReferenceStartSeconds: referenceStart, DistortedStartSeconds: candidateStart,
+            ReferenceFrameRate: 25, PairFramesByNumber: true));
+        var command = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json", context, 2);
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.DoesNotContain("fps=", command.FilterGraph);
+        Assert.DoesNotContain("trim=", command.FilterGraph);
+        Assert.Contains("[0:v]settb=AVTB,setpts=N*40000", command.FilterGraph);
+        Assert.Contains("[1:v]settb=AVTB,setpts=N*40000", command.FilterGraph);
+        Assert.Contains("frames paired by number", command.Preprocessing);
+        var unpaired = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json",
+            context with { PairFramesByNumber = false }, 2);
+        Assert.DoesNotContain("setpts=N*40000", unpaired.FilterGraph);
+        var decimated = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json",
+            context with { ReferenceDecimation = new FrameRateDecimation(50, 25, 2) }, 2);
+        Assert.DoesNotContain("setpts=N*40000", decimated.FilterGraph);
+    }
+
     // Preserve coverage of persisted legacy jobs and GPU graphs. V1 defaults are tested in VmafProductionPolicyTests.
     private static QualityMeasurementContext Legacy(QualityMeasurementContext context) => context with
     {
