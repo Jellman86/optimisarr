@@ -45,10 +45,9 @@ internal static class RemoteQualityPlanner
             ? "Full file"
             : "Three 40-second samples (early, middle and late)";
 
-        // Numbering frames needs a rate to number them by and a window to number them in, and a
-        // capped encode's thinned reference is judged by its own index rule instead.
-        var pairable = referenceFrameRate is not null && decimation is null
-            && !(windows.Count == 1 && windows[0] == VmafWindow.Full);
+        // Workers select this alternative only after proving equal decoded counts. Full-file
+        // comparisons need it too: repeated timestamps can otherwise pair neighbouring pictures.
+        var pairable = referenceFrameRate is > 0 && double.IsFinite(referenceFrameRate.Value) && decimation is null;
         var commands = new List<IReadOnlyList<string>>(windows.Count);
         var framePaired = pairable ? new List<IReadOnlyList<string>>(windows.Count) : null;
         foreach (var window in windows)
