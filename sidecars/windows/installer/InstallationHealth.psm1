@@ -179,9 +179,9 @@ function Invoke-SidecarMsi {
     $process=Start-Process msiexec.exe -ArgumentList ($arguments+@('/l*v',('"'+$Log+'"'))) -PassThru
     try {
         if (!$process.WaitForExit(600000)) {
-            $error=[TimeoutException]::new('The installer timed out. Keep the worker drained and inspect the retained MSI log before any recovery.')
-            $error.Data['InstallerStillRunning']=$true
-            throw $error
+            $timeout=[TimeoutException]::new('The installer timed out. Keep the worker drained and inspect the retained MSI log before any recovery.')
+            $timeout.Data['InstallerStillRunning']=$true
+            throw $timeout
         }
         if ($process.ExitCode -notin @(0,3010)) { throw "The installer failed with Windows error $($process.ExitCode). See the retained MSI log." }
         return $process.ExitCode
@@ -217,11 +217,11 @@ function Get-SidecarMsiMetadata {
         foreach ($name in @('UpgradeCode','ProductCode','ProductName')) {
             $view=$database.OpenView(('SELECT `Value` FROM `Property` WHERE `Property`='''+$name+''''))
             try {
-                $view.Execute(); $record=$view.Fetch()
+                [void]$view.Execute(); $record=$view.Fetch()
                 if (!$record) { throw 'Missing installer identity.' }
                 try {$values[$name]=$record.StringData(1)} finally {[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record)}
             }
-            finally {$view.Close();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)}
+            finally {[void]$view.Close();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)}
         }
         if ($values.UpgradeCode -ine '{53DAE213-E6B7-49EB-8FF5-C31F82210925}' -or $values.ProductName -cne 'Optimisarr Sidecar') { throw 'Use an Optimisarr Sidecar installer for update and recovery.' }
         return [pscustomobject]$values

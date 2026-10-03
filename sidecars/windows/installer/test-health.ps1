@@ -1,8 +1,13 @@
 [CmdletBinding()]
-param()
+param([string]$Installer)
 $ErrorActionPreference = 'Stop'
 $module = Join-Path $PSScriptRoot 'InstallationHealth.psm1'
 Import-Module $module -Force
+if($Installer){
+    $metadata=@(& (Get-Module InstallationHealth) {param($path) Get-SidecarMsiMetadata $path} $Installer)
+    if($metadata.Count -ne 1 -or !$metadata[0].ProductCode -or $metadata[0].ProductName -ne 'Optimisarr Sidecar'){throw 'Real MSI metadata must return exactly one complete identity record.'}
+    Write-Output 'Real MSI identity returned exactly one complete record.'
+}
 $start = [DateTime]::UtcNow
 $simulation = @{ Now=$start; Tick=0; Mode='healthy' }
 function Sample {

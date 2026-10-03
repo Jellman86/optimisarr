@@ -42,13 +42,13 @@ function Get-ProductCode([string] $Path) {
     try {
         $database = $engine.OpenDatabase($Path, 0)
         $view = $database.OpenView('SELECT `Value` FROM `Property` WHERE `Property`=''ProductCode''')
-        $view.Execute()
+        [void]$view.Execute()
         $record = $view.Fetch()
         try { return $record.StringData(1) }
         finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) }
     }
     finally {
-        if ($view) { $view.Close(); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
+        if ($view) { [void]$view.Close(); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
         if ($database) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) }
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($engine)
     }

@@ -35,6 +35,8 @@ jobs:
       - run: ./sidecars/windows/installer/test-process.ps1
       - run: ./sidecars/windows/installer/test-health.ps1
       - run: ./sidecars/windows/installer/build.ps1 -BuildUpgradeTest
+      - name: Verify real MSI identity metadata
+        run: ./sidecars/windows/installer/test-health.ps1 -Installer (Get-ChildItem sidecars/windows/artifacts/*.msi).FullName
       - name: Exercise the bundled audio verifier and spectrogram
         run: |
           $tools = Join-Path $env:RUNNER_TEMP 'optimisarr-audio-tools'

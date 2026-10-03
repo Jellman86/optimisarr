@@ -122,7 +122,7 @@ try {
         if(!$worker.Draining -or $worker.DrainId -ne $drainId -or $worker.HeldLeases -ne 0){$e=[InvalidOperationException]::new('The worker drain changed before installation. No update was started.');$e.Data['RecoveryUnsafe']=$true;throw $e}
         Stop-UpdateTray
         $code=Invoke-SidecarMsi $next.Installer (Join-Path $EvidenceDirectory 'update.log') -InstallDirectory $InstallDirectory
-        if ($code -eq 3010) {$error=[InvalidOperationException]::new('Windows requires a restart. This update is not yet verified; keep the worker drained.');$error.Data['RebootRequired']=$true;throw $error}
+        if ($code -eq 3010) {$restartFailure=[InvalidOperationException]::new('Windows requires a restart. This update is not yet verified; keep the worker drained.');$restartFailure.Data['RebootRequired']=$true;throw $restartFailure}
     } -Verify {
         $ids=@(Start-UpdateTray)
         Verify-Package $next $newStarted $ids
