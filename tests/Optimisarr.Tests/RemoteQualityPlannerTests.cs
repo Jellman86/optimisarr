@@ -6,6 +6,25 @@ namespace Optimisarr.Tests;
 
 public sealed class RemoteQualityPlannerTests
 {
+    [Theory]
+    [InlineData(true, 16)]
+    [InlineData(false, 600)]
+    public void Full_file_workers_can_select_sequential_quality_only_after_equal_decoded_counts(bool samplingEnabled, double duration)
+    {
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = true, ClipVmafEnabled = samplingEnabled };
+        var contract = RemoteQualityPlanner.Plan(policy, 320, 180, false, false, duration, 25, .081, null, null);
+        Assert.NotNull(contract);
+        Assert.Equal("Full file", contract.Sampling);
+        Assert.NotNull(contract.FramePairedCommands);
+        var command = Assert.Single(contract.FramePairedCommands);
+        var graph = command[command.ToList().IndexOf("-lavfi") + 1];
+        Assert.DoesNotContain("fps=", graph);
+        Assert.DoesNotContain("trim=", graph);
+        Assert.Contains("[0:v]settb=AVTB,setpts=N*40000", graph);
+        Assert.Contains("[1:v]settb=AVTB,setpts=N*40000", graph);
+        Assert.DoesNotContain("-ss", command);
+    }
+
     [Fact]
     public void Sampled_commands_seek_on_the_reference_grid_and_leave_the_distorted_lead_to_the_worker()
     {

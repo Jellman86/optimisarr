@@ -190,7 +190,7 @@ class Harness:
             audio_expectations=(["flac"], ["eng"], [0]) if mode == "filtered" else (["alac"], ["eng"], [0]),
             expected_container="mkv" if mode == "matroska" else "mp4")
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False):
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False, numbered_repeated_fixture=False):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -254,7 +254,8 @@ class Harness:
         source_bytes, candidate_bytes = case["source"].stat().st_size, candidate.stat().st_size
         scores = self.tools.measure(case["source"], candidate, directory,
             kept_subtitle_indexes=subtitle_expectations[2] if subtitle_expectations else None,
-            kept_audio_indexes=audio_expectations[2] if audio_expectations else None)
+            kept_audio_indexes=audio_expectations[2] if audio_expectations else None,
+            numbered_repeated_fixture=numbered_repeated_fixture)
         require(not quality_failures(scores, gates), f"Independent quality gate failed: {scores}")
         compare_report(verification, scores)
         if audio_gates:
@@ -286,6 +287,29 @@ class Harness:
                 "encoder": encoder, "strategy": strategy, "scores": scores, "restoredOriginal": True,
                 "sourceBytes": source_bytes, "candidateBytes": candidate_bytes,
                 "savingPercent": 100 * (1 - candidate_bytes / source_bytes)}
+
+    def numbered_picture_quality_control(self, fixture):
+        directory = self.report.root / "numbered-picture-quality-control"
+        directory.mkdir(parents=True, exist_ok=True)
+        candidate = directory / "damaged.mp4"
+        original_hash = sha256(fixture)
+        probe = self.tools.probe(fixture)
+        first = self.tools.first_av_timestamps(fixture, generate_pts=True)["video"]
+        offset = max(0, float(probe["format"]["start_time"]) - first)
+        # The ordinary cadence filter discards picture 4 at the repeated time. Damage
+        # only its body: identity markers must survive and sequential quality must see it.
+        self.tools.encode(["-fflags", "+genpts", "-itsoffset", str(offset), "-i", self.tools.path(fixture),
+            "-map", "0:V:0", "-map", "0:a:0", "-map", "0:s:0",
+            "-vf", "drawbox=y=48:h=132:color=black:t=fill:enable='eq(n,4)'",
+            "-c:v", "libx264", "-crf", "0", "-preset", "fast", "-fps_mode", "passthrough",
+            "-enc_time_base:v:0", "demux", "-c:a", "alac", "-c:s", "mov_text", self.tools.path(candidate)])
+        scores = self.tools.measure(fixture, candidate, directory, numbered_repeated_fixture=True)
+        frames = json.loads((directory / "vmaf.json").read_text())["frames"]
+        damaged_score = frames[4]["metrics"]["vmaf"]
+        require(damaged_score < 75, "Quality oracle omitted the damaged repeated-time picture")
+        require(sha256(fixture) == original_hash, "Negative quality control changed its source")
+        return {"damagedPictureIndex": 4, "damagedPictureVmaf": damaged_score,
+                "numberedPictures": scores["frames"], "originalUnchanged": True}
 
     def replace_restore(self, case, candidate):
         candidate_hash = sha256(candidate)
@@ -684,7 +708,7 @@ class Harness:
             if regression == "uneven-timing" and "uneven" not in variants:
                 variants = [*variants, "uneven"]
             if regression == "initial-pictures":
-                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles"]))
+                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles", "dts-repeated"]))
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}
@@ -741,6 +765,10 @@ class Harness:
                     self.report.case(f"worker-{worker['id']}-audio-artwork", lambda w=worker: self.audio("mp3", w, artwork=True))
                 return self.report.exit_code
             if regression in ("subtitle-mux", "fractional-timing", "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy"):
+                if regression == "initial-pictures":
+                    require("dts-repeated" in fixtures, "Numbered repeated-timestamp fixture could not be generated")
+                    self.report.case("numbered-picture-quality-control",
+                                     lambda: self.numbered_picture_quality_control(fixtures["dts-repeated"]))
                 def regression_case(name, encoder, worker=None):
                     if regression == "subtitle-mux":
                         return self.subtitle_mux(name, primary, encoder, worker)
@@ -755,7 +783,12 @@ class Harness:
                         require("dts-only-no-subtitles" in fixtures, "Subtitle-free DTS-only fixture could not be generated")
                         without_subtitles = self.video(name + "-no-subtitles", fixtures["dts-only-no-subtitles"], encoder, worker,
                             container="mp4", check_picture_origin=True)
-                        return {"withSubtitles": with_subtitles, "withoutSubtitles": without_subtitles}
+                        require("dts-repeated" in fixtures, "Numbered repeated-timestamp fixture could not be generated")
+                        repeated = self.video(name + "-repeated", fixtures["dts-repeated"], encoder, worker, container="mp4",
+                            subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True,
+                            numbered_repeated_fixture=True)
+                        return {"withSubtitles": with_subtitles, "withoutSubtitles": without_subtitles,
+                                "repeatedTimestamps": repeated}
                     if regression == "uneven-timing":
                         require("uneven" in fixtures, "Uneven timestamp fixture could not be generated")
                         return self.video(name, fixtures["uneven"], encoder, worker, container="mp4")

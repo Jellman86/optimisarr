@@ -234,7 +234,6 @@ public sealed class VerificationService(
                     : "Three 40-second samples (early, middle and late)";
 
                 var pairDecodedFrames = clip is null && reference.FrameRate is null
-                    && windows.Any(window => window.StartSeconds is not null)
                     && FramePairing.Applies(
                         sourceDecodedFrames, candidateDecodedFrames);
                 var measurements = new List<QualityResult>(windows.Count);

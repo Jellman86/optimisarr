@@ -1,5 +1,6 @@
 import json
 import math
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -19,6 +20,88 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+
+    def test_dts_fixture_preserves_packet_order_when_decode_timestamps_repeat(self):
+        import struct
+        from acceptance.dts_fixture import vfw_matroska
+        header = bytearray(40)
+        struct.pack_into('<ii', header, 4, 320, 180)
+        prefix = b'strf' + struct.pack('<I', 40) + header
+        avi = prefix + b'ZfirstAsecond'
+        packets = [{'pos': len(prefix), 'size': 6, 'dts_time': '.2', 'flags': ''},
+                   {'pos': len(prefix) + 6, 'size': 7, 'dts_time': '.2', 'flags': ''}]
+        flac = b'fLaC\x80\x00\x00\x22' + bytes(34)
+        result = vfw_matroska(avi, packets, flac, [], 8, subtitles=False)
+        self.assertLess(result.index(b'Zfirst'), result.index(b'Asecond'))
+
+    def test_numbered_picture_oracle_rejects_lost_repeated_and_reordered_pictures(self):
+        from acceptance.picture_identity import validate_picture_ids
+        self.assertEqual(4, validate_picture_ids([0, 1, 2, 3], [0, 1, 2, 3]))
+        for changed in [[1, 2, 3], [0, 1, 1, 3], [0, 2, 1, 3], [0, 1, 2, 3, 4], []]:
+            with self.assertRaises(AssertionError):
+                validate_picture_ids([0, 1, 2, 3], changed)
+        with self.assertRaises(AssertionError):
+            validate_picture_ids([0, 1, 1, 3], [0, 1, 1, 3])
+
+    def test_numbered_picture_oracle_refuses_partial_ambiguous_and_unbounded_markers(self):
+        from acceptance.picture_identity import parse_picture_ids
+        def picture(number):
+            row = b''.join(bytes([240 if number & (1 << i) else 16]) * 32 for i in range(10))
+            return row * 48
+        self.assertEqual([0, 1, 511, 1023], parse_picture_ids(b''.join(picture(i) for i in [0, 1, 511, 1023])))
+        for raw in [b'', picture(0)[:-1], bytes([128]) * 320 * 48, picture(0) * 1001]:
+            with self.assertRaises(AssertionError):
+                parse_picture_ids(raw)
+
+    def test_repeated_picture_times_are_allowed_only_for_the_numbered_fixture(self):
+        from acceptance.media import Tools
+        tools = Tools('ffmpeg', 'ffprobe')
+        values = [0, .04, .08, .12, .16, .16, .24]
+        tools.run = Mock(return_value=json.dumps({'frames': [
+            {'best_effort_timestamp_time': value, 'pts_time': value} for value in values]}))
+        with self.assertRaisesRegex(AssertionError, 'Non-increasing'):
+            tools.frame_times('/fixture.mkv')
+        self.assertEqual(values, tools.frame_times('/fixture.mkv', numbered_repeated_fixture=True))
+        for bad in [[0, .04, .03], [0, float('nan')], [float('inf')], []]:
+            tools.run.return_value = json.dumps({'frames': [
+                {'best_effort_timestamp_time': value, 'pts_time': value} for value in bad]})
+            with self.assertRaises(AssertionError):
+                tools.frame_times('/fixture.mkv', numbered_repeated_fixture=True)
+
+    def test_repeated_picture_quality_compares_every_picture_after_identity_and_timing_checks(self):
+        from acceptance.media import quality_picture_preparation
+        from fractions import Fraction
+        ordinary = quality_picture_preparation(Fraction(25), 320, 180, 'yuv420p10le')
+        repeated = quality_picture_preparation(Fraction(25), 320, 180, 'yuv420p10le', numbered_repeated_fixture=True)
+        self.assertIn('fps=25', ordinary)
+        self.assertNotIn('fps=', repeated)
+        self.assertIn('setpts=N*1/25/TB', repeated)
+
+    def test_numbered_candidate_requires_written_presentation_times_and_retains_both_fields(self):
+        from acceptance.media import Tools
+        tools = Tools('ffmpeg', 'ffprobe')
+        frames = [{'pts_time': 0, 'best_effort_timestamp_time': 0},
+                  {'pts_time': .04, 'best_effort_timestamp_time': .000062},
+                  {'pts_time': .08, 'best_effort_timestamp_time': .04}]
+        tools.run = Mock(return_value=json.dumps({'frames': frames}))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'timestamps.json'
+            self.assertEqual([0, .04, .08], tools.frame_times('/candidate.mp4',
+                numbered_repeated_fixture=True, evidence_path=path))
+            self.assertEqual(frames, json.loads(path.read_text())['frames'])
+        tools.run.return_value = json.dumps({'frames': [{'best_effort_timestamp_time': 0}]})
+        with self.assertRaises(AssertionError):
+            tools.frame_times('/candidate.mp4', numbered_repeated_fixture=True)
+
+    def test_numbered_fixture_cannot_be_requested_outside_its_focused_regression(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'must-not-be-created'
+            result = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / 'media_acceptance.py'),
+                '--native', str(Path(directory) / 'missing.dll'), '--root', str(root),
+                '--fixture-variant', 'dts-repeated'], capture_output=True, text=True, timeout=10)
+            self.assertEqual(2, result.returncode)
+            self.assertIn('invalid choice', result.stderr)
+            self.assertFalse(root.exists())
 
     def test_uneven_timing_fixture_requires_misleading_rates_and_tight_frame_pairs(self):
         from acceptance.media import validate_uneven_timing_fixture
