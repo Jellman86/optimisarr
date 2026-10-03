@@ -4,6 +4,28 @@ import Testing
 
 @Suite("Soundtrack quality")
 struct SoundtrackQualityTests {
+    @Test("multiple tracks hash once at each boundary and changes discard every score", arguments: [false, true])
+    func sharedHashes(change: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let counter = SoundtrackHashCounter(change: change)
+        let report = try await SoundtrackQualityAssessment(runner: PreparedSoundtrackRunner(), hash: counter.hash).measure(
+            ffmpeg: root.appendingPathComponent("ffmpeg"), ffprobe: root.appendingPathComponent("ffprobe"),
+            metric: root.appendingPathComponent("metric"), source: root.appendingPathComponent("source"),
+            candidate: root.appendingPathComponent("candidate"), sourceProbe: probe(["eng", "fra"]),
+            candidateProbe: probe(["eng", "fra"]), request: .init(removedSourceAudioIndexes: []), healthy: true, scratch: root)
+        #expect(counter.counts.values.allSatisfy { $0 == 2 })
+        #expect(counter.counts.count == 5)
+        if change {
+            #expect(report.tracks.isEmpty)
+            #expect(report.unavailableReason?.contains("changed") == true)
+        } else {
+            #expect(report.tracks.count == 2)
+            #expect(report.tracks.allSatisfy { $0.report.evidence?.assessment.measured == true })
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+    }
     func probe(_ languages: [String], channels: Int = 2) -> String {
         let tracks = languages.map { language in
             #"{"codec_type":"audio","channels":\#(channels),"sample_rate":"48000","duration":"3","start_time":"0","tags":{"language":"\#(language)","title":"Main"}}"#
@@ -31,6 +53,31 @@ struct SoundtrackQualityTests {
             candidateProbe: probe(["eng"]), request: .init(removedSourceAudioIndexes: [])) }
         #expect(throws: (any Error).self) { try SoundtrackQualityAssessment.plan(sourceProbe: probe(["eng"]),
             candidateProbe: probe(["eng"]), request: .init(removedSourceAudioIndexes: [2])) }
+    }
+}
+
+private final class SoundtrackHashCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let change: Bool
+    private var values: [String: Int] = [:]
+    init(change: Bool) { self.change = change }
+    var counts: [String: Int] { lock.withLock { values } }
+    func hash(_ url: URL) -> String {
+        lock.withLock {
+            values[url.lastPathComponent, default: 0] += 1
+            return String(repeating: change && url.lastPathComponent == "candidate" && values["candidate"] == 2 ? "b" : "a", count: 64)
+        }
+    }
+}
+private struct PreparedSoundtrackRunner: TranscodeRunner {
+    func run(_ executable: URL, _ arguments: [String], progress: @escaping @Sendable (Double) -> Void) async throws -> (exitCode: Int32, stderr: String) {
+        if executable.lastPathComponent == "ffmpeg" {
+            try Data(repeating: 0, count: 139200 * 8).write(to: URL(fileURLWithPath: arguments.last!))
+        } else {
+            let report = #"{"schema":1,"metric":"zimtohrli","revision":"f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3","sampleRate":48000,"channels":2,"fullScaleSineDb":78.3,"frames":139200,"distances":[0.01,0.02]}"#
+            try Data(report.utf8).write(to: URL(fileURLWithPath: arguments.last!))
+        }
+        return (0, "")
     }
 }
 

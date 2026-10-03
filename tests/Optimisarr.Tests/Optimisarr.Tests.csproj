@@ -26,4 +26,7 @@
     <ProjectReference Include="../../tools/Optimisarr.AudioStudy/Optimisarr.AudioStudy.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Fixtures/soundtrack-swift.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

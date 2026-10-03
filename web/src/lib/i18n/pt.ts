@@ -29,7 +29,7 @@ export const pt: Messages = {
   },
   soundtrack_quality: {
     title: "Relatório de qualidade das faixas de áudio",
-    hint: "Compara cada faixa mono/estéreo mantida e recodificada com a origem usando Zimtohrli. O relatório sozinho não bloqueia a substituição.",
+    hint: "Compara cada faixa mono/estéreo mantida e recodificada com a origem usando Zimtohrli. O relatório sozinho não bloqueia a substituição. Os sidecars antigos não podem aceitar estes trabalhos enquanto o relatório ou a verificação de qualidade estiver ativado.",
     gate_label: "Exigir qualidade das faixas de áudio",
     gate_hint: "Bloqueia a substituição se um canal ou amostra avaliados ultrapassarem o limite ou faltarem provas. Experimental; medição no computador de verificação atribuído.",
     maximum: "Diferença máxima das faixas de áudio",
@@ -675,7 +675,8 @@ export const pt: Messages = {
     status_failed: "Com falha",
     status_cancelled: "Cancelado",
     job_failed: "Falha na tarefa de processamento",
-    failure_size_saving: 'O ficheiro codificado ficou fora do intervalo de poupança configurado.',
+    failure_size_saving: 'A tentativa não cumpriu a regra de tamanho configurada.',
+    failure_size_prediction: 'As amostras preveem um ficheiro acima do limite de tamanho. A codificação completa não foi executada.',
     failure_verification: "O arquivo codificado não passou na verificação de segurança ou qualidade.",
     failure_container_incompatibility: "O contêiner de destino não pode conter um ou mais fluxos de origem.",
     failure_bitmap_subtitles: "Legendas baseadas em imagens não podem ser convertidas com segurança.",

@@ -29,7 +29,7 @@ export const it: Messages = {
   },
   soundtrack_quality: {
     title: "Rapporto sulla qualità delle tracce audio",
-    hint: "Confronta ogni traccia mono/stereo mantenuta e ricodificata con la fonte usando Zimtohrli. Il solo rapporto non blocca la sostituzione.",
+    hint: "Confronta ogni traccia mono/stereo mantenuta e ricodificata con la fonte usando Zimtohrli. Il solo rapporto non blocca la sostituzione. I sidecar meno recenti non possono accettare questi lavori quando il rapporto o il controllo qualità è attivo.",
     gate_label: "Richiedi qualità delle tracce audio",
     gate_hint: "Blocca la sostituzione se un canale o campione valutato supera il limite o mancano prove. Sperimentale; misurazione sul computer assegnato alla verifica.",
     maximum: "Differenza massima delle tracce audio",
@@ -697,7 +697,8 @@ quarantine: {
     status_failed: 'Fallito',
     status_cancelled: 'Annullato',
     job_failed: 'Operazione fallita',
-    failure_size_saving: 'Il file codificato è fuori dall’intervallo di risparmio configurato.',
+    failure_size_saving: 'Il tentativo non ha rispettato la regola di dimensione configurata.',
+    failure_size_prediction: 'I campioni prevedono un file oltre il limite di dimensione. La codifica completa non è stata eseguita.',
     failure_verification: 'Il file codificato non ha superato il controllo di sicurezza o qualità.',
     failure_container_incompatibility: 'Il contenitore scelto non può ospitare uno o più flussi da sorgente.',
     failure_bitmap_subtitles: 'I sottotitoli basati su immagini non possono essere convertiti in modo sicuro.',

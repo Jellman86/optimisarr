@@ -83,13 +83,13 @@ public sealed record SizeForecastBasis(
 /// sampled minutes happen to compare with the film's average.
 ///
 /// <para>It is a forecast, not a proof: scenes outside the windows can behave differently. A
-/// predicted miss pauses the job for review and nothing more. Only the final size gate decides
+/// predicted miss fails the job before a full encode. For jobs that proceed, the final size gate decides
 /// whether an output may replace the original.</para>
 /// </summary>
 public static class SizePreflight
 {
     /// <summary>
-    /// Decides, after each measurement of the search, whether to stop and ask the operator.
+    /// Decides, after each measurement of the search, whether to reject the full encode before spending more work.
     ///
     /// <para>Once the search has chosen a quality, the question is whether that quality's samples
     /// fit. Before then, a candidate that <em>missed</em> the VMAF target and still does not fit
@@ -111,7 +111,7 @@ public static class SizePreflight
         }
 
         return latest is { MeetsTarget: false }
-            && Assess(basis, latest, maximumCandidateBytes, bypass) is { ShouldHold: true } early
+            && Assess(basis, latest, maximumCandidateBytes, bypass) is { ShouldReject: true } early
                 ? early
                 : SizePreflightAssessment.Inconclusive;
     }
@@ -148,14 +148,14 @@ public static class SizePreflight
                 : null;
         var projectedBytes = projected >= long.MaxValue ? long.MaxValue : (long)Math.Ceiling(projected);
         var percentChange = (projected / basis.SourceBytes - 1) * 100;
-        var shouldHold = projected > maximum;
+        var shouldReject = projected > maximum;
         return new SizePreflightAssessment(
-            shouldHold,
+            shouldReject,
             projectedBytes,
             percentChange,
             ratio,
             windowRatios,
-            shouldHold ? Explain(probe, ratio, windowRatios, projected, maximum, basis.SourceBytes) : null);
+            shouldReject ? Explain(probe, ratio, windowRatios, projected, maximum, basis.SourceBytes) : null);
     }
 
     private static string Explain(
@@ -183,14 +183,13 @@ public static class SizePreflight
             : $"At quality {probe.Quality} the samples missed the VMAF target and their video still came out at "
               + $"{Percent(ratio)} of the source's own video over the same scenes{scenes}. {projection} "
               + "A quality that clears the target would normally be larger still, so the search stopped here.";
-        return measured
-            + " The full encode is held until you choose to run it. This is an estimate from sampled scenes; "
-            + "the original has not changed, and the final size and quality checks still apply.";
+        return "Size saving prediction: " + measured
+            + " The full encode was not run. This is an estimate from sampled scenes; the original has not changed.";
     }
 }
 
 public sealed record SizePreflightAssessment(
-    bool ShouldHold,
+    bool ShouldReject,
     long? ProjectedBytes,
     double? ProjectedPercentChange,
     double? VideoRatio,

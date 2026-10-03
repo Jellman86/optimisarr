@@ -29,19 +29,22 @@ public sealed class AudioQualityService
     private readonly string _ffprobe;
     private readonly string _metric;
     private readonly string _scratchRoot;
+    private readonly Func<string, CancellationToken, Task<string>> _hash;
     private readonly Func<string, IReadOnlyList<string>, CancellationToken, TimeSpan?, Task<ToolProcessResult>> _run;
 
     public AudioQualityService(string ffmpeg, string ffprobe, string metric, string scratchRoot)
         : this(ffmpeg, ffprobe, metric, scratchRoot, BoundedToolProcess.RunAsync) { }
 
     internal AudioQualityService(string ffmpeg, string ffprobe, string metric, string scratchRoot,
-        Func<string, IReadOnlyList<string>, CancellationToken, TimeSpan?, Task<ToolProcessResult>> run)
+        Func<string, IReadOnlyList<string>, CancellationToken, TimeSpan?, Task<ToolProcessResult>> run,
+        Func<string, CancellationToken, Task<string>>? hash = null)
     {
         _ffmpeg = Path.GetFullPath(ffmpeg);
         _ffprobe = Path.GetFullPath(ffprobe);
         _metric = Path.GetFullPath(metric);
         _scratchRoot = Path.GetFullPath(scratchRoot);
         _run = run;
+        _hash = hash ?? HashAsync;
     }
 
     public Task<AudioQualityAssessmentResult> MeasureAsync(string referencePath, string candidatePath, CancellationToken token) =>
@@ -52,7 +55,7 @@ public sealed class AudioQualityService
         MeasureAsync(referencePath, candidatePath, referenceAudioIndex, candidateAudioIndex, token);
 
     private async Task<AudioQualityAssessmentResult> MeasureAsync(string referencePath, string candidatePath,
-        int? referenceAudioIndex, int? candidateAudioIndex, CancellationToken token)
+        int? referenceAudioIndex, int? candidateAudioIndex, CancellationToken token, FileHashes? snapshot = null)
     {
         token.ThrowIfCancellationRequested();
         referencePath = Path.GetFullPath(referencePath);
@@ -67,11 +70,9 @@ public sealed class AudioQualityService
             referenceAudioIndex, candidateAudioIndex);
         try
         {
-            referenceHash = await HashAsync(referencePath, token);
-            candidateHash = await HashAsync(candidatePath, token);
-            metricHash = await HashAsync(_metric, token);
-            ffmpegHash = await HashAsync(_ffmpeg, token);
-            ffprobeHash = await HashAsync(_ffprobe, token);
+            var hashes = snapshot ?? await ReadHashesAsync(referencePath, candidatePath, token);
+            referenceHash = hashes.Reference; candidateHash = hashes.Candidate;
+            metricHash = hashes.Metric; ffmpegHash = hashes.Ffmpeg; ffprobeHash = hashes.Ffprobe;
             var a = await _run(_ffprobe, ProbeArguments(referencePath), token, TimeSpan.FromSeconds(30));
             var b = await _run(_ffprobe, ProbeArguments(candidatePath), token, TimeSpan.FromSeconds(30));
             reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(a.Output, ai) : AudioQualityInput.Parse(a.Output) : null;
@@ -123,9 +124,7 @@ public sealed class AudioQualityService
                 File.Delete(referencePcm);
                 File.Delete(candidatePcm);
             }
-            if (await HashAsync(referencePath, token) != referenceHash || await HashAsync(candidatePath, token) != candidateHash
-                || await HashAsync(_metric, token) != metricHash || await HashAsync(_ffmpeg, token) != ffmpegHash
-                || await HashAsync(_ffprobe, token) != ffprobeHash)
+            if (snapshot is null && await ReadHashesAsync(referencePath, candidatePath, token) != hashes)
                 return Result(false, "A media file or tool changed during assessment; the scores cannot be used.");
             token.ThrowIfCancellationRequested();
             return Result(true, null);
@@ -137,6 +136,33 @@ public sealed class AudioQualityService
             if (scratch is not null && Directory.Exists(scratch)) Directory.Delete(scratch, recursive: true);
         }
     }
+
+    public async Task<IReadOnlyList<AudioQualityAssessmentResult>> MeasureTracksAsync(string referencePath, string candidatePath,
+        IReadOnlyList<SoundtrackQualityPair> tracks, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (tracks.Count is < 1 or > SoundtrackQualityPlanner.MaximumTracks) throw new ArgumentOutOfRangeException(nameof(tracks));
+        try
+        {
+            var snapshot = await ReadHashesAsync(referencePath, candidatePath, token);
+            var results = new List<AudioQualityAssessmentResult>();
+            foreach (var track in tracks)
+                results.Add(await MeasureAsync(referencePath, candidatePath, track.SourceAudioIndex, track.CandidateAudioIndex, token, snapshot));
+            if (await ReadHashesAsync(referencePath, candidatePath, token) != snapshot)
+                return results.Select(r => r with { Measured = false, Error = "A media file or tool changed during soundtrack assessment; the scores cannot be used." }).ToArray();
+            return results;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return tracks.Select(t => new AudioQualityAssessmentResult(false, ex.Message, t.Reference, t.Candidate,
+                null, null, null, null, null, [], 0, t.SourceAudioIndex, t.CandidateAudioIndex)).ToArray();
+        }
+    }
+
+    private sealed record FileHashes(string Reference, string Candidate, string Metric, string Ffmpeg, string Ffprobe);
+    private async Task<FileHashes> ReadHashesAsync(string source, string candidate, CancellationToken token) =>
+        new(await _hash(source, token), await _hash(candidate, token), await _hash(_metric, token),
+            await _hash(_ffmpeg, token), await _hash(_ffprobe, token));
 
     private static IReadOnlyList<string> ProbeArguments(string path) =>
         ["-v", "error", "-show_streams", "-show_format", "-of", "json", path];

@@ -38,6 +38,38 @@ public sealed class AudioQualityServiceTests : IDisposable
             $$"""{"schema":1,"metric":"zimtohrli","revision":"{{AudioQualityResultParser.Revision}}","sampleRate":48000,"channels":2,"frames":144000,"fullScaleSineDb":78.3,"distances":[0.01,0.02]}""", null));
     }
 
+    [Theory]
+    [InlineData("none")]
+    [InlineData("candidate")]
+    [InlineData("reference")]
+    [InlineData("metric")]
+    [InlineData("unreadable")]
+    public async Task Multiple_soundtracks_share_hash_reads_and_a_changed_file_invalidates_every_track(string changed)
+    {
+        var hashes = new Dictionary<string, int>();
+        Task<string> Hash(string path, CancellationToken token)
+        {
+            hashes[path] = hashes.GetValueOrDefault(path) + 1;
+            if (changed == "unreadable" && path == Tool("ffprobe") && hashes[path] == 2) throw new IOException("Final identity read failed");
+            return Task.FromResult(new string(Path.GetFileNameWithoutExtension(path) == changed && hashes[path] == 2 ? 'b' : 'a', 64));
+        }
+        async Task<ToolProcessResult> Runner(string c, IReadOnlyList<string> args, CancellationToken token, TimeSpan? timeout)
+        {
+            var result = await Run(c, args, token, timeout);
+            if (c == Tool("ffprobe")) return new(0, SoundtrackQualityTests.Probe(SoundtrackQualityTests.Track(), SoundtrackQualityTests.Track()), null);
+            if (c == Tool("ffmpeg")) File.WriteAllBytes(args[^1], new byte[139200 * 8]);
+            return c == Tool("metric") ? result with { Output = result.Output.Replace("144000", "139200") } : result;
+        }
+        var probe = SoundtrackQualityTests.Probe(SoundtrackQualityTests.Track(), SoundtrackQualityTests.Track());
+        var plan = SoundtrackQualityPlanner.Plan(probe, probe, new([]));
+        var service = new AudioQualityService(Tool("ffmpeg"), Tool("ffprobe"), Tool("metric"), _root, Runner, Hash);
+        var results = await service.MeasureTracksAsync(Reference, Candidate, plan.Tracks, default);
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r => Assert.Equal(changed == "none", r.Measured));
+        Assert.All(hashes.Values, count => Assert.Equal(2, count));
+        Assert.Empty(Directory.GetDirectories(_root));
+    }
+
 
     [Theory]
     [InlineData(13, true)]

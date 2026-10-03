@@ -77,7 +77,7 @@ public static class FailureClassifier
     /// <summary>A short, operator-facing explanation of a category, for the diagnostics view.</summary>
     public static string Describe(FailureCategory category) => category switch
     {
-        FailureCategory.SizeSaving => "Output fell outside the configured size-saving range",
+        FailureCategory.SizeSaving => "Attempt failed the configured size rule",
         FailureCategory.Verification => "A verification gate rejected the output",
         FailureCategory.ContainerIncompatibility => "A stream the target container can't hold",
         FailureCategory.BitmapSubtitles => "Image-based subtitles the MP4 container can't store",

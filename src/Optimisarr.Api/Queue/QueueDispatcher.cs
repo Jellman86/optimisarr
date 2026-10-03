@@ -150,6 +150,7 @@ public sealed class QueueDispatcher(
     {
         await pauseManager.RestoreAsync(stoppingToken);
         await PurgeDisposableJobsAsync(stoppingToken);
+        await FailLegacySizeReviewsAsync(stoppingToken);
         await RecoverInterruptedJobsAsync(stoppingToken);
         await PurgeAbandonedWorkAsync(stoppingToken);
 
@@ -1165,8 +1166,7 @@ public sealed class QueueDispatcher(
                 var selection = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
                 if (selection is null)
                 {
-                    // The sample-size forecast is advisory, so this job waits for an operator
-                    // rather than producing or failing a candidate. It owns no full output.
+                    // The samples rejected the size prediction before any full output existed.
                     return;
                 }
                 preparedWork = selection.Value;
@@ -2278,9 +2278,9 @@ public sealed class QueueDispatcher(
                     decision,
                     maximumCandidateBytes,
                     work.BypassSizePreflight);
-                if (sizeReview.ShouldHold)
+                if (sizeReview.ShouldReject)
                 {
-                    await HoldForSizeReviewAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
+                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
                     return null;
                 }
 
@@ -2556,29 +2556,48 @@ public sealed class QueueDispatcher(
         return work;
     }
 
-    private async Task HoldForSizeReviewAsync(
-        int jobId,
-        int selectedQuality,
-        SizePreflightAssessment forecast,
-        CancellationToken cancellationToken)
+    internal async Task RejectPredictedSizeAsync(
+        int jobId, int selectedQuality, SizePreflightAssessment forecast, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        await WithJobAsync(jobId, job =>
+        await _dbLock.WaitAsync(cancellationToken);
+        try
         {
-            if (job.Status != JobStatus.Probing)
-            {
-                return;
-            }
-            job.Status = JobStatus.AwaitingSizeReview;
-            job.AdaptiveVideoQuality = selectedQuality;
-            job.Progress = 0;
-            job.ErrorMessage = forecast.Reason;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
-        }, cancellationToken);
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+            if (job is null || job.Status != JobStatus.Probing) return;
+            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow);
+            await ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally { _dbLock.Release(); }
         logger.LogInformation(
-            "Job {JobId}: full encode held for size review; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
+            "Job {JobId}: full encode rejected by a size prediction; samples were {Ratio:P1} of the source video, projecting {ProjectedBytes} bytes",
             jobId, forecast.VideoRatio, forecast.ProjectedBytes);
         await NotifyAsync();
+    }
+
+    internal async Task FailLegacySizeReviewsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var held = await db.Jobs.Where(j => j.Type == JobType.Normal && j.Status == JobStatus.AwaitingSizeReview)
+            .ToListAsync(cancellationToken);
+        foreach (var job in held)
+        {
+            SizePredictionFailure.Apply(job, job.AdaptiveVideoQuality, job.ErrorMessage, DateTimeOffset.UtcNow);
+            await ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        if (held.Count > 0)
+        {
+            logger.LogInformation("Marked {Count} existing size-review jobs as predicted size failures; originals were unchanged", held.Count);
+            await NotifyAsync();
+        }
     }
 
     /// <summary>
@@ -2680,7 +2699,7 @@ public sealed class QueueDispatcher(
     }
 
     /// <summary>
-    /// Every forecast that let a job through is logged beside the one that held a job, so its
+    /// Every forecast that let a job through is logged beside the one that rejected a job, so its
     /// accuracy can be checked against the finished file rather than taken on trust.
     /// </summary>
     internal static void LogSizeForecast(ILogger logger, int jobId, SizePreflightAssessment forecast)
@@ -3336,6 +3355,7 @@ public sealed class QueueDispatcher(
                 AudioLoudnessGateEnabled = false,
                 AudioClippingGateEnabled = false,
                 AudioQualityGateEnabled = false,
+                SoundtrackQualityGateEnabled = false,
                 ImageQualityGateEnabled = false
             };
         }

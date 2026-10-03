@@ -5,6 +5,33 @@ import Testing
 @Suite("Audio quality reporting")
 struct AudioQualityTests {
 
+    @Test("Matroska duration tags use the track end and tiny seeks stay in fixed point")
+    func trackEndsAndSeeks() {
+        let probe = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"-0.021","channels":2,"sample_rate":"48000","tags":{"DURATION":"00:00:11.520000000"}}],"format":{"duration":"12","start_time":"-0.021"}}"#
+        #expect(abs((AudioQualityAssessment.profile(probe, audioIndex: 0)?.durationSeconds ?? 0) - 11.541) < 1e-8)
+        #expect(AudioQualityAssessment.secondsText(0.0000111) == "0.0000111")
+        let windows = AudioQualityAssessment.plan(600, soundtrack: true)
+        #expect(windows.count == 3)
+        #expect(abs(windows.last!.startSeconds + 30 - 599.9) < 1e-8)
+    }
+
+    @Test("mkvmerge elapsed duration and ffmpeg end timestamp agree for delayed tracks")
+    func writerDurations() {
+        for (writer, end) in [("libebml", "00:01:40.000000000"), ("Lavf62", "00:01:40.500000000")] {
+            let json = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0.5","channels":2,"sample_rate":"48000","tags":{"DURATION":"\#(end)","_STATISTICS_WRITING_APP":"mkvmerge v95"}}],"format":{"start_time":"0","duration":"101","tags":{"encoder":"\#(writer)"}}}"#
+            let probe = writer.hasPrefix("Lavf") ? json.replacingOccurrences(of: ",\"_STATISTICS_WRITING_APP\":\"mkvmerge v95\"", with: "") : json
+            #expect(AudioQualityAssessment.profile(probe, audioIndex: 0)?.durationSeconds == 100)
+        }
+    }
+
+    @Test("conflicting Matroska writers do not guess delayed track duration")
+    func conflictingWriters() {
+        for (statistics, end) in [("mkvmerge v95", "00:01:40.500000000"), ("mkvpropedit v95", "00:01:40.000000000")] {
+            let json = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0.5","channels":2,"sample_rate":"48000","tags":{"DURATION":"\#(end)","_STATISTICS_WRITING_APP":"\#(statistics)"}}],"format":{"start_time":"0","duration":"101","tags":{"encoder":"Lavf62"}}}"#
+            #expect(AudioQualityAssessment.profile(json, audioIndex: 0) == nil)
+        }
+    }
+
     @Test("older audio profiles decode with a zero container lead")
     func oldProfile() throws {
         let json = #"{"durationSeconds":3,"channels":2,"sampleRate":48000,"channelLayout":"stereo"}"#

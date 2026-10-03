@@ -479,6 +479,7 @@ internal static class MediaAndQueueEndpoints
             IHubContext<JobsHub> hub,
             CancellationToken cancellationToken) =>
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(
                 j => j.Id == id && j.Type == JobType.Normal,
                 cancellationToken);
@@ -502,6 +503,7 @@ internal static class MediaAndQueueEndpoints
             job.Status = JobStatus.Queued;
             job.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             dispatcher.Wake();
             await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
             return Results.Ok(new { id = job.Id, status = job.Status.ToString() });

@@ -4,7 +4,9 @@ using Optimisarr.Core.Workers;
 namespace Optimisarr.Core.Verification;
 
 public sealed class SoundtrackQualityObservationService(
-    Func<string, string, int, int, CancellationToken, Task<AudioQualityAssessmentResult>>? measure)
+    Func<string, string, int, int, CancellationToken, Task<AudioQualityAssessmentResult>>? measure,
+    Func<string, string, IReadOnlyList<SoundtrackQualityPair>, CancellationToken, Task<IReadOnlyList<AudioQualityAssessmentResult>>>? measureBatch = null,
+    string measurementLocation = "Server")
 {
     public async Task<SoundtrackQualityReport?> ObserveAsync(bool enabled, bool reencoded, bool healthy, bool preview,
         string source, string candidate, string sourceProbe, string candidateProbe, SoundtrackQualityRequest request,
@@ -17,7 +19,12 @@ public sealed class SoundtrackQualityObservationService(
         if (plan.Error is { } error) return new([], error);
         if (remote is not null)
             return Validate(remote.SoundtrackQuality, plan, remote.SourceSha256, remote.CandidateSha256);
-        if (measure is null) return new([], "The audio assessment tool is unavailable on this host.");
+        if (measure is null && measureBatch is null) return new([], "The audio assessment tool is unavailable on this host.");
+        IReadOnlyList<AudioQualityAssessmentResult>? batch;
+        try { batch = measureBatch is null ? null : await measureBatch(source, candidate, plan.Tracks, token); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        { return new([], "Audio quality could not be measured: " + ex.Message); }
+        if (batch is not null && batch.Count != plan.Tracks.Count) return new([], "The host did not assess every retained soundtrack.");
         var tracks = new List<SoundtrackQualityTrack>();
         string? sourceHash = null, candidateHash = null;
         foreach (var pair in plan.Tracks)
@@ -25,7 +32,7 @@ public sealed class SoundtrackQualityObservationService(
             token.ThrowIfCancellationRequested();
             try
             {
-                var result = await measure(source, candidate, pair.SourceAudioIndex, pair.CandidateAudioIndex, token);
+                var result = batch is null ? await measure!(source, candidate, pair.SourceAudioIndex, pair.CandidateAudioIndex, token) : batch[tracks.Count];
                 var evidence = RemoteAudioQualityEvidence.From(result);
                 var reason = AudioQualityReporting.Validate(evidence, result.ReferenceSha256, result.CandidateSha256, AudioQualityResultParser.SoundtrackPreparation);
                 if (result.Reference != pair.Reference || result.Candidate != pair.Candidate
@@ -35,10 +42,10 @@ public sealed class SoundtrackQualityObservationService(
                     return new([], "Media changed between soundtrack assessments; the scores cannot be used.");
                 sourceHash = result.ReferenceSha256;
                 candidateHash = result.CandidateSha256;
-                tracks.Add(new(pair, new("Server", reason is null ? evidence : null, reason)));
+                tracks.Add(new(pair, new(measurementLocation, reason is null ? evidence : null, reason)));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
-            { tracks.Add(new(pair, new("Server", null, "Audio quality could not be measured: " + ex.Message))); }
+            { tracks.Add(new(pair, new(measurementLocation, null, "Audio quality could not be measured: " + ex.Message))); }
         }
         return new(tracks, null);
     }

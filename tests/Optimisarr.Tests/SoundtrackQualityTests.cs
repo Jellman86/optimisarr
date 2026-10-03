@@ -5,6 +5,81 @@ namespace Optimisarr.Tests;
 
 public sealed class SoundtrackQualityTests
 {
+    [Fact]
+    public void Native_swift_report_matches_the_server_profiles_windows_and_evidence_contract()
+    {
+        using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "soundtrack-swift.json")));
+        var root = json.RootElement;
+        var plan = SoundtrackQualityPlanner.Plan(root.GetProperty("sourceProbe").GetString()!, root.GetProperty("candidateProbe").GetString()!, new([]));
+        Assert.Null(plan.Error);
+        var native = JsonSerializer.Deserialize<SoundtrackQualityReport>(root.GetProperty("soundtrackQuality"), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var validated = SoundtrackQualityObservationService.Validate(native, plan, root.GetProperty("sourceSha256").GetString()!, root.GetProperty("candidateSha256").GetString()!);
+        Assert.Null(validated.UnavailableReason);
+        Assert.Equal(2, validated.Tracks.Count);
+        Assert.All(validated.Tracks, t => { Assert.Null(t.Report.UnavailableReason); Assert.NotNull(t.Report.Evidence); });
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not-a-duration")]
+    [InlineData("00:60:00")]
+    public void Missing_or_invalid_track_duration_never_borrows_the_container_length(string? end)
+    {
+        var track = Track();
+        var json = Probe(track).Replace(",\"duration\":\"3\",\"tags\"", ",\"tags\"");
+        if (end is not null) json = json.Replace("\"language\":\"eng\"", $"\"DURATION\":\"{end}\",\"language\":\"eng\"");
+        Assert.Null(AudioQualityInput.ParseTrack(json, 0));
+        Assert.NotNull(AudioQualityInput.Parse(json.Replace("{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"start_time\":\"0\"},", "")));
+    }
+
+    [Theory]
+    [InlineData("libebml", "00:01:40.000000000")]
+    [InlineData("Lavf62", "00:01:40.500000000")]
+    public void Mkvtoolnix_elapsed_tags_and_ffmpeg_end_tags_agree_for_delayed_tracks(string writer, string end)
+    {
+        var json = """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0.5","channels":2,"sample_rate":"48000","tags":{"DURATION":"END","_STATISTICS_WRITING_APP":"mkvmerge v95"}}],"format":{"start_time":"0","duration":"101","tags":{"encoder":"WRITER"}}}""".Replace("END", end).Replace("WRITER", writer);
+        if (writer.StartsWith("Lavf")) json = json.Replace(",\"_STATISTICS_WRITING_APP\":\"mkvmerge v95\"", "");
+        Assert.Equal(100, AudioQualityInput.ParseTrack(json, 0)!.DurationSeconds);
+    }
+
+    [Theory]
+    [InlineData("mkvmerge v95", "00:01:40.500000000")]
+    [InlineData("mkvpropedit v95", "00:01:40.000000000")]
+    public void Conflicting_matroska_duration_writers_are_unavailable_for_delayed_tracks(string statistics, string end)
+    {
+        var json = """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0.5","channels":2,"sample_rate":"48000","tags":{"DURATION":"END","_STATISTICS_WRITING_APP":"WRITINGTOOL"}}],"format":{"start_time":"0","duration":"101","tags":{"encoder":"Lavf62"}}}""".Replace("END", end).Replace("WRITINGTOOL", statistics);
+        Assert.Null(AudioQualityInput.ParseTrack(json, 0));
+    }
+
+    [Fact]
+    public void Matroska_track_end_tags_keep_short_soundtracks_inside_their_own_timeline()
+    {
+        var source = Probe(Track(duration: "12", start: "-0.021"))
+            .Replace("\"duration\":\"12\",", "")
+            .Replace("\"duration\":\"3\"", "\"duration\":\"12\"")
+            .Replace("\"language\":\"eng\"", "\"DURATION\":\"00:00:11.520000000\",\"language\":\"eng\"")
+            .Replace("\"start_time\":\"0\"}", "\"start_time\":\"-0.021\"}");
+        var input = AudioQualityInput.ParseTrack(source, 0)!;
+        Assert.Equal(11.541, input.DurationSeconds, 6);
+        var windows = AudioQualityWindowPlanner.Plan(input.DurationSeconds, soundtrack: true);
+        Assert.True(windows.Last().StartSeconds + windows.Last().DurationSeconds < 11.541);
+        Assert.Null(AudioQualityInput.Incompatibility(input, input with { DurationSeconds = 11.541 }));
+    }
+
+    [Fact]
+    public void Long_soundtrack_windows_use_fixed_frame_boundaries_and_explicit_nonzero_leads()
+    {
+        var windows = AudioQualityWindowPlanner.Plan(600, soundtrack: true);
+        Assert.Equal(3, windows.Count);
+        Assert.Equal(90, windows.Sum(w => w.DurationSeconds));
+        Assert.Equal(599.9, windows.Last().StartSeconds + 30, 6);
+        foreach (var w in windows)
+        {
+            var args = AudioQualityCommandBuilder.Decode("a", "b", w, 1, 0.0000111, soundtrack: true).ToArray();
+            Assert.DoesNotContain("E", args[Array.IndexOf(args, "-ss") + 1]);
+            Assert.Equal("0:a:1", args[Array.IndexOf(args, "-map") + 1]);
+        }
+    }
     internal static string Probe(params object[] audio) => JsonSerializer.Serialize(new
     {
         streams = new object[] { new { codec_type = "video", codec_name = "h264", start_time = "0" } }.Concat(audio),

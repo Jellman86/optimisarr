@@ -29,7 +29,7 @@ export const ja: Messages = {
   },
   soundtrack_quality: {
     title: "音声トラック品質レポート",
-    hint: "保持して再エンコードした各モノラル／ステレオ音声トラックをZimtohrliで元音声と比較します。レポートだけでは置換を止めません。",
+    hint: "保持して再エンコードした各モノラル／ステレオ音声トラックをZimtohrliで元音声と比較します。レポートだけでは置換を止めません。レポートまたは品質チェックが有効な場合、古いサイドカーはこれらのジョブを受け取れません。",
     gate_label: "音声トラック品質を必須にする",
     gate_hint: "測定したチャンネルや区間が上限を超えた場合、または証拠がない場合は置換を止めます。実験的機能。割り当てた検証ホストで測定します。",
     maximum: "音声トラック差の上限",
@@ -675,7 +675,8 @@ export const ja: Messages = {
     status_failed: "失敗",
     status_cancelled: "キャンセル済み",
     job_failed: "タスクの処理に失敗しました",
-    failure_size_saving: 'エンコード後のファイルは設定されたサイズ削減範囲外です。',
+    failure_size_saving: '設定したサイズ条件を満たしませんでした。',
+    failure_size_prediction: 'サンプルから出力がサイズ上限を超えると予測されました。全体のエンコードは実行されていません。',
     failure_verification: "エンコードされたファイルは安全性チェックまたは品質チェックに合格しませんでした。",
     failure_container_incompatibility: "ターゲット コンテナは 1 つ以上のソース ストリームを保持できません。",
     failure_bitmap_subtitles: "画像ベースの字幕は安全に変換できません。",

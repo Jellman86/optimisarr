@@ -70,11 +70,25 @@ public struct RemoteAudioQualityEvidence: Codable, Sendable {
     let assessment: AudioQualityResult
 }
 
+public struct AudioQualityFileHashes: Equatable, Sendable {
+    let reference: String, candidate: String, metric: String, ffmpeg: String, ffprobe: String
+    static func read(source: URL, candidate: URL, metric: URL, ffmpeg: URL, ffprobe: URL,
+                     hash: @Sendable (URL) throws -> String) throws -> Self {
+        .init(reference: try hash(source), candidate: try hash(candidate), metric: try hash(metric),
+              ffmpeg: try hash(ffmpeg), ffprobe: try hash(ffprobe))
+    }
+}
+
 /// Bounded experimental observations; neither the score nor failure changes verification gates.
 public struct AudioQualityAssessment: Sendable {
     static let revision = "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3"
     let runner: any TranscodeRunner
-    public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner }
+    let hash: @Sendable (URL) throws -> String
+    public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner; self.hash = JobRunner.sha256 }
+    init(runner: any TranscodeRunner, hash: @escaping @Sendable (URL) throws -> String) { self.runner = runner; self.hash = hash }
+    static func secondsText(_ seconds: Double) -> String {
+        String(format: "%.8f", locale: Locale(identifier: "en_US_POSIX"), seconds).replacingOccurrences(of: #"\.?0+$"#, with: "", options: .regularExpression)
+    }
 
     static func plan(_ durationSeconds: Double, soundtrack: Bool = false) -> [AudioQualitySample] {
         guard durationSeconds.isFinite, durationSeconds >= 1, durationSeconds <= 86400 else { return [] }
@@ -105,8 +119,25 @@ public struct AudioQualityAssessment: Sendable {
         if let named = audio[selected]["channel_layout"] as? String, !named.isEmpty && named != layout { return nil }
         let streamDuration = audio[selected]["duration"] as? String
         let formatDuration = (object["format"] as? [String: Any])?["duration"] as? String
-        guard let text = streamDuration == nil || streamDuration == "N/A" ? formatDuration : streamDuration,
-              let seconds = Double(text), !plan(seconds).isEmpty else { return nil }
+        var duration = streamDuration.flatMap(Double.init)
+        if duration == nil, audioIndex != nil,
+           let tags = audio[selected]["tags"] as? [String: Any],
+           let endText = tags.first(where: { $0.key.uppercased() == "DURATION" })?.value as? String {
+            let parts = endText.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 3, let hours = Int(parts[0]), hours >= 0,
+                  let minutes = Int(parts[1]), (0...59).contains(minutes),
+                  let seconds = Double(parts[2]), (0..<60).contains(seconds),
+                  let start = Double(audio[selected]["start_time"] as? String ?? "N/A") else { return nil }
+            let statistics = (tags.first(where: { $0.key.uppercased() == "_STATISTICS_WRITING_APP" })?.value as? String ?? "").lowercased()
+            let formatTags = (object["format"] as? [String: Any])?["tags"] as? [String: Any]
+            let encoder = (formatTags?.first(where: { $0.key.lowercased() == "encoder" })?.value as? String ?? "").lowercased()
+            let lengthTag = statistics.hasPrefix("mkvmerge") || statistics.hasPrefix("mkvpropedit")
+            // A later tag edit and stale copied statistics have indistinguishable provenance.
+            guard !(lengthTag && encoder.hasPrefix("lavf") && start != 0) else { return nil }
+            duration = Double(hours) * 3600 + Double(minutes) * 60 + seconds - (lengthTag ? 0 : start)
+        }
+        if duration == nil, audioIndex == nil { duration = formatDuration.flatMap(Double.init) }
+        guard let seconds = duration, !plan(seconds).isEmpty else { return nil }
         var lead = 0.0
         if audioIndex != nil, let video = streams.first(where: { $0["codec_type"] as? String == "video"
             && ($0["disposition"] as? [String: Any])?["attached_pic"] as? Int != 1 }) {
@@ -133,7 +164,7 @@ public struct AudioQualityAssessment: Sendable {
     }
 
     public func measure(ffmpeg: URL, ffprobe: URL, metric: URL, source: URL, candidate: URL,
-                        sourceProbe: String, candidateProbe: String, scratch: URL, sourceAudioIndex: Int? = nil, candidateAudioIndex: Int? = nil) async throws -> RemoteAudioQualityEvidence {
+                        sourceProbe: String, candidateProbe: String, scratch: URL, sourceAudioIndex: Int? = nil, candidateAudioIndex: Int? = nil, sharedHashes: AudioQualityFileHashes? = nil) async throws -> RemoteAudioQualityEvidence {
         try Task.checkCancellation()
         let started = Date(), owned = scratch.appendingPathComponent("audio-assessment-" + UUID().uuidString)
         var result = AudioQualityResult()
@@ -149,11 +180,10 @@ public struct AudioQualityAssessment: Sendable {
                   abs(reference.durationSeconds - output.durationSeconds) <= 0.1 else {
                 throw Failure("The candidate's channels or duration do not match the reference.")
             }
-            result.referenceSha256 = try JobRunner.sha256(of: source)
-            result.candidateSha256 = try JobRunner.sha256(of: candidate)
-            result.metricSha256 = try JobRunner.sha256(of: metric)
-            result.ffmpegSha256 = try JobRunner.sha256(of: ffmpeg)
-            result.ffprobeSha256 = try JobRunner.sha256(of: ffprobe)
+            let hashes = try sharedHashes ?? AudioQualityFileHashes.read(source: source, candidate: candidate,
+                metric: metric, ffmpeg: ffmpeg, ffprobe: ffprobe, hash: hash)
+            result.referenceSha256 = hashes.reference; result.candidateSha256 = hashes.candidate
+            result.metricSha256 = hashes.metric; result.ffmpegSha256 = hashes.ffmpeg; result.ffprobeSha256 = hashes.ffprobe
             try FileManager.default.createDirectory(at: owned, withIntermediateDirectories: false,
                 attributes: [.posixPermissions: 0o700])
             for window in Self.plan(min(reference.durationSeconds, output.durationSeconds), soundtrack: sourceAudioIndex != nil) {
@@ -161,10 +191,10 @@ public struct AudioQualityAssessment: Sendable {
                 for (input, pcm, audioIndex, lead) in [(source, a, sourceAudioIndex ?? 0, reference.containerLeadSeconds), (candidate, b, candidateAudioIndex ?? 0, output.containerLeadSeconds)] {
                     let seek = window.startSeconds + lead
                     let soundtrack = sourceAudioIndex != nil
-                    let seekArgs = soundtrack && seek == 0 ? [] : ["-ss", String(seek)]
+                    let seekArgs = soundtrack && seek == 0 ? [] : ["-ss", Self.secondsText(seek)]
                     let filterArgs = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(Int((window.durationSeconds * 48000).rounded()))"] : []
                     let decoded = try await run(ffmpeg, ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-                        ] + seekArgs + ["-i", input.path, "-map", "0:a:\(audioIndex)", "-t", String(window.durationSeconds + (soundtrack ? 0.1 : 0)),
+                        ] + seekArgs + ["-i", input.path, "-map", "0:a:\(audioIndex)", "-t", Self.secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0)),
                         "-vn", "-sn", "-dn", "-ar", "48000"] + filterArgs + ["-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", pcm.path])
                     guard decoded.exitCode == 0 else { throw Failure("Audio preparation failed: \(decoded.stderr)") }
                     let bytes = try size(pcm), stride = Int64(reference.channels * 4)
@@ -189,11 +219,8 @@ public struct AudioQualityAssessment: Sendable {
                 result.windows.append(.init(window: window, distances: distances))
                 for file in [a, b, report] { try FileManager.default.removeItem(at: file) }
             }
-            guard try JobRunner.sha256(of: source) == result.referenceSha256,
-                  try JobRunner.sha256(of: candidate) == result.candidateSha256,
-                  try JobRunner.sha256(of: metric) == result.metricSha256,
-                  try JobRunner.sha256(of: ffmpeg) == result.ffmpegSha256,
-                  try JobRunner.sha256(of: ffprobe) == result.ffprobeSha256 else {
+            if try sharedHashes == nil && AudioQualityFileHashes.read(source: source, candidate: candidate,
+                metric: metric, ffmpeg: ffmpeg, ffprobe: ffprobe, hash: hash) != hashes {
                 throw Failure("A media file or tool changed during assessment.")
             }
             result.measured = true

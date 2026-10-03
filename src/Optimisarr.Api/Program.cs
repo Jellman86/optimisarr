@@ -90,7 +90,7 @@ builder.Services.AddSingleton(_ =>
 {
     var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY"),
         Path.Combine(Path.GetTempPath(), "optimisarr-soundtrack-quality"));
-    return new SoundtrackQualityObservationService(service is null ? null : service.MeasureTrackAsync);
+    return new SoundtrackQualityObservationService(null, service is null ? null : service.MeasureTracksAsync);
 });
 builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();

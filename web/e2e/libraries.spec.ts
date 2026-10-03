@@ -770,3 +770,19 @@ for (const width of [375, 1440]) {
     })
   }
 }
+
+
+test('disabling the soundtrack gate discards an invalid unsaved custom limit', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/verify')
+  const gate = page.getByRole('checkbox', { name: 'Require soundtrack quality', exact: true })
+  await gate.check()
+  await page.getByRole('button', { name: 'Set the limit in Advanced verification', exact: true }).click()
+  await page.getByRole('spinbutton', { name: 'Maximum soundtrack difference', exact: true }).fill('2')
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await stage(page, 'Verify').click()
+  await gate.uncheck()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ soundtrackQualityGateEnabled: false, maximumSoundtrackQualityDistance: null })
+})
