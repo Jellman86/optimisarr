@@ -90,13 +90,14 @@ the installed native anchoring check. Interactive UAC pairing remains a separate
 
 ## Distribution status
 
-This MSI and tray apphost are **unsigned development artifacts**. Smart App Control or enterprise
-policy may reject an unsigned executable; do not weaken those protections. Public distribution
-as a signed installer must follow the public [Code signing policy](../../../CODE_SIGNING_POLICY.md).
-The SignPath Foundation application and production workflow are not complete; this link does not
-mean the current download is signed. An explicitly labelled unsigned preview may
-be published only after its exact corresponding-source bundle/hosting for the pinned GPL FFmpeg
-build is available. Upstream source/build links and runtime licences are included in the package;
+The MSI, tray apphost and project-owned managed assemblies are **unsigned development artifacts**.
+Smart App Control or enterprise policy may reject an unsigned executable or assembly; do not
+weaken those protections. Public distribution as a signed installer must follow the public [Code signing policy](../../../CODE_SIGNING_POLICY.md).
+The SignPath Foundation application was declined because the project did not have enough
+established reputation. Signing is not pending; the policy describes requirements for a future
+signing arrangement and does not mean the current download is signed. An explicitly labelled
+unsigned preview may be published only after its exact corresponding-source bundle/hosting for
+the pinned GPL FFmpeg build is available. Upstream source/build links and runtime licences are included in the package;
 those links alone do not establish that the corresponding sources have been supplied.
 The installer does not change the server’s worker-placement or strict verification policy.
 
