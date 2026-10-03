@@ -10,6 +10,29 @@ import re
 from .core import Blocked, command, require, save, sha256, statistics
 
 
+def validate_uneven_timing_fixture(probe, times):
+    """Prove the fixture hides close frame pairs behind apparently constant rate metadata."""
+    pictures = [stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"
+                and not stream.get("disposition", {}).get("attached_pic")]
+    require(pictures, "Uneven timing fixture has no moving picture stream")
+    try:
+        nominal = Fraction(pictures[0].get("r_frame_rate", "0/1"))
+        average = Fraction(pictures[0].get("avg_frame_rate", "0/1"))
+    except (ValueError, ZeroDivisionError, TypeError):
+        raise AssertionError("Uneven timing fixture has invalid rate metadata") from None
+    require(0 < nominal <= 240 and nominal == average,
+            "Uneven timing fixture no longer appears constant rate")
+    require(len(times) >= 4 and all(math.isfinite(value) for value in times),
+            "Uneven timing fixture lacks complete finite picture timestamps")
+    gaps = [after - before for before, after in zip(times, times[1:])]
+    require(all(gap > 0 for gap in gaps), "Uneven timing fixture has unordered pictures")
+    period = 1 / float(nominal)
+    require(min(gaps) < period / 2 and max(gaps) > max(1, period * 1.5),
+            "Uneven timing fixture no longer contains tight frame pairs and a long pause")
+    return {"frames": len(times), "declaredFramesPerSecond": float(nominal),
+            "minimumGapSeconds": min(gaps), "maximumGapSeconds": max(gaps)}
+
+
 def validate_soundtrack_report(report, source_indexes, location, limit, *, passes=True):
     """Check retained-track coverage and every channel independently of the server verdict."""
     require(report and not report.get("unavailableReason"), "Soundtrack assessment unavailable")
@@ -132,7 +155,7 @@ class Tools:
             mapping = ["-map", "0:v:0", "-map", "0:a?"]
             filters = ["-vf", "scale=640:-2,format=yuv420p"]
         else:
-            rate = "24000/1001" if variant == "fractional" else "12"
+            rate = "24000/1001" if variant == "fractional" else "24" if variant == "uneven" else "12"
             inputs = ["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate={rate}:duration={seconds}",
                       "-f", "lavfi", "-i", f"sine=frequency=880:sample_rate=48000:duration={seconds}"]
             mapping = ["-map", "0:v", "-map", "1:a"]
@@ -143,25 +166,30 @@ class Tools:
                 filters = ["-output_ts_offset", "2.5"]
             elif variant == "ten-bit":
                 filters = ["-pix_fmt", "yuv420p10le"]
-            elif variant == "fractional":
-                # A half-frame lead rounded to milliseconds reproduces collisions when a
-                # nominally constant source is rounded again to the encoder's frame timebase.
-                # A cue at zero pins the container start without introducing cross-container
-                # audio priming/padding into this picture-timestamp regression.
+            elif variant in ("fractional", "uneven"):
+                # Millisecond frame pairs and a long pause exercise reordered packet durations;
+                # the fractional variant instead stresses rounding of a half-frame lead.
+                # A cue at zero pins the origin without audio priming/padding differences.
                 cue = path.with_suffix(".srt")
                 cue.write_text("1\n00:00:00,000 --> 00:00:00,100\nTimestamp reference\n", encoding="utf-8")
                 inputs = inputs[:4] + ["-i", self.path(cue)]
                 mapping = ["-map", "0:v", "-map", "1:s"]
-                filters = ["-vf", "settb=1/1000,setpts=PTS+21", "-fps_mode", "passthrough",
+                pause_frame, pause_ms = int(seconds * 6), int(seconds * 500)
+                timing = ("PTS+21" if variant == "fractional" else
+                          f"floor(N/2)*84+mod(N\\,2)*1+gte(N\\,{pause_frame})*{pause_ms}")
+                filters = ["-vf", "settb=1/1000,setpts=" + timing, "-fps_mode", "passthrough",
                            "-enc_time_base:v:0", "1/1000"]
         codecs = (["-c:v", "libx264", "-crf", "3", "-preset", "fast", "-bf", "3", "-c:s", "srt",
                    "-metadata:s:s:0", "language=eng"]
-                  if variant == "fractional" else ["-c:v", "ffv1", "-level", "3", "-c:a", "flac"])
+                  if variant in ("fractional", "uneven") else ["-c:v", "ffv1", "-level", "3", "-c:a", "flac"])
         self.encode(inputs + mapping + filters + ["-t", str(seconds), *codecs,
                     "-metadata:s:a:0", "language=eng", self.path(path)])
-        return {"path": str(path), "sha256": sha256(path), "variant": variant,
+        evidence = {"path": str(path), "sha256": sha256(path), "variant": variant,
                 "seconds": seconds, "sourceSha256": sha256(source) if source else None,
                 "start": start, "probe": self.probe(path, True)}
+        if variant == "uneven":
+            evidence["timing"] = validate_uneven_timing_fixture(evidence["probe"], self.frame_times(path))
+        return evidence
 
     def alac_fixture(self, path, source, *, mixed=False):
         path = Path(path)

@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Duration checks use the last presented picture and its duration. A long decode span on an earlier NVIDIA packet no longer makes a complete video appear too long. Container and worker checks agree; genuinely extended final frames and oversized outputs still fail.
+
 - Switching a library's auto-accept setting off during encoding or replacement preparation now leaves its original and verified output untouched. Automatic replacement rechecks the saved setting before moving files.
 - Adaptive quality samples that predict an output above the library’s size limit now fail the job before the full encode. The failure reason clearly identifies the estimate. Existing size-review holds become failures on startup; originals remain unchanged. Container and worker paths behave alike.
 - Soundtrack assessment uses per-track duration, shares file identity checks across retained tracks, and formats tiny Mac seek offsets consistently. Long and short soundtrack workflows have additional regression coverage. Tracks without a usable duration or with conflicting Matroska duration writers are reported as unavailable and block an enabled gate.

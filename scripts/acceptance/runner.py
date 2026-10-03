@@ -679,6 +679,8 @@ class Harness:
             variants = variants or (["sdr"] if tier == "smoke" else ["sdr", "vfr", "offset", "ten-bit"])
             if regression == "fractional-timing" and "fractional" not in variants:
                 variants = [*variants, "fractional"]
+            if regression == "uneven-timing" and "uneven" not in variants:
+                variants = [*variants, "uneven"]
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}
@@ -734,7 +736,7 @@ class Harness:
                     self.report.case(f"worker-{worker['id']}-audio-downmix", lambda w=worker: self.audio("aac", w, downmix=True))
                     self.report.case(f"worker-{worker['id']}-audio-artwork", lambda w=worker: self.audio("mp3", w, artwork=True))
                 return self.report.exit_code
-            if regression in ("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy"):
+            if regression in ("subtitle-mux", "fractional-timing", "uneven-timing", "subtitle-overlap", "alac-copy"):
                 def regression_case(name, encoder, worker=None):
                     if regression == "subtitle-mux":
                         return self.subtitle_mux(name, primary, encoder, worker)
@@ -742,9 +744,13 @@ class Harness:
                         return self.subtitle_overlap(name, primary, encoder, worker)
                     if regression == "alac-copy":
                         return self.alac_copy(name, primary, encoder, worker)
+                    if regression == "uneven-timing":
+                        require("uneven" in fixtures, "Uneven timestamp fixture could not be generated")
+                        return self.video(name, fixtures["uneven"], encoder, worker, container="mp4")
                     require("fractional" in fixtures, "Fractional timestamp fixture could not be generated")
                     return self.video(name, fixtures["fractional"], encoder, worker, container="mp4")
                 suffix = {"subtitle-mux": "mov-text-to-mkv", "fractional-timing": "fractional-to-mp4",
+                          "uneven-timing": "uneven-to-mp4",
                           "subtitle-overlap": "overlapping-cues-to-mkv", "alac-copy": "alac-to-mkv"}[regression]
                 for encoder in encoders:
                     name = f"local-{encoder}-{suffix}"

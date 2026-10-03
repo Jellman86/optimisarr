@@ -20,6 +20,26 @@ def frames(values):
 
 class AcceptanceTests(unittest.TestCase):
 
+    def test_uneven_timing_fixture_requires_misleading_rates_and_tight_frame_pairs(self):
+        from acceptance.media import validate_uneven_timing_fixture
+        probe = {"streams": [{"codec_type": "video", "r_frame_rate": "24/1", "avg_frame_rate": "24/1"}]}
+        irregular = [0, .001, 8.084, 8.085, 8.168, 8.169]
+        result = validate_uneven_timing_fixture(probe, irregular)
+        self.assertEqual(6, result["frames"])
+        self.assertAlmostEqual(.001, result["minimumGapSeconds"])
+        self.assertAlmostEqual(8.083, result["maximumGapSeconds"])
+        for changed in [
+            {"streams": [{"codec_type": "video", "r_frame_rate": "24/1", "avg_frame_rate": "12/1"}]},
+            {"streams": [{"codec_type": "video", "r_frame_rate": "0/0", "avg_frame_rate": "24/1"}]},
+            {"streams": []},
+        ]:
+            with self.assertRaises(AssertionError):
+                validate_uneven_timing_fixture(changed, irregular)
+        for changed in [[i / 24 for i in range(6)], [0, .001, .042, .043, .084, .085],
+                        [0, .001, .084, float("nan"), .168, .169], [0, .001, .084, .084, .168, .169], [], [0]]:
+            with self.assertRaises(AssertionError):
+                validate_uneven_timing_fixture(probe, changed)
+
     def test_soundtrack_report_checks_each_channel_track_mapping_and_measurement_host(self):
         def track(index, distance=0.01):
             return {"track": {"sourceAudioIndex": index, "candidateAudioIndex": index, "language": "eng"},
