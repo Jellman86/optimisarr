@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Switching a library's auto-accept setting off during encoding or replacement preparation now leaves its original and verified output untouched. Automatic replacement rechecks the saved setting before moving files.
 - Adaptive quality samples that predict an output above the library’s size limit now fail the job before the full encode. The failure reason clearly identifies the estimate. Existing size-review holds become failures on startup; originals remain unchanged. Container and worker paths behave alike.
 - Soundtrack assessment uses per-track duration, shares file identity checks across retained tracks, and formats tiny Mac seek offsets consistently. Long and short soundtrack workflows have additional regression coverage. Tracks without a usable duration or with conflicting Matroska duration writers are reported as unavailable and block an enabled gate.
 - macOS bundled FFmpeg includes the upstream Opus parser EOF fix, preventing a false corruption report for valid Opus soundtracks.
@@ -14,6 +15,7 @@
 
 ### Added
 
+- Every library type has **Auto-accept passed jobs** under **Schedule & replace**. It is off by default. Enabling it requires a risk acknowledgement and a **Do you really, really mean it?** confirmation with a gentle red pulse that respects reduced-motion settings. Originals stay in Quarantine; approval or retention cleanup still removes rollback ability. Existing saved choices are preserved.
 - Video libraries can opt into **Soundtrack quality report** and **Require soundtrack quality**
   separately, with an explicit maximum difference in Advanced verification. Reports
   cover every retained re-encoded mono/stereo track, up to eight tracks and 90 seconds each.

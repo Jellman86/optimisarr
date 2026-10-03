@@ -1,6 +1,17 @@
 import type { Messages } from './en'
 
 export const pt: Messages = {
+  autoAccept: {
+    offByDefault: "Desativado por predefinição",
+    warning: "Definições incorretas podem danificar ficheiros, reduzir a qualidade ou remover faixas e metadados. As verificações aprovadas refletem apenas as que ativou. Teste alguns ficheiros e mantenha uma cópia de segurança separada.",
+    confirmTitle: "Quer mesmo, mesmo ativar isto?",
+    confirmIntro: "Cada trabalho que passar as suas verificações ativadas substituirá automaticamente o seu ficheiro na biblioteca. Inclui os trabalhos já prontos para substituir, com as verificações da sua tentativa concluída.",
+    quarantine: "Os originais ficam na Quarentena até serem aprovados ou eliminados no fim do prazo de retenção. Após a eliminação, não é possível restaurá-los.",
+    acknowledge: "Compreendo que definições incorretas podem danificar os meus ficheiros multimédia.",
+    saveNotice: "Esta alteração é aplicada quando guardar a biblioteca.",
+    cancel: "Manter desativado",
+    enable: "Sim, mesmo. Ativar aceitação automática",
+  },
   duplicates: {
     title: "Cópias exatas",
     subtitle: "Encontre ficheiros com bytes idênticos numa biblioteca.",
@@ -1191,8 +1202,8 @@ export const pt: Messages = {
     window_start: "Início da janela",
     window_end: "Fim da janela",
     window_hint: "Tempos iguais = qualquer momento. Os arquivos elegíveis são enfileirados e executados dentro da janela.",
-    auto_replace_label: "Substitua automaticamente quando verificado",
-    auto_replace_hint: "Quando uma tarefa de processamento passar por todos os portões de verificação, substitua o original sem esperar por uma substituição manual. O original ainda é colocado em quarentena primeiro e pode ser revertido (mantido durante o período de retenção de quarentena). Desativado por padrão.",
+    auto_replace_label: "Aceitar automaticamente os trabalhos aprovados",
+    auto_replace_hint: "Quando um trabalho passar todas as verificações ativadas, substituir automaticamente o seu ficheiro na biblioteca. Inclui os trabalhos já prontos para substituir. Os originais ficam na Quarentena. Desativado por predefinição.",
     advanced: "Opções avançadas",
     advanced_hint: "codec, qualidade, limites",
     video: "Vídeo",
@@ -1357,9 +1368,9 @@ export const pt: Messages = {
     adaptive_quantisation: "Quantização adaptativa mais forte",
     adaptive_quantisation_tip: "Gastar mais bits onde o olho percebe — gradientes suaves e cenas escuras — e menos no resto. Expresso como aq-mode no x264/x265, como AQ espacial e temporal no NVENC e como variance boost no SVT-AV1.",
     completed_output: "Saída concluída",
-    completed_output_desc: "O que acontece com um arquivo finalizado. Seus originais nunca são tocados de qualquer maneira.",
+    completed_output_desc: "Mover os ficheiros concluídos deixa os originais no seu lugar. Substituir ficheiros da biblioteca move primeiro os seus originais para a Quarentena.",
     move_label: "Mova a saída para uma pasta de destino em vez de substituí-la",
-    move_hint: "Desligado: as saídas permanecem no diretório de trabalho como “prontas para substituir”. Ativado: o arquivo finalizado é movido para a pasta abaixo — útil para testes sem copiar novamente os arquivos de origem.",
+    move_hint: "Desativado: as saídas verificadas aguardam substituição manual, exceto se a aceitação automática estiver ativada. Ativado: as saídas vão para a pasta abaixo e os originais ficam no seu lugar. A aceitação automática não os substitui.",
     target_folder: "Pasta de destino",
     overwrite_label: "Substituir um arquivo convertido existente",
     overwrite_hint: "Ativado: se um arquivo convertido já estiver na pasta de destino, substitua-o. Desligado (padrão): a tarefa de processamento falha por um motivo claro em vez de ser substituída, deixando a nova saída no diretório de trabalho. Seus originais nunca são afetados de qualquer maneira.",

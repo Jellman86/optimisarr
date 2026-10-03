@@ -92,8 +92,8 @@ no support SLA or promise of a release schedule.
   work-disk safety pause. The only global scheduling setting is the library scan
   interval; *when* work runs is set per library (see auto-optimise below).
 - Per-library **auto-optimise** windows continuously queue newly eligible files;
-  opt-in **auto-replace** promotes only fully verified jobs, still quarantining
-  the original first so rollback remains available.
+  opt-in **Auto-accept passed jobs** promotes only fully verified jobs after a risk
+  confirmation, still quarantining the original first so rollback remains available.
 - **Optimisation presets** per library (Compatibility H.264 / Balanced HEVC /
   Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR tone-mapped
   to SDR and AAC 96 kbps audio downmixed to stereo. Optionally **re-encode oversized files already

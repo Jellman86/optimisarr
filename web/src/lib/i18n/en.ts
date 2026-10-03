@@ -3,6 +3,17 @@
 // keys — a missing or misspelled key fails `npm run check` (the CI completeness gate).
 // Use `{token}` placeholders for interpolation; resolve them with `t(...)`.
 export const en = {
+  autoAccept: {
+    offByDefault: "Off by default",
+    warning: "Misconfigured settings can leave you with broken files, lost quality or missing tracks and metadata. Passing checks only reflects the checks you enabled. Test a few files and keep a separate backup.",
+    confirmTitle: "Do you really, really mean it?",
+    confirmIntro: "Every job that passes its enabled checks will replace its library file automatically. Jobs already ready to replace are included, using the checks from their completed attempt.",
+    quarantine: "Originals stay in Quarantine until you approve them or cleanup retention deletes them. Once deleted, rollback is unavailable.",
+    acknowledge: "I understand that incorrect settings can damage my media.",
+    saveNotice: "This change takes effect when you save the library.",
+    cancel: "Keep it off",
+    enable: "Yes, really. Enable auto-accept",
+  },
   duplicates: {
     title: "Exact copies",
     subtitle: "Find files with identical bytes in one library.",
@@ -1380,8 +1391,8 @@ export const en = {
     window_start: 'Window start',
     window_end: 'Window end',
     window_hint: 'Equal times = any time. Eligible files are queued and run while inside the window.',
-    auto_replace_label: 'Replace automatically when verified',
-    auto_replace_hint: 'When a job passes every verification gate, replace the original without waiting for a manual Replace. The original is still quarantined first and can be rolled back during the cleanup-retention period. Off by default.',
+    auto_replace_label: "Auto-accept passed jobs",
+    auto_replace_hint: "When a job passes every enabled check, replace its library file automatically. Jobs already ready to replace are included. Originals stay in Quarantine. Off by default.",
     advanced: 'Advanced options',
     advanced_hint: 'codec, quality, limits',
     video: 'Video',
@@ -1547,9 +1558,9 @@ export const en = {
     adaptive_quantisation: "Stronger adaptive quantisation",
     adaptive_quantisation_tip: "Spend more bits where the eye notices — flat gradients and dark scenes — and fewer elsewhere. Expressed as aq-mode on x264/x265, as spatial and temporal AQ on NVENC, and as variance boost on SVT-AV1.",
     completed_output: 'Completed output',
-    completed_output_desc: 'What happens to a finished file. Your originals are never touched either way.',
+    completed_output_desc: "Moving completed outputs leaves originals in place. Replacing library files first moves their originals to Quarantine.",
     move_label: 'Move output to a target folder instead of replacing',
-    move_hint: 'Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder below — useful for testing without re-copying source files.',
+    move_hint: "Off: verified outputs wait for manual replacement, unless auto-accept is enabled. On: completed outputs move to the folder below and originals stay in place. Auto-accept does not replace them.",
     target_folder: 'Target folder',
     overwrite_label: 'Overwrite an existing converted file',
     overwrite_hint: 'On: if a converted file is already in the target folder, replace it. Off (default): the job fails with a clear reason instead of overwriting, leaving the new output in the work directory. Your originals are never affected either way.',

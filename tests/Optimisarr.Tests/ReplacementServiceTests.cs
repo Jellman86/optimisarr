@@ -5,12 +5,137 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Domain;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
 
 public sealed class ReplacementServiceTests : IDisposable
 {
+    [Theory]
+    [InlineData(MediaType.Film, ".avi", ".mkv")]
+    [InlineData(MediaType.Tv, ".avi", ".mkv")]
+    [InlineData(MediaType.Music, ".wav", ".opus")]
+    [InlineData(MediaType.Photo, ".png", ".webp")]
+    [InlineData(MediaType.Other, ".avi", ".mkv")]
+    public async Task Automatic_acceptance_checks_current_opt_in_and_keeps_a_rollback_for_every_library_type(
+        MediaType type, string originalExtension, string outputExtension)
+    {
+        var (original, output) = WriteFiles("Auto" + originalExtension, "Auto" + outputExtension, "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, type, autoReplace: false);
+        await using var db = new OptimisarrDbContext(_options);
+        var service = NewService(db);
+        var disabled = await service.ReplaceAutomaticallyAsync(id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Deferred, disabled.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+        Assert.Empty(await db.Replacements.ToListAsync());
+        await db.Libraries.ExecuteUpdateAsync(setters => setters.SetProperty(l => l.AutoReplace, true));
+        var accepted = await service.ReplaceAutomaticallyAsync(id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Success, accepted.Kind);
+        Assert.Equal(ReplacementStatus.Replaced, accepted.Replacement!.Status);
+        Assert.Null(accepted.Replacement.PurgedAt);
+        Assert.Equal("ORIGINAL", File.ReadAllText(accepted.Replacement.QuarantinePath));
+        Assert.Equal("VERIFIED", File.ReadAllText(accepted.Replacement.FinalPath));
+        var rolledBack = await service.RollbackAsync(accepted.Replacement.Id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Success, rolledBack.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+    }
+
+    [Fact]
+    public async Task Switching_auto_accept_off_after_a_job_loaded_the_library_keeps_both_files_untouched()
+    {
+        var (original, output) = WriteFiles("Switch.avi", "Switch.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await using var db = new OptimisarrDbContext(_options);
+        var cached = await db.Libraries.SingleAsync();
+        Assert.True(cached.AutoReplace);
+        await using (var changed = new OptimisarrDbContext(_options))
+            await changed.Libraries.ExecuteUpdateAsync(setters => setters.SetProperty(l => l.AutoReplace, false));
+        var result = await NewService(db).ReplaceAutomaticallyAsync(id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Deferred, result.Kind);
+        Assert.Empty(await db.Replacements.ToListAsync());
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
+    [Fact]
+    public async Task Switching_auto_accept_off_during_preparation_prevents_the_first_move()
+    {
+        var (original, output) = WriteFiles("Switch.avi", "Switch.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await using var db = new OptimisarrDbContext(_options);
+        var result = await NewService(db, canMoveAtomically: (_, _) =>
+        {
+            using var changed = new OptimisarrDbContext(_options);
+            changed.Libraries.ExecuteUpdate(setters => setters.SetProperty(l => l.AutoReplace, false));
+            return true;
+        }).ReplaceAutomaticallyAsync(id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Deferred, result.Kind);
+        Assert.Empty(await db.Replacements.ToListAsync());
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
+    private async Task AttachLibraryAsync(int jobId, MediaType type, bool autoReplace)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Optimisarr.Data.Library { Name = "Auto acceptance", Path = _dataDir, MediaType = type, AutoReplace = autoReplace };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        job.LibraryId = library.Id;
+        job.MediaFile!.LibraryId = library.Id;
+        await db.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    public async Task Automatic_acceptance_never_moves_files_without_a_passing_verdict(bool? passed)
+    {
+        var (original, output) = WriteFiles("Unchecked.avi", "Unchecked.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await using var db = new OptimisarrDbContext(_options);
+        await db.Jobs.ExecuteUpdateAsync(setters => setters.SetProperty(j => j.VerificationPassed, passed));
+        var result = await NewService(db).ReplaceAutomaticallyAsync(id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Empty(await db.Replacements.ToListAsync());
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
+    [Fact]
+    public async Task Automatic_acceptance_respects_dry_run_even_when_the_library_is_opted_in()
+    {
+        var (original, output) = WriteFiles("Dry.avi", "Dry.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await SetDryRunModeAsync(true);
+        await using var db = new OptimisarrDbContext(_options);
+        var result = await NewService(db).ReplaceAutomaticallyAsync(id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Empty(await db.Replacements.ToListAsync());
+        Assert.Equal("ORIGINAL", File.ReadAllText(original));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
+    [Fact]
+    public async Task Manual_replacement_remains_available_when_auto_accept_is_off()
+    {
+        var (original, output) = WriteFiles("Manual.avi", "Manual.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: false);
+        await using var db = new OptimisarrDbContext(_options);
+        var result = await NewService(db).ReplaceAsync(id, CancellationToken.None);
+        Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(result.Replacement!.QuarantinePath));
+        Assert.Equal("VERIFIED", File.ReadAllText(result.Replacement.FinalPath));
+    }
 
     [Fact]
     public async Task Recovery_preserves_both_files_when_quarantine_identity_changed()

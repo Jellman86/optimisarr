@@ -3,6 +3,17 @@ import type { Messages } from './en'
 // German. Typed as `Messages`, so it must define exactly the English key set —
 // omitting or misnaming a key fails `npm run check`.
 export const de: Messages = {
+  autoAccept: {
+    offByDefault: "Standardmäßig aus",
+    warning: "Falsche Einstellungen können Dateien beschädigen, die Qualität mindern oder Spuren und Metadaten entfernen. Bestandene Prüfungen gelten nur für aktivierte Prüfungen. Testen Sie einige Dateien und behalten Sie eine separate Sicherung.",
+    confirmTitle: "Wirklich, wirklich sicher?",
+    confirmIntro: "Jeder Auftrag, der seine aktivierten Prüfungen besteht, ersetzt seine Bibliotheksdatei automatisch. Bereits zum Austausch bereite Aufträge sind eingeschlossen, mit den Prüfungen ihres abgeschlossenen Versuchs.",
+    quarantine: "Originale bleiben in Quarantäne, bis Sie sie freigeben oder die Aufbewahrungsfrist sie löscht. Nach dem Löschen ist keine Wiederherstellung möglich.",
+    acknowledge: "Ich verstehe, dass falsche Einstellungen meine Medien beschädigen können.",
+    saveNotice: "Die Änderung gilt erst nach dem Speichern der Bibliothek.",
+    cancel: "Ausgeschaltet lassen",
+    enable: "Ja, wirklich. Automatische Übernahme aktivieren",
+  },
   duplicates: {
     title: "Exakte Kopien",
     subtitle: "Dateien mit identischen Bytes in einer Bibliothek finden.",
@@ -1243,8 +1254,8 @@ export const de: Messages = {
     window_start: 'Fensterbeginn',
     window_end: 'Fensterende',
     window_hint: 'Gleiche Zeiten = jederzeit. Geeignete Dateien werden innerhalb des Fensters eingereiht und ausgeführt.',
-    auto_replace_label: 'Automatisch ersetzen, wenn geprüft',
-    auto_replace_hint: 'Wenn eine Aufgabe jedes Prüfungs-Gate besteht, wird das Original ersetzt, ohne auf ein manuelles Ersetzen zu warten. Das Original wird trotzdem zuerst in Quarantäne verschoben und kann rückgängig gemacht werden (für den Quarantäne-Aufbewahrungszeitraum aufbewahrt). Standardmäßig deaktiviert.',
+    auto_replace_label: "Bestandene Aufträge automatisch übernehmen",
+    auto_replace_hint: "Wenn ein Auftrag alle aktivierten Prüfungen besteht, seine Bibliotheksdatei automatisch ersetzen. Bereits zum Austausch bereite Aufträge sind eingeschlossen. Originale bleiben in Quarantäne. Standardmäßig aus.",
     advanced: 'Erweiterte Optionen',
     advanced_hint: 'Codec, Qualität, Grenzen',
     video: 'Video',
@@ -1409,9 +1420,9 @@ export const de: Messages = {
     adaptive_quantisation: "Stärkere adaptive Quantisierung",
     adaptive_quantisation_tip: "Mehr Bits dort einsetzen, wo das Auge es bemerkt — flache Verläufe und dunkle Szenen — und weniger anderswo. Umgesetzt als aq-mode bei x264/x265, als räumliche und zeitliche AQ bei NVENC und als Variance Boost bei SVT-AV1.",
     completed_output: 'Fertige Ausgabe',
-    completed_output_desc: 'Was mit einer fertigen Datei geschieht. Ihre Originale werden in beiden Fällen nie angetastet.',
+    completed_output_desc: "Beim Verschieben fertiger Ausgaben bleiben Originale an ihrem Platz. Beim Ersetzen von Bibliotheksdateien werden ihre Originale zuerst in Quarantäne verschoben.",
     move_label: 'Ausgabe in einen Zielordner verschieben, statt zu ersetzen',
-    move_hint: 'Aus: Ausgaben bleiben als „bereit zum Ersetzen“ im Arbeitsverzeichnis. Ein: die fertige Datei wird in den Ordner unten verschoben — nützlich zum Testen, ohne Quelldateien erneut zu kopieren.',
+    move_hint: "Aus: geprüfte Ausgaben warten auf manuellen Austausch, sofern die automatische Übernahme aus ist. Ein: fertige Ausgaben gehen in den Ordner unten; Originale bleiben an ihrem Platz. Die automatische Übernahme ersetzt sie nicht.",
     target_folder: 'Zielordner',
     overwrite_label: 'Eine vorhandene konvertierte Datei überschreiben',
     overwrite_hint: 'Ein: Wenn im Zielordner bereits eine konvertierte Datei liegt, wird sie ersetzt. Aus (Standard): die Aufgabe schlägt mit einem klaren Grund fehl, statt zu überschreiben, und lässt die neue Ausgabe im Arbeitsverzeichnis. Ihre Originale sind in beiden Fällen nie betroffen.',

@@ -460,10 +460,26 @@ gates and links each library to its configuration.
 
 ![Schedule view with queue dispatch reason and per-library automation windows](../images/optimisarr-schedule-dark.png)
 
-**Auto-replace** is disabled by default. When enabled for a library, a job that
-passes every verification gate is replaced automatically. The original is still
-quarantined first and remains rollback-able through **Quarantine**. Enable it
-only after validating a small manual batch for that library.
+**Auto-accept passed jobs** is off by default for every library type. Find it in
+**Libraries → Configure → Schedule & replace**. Enabling it opens **Do you really,
+really mean it?**: acknowledge the risk, confirm, then **Save** the library. Existing
+saved choices stay unchanged.
+
+Every job that passes all enabled checks replaces its library file automatically,
+including jobs already ready to replace, using the checks from their completed
+attempt. Changing verification settings does not recheck those existing outputs.
+The original goes to **Quarantine** first.
+Approval or retention cleanup permanently deletes that copy and removes rollback
+ability. Quarantine is not a backup.
+
+Incorrect settings can damage media, reduce quality, or remove tracks and metadata.
+A passing result covers only the checks you enabled. Review a small manual batch
+and keep a separate backup before enabling this option. Switching it off and saving
+leaves verified jobs ready for manual replacement; a replacement already moving files
+finishes safely. **Move output to a target folder instead of replacing** leaves originals in place
+and takes precedence over auto-accept.
+
+![Auto-accept confirmation with the risk warning, Quarantine retention notice, acknowledgement, and disabled enable button](../images/optimisarr-auto-accept-confirmation-dark.png)
 
 **Dry-run mode** is a global replacement safety switch. It leaves scanning,
 queueing, transcoding, verification, previews, and rollback available, but blocks

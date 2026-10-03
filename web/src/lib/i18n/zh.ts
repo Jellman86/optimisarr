@@ -1,6 +1,17 @@
 import type { Messages } from './en'
 
 export const zh: Messages = {
+  autoAccept: {
+    offByDefault: "默认关闭",
+    warning: "配置错误可能导致文件损坏、画质或音质下降，或丢失轨道和元数据。检查通过仅反映已启用的检查。请先测试少量文件，并保留独立备份。",
+    confirmTitle: "真的、真的要开启吗？",
+    confirmIntro: "每个通过已启用检查的任务都会自动替换其媒体库文件。已经准备好替换的任务也包括在内，使用其已完成尝试中的检查结果。",
+    quarantine: "原文件保留在隔离区，直到您批准删除，或保留期限结束后被清理。一旦删除，就无法回滚。",
+    acknowledge: "我理解错误配置可能损坏我的媒体文件。",
+    saveNotice: "保存媒体库后，此更改才会生效。",
+    cancel: "保持关闭",
+    enable: "是的，真的。启用自动接受",
+  },
   duplicates: {
     title: "完全相同的副本",
     subtitle: "在一个媒体库中查找字节完全相同的文件。",
@@ -1191,8 +1202,8 @@ export const zh: Messages = {
     window_start: "窗口启动",
     window_end: "窗端",
     window_hint: "同等时间=任意时间。符合条件的文件将在窗口内排队并运行。",
-    auto_replace_label: "验证后自动替换",
-    auto_replace_hint: "处理任务通过全部验证后，Optimisarr 会替换原始文件，无需等待手动点击“替换”。原始文件仍会先进入隔离区，并可在清理保留期内回滚。默认关闭。",
+    auto_replace_label: "自动接受通过检查的任务",
+    auto_replace_hint: "任务通过所有已启用的检查后，自动替换其媒体库文件。已经准备好替换的任务也包括在内。原文件保留在隔离区。默认关闭。",
     advanced: "高级选项",
     advanced_hint: "编解码器、质量、限制",
     video: "视频",
@@ -1357,9 +1368,9 @@ export const zh: Messages = {
     adaptive_quantisation: "更强的自适应量化",
     adaptive_quantisation_tip: "把更多码率用在人眼容易察觉的地方——平缓渐变和暗部场景——其余部分则减少。在 x264/x265 上表现为 aq-mode，在 NVENC 上表现为空间和时间 AQ，在 SVT-AV1 上表现为 variance boost。",
     completed_output: "完成输出",
-    completed_output_desc: "完成的文件会发生什么情况。无论哪种方式，您的原件都不会被触及。",
+    completed_output_desc: "移动已完成的输出会保留原文件。替换媒体库文件时，会先将原文件移入隔离区。",
     move_label: "将输出移动到目标文件夹而不是替换",
-    move_hint: "关闭：输出保留在工作目录中，状态为“可替换”。开启：完成的文件会移至下方文件夹，便于测试且无需重新复制源文件。",
+    move_hint: "关闭：已验证的输出等待手动替换，除非启用了自动接受。开启：已完成的输出移入下方文件夹，原文件保持不变。自动接受不会替换它们。",
     target_folder: "目标文件夹",
     overwrite_label: "覆盖现有的转换文件",
     overwrite_hint: "开：如果目标文件夹中已存在转换后的文件，则替换它。关闭（默认）：处理任务失败且原因明确，而不是覆盖，将新输出保留在工作目录中。无论哪种方式，您的原件都不会受到影响。",
