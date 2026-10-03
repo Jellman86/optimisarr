@@ -22,6 +22,20 @@ public sealed class AssignmentCommandTests
         AssignmentCommand.Refuse(arguments, extension);
 
     [Theory]
+    [InlineData("0.391", true)]
+    [InlineData("0", true)]
+    [InlineData("86400", true)]
+    [InlineData("86401", false)]
+    [InlineData("NaN", false)]
+    [InlineData("Infinity", false)]
+    [InlineData("-0.04", false)]
+    public void Only_a_bounded_nonnegative_input_timestamp_shift_is_accepted(string mode, bool accepted)
+    {
+        var args = Ordinary[..^1].Concat(new[] { "-itsoffset", mode, Ordinary[^1] }).ToArray();
+        Assert.Equal(accepted, Refuse(args) is null);
+    }
+
+    [Theory]
     [InlineData("tv", "mp4")]
     [InlineData("pc", "mp4")]
     [InlineData("tv", "mkv")]

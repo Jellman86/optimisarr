@@ -38,6 +38,14 @@ server has confirmed it is eligible under the configured policy — asks for wor
    bytes, applies its safety rules and owns replacement and quarantine. Nothing is replaced from
    this Mac, ever.
 
+
+Full videos keeping their original frame rate require matching source/candidate decoded-picture
+counts. Missing counts, lost pictures or added pictures block replacement. This needs protocol 9
+when strict verification is enabled. Counting adds a full decode of each file on the worker; those
+counts are reused when sampled VMAF needs frame pairing. With strict verification off, the server
+measures the counts. Update the sidecar alongside the server; existing pairing is retained.
+Previews and intentional frame-rate conversions keep their existing checks.
+
 ### Where jobs and verification run
 
 Fresh installations enable workers; existing saved choices are preserved. Check

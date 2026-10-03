@@ -159,6 +159,14 @@ This removes media verification from the server for those worker jobs. It does n
 scheduling, file transfers and hashing, database work, evidence evaluation or replacement/quarantine.
 With the toggle off, the server retains normal verification and measurement fallback.
 
+
+Full videos keeping their original frame rate require matching source/candidate decoded-picture
+counts. Missing counts, lost pictures or added pictures block replacement. This needs protocol 9
+when strict verification is enabled. Counting adds a full decode of each file on the worker; those
+counts are reused when sampled VMAF needs frame pairing. With strict verification off, the server
+measures the counts. Update the sidecar alongside the server; existing pairing is retained.
+Previews and intentional frame-rate conversions keep their existing checks.
+
 ### Manual developer installation
 
 A source-only installation is still available for debugging. It requires a machine-wide .NET 10

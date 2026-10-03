@@ -25,6 +25,18 @@ private let serverCommand: [String] = [
 
 @Suite("Assignment command contract")
 struct AssignmentCommandTests {
+    @Test("input timestamp correction is finite, nonnegative and bounded")
+    func inputTimestampCorrection() throws {
+        for value in ["0", "0.391", "86400"] {
+            _ = try AssignmentCommand.validate(["-itsoffset", value, "-i", "{{input}}", "{{output}}.mp4"], outputExtension: "mp4")
+        }
+        for value in ["NaN", "Infinity", "-0.04", "86401", "/tmp/source"] {
+            #expect(throws: AssignmentCommandError.self) {
+                try AssignmentCommand.validate(["-itsoffset", value, "-i", "{{input}}", "{{output}}.mp4"], outputExtension: "mp4")
+            }
+        }
+    }
+
     @Test("only declared primary H.264 range operations are accepted")
     func acceptsDeclaredRange() throws {
         for (range, flag) in [("tv", "0"), ("pc", "1")] {

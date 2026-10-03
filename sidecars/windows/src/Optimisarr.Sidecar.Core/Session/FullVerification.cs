@@ -51,6 +51,8 @@ public static class FullVerification
                 CandidateVideo = candidateVideo,
                 SourceAudio = sourceAudio,
                 CandidateAudio = candidateAudio,
+                SourceDecodedFrameCount = contract.CountVideoFrames ? await timestamps.CountDecodedFramesAsync(source, cancellationToken) : null,
+                CandidateDecodedFrameCount = contract.CountVideoFrames ? await timestamps.CountDecodedFramesAsync(candidate, cancellationToken) : null,
                 SourceLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(source, cancellationToken) : null,
                 CandidateLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(candidate, cancellationToken) : null,
                 AudioQuality = contract.MeasureAudioQuality && contract.Kind == MediaKind.Audio && decode.Healthy
@@ -65,7 +67,7 @@ public static class FullVerification
                 completed = completed with { SoundtrackQuality = await new SoundtrackQualityObservationService(null, service is null ? null : service.MeasureTracksAsync, "Worker")
                     .ObserveAsync(true, true, decode.Healthy, false, source, candidate, sourceProbe, candidateProbe, soundtrackRequest, null, cancellationToken) };
             }
-            var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio, contract.Kind);
+            var missing = RemoteVerificationEvidenceValidator.ValidateMeasurements(completed, contract.MeasureAudio, contract.Kind, contract.CountVideoFrames);
             return completed with { Error = missing.Count == 0 ? null : "Full verification could not complete: " + string.Join(" ", missing) };
         }
         catch (OperationCanceledException) { throw; }

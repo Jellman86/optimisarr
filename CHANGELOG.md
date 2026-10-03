@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- MP4 video encodes keep initial pictures whose reconstructed timestamps precede the source’s declared start. Full video verification also checks decoded picture counts, so silent picture loss or duplication blocks replacement even when duration and quality pass. Strict video verification that keeps the source frame rate needs protocol 9 sidecars; intentional frame-rate changes and disposable previews keep their own checks.
+
 - Duration checks use the last presented picture and its duration. A long decode span on an earlier NVIDIA packet no longer makes a complete video appear too long. Container and worker checks agree; genuinely extended final frames and oversized outputs still fail.
 
 - Switching a library's auto-accept setting off during encoding or replacement preparation now leaves its original and verified output untouched. Automatic replacement rechecks the saved setting before moving files.

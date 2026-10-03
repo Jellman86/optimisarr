@@ -81,6 +81,46 @@ calculation's 1,466.840 seconds. Fresh VMAF v1 samples passed the existing quali
 candidate was 93.1% larger and remained rejected by the size gate. Historical reports were kept
 unchanged, and no production job or original was replaced during these checks.
 
+## Initial-picture regression
+
+```bash
+python3 scripts/media_acceptance.py --image optimisarr:test \
+  --root /tmp/optimisarr-initial-pictures-001 --regression initial-pictures \
+  --local-encoder libx265 --fixture-seconds 16
+```
+
+This generates two MPEG-4 sources in VFW Matroska, with and without subtitles. Their initial
+packets carry decode timestamps without presentation timestamps, using the same demuxer path
+that exposed [issue #351](https://github.com/Jellman86/optimisarr/issues/351) with VC-1. Each source
+has 400 pictures and lossless FLAC audio starting later than its first picture. One also contains
+a timed text cue. No private source media is included in CI.
+
+A full MP4-family video re-encode keeping the original frame rate checks the fresh source start.
+For a positive declared start, a head probe reconstructs the first 128 video packet timestamps,
+with a 30-second deadline and bounded output. If pictures precede that start, a shared input
+offset corrects their origin before the encoder. Every retained track receives the same shift.
+MP4 edit lists remain enabled. Missing timing evidence stops the job before encoding.
+Other containers, remuxes, previews and intentional frame-rate conversions retain their existing
+commands. The server performs this small planning probe even in strict worker mode.
+
+Full video verification without an intentional frame-rate change now checks exact decoded-picture
+counts. Packet counts are not a substitute. Loss, duplication or unavailable counts blocks
+replacement. Counting adds one full decode of the source and candidate; sampled VMAF reuses those
+counts for frame pairing. Strict verification requests this evidence from protocol 9 sidecars,
+with no server media-tool fallback. Older sidecars can still handle compatible assignments.
+
+The regression independently checks normal-playback picture counts and every decoded timestamp,
+quality, copied audio samples, the actual audio/picture start offset and retained subtitle timing.
+It then replaces only its own fixture copy and proves byte-for-byte rollback. Source timestamp
+reconstruction is explicit; the candidate is never repaired or read with edit lists disabled.
+Both the final-container and paired Linux-worker CI gates run this regression.
+
+Hardware checks on 3 October 2026 retained all 400 generated pictures using Mac VideoToolbox,
+Windows NVIDIA NVENC, Intel QSV in the server container and libx265 in the Linux worker.
+Local and strict worker verification passed on each, with the configured quality and size gates.
+The application-level Mac checks also cover the subtitle-free source, replacement and rollback.
+These results cover the tested encoders and generated inputs, rather than every timestamp format.
+
 ## Openly licensed corpus
 
 ```bash

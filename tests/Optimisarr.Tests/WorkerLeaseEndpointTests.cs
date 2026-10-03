@@ -88,12 +88,27 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         PairWorkerWithEncoders(name, concurrency, "libx265");
 
     [Fact]
+    public async Task A_previous_worker_cannot_claim_strict_picture_retention_work()
+    {
+        await EnableRemoteWorkers(strict: true);
+        try
+        {
+            var worker = await PairWorker("Previous picture verifier", 1, ["libx265"], [], protocolMaximum: 8);
+            var job = await QueueAJob(targetContainer: "mkv");
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+            Assert.Equal(JobStatus.Queued, await StatusOf(job));
+        }
+        finally { await EnableRemoteWorkers(); }
+    }
+
+    [Fact]
     public async Task A_protocol_6_worker_cannot_claim_v1_but_can_claim_ungated_work()
     {
         await EnableRemoteWorkers();
         var worker = await PairWorker("Previous worker", 1, ["libx265"], [], protocolMaximum: 6);
-        var gated = await QueueAJob(qualityGate: true);
-        var ungated = await QueueAJob(qualityGate: false);
+        var gated = await QueueAJob(qualityGate: true, targetContainer: "mkv");
+        var ungated = await QueueAJob(qualityGate: false, targetContainer: "mkv");
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         Assert.Equal(JobStatus.Queued, await StatusOf(gated));
@@ -160,7 +175,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         WorkPlacement placement = WorkPlacement.Anywhere,
         bool qualityGate = false,
         string? videoAudioCodec = null,
-        string fileName = "film.mkv")
+        string fileName = "film.mkv", string? targetContainer = null)
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -174,6 +189,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             WorkPlacement = placement,
             VmafQualityGateEnabled = qualityGate ? true : null,
             VideoAudioCodec = videoAudioCodec,
+            TargetContainer = targetContainer,
         };
         db.Libraries.Add(library);
         await db.SaveChangesAsync();
@@ -900,7 +916,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     {
         await EnableRemoteWorkers();
         var worker = await PairWorker("Ten bit VAAPI", 1, ["hevc_vaapi"], []);
-        var jobId = await QueueAJob(videoEncoder: null);
+        var jobId = await QueueAJob(videoEncoder: null, fileName: "ten-bit.mkv");
         using (var scope = _api.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -964,7 +980,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         await EnableRemoteWorkers();
         var worker = await PairWorker("Windows", 1, ["hevc_nvenc"], ["cuda"],
             operatingSystem: "windows", sidecarVersion: version, protocolMaximum: protocol);
-        await QueueAJob(videoEncoder: null);
+        await QueueAJob(videoEncoder: null, targetContainer: "mkv");
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>())

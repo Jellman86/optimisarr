@@ -5,6 +5,20 @@ namespace Optimisarr.Tests;
 
 public sealed class RemoteVerificationEvidenceTests
 {
+    [Theory]
+    [InlineData(null, 400)]
+    [InlineData(400, null)]
+    [InlineData(0, 400)]
+    [InlineData(400, -1)]
+    public void Required_decoded_counts_cannot_be_substituted_with_packet_counts(int? source, int? candidate)
+    {
+        var contract = Contract with { CountVideoFrames = true };
+        var evidence = Valid() with { SourceDecodedFrameCount = source, CandidateDecodedFrameCount = candidate,
+            SourceVideo = new(true, 0, null, 8, 400), CandidateVideo = new(true, 0, null, 8, 400) };
+        Assert.Contains(RemoteVerificationEvidenceValidator.Validate(contract, evidence, Source, Candidate),
+            reason => reason.Contains("decoded picture counts"));
+    }
+
     [Fact]
     public void Incomplete_timestamp_evidence_identifies_the_stream_and_missing_presentation_times()
     {

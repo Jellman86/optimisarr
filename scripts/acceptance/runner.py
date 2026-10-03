@@ -190,7 +190,7 @@ class Harness:
             audio_expectations=(["flac"], ["eng"], [0]) if mode == "filtered" else (["alac"], ["eng"], [0]),
             expected_container="mkv" if mode == "matroska" else "mp4")
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None):
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -267,6 +267,8 @@ class Harness:
             require([stream["codec_name"] for stream in audio] == codecs, "Copied audio codec changed")
             require([stream.get("tags", {}).get("language") for stream in audio] == languages,
                     "Copied audio language or order changed")
+        if check_picture_origin:
+            self.tools.check_av_start_offset(case["source"], candidate, directory)
         if check_subtitles or subtitle_expectations:
             codecs, languages, source_indexes = subtitle_expectations or (["ass", "ass"], ["eng", "fra"], [0, 1])
             subtitles = [stream for stream in streams if stream["codec_type"] == "subtitle"]
@@ -275,8 +277,8 @@ class Harness:
             require([stream.get("tags", {}).get("language") for stream in subtitles] == languages,
                     "Subtitle language or order changed")
             for index, source_index in enumerate(source_indexes):
-                before = self.tools.subtitle_cues(case["source"], source_index)
-                after = self.tools.subtitle_cues(candidate, index)
+                before = self.tools.subtitle_cues(case["source"], source_index, picture_origin=check_picture_origin, generate_pts=check_picture_origin)
+                after = self.tools.subtitle_cues(candidate, index, picture_origin=check_picture_origin)
                 require(bool(before) and before == after, f"Subtitle {index} text or timing changed")
                 (directory / f"subtitle-{index}.srt").write_text(after, encoding="utf-8")
         self.replace_restore(case, candidate)
@@ -681,6 +683,8 @@ class Harness:
                 variants = [*variants, "fractional"]
             if regression == "uneven-timing" and "uneven" not in variants:
                 variants = [*variants, "uneven"]
+            if regression == "initial-pictures":
+                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles"]))
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}
@@ -736,7 +740,7 @@ class Harness:
                     self.report.case(f"worker-{worker['id']}-audio-downmix", lambda w=worker: self.audio("aac", w, downmix=True))
                     self.report.case(f"worker-{worker['id']}-audio-artwork", lambda w=worker: self.audio("mp3", w, artwork=True))
                 return self.report.exit_code
-            if regression in ("subtitle-mux", "fractional-timing", "uneven-timing", "subtitle-overlap", "alac-copy"):
+            if regression in ("subtitle-mux", "fractional-timing", "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy"):
                 def regression_case(name, encoder, worker=None):
                     if regression == "subtitle-mux":
                         return self.subtitle_mux(name, primary, encoder, worker)
@@ -744,13 +748,21 @@ class Harness:
                         return self.subtitle_overlap(name, primary, encoder, worker)
                     if regression == "alac-copy":
                         return self.alac_copy(name, primary, encoder, worker)
+                    if regression == "initial-pictures":
+                        require("dts-only" in fixtures, "DTS-only fixture could not be generated")
+                        with_subtitles = self.video(name, fixtures["dts-only"], encoder, worker, container="mp4",
+                            subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True)
+                        require("dts-only-no-subtitles" in fixtures, "Subtitle-free DTS-only fixture could not be generated")
+                        without_subtitles = self.video(name + "-no-subtitles", fixtures["dts-only-no-subtitles"], encoder, worker,
+                            container="mp4", check_picture_origin=True)
+                        return {"withSubtitles": with_subtitles, "withoutSubtitles": without_subtitles}
                     if regression == "uneven-timing":
                         require("uneven" in fixtures, "Uneven timestamp fixture could not be generated")
                         return self.video(name, fixtures["uneven"], encoder, worker, container="mp4")
                     require("fractional" in fixtures, "Fractional timestamp fixture could not be generated")
                     return self.video(name, fixtures["fractional"], encoder, worker, container="mp4")
                 suffix = {"subtitle-mux": "mov-text-to-mkv", "fractional-timing": "fractional-to-mp4",
-                          "uneven-timing": "uneven-to-mp4",
+                          "uneven-timing": "uneven-to-mp4", "initial-pictures": "dts-only-to-mp4",
                           "subtitle-overlap": "overlapping-cues-to-mkv", "alac-copy": "alac-to-mkv"}[regression]
                 for encoder in encoders:
                     name = f"local-{encoder}-{suffix}"

@@ -62,6 +62,9 @@ public sealed record TranscodeSpec(
     /// <summary>Declared range from the fresh source probe; null when unspecified.</summary>
     public string? SourceColorRange { get; init; }
 
+    /// <summary>Shared input shift for pictures preceding the demuxer's declared start.</summary>
+    public double InputTimestampOffsetSeconds { get; init; }
+
     /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
     public double? TargetFrameRate => FrameRate?.TargetFps;
 
@@ -165,6 +168,14 @@ public static class FfmpegCommandBuilder
         {
             args.Add("-fflags");
             args.Add("+genpts");
+        }
+
+        if (isVideoReencode && IsMp4Family(spec.OutputPath) && spec.FrameRate is null && spec.ClipSeconds is null && spec.ClipStartSeconds is null
+            && spec.InputTimestampOffsetSeconds != 0)
+        {
+            if (!double.IsFinite(spec.InputTimestampOffsetSeconds) || spec.InputTimestampOffsetSeconds < 0 || spec.InputTimestampOffsetSeconds > InputTimestampOffset.MaximumSeconds)
+                throw new ArgumentOutOfRangeException(nameof(spec), "Invalid input timestamp correction.");
+            args.AddRange(["-itsoffset", spec.InputTimestampOffsetSeconds.ToString("0.#########", System.Globalization.CultureInfo.InvariantCulture)]);
         }
 
         var clipSeek = ResolveClipSeek(spec);

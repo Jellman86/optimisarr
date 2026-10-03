@@ -4,6 +4,42 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("video contracts return decoded counts and fail closed if a count cannot be read")
+    func requiredPictureEvidence() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for candidateCount in ["398", "N/A"] {
+            var contract = FullVerificationContract(version: 1, id: "fixture", measureAudio: false)
+            contract.countVideoFrames = true
+            let evidence = try await FullVerification(runner: TimestampFixtureRunner(candidateCount: candidateCount)).measure(
+                contract: contract, ffmpeg: root, ffprobe: root, source: root.appendingPathComponent("source"),
+                candidate: root.appendingPathComponent("candidate"), scratch: root,
+                sourceHash: "source", candidateHash: "candidate")
+            #expect(evidence.sourceDecodedFrameCount == 400)
+            if candidateCount == "398" {
+                #expect(evidence.candidateDecodedFrameCount == 398)
+                #expect(evidence.error == nil)
+            } else {
+                #expect(evidence.candidateDecodedFrameCount == nil)
+                #expect(evidence.error?.contains("picture counts") == true)
+            }
+            #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+        }
+    }
+
+    @Test("decoded picture counts require one positive finite primary-video count")
+    func pictureCounts() {
+        #expect(FullVerification.parsePictureCount("400\n") == 400)
+        for bad in ["N/A", "0", "-1", "400\n390", "2147483648", "NaN", ""] {
+            #expect(FullVerification.parsePictureCount(bad) == nil)
+        }
+        let args = FullVerification.pictureCountArguments(file: URL(fileURLWithPath: "/source file"), output: URL(fileURLWithPath: "/count"))
+        #expect(args.contains("-count_frames"))
+        #expect(args.contains("V:0"))
+        #expect(!args.contains("-ignore_editlist"))
+    }
+
     @Test("standalone audio measures audio packet spans without requiring picture streams")
     func standaloneAudio() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -164,13 +200,16 @@ private struct TimestampFixtureRunner: TranscodeRunner {
     var audio = false
     var candidateMissingPts = false
     var sourceWithoutTimestamps = false
+    var candidateCount = "400"
 
     func run(_ executable: URL, _ arguments: [String], progress: @escaping @Sendable (Double) -> Void)
         async throws -> (exitCode: Int32, stderr: String) {
         guard let outputIndex = arguments.firstIndex(of: "-o") else { return (0, "") }
         let output = URL(fileURLWithPath: arguments[outputIndex + 1])
         let content: String
-        if arguments.contains("-show_streams") {
+        if arguments.contains("-count_frames") {
+            content = arguments.last?.hasSuffix("/source") == true ? "400" : candidateCount
+        } else if arguments.contains("-show_streams") {
             content = #"{"streams":[{"codec_type":"video","start_time":"0"}],"format":{}}"#
         } else if arguments.contains("a:0") {
             content = audio ? "0.040000,0.000000,0.040000\n0.080000,0.040000,0.040000\n" : ""
