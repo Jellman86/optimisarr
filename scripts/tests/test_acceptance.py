@@ -68,14 +68,29 @@ class AcceptanceTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 tools.frame_times('/fixture.mkv', numbered_repeated_fixture=True)
 
-    def test_repeated_picture_quality_compares_every_picture_after_identity_and_timing_checks(self):
+    def test_complete_picture_quality_keeps_every_picture_without_a_cadence_grid(self):
         from acceptance.media import quality_picture_preparation
         from fractions import Fraction
         ordinary = quality_picture_preparation(Fraction(25), 320, 180, 'yuv420p10le')
-        repeated = quality_picture_preparation(Fraction(25), 320, 180, 'yuv420p10le', numbered_repeated_fixture=True)
-        self.assertIn('fps=25', ordinary)
-        self.assertNotIn('fps=', repeated)
-        self.assertIn('setpts=N*1/25/TB', repeated)
+        fractional = quality_picture_preparation(Fraction(24000, 1001), 320, 180, 'yuv420p10le')
+        for prep in [ordinary, fractional]:
+            self.assertNotIn('fps=', prep)
+            self.assertNotIn('trim=', prep)
+        self.assertIn('setpts=N*1/25/TB', ordinary)
+        self.assertIn('setpts=N*1001/24000/TB', fractional)
+
+    def test_complete_picture_oracle_rejects_loss_and_timing_drift_before_quality(self):
+        from acceptance.media import Tools
+        tools = Tools('ffmpeg', 'ffprobe')
+        tools.probe = Mock(return_value={'streams': [{'codec_type': 'video', 'width': 320, 'height': 180}]})
+        tools.run = Mock()
+        times = [0, .001, .084, .085, .168, .169]
+        for candidate in [times[:-1], [*times[:-1], .173]]:
+            tools.frame_times = Mock(side_effect=[times, candidate])
+            with tempfile.TemporaryDirectory() as directory:
+                with self.assertRaises(AssertionError):
+                    tools.measure('/source.mkv', '/candidate.mp4', directory)
+            tools.run.assert_not_called()
 
     def test_numbered_candidate_requires_written_presentation_times_and_retains_both_fields(self):
         from acceptance.media import Tools

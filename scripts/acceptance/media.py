@@ -85,13 +85,11 @@ def vmaf_policy(reference_video, encoded_video, rate):
     return model, options, "yuv420p10le"
 
 
-def quality_picture_preparation(rate, width, height, pixel, *, numbered_repeated_fixture=False):
-    # The numbered oracle first proves identity/order and timing. Equal-time distinct
-    # pictures then need sequential comparison rather than a cadence filter dropping one.
-    timing = (f"setpts=N*{rate.denominator}/{rate.numerator}/TB" if numbered_repeated_fixture
-              else f"setpts=PTS-STARTPTS,fps={rate}:start_time=0")
-    return (f"settb=AVTB,{timing},scale={width}:{height}:"
-            f"flags=bicubic:in_range=auto:out_range=tv,format={pixel}")
+def quality_picture_preparation(rate, width, height, pixel):
+    # The oracle first checks counts and each picture's timing. A cadence grid can
+    # omit tightly spaced pictures or repeat a long-held picture and hide damage.
+    return (f"settb=AVTB,setpts=N*{rate.denominator}/{rate.numerator}/TB,"
+            f"scale={width}:{height}:flags=bicubic:in_range=auto:out_range=tv,format={pixel}")
 
 
 def validate_shadow_report(report):
@@ -396,8 +394,7 @@ class Tools:
             rate = Fraction(rv["r_frame_rate"])
         require(0 < rate <= 240, "Reference has no trustworthy picture cadence")
         model, options, pixel = vmaf_policy(rv, ov, float(rate))
-        prep = quality_picture_preparation(rate, rv['width'], rv['height'], pixel,
-                                           numbered_repeated_fixture=numbered_repeated_fixture)
+        prep = quality_picture_preparation(rate, rv['width'], rv['height'], pixel)
         graph = (f"[0:v]{prep}[d];"
                  f"[1:v]{prep}[r];"
                  f"[d][r]libvmaf=model={options}:n_threads=2:n_subsample=1:"
@@ -409,10 +406,7 @@ class Tools:
              "maxTimestampDriftSeconds": drift})
         self.run(self.vmaf, args, cwd=evidence_dir)
         scores = statistics(json.loads((evidence_dir / "vmaf.json").read_text()))
-        # VFR pictures were checked one-for-one above; VMAF's documented common-cadence
-        # comparison intentionally repeats them. Do not confuse that with encoder frame loss.
-        expected_frames = len(rt) if numbered_repeated_fixture else round(rt[-1] * float(rate)) + 1
-        require(scores["frames"] == expected_frames, "VMAF silently omitted pictures")
+        require(scores["frames"] == len(rt), "VMAF silently omitted or repeated pictures")
         return {**scores, "model": model, "candidateSha256": sha256(candidate)}
 
     def damaged(self, reference, path, damage):

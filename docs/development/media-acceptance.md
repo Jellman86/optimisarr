@@ -127,7 +127,8 @@ can choose decode timestamps for its best-effort field after repeated presentati
 ([FFmpeg's selection code](https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/decode.c)).
 Ordinary fixtures retain their existing strictly increasing timestamp checks. A negative control
 damages the body of one repeated-time picture while keeping its identifier, and proves VMAF
-measures it. Quality compares every numbered picture sequentially after identity/timing checks.
+measures it. Quality compares every decoded picture sequentially after count/timing checks, including
+uneven sources. The numbered fixture also requires picture identity before measurement.
 This test does not repair candidates or change production verification limits.
 [Issue #353](https://github.com/Jellman86/optimisarr/issues/353) tracks the separate VC-1 timing
 investigation; passing this generated regression alone does not settle that source's timing.
