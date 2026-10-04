@@ -111,8 +111,25 @@ jobs:
             throw 'Native Event Log integration tests require an administrator token.'
           }
       - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
+      - name: Verify size-guard abort latency under CPU load
+        run: |
+          $load = @(1..2 | ForEach-Object { Start-Job {
+            'load-ready'
+            while ($true) { [void][Math]::Sqrt(123456789) }
+          } })
+          try {
+            $startup = [Diagnostics.Stopwatch]::StartNew()
+            while (@($load | Receive-Job -Keep).Count -ne 2) {
+              if ($startup.Elapsed.TotalSeconds -gt 60) { throw 'CPU load jobs did not start.' }
+              Start-Sleep -Milliseconds 100
+            }
+            dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build --filter "FullyQualifiedName~ProcessTranscoderSizeBudgetTests|FullyQualifiedName~A_machine_with_room_for_two_takes_two" --logger "console;verbosity=detailed"
+            if ($LASTEXITCODE -ne 0) { throw 'The size guard failed under CPU load.' }
+          }
+          finally { $load | Stop-Job; $load | Remove-Job -Force }
       - name: Verify portable backend contracts on Windows
         run: dotnet test ../../tests/Optimisarr.Tests --configuration Release
+
       - name: Verify native popover anchoring
         run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --verify-popover
       - name: Render native tray states

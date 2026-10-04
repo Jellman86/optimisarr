@@ -74,6 +74,9 @@
 ### Development tools
 
 - Backend tests now state their POSIX requirements explicitly and use portable paths and decoded JSON elsewhere. Native Windows CI runs the complete backend suite, with eight explained POSIX skips. This does not add Windows-native server deployment support or change replacement checks.
+- Output-size guard tests measure stopping time from the candidate crossing its budget, report fixture startup separately, and check that the sleeping child is stopped. A controlled delayed startup and loaded Windows run retain the existing 15-second abort limit and an overall cancellation deadline.
+- Worker concurrency tests coordinate two active runners directly. A race in the test's peak counter can no longer report one runner when two jobs are actually running; timeout cleanup releases both fixtures.
+- The native Windows logging fixture reads only its owned provider with a bounded modern Event Log query. Transient read refusal and entry publication cannot be mistaken for missing startup writes.
 
 - Added an opt-in audio quality assessment tool using pinned Zimtohrli and per-channel
   distances. It reports media/tool hashes, measured windows and errors for mono/stereo
