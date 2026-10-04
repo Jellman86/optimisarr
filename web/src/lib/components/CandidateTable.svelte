@@ -59,7 +59,7 @@
 
   <div class="card overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="border-b border-line text-left text-xs uppercase text-ink-3">
+      <thead class="border-b border-line text-left text-xs font-semibold text-ink-3">
         <tr>
           <th class="px-4 py-3">{i18n.m.shared.col_status}</th>
           <th class="px-4 py-3">{i18n.m.shared.col_file}</th>

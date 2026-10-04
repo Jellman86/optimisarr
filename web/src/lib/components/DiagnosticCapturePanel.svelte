@@ -152,7 +152,7 @@
     </div>
 
     <aside class="evidence-note min-w-0 rounded-lg p-4 text-sm leading-relaxed text-ink-3">
-      <span class="mb-2 block text-xs font-semibold uppercase tracking-widest text-accent">{i18n.m.settings.diagnostics_evidence}</span>
+      <span class="mb-2 block text-xs font-semibold text-accent">{i18n.m.settings.diagnostics_evidence}</span>
       <p>{i18n.m.settings.diagnostics_disclosure}</p>
       <p class="mt-3">{i18n.m.settings.diagnostics_limit}</p>
       <p class="mt-3">{i18n.m.settings.diagnostics_retention}</p>

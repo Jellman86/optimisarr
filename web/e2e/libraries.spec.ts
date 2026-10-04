@@ -617,12 +617,12 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const card = workflow.locator('.card-interactive, [data-config-section]').first()
       await page.mouse.move(0, 0)
       const surface = await card.evaluate(element => ({
-        gradient: getComputedStyle(element).backgroundImage,
+        fill: getComputedStyle(element).backgroundColor,
         panel: getComputedStyle(element).getPropertyValue('--panel').trim(),
         shadow: getComputedStyle(element).boxShadow,
       }))
       const panelRgb = surface.panel.slice(1).match(/.{2}/g)!.map(channel => parseInt(channel, 16)).join(', ')
-      expect(surface.gradient).toContain(`rgb(${panelRgb})`)
+      expect(surface.fill).toBe(`rgb(${panelRgb})`)
       expect(surface.shadow).not.toBe('none')
       await card.hover()
       await expect.poll(() => card.evaluate(element => getComputedStyle(element).boxShadow)).not.toBe(surface.shadow)

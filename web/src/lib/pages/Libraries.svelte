@@ -1516,7 +1516,7 @@
               <input
                 type="radio"
                 name="processing-mode"
-                class="mt-0.5 accent-cyan-600"
+                class="mt-0.5 accent-accent-fill"
                 value={mode.value}
                 checked={processingMode === mode.value}
                 onchange={() => setProcessingMode(mode.value as ProcessingMode)}
@@ -1540,7 +1540,7 @@
         <div class="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
           {#each encodeStopLabels as stop, index}
             <label class="choice flex min-h-20 cursor-pointer items-start gap-2 rounded-xl p-3 {encodeStop === index ? 'choice-selected' : ''}">
-              <input class="mt-0.5 accent-cyan-600" type="radio" name="library-preset" value={index} checked={encodeStop === index} onchange={() => { setEncodeStop(String(index)); if (index === customStopIndex) goRoom('encode/video/advanced') }} />
+              <input class="mt-0.5 accent-accent-fill" type="radio" name="library-preset" value={index} checked={encodeStop === index} onchange={() => { setEncodeStop(String(index)); if (index === customStopIndex) goRoom('encode/video/advanced') }} />
               <span class="min-w-0"><span class="block text-sm font-medium">{stop}</span>{#if index < encodeProfiles.length}<span class="mt-1 block font-mono text-xs text-ink-3">{specFor(encodeProfiles[index]).codec}</span>{/if}</span>
             </label>
           {/each}
@@ -1588,7 +1588,7 @@
       <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP. -->
       <div class="mt-1">
         <input
-          class="w-full accent-cyan-600"
+          class="w-full accent-accent-fill"
           type="range"
           min="0"
           max={imageFormats.length - 1}
@@ -1602,7 +1602,7 @@
             <span class={imageStop === i ? 'font-semibold uppercase text-ink-2' : 'uppercase'}>{stop}</span>
           {/each}
         </div>
-        <div class="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-ink-4">
+        <div class="mt-1 flex justify-between text-[11px] text-ink-4">
           <span>{i18n.m.libraries.most_compatible}</span>
           <span>{i18n.m.libraries.most_efficient}</span>
         </div>
@@ -1647,14 +1647,14 @@
 
         <div class="mt-3 grid w-full gap-3 md:grid-cols-2" data-testid="video-quality-strategies">
           <label
-            class="relative choice flex min-h-44 flex-col rounded-xl p-4 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'choice-selected' : ''}"
+            class="relative choice flex min-h-44 flex-col rounded-xl p-4 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'choice-selected' : ''}"
           >
             <div class="flex items-start gap-3">
               <input
                 type="radio"
                 name="video-quality-strategy"
                 value="AdaptiveVmaf"
-                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
+                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-accent-fill"
                 checked={form.videoQualityStrategy === 'AdaptiveVmaf'}
                 onchange={() => setVideoQualityStrategy('AdaptiveVmaf')}
               />
@@ -1680,14 +1680,14 @@
           </label>
 
           <label
-            class="relative choice flex min-h-44 flex-col rounded-xl p-4 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'Fixed' ? 'choice-selected' : ''}"
+            class="relative choice flex min-h-44 flex-col rounded-xl p-4 {form.videoQualityStrategy === 'Fixed' ? 'choice-selected' : ''}"
           >
             <div class="flex items-start gap-3">
               <input
                 type="radio"
                 name="video-quality-strategy"
                 value="Fixed"
-                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
+                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-accent-fill"
                 checked={form.videoQualityStrategy === 'Fixed'}
                 onchange={() => setVideoQualityStrategy('Fixed')}
               />
@@ -1875,7 +1875,7 @@
                     </label>
                     <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
                       <div class="mx-[8.333%]">
-                        <input id="lib-audio-quality-slider" class="block h-11 w-full cursor-pointer accent-cyan-600"
+                        <input id="lib-audio-quality-slider" class="block h-11 w-full cursor-pointer accent-accent-fill"
                           type="range" min="0" max={audioDifferenceStops.length} step="1" value={audioDifferenceStop}
                           aria-label={i18n.m.audio_quality.maximum}
                           aria-valuetext={audioDifferenceStop === audioDifferenceStops.length ? i18n.m.libraries.stop_custom : String(audioDifferenceStops[audioDifferenceStop])}
@@ -1933,7 +1933,7 @@
                     </label>
                     <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
                       <div class="mx-[8.333%]">
-                        <input id="lib-soundtrack-quality-slider" class="block h-11 w-full cursor-pointer accent-cyan-600"
+                        <input id="lib-soundtrack-quality-slider" class="block h-11 w-full cursor-pointer accent-accent-fill"
                           type="range" min="0" max={audioDifferenceStops.length} step="1" value={soundtrackDifferenceStop}
                           aria-label={i18n.m.soundtrack_quality.maximum}
                           aria-valuetext={soundtrackDifferenceStop === audioDifferenceStops.length ? i18n.m.libraries.stop_custom : String(audioDifferenceStops[soundtrackDifferenceStop])}
@@ -2298,13 +2298,13 @@
             <div class="grid gap-2 md:grid-cols-2" role="radiogroup" aria-label={i18n.m.libraries.placement_label}>
               {#each placements as placement (placement)}
                 <label
-                  class="choice flex items-start gap-3 rounded-xl p-3 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.workPlacement === placement ? 'choice-selected' : ''}"
+                  class="choice flex items-start gap-3 rounded-xl p-3 {form.workPlacement === placement ? 'choice-selected' : ''}"
                 >
                   <input
                     type="radio"
                     name="work-placement"
                     value={placement}
-                    class="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-600"
+                    class="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent-fill"
                     checked={form.workPlacement === placement}
                     onchange={() => (form.workPlacement = placement)}
                   />
@@ -2469,7 +2469,7 @@
           {#if form.qualityCrf != null}
             <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
               <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="min-w-0 w-full accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="min-w-0 w-full accent-accent-fill" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
               <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
               <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.qualityCrf}</span>
             </div>
@@ -2618,7 +2618,7 @@
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
       <section class="space-y-4">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.audio_channels}</h3>
+        <h3 class="text-xs font-semibold text-ink-3">{i18n.m.libraries.audio_channels}</h3>
         <p class="mt-0.5 mb-3 text-xs text-ink-4">{i18n.m.libraries.audio_channels_desc}</p>
         <label class="flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
@@ -2699,7 +2699,7 @@
             {#if form.imageQuality != null}
               <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
                 <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="min-w-0 w-full accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
+                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="min-w-0 w-full accent-accent-fill" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
                 <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
                 <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.imageQuality}</span>
               </div>
@@ -2735,7 +2735,7 @@
         {#each workflowStages as stage, index}
           <button type="button" class="card card-interactive focus-ring workflow-card flex items-center gap-4 p-5 text-left sm:p-6" onclick={() => goRoom(stage.room)}>
             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-raised text-accent"><Icon name={stage.icon} class="h-5 w-5" /></span>
-            <span class="min-w-0 flex-1"><span class="mb-1 block text-xs font-medium uppercase tracking-wider text-ink-3">{index + 1} / 4</span><span class="flex flex-wrap items-center gap-2 text-base font-semibold">{stage.title}{#if overrideCount(stage.room)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(stage.room) })}</span>{/if}</span><span class="mt-1 block text-sm text-ink-3">{stage.summary}</span></span>
+            <span class="min-w-0 flex-1"><span class="mb-1 block text-xs font-semibold text-ink-3">{index + 1} / 4</span><span class="flex flex-wrap items-center gap-2 text-base font-semibold">{stage.title}{#if overrideCount(stage.room)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(stage.room) })}</span>{/if}</span><span class="mt-1 block text-sm text-ink-3">{stage.summary}</span></span>
             <Icon name="arrow-right" class="h-5 w-5 shrink-0 text-accent" />
           </button>
         {/each}
@@ -2807,10 +2807,10 @@
 
 {#if editingId !== null}
   {#if editingId !== 0 && !embedded}
-    <nav class="mb-4 flex gap-1 overflow-x-auto border-b border-line" aria-label={i18n.m.libraries.configure}>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'rules' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'candidates' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'excluded' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
+    <nav class="segmented mb-4" aria-label={i18n.m.libraries.configure}>
+      <button class="segment" aria-pressed={activeTab === 'rules'} onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
+      <button class="segment" aria-pressed={activeTab === 'candidates'} onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
+      <button class="segment" aria-pressed={activeTab === 'excluded'} onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
     </nav>
   {/if}
 

@@ -36,7 +36,7 @@
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-ok">
             <Icon name="check" class="h-4 w-4" />
-            <span class="font-mono text-lg font-medium tabular-nums">{ready.toLocaleString()}</span>
+            <span class="text-xl font-semibold tabular-nums">{ready.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.ready_to_replace}</div>
@@ -50,7 +50,7 @@
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-ink-2">
             <Icon name="clock" class="h-4 w-4" />
-            <span class="font-mono text-lg font-medium tabular-nums">{quarantined.toLocaleString()}</span>
+            <span class="text-xl font-semibold tabular-nums">{quarantined.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.awaiting_review}</div>
@@ -66,7 +66,7 @@
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-bad">
             <Icon name="warning" class="h-4 w-4" />
-            <span class="font-mono text-lg font-medium tabular-nums">{failed.toLocaleString()}</span>
+            <span class="text-xl font-semibold tabular-nums">{failed.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.failed_heading}</div>

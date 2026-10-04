@@ -60,7 +60,7 @@
 <div class="card h-full">
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.in_flight}</span>
-    <span class="ml-auto font-mono text-xs text-ink-3">
+    <span class="ml-auto text-xs tabular-nums text-ink-3">
       {t(i18n.m.dashboard.in_flight_counts, {
         running: jobs.length.toLocaleString(),
         queued: (queueState?.queued ?? 0).toLocaleString(),
@@ -87,7 +87,7 @@
         <li class="grid gap-3 border-b border-line px-4 py-3 last:border-b-0 md:grid-cols-[1fr_200px_140px] md:items-center">
           <div class="min-w-0">
             <button
-              class="block w-full truncate text-left font-mono text-sm text-ink hover:underline"
+              class="block w-full truncate text-left text-sm font-medium text-ink hover:underline"
               onclick={() => router.go('/queue')}
               title={job.relativePath ?? undefined}
             >{fileName(job.relativePath)}</button>
@@ -99,24 +99,24 @@
           </div>
 
           <div>
-            <div class="mb-1.5 font-mono text-[10px] uppercase tracking-wider {verifying(job) ? 'text-ok' : 'text-accent'}">
+            <div class="mb-1.5 text-[11px] font-semibold {verifying(job) ? 'text-ok' : 'text-accent'}">
               {stageLabel(job)}
             </div>
             <div class="progress-track">
               {#if job.progress > 0}
-                <div class="progress-fill {verifying(job) ? '!bg-emerald-600' : ''}" style="width: {percent(job)}%"></div>
+                <div class="progress-fill {verifying(job) ? 'progress-fill-verifying' : ''}" style="width: {percent(job)}%"></div>
               {:else}
                 <!-- A stage with no percentage of its own gets the indeterminate sweep rather than
                      a bar frozen at zero, which reads as stalled. -->
                 <div class="progress-indeterminate"></div>
               {/if}
             </div>
-            <div class="mt-1.5 font-mono text-xs tabular-nums text-ink-3">
+            <div class="mt-1.5 text-xs tabular-nums text-ink-3">
               {job.progress > 0 ? `${percent(job)}%` : i18n.m.dashboard.no_percentage}
             </div>
           </div>
 
-          <div class="font-mono text-xs tabular-nums text-ink-3 md:text-right">
+          <div class="text-xs tabular-nums text-ink-3 md:text-right">
             {#if qualityMode(job.videoQualityMode)}<div>{qualityMode(job.videoQualityMode)}</div>{/if}
             {#if job.qualityRetryCount > 0}
               <div class="text-warn">{t(i18n.m.dashboard.retry_count, { count: job.qualityRetryCount.toLocaleString() })}</div>

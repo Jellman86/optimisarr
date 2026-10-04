@@ -347,7 +347,7 @@ test('a loaded poster is visible when the working job first appears', async ({ p
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="#52748c"/></svg>',
   }))
   await page.goto('/#/queue')
-  const poster = page.getByRole('region', { name: 'Working now' }).locator('img')
+  const poster = page.getByRole('region', { name: 'Working now' }).locator('[data-thumbnail] img')
   await expect(poster).toHaveJSProperty('complete', true)
   await expect(poster).toHaveCSS('opacity', '1')
 })
@@ -612,6 +612,7 @@ test('a missing working poster stays settled through refreshes and recovers for 
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working.locator('[data-thumbnail]')).toBeVisible()
   await expect(working.locator('img')).toHaveCount(0)
+  // The poster and the glow behind the card each ask once; neither may ask again.
   const initialRequests = missingRequests
   fixture.jobs = [{ ...fixture.jobs[0], progress: .5 }]
   await send('jobsChanged')
@@ -620,9 +621,13 @@ test('a missing working poster stays settled through refreshes and recovers for 
   expect(missingRequests).toBe(initialRequests)
   fixture.jobs = [{ ...job(2, 'Transcoding', null), progress: .1 }]
   await send('jobsChanged')
-  await expect(working.locator('img')).toHaveAttribute('src', '/api/media/2/thumbnail')
-  await expect(working.locator('img')).toHaveJSProperty('naturalWidth', 192)
-  await expect(working.locator('img')).toHaveCSS('opacity', '1')
+  const poster = working.locator('[data-thumbnail] img')
+  await expect(poster).toHaveAttribute('src', '/api/media/2/thumbnail')
+  await expect(poster).toHaveJSProperty('naturalWidth', 192)
+  await expect(poster).toHaveCSS('opacity', '1')
+  // The glow is the same artwork as ambience: hidden from assistive technology, never content.
+  await expect(working.locator('.poster-glow')).toHaveAttribute('aria-hidden', 'true')
+  await expect(working.locator('.poster-glow img')).toHaveAttribute('alt', '')
 })
 
 for (const width of [375, 1440]) {

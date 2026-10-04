@@ -27,136 +27,153 @@
    Both schemes define the same names, so a component never spells out a light
    colour and a dark colour side by side: it says `text-ink-3` or `tone-warn`
    and the scheme decides. `theme-tokens.test.ts` keeps it that way. */
+/* The look is native macOS: the system typeface, a window-grey ground, white grouped
+   surfaces with a soft shadow, capsule controls and a floating sidebar of tinted glass.
+   Text never sits on clear glass, only on solid fills; that is where Liquid Glass lost
+   legibility and Apple added the tinted variant.
+
+   State colours are chosen to survive colour blindness, not only to look right: success is
+   blue, never green, because every green tested sits within ΔE 7 of the failure colour under
+   deuteranopia. theme-tokens.test.ts measures that and fails if a change undoes it. */
 :root {
-  /* Surfaces. The light ground is deliberately cooler and deeper than a white
-     page: a borderless white card cannot separate from a near-white ground, so
-     the step from card to ground has to carry what the border used to. */
-  --ground: #e9eef5;
-  --ground-wash: linear-gradient(180deg, #edf1f7 0%, #e6ecf4 100%);
-  --panel: #f8fafd;
+  /* Surfaces. A cool window grey that a white group can separate from without a border. */
+  --ground: #e7e9ee;
+  --panel: #ffffff;
   --panel-hi: #ffffff;
-  --raised: #e9eff7;
-  --sunken: #e5ebf3;
-  --lit: rgba(30, 55, 95, 0.055);
+  --raised: #f1f2f5;
+  --sunken: #eceef2;
+  --lit: rgba(60, 60, 67, 0.06);
+  --glass: rgba(246, 247, 250, 0.94);
+  --field: #ffffff;
+  --field-edge: rgba(60, 60, 67, 0.2);
+  /* The selected segment of a segmented control: the one raised part of a recessed track. */
+  --control-on: #ffffff;
 
-  --divide: rgba(30, 55, 95, 0.12);
-  --divide-soft: rgba(30, 55, 95, 0.065);
-  --edge: rgba(255, 255, 255, 0.92);
+  --divide: rgba(60, 60, 67, 0.16);
+  --divide-soft: rgba(60, 60, 67, 0.085);
+  --edge: rgba(255, 255, 255, 0.9);
 
-  --lift-1: 0 1px 1px rgba(20, 40, 70, 0.05), 0 2px 5px -2px rgba(20, 40, 70, 0.1);
-  --lift-2: 0 1px 2px rgba(20, 40, 70, 0.06), 0 10px 24px -14px rgba(20, 40, 70, 0.26);
-  --lift-3: 0 2px 6px rgba(20, 40, 70, 0.07), 0 26px 60px -28px rgba(20, 40, 70, 0.38);
-  --inset-1: inset 0 1px 2px rgba(20, 40, 70, 0.07), inset 0 0 0 1px var(--divide-soft);
+  --lift-1: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --lift-2: 0 0 0 0.5px rgba(0, 0, 0, 0.045), 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 22px -10px rgba(30, 40, 60, 0.2);
+  --lift-3: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.05), 0 20px 50px -18px rgba(30, 40, 60, 0.32);
+  --inset-1: inset 0 0 0 1px var(--field-edge);
 
   /* Ink. Five steps: headline, body, caption, hint, ghost. */
-  --ink: #0f172a;
-  --ink-2: #334155;
-  --ink-3: #5d6b80;
-  --ink-4: #8a98ac;
-  --ink-5: #c2ccd9;
+  --ink: #1d1d1f;
+  --ink-2: #303036;
+  --ink-3: #4c4c53;
+  /* Even the hint step clears 4.5:1 on every surface, the ground included. */
+  --ink-4: #646469;
+  --ink-5: #c7c7cc;
 
   /* Tones. The bare tone is an ink that clears AA on a panel, and a fill for a
      dot or a bar; -soft is a tinted fill that works on any surface; -strong is
      text on that fill; -line is a hairline of the tone. */
-  --ok: #047857;
-  --ok-strong: #065f46;
-  --ok-soft: rgba(16, 185, 129, 0.14);
-  --ok-line: rgba(16, 185, 129, 0.35);
+  --ok: #0062cc;
+  --ok-strong: #004593;
+  --ok-soft: rgba(0, 98, 204, 0.1);
+  --ok-line: rgba(0, 98, 204, 0.3);
 
-  --warn: #b45309;
-  --warn-strong: #78350f;
-  --warn-soft: rgba(245, 158, 11, 0.16);
-  --warn-line: rgba(245, 158, 11, 0.4);
+  --warn: #946b00;
+  --warn-strong: #5c4200;
+  --warn-soft: rgba(214, 160, 0, 0.17);
+  --warn-line: rgba(196, 146, 0, 0.45);
 
-  --bad: #b91c1c;
-  --bad-strong: #7f1d1d;
-  --bad-soft: rgba(239, 68, 68, 0.12);
-  --bad-line: rgba(239, 68, 68, 0.35);
+  --bad: #d0216e;
+  --bad-strong: #8e0f48;
+  --bad-soft: rgba(208, 33, 110, 0.1);
+  --bad-line: rgba(208, 33, 110, 0.32);
 
-  --accent: #0e7490;
-  --accent-strong: #164e63;
-  --accent-soft: rgba(6, 182, 212, 0.14);
-  --accent-line: rgba(6, 182, 212, 0.4);
+  --accent: #0062cc;
+  --accent-strong: #004593;
+  --accent-soft: rgba(0, 98, 204, 0.11);
+  --accent-line: rgba(0, 98, 204, 0.32);
+  /* The fill behind white text on a primary control, and its pressed step. */
+  --accent-fill: #0066d6;
+  --accent-fill-hi: #0058b8;
+  --accent-on: #ffffff;
 
-  --info: #0369a1;
-  --info-strong: #0c4a6e;
-  --info-soft: rgba(14, 165, 233, 0.14);
-  --info-line: rgba(14, 165, 233, 0.4);
+  /* Information is not a verdict, so it is graphite rather than a hue. */
+  --info: #4f4f57;
+  --info-strong: #2c2c31;
+  --info-soft: rgba(118, 118, 128, 0.13);
+  --info-line: rgba(118, 118, 128, 0.32);
 
   /* The one focus ring, and the tooltip surface. */
-  --focus: rgba(8, 145, 178, 0.75);
-  --tip: #1e293b;
-  --tip-ink: #f1f5f9;
+  --focus: rgba(0, 102, 214, 0.6);
+  --tip: #2c2c2e;
+  --tip-ink: #f5f5f7;
 
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI',
+    system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-html.dark {
-  /* The dark ground is lifted a step off pure slate-950. On true black a shadow
-     has nothing to fall on, so elevation was invisible; a little luminance in
-     the ground lets the lift read, and a faint cool bloom at the top of the
-     rail lights the room from where the mark is. */
-  --ground: #070d1a;
-  --ground-wash:
-    radial-gradient(900px 520px at 6% -4%, rgba(34, 211, 238, 0.075), transparent 62%),
-    linear-gradient(180deg, #0a1122 0%, #060b16 100%);
-  --panel: #111a2d;
-  --panel-hi: #17223a;
-  --raised: #1e2c48;
-  --sunken: #0a1120;
-  --lit: rgba(148, 176, 214, 0.07);
+/* `.scheme-dark` lets a subtree that is always dark (a media player's chrome) use the dark
+   tokens whatever the page's scheme, instead of spelling out its own colours. */
+html.dark,
+.scheme-dark {
+  /* Elevation in the dark is a lighter fill, not a shadow: a shadow has nothing to fall on. */
+  --ground: #161618;
+  --panel: #232326;
+  --panel-hi: #26262a;
+  --raised: #2e2e32;
+  --sunken: #1c1c1f;
+  --lit: rgba(255, 255, 255, 0.06);
+  --glass: rgba(40, 40, 44, 0.94);
+  --field: rgba(255, 255, 255, 0.055);
+  --field-edge: rgba(255, 255, 255, 0.12);
+  --control-on: #5b5b61;
 
-  --divide: rgba(148, 176, 214, 0.11);
-  --divide-soft: rgba(148, 176, 214, 0.06);
-  --edge: rgba(190, 215, 255, 0.09);
+  --divide: rgba(255, 255, 255, 0.1);
+  --divide-soft: rgba(255, 255, 255, 0.055);
+  --edge: rgba(255, 255, 255, 0.07);
 
-  /* Dark elevation is mostly a lighter fill; the shadow only deepens the rim. A
-     hair of light round the outside is what lets a panel's edge be found on a
-     ground nearly its own colour. */
-  --lift-1: 0 0 0 1px rgba(190, 215, 255, 0.035), 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.45);
-  --lift-2: 0 0 0 1px rgba(190, 215, 255, 0.04), 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 28px -14px rgba(0, 0, 0, 0.8);
-  --lift-3: 0 0 0 1px rgba(190, 215, 255, 0.05), 0 4px 10px rgba(0, 0, 0, 0.35), 0 24px 60px -24px rgba(0, 0, 0, 0.9);
-  --inset-1: inset 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 0 0 1px var(--divide-soft);
+  --lift-1: 0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --lift-2: 0 0 0 0.5px rgba(255, 255, 255, 0.07), 0 2px 4px rgba(0, 0, 0, 0.28), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
+  --lift-3: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+  --inset-1: inset 0 0 0 1px var(--field-edge);
 
-  --ink: #eef2f7;
-  --ink-2: #c6d0de;
-  --ink-3: #8f9fb5;
-  --ink-4: #66758d;
-  --ink-5: #3d4a61;
+  --ink: #f5f5f7;
+  --ink-2: #d4d4d9;
+  --ink-3: #b0b0b7;
+  --ink-4: #98989f;
+  --ink-5: #48484e;
 
-  --ok: #34d399;
-  --ok-strong: #a7f3d0;
-  --ok-soft: rgba(52, 211, 153, 0.14);
-  --ok-line: rgba(52, 211, 153, 0.3);
+  --ok: #4ea1ff;
+  --ok-strong: #bcdaff;
+  --ok-soft: rgba(78, 161, 255, 0.15);
+  --ok-line: rgba(78, 161, 255, 0.35);
 
-  --warn: #fbd24d;
-  --warn-strong: #fde68a;
-  --warn-soft: rgba(251, 191, 36, 0.14);
-  --warn-line: rgba(251, 191, 36, 0.3);
+  --warn: #f5cc4f;
+  --warn-strong: #fde7a2;
+  --warn-soft: rgba(245, 204, 79, 0.14);
+  --warn-line: rgba(245, 204, 79, 0.32);
 
-  --bad: #f87171;
-  --bad-strong: #fecaca;
-  --bad-soft: rgba(248, 113, 113, 0.14);
-  --bad-line: rgba(248, 113, 113, 0.3);
+  --bad: #ff6b9a;
+  --bad-strong: #ffc6d8;
+  --bad-soft: rgba(255, 107, 154, 0.14);
+  --bad-line: rgba(255, 107, 154, 0.34);
 
-  --accent: #22d3ee;
-  --accent-strong: #a5f3fc;
-  --accent-soft: rgba(34, 211, 238, 0.14);
-  --accent-line: rgba(34, 211, 238, 0.3);
+  --accent: #6cb1ff;
+  --accent-strong: #bcdaff;
+  --accent-soft: rgba(78, 161, 255, 0.17);
+  --accent-line: rgba(78, 161, 255, 0.36);
+  --accent-fill: #0a6fe0;
+  --accent-fill-hi: #2c84f0;
+  --accent-on: #ffffff;
 
-  --info: #38bdf8;
-  --info-strong: #bae6fd;
-  --info-soft: rgba(56, 189, 248, 0.14);
-  --info-line: rgba(56, 189, 248, 0.3);
+  --info: #b4b4bb;
+  --info-strong: #e6e6eb;
+  --info-soft: rgba(142, 142, 150, 0.18);
+  --info-line: rgba(142, 142, 150, 0.36);
 
-  --focus: rgba(34, 211, 238, 0.7);
-  --tip: #243149;
-  --tip-ink: #f1f5f9;
+  --focus: rgba(78, 161, 255, 0.75);
+  --tip: #3a3a3e;
+  --tip-ink: #f5f5f7;
 }
 
 /* The tokens as Tailwind colours, so `text-ink-3`, `bg-panel`, `border-line`,
@@ -194,6 +211,13 @@ html.dark {
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
   --color-accent-line: var(--accent-line);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-on: var(--accent-on);
+  --color-glass: var(--glass);
+  --color-field: var(--field);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   --color-info: var(--info);
   --color-info-strong: var(--info-strong);
   --color-info-soft: var(--info-soft);
@@ -205,13 +229,14 @@ html.dark {
    top or bottom. color-scheme also gives native form controls and scrollbars the
    right look in each theme. */
 html {
-  background: var(--ground-wash) fixed, var(--ground);
+  background: var(--ground);
   color: var(--ink);
   color-scheme: light;
   /* Figures line up in columns and never twitch as they change. */
   font-variant-numeric: tabular-nums;
 }
-html.dark {
+html.dark,
+.scheme-dark {
   color-scheme: dark;
 }
 
@@ -269,11 +294,10 @@ p {
   background: transparent;
 }
 
-/* The page's tray: a well the page's cards float in. A utility rather than a component
-   class so it can be applied from the md breakpoint up, where the shell becomes islands. */
+/* The page sits straight on the window ground, the way a macOS window's content does. The
+   utility stays so the shell keeps one name for "the page's area". */
 @utility app-tray {
-  background: var(--sunken);
-  box-shadow: var(--inset-1);
+  background: transparent;
 }
 
 /* One focus ring for everything that can be pressed. An outline rather than a
@@ -282,16 +306,15 @@ p {
    control's own shadow. */
 @utility focus-ring {
   &:focus-visible {
-    outline: 2px solid var(--focus);
+    outline: 3px solid var(--focus);
     outline-offset: 2px;
   }
 }
 
-/* Operational component classes, shared across the app. A small, consistent set
-   of control primitives: one focus ring, one accent (cyan) reserved for the
-   primary action and "on" states, ink for everything else. */
+/* Operational component classes, shared across the app: grouped surfaces, capsule
+   controls, one accent for the primary action and "on" states, ink for everything else. */
 @layer components {
-  /* The page's frame inside the tray. Lists and dashboards use the whole width; forms keep a
+  /* The page's frame. Lists and dashboards use the whole width; forms keep a
      readable measure (see layout.ts). The status strip opens every page. */
   .page-frame {
     @apply w-full;
@@ -303,32 +326,32 @@ p {
     @apply mb-6;
   }
 
-  /* Page furniture. Every page opens the same way. */
+  /* Page furniture: a large title, the way a macOS window names its content. */
   .page-title {
-    @apply text-2xl font-bold tracking-tight text-ink;
+    @apply text-[1.75rem] leading-tight font-bold tracking-[-0.02em] text-ink;
   }
   .page-subtitle {
-    @apply mt-0.5 text-sm text-ink-3;
+    @apply mt-1 text-sm text-ink-3;
   }
 
-  /* Roomier than a dense list wants to be, on purpose: this is the one surface that is on
-     screen on every page, and a 40px row is also a target a thumb can find. */
+  /* A sidebar row. 40px tall so a thumb finds it as well as a pointer. */
   .nav-button {
     @apply flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left text-sm font-medium transition-colors focus-ring;
   }
-  /* A lit, slightly raised key. Not a coloured rail down one edge: that reads as decoration
-     bolted to the row rather than as the row being the one you are on. */
+  /* The row you are on is a tinted fill with its symbol lit in the accent, as in a macOS
+     sidebar. Never a coloured rail down one edge. */
   .nav-button-active {
     @apply font-semibold text-ink;
-    background: var(--raised);
-    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+    background: var(--accent-soft);
+  }
+  .nav-button-active > svg {
+    color: var(--accent);
   }
   /* Carried only by the entries that can ask something of you. Tabular so a changing figure
      does not make the row twitch. */
   .nav-badge {
-    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center font-mono text-[10.5px] text-ink-2;
-    background: var(--raised);
-    box-shadow: inset 0 1px 0 var(--edge);
+    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center text-[11px] font-semibold tabular-nums text-ink-2;
+    background: var(--lit);
   }
   .nav-button-inactive {
     @apply text-ink-2;
@@ -341,40 +364,38 @@ p {
     @apply cursor-not-allowed text-ink-4;
   }
 
-  /* The card. Fill plus elevation plus one hairline of light on the top edge. */
+  /* The card: a grouped surface. A solid fill and a soft shadow; no outline. */
   .card {
-    @apply min-w-0 max-w-full rounded-xl;
-    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
-    box-shadow: var(--lift-2), inset 0 1px 0 var(--edge);
+    @apply min-w-0 max-w-full rounded-[14px];
+    background: var(--panel);
+    box-shadow: var(--lift-2);
   }
-  /* The navigation rail is an island: a raised card floating on the ground, the page in a
-     recessed tray beside it. The rail is the object nearest the reader, the tray is the
-     surface the page's own cards float in, and the ground shows all round both. */
+  /* The sidebar floats on the ground as a pane of tinted glass. It is tinted almost to
+     opaque, so its labels never depend on whatever is behind it (the phone drawer slides over
+     the page). No backdrop blur: over the flat ground it changes nothing, and Chromium stops
+     painting the brand mark's canvas inside a backdrop-filtered layer. */
   .app-rail {
-    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    background: var(--glass);
     box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
   }
 
-  /* A card you can open. The lift on hover is the whole affordance — it says
-     "this is a thing, and it will respond" without a border or a cursor hint. */
+  /* A card you can open. The lift on hover is the whole affordance. */
   .card-interactive {
     @apply cursor-pointer transition-[background,box-shadow,transform] duration-150;
   }
   .card-interactive:hover {
-    background: linear-gradient(180deg, var(--raised), var(--panel-hi));
-    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+    box-shadow: var(--lift-3);
     transform: translateY(-1px);
   }
   .card-interactive:active {
     transform: translateY(0);
-    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+    box-shadow: var(--lift-1);
   }
 
   /* A recessed well, for content that sits *in* a surface rather than on it. */
   .surface-sunken {
     @apply rounded-xl;
     background: var(--sunken);
-    box-shadow: var(--inset-1);
   }
   /* Dividers inside a surface, drawn as an inset shadow so they never add to the
      box model and never double up against a neighbour's edge. */
@@ -387,7 +408,7 @@ p {
 
   /* Tones: what a state means, as a tinted fill and an ink to read on it. One
      class colours a badge, a chip, a callout or a whole card the same way, so
-     "failed" is the same red wherever it is said. */
+     "failed" is the same colour wherever it is said. */
   .tone-ok {
     --tone-soft: var(--ok-soft);
     --tone-ink: var(--ok-strong);
@@ -411,11 +432,11 @@ p {
   /* The neutral pair: a fact rather than a verdict ("Video", "hevc"), and the
      same shape a step quieter for things that are merely not happening ("Skipped"). */
   .tone-neutral {
-    --tone-soft: var(--raised);
+    --tone-soft: var(--lit);
     --tone-ink: var(--ink-2);
   }
   .tone-muted {
-    --tone-soft: var(--raised);
+    --tone-soft: var(--lit);
     --tone-ink: var(--ink-3);
   }
   .tone-ok,
@@ -428,15 +449,15 @@ p {
     background-color: var(--tone-soft);
     color: var(--tone-ink);
   }
-  /* A toned card keeps its lift and its top-edge light; the tint lies over the
-     panel gradient rather than replacing it. */
+  /* A toned card keeps its shadow; the tint lies over the panel fill rather than
+     replacing it, so it never turns translucent. */
   .card.tone-ok,
   .card.tone-warn,
   .card.tone-bad,
   .card.tone-accent,
   .card.tone-info {
-    background-image: linear-gradient(var(--tone-soft), var(--tone-soft)),
-      linear-gradient(180deg, var(--panel-hi), var(--panel));
+    background-image: linear-gradient(var(--tone-soft), var(--tone-soft));
+    background-color: var(--panel);
   }
   .card.tone-ok,
   .callout.tone-ok {
@@ -461,55 +482,58 @@ p {
   /* A callout: a toned paragraph inside a surface. Text is the strong ink so a
      sentence of amber reads as a sentence, not as a warning icon's caption. */
   .callout {
-    @apply rounded-lg px-3 py-2.5 text-sm leading-relaxed;
+    @apply rounded-[10px] px-3 py-2.5 text-sm leading-relaxed;
   }
 
   /* A selectable card — a processing mode, a quality strategy, a codec chip. Choosing
-     one lights its fill rather than drawing a coloured outline round it, which keeps
-     selection reading as "this one is on" rather than "this one has been ringed". */
+     one tints its fill rather than drawing a coloured outline round it. */
   .choice {
-    @apply cursor-pointer transition-[background,box-shadow,transform] duration-150 focus-ring;
-    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
-    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+    @apply cursor-pointer transition-[background,box-shadow] duration-150 focus-ring;
+    background: var(--panel);
+    box-shadow: var(--lift-1);
   }
   .choice:hover {
-    background: linear-gradient(180deg, var(--raised), var(--panel-hi));
-    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
-    transform: translateY(-1px);
+    box-shadow: var(--lift-2);
   }
-  .choice:active {
-    transform: translateY(0);
-    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  .choice:focus-within {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
   }
   .choice-selected,
   .choice-selected:hover {
     @apply text-ink;
-    background: linear-gradient(
-      180deg,
-      --alpha(var(--color-cyan-500) / 16%),
-      --alpha(var(--color-cyan-500) / 7%)
-    );
-    box-shadow: var(--lift-2), inset 0 1px 0 var(--edge);
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel);
+    box-shadow: var(--lift-1);
   }
 
-  /* Buttons are raised: they are the things you press. */
+  /* Buttons are capsules, as in macOS 26: a quiet fill for most, the accent for the one
+     that does the thing. Colours change at once, never by fading: a button that becomes
+     available mid-fade reads as neither enabled nor disabled. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border-0 px-3 py-2 text-sm font-medium text-ink-2 transition-[background,transform,color] focus-ring active:translate-y-px disabled:pointer-events-none disabled:opacity-50;
-    background: linear-gradient(180deg, var(--raised), var(--panel));
-    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+    @apply inline-flex items-center justify-center gap-2 rounded-full border-0 px-3.5 py-2 text-sm font-medium text-ink transition-[box-shadow,filter] focus-ring active:brightness-95 disabled:pointer-events-none disabled:opacity-45;
+    background: var(--raised);
+    box-shadow: var(--lift-1);
   }
   .btn:hover {
-    @apply text-ink;
-    background: var(--raised);
+    background: linear-gradient(var(--lit), var(--lit)), var(--raised);
   }
   .btn-primary,
   .btn-primary:hover {
-    @apply text-white;
-    background: linear-gradient(180deg, var(--color-cyan-500), var(--color-cyan-600));
-    box-shadow: var(--lift-1), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    @apply font-semibold;
+    color: var(--accent-on);
+    background: var(--accent-fill);
+    box-shadow: var(--lift-1), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
   .btn-primary:hover {
-    background: var(--color-cyan-600);
+    background: var(--accent-fill-hi);
+  }
+  /* A primary action that cannot run goes grey, as on macOS, rather than a washed-out blue
+     that still looks pressable. */
+  .btn-primary:disabled {
+    @apply opacity-100;
+    color: var(--ink-4);
+    background: var(--raised);
+    box-shadow: none;
   }
   .btn-danger {
     @apply text-bad;
@@ -518,7 +542,7 @@ p {
     @apply text-bad;
     background: var(--bad-soft);
   }
-  /* Flat text/icon button: no fill, no lift, until you point at it. */
+  /* Flat text/icon button: no fill, no shadow, until you point at it. */
   .btn-ghost {
     @apply text-ink-3;
     background: none;
@@ -529,100 +553,125 @@ p {
     background: var(--lit);
   }
 
-  /* Inputs are sunken: they are the things you put something into. */
+  /* A segmented control, as macOS draws one: a recessed capsule track with the chosen
+     segment raised out of it. Used for switching between views of the same page. */
+  .segmented {
+    @apply inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-full p-[3px];
+    background: var(--lit);
+  }
+  .segment {
+    @apply min-h-9 rounded-full px-3.5 text-[13px] font-medium whitespace-nowrap text-ink-2 transition-[background,color,box-shadow] focus-ring;
+  }
+  .segment:hover {
+    @apply text-ink;
+  }
+  .segment-on,
+  .segment[aria-pressed='true'],
+  .segment[aria-selected='true'] {
+    @apply font-semibold text-ink;
+    background: var(--control-on);
+    box-shadow: var(--lift-1);
+  }
+
+  /* Fields are a solid fill with a hairline edge; focus adds the accent halo. */
   .input {
     @apply w-full min-w-0 max-w-full rounded-lg border-0 px-3 py-2 text-sm text-ink outline-none transition-shadow placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-60;
-    background: var(--sunken);
+    background: var(--field);
     box-shadow: var(--inset-1);
   }
   .input:hover {
-    box-shadow: inset 0 1px 2px rgba(20, 40, 70, 0.09), inset 0 0 0 1px var(--divide);
+    box-shadow: inset 0 0 0 1px var(--divide);
   }
   .input:focus {
-    box-shadow: var(--inset-1), 0 0 0 3px --alpha(var(--color-cyan-500) / 28%);
+    box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 0 3.5px var(--accent-soft);
   }
   .input[aria-invalid='true'] {
-    box-shadow: var(--inset-1), inset 0 0 0 1px --alpha(var(--color-red-500) / 60%);
+    box-shadow: inset 0 0 0 1px var(--bad-line);
   }
   .input[aria-invalid='true']:focus {
-    box-shadow: var(--inset-1), 0 0 0 3px --alpha(var(--color-red-500) / 25%);
+    box-shadow: inset 0 0 0 1px var(--bad-line), 0 0 0 3.5px var(--bad-soft);
   }
 
   /* Native selects: strip the OS widget and draw our own chevron. */
   select.input {
     @apply cursor-pointer appearance-none bg-no-repeat pr-9;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%238a98ac' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2386868c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M7 10l5 5 5-5'/></svg>");
     background-position: right 0.5rem center;
-    background-size: 1.15rem;
+    background-size: 1.1rem;
   }
 
   /* Checkbox for compact inline options (kept distinct from toggle switches). */
   .checkbox {
-    @apply h-4 w-4 cursor-pointer rounded border-line accent-cyan-600 focus-ring;
+    @apply h-4 w-4 cursor-pointer rounded border-line focus-ring;
+    accent-color: var(--accent-fill);
   }
 
-  /* A switch. The track is a well, like every other thing you set; the knob is
-     the raised part you would put a thumb on. Both are driven by the real
-     checkbox that sits over them. */
+  /* A switch, drawn as the macOS one: a grey capsule that fills with the accent, and a
+     white knob. Both are driven by the real checkbox that sits over them. */
   .switch-track {
     @apply pointer-events-none absolute inset-0 rounded-full transition-colors duration-200;
     background: var(--ink-5);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
   }
   .switch-knob {
     @apply pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   }
   .peer:checked ~ .switch-track {
-    background: linear-gradient(180deg, var(--color-cyan-500), var(--color-cyan-600));
-    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.15);
+    background: var(--accent-fill);
   }
   .peer:checked ~ .switch-knob {
     transform: translateX(1.25rem);
   }
   .peer:focus-visible ~ .switch-track {
-    outline: 2px solid var(--focus);
+    outline: 3px solid var(--focus);
     outline-offset: 2px;
   }
 
+  /* A field or section label. Sentence case and a little bolder, the way macOS labels
+     a group, rather than tracked capitals. */
   .label {
-    @apply mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3;
+    @apply mb-1 block text-xs font-semibold text-ink-3;
   }
 
   .badge {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
   }
 
-  /* The header row of a table inside a card: it sticks, it sits on the panel
-     rather than on a colour of its own, and it is divided from the rows by a
-     hairline rather than a border. */
+  /* The header row of a table inside a card: it sticks, it sits on the panel, and it is
+     divided from the rows by a hairline. */
   .table-head {
-    @apply sticky top-0 z-10 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3;
-    background: var(--panel-hi);
+    @apply sticky top-0 z-10 text-left text-xs font-semibold text-ink-3;
+    background: var(--panel);
     box-shadow: inset 0 -1px 0 var(--divide);
   }
 
   /* A tooltip is the one surface drawn in the opposite value to the page, so it
      is read as something laid over the page rather than part of it. */
   .tooltip {
-    @apply rounded-md px-3 py-2 text-left text-sm font-normal normal-case leading-relaxed tracking-normal;
+    @apply rounded-lg px-3 py-2 text-left text-sm font-normal normal-case leading-relaxed tracking-normal;
     background: var(--tip);
     color: var(--tip-ink);
     box-shadow: var(--lift-3);
   }
 
   /* Progress bar: a determinate fill for transcoding, an indeterminate sweep for
-     phases without a percentage (probing, verifying). The track is a well. */
+     phases without a percentage (probing, verifying). */
   .progress-track {
     @apply relative h-1.5 flex-1 overflow-hidden rounded-full;
-    background: var(--sunken);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+    background: var(--lit);
   }
   .progress-fill {
-    @apply h-full rounded-full bg-cyan-600 transition-[width] duration-300 ease-out;
+    @apply h-full rounded-full transition-[width] duration-300 ease-out;
+    background: var(--accent-fill);
+  }
+  /* Verifying is checking work that is already done, so it fills in the "ok" colour. */
+  .progress-fill-verifying {
+    background: var(--ok);
   }
   .progress-indeterminate {
-    @apply absolute inset-y-0 w-2/5 rounded-full bg-sky-500/70;
+    @apply absolute inset-y-0 w-2/5 rounded-full;
+    background: var(--accent);
+    opacity: 0.7;
     animation: progress-sweep 1.2s ease-in-out infinite;
   }
 }
@@ -673,7 +722,7 @@ p {
   margin: auto;
   max-width: calc(100vw - 2rem);
   max-height: calc(100dvh - 2rem);
-  border: 1px solid var(--edge);
+  border: 0;
   border-radius: 1.125rem;
   background: var(--panel);
   color: var(--ink);
@@ -681,4 +730,4 @@ p {
   overflow: hidden;
 }
 .app-modal[open] { display: grid; }
-.app-modal::backdrop { background: rgb(3 8 17 / .65); backdrop-filter: blur(5px); }
+.app-modal::backdrop { background: rgb(0 0 0 / .32); backdrop-filter: blur(3px); }

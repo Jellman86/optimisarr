@@ -81,7 +81,7 @@
      raised card floating on the ground beside the page's tray, its own height, with the
      collapse-to-icons rail still available. -->
 <aside
-  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 md:rounded-[18px] md:transition-[width] {layout.mobileOpen
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 md:rounded-[22px] md:transition-[width] {layout.mobileOpen
  ? 'translate-x-0'
  : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
@@ -110,7 +110,7 @@
       href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
       target="_blank"
       rel="noopener noreferrer"
-      class="mb-2 ml-[5rem] mr-3 self-start rounded px-1 font-mono text-[10.5px] text-ink-4 transition-colors hover:text-accent focus-ring"
+      class="mb-2 ml-[5rem] mr-3 self-start rounded px-1 font-mono text-[10.5px] text-ink-3 transition-colors hover:text-accent focus-ring"
       title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
     >{versionLabel ? `${versionLabel} · ${gitHash}` : `build ${gitHash}`}</a>
   {/if}
@@ -150,13 +150,13 @@
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
-              <span class="font-mono text-[10.5px] tabular-nums">{queueActivityLabel()}</span>
+              <span class="text-[11px] font-semibold tabular-nums">{queueActivityLabel()}</span>
             </span>
           {/if}
         {:else if showActivity}
-          <!-- Collapsed rail: a small throbbing dot, GPU-cyan or CPU-amber. -->
+          <!-- Collapsed rail: a small throbbing dot, GPU in the accent or CPU in amber. -->
           <span
-            class="absolute right-1 top-1 h-2 w-2 animate-pulse rounded-full {activity.hardwareActive ? 'bg-cyan-500' : 'bg-amber-500'}"
+            class="absolute right-1 top-1 h-2 w-2 animate-pulse rounded-full {activity.hardwareActive ? 'bg-accent' : 'bg-warn'}"
             title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
           ></span>
         {/if}
