@@ -48,6 +48,12 @@ still block unsafe replacement. Other path fixtures use the host's separators,
 API tests read decoded JSON values, and queue-pause tests assert Windows'
 existing `dispatchOnly` behavior. The full Linux suite keeps all POSIX checks.
 
+The Windows worker suite has one privileged integration test that creates a temporary
+Event Log source. It runs in an administrator PowerShell window; ordinary Windows runs
+show an explicit skip for that test. Windows CI requires an administrator token before
+running the suite, so the native write check runs there. It removes only its own generated
+source and does not change the production worker, pairing or Event Log permissions.
+
 Unit tests do not certify live encoders or the packaged application. Run the
 [real-media acceptance harness](media-acceptance.md) for container and physical
 worker evidence, and follow [the release guide](releasing.md) when publishing

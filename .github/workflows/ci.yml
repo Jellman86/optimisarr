@@ -104,6 +104,12 @@ jobs:
       # the platform it ships on, and a Windows-only compile error should fail on a Windows runner
       # rather than on someone's machine.
       - run: dotnet build Optimisarr.Sidecar.slnx --configuration Release -warnaserror
+      - name: Require elevation for native Event Log integration tests
+        run: |
+          $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+          if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'Native Event Log integration tests require an administrator token.'
+          }
       - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
       - name: Verify portable backend contracts on Windows
         run: dotnet test ../../tests/Optimisarr.Tests --configuration Release

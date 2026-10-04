@@ -226,6 +226,14 @@ catch {
     throw $failure
 }
 finally {
+    # The initial no-pairing guard makes these tiny availability notices ours.
+    try {
+        foreach ($name in @('event-log-availability.log', 'event-log-availability.log.previous')) {
+            $notice = Join-Path $pairing $name
+            if (Test-Path $notice) { Copy-Item $notice (Join-Path $logRoot $name) }
+        }
+    }
+    catch { Write-Warning "Could not retain Event Log availability notices: $_" }
     try { if ($installed) { Invoke-Msi '/x' 'cleanup' $currentInstaller } }
     finally {
         if ($listener) { $listener.Close() }
