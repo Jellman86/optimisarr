@@ -62,7 +62,14 @@ function Get-SidecarWorkerStatus {
     $worker = @($workers | Where-Object { $_.id -eq $WorkerId })
     if ($worker.Count -ne 1) { throw 'The selected worker was not found on this server.' }
     $w=$worker[0]
-    [pscustomobject]@{ Id=$w.id; Version=$w.sidecarVersion; Online=[bool]$w.online; LastSeenUtc=if ($w.lastSeenAt) {[DateTime]::Parse($w.lastSeenAt).ToUniversalTime()} else {$null}; Draining=($null -ne $w.drainRequestedAt); DrainId=$w.drainRequestedAt; HeldLeases=$w.heldLeases }
+    # PowerShell can deserialize JSON timestamps into dates before this function sees them.
+    # Re-parsing a date's formatted string can exchange day and month on regional hosts.
+    $lastSeenUtc=if($w.lastSeenAt -is [DateTimeOffset]){$w.lastSeenAt.UtcDateTime}
+        elseif($w.lastSeenAt -is [DateTime]){$w.lastSeenAt.ToUniversalTime()}
+        elseif($w.lastSeenAt -is [string]){[DateTimeOffset]::Parse($w.lastSeenAt,[Globalization.CultureInfo]::InvariantCulture).UtcDateTime}
+        elseif($null -eq $w.lastSeenAt){$null}
+        else{throw 'The server returned an invalid worker check-in timestamp.'}
+    [pscustomobject]@{ Id=$w.id; Version=$w.sidecarVersion; Online=[bool]$w.online; LastSeenUtc=$lastSeenUtc; Draining=($null -ne $w.drainRequestedAt); DrainId=$w.drainRequestedAt; HeldLeases=$w.heldLeases }
 }
 
 function Get-MonitorWorkerId {

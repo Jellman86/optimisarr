@@ -3,6 +3,44 @@ param([string]$Installer)
 $ErrorActionPreference = 'Stop'
 $module = Join-Path $PSScriptRoot 'InstallationHealth.psm1'
 Import-Module $module -Force
+$healthModule=Get-Module InstallationHealth
+$culture=[Threading.Thread]::CurrentThread.CurrentCulture
+try {
+    & $healthModule {
+        function script:Invoke-RestMethod {
+            param($Uri,$TimeoutSec,$ErrorAction)
+            return $script:WorkerResponse
+        }
+    }
+    $expected=[DateTimeOffset]::Parse('2026-10-04T09:11:32Z',[Globalization.CultureInfo]::InvariantCulture).UtcDateTime
+    $jsonDate=(ConvertFrom-Json '{"lastSeenAt":"2026-10-04T09:11:32Z"}').lastSeenAt
+    foreach($name in @('en-GB','en-US','de-DE')) {
+        [Threading.Thread]::CurrentThread.CurrentCulture=[Globalization.CultureInfo]::GetCultureInfo($name)
+        foreach($timestamp in @($expected,$expected.ToLocalTime(),$jsonDate,[DateTimeOffset]::new($expected).ToOffset([TimeSpan]::FromHours(1)),'2026-10-04T10:11:32+01:00')) {
+            & $healthModule {
+                param($stamp)
+                $script:WorkerResponse=@([pscustomobject]@{id=4;sidecarVersion='1.2.3';online=$true;lastSeenAt=$stamp;drainRequestedAt='drain';heldLeases=0})
+            } $timestamp
+            $worker=Get-SidecarWorkerStatus 'https://fixture.invalid' 4
+            if($worker.LastSeenUtc -ne $expected -or $worker.LastSeenUtc.Kind -ne [DateTimeKind]::Utc) {
+                throw "Worker check-in changed with regional format $name and timestamp type $($timestamp.GetType().Name)."
+            }
+        }
+    }
+    foreach($timestamp in @('not-a-date',0,$true,[pscustomobject]@{date=$expected})) {
+        & $healthModule {param($stamp) $script:WorkerResponse[0].lastSeenAt=$stamp} $timestamp
+        $failed=$false
+        try {[void](Get-SidecarWorkerStatus 'https://fixture.invalid' 4)}catch{$failed=$true}
+        if(!$failed){throw 'Invalid worker timestamps were accepted.'}
+    }
+    & $healthModule {$script:WorkerResponse[0].lastSeenAt=$null}
+    if($null -ne (Get-SidecarWorkerStatus 'https://fixture.invalid' 4).LastSeenUtc){throw 'A missing check-in was replaced by a fabricated timestamp.'}
+}
+finally {
+    [Threading.Thread]::CurrentThread.CurrentCulture=$culture
+    & $healthModule {Remove-Item Function:Invoke-RestMethod;Remove-Variable WorkerResponse -Scope Script -ErrorAction SilentlyContinue}
+}
+Write-Output 'Typed JSON dates and ISO offset strings preserve UTC check-in identity across regional formats.'
 if($Installer){
     $metadata=@(& (Get-Module InstallationHealth) {param($path) Get-SidecarMsiMetadata $path} $Installer)
     if($metadata.Count -ne 1 -or !$metadata[0].ProductCode -or $metadata[0].ProductName -ne 'Optimisarr Sidecar'){throw 'Real MSI metadata must return exactly one complete identity record.'}

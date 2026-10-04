@@ -5,6 +5,7 @@
 ### Fixed
 
 - Updated the frontend toolchain's devalue dependency to reject malformed non-string object keys. The pending frontend patch updates and test coverage collector update are included.
+- The Windows checked updater preserves server check-in dates across regional formats. PowerShell's already-parsed dates are no longer converted to text and parsed again, which could exchange the day and month and block a healthy update.
 
 - Windows paired updates have a checked route that verifies installed files, sustained service/tray health and three fresh server check-ins. A failed update attempts complete previous-MSI recovery and verifies it separately. Pairing, media and Windows protections are preserved; restart-required, timed-out and unverified recovery results cannot report success. Direct MSI completion still confirms installation only.
 
