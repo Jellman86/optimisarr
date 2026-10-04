@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using Microsoft.Extensions.DependencyInjection;
@@ -162,8 +163,7 @@ public sealed class NonFatalEventLogTests
             while (started.Elapsed < TimeSpan.FromSeconds(95))
             {
                 registration.LogInformation("Synthetic source registration probe; no job or pairing.");
-                using var probe = new EventLog("Application");
-                if (probe.Entries.Cast<EventLogEntry>().Any(entry => entry.Source == source))
+                if (ReadOwnedEntries(0, started, TimeSpan.FromSeconds(95)).Length > 0)
                 { registered = true; break; }
                 Thread.Sleep(1000);
             }
@@ -173,15 +173,52 @@ public sealed class NonFatalEventLogTests
                 Assert.False(notices[0].Available);
                 Assert.True(notices[^1].Available);
             }
-            using var before = new EventLog("Application");
-            var baseline = before.Entries.Cast<EventLogEntry>().Count(entry => entry.Source == source);
             var noticesBefore = notices.Count;
             Parallel.For(0, 100, index => provider.CreateLogger($"category{index}")
-                .LogInformation("Synthetic logging probe {Index}; no job or pairing.", index));
-            provider.CreateLogger("empty").LogInformation("");
+                .LogInformation(new EventId(1000 + index), "Synthetic logging probe {Index}; no job or pairing.", index));
+            provider.CreateLogger("empty").LogInformation(new EventId(1100), "");
             Assert.Equal(noticesBefore, notices.Count);
-            using var log = new EventLog("Application");
-            Assert.Equal(baseline + 101, log.Entries.Cast<EventLogEntry>().Count(entry => entry.Source == source));
+            var written = Array.Empty<int>();
+            var publication = Stopwatch.StartNew();
+            while (publication.Elapsed < TimeSpan.FromSeconds(30))
+            {
+                written = ReadOwnedEntries(1000, publication, TimeSpan.FromSeconds(30));
+                if (written.Length >= 101) break;
+                Thread.Sleep(100);
+            }
+            Assert.Equal(Enumerable.Range(1000, 101), written.Order());
+
+            int[] ReadOwnedEntries(int minimumId, Stopwatch phase, TimeSpan budget)
+            {
+                // Query only this source's selected IDs. Registration events cannot
+                // substitute for a dropped concurrent write or the empty-message write.
+                while (true)
+                {
+                    try
+                    {
+                        var query = new EventLogQuery("Application", PathType.LogName,
+                            $"*[System[Provider[@Name='{source}'] and EventID >= {minimumId}]]");
+                        using var reader = new EventLogReader(query);
+                        var ids = new List<int>();
+                        while (true)
+                        {
+                            var remaining = budget - phase.Elapsed;
+                            if (remaining <= TimeSpan.Zero)
+                                throw new TimeoutException("The owned Event Log query exceeded its deadline.");
+                            using var entry = reader.ReadEvent(remaining < TimeSpan.FromSeconds(1)
+                                ? remaining : TimeSpan.FromSeconds(1));
+                            if (phase.Elapsed >= budget)
+                                throw new TimeoutException("The owned Event Log query exceeded its deadline.");
+                            if (entry is null) return ids.ToArray();
+                            ids.Add(entry.Id);
+                        }
+                    }
+                    catch (UnauthorizedAccessException) when (phase.Elapsed < budget)
+                    {
+                        Thread.Sleep(100);
+                    }
+                }
+            }
         }
         finally { if (EventLog.SourceExists(source)) EventLog.DeleteEventSource(source); }
     }
