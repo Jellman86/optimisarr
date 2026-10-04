@@ -49,7 +49,7 @@
 
   <div class="flex flex-1 flex-col gap-4 p-4">
     <div>
-      <div class="font-mono text-4xl font-semibold leading-none tracking-tight tabular-nums text-ok">
+      <div class="text-[2.75rem] font-bold leading-none tracking-[-0.03em] tabular-nums text-ink">
         {stats ? formatSize(stats.bytesSaved) : '—'}
       </div>
       <p class="mt-2 text-sm text-ink-2">
@@ -66,7 +66,7 @@
           <div class="h-full bg-ink-4" style="width: {keptShare}%"></div>
           <div class="h-full flex-1 bg-ok/80"></div>
         </div>
-        <p class="mt-2 font-mono text-xs text-ink-3">
+        <p class="mt-2 text-xs tabular-nums text-ink-3">
           {t(i18n.m.dashboard.originals_now, { original: formatSize(stats.originalBytes), optimised: formatSize(stats.optimisedBytes) })}
         </p>
       </div>

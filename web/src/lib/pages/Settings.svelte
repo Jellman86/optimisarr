@@ -836,13 +836,13 @@
                 onclick={() => openRoomAt(room.key)}
               >
                 <span class="settings-room-symbols" aria-hidden="true">
-                  <Icon name={ROOM_ICONS[room.key]} class="h-5 w-5 text-accent" />
+                  <span class="settings-symbol-tile"><Icon name={ROOM_ICONS[room.key]} class="h-[18px] w-[18px]" /></span>
                   <Icon name="arrow-up-right" class="h-4 w-4 text-ink-4" />
                 </span>
                 <span class="flex items-start justify-between gap-3">
                   <span class="settings-room-title">{room.title}</span>
                   {#if roomChangedCount(room.key) > 0}
-                    <span class="badge tone-accent font-mono" data-room-changes title={i18n.m.settings.unsaved_here}>
+                    <span class="badge tone-accent tabular-nums" data-room-changes title={i18n.m.settings.unsaved_here}>
                       {roomChangedCount(room.key)}
                     </span>
                   {/if}
@@ -1519,8 +1519,7 @@
   .settings-page-header { margin-bottom: 2rem; }
   .settings-overview { display: grid; gap: 1.75rem; }
   .settings-group-title {
-    margin-bottom: .875rem; color: var(--ink-3); font-size: .6875rem; font-weight: 600;
-    letter-spacing: .11em; text-transform: uppercase;
+    margin-bottom: .625rem; margin-left: 1rem; color: var(--ink-3); font-size: .8125rem; font-weight: 600;
   }
   /* The page uses the full width like every other page, so the overview adds columns as the
      screen widens instead of stretching two cards across it. */
@@ -1536,7 +1535,13 @@
   .settings-room-heading { margin-bottom: 1.75rem; }
   .settings-heading-icon {
     display: flex; flex: none; align-items: center; justify-content: center;
-    width: 2.75rem; height: 2.75rem; border-radius: .75rem; color: var(--accent); background: var(--sunken);
+    width: 2.75rem; height: 2.75rem; border-radius: .75rem; color: var(--accent-on); background: var(--accent-fill);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), var(--lift-1);
+  }
+  /* A symbol on a filled rounded tile, the way System Settings marks each pane. */
+  .settings-symbol-tile {
+    display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: .5rem;
+    color: var(--accent-on); background: var(--accent-fill); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), var(--lift-1);
   }
   .settings-detail-open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; width: 100%; }
   .settings-fields { display: grid; }

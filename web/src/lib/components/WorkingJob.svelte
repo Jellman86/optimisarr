@@ -7,6 +7,7 @@
   import JobProgress from './JobProgress.svelte'
   import JobStages from './JobStages.svelte'
   import Icon from './Icon.svelte'
+  import PosterGlow from './PosterGlow.svelte'
   let { job, queue, telemetry, compact = false, selected = false, onopen }: {
     job: Job; queue: QueueStatus | null; telemetry?: Telemetry; compact?: boolean; selected?: boolean; onopen: (event: MouseEvent) => void
   } = $props()
@@ -24,6 +25,7 @@
 </script>
 
 <article class="working-job card" class:compact class:selected aria-label={title}>
+  {#if !compact}<PosterGlow mediaFileId={job.mediaFileId} />{/if}
   <button class="working-poster focus-ring" onclick={onopen} aria-label={title} aria-haspopup="dialog"><Thumbnail mediaFileId={job.mediaFileId} size={compact ? 'md' : 'poster'} /></button>
   <div class="working-content">
     <div class="working-top"><span class="working-status" class:paused>{status}</span><span class="working-location" title={locationLabel}>{locationLabel}</span>{#if job.videoEncoder}<span class="working-encoder">{job.videoEncoder}</span>{/if}</div>
@@ -37,9 +39,10 @@
 </article>
 
 <style>
-  .working-job { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: 1.25rem 1.5rem; padding: 1.5rem; }
-  .working-job.selected { box-shadow: var(--lift-1), inset 0 0 0 1px var(--accent); }.working-poster { align-self: start; border-radius: .5rem; overflow: hidden; box-shadow: var(--lift-2); }.working-content { min-width: 0; }
-  .working-top { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .625rem; }.working-status { font-size: .6875rem; color: var(--accent); margin-right: auto; }.working-status.paused { color: var(--warn); }.working-location { font-size: .6875rem; color: var(--ink-2); background: var(--sunken); border: 1px solid var(--divide-soft); border-radius: 999px; padding: .25rem .55rem; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.working-encoder { font: .6875rem ui-monospace, monospace; background: var(--sunken); padding: .3rem .5rem; border-radius: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }
+  .working-job { position: relative; isolation: isolate; display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: 1.25rem 1.5rem; padding: 1.5rem; }
+  .working-job > :not(:global(.poster-glow)) { position: relative; z-index: 1; }
+  .working-job.selected { background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel); }.working-poster { align-self: start; border-radius: .625rem; overflow: hidden; box-shadow: 0 8px 24px -8px rgba(0, 0, 0, .45), var(--lift-1); }.working-content { min-width: 0; }
+  .working-top { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .625rem; }.working-status { font-size: .75rem; font-weight: 600; color: var(--accent); margin-right: auto; }.working-status.paused { color: var(--warn); }.working-location { font-size: .75rem; color: var(--ink-2); background: var(--lit); border-radius: 999px; padding: .25rem .55rem; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.working-encoder { font: .6875rem var(--font-mono); background: var(--lit); padding: .3rem .5rem; border-radius: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }
   .working-title { text-align: left; border-radius: .25rem; }.working-title:hover { color: var(--accent); }
   .working-retry { margin: -.25rem 0 .625rem; color: var(--warn); font-size: .6875rem; }
   h3 { color: var(--ink); font-size: 1.375rem; line-height: 1.3; letter-spacing: -.025em; font-weight: 600; overflow-wrap: anywhere; margin-bottom: 1rem; }.working-reason { font-size: .75rem; color: var(--ink-3); margin: -.5rem 0 1rem; }

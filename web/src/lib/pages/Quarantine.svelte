@@ -334,12 +334,17 @@
                 {/if}
               </td>
               <td class="px-4 py-2">
+                <div class="flex items-center gap-3">
+                <Thumbnail mediaFileId={r.mediaFileId} alt="" />
+                <div class="min-w-0">
                 <a id={`replacement-${r.id}`} class="focus-ring flex min-h-11 items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
                 {#if r.status === 'Purged'}
                   <div class="text-[11px] text-ink-3">{i18n.m.quarantine.original_purged}</div>
                 {:else if r.status === 'Replaced'}
                   <div class="max-w-md truncate font-mono text-[11px] text-ink-3" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
                 {/if}
+                </div>
+                </div>
               </td>
               <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
                 {formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}

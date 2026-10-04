@@ -403,7 +403,7 @@
   .status-strip-state { display: flex; min-width: 0; flex: 1 1 18rem; align-items: center; gap: .6rem; }
   .status-strip-reason { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8125rem; color: var(--ink-2); }
   .status-strip-fact { display: flex; align-items: center; gap: .6rem; }
-  .fact-value { font-family: ui-monospace, monospace; font-size: .875rem; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .fact-value { font-size: .875rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
   .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .7rem 1rem; box-shadow: inset 0 -1px 0 var(--divide-soft); }
   .pair-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1rem; }
   .pair-steps { display: flex; flex-direction: column; gap: .6rem; margin-top: 1.1rem; font-size: .875rem; color: var(--ink-2); }
@@ -424,7 +424,7 @@
   .job-stages li { padding-top: .55rem; border-top: 2px solid var(--edge); font-size: .6875rem; color: var(--ink-3); }
   .job-stages .stage-done { color: var(--ok); border-color: var(--ok); }
   .job-stages .stage-current { color: var(--accent); border-color: var(--accent); }
-  .facts { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: 1rem; font: .72rem ui-monospace, monospace; color: var(--ink-3); }
+  .facts { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: 1rem; font: .72rem var(--font-mono); color: var(--ink-3); }
   .frame { position: relative; margin: 0; aspect-ratio: 16 / 9; border-radius: .6rem; overflow: hidden; display: grid; place-items: center; background: var(--sunken); box-shadow: var(--inset-1); align-self: start; }
   .spectrum-caption { grid-column: 2 / -1; }
   .audio-spectrum { aspect-ratio: 10 / 3; }

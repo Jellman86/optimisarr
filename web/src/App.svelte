@@ -165,7 +165,7 @@
   <div class="flex min-w-0 flex-1 flex-col md:app-tray md:overflow-hidden md:rounded-[18px]">
     <!-- Mobile top bar: hamburger + brand + theme. Hidden once the sidebar is in-flow (md+). -->
     <header
-      class="flex items-center gap-3 border-b border-line bg-panel/95 px-4 py-3 backdrop-blur md:hidden"
+      class="flex items-center gap-3 bg-glass px-4 py-3 shadow-[var(--lift-1)] md:hidden"
     >
       <button class="btn btn-ghost px-2" aria-label={i18n.m.nav.open_menu} onclick={() => layout.toggleMobile()}>
         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

@@ -35,7 +35,7 @@
   <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
     <div class="mx-[8.333%]">
       <input {id} type="range" min="0" max={stops.length - 1} step="1" value={selected}
-        class="block h-11 w-full cursor-pointer accent-cyan-600"
+        class="block h-11 w-full cursor-pointer accent-accent-fill"
         aria-label={i18n.m.audio_encoding.title} aria-valuetext={`${stops[selected].label} · ${budget}`}
         aria-describedby={`${id}-hint${savedDefaultBudget ? ` ${id}-saved` : ''}`}
         oninput={event => onselect(stops[Number(event.currentTarget.value)].mode)} />

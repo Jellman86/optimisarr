@@ -332,7 +332,7 @@
 
   <div class="mx-auto grid grid-rows-[auto_1fr] md:grid-rows-1 min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} card overflow-hidden rounded-2xl md:grid-cols-[15rem_minmax(0,1fr)]">
     <aside class="border-b border-line bg-sunken px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7">
-      <p class="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+      <p class="mb-4 text-xs font-semibold text-accent">
         {t(i18n.m.setup.step_of, { current: viewStep, total: setup.state?.stepCount ?? 5 })}
       </p>
       <ol class="grid grid-cols-5 gap-1 md:block" aria-label={i18n.m.setup.progress_label}>
@@ -394,7 +394,7 @@
 
       <fieldset class="min-w-0 flex-1" disabled={busy || loadingContext}>
         {#if viewStep === 1}
-          <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent">{i18n.m.setup.welcome_eyebrow}</p>
+          <p class="mb-2 text-xs font-semibold text-accent">{i18n.m.setup.welcome_eyebrow}</p>
           <h1 tabindex="-1" class="max-w-2xl text-3xl font-bold tracking-tight text-ink sm:text-4xl">{i18n.m.setup.welcome_heading}</h1>
           <p class="mt-4 max-w-2xl text-base leading-7 text-ink-2">{i18n.m.setup.welcome_body}</p>
 
@@ -467,7 +467,7 @@
                         {#if path.issue === 'lowSpace' && path.requiredFreeBytes !== null}
                           <p class="mt-1 text-xs leading-5 text-ink-2">{t(i18n.m.setup.space_requirement, { required: formatSize(path.requiredFreeBytes) })}</p>
                         {/if}
-                        <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.setup.recovery_title}</div>
+                        <div class="mt-2 text-xs font-semibold text-ink-3">{i18n.m.setup.recovery_title}</div>
                         <p class="mt-1 text-xs leading-5 text-ink-2">{recoverySteps()}</p>
                       </div>
                     {/if}
@@ -652,7 +652,7 @@
             {/if}
           </section>
         {:else}
-          <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-ok">{i18n.m.setup.review_eyebrow}</p>
+          <p class="mb-2 text-xs font-semibold text-ok">{i18n.m.setup.review_eyebrow}</p>
           <h1 tabindex="-1" class="page-title">{i18n.m.setup.review_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.review_body}</p>
 

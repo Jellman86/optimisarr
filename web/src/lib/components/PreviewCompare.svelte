@@ -160,7 +160,7 @@
     <div class="preview-heading">
       <div class="preview-poster"><Thumbnail {mediaFileId} size="md" /></div>
       <div class="min-w-0 flex-1">
-        <div class="text-[11px] font-semibold uppercase tracking-wide text-accent">{i18n.m.shared.preview_optimisation}</div>
+        <div class="text-xs font-semibold text-accent">{i18n.m.shared.preview_optimisation}</div>
         <h2 class="line-clamp-2 break-words text-lg font-semibold" title={title}>{title}</h2>
         <p class="line-clamp-2 break-all font-mono text-xs text-ink-3" title={relativePath}>{relativePath}</p>
       </div>
@@ -229,7 +229,7 @@
       <!-- Stats comparison -->
       <div class="card mb-4 overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-line text-left text-xs uppercase text-ink-3">
+          <thead class="border-b border-line text-left text-xs font-semibold text-ink-3">
             <tr><th class="px-4 py-2"></th><th class="px-4 py-2">{i18n.m.shared.original}</th><th class="px-4 py-2">{i18n.m.shared.encoded}</th></tr>
           </thead>
           <tbody class="divide-y divide-line-soft">
@@ -260,7 +260,7 @@
 
       {#if checks}
         <div>
-          <div class="mb-2 text-xs font-medium uppercase text-ink-3">
+          <div class="mb-2 text-xs font-semibold text-ink-3">
             {preview.verificationPassed ? i18n.m.shared.verification_passed : i18n.m.shared.verification_failed}{preview.clipped ? ` · ${i18n.m.shared.segment_only}` : ''}
           </div>
           <VerificationChecks {checks} />

@@ -49,7 +49,7 @@
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <h2 id="saved-per-day-heading" class="label mb-0">{i18n.m.dashboard.saved_per_day}</h2>
     {#if chart && chart.totalBytes > 0}
-      <span class="ml-auto font-mono text-xs {hoveredBar ? 'text-ink' : 'text-ink-3'}" aria-hidden={hoveredBar ? 'true' : undefined}>
+      <span class="ml-auto text-xs tabular-nums {hoveredBar ? 'text-ink' : 'text-ink-3'}" aria-hidden={hoveredBar ? 'true' : undefined}>
         {hoveredBar ? dayDetail(hoveredBar) : summary}
       </span>
     {/if}
@@ -124,8 +124,8 @@
   .saved-tick,
   .saved-date,
   .saved-average-label {
-    font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
     line-height: 1;
     color: var(--ink-3);
     white-space: nowrap;

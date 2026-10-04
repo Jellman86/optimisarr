@@ -81,9 +81,9 @@
         <span class="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-accent shadow-[0_0_8px_var(--accent)]" aria-hidden="true"></span>
         <span class="label mb-0">{heading}</span>
         {#if finishing}
-          <span class="ml-auto font-mono text-[10.5px] text-ink-3">{i18n.m.app.finishing}</span>
+          <span class="ml-auto text-[11px] tabular-nums text-ink-3">{i18n.m.app.finishing}</span>
         {:else if eta != null}
-          <span class="ml-auto font-mono text-[10.5px] text-ink-3">{t(i18n.m.app.time_left, { time: formatDuration(eta) })}</span>
+          <span class="ml-auto text-[11px] tabular-nums text-ink-3">{t(i18n.m.app.time_left, { time: formatDuration(eta) })}</span>
         {/if}
       </span>
 
@@ -111,7 +111,7 @@
         {/if}
       </span>
 
-      <span class="flex items-center gap-3 font-mono text-[10.5px] text-ink-3">
+      <span class="flex items-center gap-3 text-[11px] tabular-nums text-ink-3">
         {#if percent !== null}<span class="font-semibold text-ink">{percent}%</span>{/if}
         {#if speed != null}<span>{speed.toFixed(1)}×</span>{/if}
         {#if queued > 0}<span class="ml-auto">{t(i18n.m.app.queued_count, { count: queued.toLocaleString() })}</span>{/if}

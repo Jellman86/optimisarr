@@ -590,7 +590,7 @@
   {:else if session.status === 'Preparing'}
     <section class="card mx-auto max-w-2xl p-6 sm:p-8">
       <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-ink">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-accent">{Math.round(session.preparationProgress * 100)}%</span></div>
-      <div class="mt-5 h-2 overflow-hidden rounded-full bg-sunken"><div class="h-full rounded-full bg-cyan-500 transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
+      <div class="mt-5 h-2 overflow-hidden rounded-full bg-sunken"><div class="h-full rounded-full bg-accent-fill transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
       <p class="mt-4 text-sm leading-relaxed text-ink-2">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : i18n.m.calibration.preparing_hint}</p>
       <div class="mt-6 border-t border-line pt-5">
         <div class="mb-3 flex items-center gap-2">
@@ -598,12 +598,12 @@
           <div class="label">{i18n.m.dashboard.live_usage}</div>
         </div>
         <div class="grid gap-3 sm:grid-cols-2">
-          <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="rgb(56,189,248)" />
+          <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="var(--accent)" />
           <UsageGraph
             label="GPU"
             data={activity.gpuHistory}
             current={activity.metrics?.gpuPercent ?? null}
-            color="rgb(34,197,94)"
+            color="var(--ink-3)"
             unavailable={gpuUnavailable}
             detail={activity.metrics?.gpuEngine}
           />
@@ -615,17 +615,17 @@
   {:else}
     <div class="quality-columns">
       <div class="min-w-0 space-y-5">
-        <section class="overflow-hidden rounded-2xl bg-black shadow-xl ring-1 ring-white/10" bind:this={viewer} aria-busy={switching}>
+        <section class="scheme-dark overflow-hidden rounded-2xl bg-black text-ink shadow-xl ring-1 ring-white/10" bind:this={viewer} aria-busy={switching}>
           <div class="flex min-h-16 items-center justify-between gap-3 border-b border-white/10 px-3 py-2.5 text-white/85 sm:px-4 sm:py-3">
             <div class="min-w-0 flex-1">
-              <span class="block text-[11px] uppercase tracking-[0.18em] text-ink-3">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span>
+              <span class="block text-xs font-semibold text-ink-3">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span>
               <strong class="block truncate text-lg leading-tight">{variantLabel(activeName)}</strong>
             </div>
             <div class="flex shrink-0 items-center gap-1 sm:gap-2">
-              {#if switching}<span class="text-xs font-medium text-cyan-300" aria-live="polite">{i18n.m.common.loading_short}</span>{/if}
+              {#if switching}<span class="text-xs font-medium text-accent" aria-live="polite">{i18n.m.common.loading_short}</span>{/if}
               {#if activeSample && activeSample.sampleCount > 1}<span class="hidden text-xs text-ink-4 min-[360px]:inline">{t(i18n.m.calibration.scene_label, { current: activeScene + 1, total: activeSample.sampleCount })}</span>{/if}
               {#if session.mediaKind === 'Video'}
-                <button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
+                <button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-accent" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
                   <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d={fullscreen ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5'} /></svg>
                 </button>
               {/if}
@@ -655,12 +655,12 @@
                     onerror={() => (playbackError = true)}
                   ></video>
                 {/key}
-                {#if switching}<div class="absolute inset-0 flex items-center justify-center bg-black text-sm font-medium text-cyan-200" aria-live="polite">{i18n.m.calibration.loading_resource}</div>{/if}
+                {#if switching}<div class="absolute inset-0 flex items-center justify-center bg-black text-sm font-medium text-accent" aria-live="polite">{i18n.m.calibration.loading_resource}</div>{/if}
               {:else}
                 {#each variants as variant}
                   <audio src={variant.samples[activeScene]?.url} preload="auto" class="absolute inset-0 h-full w-full object-contain" class:invisible={variant.name !== activeName} onloadedmetadata={(event: Event) => registerAudioPlayer(variant.name, event)} ontimeupdate={updatePosition} onplay={() => variant.name === activeName && (playing = true)} onpause={() => variant.name === activeName && (playing = false)} onerror={() => (playbackError = true)}></audio>
                 {/each}
-                <div class="pointer-events-none flex flex-col items-center text-white/70"><svg class="h-20 w-20 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18V5l10-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm10-2a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span class="mt-3 text-sm">{i18n.m.calibration.audio_listening}</span></div>
+                <div class="pointer-events-none flex flex-col items-center text-white/70"><svg class="h-20 w-20 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18V5l10-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm10-2a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span class="mt-3 text-sm">{i18n.m.calibration.audio_listening}</span></div>
               {/if}
             {/key}
           </div>
@@ -672,24 +672,24 @@
                 <button class="btn min-h-11" aria-label={i18n.m.calibration.zoom_in} onclick={() => zoom(0.25)}>+</button>
               </div>
             {:else if activeSample && !(session.mediaKind === 'Video' && diagnosticsEnabled)}
-              <div class="flex items-center gap-3"><button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-cyan-500 text-black hover:bg-cyan-400" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="min-h-11 min-w-0 flex-1 accent-cyan-400" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-ink-4">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
+              <div class="flex items-center gap-3"><button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-accent-fill text-accent-on hover:brightness-110" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="min-h-11 min-w-0 flex-1 accent-accent" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-ink-4">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
             {:else if activeSample}
               <p class="text-center text-xs text-ink-4">{i18n.m.calibration.native_controls_note}</p>
             {/if}
           </div>
           {#if activeDiagnostics && activeSample}
-            <div class="border-t border-amber-800/70 bg-amber-950/40 px-4 py-3 text-amber-100" aria-live="polite">
+            <div class="border-t border-warn-line bg-warn-soft px-4 py-3 text-warn-strong" aria-live="polite">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <strong class="text-xs uppercase tracking-[0.16em] text-amber-300">{i18n.m.calibration.stream_diagnostics}</strong>
+                <strong class="text-xs font-semibold text-warn">{i18n.m.calibration.stream_diagnostics}</strong>
                 <span class="font-mono text-xs">{diagnosticSummary()}</span>
               </div>
               <dl class="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-[7rem_minmax(0,1fr)]">
-                <dt class="text-amber-300/80">{i18n.m.calibration.requested_route}</dt><dd class="break-all font-mono">{activeSample.url}</dd>
-                <dt class="text-amber-300/80">video.currentSrc</dt><dd class="break-all font-mono">{browserStreamUrl || 'Waiting for the video element…'}</dd>
-                <dt class="text-amber-300/80">{i18n.m.calibration.playback_time}</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · {t(i18n.m.calibration.scene_button, { number: activeScene + 1 })}</dd>
+                <dt class="text-warn">{i18n.m.calibration.requested_route}</dt><dd class="break-all font-mono">{activeSample.url}</dd>
+                <dt class="text-warn">video.currentSrc</dt><dd class="break-all font-mono">{browserStreamUrl || 'Waiting for the video element…'}</dd>
+                <dt class="text-warn">{i18n.m.calibration.playback_time}</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · {t(i18n.m.calibration.scene_button, { number: activeScene + 1 })}</dd>
               </dl>
               {#if session.mediaKind === 'Video' && browserStreamUrl}
-                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-amber-600/70 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-900/60 focus-visible:outline-2 focus-visible:outline-amber-300" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">{i18n.m.calibration.open_exact_resource}</a>
+                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-warn-line px-3 py-2 text-xs font-semibold text-warn-strong hover:bg-warn-soft focus-visible:outline-2 focus-visible:outline-warn" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">{i18n.m.calibration.open_exact_resource}</a>
               {/if}
             </div>
           {/if}
@@ -697,7 +697,7 @@
 
         {#if activeSample && activeSample.sampleCount > 1}
           <nav class="flex gap-2" aria-label={i18n.m.calibration.scenes}>
-            {#each activeVariant?.samples ?? [] as sample, index}<button class="btn min-h-11 flex-1" class:border-cyan-500={activeScene === index} class:text-cyan-700={activeScene === index} onclick={() => chooseScene(index)}>{t(i18n.m.calibration.scene_button, { number: sample.sampleNumber })}</button>{/each}
+            {#each activeVariant?.samples ?? [] as sample, index}<button class="btn min-h-11 flex-1" class:btn-primary={activeScene === index} onclick={() => chooseScene(index)}>{t(i18n.m.calibration.scene_button, { number: sample.sampleNumber })}</button>{/each}
           </nav>
         {/if}
 
@@ -708,10 +708,10 @@
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
               <button class="choice group relative min-h-20 touch-manipulation rounded-xl px-3 py-3 text-left" class:choice-selected={activeName === variant.name} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
                 <span class="text-xl font-bold text-ink">{variantLabel(variant.name)}</span>
-                {#if variant.isOriginal}<span class="mt-1 block text-[11px] font-semibold uppercase tracking-wide text-accent">{i18n.m.calibration.reference_label}</span>{/if}
+                {#if variant.isOriginal}<span class="mt-1 block text-[11px] font-semibold text-accent">{i18n.m.calibration.reference_label}</span>{/if}
                 {#if ratings[variant.name]}<span class="mt-1 block truncate text-[11px] font-semibold text-accent">{ratingLabel(ratings[variant.name]!)}</span>{/if}
                 {#if revealed}<span class="mt-1 block text-xs text-ink-3">{revealedLabel(variant.name)}</span>{/if}
-                {#if resultVariant?.recommended}<span class="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-emerald-500" title={i18n.m.calibration.recommended_sample}></span>{/if}
+                {#if resultVariant?.recommended}<span class="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-ok" title={i18n.m.calibration.recommended_sample}></span>{/if}
               </button>
             {/each}
           </div>
@@ -723,7 +723,7 @@
           <section class="card p-5 xl:sticky xl:top-0">
             <h2 class="font-semibold text-ink">{i18n.m.calibration.classification_title}</h2>
             <p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.calibration.classification_hint}</p>
-            <div class="mt-4 rounded-xl bg-raised p-3 text-center"><span class="text-xs uppercase tracking-wide text-ink-3">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span><strong class="ml-2 text-2xl text-ink">{variantLabel(activeName)}</strong></div>
+            <div class="mt-4 rounded-xl bg-raised p-3 text-center"><span class="text-xs text-ink-3">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span><strong class="ml-2 text-2xl text-ink">{variantLabel(activeName)}</strong></div>
             {#if activeVariant?.isOriginal}
               <p class="callout tone-accent mt-3 rounded-xl p-4">{i18n.m.calibration.reference_hint}</p>
             {:else}
@@ -737,7 +737,7 @@
           </section>
         {:else if session.result}
           <section class="card overflow-hidden">
-            <div class="border-b border-line p-5"><p class="text-xs font-semibold uppercase tracking-[0.16em] text-accent">{i18n.m.calibration.result_title}</p><h2 class="mt-1 text-xl font-bold text-ink">{session.result.recommendedQuality !== null ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2></div>
+            <div class="border-b border-line p-5"><p class="text-xs font-semibold text-accent">{i18n.m.calibration.result_title}</p><h2 class="mt-1 text-xl font-bold text-ink">{session.result.recommendedQuality !== null ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2></div>
             <div class="divide-y divide-line-soft">
               {#each session.result.variants as variant}
                 <div class="px-5 py-3" class:bg-ok-soft={variant.recommended}>

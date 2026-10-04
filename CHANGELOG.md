@@ -111,6 +111,11 @@
 
 ### Changed
 
+- The web app has a native macOS look in both light and dark: the system typeface, a window-grey ground, white grouped surfaces, capsule buttons, segmented controls for switching views, a floating tinted sidebar and filled symbol tiles in Settings. Labels are sentence case and figures use the system face; code, paths and encoder names stay monospaced.
+- Status colours are chosen to stay distinguishable with colour blindness. Success is blue rather than green, warnings are gold and failures raspberry; every text step, including hints, clears WCAG AA on every surface. A unit test simulates deuteranopia and protanopia and fails if a future palette brings them back together.
+- Artwork is used more: larger posters in recent results, posters on quarantine rows, and the working job and job details take a soft glow from their own poster. Missing artwork still degrades silently, and the glow never retries artwork already known to be missing.
+- Every accent and state colour now comes from the theme, including the quality lab's player chrome (which is always dark), so no stray cyan, sky or emerald remains when the theme changes. A test keeps palette hues out of components.
+
 - Remote workers are available and enabled on fresh installations without a preview flag. Existing saved choices are preserved, including older installations without a saved worker setting. Explicit pairing, library placement and strict verification remain required; the existing environment variable still supports disabling the service.
 - Unraid Community Apps metadata now describes video, audio, image and distributed processing, with setup, license and screenshot links. The install guide reflects the live listing and the shared current application icon.
 

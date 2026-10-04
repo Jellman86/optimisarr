@@ -249,7 +249,7 @@
 
           <dl class="mt-3 space-y-3">
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-ink-3">
+              <dt class="text-xs font-semibold text-ink-3">
                 {i18n.m.workers.server_address}
               </dt>
               <dd class="mt-1 break-all font-mono text-sm text-ink">
@@ -257,7 +257,7 @@
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-ink-3">
+              <dt class="text-xs font-semibold text-ink-3">
                 {i18n.m.workers.pairing_code}
               </dt>
               <!-- Grouped for reading aloud; the server ignores the spacing on the way back. -->
@@ -351,7 +351,7 @@
                   <span class="flex items-center gap-1.5">
                     <span class="text-ink-3">{i18n.m.workers.cpu_label}</span>
                     <span class="h-1.5 w-16 overflow-hidden rounded-full bg-sunken">
-                      <span class="block h-full rounded-full bg-sky-500" style="width: {Math.round(worker.cpuBusyFraction * 100)}%"></span>
+                      <span class="block h-full rounded-full bg-accent" style="width: {Math.round(worker.cpuBusyFraction * 100)}%"></span>
                     </span>
                     <span class="font-mono tabular-nums">{Math.round(worker.cpuBusyFraction * 100)}%</span>
                   </span>
@@ -364,7 +364,7 @@
                   <span class="flex items-center gap-1.5" title={i18n.m.workers.gpu_hint}>
                     <span class="text-ink-3">{i18n.m.workers.gpu_label}</span>
                     <span class="h-1.5 w-16 overflow-hidden rounded-full bg-sunken">
-                      <span class="block h-full rounded-full bg-violet-500" style="width: {Math.round(worker.gpuBusyFraction * 100)}%"></span>
+                      <span class="block h-full rounded-full bg-ink-3" style="width: {Math.round(worker.gpuBusyFraction * 100)}%"></span>
                     </span>
                     <span class="font-mono tabular-nums">{Math.round(worker.gpuBusyFraction * 100)}%</span>
                   </span>

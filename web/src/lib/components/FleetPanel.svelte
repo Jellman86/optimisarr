@@ -49,7 +49,7 @@
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.fleet}</span>
     {#if workersAvailable}
-      <span class="ml-auto font-mono text-xs text-ink-3">
+      <span class="ml-auto text-xs text-ink-3">
         {t(i18n.m.dashboard.fleet_reporting, { online: online.toLocaleString(), total: total.toLocaleString() })}
       </span>
     {/if}
@@ -64,11 +64,11 @@
           <span class="h-1.5 w-1.5 flex-none rounded-full bg-ok" aria-hidden="true"></span>
           {i18n.m.dashboard.this_server}
         </div>
-        <div class="mt-1 font-mono text-xs text-ink-3">
+        <div class="mt-1 text-xs text-ink-3">
           {plural(runningLocally, i18n.m.dashboard.fleet_jobs_one, i18n.m.dashboard.fleet_jobs_other, runningLocally.toLocaleString())}
         </div>
       </div>
-      <div class="font-mono text-[10px] text-ink-2">
+      <div class="text-[11px] font-medium text-ink-3">
         <div class="mb-1 flex items-center gap-2">
           <span class="w-7">CPU</span>
           <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-sunken"><span class="block h-full rounded-full bg-ink-3" style="width: {localCpu ?? 0}%"></span></span>
@@ -84,7 +84,7 @@
           <div class="text-ink-3">{i18n.m.dashboard.gpu_not_reported}</div>
         {/if}
       </div>
-      <div class="font-mono text-xs tabular-nums text-ink-3 sm:text-right"></div>
+      <div class="text-xs tabular-nums text-ink-3 sm:text-right"></div>
     </li>
 
     {#each active as worker (worker.id)}
@@ -99,7 +99,7 @@
             ></span>
             <span class="truncate">{worker.name}</span>
           </div>
-          <div class="mt-1 truncate font-mono text-xs text-ink-3">
+          <div class="mt-1 truncate text-xs text-ink-3">
             {worker.online ? workerSubtitle(worker) : i18n.m.dashboard.fleet_offline}
           </div>
           {#if worker.lastProblem}
@@ -108,7 +108,7 @@
             <div class="mt-1 line-clamp-2 text-xs text-warn" title={worker.lastProblem}>{worker.lastProblem}</div>
           {/if}
         </div>
-        <div class="font-mono text-[10px] text-ink-2">
+        <div class="text-[11px] font-medium text-ink-3">
           {#if cpu != null}
             <div class="mb-1 flex items-center gap-2">
               <span class="w-7">CPU</span>
@@ -128,7 +128,7 @@
             <div class="text-ink-3">{i18n.m.dashboard.gpu_not_reported}</div>
           {/if}
         </div>
-        <div class="font-mono text-xs tabular-nums text-ink-3 sm:text-right">
+        <div class="text-xs tabular-nums text-ink-3 sm:text-right">
           {worker.online ? formatSize(worker.freeScratchBytes) : '—'}
         </div>
       </li>
