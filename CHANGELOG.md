@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- A Windows Event Log write failure no longer stops the sidecar. Writes are serialized and retried; a bounded, protected availability notice records failure and recovery without retaining application messages or exception text.
+
 - Updated the frontend toolchain's devalue dependency to reject malformed non-string object keys. The pending frontend patch updates and test coverage collector update are included.
 - The Windows checked updater preserves server check-in dates across regional formats. PowerShell's already-parsed dates are no longer converted to text and parsed again, which could exchange the day and month and block a healthy update.
 

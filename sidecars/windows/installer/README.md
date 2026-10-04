@@ -23,6 +23,14 @@ The tray executable locates the private runtime using .NET's
 The service runs through the private Microsoft-signed `dotnet.exe`; its WiX component uses that
 file as its [service executable key path](https://docs.firegiant.com/wix/schema/wxs/serviceinstall/).
 
+Worker status and errors appear in Windows' Application Event Log under **OptimisarrSidecar**.
+If Windows refuses a log write, the worker continues and retries logging after 30 seconds.
+An administrator can read `%ProgramData%\Optimisarr\Sidecar\event-log-availability.log` to
+check whether writes failed or recovered. This protected notice records only time, availability
+and a numeric error code. It contains no application messages, credentials or media paths.
+The current file and one previous file are each limited to about 16 KiB. Individual Event Log
+messages longer than 16,000 characters are marked as truncated.
+
 ## Upgrade and data handling
 
 The installer refuses to replace a manually registered `OptimisarrSidecar` service. Drain that
