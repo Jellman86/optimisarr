@@ -18,6 +18,8 @@ class InstallerPayloadTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         for name in ['runtime/dotnet.exe', 'runtime/shared/10/runtime.dll', 'Optimisarr.Sidecar.Service.dll', 'Optimisarr.Sidecar.Tray.exe', 'Optimisarr.Sidecar.Tray.dll', 'ffmpeg.exe', 'ffprobe.exe']:
             self.add(name)
+        self.add('Update-Sidecar.ps1')
+        self.add('InstallationHealth.psm1')
 
     def add(self, name):
         path = self.root / name
@@ -47,6 +49,11 @@ class InstallerPayloadTests(unittest.TestCase):
         except OSError:
             self.skipTest('Host cannot create symlinks')
         with self.assertRaisesRegex(ValueError, 'symlinks'):
+            payload.generate(self.root)
+
+    def test_checked_update_route_cannot_be_omitted_from_the_package(self):
+        (self.root / 'InstallationHealth.psm1').unlink()
+        with self.assertRaisesRegex(ValueError, 'Incomplete'):
             payload.generate(self.root)
 
     def test_installer_refuses_to_overwrite_a_manually_registered_service(self):

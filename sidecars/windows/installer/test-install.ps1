@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string] $UpgradeInstaller
 )
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'InstallationHealth.psm1') -Force
 $pairing = Join-Path $env:ProgramData 'Optimisarr\Sidecar'
 if ((Get-Service OptimisarrSidecar -ErrorAction SilentlyContinue) -or (Test-Path $pairing)) {
     throw 'Run installer smoke tests only on a disposable Windows VM with no existing sidecar or pairing.'
@@ -15,12 +16,15 @@ $testStarted = [DateTime]::Now
 $evidenceRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $logRoot = Join-Path $evidenceRoot ('optimisarr-install-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $logRoot | Out-Null
+$directory = Join-Path $logRoot 'Custom install'
 Write-Output "Installer evidence: $logRoot"
 function Invoke-Msi([string] $Action, [string] $Name, [string] $Path) {
     Write-Output "MSI $($Name): starting. Logs: $logRoot"
     # Start-Process -Wait also waits for descendants. An upgraded worker must stay alive.
     # Wait only for this msiexec instance, with a deadline, and inspect its own exit code.
-    $process = Start-Process msiexec.exe -ArgumentList @($Action, ('"'+$Path+'"'), '/qn', '/norestart', '/l*v', ('"'+$logRoot+'\'+$Name+'.log"')) -PassThru
+    $arguments=@($Action, ('"'+$Path+'"'), '/qn', '/norestart', '/l*v', ('"'+$logRoot+'\'+$Name+'.log"'))
+    if($Action -eq '/i' -and (Get-Variable directory -ErrorAction SilentlyContinue)){$arguments+=('INSTALLFOLDER="'+$directory+'"')}
+    $process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru
     try {
         if (!$process.WaitForExit(600000)) {
             try { $process.Kill() } catch { Write-Warning "Could not stop timed-out installer: $_" }
@@ -38,27 +42,36 @@ function Get-ProductCode([string] $Path) {
     try {
         $database = $engine.OpenDatabase($Path, 0)
         $view = $database.OpenView('SELECT `Value` FROM `Property` WHERE `Property`=''ProductCode''')
-        $view.Execute()
+        [void]$view.Execute()
         $record = $view.Fetch()
         try { return $record.StringData(1) }
         finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) }
     }
     finally {
-        if ($view) { $view.Close(); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
+        if ($view) { [void]$view.Close(); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
         if ($database) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) }
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($engine)
     }
 }
 function Wait-ForCheckIn([string] $Evidence, [DateTime] $After) {
-    $deadline = [DateTime]::UtcNow.AddMinutes(3)
-    while ([DateTime]::UtcNow -lt $deadline) {
-        if ((Get-Service OptimisarrSidecar).Status -eq 'Running' -and (Test-Path $Evidence)) {
-            $beats = @(Get-Content $Evidence | Where-Object { [DateTime]::Parse($_).ToUniversalTime() -gt $After })
-            if ($beats.Count -gt 0) { return }
-        }
-        Start-Sleep -Seconds 1
+    $version=(Get-Item (Join-Path $directory 'Optimisarr.Sidecar.Core.dll')).VersionInfo.ProductVersion
+    $read={Get-InstallationSample $directory $address 1 $null $After @()}
+    Wait-InstallationHealth -ExpectedVersion $version -After $After -ObservationSeconds 30 -TimeoutSeconds 180 -ReadSample $read | ConvertTo-Json | Set-Content "$Evidence-health.json"
+}
+function Invoke-CheckedUpdate([string]$New,[string]$Previous,[string]$Name,[int]$ExpectedExit) {
+    $root=Join-Path $logRoot $Name
+    $args=@('-NoProfile','-File',('"'+(Join-Path $PSScriptRoot 'Update-Sidecar.ps1')+'"'),'-Installer',('"'+$New+'"'),'-Sha256',(Get-FileHash $New).Hash,
+        '-PreviousInstaller',('"'+$Previous+'"'),'-PreviousSha256',(Get-FileHash $Previous).Hash,'-ServerAddress',$address,'-WorkerId','1','-ObservationSeconds','30','-EvidenceDirectory',('"'+$root+'"'),'-InstallDirectory',('"'+$directory+'"'))
+    $child=Start-Process (Get-Process -Id $PID).Path -ArgumentList $args -PassThru -RedirectStandardOutput (Join-Path $logRoot ($Name+'.stdout')) -RedirectStandardError (Join-Path $logRoot ($Name+'.stderr'))
+    try {
+        if(!$child.WaitForExit(540000)){throw 'Checked update did not finish within its test deadline.'}
+        if($child.ExitCode -ne $ExpectedExit){throw "Checked update returned $($child.ExitCode), expected $ExpectedExit. See $Name evidence."}
     }
-    throw "Worker did not check in after upgrade/start. Evidence: $logRoot"
+    finally{$child.Dispose()}
+    $result=Get-Content (Join-Path $root 'result.json') -Raw | ConvertFrom-Json
+    # The guarded fixture retains diagnostics, not duplicate toolchains or its dummy pairing.
+    foreach($item in @('previous-payload','new-payload','previous.msi','new.msi','pairing-before.dat')){Remove-Item (Join-Path $root $item) -Recurse -Force -ErrorAction SilentlyContinue}
+    return $result
 }
 if ((Get-ProductCode $installerPath) -eq (Get-ProductCode $upgradePath)) {
     throw 'Upgrade fixture must have a distinct ProductCode: repair is not an upgrade test.'
@@ -72,7 +85,6 @@ try {
     $installed = $true
     $service = Get-CimInstance Win32_Service -Filter "Name='OptimisarrSidecar'"
     if (!$service -or $service.StartName -ne 'LocalSystem' -or $service.State -ne 'Stopped') { throw 'Unexpected service registration/state' }
-    $directory = Join-Path $env:ProgramFiles 'Optimisarr Sidecar'
     if (!(Test-Path (Join-Path $directory 'Optimisarr.Sidecar.Tray.exe'))) { throw 'Tray executable missing' }
     & (Join-Path $directory 'runtime\dotnet.exe') --list-runtimes
     if ($LASTEXITCODE -ne 0) { throw 'Bundled runtime failed' }
@@ -141,9 +153,42 @@ try {
         if ($service.State -ne 'Running' -or $service.ProcessId -eq $oldPid) { throw 'Paired upgrade did not restart the service' }
         if ((Get-FileHash $pairingFile).Hash -ne $pairingHash) { throw 'Upgrade changed pairing' }
         # Require a heartbeat from the replacement process, not one during MSI shutdown.
-        Wait-ForCheckIn $heartbeats ([DateTime]::UtcNow)
+        Wait-ForCheckIn $heartbeats $before
         Write-Output "$($upgrade.Name): service restarted and checked in; pairing unchanged. Started $before"
     }
+    $tray=Start-Process (Join-Path $directory 'Optimisarr.Sidecar.Tray.exe') -PassThru
+    Start-Sleep -Seconds 2
+    if($tray.HasExited){throw 'Installed tray did not stay running before checked update.'}
+    $success=Invoke-CheckedUpdate $installerPath $upgradePath 'checked-success' 0
+    $currentInstaller=$installerPath
+    if($success.State -ne 'Verified' -or $success.Verification.Health.CheckIns -lt 3 -or !$success.Verification.TrayRestored){throw 'Checked update did not verify sustained service, check-ins and the reopened tray.'}
+
+    # Only the initial no-service/no-pairing guard reaches here. Stop this fixture's
+    # replacement service after its first check-in, then exercise real MSI recovery.
+    $oldPid=(Get-CimInstance Win32_Service -Filter "Name='OptimisarrSidecar'").ProcessId
+    $fault=Start-ThreadJob -ArgumentList $oldPid,$heartbeats -ScriptBlock {
+        param($oldPid,$heartbeats)
+        $deadline=[DateTime]::UtcNow.AddMinutes(3)
+        while([DateTime]::UtcNow -lt $deadline){
+            $service=Get-CimInstance Win32_Service -Filter "Name='OptimisarrSidecar'"
+            if($service.State -eq 'Running' -and $service.ProcessId -ne $oldPid){
+                $process=Get-Process -Id $service.ProcessId
+                $beats=@(Get-Content $heartbeats | Where-Object {[DateTime]::Parse($_).ToUniversalTime() -ge $process.StartTime.ToUniversalTime()})
+                if($beats.Count){Start-Sleep -Seconds 6;Stop-Service OptimisarrSidecar;return 'Owned replacement stopped after first check-in.'}
+            }
+            Start-Sleep -Seconds 1
+        }
+        throw 'Delayed crash fixture did not find the replacement worker.'
+    }
+    try {
+        $recovery=Invoke-CheckedUpdate $upgradePath $installerPath 'checked-recovery' 1
+        if($recovery.State -ne 'Recovered' -or $recovery.Recovery.Health.CheckIns -lt 3 -or !$recovery.PairingUnchanged -or !$recovery.Recovery.TrayRestored){throw 'Failed update did not recover the whole previous MSI, pairing and sustained service/tray health.'}
+        $faultEvidence=Receive-Job $fault -Wait -ErrorAction Stop
+        if($faultEvidence -ne 'Owned replacement stopped after first check-in.'){throw 'Delayed failure was not exercised.'}
+        $faultEvidence | Set-Content (Join-Path $logRoot 'delayed-failure.txt')
+    }
+    finally{Stop-Job $fault;Remove-Job $fault -Force}
+    Get-Process -Name Optimisarr.Sidecar.Tray -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq (Join-Path $directory 'Optimisarr.Sidecar.Tray.exe')} | Stop-Process -Force
     # This is a test sentinel, never a real credential. The initial guard proves this directory is ours.
     $sentinel = Join-Path $pairing 'installer-test-sentinel.txt'
     'retain settings on uninstall' | Set-Content $sentinel
@@ -154,7 +199,7 @@ try {
     if (!(Test-Path $sentinel)) { throw 'Uninstall removed retained data' }
     if ((Get-FileHash $pairingFile).Hash -ne $pairingHash) { throw 'Uninstall changed retained pairing' }
     Remove-Item $sentinel
-    Write-Output "Fresh install, unpaired/paired/repeated upgrades, check-in, native rendering and uninstall passed. Evidence: $logRoot"
+    Write-Output "Fresh install, sustained paired upgrades, delayed failure and complete MSI recovery, native rendering and uninstall passed. Evidence: $logRoot"
 }
 catch {
     $failure = $_

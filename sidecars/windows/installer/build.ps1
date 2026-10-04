@@ -56,6 +56,7 @@ try {
     & (Join-Path $payload 'runtime\dotnet.exe') --list-runtimes
     Assert-Exit 'Private runtime validation'
     Copy-Item (Join-Path $PSScriptRoot 'Getting started.html') $payload
+    Copy-Item (Join-Path $PSScriptRoot 'Update-Sidecar.ps1'),(Join-Path $PSScriptRoot 'InstallationHealth.psm1') $payload
     Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $payload 'LICENSE.txt')
     @"
 Optimisarr Sidecar ${Version}: GPL-3.0. Source: https://github.com/Jellman86/optimisarr
@@ -91,6 +92,9 @@ https://github.com/Jellman86/optimisarr/releases/tag/v${Version}
     Assert-Exit 'MSI build and validation'
     (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($msi) | Set-Content "$msi.sha256"
     Write-Host "Built $msi"
+    $updateZip=Join-Path $output "OptimisarrSidecar-$Version-update.zip"
+    Compress-Archive -Path (Join-Path $PSScriptRoot 'Update-Sidecar.ps1'),(Join-Path $PSScriptRoot 'InstallationHealth.psm1') -DestinationPath $updateZip -Force
+    (Get-FileHash $updateZip -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($updateZip) | Set-Content "$updateZip.sha256"
     if ($BuildUpgradeTest) {
         # A separate ProductCode exercises major upgrade rather than repair. Keep this
         # fixture outside the distributable artifact glob and never publish it.
