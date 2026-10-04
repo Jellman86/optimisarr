@@ -5,7 +5,7 @@ the command path and fallback behaviour are covered by automated tests; it does 
 physical GPU has completed an Optimisarr job. **Validated** means a real container completed the
 listed path and the evidence was observed outside a mock.
 
-Last reviewed: **2026-09-17**.
+Last reviewed: **2026-10-04**. Each row retains its own validation date and limits.
 
 The [real-media acceptance harness](../development/media-acceptance.md) now provides repeatable
 isolated container and sidecar runs with independent quality measurements and rollback evidence.
@@ -21,10 +21,18 @@ adds QSV H.264/HEVC, software AV1 and installed Mac VideoToolbox evidence. It re
 failures on the deployed image: two VFR measurement-plan mismatches and an output-directory
 failure during a correctly triggered quality rejection retry. These are not passing validations.
 
+The [1 October VMAF v1 acceptance](../engineering/hardware-validation/2026-10-01-vmaf-v1.md)
+adds native Mac/Windows/Linux matrices and exact published Linux-container NVENC coverage.
+Complete v1 scoring runs on the CPU; CUDA does not supply its complete feature set.
+The [4 October follow-up](../engineering/hardware-validation/2026-10-04-backlog-hardening.md)
+adds isolated repeated-timestamp application checks on all four hosts. The
+[26 September pairing record](../engineering/hardware-validation/2026-09-26-vmaf-frame-number-pairing.md)
+is historical sampled evidence; its packet totals must not be read as decoded frame counts.
+
 | Platform | Encode | Hardware decode | HDR→SDR tone map | VMAF path | Live metrics | Last real-host validation | Evidence and known limits |
 |---|---|---|---|---|---|---|---|
 | CPU (`libx264`/`libx265`) | Validated in every final-image CI run | Not applicable | Software `zscale`/Hable implemented and unit-tested | Validated: software decode and CPU `libvmaf` | Validated: `/proc/stat` CPU usage | Every CI run | The [container smoke test](../../scripts/ci_container_smoke.sh) performs real transcodes, decode checks, and VMAF comparisons in the built image. It cannot validate a GPU. |
-| NVIDIA RTX 4070 / NVENC | Validated | Decoder utilisation confirmed on a physical NVIDIA device for the `dev` NVDEC/CUDA path; automated fallback coverage remains in place | Software path only | Implemented and unit-tested for NVDEC + `libvmaf_cuda`; real-host validation pending | Physical decoder activity observed; the full graph evidence bundle is not retained | 2026-07-24 (NVDEC activity) | An external tester confirmed that decoder activity is now visible where it was absent before ([issue evidence](https://github.com/Jellman86/optimisarr/issues/38#issuecomment-5071443854)). That closes the implementation issue, but the exact image digest, driver, fixture, fallback run, CUDA VMAF result, and full job evidence required by the checklist below were not retained; those broader claims remain pending. |
+| NVIDIA RTX 4070 / NVENC | HEVC validated in native and published-container matrices; earlier H.264/AV1 evidence is separately dated | CUDA decode validated in the native Windows and published Linux-container v1 matrix | Software path only | Complete v1 CPU scoring validated; complete CUDA v1 scoring unavailable upstream | Physical decoder activity observed; no new complete telemetry certification | 2026-10-01 | [Native and exact published-image acceptance](../engineering/hardware-validation/2026-10-01-vmaf-v1.md) covers selected SDR encoders, timing variants, fallback, cancellation and rollback. It does not certify every driver, codec, HDR path or CUDA metric. |
 | Intel N100 / QSV | Validated | Validated | QSV VPP completed a synthetic HDR10/PQ→BT.709 hardware-surface run; full Optimisarr job pending | QSV decode + CPU VMAF is implemented and unit-tested; current real-host revalidation pending | Validated through unprivileged DRM fdinfo | 2026-08-11 (sampled VMAF alignment) | A 24-frame HDR10/PQ fixture decoded with `hevc_qsv`, ran through `vpp_qsv=tonemap=1`, and produced limited-range BT.709 output on the live Jellyfin FFmpeg/iHD/oneVPL stack. A retained normal QSV output also reproduced and validated the [sampled-VMAF seek-alignment correction](../engineering/hardware-validation/2026-08-11-intel-qsv-vmaf-seek-alignment.md) against the exact live image. A complete replace-bound HDR job and fallback still need recording. Earlier 4K encoding reduced host CPU use from about 142% to 22%; see the [engineering history](../engineering/history.md#phase-7-gpu-support). |
 | Intel VA-API | Synthetic hardware run validated; full Optimisarr job pending | Synthetic hardware run validated; full Optimisarr job pending | VA-API VPP completed a synthetic HDR10/PQ→BT.709 hardware-surface run; full Optimisarr job pending | VA-API decode + CPU VMAF is implemented and unit-tested | Implemented and parser-tested through DRM fdinfo | 2026-07-27 (VA-API VPP filter) | The same 24-frame fixture decoded through VA-API, ran through `tonemap_vaapi`, encoded with `hevc_vaapi`, and produced limited-range BT.709 output in the live container. Dispatch restricts the documented HDR10-only filter to freshly confirmed PQ metadata and excludes Dolby Vision. This is direct VA-API evidence, but a complete replace-bound job and fallback still need recording. |
 | AMD VA-API | Implemented and unit-tested | Implemented and unit-tested | Implemented and command-tested; physical filter run pending | VA-API decode + CPU VMAF is implemented and unit-tested | Implemented and parser-tested through DRM fdinfo with sysfs fallback | Pending | This is the highest-priority hardware gap. No AMD GPU model, driver, encode, decode, tone-map, VMAF, or metrics run has been recorded. |

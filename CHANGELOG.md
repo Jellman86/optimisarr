@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Documentation
+
+- Reconciled the older worker-hardening and sampled-quality records with current behavior, preserving dated evidence and distinguishing video packets from decoded pictures. The hardware matrix links current all-platform acceptance and identifies remaining scope.
+
 ### Fixed
 
 - A Windows Event Log write failure no longer stops the sidecar. Writes are serialized and retried; a bounded, protected availability notice records failure and recovery without retaining application messages or exception text.
@@ -102,6 +106,7 @@
 - New ordinary SDR video jobs use VMAF v1 HD/UHD models for adaptive selection and final verification. Numeric preset/custom floors stay unchanged; scores can change because v1 detects banding and chroma artifacts. HDR, sources at 45 fps or above, frame-rate conversions and already-started legacy jobs retain their existing model.
 - VMAF v1 uses 10-bit measurement and the candidate's actual encoded dimensions/depth. Update sidecars together with the server: gated v1 work requires protocol 7 and real HD/UHD model probes. Strict worker verification keeps scoring on the worker; incomplete evidence cannot approve replacement.
 - Container/Linux measurement now pins libvmaf v3.2.1, matching the Mac bundle. The Windows bundle pins a verified upstream revision eight commits later. Both include long-measurement backpressure fixes. NVIDIA encoding/decode remain supported; complete v1 scoring runs on the CPU because upstream CUDA lacks its full feature set.
+- Thanks to [@snellejelle99](https://github.com/snellejelle99) for proposing VMAF 1, sharing an early implementation and discussing the scoring in [PR #114](https://github.com/Jellman86/optimisarr/pull/114).
 
 ### Added
 

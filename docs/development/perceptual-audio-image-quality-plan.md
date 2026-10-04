@@ -1,6 +1,6 @@
 # Perceptual quality for audio and still images
 
-Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans.
+Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans. Delivery status reconciled **4 October 2026**.
 Status: **opt-in standalone audio and video soundtrack reports, separate operator-selected gates and strict worker measurement implemented in dev; adaptive audio quality selection and surround support remain planned**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
@@ -16,8 +16,9 @@ approval or retention purge. Quarantine is not a backup.
 
 **Use SSIMULACRA2 for the image implementation and Zimtohrli for the audio implementation.**
 Following the research, the operator selected the newer audio approach on 1 October 2026.
-Qualify Zimtohrli's native packaging, coverage and thresholds before enforcing a gate;
-ViSQOL remains an optional offline comparison tool, not a prerequisite for choosing the
+The implemented mono/stereo audio and soundtrack slices have pinned native tools,
+explicit sampled coverage and operator-selected gate limits. Broader coverage and any
+calibrated default still need evidence. ViSQOL remains an optional offline comparison tool, not a prerequisite for choosing the
 production metric. This direction is not a claim that one metric always predicts human
 perception best. No new listening-panel programme is a prerequisite.
 
@@ -27,7 +28,7 @@ perception best. No new listening-panel programme is a prerequisite.
 | [Butteraugli](https://github.com/google/butteraugli) | Native perceptual distance with a spatial error map. Its original documentation emphasises barely noticeable differences. | Useful comparison baseline; SSIMULACRA2 better matches a user-facing compression-quality score. Reconsider if local near-lossless evidence favours it. |
 | [LPIPS](https://github.com/richzhang/PerceptualSimilarity) | Learned perceptual patch distance using PyTorch and pretrained networks. | Research comparator if needed; the additional runtime/weights are not justified for the first native worker implementation. This is a packaging judgement, not an accuracy claim. |
 | [ViSQOL](https://github.com/google/visqol) | Established full-reference general-audio mode, with Linux/Mac build instructions and experimental Windows instructions. | Optional offline comparator only. Audio mode uses 48 kHz and downmixes to mono; one score cannot certify surround preservation. It is not a required shipped dependency or runtime fallback. |
-| [Zimtohrli](https://github.com/google/zimtohrli) | Newer native psychoacoustic metric aimed at high-quality audio compression and just-noticeable differences. | Selected audio implementation. Upstream documents Debian-like testing; native Windows/Mac packaging and performance must still be proved before distribution or gating. |
+| [Zimtohrli](https://github.com/google/zimtohrli) | Newer native psychoacoustic metric aimed at high-quality audio compression and just-noticeable differences. | Selected audio implementation. Upstream documents Debian-like testing. Current development bundles include qualified native tools for the implemented mono/stereo coverage; surround support and calibrated defaults remain planned. |
 | [PEAQ / GstPEAQ](https://github.com/HSU-ANT/gstpeaq) | Established reference-audio approach. The available plugin explicitly says it does not meet the test tolerances of BS.1387-1. [Current ITU recommendation](https://www.itu.int/rec/R-REC-BS.1387-2-202305-I/en) is revision 2. | Optional laboratory comparator, not the initial production dependency. Do not describe this plugin as a conforming current-standard implementation. |
 
 Zimtohrli's [published comparison](https://github.com/google/zimtohrli/blob/main/CORRELATION.md)
@@ -46,13 +47,35 @@ audit the exact dependency/model artefacts, retain notices and matching source w
 required, pin revisions and hashes, and build without runtime downloads. This is not
 certification of bundles that have not been built.
 
-Research starting points, not committed production tool pins:
+The source/build manifests are authoritative for shipped tools. The original research starting points were:
 
 - ViSQOL revision `38d0b0163e441047d4429bf07ad09e5b9031d02c`.
 - Zimtohrli revision `f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3`.
 - libjxl `v0.12.0` contains the SSIMULACRA2 tool; freeze and record the metric revision too.
 
+## Delivered slices
+
+- [#343](https://github.com/Jellman86/optimisarr/pull/343): opt-in sampled audio reports,
+  native tools and strict worker measurement.
+- [#345](https://github.com/Jellman86/optimisarr/pull/345): separate explicit maximum-distance
+  gate; unavailable or incomplete required evidence blocks replacement.
+- [#346](https://github.com/Jellman86/optimisarr/pull/346): codec-aware bitrate presets,
+  independent of the metric threshold.
+- [#347](https://github.com/Jellman86/optimisarr/pull/347): sampled assessment of retained,
+  re-encoded video soundtracks, with frozen track mapping and separate controls.
+- [#344](https://github.com/Jellman86/optimisarr/pull/344): manual read-only exact-copy
+  review for every library type; broader matching and cleanup remain planned.
+
+These slices are implemented in development. They do not complete the image provider,
+multichannel audio qualification, automatic bitrate search or perceptual dedupe. The
+[configuration guide](../setup/configuration.md#audio-quality-reports-and-gates-development)
+is the maintained source for user-facing coverage, cost and limits.
+
 ## Implementation sequence
+
+This sequence records the original plan and the qualification still required for new
+coverage. Implemented mono/stereo audio reporting and explicit gates are listed above;
+do not repeat them as undelivered work.
 
 1. **Qualify the selected tools.** Build isolated Zimtohrli and SSIMULACRA2 tools on this Mac, PICARD and Quark,
    and run the published container on the authorised disposable host. Exercise Riker's
@@ -232,8 +255,9 @@ deliberately degraded candidates, including swaps, truncation, clipping and low 
 
 ## Duplicate detection for all library types
 
-Status: **roadmap research; no dedupe implementation is shipped**. Cover image, audio,
-video and mixed libraries. Quality measurements compare a known source with its encode;
+Status: **manual read-only exact-copy review is implemented in development; persistent
+indexing, broader matching and cleanup remain planned**. The implemented review covers
+image, audio, video and mixed libraries. Quality measurements compare a known source with its encode;
 duplicate detection first needs to establish whether two independently discovered files
 contain matching media. A quality score alone cannot establish that relationship.
 
