@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Updated the frontend toolchain's devalue dependency to reject malformed non-string object keys. The pending frontend patch updates and test coverage collector update are included.
+
 - Windows paired updates have a checked route that verifies installed files, sustained service/tray health and three fresh server check-ins. A failed update attempts complete previous-MSI recovery and verifies it separately. Pairing, media and Windows protections are preserved; restart-required, timed-out and unverified recovery results cannot report success. Direct MSI completion still confirms installation only.
 
 - Full-file video quality checks compare corresponding decoded pictures when their counts match. Repeated timestamps can no longer make a clean short encode fail VMAF by comparing neighbouring pictures. The container and worker commands use the same comparison; quality limits and the other verification gates are unchanged.
