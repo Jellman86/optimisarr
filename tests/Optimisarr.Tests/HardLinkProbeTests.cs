@@ -13,7 +13,7 @@ public sealed class HardLinkProbeTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("optimisarr-links-").FullName;
 
-    [Fact]
+    [PosixFact]
     public void A_plain_file_reports_a_single_link()
     {
         var file = WriteFile("movie.mkv");
@@ -21,7 +21,7 @@ public sealed class HardLinkProbeTests : IDisposable
         Assert.Equal(1, HardLinkProbe.CountLinks(file));
     }
 
-    [Fact]
+    [PosixFact]
     public void A_hardlinked_file_reports_both_links()
     {
         var file = WriteFile("movie.mkv");
@@ -34,7 +34,7 @@ public sealed class HardLinkProbeTests : IDisposable
         Assert.Equal(2, HardLinkProbe.CountLinks(link));
     }
 
-    [Fact]
+    [PosixFact]
     public void Removing_a_link_drops_the_count_again()
     {
         // The count is volatile, which is why eligibility is re-checked before a replacement
@@ -47,7 +47,7 @@ public sealed class HardLinkProbeTests : IDisposable
         Assert.Equal(1, HardLinkProbe.CountLinks(file));
     }
 
-    [Fact]
+    [PosixFact]
     public void A_symlink_is_not_counted_as_a_hard_link()
     {
         // A symlink is a separate file pointing at this one; deleting or replacing the target does

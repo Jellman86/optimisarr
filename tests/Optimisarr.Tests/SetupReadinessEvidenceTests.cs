@@ -4,7 +4,7 @@ namespace Optimisarr.Tests;
 
 public sealed class SetupReadinessEvidenceTests
 {
-    [Fact]
+    [PosixFact]
     public void ParseMountInfo_uses_the_deepest_mount_and_decodes_escaped_paths()
     {
         const string mountInfo = """

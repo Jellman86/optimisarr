@@ -36,6 +36,18 @@ Native sidecars have separate platform checks. On macOS, run `swift test` and
 retains those screenshots. Installer changes need the clean-host MSI test in
 [the installer guide](../../sidecars/windows/installer/README.md).
 
+The backend tests also run on native Windows to check portable rules, media
+verification, protocols, migrations and file safety. This does not add support
+for deploying the server directly on Windows. Its supported deployment remains
+the Linux container.
+
+Eight backend tests use **PosixFact**: the Linux mount-path fixture, four native
+hard-link probe tests and three inventory link-count tests. They run on Linux
+and macOS and show an explicit skip reason on Windows. Unknown hard-link counts
+still block unsafe replacement. Other path fixtures use the host's separators,
+API tests read decoded JSON values, and queue-pause tests assert Windows'
+existing `dispatchOnly` behavior. The full Linux suite keeps all POSIX checks.
+
 Unit tests do not certify live encoders or the packaged application. Run the
 [real-media acceptance harness](media-acceptance.md) for container and physical
 worker evidence, and follow [the release guide](releasing.md) when publishing

@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace Optimisarr.Tests;
 
 [Collection(TokenedApiCollection.Name)]
@@ -23,7 +25,8 @@ public sealed class ReadinessPathTests(AdminTokenAuthEndpointTests.TokenedApi ap
 
             Directory.Delete(trash);
             body = await (await client.GetAsync("/api/ready")).Content.ReadAsStringAsync();
-            Assert.Contains(trash, body);
+            var problem = JsonNode.Parse(body)!.AsObject();
+            Assert.Contains(trash, problem["detail"]!.GetValue<string>());
         }
         finally
         {
