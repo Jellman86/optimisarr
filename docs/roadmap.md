@@ -19,6 +19,16 @@ the replacement workflow is trustworthy.
   describing finished work as outstanding sends effort at an item that has none.
 - Status claims last verified against the repository: **2026-08-24**.
 
+## Current hardening follow-up, reviewed 2026-10-04
+
+The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
+trial and pairing records with current implementation. Priorities are checked Windows
+upgrades, retained real-source playback evidence, reliable guard/concurrency tests and
+opt-in diagnostic provenance. Audio reports and explicit gates are implemented in
+development; image perceptual assessment and broader audio/dedupe coverage remain planned.
+Completed slices belong in the changelog; do not treat the historical trial's size holds
+or VMAF v0 policy as current behavior.
+
 ## Up next (priority order, updated 2026-08-24)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
@@ -1091,8 +1101,8 @@ the replacement workflow is trustworthy.
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
       HDR or transparent-image fidelity from one perceptual score.
-    - **Audio direction:** implement Google's newer Zimtohrli, selected by the operator after
-      research. Qualify native packaging, runtime and coverage using free speech, music,
+    - **Audio direction:** Google's newer Zimtohrli is implemented for the documented
+      mono/stereo coverage. Extend qualification using free speech, music,
       mixed soundtracks and stereo/5.1 fixtures with actual Opus/AAC/MP3 encodes. ViSQOL is
       an optional offline comparator, not a required shipped dependency or runtime fallback.
       This selection does not claim a universal benchmark winner. Mono aggregation must not hide

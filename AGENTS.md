@@ -14,3 +14,7 @@ Everyday work starts from current `dev` on a short-lived branch and reaches
 Release notes follow the human-first standard in
 [`docs/development/releasing.md`](docs/development/releasing.md) and use
 [`.github/RELEASE_NOTES_TEMPLATE.md`](.github/RELEASE_NOTES_TEMPLATE.md).
+
+For worker hardening or fleet testing, read the current
+[sidecar handoff](docs/development/sidecar-hardening-handoff.md). Its dated evidence is
+context; current code, issue state and exact-build verification remain authoritative.
