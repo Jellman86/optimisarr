@@ -10,6 +10,98 @@ public sealed class DiagnosticWorkerEvidenceTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(3, false)]
+    public void Every_supported_contract_reports_the_record_identity_comparison(int version, bool sameId)
+    {
+        var contract = new RemoteVerificationContract(version, Guid.NewGuid(), false,
+            SoundtrackQuality: version == 3 ? new SoundtrackQualityRequest([]) : null);
+        var evidence = new RemoteVerificationEvidence(sameId ? contract.Id : Guid.NewGuid(), new string('a', 64), new string('b', 64));
+        var summary = DiagnosticWorkerEvidence.Summarise(Lease(contract, evidence));
+        Assert.Equal(sameId, summary.MatchesContract);
+        Assert.Equal(version, summary.ContractVersion);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    [InlineData(100)]
+    public void Unsupported_contract_versions_are_disclosed_without_an_identity_match(int version)
+    {
+        var contract = new RemoteVerificationContract(version, Guid.NewGuid(), false, CountVideoFrames: true);
+        var summary = DiagnosticWorkerEvidence.Summarise(Lease(contract,
+            new RemoteVerificationEvidence(contract.Id, new string('a', 64), new string('b', 64))));
+        Assert.Equal(version > 0 ? (int?)version : null, summary.ContractVersion);
+        Assert.Null(summary.MatchesContract);
+        Assert.Null(summary.CountVideoFramesRequested);
+    }
+
+    [Fact]
+    public void A_soundtrack_contract_without_its_request_does_not_claim_a_match()
+    {
+        var contract = new RemoteVerificationContract(3, Guid.NewGuid(), false);
+        var summary = DiagnosticWorkerEvidence.Summarise(Lease(contract,
+            new RemoteVerificationEvidence(contract.Id, new string('a', 64), new string('b', 64))));
+        Assert.Equal(3, summary.ContractVersion);
+        Assert.Null(summary.MatchesContract);
+        Assert.Null(summary.CountVideoFramesRequested);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Missing_contracts_and_empty_contract_ids_do_not_infer_request_flags(bool emptyId)
+    {
+        var lease = Lease(new RemoteVerificationContract(1, Guid.Empty, false, CountVideoFrames: true),
+            new RemoteVerificationEvidence(Guid.NewGuid(), new string('a', 64), new string('b', 64)));
+        if (!emptyId) lease.VerificationContractJson = null;
+        var summary = DiagnosticWorkerEvidence.Summarise(lease);
+        Assert.Equal(emptyId ? (int?)1 : null, summary.ContractVersion);
+        Assert.Null(summary.MatchesContract);
+        Assert.Null(summary.CountVideoFramesRequested);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(0, 0)]
+    [InlineData(400, 398)]
+    [InlineData(-1, -2)]
+    public void Decoded_picture_counts_are_distinct_from_packets_and_preserve_missing_or_zero(int? source, int? candidate)
+    {
+        var contract = new RemoteVerificationContract(1, Guid.NewGuid(), false, CountVideoFrames: true);
+        var evidence = new RemoteVerificationEvidence(contract.Id, new string('a', 64), new string('b', 64),
+            SourceVideo: new TimestampCheckResult(true, 0, "secret", 16, 390),
+            CandidateVideo: new TimestampCheckResult(true, 0, "secret", 16, 390),
+            SourceDecodedFrameCount: source, CandidateDecodedFrameCount: candidate);
+        var summary = DiagnosticWorkerEvidence.Summarise(Lease(contract, evidence));
+        Assert.True(summary.CountVideoFramesRequested);
+        Assert.Equal(source is >= 0 ? source : null, summary.SourceDecodedFrameCount);
+        Assert.Equal(candidate is >= 0 ? candidate : null, summary.CandidateDecodedFrameCount);
+        Assert.Equal(390, summary.SourceVideo!.PacketCount);
+        Assert.Equal(390, summary.CandidateVideo!.PacketCount);
+        Assert.DoesNotContain("secret", JsonSerializer.Serialize(summary));
+    }
+
+    [Fact]
+    public void Candidate_audio_numeric_measurements_are_kept_without_process_text()
+    {
+        var contract = new RemoteVerificationContract(2, Guid.NewGuid(), false);
+        var evidence = new RemoteVerificationEvidence(contract.Id, new string('a', 64), new string('b', 64),
+            CandidateAudio: new TimestampCheckResult(true, 2, "Bearer secret-token /private/media", 80.24, 2000));
+        var summary = DiagnosticWorkerEvidence.Summarise(Lease(contract, evidence));
+        Assert.Equal(new DiagnosticTimestampSummary(true, 2, 80.24, 2000), summary.CandidateAudio);
+        Assert.Null(summary.SourceDecodedFrameCount);
+        Assert.Null(summary.CandidateDecodedFrameCount);
+        Assert.Equal("NotRecorded", summary.TimelineMethod);
+        Assert.DoesNotContain("secret-token", JsonSerializer.Serialize(summary));
+        Assert.DoesNotContain("/private", JsonSerializer.Serialize(summary));
+    }
+
     [Fact]
     public void Export_keeps_numeric_packet_evidence_and_hash_binding_without_free_text()
     {

@@ -26,7 +26,12 @@ internal sealed record DiagnosticWorkerVerificationSummary(
     DiagnosticTimestampSummary? SourceAudio = null,
     DiagnosticDecodeSummary? Decode = null,
     bool? ErrorPresent = null,
-    string TimelineMethod = "NotRecorded");
+    string TimelineMethod = "NotRecorded",
+    int? ContractVersion = null,
+    bool? CountVideoFramesRequested = null,
+    int? SourceDecodedFrameCount = null,
+    int? CandidateDecodedFrameCount = null,
+    DiagnosticTimestampSummary? CandidateAudio = null);
 
 /// <summary>Exports retained lease measurements without probe payloads, paths or process text.</summary>
 internal static class DiagnosticWorkerEvidence
@@ -46,6 +51,8 @@ internal static class DiagnosticWorkerEvidence
         if (evidence is null) return new("Malformed");
 
         var contract = Read<RemoteVerificationContract>(lease.VerificationContractJson);
+        var supportedContract = contract is { Id: var id, Version: 1 or 2 or 3 }
+            && id != Guid.Empty && (contract.Version != 3 || contract.SoundtrackQuality is not null);
         var sourceHash = DiagnosticSafeFields.Sha256(evidence.SourceSha256);
         var candidateHash = DiagnosticSafeFields.Sha256(evidence.CandidateSha256);
         return new(
@@ -53,8 +60,7 @@ internal static class DiagnosticWorkerEvidence
             evidence.ContractId == Guid.Empty ? null : evidence.ContractId,
             sourceHash,
             candidateHash,
-            contract is { Id: var id, Version: 1 } && id != Guid.Empty
-                ? id == evidence.ContractId : null,
+            supportedContract ? contract!.Id == evidence.ContractId : null,
             HashesMatch(lease.QualitySourceSha256, sourceHash),
             HashesMatch(lease.DeliveredSha256, candidateHash),
             Timestamp(evidence.SourceVideo),
@@ -62,7 +68,12 @@ internal static class DiagnosticWorkerEvidence
             Timestamp(evidence.SourceAudio),
             evidence.Decode is { } decode
                 ? new(decode.Healthy, NonNegative(decode.ErrorCount), decode.Error is not null) : null,
-            !string.IsNullOrWhiteSpace(evidence.Error));
+            !string.IsNullOrWhiteSpace(evidence.Error),
+            ContractVersion: contract?.Version is > 0 ? contract.Version : null,
+            CountVideoFramesRequested: supportedContract ? contract!.CountVideoFrames : null,
+            SourceDecodedFrameCount: NonNegative(evidence.SourceDecodedFrameCount),
+            CandidateDecodedFrameCount: NonNegative(evidence.CandidateDecodedFrameCount),
+            CandidateAudio: Timestamp(evidence.CandidateAudio));
     }
 
     // This is the stored JSON's identity, not a semantic hash of an executable command.

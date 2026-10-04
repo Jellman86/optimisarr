@@ -460,13 +460,16 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
             var previousLease = await db.JobLeases.SingleAsync(lease => lease.Worker!.Name == "Mac");
             previousLease.VerificationWorkJson = "{\"command\":\"Bearer secret-token\"}";
             previousLease.VerificationContractJson = System.Text.Json.JsonSerializer.Serialize(
-                new RemoteVerificationContract(1, Guid.Parse("e0272676-6247-4d63-900f-6c931b449fe7"), false));
+                new RemoteVerificationContract(3, Guid.Parse("e0272676-6247-4d63-900f-6c931b449fe7"), false,
+                    SoundtrackQuality: new SoundtrackQualityRequest([]), CountVideoFrames: true));
             previousLease.QualitySourceSha256 = new string('a', 64);
             previousLease.DeliveredSha256 = new string('b', 64);
             previousLease.VerificationEvidenceJson = System.Text.Json.JsonSerializer.Serialize(
                 new RemoteVerificationEvidence(Guid.Parse("e0272676-6247-4d63-900f-6c931b449fe7"),
                     new string('a', 64), new string('b', 64),
-                    SourceVideo: new TimestampCheckResult(true, 0, "Bearer secret-token", 1290.04, 32250)));
+                    SourceVideo: new TimestampCheckResult(true, 0, "Bearer secret-token", 1290.04, 32250),
+                    CandidateAudio: new TimestampCheckResult(true, 0, "Bearer secret-token", 1289.84, 60000),
+                    SourceDecodedFrameCount: 32304, CandidateDecodedFrameCount: 32304));
             await db.SaveChangesAsync();
         }
 
@@ -474,10 +477,23 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
         {
             var bundle = await DiagnosticJobBundleQueries.BuildAsync(
                 db, sessionId, jobId, _now.AddMinutes(40), CancellationToken.None);
-            Assert.Equal(2, bundle.Manifest.SchemaVersion);
+            Assert.Equal(3, bundle.Manifest.SchemaVersion);
             var previousEvidence = bundle.Leases[0].VerificationEvidence;
             Assert.Equal("Available", previousEvidence.State);
             Assert.Equal(1290.04, previousEvidence.SourceVideo!.LastPresentationSeconds);
+            Assert.Equal(3, previousEvidence.ContractVersion);
+            Assert.True(previousEvidence.MatchesContract);
+            Assert.True(previousEvidence.CountVideoFramesRequested);
+            Assert.Equal(32304, previousEvidence.SourceDecodedFrameCount);
+            Assert.Equal(32304, previousEvidence.CandidateDecodedFrameCount);
+            Assert.Equal(1289.84, previousEvidence.CandidateAudio!.LastPresentationSeconds);
+            using var wire = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(bundle,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+            var wireEvidence = wire.RootElement.GetProperty("leases")[0].GetProperty("verificationEvidence");
+            Assert.Equal(3, wire.RootElement.GetProperty("manifest").GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(32304, wireEvidence.GetProperty("sourceDecodedFrameCount").GetInt32());
+            Assert.Equal(32304, wireEvidence.GetProperty("candidateDecodedFrameCount").GetInt32());
+            Assert.Equal(1289.84, wireEvidence.GetProperty("candidateAudio").GetProperty("lastPresentationSeconds").GetDouble());
             Assert.Equal("Missing", bundle.Leases[1].VerificationEvidence.State);
             Assert.Equal("CurrentWorkerRegistration", bundle.Leases[0].WorkerIdentitySource);
             Assert.NotNull(bundle.Leases[0].VerificationWorkSha256);
