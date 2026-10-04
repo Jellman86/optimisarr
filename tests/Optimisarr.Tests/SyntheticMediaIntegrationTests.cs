@@ -141,7 +141,7 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
 
     private string WriteSparseFile(string relativePath, long sizeBytes)
     {
-        var path = Path.Combine(_root, relativePath);
+        var path = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using (var stream = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.None))
         {

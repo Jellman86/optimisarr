@@ -57,8 +57,8 @@ public sealed class WorkPathsTests : IDisposable
     [Fact]
     public void Selects_the_deepest_mount_that_contains_the_work_path()
     {
-        var path = Path.Combine(Path.DirectorySeparatorChar.ToString(), "work", "jobs", "42");
-        var root = Path.DirectorySeparatorChar.ToString();
+        var root = Path.GetPathRoot(_root)!;
+        var path = Path.Combine(root, "work", "jobs", "42");
         var work = Path.Combine(root, "work");
         var nested = Path.Combine(work, "jobs");
 

@@ -178,7 +178,7 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_scan_records_how_many_names_point_at_each_discovered_file()
     {
         WriteMediaFile("Show/S01E01.mkv");
@@ -191,7 +191,7 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         Assert.Equal(1, file.HardLinkCount);
     }
 
-    [Fact]
+    [PosixFact]
     public async Task A_link_added_after_the_first_scan_is_picked_up_by_the_next_one()
     {
         // The case this whole feature exists for: a download client hardlinks a file that has
@@ -211,7 +211,7 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         Assert.Equal(2, file.HardLinkCount);
     }
 
-    [Fact]
+    [PosixFact]
     public async Task Rescanning_an_unchanged_link_count_still_updates_nothing()
     {
         // Refreshing the count on every scan must not cost the library its idempotency.

@@ -461,7 +461,7 @@ public sealed class AdminTokenAuthEndpointTests
             var paused = JsonNode.Parse(await pause.Content.ReadAsStringAsync())!.AsObject();
             Assert.Equal(HttpStatusCode.OK, pause.StatusCode);
             Assert.True(paused["manuallyPaused"]!.GetValue<bool>());
-            Assert.Equal("suspended", paused["manualPauseMode"]!.GetValue<string>());
+            Assert.Equal(OperatingSystem.IsWindows() ? "dispatchOnly" : "suspended", paused["manualPauseMode"]!.GetValue<string>());
             Assert.False(paused["runningEncodesSuspended"]!.GetValue<bool>());
 
             var status = JsonNode.Parse(await client.GetStringAsync("/api/queue/status"))!.AsObject();

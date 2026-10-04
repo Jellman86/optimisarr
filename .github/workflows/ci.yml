@@ -105,8 +105,8 @@ jobs:
       # rather than on someone's machine.
       - run: dotnet build Optimisarr.Sidecar.slnx --configuration Release -warnaserror
       - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
-      - name: Verify Windows process and replacement safety regressions
-        run: dotnet test ../../tests/Optimisarr.Tests --configuration Release --filter "FullyQualifiedName~ReviewToolProcessTests|FullyQualifiedName~ReplacementServiceTests|FullyQualifiedName~MigrationTests|FullyQualifiedName~FfmpegCommandBuilderTests|FullyQualifiedName~WorkerProtocolTests"
+      - name: Verify portable backend contracts on Windows
+        run: dotnet test ../../tests/Optimisarr.Tests --configuration Release
       - name: Verify native popover anchoring
         run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --verify-popover
       - name: Render native tray states

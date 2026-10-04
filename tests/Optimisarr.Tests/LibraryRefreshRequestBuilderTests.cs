@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Optimisarr.Core.Activity;
 using Optimisarr.Core.Domain;
 
@@ -20,27 +21,33 @@ public sealed class LibraryRefreshRequestBuilderTests
     [Fact]
     public void Jellyfin_reports_the_changed_folder_as_modified()
     {
+        var folder = Path.Combine(Path.GetPathRoot(Path.GetTempPath())!, "data", "Movies", "Heat");
         var request = LibraryRefreshRequestBuilder.Build(
-            ActivityWatcherType.Jellyfin, "http://jf:8096", "key", "/data/Movies/Heat/Heat.mkv");
+            ActivityWatcherType.Jellyfin, "http://jf:8096", "key", Path.Combine(folder, "Heat.mkv"));
 
         Assert.Equal("POST", request.Method);
         Assert.Equal("http://jf:8096/Library/Media/Updated", request.Url);
         Assert.Equal("MediaBrowser Token=\"key\"", request.Headers["Authorization"]);
         Assert.Equal("key", request.Headers["X-Emby-Token"]);
         Assert.NotNull(request.JsonBody);
-        Assert.Contains("/data/Movies/Heat", request.JsonBody);
-        Assert.Contains("Modified", request.JsonBody);
+        var updates = JsonNode.Parse(request.JsonBody)!["Updates"]!.AsArray();
+        var update = Assert.Single(updates)!;
+        Assert.Equal(folder, update["Path"]!.GetValue<string>());
+        Assert.Equal("Modified", update["UpdateType"]!.GetValue<string>());
     }
 
     [Fact]
     public void Emby_uses_the_same_media_updated_endpoint()
     {
+        var folder = Path.Combine(Path.GetPathRoot(Path.GetTempPath())!, "data", "TV", "Show");
         var request = LibraryRefreshRequestBuilder.Build(
-            ActivityWatcherType.Emby, "http://emby:8096/", "k", "/data/TV/Show/S01E01.mkv");
+            ActivityWatcherType.Emby, "http://emby:8096/", "k", Path.Combine(folder, "S01E01.mkv"));
 
         Assert.Equal("POST", request.Method);
         Assert.Equal("http://emby:8096/Library/Media/Updated", request.Url);
-        Assert.Contains("/data/TV/Show", request.JsonBody);
+        var update = Assert.Single(JsonNode.Parse(request.JsonBody!)!["Updates"]!.AsArray())!;
+        Assert.Equal(folder, update["Path"]!.GetValue<string>());
+        Assert.Equal("Modified", update["UpdateType"]!.GetValue<string>());
     }
 
     [Fact]

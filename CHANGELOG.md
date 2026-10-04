@@ -66,6 +66,8 @@
 
 ### Development tools
 
+- Backend tests now state their POSIX requirements explicitly and use portable paths and decoded JSON elsewhere. Native Windows CI runs the complete backend suite, with eight explained POSIX skips. This does not add Windows-native server deployment support or change replacement checks.
+
 - Added an opt-in audio quality assessment tool using pinned Zimtohrli and per-channel
   distances. It reports media/tool hashes, measured windows and errors for mono/stereo
   audio, with bounded preparation, cancellation and cleanup. It does not enable a library
