@@ -58,6 +58,7 @@ try {
   if(path==='/hubs/jobs/negotiate') return json(route,{negotiateVersion:1,connectionId:'documentation',connectionToken:'documentation',availableTransports:[{transport:'WebSockets',transferFormats:['Text']}]})
   if(!path.startsWith('/api/'))return route.continue()
   if(path.endsWith('/thumbnail'))return route.fulfill({contentType:'image/svg+xml',body:f.artwork(path.split('/')[3])})
+  if(path.endsWith('/artwork'))return route.fulfill({contentType:'image/svg+xml',body:f.artwork(path.split('/')[3])})
   if(path==='/api/auth/status')return json(route,{required:false})
   if(path==='/api/setup')return json(route,{version:1,completedStep:5,currentStep:5,stepCount:5,completed:true})
   if(path==='/api/health')return json(route,{status:'healthy',service:'optimisarr',version:f.applicationVersion})

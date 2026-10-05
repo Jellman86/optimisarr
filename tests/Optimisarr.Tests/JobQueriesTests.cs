@@ -45,6 +45,29 @@ public sealed class JobQueriesTests : IDisposable
         Assert.True(result.SidecarVerification);
     }
 
+    // Job details show "4.4 GB → 1.7 GB"; without the source size only the output half is known.
+    [Fact]
+    public async Task Listed_jobs_carry_the_source_size_they_were_encoded_from()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Films", Path = "/data/films" };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(MediaFile(library.Id, 1));
+        await db.SaveChangesAsync();
+        var job = Job(1, 1, DateTimeOffset.UtcNow);
+        job.Status = JobStatus.Completed;
+        job.SourceSizeBytes = 4_673_211_458;
+        job.OutputSizeBytes = 1_817_794_396;
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+
+        var result = Assert.Single(await JobQueries.ListAsync(db, CancellationToken.None));
+
+        Assert.Equal(4_673_211_458, result.SourceSizeBytes);
+        Assert.Equal(1_817_794_396, result.OutputSizeBytes);
+    }
+
     [Fact]
     public async Task Paged_queries_apply_database_limit_before_loading_report_json()
     {

@@ -5,8 +5,11 @@
   // shared by the settings Preview and the Quarantine compare-to-approve panel.
   import { formatSize } from '../format'
 
-  let { mediaKind, left, right, comparisonDurationSeconds = null }: {
+  // A still shown in each video player before playback, so the pair reads as the title rather
+  // than two black boxes. It is a recognition aid only and never stands in for either file.
+  let { mediaKind, left, right, comparisonDurationSeconds = null, poster = null }: {
     mediaKind: string
+    poster?: string | null
     left: { label: string; url: string; sizeBytes?: number | null; startSeconds?: number | null }
     right: { label: string; url: string; sizeBytes?: number | null; startSeconds?: number | null }
     comparisonDurationSeconds?: number | null
@@ -206,6 +209,7 @@
         <video
           bind:this={players[i]}
           src={side.url}
+          poster={poster ?? undefined}
           controls
           preload="metadata"
           onloadedmetadata={() => mediaReady(i)}

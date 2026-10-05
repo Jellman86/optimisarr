@@ -679,6 +679,8 @@ export type Job = {
   effectiveVideoQuality: number | null
   videoQualityMode: string | null
   qualityRetryCount: number
+  /** The original's size when the job started; null for jobs that predate the record. */
+  sourceSizeBytes: number | null
   outputSizeBytes: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
@@ -1357,6 +1359,8 @@ export const api = {
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
+  // A landscape backdrop for the job's title; 404 when no media server knows it.
+  jobArtworkUrl: (jobId: number) => `/api/jobs/${jobId}/artwork`,
   replacementOriginalContentUrl: (id: number) => `/api/replacements/${id}/original/content`,
   replacementReplacementContentUrl: (id: number) => `/api/replacements/${id}/replacement/content`,
   rollbackReplacement: (id: number) =>

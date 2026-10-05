@@ -178,3 +178,15 @@ test('long names and verification evidence reflow with enlarged translated text'
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(375)
   }
 })
+
+test('the decision sits beside the sizes, above the comparison, and the players show the title', async ({ page }) => {
+  await mockQuarantine(page)
+  await page.goto('/#/quarantine/1')
+  const decision = page.getByRole('heading', { name: 'Review decision', level: 2 })
+  const compare = page.getByRole('heading', { name: 'Compare files', level: 2 })
+  await expect(decision).toBeVisible()
+  const [decisionTop, compareTop] = await Promise.all([decision, compare].map(heading => heading.evaluate(element => element.getBoundingClientRect().top)))
+  expect(decisionTop).toBeLessThan(compareTop)
+  // The backdrop belongs to this replacement's job; a missing one leaves the player plain.
+  await expect(page.locator('video').first()).toHaveAttribute('poster', '/api/jobs/10/artwork')
+})
