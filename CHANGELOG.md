@@ -38,6 +38,9 @@
 
 ### Changed
 
+- The Dashboard's **In flight** panel shows each job's artwork with the show and episode. When nothing is running it shows the last finished title, its size before and after, where it ran and when, instead of an empty box.
+- The Quarantine review leads with the title's artwork and puts **Approve & free space** / **Reject (roll back)** directly under the sizes, above the comparison and the verification details. Before playback, both video players show the title's backdrop rather than two black frames.
+- Job details show the original and new size, for example "4.4 GB → 1.7 GB 61% smaller". The job list API now includes `sourceSizeBytes`.
 - Clearer wording across the app. The status bar reads **Running here** and **On workers**. Queue lanes are titled **Where work runs**, and job progress talks about "this server" instead of "the container" or "sidecar evidence". The Dashboard summarises failures as "40 not small enough · 11 failed a check", in the chosen language, and **Inspect** opens the **Failures** tab.
 - Queue filters no longer overlap. **Verified** and **Verification failed** are replaced by **Ready to replace**, **In progress** no longer includes jobs waiting for a decision, and **Needs review** appears only when something needs review.
 - The **Failures** tab shows each file's artwork, show and episode, with the check details moved under **Technical detail**.

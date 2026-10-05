@@ -143,7 +143,7 @@
     <div class="area-savings">
       <SavingsPanel {stats} {healthy} {healthDetail} bind:confirmingReset {resetting} onreset={resetSavings} />
     </div>
-    <div class="area-inflight"><InFlightPanel {jobs} state={queueState} /></div>
+    <div class="area-inflight"><InFlightPanel {jobs} state={queueState} lastResult={results?.[0] ?? null} /></div>
     <div class="area-needs"><NeedsYouPanel {stats} {failures} /></div>
     <div class="area-chart"><SavedPerDayPanel days={dailySavings} /></div>
     <div class="area-fleet"><FleetPanel {workers} {workersAvailable} {runningLocally} /></div>

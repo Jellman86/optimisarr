@@ -124,7 +124,7 @@ test('the status bar names the state, and the job list says what is being worked
   // Scoped to the page: the sidebar's encoding card names the same file, encoder and figure.
   const main = page.locator('main')
   await expect(main.getByText('ENCODING', { exact: true })).toBeVisible()
-  await expect(main.getByText('Harborlight.S02E07.mkv')).toBeVisible()
+  await expect(main.getByText('Harborlight S02E07', { exact: true })).toBeVisible()
   await expect(main.getByText('hevc_qsv')).toBeVisible()
   await expect(main.getByText('68%')).toBeVisible()
   // The enum name is read out in words rather than printed as PascalCase.
@@ -380,9 +380,10 @@ test('a long in-flight list is capped and says what it is hiding', async ({ page
 
   await page.goto('/#/')
 
-  await expect(page.getByText('Episode.0.mkv')).toBeVisible()
-  await expect(page.getByText('Episode.5.mkv')).toBeVisible()
-  await expect(page.getByText('Episode.6.mkv')).toBeHidden()
+  // Rows read as titles: the extension and scene dots are dropped, the full path stays in the tooltip.
+  await expect(page.getByText('Episode 0', { exact: true })).toBeVisible()
+  await expect(page.getByText('Episode 5', { exact: true })).toBeVisible()
+  await expect(page.getByText('Episode 6', { exact: true })).toBeHidden()
   await expect(page.getByRole('button', { name: '7 more in flight →' })).toBeVisible()
 })
 
@@ -819,4 +820,29 @@ test('recent results show each file before and after, with what it saved', async
   await expect(results.getByText('1.2 GB → 352 MB')).toBeVisible()
   await expect(results.getByText('−71%')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Saved per day' }).getByRole('img')).toHaveAccessibleName('Last 2 days: 871 MB saved')
+})
+
+test('an idle in-flight panel shows the last finished title instead of an empty box', async ({ page }) => {
+  await mockDashboard(page, {
+    results: [{
+      jobId: 41, mediaFileId: 7, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E07 - The Long Tide WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_282_683_553, outputSizeBytes: 368_922_428, vmafHarmonicMean: 91.31,
+      videoEncoder: 'hevc_qsv', workerName: 'Mac Studio', finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }],
+  })
+  await page.goto('/#/')
+
+  const last = page.getByRole('region', { name: 'Last finished' })
+  await expect(last).toContainText('Harborlight')
+  await expect(last).toContainText('S02E07 · The Long Tide')
+  await expect(last).toContainText('1.2 GB → 352 MB −71%')
+  await expect(last).toContainText('TV · Mac Studio · 3 hours ago')
+})
+
+test('an idle in-flight panel with no history says so and nothing more', async ({ page }) => {
+  await mockDashboard(page, { stats: { queued: 0, running: 0, readyToReplace: 0, inQuarantine: 0, failed: 0 } })
+  await page.goto('/#/')
+  await expect(page.getByText('Nothing queued and nothing running. Everything eligible is done.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Last finished' })).toHaveCount(0)
 })

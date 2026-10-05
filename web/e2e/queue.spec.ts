@@ -782,3 +782,21 @@ test('a failure leads with its most fundamental cause and lists every failed che
   await page.getByText('Technical detail').click()
   await expect(page.getByText('The source video spans 2898.395s', { exact: false })).toBeVisible()
 })
+
+test('a finished job says how big it was before and after', async ({ page }) => {
+  await mockQueue(page)
+  const finished = { ...job(51, 'Completed', true), sourceSizeBytes: 4_673_211_458, outputSizeBytes: 1_817_794_396, finishedAt: '2026-10-03T09:18:26Z' }
+  const bigger = { ...job(52, 'Failed', false), sourceSizeBytes: 405_091_089, outputSizeBytes: 545_986_048, failureCategory: 'SizeSaving' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [finished, bigger]))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-51').click()
+  const details = page.locator('#queue-job-dialog')
+  await expect(details).toContainText('4.4 GB → 1.7 GB 61% smaller')
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  // A larger output gives both sizes and claims no saving.
+  await page.locator('#queue-job-52').click()
+  await expect(details).toContainText('386 MB → 521 MB')
+  await expect(details).not.toContainText('smaller')
+})
