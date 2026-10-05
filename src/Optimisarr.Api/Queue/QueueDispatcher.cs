@@ -977,7 +977,7 @@ public sealed class QueueDispatcher(
 
         WorkerProblems.Record(
             worker,
-            $"Its candidate for {verdict.Path ?? $"job {jobId}"} failed verification: {verdict.ErrorMessage ?? "no reason recorded"}.",
+            WorkerProblems.FailedVerification(verdict.Path, jobId, verdict.ErrorMessage),
             DateTimeOffset.UtcNow);
         await db.SaveChangesAsync(cancellationToken);
     }

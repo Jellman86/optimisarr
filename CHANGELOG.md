@@ -8,6 +8,11 @@
 
 ### Fixed
 
+- The Dashboard's **Recent results** and **Saved per day** no longer count replacements that were rolled back. Restoring an original gives that space back, and these views now agree with the **Total space saved** figure, which already did.
+- A failed job is explained by its most fundamental cause rather than the first rule it broke. A damaged source (picture ending well before its sound) leads, then a broken output, then picture or sound quality, lost tracks or metadata, and finally the size rule. Every failed check is still listed. The Queue job details, queue rows and **Failures** tab use the same explanation.
+- A worker's last problem shows how long ago it happened and stops being shown as a warning after a day. A rejected candidate no longer reads "failed verification: Verification failed:".
+- Fixed missing spaces before "·" separators in inventory, failure, attempt history and exclusion lines.
+
 - A Windows Event Log write failure no longer stops the sidecar. Writes are serialized and retried; a bounded, protected availability notice records failure and recovery without retaining application messages or exception text.
 - Opt-in diagnostic bundles compare stored audio and soundtrack contract identities as well as video contracts. Schema version 3 includes decoded picture counts, their request flag and candidate audio timestamps without raw process text. Missing evidence stays unknown; the export does not authorise replacement.
 
@@ -30,6 +35,14 @@
 - Queue detail styles no longer remove padding from nested measurement cards.
 - Windows installer tests wait for the installer process with a deadline, allowing upgraded
   workers to stay running. A regression test covers live descendants, exit codes and timeouts.
+
+### Changed
+
+- Clearer wording across the app. The status bar reads **Running here** and **On workers**. Queue lanes are titled **Where work runs**, and job progress talks about "this server" instead of "the container" or "sidecar evidence". The Dashboard summarises failures as "40 not small enough · 11 failed a check", in the chosen language, and **Inspect** opens the **Failures** tab.
+- Queue filters no longer overlap. **Verified** and **Verification failed** are replaced by **Ready to replace**, **In progress** no longer includes jobs waiting for a decision, and **Needs review** appears only when something needs review.
+- The **Failures** tab shows each file's artwork, show and episode, with the check details moved under **Technical detail**.
+- Schedule shows an all-day window as **All day** instead of "00:00 → 00:00". Inventory details show the file type (MP4, MKV) instead of ffprobe's demuxer list, count "1 track" correctly, and show untagged audio as "unknown language".
+- Library cards state a folder access problem once, and a non-default priority no longer uses the warning colour.
 
 ### Added
 

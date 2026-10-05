@@ -265,15 +265,18 @@ test('an empty queue reads as idle, not as a problem', async ({ page }) => {
 test('failures are named by cause rather than counted', async ({ page }) => {
   await mockDashboard(page, {
     failures: [
-      { category: 'VmafBelowTarget', description: 'VMAF below target', count: 7, samples: [] },
-      { category: 'DecoderCorruption', description: 'Decoder corruption', count: 3, samples: [] },
+      { category: 'SizeSaving', description: 'The attempt failed the configured size rule.', count: 7, samples: [] },
+      { category: 'Verification', description: 'A verification gate rejected the output.', count: 3, samples: [] },
       { category: 'SourceUnreadable', description: 'Source unreadable', count: 1, samples: [] },
     ],
   })
 
   await page.goto('/#/')
 
-  await expect(page.getByText('VMAF below target ×7 · Decoder corruption ×3 · Source unreadable ×1')).toBeVisible()
+  // Known categories use the app's short wording; one the app does not know keeps the server's.
+  await expect(page.getByText('7 not small enough · 3 failed a check · 1 Source unreadable')).toBeVisible()
+  await page.getByRole('button', { name: 'Inspect' }).click()
+  await expect(page).toHaveURL(/#\/queue\/failures$/)
 })
 
 test('the fleet lists this server alone when remote workers are switched off', async ({ page }) => {

@@ -7,7 +7,9 @@
   import EmptyState from './EmptyState.svelte'
   import Icon from './Icon.svelte'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
-  import { jobFailureDescription } from '../i18n/jobErrors'
+  import { jobFailureDescription, jobFailureStory } from '../i18n/jobErrors'
+  import { mediaTitle } from '../format'
+  import Thumbnail from './Thumbnail.svelte'
 
   let groups = $state<FailureGroup[]>([])
   let loading = $state(true)
@@ -52,13 +54,6 @@
     }
   }
 
-  // The leaf filename, so a long library path doesn't dominate the row.
-  function fileName(path: string | null): string {
-    if (!path) return '—'
-    const parts = path.split('/')
-    return parts[parts.length - 1] || path
-  }
-
   const totalFailures = $derived(groups.reduce((sum, group) => sum + group.count, 0))
 </script>
 
@@ -95,38 +90,43 @@
               <h3 class="font-medium text-ink">{jobFailureDescription(group.category, i18n.m, group.description)}</h3>
               <span class="badge tone-bad">{group.count}</span>
             </div>
-            <p class="text-xs text-ink-4">{group.category}</p>
           </div>
         </div>
 
         <ul class="divide-y divide-line-soft">
           {#each group.samples as sample (sample.jobId)}
+            {@const title = mediaTitle(sample.relativePath)}
+            {@const story = jobFailureStory(group.category, sample.errorMessage, sample.verificationChecks, i18n.m)}
             <li class="px-4 py-3">
               <div class="flex items-start justify-between gap-3">
+                <Thumbnail mediaFileId={sample.mediaFileId} size="md" />
                 <div class="min-w-0 flex-1">
-                  <div class="truncate font-mono text-xs text-ink-2" title={sample.relativePath ?? ''}>
-                    {fileName(sample.relativePath)}
+                  <div class="truncate text-sm font-medium text-ink" title={sample.relativePath ?? ''}>
+                    {title.primary ?? '—'}{#if title.episode}{' '}<span class="ml-1 font-normal text-ink-3">{[title.episode, title.secondary].filter(Boolean).join(' · ')}</span>{/if}
                   </div>
+                  <p class="mt-0.5 text-xs font-medium text-bad">{story.headline}</p>
+                  {#if story.hint}<p class="mt-0.5 text-xs text-ink-3">{story.hint}</p>{/if}
                   {#if sample.jobType !== 'Normal'}
                     <span class="badge mt-1 tone-warn">
-                      {sample.jobType === 'Calibration' ? 'Personal quality check' : 'Preview comparison'}
+                      {sample.jobType === 'Calibration' ? i18n.m.shared.failure_job_calibration : i18n.m.shared.failure_job_preview}
                     </span>
                   {/if}
-                  {#if sample.errorMessage}
+                  {#if sample.errorMessage || sample.verificationChecks.length > 0}
                     <details class="mt-1 text-xs text-ink-3">
                       <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
-                      <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-bad">{sample.errorMessage}</p>
+                      {#if sample.verificationChecks.length > 0}
+                        <dl class="mt-2 space-y-1.5">
+                          {#each sample.verificationChecks as check}
+                            <div>
+                              <dt class="font-semibold text-ink-2">{check.name}</dt>
+                              <dd class="mt-0.5 break-words">{check.detail}</dd>
+                            </div>
+                          {/each}
+                        </dl>
+                      {:else if sample.errorMessage}
+                        <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px]">{sample.errorMessage}</p>
+                      {/if}
                     </details>
-                  {/if}
-                  {#if sample.verificationChecks.length > 0}
-                    <dl class="callout tone-bad mt-2 space-y-2 p-3 text-xs">
-                      {#each sample.verificationChecks as check}
-                        <div>
-                          <dt class="font-semibold text-bad-strong">{check.name}</dt>
-                          <dd class="mt-0.5 break-words text-bad">{check.detail}</dd>
-                        </div>
-                      {/each}
-                    </dl>
                   {/if}
                 </div>
                 <button

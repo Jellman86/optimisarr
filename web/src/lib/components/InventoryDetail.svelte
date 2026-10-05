@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { InventoryRow } from '../api'
-  import { formatDuration, formatSize } from '../format'
-  import { i18n, t } from '../i18n/i18n.svelte'
+  import { containerLabel, formatDuration, formatSize, languageList } from '../format'
+  import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { modal } from '../modal'
   import Thumbnail from './Thumbnail.svelte'
   import Icon from './Icon.svelte'
@@ -14,6 +14,7 @@
   let title = $derived((file.relativePath.split(/[\\/]/).pop() ?? file.relativePath).replace(/\.[^.]+$/, '').replace(/[._]+/g, ' '))
   let artworkFailed = $state(false)
   let artworkLoaded = $state(false)
+  let container = $derived(containerLabel(file.container, file.relativePath))
   let verdict = $derived(row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped)
 </script>
 
@@ -27,9 +28,9 @@
       <Thumbnail mediaFileId={file.id} size="poster" shape={file.mediaKind === 'Audio' || file.mediaKind === 'Image' ? 'square' : 'portrait'} />
     </div>
     <div class="detail-heading">
-      <p class="detail-library">{libraryName}{#if file.mediaKind && file.mediaKind !== 'Unknown'} · {file.mediaKind}{/if}</p>
+      <p class="detail-library">{libraryName}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}</p>
       <h2 id="inventory-detail-title">{title}</h2>
-      <div class="detail-meta"><span>{formatSize(file.sizeBytes)}</span>{#if file.container}<span>{file.container}</span>{/if}{#if file.durationSeconds !== null}<span>{formatDuration(file.durationSeconds)}</span>{/if}</div>
+      <div class="detail-meta"><span>{formatSize(file.sizeBytes)}</span>{#if container}<span>{container}</span>{/if}{#if file.durationSeconds !== null}<span>{formatDuration(file.durationSeconds)}</span>{/if}</div>
     </div>
     <button type="button" class="btn btn-ghost detail-close" onclick={onclose} aria-label={i18n.m.shared.close_detail}><Icon name="x" /></button>
   </header>
@@ -44,10 +45,10 @@
     <dl class="detail-specs">
       <div><dt>{i18n.m.inventory.detail_status}</dt><dd>{file.status}</dd></div>
       <div><dt>{i18n.m.inventory.detail_size}</dt><dd>{formatSize(file.sizeBytes)}</dd></div>
-      <div><dt>{i18n.m.inventory.detail_container}</dt><dd>{file.container ?? '—'}</dd></div>
+      <div><dt>{i18n.m.inventory.detail_container}</dt><dd>{container ?? '—'}</dd></div>
       {#if file.mediaKind !== 'Audio'}<div><dt>{i18n.m.inventory.detail_video}</dt><dd>{file.videoCodec ?? '—'}{#if file.width && file.height}<span>{file.width} × {file.height}</span>{/if}</dd></div>{/if}
       {#if file.mediaKind !== 'Image'}
-        <div><dt>{i18n.m.inventory.detail_audio}</dt><dd>{file.audioCodecs ?? '—'}{#if file.audioTrackCount !== null}{t(i18n.m.inventory.audio_tracks, { count: file.audioTrackCount })}{/if}{#if file.audioLanguages}<span>{file.audioLanguages}</span>{/if}</dd></div>
+        <div><dt>{i18n.m.inventory.detail_audio}</dt><dd>{file.audioCodecs ?? '—'}{#if file.audioTrackCount !== null}{plural(file.audioTrackCount, i18n.m.inventory.audio_tracks_one, i18n.m.inventory.audio_tracks, file.audioTrackCount.toLocaleString())}{/if}{#if file.audioLanguages}<span>{languageList(file.audioLanguages, i18n.m.inventory.unknown_language)}</span>{/if}</dd></div>
         <div><dt>{i18n.m.inventory.detail_subtitles}</dt><dd>{file.subtitleTrackCount ?? '—'}</dd></div>
         <div><dt>{i18n.m.inventory.detail_duration}</dt><dd>{formatDuration(file.durationSeconds)}</dd></div>
       {/if}

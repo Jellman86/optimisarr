@@ -637,9 +637,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
 test('library tab headings describe the displayed content and restore the workflow heading', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/source')
-  await page.getByRole('button', { name: /Candidates\(/ }).click()
+  await page.getByRole('button', { name: /Candidates \(/ }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Candidates')
-  await page.getByRole('button', { name: /Excluded\(/ }).click()
+  await page.getByRole('button', { name: /Excluded \(/ }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Excluded')
   await page.getByRole('button', { name: 'Rules', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose files')

@@ -2809,8 +2809,8 @@
   {#if editingId !== 0 && !embedded}
     <nav class="segmented mb-4" aria-label={i18n.m.libraries.configure}>
       <button class="segment" aria-pressed={activeTab === 'rules'} onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
-      <button class="segment" aria-pressed={activeTab === 'candidates'} onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
-      <button class="segment" aria-pressed={activeTab === 'excluded'} onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
+      <button class="segment" aria-pressed={activeTab === 'candidates'} onclick={() => (activeTab = 'candidates')}><span>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading}{' '}({editorEligibleCount}){/if}</span></button>
+      <button class="segment" aria-pressed={activeTab === 'excluded'} onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}><span>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading}{' '}({editorExclusions.length}){/if}</span></button>
     </nav>
   {/if}
 
@@ -2849,7 +2849,7 @@
           <div class="flex items-center justify-between gap-3 px-3 py-2">
             <div class="min-w-0">
               <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
-              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason} · {ex.reason}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
+              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
             </div>
             <button class="btn btn-ghost min-h-11 flex-shrink-0 px-3 text-xs" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
           </div>
@@ -2873,20 +2873,10 @@
             <span class="truncate text-base font-semibold text-ink">{library.name}</span>
             <span class="badge tone-info">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
             {#if library.priority !== 0}
-              <span class="badge tone-warn">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
+              <span class="badge tone-muted">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
             {/if}
             {#if !library.enabled}
               <span class="badge tone-muted">{i18n.m.libraries.badge_disabled}</span>
-            {/if}
-            <!-- Access is only worth a badge when it is a problem; a healthy path says nothing. -->
-            {#if a && !a.ok}
-              {#if !a.exists}
-                <span class="badge tone-bad" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
-              {:else if !a.readable}
-                <span class="badge tone-bad" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
-              {:else}
-                <span class="badge tone-warn" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
-              {/if}
             {/if}
           </div>
           <ActionMenu
@@ -2928,8 +2918,9 @@
           <div class="flex items-center gap-2"><Icon name="clock" class="h-3.5 w-3.5 flex-shrink-0" /><span>{scheduleLabel(library)}</span></div>
         </div>
 
+        <!-- Access is only worth a line when it is a problem; a healthy path says nothing. -->
         {#if a && !a.ok}
-          <div class="flex items-start gap-1.5 text-xs text-warn">
+          <div class="flex items-start gap-1.5 text-xs {a.exists && a.readable ? 'text-warn' : 'text-bad'}">
             <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             <span>{accessMessage(a)}</span>
           </div>

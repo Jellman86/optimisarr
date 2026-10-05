@@ -139,7 +139,7 @@
           <tr class:selected-row={selected?.file.id === file.id}>
             <td><button id={`inventory-file-${file.id}`} class="inventory-file focus-ring" onclick={() => selectRow(row)}>
               <Thumbnail mediaFileId={file.id} />
-              <span class="inventory-file-name"><span class="inventory-file-title">{fileName(file.relativePath)}</span><span class="inventory-file-meta">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'} · {file.mediaKind}{/if}<span class="mobile-size"> · {formatSize(file.sizeBytes)}</span></span></span>
+              <span class="inventory-file-name"><span class="inventory-file-title">{fileName(file.relativePath)}</span><span class="inventory-file-meta">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="mobile-size"> · {formatSize(file.sizeBytes)}</span></span></span>
             </button></td>
             <td class="size-column inventory-size">{formatSize(file.sizeBytes)}</td>
             <td class="format-column"><span class="inventory-codec">{file.mediaKind === 'Audio' ? file.audioCodecs ?? '—' : file.videoCodec ?? '—'}</span><span class="inventory-resolution">{file.width && file.height ? `${file.width} × ${file.height}` : file.container ?? '—'}</span></td>

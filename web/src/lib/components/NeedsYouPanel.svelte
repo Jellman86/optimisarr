@@ -4,6 +4,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Icon from './Icon.svelte'
+  import { jobFailureShortLabel } from '../i18n/jobErrors'
 
   let { stats, failures = [] }: { stats: Stats | null; failures?: FailureGroup[] } = $props()
 
@@ -13,7 +14,7 @@
     [...failures]
       .sort((a, b) => b.count - a.count)
       .slice(0, 3)
-      .map((group) => `${group.description || group.category} ×${group.count}`)
+      .map((group) => `${group.count.toLocaleString()} ${jobFailureShortLabel(group.category, i18n.m, group.description)}`)
       .join(' · '),
   )
 
@@ -72,7 +73,7 @@
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.failed_heading}</div>
             <div class="mt-0.5 text-xs text-ink-3">{failureSummary || i18n.m.dashboard.failed_nothing_replaced}</div>
           </div>
-          <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue')}>{i18n.m.dashboard.action_inspect}</button>
+          <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue/failures')}>{i18n.m.dashboard.action_inspect}</button>
         </li>
       {/if}
     </ul>

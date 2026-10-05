@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Worker } from '../api'
-  import { formatSize } from '../format'
+  import { formatRelative, formatSize } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
@@ -25,6 +25,17 @@
       ? Math.round(activity.metrics.gpuPercent)
       : null,
   )
+
+  // A problem is news for a day; after that it is history, still worth reading but not a warning.
+  const PROBLEM_FRESH_MS = 24 * 60 * 60 * 1000
+  function problemIsFresh(worker: Worker): boolean {
+    return worker.lastProblemAt != null && Date.now() - new Date(worker.lastProblemAt).getTime() < PROBLEM_FRESH_MS
+  }
+
+  function problemLine(worker: Worker): string {
+    const when = worker.lastProblemAt ? formatRelative(worker.lastProblemAt, new Date(), i18n.locale) : null
+    return when ? `${when} · ${worker.lastProblem}` : worker.lastProblem ?? ''
+  }
 
   // Built here rather than in the template: Svelte trims the leading space out of an inline
   // {#if} block, which silently rendered "1 job· 0.1.4".
@@ -105,7 +116,7 @@
           {#if worker.lastProblem}
             <!-- The server's most recent objection to this worker. Without it, a machine quietly
                  refusing every job is invisible until someone goes looking for it. -->
-            <div class="mt-1 line-clamp-2 text-xs text-warn" title={worker.lastProblem}>{worker.lastProblem}</div>
+            <div class="mt-1 line-clamp-2 text-xs {problemIsFresh(worker) ? 'text-warn' : 'text-ink-4'}" title={worker.lastProblem}>{problemLine(worker)}</div>
           {/if}
         </div>
         <div class="text-[11px] font-medium text-ink-3">
