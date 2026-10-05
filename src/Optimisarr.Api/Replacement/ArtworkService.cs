@@ -478,8 +478,8 @@ public sealed class ArtworkService(
                     return None;
                 }
                 var art = poster
-                    ? ArtworkSearchParser.PlexPosterPath(json, isTv, title.Year)
-                    : ArtworkSearchParser.PlexArtPath(json, isTv, title.Year);
+                    ? ArtworkSearchParser.PlexPosterPath(json, title.Title, isTv, title.Year)
+                    : ArtworkSearchParser.PlexArtPath(json, title.Title, isTv, title.Year);
                 return art is null ? None : new Resolved($"{root}{art}", "X-Plex-Token", watcher.ApiToken);
             }
 
@@ -502,8 +502,8 @@ public sealed class ArtworkService(
                 return None;
             }
             var path = poster
-                ? ArtworkSearchParser.JellyfinPosterPath(jfJson, isTv, title.Year)
-                : ArtworkSearchParser.JellyfinBackdropPath(jfJson, isTv, title.Year);
+                ? ArtworkSearchParser.JellyfinPosterPath(jfJson, title.Title, isTv, title.Year)
+                : ArtworkSearchParser.JellyfinBackdropPath(jfJson, title.Title, isTv, title.Year);
             // Jellyfin image endpoints accept the token as api_key; harmless if not required.
             return path is null
                 ? None
