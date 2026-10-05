@@ -125,7 +125,7 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
 
   // The hero leads with the remote encode and names the machine.
   await expect(page.getByText('Now encoding on Mac Studio', { exact: true })).toBeVisible()
-  await expect(page.getByText('Waiting for container verdict · MacBook Air', { exact: true })).toBeVisible()
+  await expect(page.getByText('Waiting for this server’s verdict · MacBook Air', { exact: true })).toBeVisible()
 
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working).toContainText('encoding on Mac Studio')
@@ -151,7 +151,7 @@ test('a software-decode retry shows its current worker and keeps the rejected Ma
   await mockWorkingQueue(page, { jobs: [retried] })
   await page.goto('/#/queue')
   const working = page.getByRole('region', { name: 'Working now' })
-  await expect(working).toContainText('Waiting for container verdict · PICARD')
+  await expect(working).toContainText('Waiting for this server’s verdict · PICARD')
   await expect(working).toContainText('Retrying with software decode')
   await working.getByRole('button', { name: 'View job' }).click()
   const details = page.getByRole('dialog', { name: /Job details/ })
@@ -382,19 +382,19 @@ test('strict evidence and legacy media verification show distinct phases beside 
     { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
   ] } })
   await page.goto('/#/queue')
-  const lanes = page.getByRole('region', { name: 'Execution lanes' })
-  await expect(lanes).toContainText('Video on container')
+  const lanes = page.getByRole('region', { name: 'Where work runs' })
+  await expect(lanes).toContainText('Video on this server')
   await expect(lanes).toContainText('Audio & images')
   await expect(lanes).toContainText('All video slots are busy.')
-  await expect(lanes).toContainText('Safe replacement')
+  await expect(lanes).toContainText('Replacing files')
   await expect(lanes).toContainText('Both finalisation slots are busy.')
   const working = page.getByRole('region', { name: 'Working now' })
-  await expect(working).toContainText('Validating sidecar evidence')
-  await expect(working).toContainText('The container is not repeating FFmpeg media checks.')
-  await expect(working).toContainText('The container is verifying the media returned by MacBook Air.')
+  await expect(working).toContainText('Checking the worker’s results')
+  await expect(working).toContainText('This server does not repeat the media checks.')
+  await expect(working).toContainText('This server is verifying the file returned by MacBook Air.')
   await working.getByRole('button', { name: 'View job' }).first().click()
   const details = page.getByRole('dialog', { name: /Job details/ })
-  await expect(details).toContainText('Validating sidecar evidence')
+  await expect(details).toContainText('Checking the worker’s results')
   await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('PICARD')
   await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('This server')
   await details.getByRole('button', { name: 'Close details' }).click()
@@ -751,3 +751,34 @@ for (const width of [375, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 }
+
+test('a failure leads with its most fundamental cause and lists every failed check', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs/failures', (route) => json(route, [{
+    category: 'SizeSaving',
+    description: 'The attempt failed the configured size rule.',
+    count: 1,
+    samples: [{
+      jobId: 41,
+      mediaFileId: 41,
+      relativePath: 'adult/Mad Men/Season 2/Mad Men - S02E06 - Maidenform Bluray-720p.mkv',
+      jobType: 'Normal',
+      errorMessage: 'Verification failed: Size saving; Source video timeline',
+      verificationChecks: [
+        { name: 'Size saving', outcome: 'Failed', detail: 'Output is not smaller than the original.' },
+        { name: 'Source video timeline', outcome: 'Failed', detail: 'The source video spans 2898.395s while its primary audio spans 3268.863s.' },
+      ],
+    }],
+  }]))
+
+  await page.goto('/#/queue/failures')
+
+  await expect(page.getByRole('heading', { name: 'The encode was not small enough to be worth keeping.' })).toBeVisible()
+  const row = page.getByRole('listitem').filter({ hasText: 'Mad Men' })
+  await expect(row).toContainText('Mad Men S02E06 · Maidenform')
+  await expect(page.getByText('The source file looks damaged', { exact: true })).toBeVisible()
+  // The gate details stay available, but behind the disclosure rather than in a red wall.
+  await expect(page.getByText('The source video spans 2898.395s', { exact: false })).toBeHidden()
+  await page.getByText('Technical detail').click()
+  await expect(page.getByText('The source video spans 2898.395s', { exact: false })).toBeVisible()
+})

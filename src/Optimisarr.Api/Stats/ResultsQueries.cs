@@ -36,7 +36,12 @@ public static class ResultsQueries
             && job.Status == JobStatus.Completed
             && job.SourceSizeBytes != null
             && job.OutputSizeBytes != null
-            && job.FinishedAt != null);
+            && job.FinishedAt != null
+            // A rollback restored the original, so the job saved nothing; the lifetime tally
+            // already gives that space back and these views must agree with it.
+            && !db.Replacements.Any(replacement => replacement.JobId == job.Id
+                && (replacement.Status == ReplacementStatus.RolledBack
+                    || replacement.Status == ReplacementStatus.RollbackPending)));
 
     public static async Task<IReadOnlyList<ResultDto>> RecentAsync(
         OptimisarrDbContext db, int take, CancellationToken cancellationToken)

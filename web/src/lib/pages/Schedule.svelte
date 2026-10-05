@@ -127,7 +127,11 @@
             </div>
             <div class="schedule-window">
               <span>{i18n.m.schedule.col_window}</span>
-              <strong>{lib.autoEnqueueWindowStart} <span aria-hidden="true">→</span> {lib.autoEnqueueWindowEnd}</strong>
+              {#if lib.autoEnqueueWindowStart === lib.autoEnqueueWindowEnd}
+                <strong>{i18n.m.schedule.all_day}</strong>
+              {:else}
+                <strong>{lib.autoEnqueueWindowStart} <span aria-hidden="true">→</span> {lib.autoEnqueueWindowEnd}</strong>
+              {/if}
               {#if overnight}<small>{i18n.m.schedule.overnight}</small>{/if}
             </div>
             <p class="schedule-library-reason">{!lib.enabled ? i18n.m.schedule.explain_disabled : open ? i18n.m.schedule.explain_open : i18n.m.schedule.explain_closed}</p>

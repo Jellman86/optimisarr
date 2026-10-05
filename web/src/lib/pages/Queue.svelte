@@ -10,7 +10,7 @@
   import { formatSize } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
-  import { jobFailureDescription } from '../i18n/jobErrors'
+  import { jobFailureStory } from '../i18n/jobErrors'
   import { router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
   import { counts as shellStatus } from '../stores/counts.svelte'
@@ -37,9 +37,10 @@
   let excludingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
   let clearingPending = $state(false)
-  let filter = $state<'all' | 'active' | 'review' | 'completed' | 'failed' | 'verified' | 'verifyFailed'>('all')
+  let filter = $state<'all' | 'active' | 'review' | 'ready' | 'completed' | 'failed'>('all')
   // Queue (live work) vs Failures (failed jobs grouped by reason, with the captured ffmpeg log).
-  let activeTab = $state<'queue' | 'failures'>('queue')
+  // /queue/failures opens straight onto the Failures tab, so the Dashboard can link to the why.
+  let activeTab = $state<'queue' | 'failures'>(router.path === '/queue/failures' ? 'failures' : 'queue')
 
   let selectedJobId = $state<number | null>(null)
   let diagnosticCapture = $state<DiagnosticCapture | null>(null)
@@ -150,6 +151,9 @@
   function isActive(status: string) {
     return ACTIVE.includes(status)
   }
+  function isInProgress(status: string) {
+    return isActive(status) && status !== 'ReadyToReplace' && status !== 'AwaitingSizeReview'
+  }
 
   async function approveSizePreflight(job: Job) {
     if (!confirm(t(i18n.m.queue.confirm_encode_anyway, { name: jobName(job) }))) return
@@ -226,14 +230,13 @@
 
   function matchesFilter(job: Job): boolean {
     switch (filter) {
-      case 'active': return isActive(job.status)
+      // Each filter is one status bucket, so the counts never overlap: work still moving, work
+      // waiting on a decision, and finished outcomes.
+      case 'active': return isInProgress(job.status)
       case 'review': return job.status === 'AwaitingSizeReview'
+      case 'ready': return job.status === 'ReadyToReplace'
       case 'completed': return job.status === 'Completed'
       case 'failed': return job.status === 'Failed'
-      // Verification outcome cuts across status (a ready-to-replace job has passed; a job can fail
-      // a gate without being status=Failed), so it filters on verificationPassed, not status.
-      case 'verified': return job.verificationPassed === true
-      case 'verifyFailed': return job.verificationPassed === false
       default: return true
     }
   }
@@ -247,12 +250,11 @@
   let failedCount = $derived(jobs.filter(job => job.status === 'Failed').length)
   let counts = $derived({
     all: remainingJobs.length,
-    active: remainingJobs.filter(job => isActive(job.status)).length,
+    active: remainingJobs.filter(job => isInProgress(job.status)).length,
     review: remainingJobs.filter(job => job.status === 'AwaitingSizeReview').length,
+    ready: remainingJobs.filter(job => job.status === 'ReadyToReplace').length,
     completed: remainingJobs.filter(job => job.status === 'Completed').length,
     failed: remainingJobs.filter(job => job.status === 'Failed').length,
-    verified: remainingJobs.filter(job => job.verificationPassed === true).length,
-    verifyFailed: remainingJobs.filter(job => job.verificationPassed === false).length,
   })
   let visibleJobs = $derived(remainingJobs.filter(matchesFilter))
 
@@ -622,7 +624,12 @@
             {#if detailPhase(selectedJob)}<p class="queue-phase-note">{detailPhase(selectedJob)}</p>{/if}
           {/if}
           {#if selectedJob.status === 'Failed'}
-            <p class="callout tone-bad mt-4">{selectedJob.errorMessage?.startsWith('Size saving prediction:') ? i18n.m.queue.failure_size_prediction : jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
+            {@const story = jobFailureStory(selectedJob.failureCategory, selectedJob.errorMessage, fullReport(selectedJob)?.checks, i18n.m)}
+            <div class="callout tone-bad mt-4 p-4" role="status">
+              <p class="font-semibold">{story.headline}</p>
+              {#if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
+              {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.join(' · ') })}</p>{/if}
+            </div>
             {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
           {/if}
           {#if selectedJob.status === 'AwaitingSizeReview'}
@@ -712,7 +719,7 @@
                     <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {i18n.m.queue.attempt_rejected}</strong>
                     <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
                   </div>
-                  <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder} · {attempt.hardwareDecoder}{/if}</p>
+                  <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder}{` · ${attempt.hardwareDecoder}`}{/if}</p>
                   {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason}</p>{/if}
                   {#if attemptChecks(attempt).length > 0}
                     <details class="attempt-checks">
@@ -800,7 +807,7 @@
       {#if jobs.length > 0}
         <div class="queue-tools">
           <div class="queue-filters">
-            {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['review', i18n.m.queue.filter_review], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed], ['verified', i18n.m.queue.filter_verified], ['verifyFailed', i18n.m.queue.filter_verify_failed]] as [key, label]}
+            {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['review', i18n.m.queue.filter_review], ['ready', i18n.m.queue.filter_ready], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed]].filter(([key]) => key !== 'review' || counts.review > 0 || filter === 'review') as [key, label]}
               <button class="focus-ring" aria-pressed={filter === key} onclick={() => selectFilter(key as typeof filter)}>{label} · {counts[key as keyof typeof counts]}</button>
             {/each}
           </div>
@@ -821,7 +828,7 @@
           <tbody>{#each pagedJobs as job (job.id)}
             <tr class:selected-row={selectedJobId === job.id}>
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
-              <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{job.errorMessage?.startsWith('Size saving prediction:') ? i18n.m.queue.failure_size_prediction : jobFailureDescription(job.failureCategory, i18n.m)}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
+              <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
               <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>

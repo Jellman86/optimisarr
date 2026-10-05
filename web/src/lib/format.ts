@@ -54,3 +54,30 @@ export function mediaTitle(path: string | null): MediaTitle {
   if (film) return { primary: film[1].trim(), episode: null, secondary: null }
   return { primary: base.replace(RELEASE_TAGS, '').replace(/[._]+/g, ' ').trim() || base, episode: null, secondary: null }
 }
+
+const CONTAINER_NAMES: Record<string, string> = {
+  matroska: 'MKV', webm: 'WebM', mpegts: 'MPEG-TS', avi: 'AVI', asf: 'WMV', flv: 'FLV',
+  mp3: 'MP3', flac: 'FLAC', ogg: 'Ogg', wav: 'WAV', aiff: 'AIFF', image2: 'Image',
+}
+
+// ffprobe names a demuxer, not a file type: MP4 and MOV share "mov,mp4,m4a,3gp,3g2,mj2" and MKV
+// and WebM share "matroska,webm". The file's own extension says which one it is.
+export function containerLabel(container: string | null, path: string | null): string | null {
+  if (!container) return null
+  const extension = path?.match(/\.([a-z0-9]{2,4})$/i)?.[1]
+  const names = container.split(',').map((name) => name.trim().toLowerCase())
+  if (extension && (names.length > 1 || names.includes(extension.toLowerCase()))) {
+    return extension.toLowerCase() === 'webm' ? 'WebM' : extension.toUpperCase()
+  }
+  return CONTAINER_NAMES[names[0]] ?? names[0].toUpperCase()
+}
+
+// "und" is ISO 639's code for an untagged track; a person reads it as a typo.
+export function languageList(languages: string, unknown: string): string {
+  return languages
+    .split(',')
+    .map((language) => language.trim())
+    .filter(Boolean)
+    .map((language) => (language.toLowerCase() === 'und' ? unknown : language))
+    .join(', ')
+}
