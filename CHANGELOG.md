@@ -38,6 +38,9 @@
 
 ### Changed
 
+- Inventory shows why each skipped file was skipped, under its verdict, for example "Already hevc (no expected saving)".
+- The Settings overview no longer leaves an empty slot beside a two-room group, and the **Exact copies** reassurance no longer looks like a link.
+- **Personal quality check** describes its samples as unlabelled test encodes rather than "media-specific anonymous outputs".
 - The Dashboard's **In flight** panel shows each job's artwork with the show and episode. When nothing is running it shows the last finished title, its size before and after, where it ran and when, instead of an empty box.
 - The Quarantine review leads with the title's artwork and puts **Approve & free space** / **Reject (roll back)** directly under the sizes, above the comparison and the verification details. Before playback, both video players show the title's backdrop rather than two black frames.
 - Job details show the original and new size, for example "4.4 GB → 1.7 GB 61% smaller". The job list API now includes `sourceSizeBytes`.

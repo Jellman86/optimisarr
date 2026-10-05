@@ -182,7 +182,7 @@ export const zh: Messages = {
     change: "更改", skipped: "已跳过 — 稍后添加", receipt_heading: "设置已安全应用", receipt_body: "{count} 个媒体库已准备就绪。未启动扫描、编码、替换或删除。", review_candidates: "查看候选项", open_dashboard: "打开仪表板"
   },
   calibration: {
-    lab_intro: '在代表性场景中将五个匿名编码与已标记的原始版本比较，然后揭示最适合您的质量。',
+    lab_intro: '在不知道每个样本使用了哪种设置的情况下，将简短的测试编码与原片对比，然后揭晓最适合你的质量。',
     back_to_library: '返回媒体库',
     library_missing: '此媒体库已不存在。',
     sorted_progress: '已分类 {current}/{total} 个样本',
@@ -196,11 +196,11 @@ export const zh: Messages = {
     fullscreen: '全屏检查视频',
     exit_fullscreen: '退出全屏',
     audio_listening: '请在日常环境下聆听',
-    sample_deck: '匿名样本组',
+    sample_deck: '未标注的样本',
     sample_deck_hint: '在完全相同的时间点切换原始版本和 A–E。揭示结果前会隐藏质量设置。',
     keyboard_drag_hint: '选择样本，或将其拖到评分中',
     classification_title: '这个样本表现如何？',
-    classification_hint: '将每个匿名候选项与已标记的原始版本比较。A–E 各评价一次。',
+    classification_hint: '将每个未标注的样本与标记的原片对比，并对每个样本评分一次。',
     indistinguishable: '无法区分',
     indistinguishable_hint: '我无法可靠地看出或听出差异。',
     acceptable: '可以接受',

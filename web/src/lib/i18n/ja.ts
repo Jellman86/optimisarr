@@ -182,7 +182,7 @@ export const ja: Messages = {
     change: "変更", skipped: "スキップ — 後で追加", receipt_heading: "セットアップを安全に適用しました", receipt_body: "{count} 件のライブラリを利用できます。スキャン、エンコード、置換、削除は開始されていません。", review_candidates: "候補を確認", open_dashboard: "ダッシュボードを開く"
   },
   calibration: {
-    lab_intro: '代表的なシーンで、5つの匿名エンコードを明示されたオリジナルと比較し、自分に合う品質を確認します。',
+    lab_intro: 'どの設定で作られたかを知らないまま短いテストエンコードを元と比較し、自分に合う品質を明らかにします。',
     back_to_library: 'ライブラリに戻る',
     library_missing: 'このライブラリは存在しません。',
     sorted_progress: '{total}件中{current}件を評価済み',
@@ -196,11 +196,11 @@ export const ja: Messages = {
     fullscreen: '動画を全画面で確認',
     exit_fullscreen: '全画面を終了',
     audio_listening: '普段の環境で試聴してください',
-    sample_deck: '匿名サンプル',
+    sample_deck: 'ラベルなしのサンプル',
     sample_deck_hint: 'まったく同じ位置でオリジナルとA〜Eを切り替えます。品質設定は結果表示まで隠されます。',
     keyboard_drag_hint: 'サンプルを選択するか、評価へドラッグ',
     classification_title: 'このサンプルの印象は？',
-    classification_hint: '各匿名候補を明示されたオリジナルと比較し、A〜Eを一度ずつ評価してください。',
+    classification_hint: 'ラベルのない各サンプルを印の付いた元ファイルと比較し、すべてのサンプルを一度ずつ評価してください。',
     indistinguishable: '区別できない',
     indistinguishable_hint: '確実な違いを見たり聞いたりできません。',
     acceptable: '許容できる',

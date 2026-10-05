@@ -1523,7 +1523,8 @@
   }
   /* The page uses the full width like every other page, so the overview adds columns as the
      screen widens instead of stretching two cards across it. */
-  .settings-room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
+  /* auto-fit, not auto-fill: a two-room group spreads across the row instead of leaving an empty slot. */
+  .settings-room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
   .settings-room {
     display: flex; min-width: 0; min-height: 11rem; flex-direction: column; gap: .5rem;
     padding: 1.375rem; text-align: left;
