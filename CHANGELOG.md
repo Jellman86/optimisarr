@@ -12,7 +12,7 @@
 - A failed job is explained by its most fundamental cause rather than the first rule it broke. A damaged source (picture ending well before its sound) leads, then a broken output, then picture or sound quality, lost tracks or metadata, and finally the size rule. Every failed check is still listed. The Queue job details, queue rows and **Failures** tab use the same explanation.
 - A worker's last problem shows how long ago it happened and stops being shown as a warning after a day. A rejected candidate no longer reads "failed verification: Verification failed:".
 - Fixed missing spaces before "·" separators in inventory, failure, attempt history and exclusion lines.
-
+- Artwork from Plex, Jellyfin or Emby is used only when the search result is the same title, of the right kind (film or show) and, when both years are known, from the same year give or take one. Their search is fuzzy, so a film missing from the media server could be shown with another title's artwork, for example The Simpsons for a new film called The Odyssey. A title the media server does not know now shows the plain placeholder. Shows found through an episode use the show's poster rather than an episode still.
 - A Windows Event Log write failure no longer stops the sidecar. Writes are serialized and retried; a bounded, protected availability notice records failure and recovery without retaining application messages or exception text.
 - Opt-in diagnostic bundles compare stored audio and soundtrack contract identities as well as video contracts. Schema version 3 includes decoded picture counts, their request flag and candidate audio timestamps without raw process text. Missing evidence stays unknown; the export does not authorise replacement.
 
