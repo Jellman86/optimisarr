@@ -69,7 +69,7 @@
       {:else}<button class="btn btn-primary" disabled={libraryId === null || loading || acting} onclick={() => act()}>{i18n.m.duplicates.scan}</button>{/if}
     </div>
     <p class="mt-4 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.cost}</p>
-    <p class="mt-2 text-sm font-semibold text-accent">{i18n.m.duplicates.safe}</p>
+    <p class="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-ink-2"><Icon name="check" class="h-4 w-4 text-ok" />{i18n.m.duplicates.safe}</p>
   </section>
   {#if error}<Banner kind="error">{error}<button class="btn ml-3" onclick={() => libraryId === null ? loadLibraries() : load(libraryId)}>{i18n.m.setup.retry}</button></Banner>{/if}
   {#if report}

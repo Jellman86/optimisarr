@@ -182,7 +182,7 @@ export const pt: Messages = {
     change: "Alterar", skipped: "Ignorado — adicionar depois", receipt_heading: "Configuração aplicada em segurança", receipt_body: "{count} biblioteca(s) estão prontas. Nenhuma análise, codificação, substituição ou eliminação foi iniciada.", review_candidates: "Rever candidatos", open_dashboard: "Abrir painel"
   },
   calibration: {
-    lab_intro: 'Compare cinco codificações anónimas com o original identificado e descubra depois a qualidade que prefere.',
+    lab_intro: 'Compare codificações de teste curtas com o original sem saber que definição produziu cada uma e depois descubra que qualidade lhe convém.',
     back_to_library: 'Voltar à biblioteca',
     library_missing: 'Esta biblioteca já não existe.',
     sorted_progress: '{current} de {total} amostras classificadas',
@@ -196,11 +196,11 @@ export const pt: Messages = {
     fullscreen: 'Inspecionar vídeo em ecrã inteiro',
     exit_fullscreen: 'Sair do ecrã inteiro',
     audio_listening: 'Ouça nas suas condições habituais',
-    sample_deck: 'Amostras anónimas',
+    sample_deck: 'Amostras sem etiqueta',
     sample_deck_hint: 'Alterne entre o original e A–E exatamente no mesmo ponto. As definições de qualidade ficam ocultas até ao resultado.',
     keyboard_drag_hint: 'Selecione uma amostra ou arraste-a para uma avaliação',
     classification_title: 'Como parece esta amostra?',
-    classification_hint: 'Compare cada candidato anónimo com o original identificado. Classifique A–E uma vez cada.',
+    classification_hint: 'Compare cada amostra sem etiqueta com o original assinalado e avalie cada amostra uma vez.',
     indistinguishable: 'Indistinguível',
     indistinguishable_hint: 'Não consigo ver ou ouvir uma diferença fiável.',
     acceptable: 'Aceitável',
