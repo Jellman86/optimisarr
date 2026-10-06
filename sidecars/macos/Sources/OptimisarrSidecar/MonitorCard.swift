@@ -25,13 +25,22 @@ private struct PanelButton: ViewModifier {
     @Environment(\.snapshotRendering) private var snapshot
 
     func body(content: Content) -> some View {
+        // Glass needs the macOS 26 SDK (Swift 6.2 / Xcode 26) to build, as well as macOS 26 to run.
+        #if compiler(>=6.2)
         if #available(macOS 26, *), !snapshot {
             if prominent { content.buttonStyle(.glassProminent).controlSize(.large) }
             else { content.buttonStyle(.glass).controlSize(.large) }
         } else {
-            if prominent { content.buttonStyle(.borderedProminent).controlSize(.large) }
-            else { content.buttonStyle(.bordered).controlSize(.large) }
+            bordered(content)
         }
+        #else
+        bordered(content)
+        #endif
+    }
+
+    @ViewBuilder private func bordered(_ content: Content) -> some View {
+        if prominent { content.buttonStyle(.borderedProminent).controlSize(.large) }
+        else { content.buttonStyle(.bordered).controlSize(.large) }
     }
 }
 

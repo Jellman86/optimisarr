@@ -24,6 +24,14 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
+      - name: Build with the newest installed Xcode
+        # The menu's glass controls need the macOS 26 SDK; an older default Xcode builds the
+        # bordered fallback instead. Beta releases are skipped.
+        run: |
+          newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -E '/Xcode_[0-9.]+\.app$' | sort -V | tail -1)
+          if [ -n "$newest" ]; then sudo xcode-select -s "$newest"; fi
+          xcodebuild -version
+          swift --version
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
