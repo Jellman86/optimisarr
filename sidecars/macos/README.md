@@ -151,8 +151,9 @@ keeps its rounded corners, and cannot be detached into a floating window.
 jobs** while working) lets current leases finish; it does not cancel them. Closing the panel leaves
 work running. Quitting the application hands current leases back to the server.
 
-Both light and dark appearances use the application's slate surfaces, accent colours and card
-shadows. The menu-bar, application and panel icons use the shared Precession artwork. The native
+The panel uses native macOS controls and system colours, with glass buttons on the macOS 26 glass
+popover, and follows the light/dark appearance and accent. Status colours match the web interface
+and the Windows tray. The menu-bar, application and panel icons use the shared Precession artwork. The native
 status mark is static; activity is communicated through the labelled state and job progress,
 with an amber badge when the Mac is disconnected.
 

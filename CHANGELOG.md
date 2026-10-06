@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.21 — 2026-10-06
+
+### Changed
+
+- The Mac and Windows sidecars now look like the system they run on. The Mac menu uses native macOS controls and system colours, with glass buttons on the macOS 26 glass popover (bordered controls on earlier macOS). The Windows tray uses Windows 11's Fluent controls and colours. Both follow the system's light, dark, accent and contrast settings.
+- Both sidecars now say the same things in the same places: one status chip in plain words (**Working**, **Ready**, **No server**, **Paused**…) in the web interface's colour-blind-safe colours, a stage line naming the encoder ("Encoding · hevc_nvenc"), the encoded time under the progress bar, and **CPU load**, **GPU load** and **Free space**. The Mac now shows free work-volume space instead of a held-job count, and the Windows card no longer shows an empty picture frame while idle. A test fails if either sidecar's status colours drift from the web interface's.
+
+### Development tools
+
+- macOS CI and release builds use the newest installed non-beta Xcode, so the menu's glass controls are compiled in; an older toolchain builds the bordered fallback.
+
 ## 0.2.20 — 2026-10-06
 
 ### Documentation

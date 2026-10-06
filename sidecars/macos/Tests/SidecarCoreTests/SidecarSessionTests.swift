@@ -261,6 +261,38 @@ struct SidecarSessionTests {
         session.unpair()
     }
 
+    @Test("the panel's free space is the figure the latest check-in reported")
+    func freeSpaceFollowsCheckIn() async throws {
+        let store = InMemoryCredentialStore(
+            stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11))
+        let transport = ScriptedTransport([
+            .init(status: 200, json: ["workerId": 11, "protocolVersion": 1, "heartbeatIntervalSeconds": 30]),
+        ])
+        let session = SidecarSession(
+            client: SidecarClient(transport: transport), store: store,
+            capabilities: SidecarCapabilities(name: "Test", videoEncoders: ["libx265"], freeScratchBytes: 999, maxConcurrency: 1),
+            prober: nil, executor: nil, scratchCapacity: { 4_321 }, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+        #expect(session.freeScratchBytes == nil)
+
+        session.restore()
+        try await waitFor { session.freeScratchBytes != nil }
+
+        #expect(session.freeScratchBytes == 4_321)
+        session.unpair()
+    }
+
+    @Test("a running job names its encoder, and the name goes when the job does")
+    func runningJobNamesItsEncoder() async throws {
+        let executor = HangingExecutor()
+        let session = try await workingSession(executor)
+
+        #expect(session.jobEncoders[12] == "libx265")
+
+        await session.stopWork(because: "test over")
+        #expect(session.jobEncoders.isEmpty)
+    }
+
     @Test("shutdown arm reports zero capacity and cancellation restores the previous pause")
     func shutdownDrainsWithoutClaiming() async throws {
         let store = InMemoryCredentialStore(

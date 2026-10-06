@@ -5,11 +5,36 @@ Processing details and Preferences, including the Precession icon. The three ori
 in `index.html`; their job data and proposed controls are simulated. Production native views use
 real capabilities and readings instead.
 
-Shared visual language: navy ground `#101A2C`, slate cards `#18253B`, raised slate `#203149`, teal
-`#7BD8D1`, pale text `#EFF4FC`, secondary text `#B0BDD1`. Cards have a subtle diagonal texture and
-stronger hover shadows. Native system typography keeps the small panel readable; data uses tabular
-figures. Both clients follow system light/dark appearance. Windows also respects high contrast;
-progress motion respects the system animation preference.
+Each client is drawn by its own platform, so it looks at home there: native SwiftUI controls and
+system colours on the Mac (glass buttons and the glass popover on macOS 26, bordered controls
+before it), and WPF's Fluent theme on Windows 11. Both follow the system's light/dark appearance,
+accent and contrast settings; progress motion respects the system animation preference.
+
+What the two share is everything a person reads: the order of the panel, its wording, the three
+readings (**CPU load**, **GPU load**, **Free space**), the stage line under a job title ("Encoding ·
+hevc_nvenc"), the line under the progress bar ("0:12:31 encoded") and the status chip. The chip's
+colours are the web interface's tones, chosen to stay apart under colour-blindness: success is blue
+rather than green. Both clients write those values exactly as `web/src/app.css` does, and
+`scripts/tests/test_sidecar_theme.py` fails if either drifts.
+
+| Meaning | Chip | Tone | Platform |
+| --- | --- | --- | --- |
+| A job is running | Working | ok (blue) | both |
+| Connected, waiting for work | Ready | ok (blue) | both |
+| New jobs paused | Paused | info (graphite) | both |
+| Shutdown armed | Shutdown armed | warn (gold) | both |
+| Server cannot be reached | No server | warn (gold) | both |
+| Not paired | Not paired | info (graphite) | both |
+| Worker disabled on the server | Stood down | warn (gold) | Mac |
+| Pairing in progress | Pairing | info (graphite) | Mac |
+| Pairing rejected | Pairing failed | bad (raspberry) | Mac |
+| Worker revoked | Revoked | bad (raspberry) | Mac |
+| Tray cannot reach the local worker | Worker offline | bad (raspberry) | Windows |
+| Worker service stopped | Stopped | warn (gold) | Windows |
+| Worker service faulted | Needs attention | bad (raspberry) | Windows |
+
+Pause and an armed shutdown outrank the connection state, because they say what the machine will
+do next. The platform-only rows reflect states the other client cannot reach.
 
 The panel leads with the current title and stage, then three live readings, expandable processing
 details, a pause control, and nested Preferences/Diagnostics. No dashboard window is created.
@@ -20,14 +45,16 @@ Pairing may open a focused setup window (elevation is required for machine-wide 
 - Mac retains its frame previews, film strip, one-to-four-job setting, work-location settings,
   login item and native menu-bar status icon. Preferences now opens within the popover. CPU/GPU are
   real readings; macOS does not expose VideoToolbox media-engine utilisation. The third reading
-  is jobs held. The full film strip is under Processing details.
+  is free work-volume space, as last reported to the server. The full film strip is under
+  Processing details.
 - Windows gets a separate WPF tray companion using `NotifyIcon`. Work stays in the Windows
   service. The panel receives a credential-free snapshot over a local named pipe, and shows CPU,
   GPU and working-space capacity. Current assignments contain no artwork, so the media well
   honestly uses a film placeholder. The service currently accepts one job at a time; speculative
   Quiet/Balanced/Full preset controls are not shipped.
 - No encode percentage or ETA is invented: the worker does not have an authoritative total
-  duration. Encoding uses an indeterminate activity indicator and reports encoded time in details.
+  duration. Encoding uses an indeterminate activity indicator with the encoded time under it;
+  only a Mac transfer, whose size is known, shows a percentage.
 - Pause gates new claims, keeps heartbeat/lease renewal alive, and lets held jobs finish. A claim
   already in flight when paused is handed back. Pause resets when the worker/app restarts; the UI
   says so. On Windows, quitting the tray leaves the service running; quitting the Mac sidecar
@@ -52,10 +79,12 @@ actual work. Native tests exercise expansion/collapse and navigation to prevent 
 The native renderers exercise idle, encoding, receiving/delivering, verification, disconnected,
 and multi-job states as appropriate. They pose data and never pair or run jobs. Windows renders
 are uploaded by the existing sidecar CI job. Mac snapshots use an actual AppKit hosting view so
-native scroll views and menus are included.
+native controls, scroll views and menus are included. A snapshot cannot show glass (the window
+server composites it), so the Mac renderer draws the bordered buttons glass falls back to, over the
+system window background.
 
 Review corrections include offline/disabled state wording, clearing unavailable Windows readings,
-keeping hover borders/shadows in both themes, removing stale server-verification wording, a pause
+removing stale server-verification wording, a pause
 race during network claims, and framing/acknowledging local pipe replies before disconnecting.
 Tests cover the race, pause preserving active work, safe server links, query redaction, status
 presentation, local pipe round trips and Windows access rules.

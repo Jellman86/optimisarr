@@ -1,27 +1,50 @@
 import SwiftUI
 
+/// A grouped block of content inside the panel: the system's quiet fill, no outline.
+///
+/// Not glass. The popover itself is glass on macOS 26, and the controls are; content sitting on
+/// glass stays a plain grouped surface, as Apple's own menus and Control Centre modules do.
 private struct MonitorCard: ViewModifier {
-    @State private var hovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     func body(content: Content) -> some View {
-        content.padding(16)
-            .background(LinearGradient(colors: [Instrument.cell, Instrument.ground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(hovering ? Instrument.phosphor.opacity(0.5) : Instrument.rule.opacity(0.7)))
-            .shadow(color: .black.opacity(hovering ? 0.24 : 0.12), radius: hovering ? 12 : 6, y: hovering ? 7 : 3)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: hovering)
-            .onHover { hovering = $0 }
+        content.padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
 extension View {
     func monitorCard() -> some View { modifier(MonitorCard()) }
+
+    /// The system button for an action in the panel: glass on macOS 26, bordered before it.
+    /// `prominent` is the one button that does the thing.
+    func panelButton(prominent: Bool = false) -> some View { modifier(PanelButton(prominent: prominent)) }
 }
 
-struct MonitorButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.foregroundStyle(Instrument.ink)
-            .background(Instrument.cell.opacity(configuration.isPressed ? 0.6 : 1), in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Instrument.rule))
+private struct PanelButton: ViewModifier {
+    let prominent: Bool
+    @Environment(\.snapshotRendering) private var snapshot
+
+    func body(content: Content) -> some View {
+        // Glass needs the macOS 26 SDK (Swift 6.2 / Xcode 26) to build, as well as macOS 26 to run.
+        #if compiler(>=6.2)
+        if #available(macOS 26, *), !snapshot {
+            if prominent { content.buttonStyle(.glassProminent).controlSize(.large) }
+            else { content.buttonStyle(.glass).controlSize(.large) }
+        } else {
+            bordered(content)
+        }
+        #else
+        bordered(content)
+        #endif
     }
+
+    @ViewBuilder private func bordered(_ content: Content) -> some View {
+        if prominent { content.buttonStyle(.borderedProminent).controlSize(.large) }
+        else { content.buttonStyle(.bordered).controlSize(.large) }
+    }
+}
+
+extension EnvironmentValues {
+    /// Set by `--render-menu`, which pictures the panel offscreen where glass cannot be drawn.
+    @Entry var snapshotRendering = false
 }
