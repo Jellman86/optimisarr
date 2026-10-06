@@ -35,6 +35,12 @@ internal static class MonitorRenderer
                 pose == "shutdown-countdown", pose == "shutdown-countdown" ? "No jobs held. Shutting down in 48 seconds; cancel at any time." : null,
                 pose == "shutdown-countdown" ? 48 : null));
             if (pose == "offline") model.Disconnect("The worker is unavailable. Live readings have been cleared.");
+            var light = state.StartsWith("light-", System.StringComparison.Ordinal);
+            // The fixture visual is detached from its window below, so the Fluent scheme is set
+            // for the application, where the detached content still finds it.
+#pragma warning disable WPF0001 // See TrayApp.Main: the supported Fluent opt-in, still labelled evaluation.
+            Application.Current.ThemeMode = light ? ThemeMode.Light : ThemeMode.Dark;
+#pragma warning restore WPF0001
             var window = new MonitorWindow(live: false) { DataContext = model };
             window.ProcessingDetails.IsExpanded = pose is "details" or "two-jobs" or "many-jobs";
             if (pose == "preferences")
@@ -42,7 +48,7 @@ internal static class MonitorRenderer
                 window.ActivityPage.Visibility = Visibility.Collapsed;
                 window.PreferencesPage.Visibility = Visibility.Visible;
             }
-            window.ApplyTheme(state.StartsWith("light-", System.StringComparison.Ordinal));
+            window.ApplyTheme(light);
             var content = (FrameworkElement)window.Content;
             // Detach the fixture visual so an unseen Window cannot remeasure/clip it during
             // UpdateLayout. Preserve the native window's inherited theme and typography.

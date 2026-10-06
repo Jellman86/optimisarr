@@ -128,18 +128,19 @@ public partial class MonitorWindow : Window
     internal void ApplyTheme(bool? forcedLight = null)
     {
         var light = forcedLight ?? (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 0) is int value && value != 0);
+        // Everything but the status tones is Windows' Fluent theme, following the system; only a
+        // render forces a scheme (MonitorRenderer sets the application's theme mode to match).
         BrandImage.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri(light ? "pack://application:,,,/Resources/BrandMarkLight.png" : "pack://application:,,,/Resources/BrandMark.png"));
-        string[] names = ["Ground", "Surface", "Raised", "Line", "Ink", "Muted", "Accent"];
-        string[] colours = light ? ["#F3F6FA", "#FFFFFF", "#E5EDF5", "#CAD5E2", "#152338", "#50637D", "#087E8B"] : ["#101A2C", "#18253B", "#203149", "#34455F", "#EFF4FC", "#B0BDD1", "#7BD8D1"];
-        for (var index = 0; index < names.Length; index++) Resources[names[index]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colours[index]));
-        Resources["CardFill"] = light
-            ? new LinearGradientBrush(Color.FromRgb(255, 255, 255), Color.FromRgb(235, 241, 248), 45)
-            : new LinearGradientBrush(Color.FromRgb(32, 49, 73), Color.FromRgb(21, 32, 53), 45);
+        foreach (var token in SidecarTheme.Tokens)
+        {
+            var (a, r, g, b) = SidecarTheme.Parse(light ? token.Light : token.Dark);
+            Resources[token.Key] = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        }
         if (SystemParameters.HighContrast)
         {
-            Resources["CardFill"] = Resources["Ground"] = Resources["Surface"] = Resources["Raised"] = SystemColors.WindowBrush;
-            Resources["Ink"] = Resources["Muted"] = SystemColors.WindowTextBrush;
-            Resources["Line"] = Resources["Accent"] = SystemColors.HighlightBrush;
+            // A contrast theme states its own colours; a tinted chip would fight them.
+            foreach (var token in SidecarTheme.Tokens)
+                Resources[token.Key] = token.Key.EndsWith("Soft", StringComparison.Ordinal) ? SystemColors.WindowBrush : SystemColors.WindowTextBrush;
         }
         // A reduced-motion desktop still gets an honest activity label, without an animated sweep.
         WorkProgress.IsIndeterminate = SystemParameters.ClientAreaAnimation;

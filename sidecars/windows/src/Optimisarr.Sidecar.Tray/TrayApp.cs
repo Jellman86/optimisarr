@@ -26,7 +26,13 @@ public sealed class TrayApp : Application
     [STAThread]
     public static void Main(string[] args)
     {
-        var app = new TrayApp { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        // Windows 11's Fluent controls and colours throughout, following the system's light,
+        // dark, accent and contrast settings. WPF still labels ThemeMode an evaluation API (WPF0001)
+        // although it ships in .NET 10; it is the only supported way to opt into Fluent, so the
+        // diagnostic is suppressed here and where MonitorRenderer forces a scheme, nowhere else.
+#pragma warning disable WPF0001
+        var app = new TrayApp { ShutdownMode = ShutdownMode.OnExplicitShutdown, ThemeMode = ThemeMode.System };
+#pragma warning restore WPF0001
         app.Startup += async (_, _) => await app.StartAsync(args);
         app.Exit += (_, _) => { app.activityLifetime.Cancel(); app.trayIcon?.Dispose(); app.tray?.Dispose(); app.singleInstance?.Dispose(); };
         app.Run();
@@ -134,8 +140,7 @@ public sealed class TrayApp : Application
     {
         var panel = new StackPanel { Margin = new Thickness(24) };
         var window = new Window { Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Resources/BrandMark.png")), Title = "Pair Optimisarr Sidecar", Width = 410, SizeToContent = SizeToContent.Height,
-            WindowStartupLocation = WindowStartupLocation.CenterScreen, ResizeMode = ResizeMode.NoResize,
-            Background = new SolidColorBrush(Color.FromRgb(16, 26, 44)), Foreground = Brushes.White, Content = panel };
+            WindowStartupLocation = WindowStartupLocation.CenterScreen, ResizeMode = ResizeMode.NoResize, Content = panel };
         panel.Children.Add(new TextBlock { Text = "Connect this PC", FontSize = 22, FontWeight = FontWeights.SemiBold });
         panel.Children.Add(new TextBlock { Text = "Create a pairing code in Optimisarr → Settings → Workers.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 16) });
         panel.Children.Add(new TextBlock { Text = "Server address" });
@@ -145,7 +150,8 @@ public sealed class TrayApp : Application
         var code = new PasswordBox { Margin = new Thickness(0, 5, 0, 12), Padding = new Thickness(8) };
         panel.Children.Add(code);
         var message = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
-        var pair = new Button { Content = "Pair & start worker", Padding = new Thickness(12) };
+        var pair = new Button { Content = "Pair & start worker", Padding = new Thickness(12), HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (TryFindResource("AccentButtonStyle") is Style accent) pair.Style = accent;
         panel.Children.Add(pair);
         panel.Children.Add(message);
         var cancel = new CancellationTokenSource();

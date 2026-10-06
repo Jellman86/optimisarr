@@ -72,6 +72,72 @@ public sealed class MonitorTests
         Assert.Equal("Worker not connected", model.Title);
     }
 
+    [Theory]
+    [InlineData("Working", 1, false, false, "Working", "ok")]
+    [InlineData("Connected", 0, false, false, "Ready", "ok")]
+    [InlineData("Connected", 0, true, false, "Paused", "info")]
+    [InlineData("Connected", 0, false, true, "Shutdown armed", "warn")]
+    [InlineData("Unreachable", 0, false, false, "No server", "warn")]
+    [InlineData("Unpaired", 0, false, false, "Not paired", "info")]
+    [InlineData("Faulted", 0, false, false, "Needs attention", "bad")]
+    [InlineData("Stopped", 0, false, false, "Stopped", "warn")]
+    public void The_status_chip_uses_the_wording_and_tone_shared_with_the_Mac(
+        string state, int jobs, bool paused, bool shutdown, string label, string tone)
+    {
+        var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
+        MonitorJob[] running = jobs > 0 ? [new MonitorJob(7, "Film", "hevc_nvenc", RemoteStage.Encoding, 1)] : [];
+        model.Update(new MonitorSnapshot("PC", state, "", paused, "http://test", null, null, running, null, "test",
+            ShutdownArmed: shutdown));
+        Assert.Equal(label, model.State);
+        Assert.Equal(tone, model.StateTone);
+    }
+
+    [Fact]
+    public void A_worker_the_tray_cannot_reach_is_a_fault_rather_than_a_quiet_state()
+    {
+        var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
+        model.Disconnect("No local connection");
+        Assert.Equal("Worker offline", model.State);
+        Assert.Equal("bad", model.StateTone);
+    }
+
+    [Theory]
+    [InlineData(RemoteStage.Encoding, 751d, "0:12:31 encoded")]
+    [InlineData(RemoteStage.Measuring, null, "Measuring quality")]
+    [InlineData(RemoteStage.FetchingSource, null, "")]
+    public void The_line_under_the_progress_bar_matches_the_Mac(RemoteStage stage, double? seconds, string expected)
+    {
+        var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
+        model.Update(new MonitorSnapshot("PC", "Working", "", false, "http://test", null, null,
+            [new MonitorJob(7, "Film", "hevc_nvenc", stage, seconds)], null, "test"));
+        Assert.Equal(expected, model.ProgressText);
+        Assert.Equal(expected.Length > 0, model.ShowProgressText);
+    }
+
+    [Fact]
+    public void An_idle_card_shows_no_picture_box_and_a_video_job_does()
+    {
+        var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
+        model.Update(new MonitorSnapshot("PC", "Connected", "", false, "http://test", null, null, [], null, "test"));
+        Assert.False(model.ShowThumbnail);
+        Assert.Equal(0, model.PreviewColumnWidth);
+        model.Update(new MonitorSnapshot("PC", "Working", "", false, "http://test", null, null,
+            [new MonitorJob(7, "Film", "hevc_nvenc", RemoteStage.Encoding, 1)], null, "test"));
+        Assert.True(model.ShowThumbnail);
+        model.Disconnect("Offline");
+        Assert.False(model.ShowThumbnail);
+    }
+
+    [Theory]
+    [InlineData(459_561_500_672L, "428 GB")]
+    [InlineData(5_368_709_120L, "5.0 GB")]
+    public void Free_space_is_written_as_the_Mac_writes_it(long bytes, string expected)
+    {
+        var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
+        model.Update(new MonitorSnapshot("PC", "Connected", "", false, "http://test", null, bytes, [], null, "test"));
+        Assert.Equal(expected, model.Free);
+    }
+
     [Fact]
     public void An_older_worker_says_so_and_offers_the_release_page()
     {
@@ -97,7 +163,8 @@ public sealed class MonitorTests
     {
         var model = new Optimisarr.Sidecar.Tray.MonitorViewModel();
         model.Update(new MonitorSnapshot("PC", "Unreachable", "Cannot reach the server", false, "http://test", null, null, [], null, "test"));
-        Assert.Equal("NO SERVER", model.State);
+        Assert.Equal("No server", model.State);
+        Assert.Equal("warn", model.StateTone);
         Assert.Equal("Worker needs attention", model.Title);
         Assert.Contains("Cannot reach", model.Stage);
     }
@@ -109,7 +176,8 @@ public sealed class MonitorTests
         model.Update(new MonitorSnapshot("PC", "Working", "Returning", false, "http://test", null, null,
             [new MonitorJob(7, "Film", "hevc_nvenc", RemoteStage.Delivering, null)], null, "test",
             ShutdownArmed: true, ShutdownDetail: "Waiting for 1 job", ShutdownSeconds: null));
-        Assert.Equal("SHUTDOWN ARMED", model.State);
+        Assert.Equal("Shutdown armed", model.State);
+        Assert.Equal("warn", model.StateTone);
         Assert.Contains("upload", model.ShutdownDetail);
         Assert.Equal("Cancel shutdown", model.ShutdownLabel);
         Assert.False(model.CanPause);
@@ -184,7 +252,7 @@ public sealed class MonitorTests
             new MonitorJob(8, "Second", "hevc_nvenc", RemoteStage.Encoding, 2, second)));
         Assert.Equal(first, model.Preview);
         Assert.Equal(second, model.Jobs[1].PreviewJpeg);
-        Assert.Equal("Job #7 · Encoding · 00:00:01 encoded", model.JobRows[0].Caption);
+        Assert.Equal("Job #7 · Encoding · 0:00:01 encoded", model.JobRows[0].Caption);
         Assert.Equal(second, model.JobRows[1].PreviewJpeg);
         model.Update(WithJobs(new MonitorJob(8, "Second", "hevc_nvenc", RemoteStage.Encoding, 3, second)));
         Assert.Equal(second, model.Preview);
