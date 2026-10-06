@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.2.20 — 2026-10-06
 
 ### Documentation
 
 - Reconciled the older worker-hardening and sampled-quality records with current behavior, preserving dated evidence and distinguishing video packets from decoded pictures. The hardware matrix links current all-platform acceptance and identifies remaining scope.
+- Added a roadmap item for opt-in duplicate detection and safe dedupe across image, audio,
+  video and mixed libraries, with researched matching tools, review, rollback and resource limits.
+- Expanded the planned audio/image quality checks with pipeline placement, settings,
+  cost estimates and a licensed/private test-fixture starting set. These features are planned.
 
 ### Fixed
 
@@ -102,13 +106,6 @@
   distances. It reports media/tool hashes, measured windows and errors for mono/stereo
   audio, with bounded preparation, cancellation and cleanup. It does not enable a library
   gate or change any replacement decision.
-
-### Documentation
-
-- Added a roadmap item for opt-in duplicate detection and safe dedupe across image, audio,
-  video and mixed libraries, with researched matching tools, review, rollback and resource limits.
-- Expanded the planned audio/image quality checks with pipeline placement, settings,
-  cost estimates and a licensed/private test-fixture starting set. These features are planned.
 
 ## 0.2.19 — 2026-10-01
 
