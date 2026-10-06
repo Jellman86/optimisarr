@@ -53,7 +53,13 @@ public final class SidecarSession: ObservableObject {
 
     /// What each running job is working on, keyed by job id. Empty when the server did not say.
     @Published public internal(set) var jobTitles: [Int: String] = [:]
+    /// The encoder each running job uses, as the server assigned it ("hevc_videotoolbox").
+    @Published public internal(set) var jobEncoders: [Int: String] = [:]
     @Published public internal(set) var audioJobs: Set<Int> = []
+
+    /// Free space on the work volume, as this Mac last reported it to the server. Nil until the
+    /// first check-in, so the panel shows a dash rather than a zero nobody measured.
+    @Published public internal(set) var freeScratchBytes: Int64?
 
     /// The recent frames each running job was seen encoding. Only collected while the menu is
     /// open, and dropped as soon as the job ends.
@@ -371,6 +377,7 @@ public final class SidecarSession: ObservableObject {
         activeJobs = [:]
         jobStorage = [:]
         jobTitles = [:]
+        jobEncoders = [:]
         audioJobs = []
         transferRates = [:]
         rateMeters = [:]
@@ -457,6 +464,7 @@ public final class SidecarSession: ObservableObject {
 
             do {
                 capabilities.freeScratchBytes = max(0, scratchCapacity())
+                freeScratchBytes = capabilities.freeScratchBytes
                 let reportingDrain = shutdown.armed
                 let beat = try await client.heartbeat(
                     serverAddress: pairing.serverAddress,
@@ -538,6 +546,7 @@ public final class SidecarSession: ObservableObject {
             let jobId = assignment.jobId
             activeJobs[jobId] = .fetchingSource(received: 0, total: assignment.sourceBytes)
             jobTitles[jobId] = assignment.title
+            jobEncoders[jobId] = assignment.encoder
             if assignment.isAudio { audioJobs.insert(jobId) }
             refreshWorkingStatus()
             beginActivity()
@@ -693,6 +702,7 @@ public final class SidecarSession: ObservableObject {
         jobStorage[jobId] = nil
         setTickerRunning(!activeJobs.isEmpty || menuIsOpen)
         jobTitles[jobId] = nil
+        jobEncoders[jobId] = nil
         audioJobs.remove(jobId)
         transferRates[jobId] = nil
         rateMeters[jobId] = nil
@@ -776,11 +786,14 @@ public extension SidecarSession {
         serverAddress: String = "https://optimisarr.example.com",
         activeJobs: [Int: JobProgress] = [:],
         jobTitles: [Int: String] = [:],
+        jobEncoders: [Int: String] = [:],
         jobStorage: [Int: WorkStorage] = [:],
         transferRates: [Int: Double] = [:],
         filmStrips: [Int: FilmStrip] = [:],
         audioJobs: Set<Int> = [],
         gpu: GpuUsage? = nil,
+        cpu: Double? = nil,
+        freeScratchBytes: Int64? = nil,
         lastOutcome: JobOutcome? = nil,
         shutdown: ShutdownCountdown = ShutdownCountdown(),
         availableUpdate: SidecarUpdate? = nil
@@ -788,14 +801,23 @@ public extension SidecarSession {
         let session = SidecarSession(prober: nil, executor: nil)
         session.isPosed = true
         session.status = status
+        // A pose of a connected machine is a paired one, so its controls draw as they would.
+        switch status {
+        case .connected, .working, .unreachable, .disabledOnServer:
+            session.pairing = StoredPairing(serverAddress: serverAddress, credential: "posed", workerId: 1)
+        default: break
+        }
         session.serverAddress = serverAddress
         session.activeJobs = activeJobs
         session.jobTitles = jobTitles
+        session.jobEncoders = jobEncoders
         session.jobStorage = jobStorage
         session.transferRates = transferRates
         session.filmStrips = filmStrips
         session.audioJobs = audioJobs
         session.gpu = gpu
+        session.cpu = cpu
+        session.freeScratchBytes = freeScratchBytes
         session.lastOutcome = lastOutcome
         session.shutdown = shutdown
         session.availableUpdate = availableUpdate

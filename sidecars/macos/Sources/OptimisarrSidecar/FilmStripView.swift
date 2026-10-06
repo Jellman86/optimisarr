@@ -43,8 +43,8 @@ struct FilmStripView: View {
         // A fixed 16:9 well, so the menu does not jump about as frames of different aspect
         // ratios arrive, and there is something to look at before the first one does.
         ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(.black.opacity(0.35))
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Instrument.well)
 
             if let data = strip.frame(at: date), let image = NSImage(data: data) {
                 Image(nsImage: image)
@@ -54,16 +54,13 @@ struct FilmStripView: View {
             } else {
                 Image(systemName: "film")
                     .font(.title3)
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(Instrument.ink4)
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 96)
         .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6).strokeBorder(.white.opacity(0.08))
-        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityLabel("A time-lapse of the frames being encoded")
     }
 

@@ -42,22 +42,22 @@ struct SidecarMenu: View {
                     if page == "preferences" {
                         Button { page = "activity" } label: {
                             Label("Back to activity", systemImage: "chevron.left")
-                        }.buttonStyle(.plain).foregroundStyle(Instrument.phosphor)
+                        }.buttonStyle(.borderless)
                         Text("Preferences").font(.title3.weight(.semibold))
                         OptionsView(settings: previewSettings ?? AppState.shared.settings, embedded: true)
                         loginControl
                     } else if page == "diagnostics" {
                         Button { page = "activity" } label: {
                             Label("Back to activity", systemImage: "chevron.left")
-                        }.buttonStyle(.plain).foregroundStyle(Instrument.phosphor)
+                        }.buttonStyle(.borderless)
                         Text("Connection & diagnostics").font(.title3.weight(.semibold))
                         readout
-                        Text("Version \(SidecarBuild.version)").font(.caption).foregroundStyle(Instrument.dim)
+                        Text("Version \(SidecarBuild.version)").font(.caption).foregroundStyle(Instrument.ink3)
                         Text("Verification follows the server’s policy. This Mac returns a candidate and evidence; only the server decides whether to replace media.")
-                            .font(.caption).foregroundStyle(Instrument.dim)
+                            .font(.caption).foregroundStyle(Instrument.ink3)
                         if session.isPaired {
                             Button("Unpair this Mac…") { showUnpairConfirmation = true }
-                                .foregroundStyle(Instrument.alarm)
+                                .panelButton().tint(Instrument.bad)
                         }
                     } else {
                         if let update = session.availableUpdate { updateNotice(update) }
@@ -72,7 +72,6 @@ struct SidecarMenu: View {
         }
         .frame(width: 390)
         .foregroundStyle(Instrument.ink)
-        .background(Instrument.ground)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .fixedSize(horizontal: false, vertical: true)
         .confirmationDialog("Unpair this Mac? Any current jobs will be handed back.", isPresented: $showUnpairConfirmation) {
@@ -97,25 +96,34 @@ struct SidecarMenu: View {
             HStack(spacing: 12) {
                 Image(nsImage: colorScheme == .dark ? MenuBarIcon.artwork : MenuBarIcon.lightArtwork)
                     .resizable().scaledToFit().frame(width: 30, height: 30)
-                    .foregroundStyle(Instrument.phosphor).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Optimisarr").font(.system(size: 17, weight: .semibold))
                     Text(machineName)
-                        .font(.caption).foregroundStyle(Instrument.dim).lineLimit(1)
+                        .font(.system(size: 12)).foregroundStyle(Instrument.ink3).lineLimit(1)
                 }
                 Spacer()
-                Text(session.shutdown.armed ? "SHUTDOWN ARMED" : session.isPaused ? "PAUSED" : session.status.readout)
-                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(session.status.lamp)
+                StatusChip(text: chipText, tone: chipTone)
                 Button { page = page == "preferences" ? "activity" : "preferences" } label: {
-                    Image(systemName: "gearshape").frame(width: 28, height: 28)
-                }.buttonStyle(.plain).help("Preferences").accessibilityLabel("Preferences")
+                    Image(systemName: "gearshape").font(.system(size: 14)).frame(width: 18, height: 18)
+                }.buttonStyle(.borderless).help("Preferences").accessibilityLabel("Preferences")
             }
             if let detail = session.status.detail {
-                Text(detail).font(.caption).foregroundStyle(session.status.lamp)
+                Text(detail).font(.system(size: 12)).foregroundStyle(session.status.tone.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }.padding(20)
-        .overlay(alignment: .bottom) { Rectangle().fill(Instrument.rule).frame(height: 1) }
+        }.padding(.horizontal, 20).padding(.vertical, 16)
+        .overlay(alignment: .bottom) { Rectangle().fill(Instrument.separator).frame(height: 1) }
+    }
+
+    /// The state in a word or two, from the table both sidecars share: pause and an armed
+    /// shutdown outrank the connection, because they say what the machine will do next.
+    private var chipText: String {
+        session.shutdown.armed ? "Shutdown armed" : session.isPaused ? "Paused" : session.status.readout
+    }
+
+    private var chipTone: Tone {
+        session.shutdown.armed ? .warn : session.isPaused ? .info : session.status.tone
     }
 
     // MARK: - Pairing
@@ -123,8 +131,8 @@ struct SidecarMenu: View {
     private var pairingForm: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Enter the address of your Optimisarr server and the pairing code it shows under Settings → Workers.")
-                .font(.system(size: 10.5))
-                .foregroundStyle(Instrument.dim)
+                .font(.system(size: 12))
+                .foregroundStyle(Instrument.ink3)
                 .fixedSize(horizontal: false, vertical: true)
 
             field("optimisarr.local:8787", text: $serverAddress)
@@ -141,15 +149,9 @@ struct SidecarMenu: View {
                 }
             } label: {
                 Text(isPairing ? "Pairing…" : "Pair")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(canPair ? Instrument.ground : Instrument.dim)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(canPair ? Instrument.phosphor : Instrument.cell))
             }
-            .buttonStyle(.plain)
+            .panelButton(prominent: true)
             .disabled(!canPair)
         }
     }
@@ -158,19 +160,11 @@ struct SidecarMenu: View {
         !isPairing && !serverAddress.isEmpty && !pin.isEmpty
     }
 
-    /// A field on the instrument's face rather than the system's: a rounded-border text field
-    /// draws itself for a light window and disappears into this ground.
     private func field(_ prompt: String, text: Binding<String>) -> some View {
-        TextField("", text: text, prompt:
-            Text(prompt).foregroundStyle(Instrument.dim))
-            .textFieldStyle(.plain)
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(Instrument.ink)
+        TextField(prompt, text: text)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.large)
             .disableAutocorrection(true)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 5).fill(Instrument.cell))
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Instrument.rule, lineWidth: 1))
     }
 
     // MARK: - Paired
@@ -191,53 +185,60 @@ struct SidecarMenu: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(session.activeJobs.keys.sorted(), id: \.self) { jobId in
                         if let progress = session.activeJobs[jobId] {
-                            Text("Job #\(jobId) · \(progress.label)")
-                                .font(.caption).foregroundStyle(Instrument.phosphor)
+                            Text("Job #\(jobId) · \(progress.stage) · \(progress.label)")
+                                .font(.caption.weight(.semibold)).foregroundStyle(Instrument.ink2)
                             if session.audioJobs.contains(jobId) {
-                                Text("Source spectrogram shown in the job card above.").font(.caption).foregroundStyle(Instrument.dim)
+                                Text("Source spectrogram shown in the job card above.").font(.caption).foregroundStyle(Instrument.ink3)
                             } else if let strip = session.filmStrips[jobId], !strip.isEmpty { FilmStripView(strip: strip) }
                         }
                     }
                     Text("Receive → encode → verify when requested → return")
-                        .font(.caption).foregroundStyle(Instrument.dim)
+                        .font(.caption).foregroundStyle(Instrument.ink3)
                     readout
                     Text("The server decides whether to replace media. No originals are changed from here.")
-                        .font(.caption).foregroundStyle(Instrument.dim)
+                        .font(.caption).foregroundStyle(Instrument.ink3)
                 }.padding(.top, 12)
-            }.font(.system(size: 12, weight: .medium)).tint(Instrument.phosphor)
+            }.font(.system(size: 13, weight: .semibold))
             if session.shutdown.armed {
                 Label("New assignments stopped", systemImage: "checkmark.shield")
-                    .font(.caption.weight(.semibold)).foregroundStyle(Instrument.phosphor)
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Instrument.warn)
             } else {
                 HStack {
-                    Text("Jobs at once").font(.caption).foregroundStyle(Instrument.dim)
+                    Text("Jobs at once").font(.system(size: 12, weight: .medium)).foregroundStyle(Instrument.ink2)
                     Spacer()
-                    ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { concurrencyKey($0) }
+                    Picker("Jobs at once", selection: Binding(
+                        get: { session.jobConcurrency }, set: { session.setJobConcurrency($0) })) {
+                        ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { count in
+                            Text("\(count)").tag(count)
+                                .accessibilityLabel("\(count) job\(count == 1 ? "" : "s") at once")
+                        }
+                    }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
                 Button { session.setPaused(!session.isPaused) } label: {
                     Label(session.isPaused ? "Resume accepting jobs" : session.activeJobs.isEmpty ? "Pause new jobs" : "Pause after current jobs",
                           systemImage: session.isPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 12, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 10)
-                }.buttonStyle(MonitorButtonStyle()).disabled(!session.isPaired)
+                        .frame(maxWidth: .infinity)
+                }.panelButton().disabled(!session.isPaired)
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text("AFTER CURRENT WORK")
-                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(Instrument.phosphor)
+                Text("After current work")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Instrument.ink)
                 Text(session.shutdown.armed ? shutdownDetail :
                      "Stops new jobs, waits for held work to return, then starts a 60-second countdown.")
-                    .font(.caption).foregroundStyle(Instrument.dim)
+                    .font(.system(size: 12)).foregroundStyle(Instrument.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button {
                     if session.shutdown.armed { session.cancelShutdown() }
                     else { session.armShutdown() }
                 } label: {
                     Label(session.shutdown.armed ? "Cancel shutdown" : "Shut down when work is complete",
                           systemImage: session.shutdown.armed ? "xmark.circle" : "power")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 10)
-                }.buttonStyle(MonitorButtonStyle()).disabled(!session.isPaired || (session.shutdown.armed && !session.shutdown.canCancel))
-            }.padding(12).monitorCard()
+                        .frame(maxWidth: .infinity)
+                }.panelButton().disabled(!session.isPaired || (session.shutdown.armed && !session.shutdown.canCancel))
+                    .padding(.top, 2)
+            }.frame(maxWidth: .infinity, alignment: .leading).monitorCard()
             Text(session.shutdown.armed ? "Closing this panel does not cancel shutdown." : session.isPaused ? "Current work will finish. New jobs are paused until resumed or the app restarts." : "Closing this panel keeps your jobs running.")
-                .font(.caption).foregroundStyle(Instrument.dim).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 12)).foregroundStyle(Instrument.ink3).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -278,9 +279,8 @@ struct SidecarMenu: View {
                 .foregroundStyle(Instrument.ink)
             Text(session.shutdown.armed ? "No new jobs will be accepted." :
                  session.lastOutcome.map(Self.lastLine) ?? "New jobs will appear here automatically.")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .tracking(0.9)
-                .foregroundStyle(Instrument.dim)
+                .font(.system(size: 12))
+                .foregroundStyle(Instrument.ink3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -295,13 +295,13 @@ struct SidecarMenu: View {
             HStack(alignment: .top, spacing: 12) {
                 if !session.audioJobs.contains(jobId) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 7).fill(Instrument.cell)
+                    RoundedRectangle(cornerRadius: 8).fill(Instrument.well)
                     if let data = session.filmStrips[jobId]?.frames.last, let image = NSImage(data: data) {
                         Image(nsImage: image).resizable().scaledToFill()
                     } else {
-                        Image(systemName: session.audioJobs.contains(jobId) ? "waveform" : "film").foregroundStyle(Instrument.dim)
+                        Image(systemName: "film").foregroundStyle(Instrument.ink4)
                     }
-                }.frame(width: 54, height: 66).clipped().clipShape(RoundedRectangle(cornerRadius: 7))
+                }.frame(width: 96, height: 54).clipped().clipShape(RoundedRectangle(cornerRadius: 8))
                     .accessibilityLabel("Media preview")
                 }
                 VStack(alignment: .leading, spacing: 5) {
@@ -313,9 +313,9 @@ struct SidecarMenu: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(Self.subline(jobId: jobId, progress: progress, session: session))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .tracking(0.9)
-                    .foregroundStyle(Instrument.dim)
+                    .font(.system(size: 12))
+                    .monospacedDigit()
+                    .foregroundStyle(Instrument.ink3)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -330,33 +330,43 @@ struct SidecarMenu: View {
                     if let reason = storage.fallbackReason {
                         Text(reason).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
                     }
-                }.foregroundStyle(Instrument.dim).help(storage.path)
+                }.foregroundStyle(Instrument.ink3).help(storage.path)
             }
-            Meter(value: progress.fraction, tint: Instrument.phosphor)
+            Group {
+                if let fraction = progress.fraction { ProgressView(value: fraction) } else { ProgressView() }
+            }
+            .progressViewStyle(.linear).controlSize(.small).padding(.top, 4)
+            .accessibilityValue(progress.fraction.map { "\(Int(($0 * 100).rounded())) percent" } ?? "in progress")
 
             HStack(spacing: 8) {
-                Instrument.label(progress.label)
+                Text(Self.progressLine(jobId: jobId, progress: progress, session: session))
+                    .font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Instrument.ink3)
                 Spacer(minLength: 8)
                 if let fraction = progress.fraction {
                     Text("\(Int((fraction * 100).rounded()))%")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.system(size: 11, weight: .semibold))
                         .monospacedDigit()
-                        .foregroundStyle(Instrument.phosphor)
+                        .foregroundStyle(Instrument.ink2)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The stage and what it is working with, on one line under the title.
+    /// The stage and what it is working with, on one line under the title: "Encoding ·
+    /// hevc_videotoolbox", the same line the Windows tray shows.
     private static func subline(
         jobId: Int, progress: JobProgress, session: SidecarSession
     ) -> String {
-        var parts = ["JOB \(jobId)"]
-        if let rate = session.transferRates[jobId], rate > 0 {
-            parts.append(rate2(rate))
-        }
+        var parts = [progress.stage]
+        if let encoder = session.jobEncoders[jobId], !encoder.isEmpty { parts.append(encoder) }
         return parts.joined(separator: " · ")
+    }
+
+    /// How far in, under the bar: "182 MB of 493 MB · 42.1 MB/s" while bytes move.
+    private static func progressLine(jobId: Int, progress: JobProgress, session: SidecarSession) -> String {
+        guard let rate = session.transferRates[jobId], rate > 0 else { return progress.label }
+        return progress.label + " · " + rate2(rate)
     }
 
     /// Everything the machine knows about itself, in one column that can be read down.
@@ -374,7 +384,7 @@ struct SidecarMenu: View {
                 ReadoutRow(name: "Last", value: Self.lastValue(outcome))
             }
         }
-        .overlay(alignment: .top) { Rectangle().fill(Instrument.rule).frame(height: 1) }
+        .overlay(alignment: .top) { Rectangle().fill(Instrument.separator).frame(height: 1) }
     }
 
     /// The three figures worth a glance rather than a read.
@@ -384,21 +394,29 @@ struct SidecarMenu: View {
     /// being quiet. Neither number is wrong; shown apart, each invites the wrong conclusion, which
     /// is why the note under them stays even when the panel is otherwise terse.
     private var cells: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                ReadoutCell(figure: session.cpu.map(Self.percent) ?? "—", unit: "CPU %")
-                ReadoutCell(figure: session.gpu.map { Self.percent($0.device) } ?? "—", unit: "GPU %")
-                ReadoutCell(figure: "\(session.activeJobs.count)", unit: "HELD")
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                ReadoutCell(figure: session.cpu.map(Self.percent) ?? "—", unit: "CPU load")
+                Rectangle().fill(Instrument.separator).frame(width: 1, height: 34).padding(.horizontal, 12)
+                ReadoutCell(figure: session.gpu.map { Self.percent($0.device) } ?? "—", unit: "GPU load")
+                Rectangle().fill(Instrument.separator).frame(width: 1, height: 34).padding(.horizontal, 12)
+                ReadoutCell(figure: session.freeScratchBytes.map(Self.gigabytes) ?? "—", unit: "Free space")
+            }.monitorCard()
             Text("macOS does not report VideoToolbox media-engine usage.")
-                .font(.system(size: 11))
-                .foregroundStyle(Instrument.dim)
+                .font(.system(size: 12))
+                .foregroundStyle(Instrument.ink3)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private static func percent(_ value: Double) -> String {
-        "\(Int((value * 100).rounded()))"
+        "\(Int((value * 100).rounded()))%"
+    }
+
+    /// "428 GB": whole gigabytes with one decimal below ten, as the Windows tray writes it.
+    private static func gigabytes(_ bytes: Int64) -> String {
+        let value = Double(bytes) / 1_073_741_824
+        return value < 10 ? String(format: "%.1f GB", value) : "\(Int(value.rounded())) GB"
     }
 
     /// "42.1 MB/s". Per second rather than per bit, matching the byte counts beside it.
@@ -406,7 +424,7 @@ struct SidecarMenu: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         formatter.allowedUnits = [.useMB, .useGB, .useKB]
-        return (formatter.string(fromByteCount: Int64(bytesPerSecond)) + "/s").uppercased()
+        return formatter.string(fromByteCount: Int64(bytesPerSecond)) + "/s"
     }
 
     private static func lastLine(_ outcome: JobOutcome) -> String {
@@ -429,14 +447,16 @@ struct SidecarMenu: View {
     /// Said plainly and first: an outdated sidecar can fail good encodes while every light is green.
     private func updateNotice(_ update: SidecarUpdate) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Update available", systemImage: "arrow.down.circle")
-                .font(.callout.weight(.semibold))
+            Label("Update available", systemImage: "arrow.down.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Instrument.accent)
             Text("The server is on \(update.version) and this sidecar is older. Older sidecars can fail good encodes.")
-                .font(.caption).foregroundStyle(Instrument.dim)
+                .font(.system(size: 12)).foregroundStyle(Instrument.ink3)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Open release page") { NSWorkspace.shared.open(update.releasePage) }
-                .font(.caption)
+                .panelButton().padding(.top, 4)
         }
+        .monitorCard()
         .accessibilityElement(children: .contain)
     }
 
@@ -454,8 +474,8 @@ struct SidecarMenu: View {
                     startAtLogin = LoginItem.isEnabled
                     loginItemError = "Could not change the login item: \(error.localizedDescription)"
                 }
-            })).toggleStyle(.checkbox).font(.caption)
-            if let loginItemError { Text(loginItemError).font(.caption).foregroundStyle(Instrument.alarm) }
+            })).toggleStyle(.switch).controlSize(.small)
+            if let loginItemError { Text(loginItemError).font(.caption).foregroundStyle(Instrument.bad) }
         }
     }
 
@@ -463,15 +483,15 @@ struct SidecarMenu: View {
         HStack {
             Button { page = page == "diagnostics" ? "activity" : "diagnostics" } label: {
                 Label("Diagnostics", systemImage: "waveform.path.ecg")
-            }.buttonStyle(.plain).help("Connection, version and pairing")
+            }.buttonStyle(.borderless).help("Connection, version and pairing")
             Spacer()
             Menu {
                 if let url = serverURL { Button("Open Optimisarr") { NSWorkspace.shared.open(url) } }
                 Button("Quit sidecar") { NSApplication.shared.terminate(nil) }
             } label: { Image(systemName: "ellipsis").frame(width: 28, height: 24) }
-                .menuStyle(.borderlessButton).frame(width: 32).help("More actions")
-        }.font(.caption).foregroundStyle(Instrument.dim).padding(.horizontal, 20).padding(.vertical, 13)
-            .overlay(alignment: .top) { Rectangle().fill(Instrument.rule).frame(height: 1) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 32).help("More actions")
+        }.font(.system(size: 12, weight: .medium)).foregroundStyle(Instrument.ink3).padding(.horizontal, 12).padding(.vertical, 10)
+            .overlay(alignment: .top) { Rectangle().fill(Instrument.separator).frame(height: 1) }
     }
 
     private var serverURL: URL? {
@@ -480,29 +500,19 @@ struct SidecarMenu: View {
               ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
         return url
     }
-
-    /// One position of the concurrency control. A key rather than a segmented picker: the panel
-    /// has four choices and a system picker would bring its own appearance onto this face.
-    private func concurrencyKey(_ count: Int) -> some View {
-        let chosen = session.jobConcurrency == count
-        return Button {
-            session.setJobConcurrency(count)
-        } label: {
-            Text("\(count)")
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(chosen ? Instrument.ground : Instrument.value)
-                .frame(width: 28, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(chosen ? Instrument.phosphor : Instrument.cell))
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Instrument.rule, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(count) job\(count == 1 ? "" : "s") at once")
-    }
 }
 
 private extension JobProgress {
+    /// The stage in the words both sidecars use.
+    var stage: String {
+        switch self {
+        case .fetchingSource: return "Receiving source"
+        case .encoding: return "Encoding"
+        case .measuring: return "Quality & verification"
+        case .delivering: return "Returning candidate"
+        }
+    }
+
     var label: String {
         switch self {
         case let .fetchingSource(received, total):
@@ -558,31 +568,30 @@ private extension JobOutcome {
 }
 
 private extension SidecarStatus {
-    /// One colour for the whole panel's sense of health, used by the lamp and by fault text.
-    ///
-    /// Three colours and no more: lit means the machine is doing what it should, amber means it is
-    /// held up by something that may pass, and alarm means somebody has to do something. A fourth
-    /// would have to mean something, and there is nothing else for it to mean.
-    var lamp: Color {
+    /// What the state means, as one of the web interface's tones, used by the chip and by fault
+    /// text. Blue means the machine is doing what it should, gold that something may pass on its
+    /// own, raspberry that somebody has to act, and graphite a fact rather than a verdict. The
+    /// table is shared with the Windows tray (`docs/design/windows-sidecar/README.md`).
+    var tone: Tone {
         switch self {
-        case .working, .connected: return Instrument.phosphor
-        case .unreachable, .disabledOnServer: return Instrument.amber
-        case .pairingFailed, .revoked: return Instrument.alarm
-        default: return Instrument.dim
+        case .working, .connected: return .ok
+        case .unreachable, .disabledOnServer: return .warn
+        case .pairingFailed, .revoked: return .bad
+        case .unpaired, .pairing: return .info
         }
     }
 
-    /// The state in the one word the bar has room for.
+    /// The state in the words the chip has room for.
     var readout: String {
         switch self {
-        case .working: return "WORKING"
-        case .connected: return "IDLE"
-        case .unreachable: return "NO LINK"
-        case .disabledOnServer: return "STOOD DOWN"
-        case .pairingFailed: return "PAIRING FAILED"
-        case .revoked: return "REVOKED"
-        case .unpaired: return "UNPAIRED"
-        case .pairing: return "PAIRING"
+        case .working: return "Working"
+        case .connected: return "Ready"
+        case .unreachable: return "No server"
+        case .disabledOnServer: return "Stood down"
+        case .pairingFailed: return "Pairing failed"
+        case .revoked: return "Revoked"
+        case .unpaired: return "Not paired"
+        case .pairing: return "Pairing"
         }
     }
 

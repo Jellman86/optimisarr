@@ -7,28 +7,27 @@ struct AudioSpectrumView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("SOURCE AUDIO").font(.system(size: 10, weight: .semibold, design: .monospaced))
+                Text("Source audio").font(.system(size: 11, weight: .semibold))
                 Spacer()
-                Text("24 kHz").font(.system(size: 10, design: .monospaced))
-            }.foregroundStyle(Instrument.dim)
+                Text("24 kHz").font(.system(size: 11)).monospacedDigit()
+            }.foregroundStyle(Instrument.ink3)
             ZStack {
-                RoundedRectangle(cornerRadius: 6).fill(.black.opacity(0.35))
+                RoundedRectangle(cornerRadius: 8).fill(Instrument.well)
                 if let frame, let image = NSImage(data: frame) {
                     Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
                 } else {
-                    Text("Waiting for source spectrum…").font(.caption).foregroundStyle(Instrument.dim)
+                    Text("Waiting for source spectrum…").font(.caption).foregroundStyle(Instrument.ink3)
                 }
             }
             .frame(maxWidth: .infinity).frame(height: 96).clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.white.opacity(0.08)))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             HStack {
                 Text("0 Hz · logarithmic frequency")
                 Spacer()
                 Text("Up to 3 s →")
-            }.font(.system(size: 9, design: .monospaced)).foregroundStyle(Instrument.dim)
+            }.font(.system(size: 10)).monospacedDigit().foregroundStyle(Instrument.ink3)
             Text("Brighter colour = stronger signal. Source preview; verification runs separately.")
-                .font(.system(size: 10)).foregroundStyle(Instrument.dim)
+                .font(.system(size: 10)).foregroundStyle(Instrument.ink3)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Source audio spectrogram. Logarithmic frequency from zero to 24 kilohertz; up to three seconds near the encoding position. Brightness shows signal strength, not verified output quality.")

@@ -27,10 +27,10 @@ struct OptionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Where work happens").font(.headline)
+                Text("Where work happens").font(.system(size: 13, weight: .semibold))
                 Text("A job downloads its source here and writes its candidate here before sending it back. Both together are roughly one and a half times the size of the original.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Instrument.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -69,7 +69,7 @@ struct OptionsView: View {
                         Spacer(minLength: 8)
                         Text(bytes(settings.memoryBudgetBytes))
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Instrument.ink3)
                     }
                     Slider(
                         value: Binding(
@@ -77,12 +77,12 @@ struct OptionsView: View {
                             set: { settings.setMemoryBudget(Int64($0)) }),
                         in: budgetRange)
                     HStack {
-                        Text(bytes(Int64(budgetRange.lowerBound))).font(.caption2).foregroundStyle(.tertiary)
+                        Text(bytes(Int64(budgetRange.lowerBound))).font(.caption2).foregroundStyle(Instrument.ink4)
                         Spacer()
                         Text("of \(bytes(settings.physicalMemoryBytes)) installed")
-                            .font(.caption2).foregroundStyle(.tertiary)
+                            .font(.caption2).foregroundStyle(Instrument.ink4)
                         Spacer()
-                        Text(bytes(Int64(budgetRange.upperBound))).font(.caption2).foregroundStyle(.tertiary)
+                        Text(bytes(Int64(budgetRange.upperBound))).font(.caption2).foregroundStyle(Instrument.ink4)
                     }
                     // Said plainly, because the obvious expectation is that memory is faster.
                     note("The budget is shared by all running jobs, including filesystem overhead. Jobs use disk when the budget is full, the candidate has no size limit, or a quality search needs unbounded scratch space. A RAM disk holds real memory for as long as the job runs, and most films will not fit in any sensible budget. It is also rarely faster: a download is limited by the network and an encode by the encoder, not by an Apple SSD.")
@@ -98,7 +98,7 @@ struct OptionsView: View {
     private func note(_ text: String) -> some View {
         Text(text)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Instrument.ink3)
             .fixedSize(horizontal: false, vertical: true)
     }
 

@@ -58,8 +58,9 @@ enum MenuRenderer {
         _ = shutdown.evaluate(at: Date(), ready: true, activeJobs: 0)
         let audio = SidecarSession.posed(
             status: .working(jobId: 5848, progress: .encoding(encodedSeconds: 31)),
-            activeJobs: [5848: .encoding(encodedSeconds: 31)], jobTitles: [5848: "Audio Study · Generated fixture"],
-            filmStrips: [5848: FilmStrip(frames: sampleSpectrum())], audioJobs: [5848])
+            activeJobs: [5848: .encoding(encodedSeconds: 31)], jobTitles: [5848: "Audio Study · Generated fixture"], jobEncoders: [5848: "aac_at"],
+            filmStrips: [5848: FilmStrip(frames: sampleSpectrum())], audioJobs: [5848],
+            gpu: GpuUsage(device: 0.02, memoryInUse: 400_000_000), cpu: 0.18, freeScratchBytes: 459_561_500_672)
         let poses: [(String, SidecarSession)] = [
             ("audio", audio),
             ("unpaired", .posed(status: .unpaired, serverAddress: "")),
@@ -76,35 +77,35 @@ enum MenuRenderer {
             ("receiving", .posed(
                 status: .working(jobId: 5846, progress: .fetchingSource(received: 182_000_000, total: 493_040_520)),
                 activeJobs: [5846: .fetchingSource(received: 182_000_000, total: 493_040_520)],
-                jobTitles: [5846: "Prism Field · Demo clip"],
+                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"],
                 transferRates: [5846: 42_100_000],
-                gpu: GpuUsage(device: 0.04, memoryInUse: 700_000_000))),
+                gpu: GpuUsage(device: 0.04, memoryInUse: 700_000_000), cpu: 0.18, freeScratchBytes: 459_561_500_672)),
             ("encoding", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
-                jobTitles: [5846: "Prism Field · Demo clip"],
+                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"],
                 filmStrips: [5846: strip],
-                gpu: GpuUsage(device: 0.31, memoryInUse: 1_253_064_704))),
+                gpu: GpuUsage(device: 0.31, memoryInUse: 1_253_064_704), cpu: 0.18, freeScratchBytes: 459_561_500_672)),
             ("memory-fallback", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
-                jobTitles: [5846: "Prism Field · Demo clip"],
+                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"],
                 jobStorage: [5846: WorkStorage(inMemory: false, path: "/work",
                     fallbackReason: "This job needs 3 GB of RAM storage. The shared budget is too small or is in use by other jobs.")],
                 filmStrips: [5846: strip])),
             ("memory", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
-                jobTitles: [5846: "Prism Field · Demo clip"],
+                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"],
                 jobStorage: [5846: WorkStorage(inMemory: true, path: "/Volumes/OptimisarrWork-demo")],
                 filmStrips: [5846: strip])),
             ("sending", .posed(
                 status: .working(jobId: 5846, progress: .delivering(sent: 300_000_000, total: 394_256_442)),
                 activeJobs: [5846: .delivering(sent: 300_000_000, total: 394_256_442)],
-                jobTitles: [5846: "Prism Field · Demo clip"],
+                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"],
                 transferRates: [5846: 68_400_000],
                 filmStrips: [5846: strip],
-                gpu: GpuUsage(device: 0.06, memoryInUse: 900_000_000))),
+                gpu: GpuUsage(device: 0.06, memoryInUse: 900_000_000), cpu: 0.18, freeScratchBytes: 459_561_500_672)),
             ("two-jobs", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [
@@ -115,12 +116,13 @@ enum MenuRenderer {
                     5846: "Prism Field · Demo clip",
                     5847: "Orbit Study · Demo clip",
                 ],
+                jobEncoders: [5846: "hevc_videotoolbox", 5847: "libx265"],
                 filmStrips: [5846: strip],
-                gpu: GpuUsage(device: 0.62, memoryInUse: 2_100_000_000))),
+                gpu: GpuUsage(device: 0.62, memoryInUse: 2_100_000_000), cpu: 0.18, freeScratchBytes: 459_561_500_672)),
             ("details", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
-                jobTitles: [5846: "Prism Field · Demo clip"], filmStrips: [5846: strip])),
+                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"], filmStrips: [5846: strip])),
             ("preferences", .posed(status: .connected(workerId: 1, lastCheckIn: Date()))),
             ("revoked", .posed(status: .revoked)),
             ("unreachable", .posed(
@@ -133,7 +135,12 @@ enum MenuRenderer {
             NSApplication.shared.appearance = NSAppearance(named: light ? .aqua : .darkAqua)
             let hosting = NSHostingView(rootView: SidecarMenu(session: session, machineName: "Studio Mac",
                 initialPage: name == "preferences" ? "preferences" : "activity",
-                detailsExpanded: name == "details", previewSettings: settings).frame(width: 390))
+                detailsExpanded: name == "details", previewSettings: settings).frame(width: 390)
+                // A snapshot has no glass to show (the window server composites it) and no popover
+                // behind it, so it gets the window background and the bordered buttons glass falls
+                // back to. Layout, wording and colour are otherwise the real thing.
+                .environment(\.snapshotRendering, true)
+                .background(Color(nsColor: .windowBackgroundColor)))
             let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 390, height: 700),
                                   styleMask: [.borderless], backing: .buffered, defer: false)
             window.contentView = hosting
