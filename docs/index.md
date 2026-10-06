@@ -41,7 +41,8 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Contributing](development/contributing.md)
 - [Full application review prompt](development/application-review-prompt.md) - a repeatable, evidence-led cross-platform review.
 - [VMAF v1 and NVIDIA plan](development/vmaf-v1-and-nvidia-plan.md) - implemented SDR model policy, hardware evidence and remaining complete-CUDA feasibility work; installations change only when updated.
-- [Perceptual audio and image quality plan](development/perceptual-audio-image-quality-plan.md) - researched candidates, worker implementation sequence and evidence needed before optional gates; planned, not shipped.
+- [Perceptual quality and dedupe plan](development/perceptual-audio-image-quality-plan.md) - implemented development audio/soundtrack reports and gates, pipeline costs, and remaining image/quality and dedupe work.
+- [Soundtrack quality validation](development/soundtrack-quality-validation.md) - automated checks, real-machine evidence and assessment limits.
 - [Application review](reviews/2026-09-30-full-application-review.md) and [tested mitigations](reviews/2026-10-01-review-mitigations.md).
 - [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.
 
@@ -52,6 +53,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 | Dashboard | Check service health, lifetime savings, queue counts, and live CPU/GPU usage while a job encodes. |
 | Libraries | Add paths, choose presets, configure media-aware verification and automation, run a personal quality check, scan, enqueue, review candidates, and manage exclusions. |
 | Inventory | Inspect discovered files and understand why each one is eligible or skipped. |
+| [Exact copies](usage/exact-copies.md) | Review identical complete files in one library without changing media. |
 | Queue | Watch or manually pause jobs, read verification reports, retry or exclude failures, and replace verified outputs. |
 | Quarantine | Compare replacements with originals, roll back, approve, or clear finished history. |
 | Settings | Tune queue and hardware limits, replacement policy, integrations, notifications, tools, and backup/import. |

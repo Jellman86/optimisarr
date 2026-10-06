@@ -50,7 +50,7 @@ def generate(payload):
                             Directory=directories[parent], Bitness='always64')
         element(component, 'File', Id=identifier('F', relative),
                 Source='$(var.Payload)\\' + relative.replace('/', '\\'), KeyPath='yes')
-    required = {'runtime/dotnet.exe', 'optimisarr.sidecar.service.dll', 'optimisarr.sidecar.tray.exe', 'optimisarr.sidecar.tray.dll', 'ffmpeg.exe', 'ffprobe.exe'}
+    required = {'runtime/dotnet.exe', 'optimisarr.sidecar.service.dll', 'optimisarr.sidecar.tray.exe', 'optimisarr.sidecar.tray.dll', 'ffmpeg.exe', 'ffprobe.exe', 'update-sidecar.ps1', 'installationhealth.psm1'}
     if not required.issubset(seen):
         raise ValueError('Incomplete installer payload: ' + ', '.join(sorted(required - seen)))
     ET.indent(root)

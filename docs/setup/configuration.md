@@ -240,6 +240,141 @@ the same applies when size and VMAF both fail because higher quality would worse
 quality would worsen VMAF. Other technical or transient failures retain the three-terminal-failure
 threshold. Cancelled work and jobs interrupted by a worker restart do not count toward exclusion.
 
+## Audio quality reports and gates (development)
+
+### Choose the encoding settings
+
+Open **Configure → Encode → Audio & subtitles**. Choose the **Target codec** for standalone
+audio, or an explicit **Re-encode to** choice under **Audio track** for video. The horizontal
+**Audio encoding quality** control changes the bitrate for the selected codec:
+
+| Preset | AAC | Opus | MP3 |
+|---|---:|---:|---:|
+| Space saver | 96 kbps | 96 kbps | 128 kbps |
+| Balanced | 128 kbps | 128 kbps | 192 kbps |
+| High | 192 kbps | 160 kbps | 256 kbps |
+| Very high | 256 kbps | 192 kbps | 320 kbps |
+
+These are encoding starting points. They are not calibrated listening grades, equal-quality
+claims across codecs, or audio gate thresholds. Higher budgets usually use more space. AAC
+standalone output uses `.m4a`, Opus uses `.opus`, and MP3 uses `.mp3`. Video keeps its separately
+chosen video container. Retained surround receives this budget per channel pair; downmixing
+to stereo keeps the selected budget.
+
+**Default** clears the bitrate override and follows the selected profile: standalone audio is
+normally 128 kbps, or 96 kbps under Scott's Settings; video uses that profile's soundtrack bitrate. **Custom** opens
+Advanced audio, where you can enter your own bitrate. Opening or saving a library does not
+change existing values. A preset you choose during the edit follows a subsequent codec change;
+a loaded or custom bitrate is preserved. The saved policy stores codec and bitrate, so there
+is no persistent link to a preset after saving.
+When an explicit saved bitrate matches the profile default, the control explains that it
+remains saved. Choose **Default** to clear that override and follow future profile changes.
+
+Presets do not enable or change the audio quality gate. They use the existing fixed-bitrate
+encode path, with no automatic sample search or quality retry. Copied video audio is unchanged.
+For explicitly re-encoded video audio, configure the separate soundtrack report and gate below.
+
+![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
+
+### Collect reports or require a result
+
+In a music library, open **Configure → Verify** and enable **Audio quality report** to collect
+experimental Zimtohrli observations. It starts off. Single-track mono/stereo files are supported;
+standalone files with multiple tracks and surround are not assessed. Video uses the separate
+soundtrack controls below. Up to 90 seconds are
+compared per channel. This adds CPU work, temporary PCM files and reads of both complete files
+for their hashes on the verifying host.
+
+Queue job details and Quarantine display the largest sample distance for each channel,
+coverage and measurement location. Smaller distances indicate closer audio, without a
+calibrated listening score or pass threshold. An **Unavailable** report explains missing tools,
+unsupported files or incomplete evidence. Strict worker jobs stay on the worker with no server
+fallback. In server verification mode, the server measures.
+
+With **Require audio quality** off, reports do not change replacement decisions. Existing decode, duration, stream, metadata and
+size checks still apply, and verified replacement quarantines the original before moving the
+candidate into place. See the [development evidence and limits](../development/perceptual-audio-image-quality-plan.md#integrated-report-controls-in-development).
+
+![Audio quality report showing separate channel distances, assessed duration, worker location and the report-only safety note](../images/optimisarr-audio-report-dark.png)
+
+To make audio quality a replacement requirement, enable **Require audio quality** in the same
+view, then open **Advanced verification** and choose **Maximum audio difference**. Both switches
+start off, and the limit starts blank. Verify shows the current limit; Advanced verification holds its control.
+The horizontal control has clickable numeric points, with lower values on the left. The points
+are shortcuts, not calibrated quality levels. Choose **Custom** to enter any value from 0 to 1;
+lower values are stricter. There is no calibrated default or conversion
+from VMAF. Use your reports and listening examples to choose a limit for that library.
+
+The largest distance in every assessed channel and sample must be at or below your limit.
+A missing tool, unsupported input or incomplete worker measurement blocks replacement when the
+gate is enabled. Enabling the gate requests measurement even if **Audio quality report** is off.
+Strict sidecar verification keeps those measurements on the worker; the server compares their
+validated results with the selected limit. The gate applies to standalone audio in music and
+mixed libraries, with one mono or stereo track. Video soundtracks use their own gate; surround
+assessment is unavailable.
+Files up to 90 seconds are fully assessed; longer files use three 30-second samples, so the gate
+cannot prove the quality of unassessed sections.
+
+Job details show **Passed** or **Blocked**, the limit used for that job and each channel’s largest
+distance. A failed gate leaves the original unchanged. This does not add an automatic audio
+quality retry or change the other safety checks.
+
+![Audio quality gate controls with an explicit maximum difference](../images/optimisarr-audio-quality-settings-dark.png)
+
+![Blocked audio quality report showing the selected limit](../images/optimisarr-audio-gate-dark.png)
+
+### Assess re-encoded video soundtracks
+
+Soundtrack samples leave a 100 ms margin at the file end to avoid encoder padding. Each prepared sample must still contain its assigned frames within the 64-frame resampling allowance; missing audio is never padded. Coverage in the report shows what was actually assessed.
+
+![Soundtrack quality controls with a separate optional gate and explicit maximum difference](../images/optimisarr-soundtrack-quality-settings-dark.png)
+
+![Per-track soundtrack results showing a passed main track and blocked commentary](../images/optimisarr-soundtrack-report-dark.png)
+
+
+For a Film, TV or Other library, open **Configure → Verify**. **Soundtrack quality report**
+and **Require soundtrack quality** are separate opt-in controls; both start off. The standalone
+**Audio quality report** and **Require audio quality** controls do not enable them. Choose an
+explicit **Re-encode to** audio choice under **Encode → Audio & subtitles** to make soundtrack
+assessment applicable. Copied audio, remuxes and disposable previews skip this assessment and
+its gate; existing stream-retention and timing checks still apply.
+
+Enable **Soundtrack quality report** to see experimental per-track observations in Queue job
+details and Quarantine. Each track shows its output position, language/title when present,
+largest distance per channel, coverage and whether measurement ran on the server or worker.
+An **Unavailable** result explains unsupported tracks, missing tools or incomplete evidence.
+Reporting alone does not block replacement.
+
+To require a result, enable **Require soundtrack quality**, then choose
+**Maximum soundtrack difference** in **Advanced verification**. Its numeric points and **Custom** input work like the
+standalone audio limit: enter a finite value from 0 to 1, with lower values stricter and no
+calibrated default. The gate requests measurement even when reporting is off. Every channel
+and sample of every retained track must meet the inclusive limit; a missing or unsupported
+measurement blocks replacement. Encoding presets do not select or change this limit.
+
+Assessment supports one to eight retained mono/stereo tracks with matching channel layouts.
+The frozen job records intentional source-track removals. Remaining source tracks map in order
+to output audio tracks; matching language, title and commentary identity is required. It does
+not guess track matches from language alone. A missing, extra or reordered track makes assessment
+unavailable. Surround and surround-to-stereo downmix assessment are unavailable, including a
+retained surround track alongside otherwise supported stereo tracks. Track duration differences
+over 100 ms, start-time differences over 50 ms, and unsupported picture/container offsets are
+also refused; a perceptual score cannot approve a timing shift or establish lip-sync quality.
+
+Each track up to 90 seconds is fully assessed; longer tracks use three 30-second samples at
+the start, middle and end. This cannot guarantee quality outside the assessed windows or
+inaudibility within them. Cost grows with retained tracks: serial decode/scoring, temporary
+PCM files, and repeated reads of both complete video files for identity hashes on the verifying
+host. Strict worker verification requires an updated protocol 8 sidecar and verification
+contract 3; measurement stays on the worker with no server fallback. Server verification mode
+measures on the server. See [evidence and resource limits](../development/perceptual-audio-image-quality-plan.md#video-soundtrack-reports-and-gate-in-development).
+
+All other configured video, timing, stream, metadata, loudness/clipping and size gates still
+apply. A failed soundtrack gate leaves the original unchanged and adds no automatic quality
+search or retry. Replacement still quarantines the original before installing the verified
+candidate; quarantine is not a backup, and approval or retention purge removes rollback ability.
+Dry-run blocks replacement and purge while allowing encoding and verification.
+
 ## Rule profiles (presets)
 
 Each library picks an **optimisation preset** that sets its codec, container, and a
@@ -325,10 +460,26 @@ gates and links each library to its configuration.
 
 ![Schedule view with queue dispatch reason and per-library automation windows](../images/optimisarr-schedule-dark.png)
 
-**Auto-replace** is disabled by default. When enabled for a library, a job that
-passes every verification gate is replaced automatically. The original is still
-quarantined first and remains rollback-able through **Quarantine**. Enable it
-only after validating a small manual batch for that library.
+**Auto-accept passed jobs** is off by default for every library type. Find it in
+**Libraries → Configure → Schedule & replace**. Enabling it opens **Do you really,
+really mean it?**: acknowledge the risk, confirm, then **Save** the library. Existing
+saved choices stay unchanged.
+
+Every job that passes all enabled checks replaces its library file automatically,
+including jobs already ready to replace, using the checks from their completed
+attempt. Changing verification settings does not recheck those existing outputs.
+The original goes to **Quarantine** first.
+Approval or retention cleanup permanently deletes that copy and removes rollback
+ability. Quarantine is not a backup.
+
+Incorrect settings can damage media, reduce quality, or remove tracks and metadata.
+A passing result covers only the checks you enabled. Review a small manual batch
+and keep a separate backup before enabling this option. Switching it off and saving
+leaves verified jobs ready for manual replacement; a replacement already moving files
+finishes safely. **Move output to a target folder instead of replacing** leaves originals in place
+and takes precedence over auto-accept.
+
+![Auto-accept confirmation with the risk warning, Quarantine retention notice, acknowledgement, and disabled enable button](../images/optimisarr-auto-accept-confirmation-dark.png)
 
 **Dry-run mode** is a global replacement safety switch. It leaves scanning,
 queueing, transcoding, verification, previews, and rollback available, but blocks
@@ -371,6 +522,11 @@ and provider credentials in plain text. Store it as sensitive material: do not
 commit, share, or leave it in an unprotected download directory.
 
 ![Backup and restore card explaining export contents and providing Export config and Import config controls](../images/optimisarr-settings-backup-dark.png)
+
+New exports use configuration format version 3 so older builds reject them rather than silently
+lose soundtrack reporting or its gate. Version 1 and 2 backups remain importable on this build;
+omitted soundtrack controls preserve existing saved values, and new libraries keep them off.
+Omitted standalone audio gate settings also preserve an existing gate.
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,

@@ -45,21 +45,21 @@
         {@const kept = result.sourceSizeBytes > 0 ? Math.min(100, (result.outputSizeBytes / result.sourceSizeBytes) * 100) : 100}
         <div class="results-row" role="row">
           <span role="cell" class="flex min-w-0 items-center gap-3">
-            <Thumbnail mediaFileId={result.mediaFileId} size="sm" />
+            <Thumbnail mediaFileId={result.mediaFileId} size="md" />
             <span class="min-w-0">
               <span class="block truncate text-sm font-semibold text-ink">{title.primary ?? i18n.m.dashboard.unnamed_file}</span>
               {#if title.episode || title.secondary}
-                <span class="block truncate text-xs text-ink-3">{#if title.episode}<span class="font-mono">{title.episode}</span>{' '}{/if}{title.secondary ?? ''}</span>
+                <span class="block truncate text-xs text-ink-3">{#if title.episode}<span class="tabular-nums">{title.episode}</span>{' '}{/if}{title.secondary ?? ''}</span>
               {/if}
             </span>
           </span>
           <span role="cell" class="col-library truncate text-sm text-ink-2">{result.libraryName ?? '—'}</span>
           <span role="cell" class="flex min-w-0 flex-col gap-1.5">
-            <span class="truncate font-mono text-xs text-ink-2">{formatSize(result.sourceSizeBytes)} → {formatSize(result.outputSizeBytes)}</span>
+            <span class="truncate text-xs tabular-nums text-ink-2">{formatSize(result.sourceSizeBytes)} → {formatSize(result.outputSizeBytes)}</span>
             <span class="block h-1.5 overflow-hidden rounded-full bg-[var(--raised)]" aria-hidden="true"><span class="block h-full rounded-full bg-accent" style="width: {kept}%"></span></span>
           </span>
-          <span role="cell" class="font-mono text-sm font-semibold text-ok">−{savedPercent(result.sourceSizeBytes, result.outputSizeBytes)}%</span>
-          <span role="cell" class="col-vmaf font-mono text-sm text-ink-2">{result.vmafHarmonicMean != null ? result.vmafHarmonicMean.toFixed(1) : '—'}</span>
+          <span role="cell" class="text-sm font-semibold tabular-nums text-ok">−{savedPercent(result.sourceSizeBytes, result.outputSizeBytes)}%</span>
+          <span role="cell" class="col-vmaf text-sm tabular-nums text-ink-2">{result.vmafHarmonicMean != null ? result.vmafHarmonicMean.toFixed(1) : '—'}</span>
           <span role="cell" class="col-encoder truncate font-mono text-xs text-ink-2">{result.videoEncoder ?? '—'}</span>
           <span role="cell" class="col-where truncate text-sm text-ink-3">{result.workerName ?? i18n.m.dashboard.this_server}</span>
           <span role="cell" class="col-finished truncate text-sm text-ink-3" title={new Date(result.finishedAt).toLocaleString(i18n.locale)}>{formatRelative(result.finishedAt, now, i18n.locale)}</span>
@@ -84,13 +84,16 @@
   .results-head {
     border-top: 0;
     padding-block: 0.6rem;
-    font-size: 10.5px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--ink-3);
   }
   .col-library, .col-vmaf, .col-encoder, .col-where, .col-finished, .results-hint { display: none; }
+  /* The poster is a recognition aid; on a narrow card it gives way to the title. */
+  .results-row :global([data-thumbnail]) { width: 2rem; height: 3rem; }
+  @container (min-width: 44rem) {
+    .results-row :global([data-thumbnail]) { width: 2.75rem; height: 4rem; }
+  }
   @container (min-width: 44rem) {
     .results-row { grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) 4rem minmax(0, 0.8fr); }
     .col-finished { display: block; }

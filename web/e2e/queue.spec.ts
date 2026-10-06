@@ -125,7 +125,7 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
 
   // The hero leads with the remote encode and names the machine.
   await expect(page.getByText('Now encoding on Mac Studio', { exact: true })).toBeVisible()
-  await expect(page.getByText('Waiting for container verdict · MacBook Air', { exact: true })).toBeVisible()
+  await expect(page.getByText('Waiting for this server’s verdict · MacBook Air', { exact: true })).toBeVisible()
 
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working).toContainText('encoding on Mac Studio')
@@ -151,7 +151,7 @@ test('a software-decode retry shows its current worker and keeps the rejected Ma
   await mockWorkingQueue(page, { jobs: [retried] })
   await page.goto('/#/queue')
   const working = page.getByRole('region', { name: 'Working now' })
-  await expect(working).toContainText('Waiting for container verdict · PICARD')
+  await expect(working).toContainText('Waiting for this server’s verdict · PICARD')
   await expect(working).toContainText('Retrying with software decode')
   await working.getByRole('button', { name: 'View job' }).click()
   const details = page.getByRole('dialog', { name: /Job details/ })
@@ -305,6 +305,24 @@ test('a size preflight hold explains the estimate and requeues only after confir
   expect(approvals).toBe(1)
 })
 
+test('predicted oversize is a failure with its estimate and no encode-anyway action', async ({ page }) => {
+  const failed = { ...job(19, 'Failed', null), progress: 0, outputSizeBytes: null,
+    failureCategory: 'SizeSaving',
+    errorMessage: 'Size saving prediction: samples project 130% of the source. The full encode was not run. The original is unchanged.' }
+  await mockWorkingQueue(page, { jobs: [failed] })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/queue')
+  await expect(page.locator('.queue-review-alert')).toHaveCount(0)
+  await page.locator('#queue-job-19').click()
+  const dialog = page.locator('#queue-job-dialog')
+  await expect(dialog.getByText(/Size saving prediction: samples project 130%/)).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Encode anyway' })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+  const box = await dialog.boundingBox()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+})
+
 test('Now and next keeps working jobs separate and opens a keyboard-accessible job dialog', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [{ ...job(1, 'Transcoding', null), progress: .9999 }, job(2, 'Queued', null)] })
   await page.goto('/#/queue')
@@ -329,7 +347,7 @@ test('a loaded poster is visible when the working job first appears', async ({ p
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="#52748c"/></svg>',
   }))
   await page.goto('/#/queue')
-  const poster = page.getByRole('region', { name: 'Working now' }).locator('img')
+  const poster = page.getByRole('region', { name: 'Working now' }).locator('[data-thumbnail] img')
   await expect(poster).toHaveJSProperty('complete', true)
   await expect(poster).toHaveCSS('opacity', '1')
 })
@@ -364,19 +382,19 @@ test('strict evidence and legacy media verification show distinct phases beside 
     { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
   ] } })
   await page.goto('/#/queue')
-  const lanes = page.getByRole('region', { name: 'Execution lanes' })
-  await expect(lanes).toContainText('Video on container')
+  const lanes = page.getByRole('region', { name: 'Where work runs' })
+  await expect(lanes).toContainText('Video on this server')
   await expect(lanes).toContainText('Audio & images')
   await expect(lanes).toContainText('All video slots are busy.')
-  await expect(lanes).toContainText('Safe replacement')
+  await expect(lanes).toContainText('Replacing files')
   await expect(lanes).toContainText('Both finalisation slots are busy.')
   const working = page.getByRole('region', { name: 'Working now' })
-  await expect(working).toContainText('Validating sidecar evidence')
-  await expect(working).toContainText('The container is not repeating FFmpeg media checks.')
-  await expect(working).toContainText('The container is verifying the media returned by MacBook Air.')
+  await expect(working).toContainText('Checking the worker’s results')
+  await expect(working).toContainText('This server does not repeat the media checks.')
+  await expect(working).toContainText('This server is verifying the file returned by MacBook Air.')
   await working.getByRole('button', { name: 'View job' }).first().click()
   const details = page.getByRole('dialog', { name: /Job details/ })
-  await expect(details).toContainText('Validating sidecar evidence')
+  await expect(details).toContainText('Checking the worker’s results')
   await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('PICARD')
   await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('This server')
   await details.getByRole('button', { name: 'Close details' }).click()
@@ -594,6 +612,7 @@ test('a missing working poster stays settled through refreshes and recovers for 
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working.locator('[data-thumbnail]')).toBeVisible()
   await expect(working.locator('img')).toHaveCount(0)
+  // The poster and the glow behind the card each ask once; neither may ask again.
   const initialRequests = missingRequests
   fixture.jobs = [{ ...fixture.jobs[0], progress: .5 }]
   await send('jobsChanged')
@@ -602,7 +621,182 @@ test('a missing working poster stays settled through refreshes and recovers for 
   expect(missingRequests).toBe(initialRequests)
   fixture.jobs = [{ ...job(2, 'Transcoding', null), progress: .1 }]
   await send('jobsChanged')
-  await expect(working.locator('img')).toHaveAttribute('src', '/api/media/2/thumbnail')
-  await expect(working.locator('img')).toHaveJSProperty('naturalWidth', 192)
-  await expect(working.locator('img')).toHaveCSS('opacity', '1')
+  const poster = working.locator('[data-thumbnail] img')
+  await expect(poster).toHaveAttribute('src', '/api/media/2/thumbnail')
+  await expect(poster).toHaveJSProperty('naturalWidth', 192)
+  await expect(poster).toHaveCSS('opacity', '1')
+  // The glow is the same artwork as ambience: hidden from assistive technology, never content.
+  await expect(working.locator('.poster-glow')).toHaveAttribute('aria-hidden', 'true')
+  await expect(working.locator('.poster-glow img')).toHaveAttribute('alt', '')
+})
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
+    test(`audio report fits the job dialog at ${width}px in ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)
+      const report = {
+        checks: [{ name: 'Decode health', outcome: 'Passed', detail: 'Decoded cleanly.' }],
+        audioQuality: { measurementLocation: 'Worker', unavailableReason: null,
+          evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: {
+            measured: true, coveredSeconds: 90, elapsedSeconds: 2,
+            windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234, 0.005678] } }],
+          } },
+        },
+      }
+      await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), relativePath: 'Free music.opus', verificationReportJson: JSON.stringify(report) }] })
+      await page.goto('/#/queue')
+      await page.getByRole('button', { name: 'View job', exact: true }).click()
+      const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+      await expect(panel).toContainText('0.001234')
+      await expect(panel).toContainText('0.005678')
+      await expect(panel).toContainText('Report only')
+      expect(await panel.locator('dl > div').first().evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(12)
+      await panel.scrollIntoViewIfNeeded()
+      const box = await panel.boundingBox()
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+      expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath('audio-report.png'), fullPage: true })
+    })
+  }
+}
+
+test('missing worker audio evidence shows an unavailable report with the reason', async ({ page }) => {
+  const report = { checks: [{ name: 'Decode health', outcome: 'Passed', detail: 'Decoded cleanly.' }],
+    audioQuality: { measurementLocation: 'Worker', evidence: null, unavailableReason: 'The worker returned no audio quality report.' } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'View job', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+  await expect(panel).toContainText('Unavailable')
+  await expect(panel).toContainText('The worker returned no audio quality report.')
+  await expect(panel).not.toContainText('Channel 1')
+})
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
+    test(`audio gate verdict and selected limit stay clear at ${width}px in ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1100 })
+      await page.addInitScript(selected => localStorage.setItem('optimisarr-theme', selected), theme)
+      const report = { checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Failed', detail: 'Above the selected limit. The original is unchanged.' }],
+        audioQuality: { measurementLocation: 'Worker', unavailableReason: null, gateEnabled: true, gatePassed: false, maximumDistance: 0.005,
+          evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: { measured: true, coveredSeconds: 90,
+            windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234, 0.005678] } }] } } } }
+      await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+      await page.goto('/#/queue')
+      await page.getByRole('button', { name: 'View job', exact: true }).click()
+      const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+      await expect(panel).toContainText('Blocked')
+      await expect(panel).toContainText('Maximum allowed difference: 0.005')
+      await expect(panel).not.toContainText('Report only')
+      await expect(panel.locator('.badge')).toHaveClass(/tone-bad/)
+      await panel.scrollIntoViewIfNeeded()
+      expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    })
+  }
+}
+
+test('audio gate blocks missing evidence', async ({ page }) => {
+  const report = { checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Failed', detail: 'Missing evidence.' }],
+    audioQuality: { measurementLocation: 'Worker', evidence: null, unavailableReason: 'The worker returned no audio quality report.',
+      gateEnabled: true, gatePassed: false, maximumDistance: 0 } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'View job', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+  await expect(panel).toContainText('Blocked')
+  await expect(panel).toContainText('Maximum allowed difference: 0')
+  await expect(panel).toContainText('The worker returned no audio quality report.')
+})
+
+test('a measured passing audio gate shows its verdict and limit', async ({ page }) => {
+  const report = { checks: [{ name: 'Perceptual audio quality (Zimtohrli)', outcome: 'Passed', detail: 'Within the selected limit.' }],
+    audioQuality: { measurementLocation: 'Worker', unavailableReason: null, gateEnabled: true, gatePassed: true, maximumDistance: 0.005,
+      evidence: { metric: 'zimtohrli', revision: 'pinned', preparation: '48k', assessment: { measured: true, coveredSeconds: 30,
+        windows: [{ window: { startSeconds: 0, durationSeconds: 30 }, distances: { frames: 1440000, channelDistances: [0.001234] } }] } } } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), verificationReportJson: JSON.stringify(report) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'View job', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
+  await expect(panel.locator('.badge')).toHaveText('Passed')
+  await expect(panel.locator('.badge')).toHaveClass(/tone-ok/)
+  await expect(panel).toContainText('Maximum allowed difference: 0.005')
+  await expect(panel).not.toContainText('Report only')
+  await panel.getByRole('button').click()
+  await expect(panel.getByRole('tooltip')).toContainText('Blocks replacement')
+  await expect(panel.getByRole('tooltip')).not.toContainText('does not pass or fail')
+})
+
+for (const width of [375, 1440]) {
+  test(`soundtrack results identify separate languages and a failed channel at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const waiting = job(4, 'Verifying', null)
+    waiting.verificationReportJson = JSON.stringify({ checks: [{ name: 'Soundtrack 2', outcome: 'Failed', detail: 'Above limit' }],
+      soundtrackQuality: { gateEnabled: true, gatePassed: false, maximumDistance: .005, unavailableReason: null,
+        tracks: ['eng', 'fra'].map((language, index) => ({
+          track: { sourceAudioIndex: index, candidateAudioIndex: index, language, title: index ? 'Commentary' : 'Main' },
+          report: { measurementLocation: 'Worker', unavailableReason: null, gateEnabled: true, gatePassed: index === 0, maximumDistance: .005,
+            evidence: { assessment: { measured: true, coveredSeconds: 3, windows: [{ distances: { channelDistances: index ? [.1, .2] : [.001, .002] } }] } } }
+        })) } })
+    await mockWorkingQueue(page, { jobs: [waiting] })
+    await page.goto('/#/queue')
+    await page.getByRole('button', { name: 'View job', exact: true }).click()
+    const panel = page.getByRole('region', { name: 'Soundtrack quality report', exact: true })
+    await expect(panel).toBeVisible()
+    await expect(panel.getByText('Soundtrack 1 · eng', { exact: true })).toBeVisible()
+    await expect(panel.getByText('Soundtrack 2 · fra', { exact: true })).toBeVisible()
+    await expect(panel.getByText('Commentary', { exact: true })).toBeVisible()
+    await expect(panel.getByText('0.2', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
+}
+
+test('a failure leads with its most fundamental cause and lists every failed check', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs/failures', (route) => json(route, [{
+    category: 'SizeSaving',
+    description: 'The attempt failed the configured size rule.',
+    count: 1,
+    samples: [{
+      jobId: 41,
+      mediaFileId: 41,
+      relativePath: 'adult/Mad Men/Season 2/Mad Men - S02E06 - Maidenform Bluray-720p.mkv',
+      jobType: 'Normal',
+      errorMessage: 'Verification failed: Size saving; Source video timeline',
+      verificationChecks: [
+        { name: 'Size saving', outcome: 'Failed', detail: 'Output is not smaller than the original.' },
+        { name: 'Source video timeline', outcome: 'Failed', detail: 'The source video spans 2898.395s while its primary audio spans 3268.863s.' },
+      ],
+    }],
+  }]))
+
+  await page.goto('/#/queue/failures')
+
+  await expect(page.getByRole('heading', { name: 'The encode was not small enough to be worth keeping.' })).toBeVisible()
+  const row = page.getByRole('listitem').filter({ hasText: 'Mad Men' })
+  await expect(row).toContainText('Mad Men S02E06 · Maidenform')
+  await expect(page.getByText('The source file looks damaged', { exact: true })).toBeVisible()
+  // The gate details stay available, but behind the disclosure rather than in a red wall.
+  await expect(page.getByText('The source video spans 2898.395s', { exact: false })).toBeHidden()
+  await page.getByText('Technical detail').click()
+  await expect(page.getByText('The source video spans 2898.395s', { exact: false })).toBeVisible()
+})
+
+test('a finished job says how big it was before and after', async ({ page }) => {
+  await mockQueue(page)
+  const finished = { ...job(51, 'Completed', true), sourceSizeBytes: 4_673_211_458, outputSizeBytes: 1_817_794_396, finishedAt: '2026-10-03T09:18:26Z' }
+  const bigger = { ...job(52, 'Failed', false), sourceSizeBytes: 405_091_089, outputSizeBytes: 545_986_048, failureCategory: 'SizeSaving' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [finished, bigger]))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-51').click()
+  const details = page.locator('#queue-job-dialog')
+  await expect(details).toContainText('4.4 GB → 1.7 GB 61% smaller')
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  // A larger output gives both sizes and claims no saving.
+  await page.locator('#queue-job-52').click()
+  await expect(details).toContainText('386 MB → 521 MB')
+  await expect(details).not.toContainText('smaller')
 })

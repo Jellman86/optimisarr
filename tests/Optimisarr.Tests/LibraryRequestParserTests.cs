@@ -64,6 +64,71 @@ public sealed class LibraryRequestParserTests
         AutoReplace: null,
         VideoQualityStrategy: null);
 
+    [Fact]
+    public void Audio_quality_reporting_requires_explicit_opt_in()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var baseline, out _));
+        Assert.False(baseline.AudioQualityReportingEnabled);
+        Assert.True(LibraryRequestParser.TryParse(Request() with { AudioQualityReportingEnabled = true }, out var enabled, out _));
+        Assert.True(enabled.AudioQualityReportingEnabled);
+    }
+
+    [Theory]
+    [InlineData("Film")]
+    [InlineData("Tv")]
+    [InlineData("Music")]
+    [InlineData("Photo")]
+    [InlineData("Other")]
+    public void Automatic_acceptance_is_off_by_default_for_every_library_type(string mediaType)
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = mediaType }, out var parsed, out _));
+        Assert.False(parsed.AutoReplace);
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = mediaType, AutoReplace = true }, out var enabled, out _));
+        Assert.True(enabled.AutoReplace);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(-0.01)]
+    [InlineData(1.01)]
+    [InlineData(double.NaN)]
+    public void Audio_gate_requires_an_explicit_finite_limit(double? limit)
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Music",
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = limit }, out _, out var error));
+        Assert.Contains("audio", error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Audio_gate_preserves_zero_and_supports_music_and_mixed_libraries()
+    {
+        Assert.False(LibraryRequestParser.TryParse(Request() with {
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 }, out _, out _));
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = "Music",
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0 }, out var parsed, out _));
+        Assert.True(parsed.AudioQualityGateEnabled);
+        Assert.Equal(0, parsed.MaximumAudioQualityDistance);
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = "Other",
+            AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 }, out _, out _));
+    }
+
+    [Fact]
+    public void Soundtrack_gate_is_separate_optional_and_requires_a_video_library_and_explicit_limit()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var baseline, out _));
+        Assert.False(baseline.SoundtrackQualityReportingEnabled);
+        Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Music", SoundtrackQualityReportingEnabled = true }, out _, out _));
+        Assert.False(baseline.SoundtrackQualityGateEnabled);
+        Assert.False(LibraryRequestParser.TryParse(Request() with { SoundtrackQualityGateEnabled = true }, out _, out _));
+        Assert.True(LibraryRequestParser.TryParse(Request() with { SoundtrackQualityGateEnabled = true,
+            MaximumSoundtrackQualityDistance = 0 }, out var parsed, out _));
+        Assert.True(parsed.SoundtrackQualityGateEnabled);
+        Assert.Equal(0, parsed.MaximumSoundtrackQualityDistance);
+        Assert.False(parsed.AudioQualityGateEnabled);
+        Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Music", SoundtrackQualityGateEnabled = true,
+            MaximumSoundtrackQualityDistance = 0.01 }, out _, out _));
+    }
+
     [Theory]
     [InlineData("5")]
     [InlineData("999")]

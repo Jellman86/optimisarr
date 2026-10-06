@@ -85,8 +85,9 @@ public sealed record QualityMeasurementContext(
     // An explicit model preserves an existing job/lease or selects a research comparison.
     string? ModelVersion = null,
     // True when both files hold the same number of frames, so each sampled window compares frame
-    // k with frame k instead of rounding timestamps onto a cadence grid. See FramePairing. It needs
-    // a frame rate and a window, and a cut clip keeps its own pairing.
+    // k with frame k instead of rounding timestamps onto a cadence grid. See FramePairing. Full
+    // files compare all pictures; sampled windows retain their existing selection. Cut clips keep
+    // their own pairing.
     bool PairFramesByNumber = false,
     // CAMBI needs the encode's format before measurement rescaling or conversion to 10-bit.
     VmafEncodedVideo? EncodedVideo = null,
@@ -233,7 +234,14 @@ public static class QualityScoreCommandBuilder
                 ? "HDR reference tone-mapped to SDR"
                 : "HDR (matching transfer characteristics)"
             : v1 ? "SDR (10-bit VMAF v1, encode-aware CAMBI)" : "SDR";
-        var pairFrames = context.PairFramesByNumber
+        var completeFramePairing = context.PairFramesByNumber
+            && !context.DistortedIsCutClip
+            && context.ReferenceDecimation is null
+            && context.ReferenceFrameRate is > 0 && double.IsFinite(context.ReferenceFrameRate.Value)
+            && context.ReferenceStartSeconds is null or 0
+            && context.DistortedStartSeconds is null or 0
+            && context.MeasureDurationSeconds is null;
+        var pairFrames = completeFramePairing || context.PairFramesByNumber
             && !context.DistortedIsCutClip
             && context.ReferenceFrameRate is not null
             && context.ReferenceStartSeconds is not null
@@ -241,7 +249,8 @@ public static class QualityScoreCommandBuilder
             && context.MeasureDurationSeconds is > 0;
         // VC-1 in Matroska can seek to different pictures despite equal timestamps/counts.
         // For complete equal-frame encodes, absolute decoded indices preserve correspondence.
-        var sequential = pairFrames && string.Equals(context.ReferenceVideoCodec, "vc1", StringComparison.OrdinalIgnoreCase);
+        var sequential = pairFrames && !completeFramePairing
+            && string.Equals(context.ReferenceVideoCodec, "vc1", StringComparison.OrdinalIgnoreCase);
         var preprocessing = DescribePreprocessing(
             colourPreprocessing,
             acceleration,
@@ -264,7 +273,9 @@ public static class QualityScoreCommandBuilder
             context.ReferenceStartSeconds, context.MeasureDurationSeconds,
             context.ReferenceFrameRate,
             context.DistortedIsCutClip ? null : context.ReferenceContainerLeadSeconds);
-        var distortedTimeline = sequential
+        var distortedTimeline = completeFramePairing
+            ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
+            : sequential
             ? SequentialFrameTimeline(context.DistortedStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
             : pairFrames
             ? FramePairedTimeline(
@@ -281,7 +292,9 @@ public static class QualityScoreCommandBuilder
                 context.ReferenceFrameRate,
                 DistortedShift(context),
                 context.DistortedIsCutClip);
-        var referenceTimeline = sequential
+        var referenceTimeline = completeFramePairing
+            ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
+            : sequential
             ? SequentialFrameTimeline(context.ReferenceStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
             : pairFrames
             ? FramePairedTimeline(
@@ -541,6 +554,9 @@ public static class QualityScoreCommandBuilder
         var step = (long)Math.Round(1_000_000 / frameRate);
         return $"trim=start_frame={first}:end_frame={end},settb=AVTB,setpts=N*{step}";
     }
+
+    private static string CompleteFrameTimeline(double frameRate) =>
+        $"settb=AVTB,setpts=N*{(long)Math.Round(1_000_000 / frameRate)}";
 
     // Frames either side of the window kept for the candidate's offset to move into.
     private const int FramePairingMargin = 2;

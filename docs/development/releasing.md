@@ -91,11 +91,14 @@ MSI with the release version explicitly when invoking the script manually:
 ```
 
 The installer test must pass on a clean Windows runner. Also retain evidence
-for a paired upgrade: unchanged pairing, service restart and check-in, working
+for a paired upgrade: unchanged pairing, sustained service health and three fresh check-ins, working
 tray controls, and native placement after expanding details and navigating
 Preferences. Validate the Start shortcut, executable and notification-area
 icons from the installed package. Test the download's SHA-256 against its
 published checksum, not a different local build.
+Publish the tested matching `*-update.zip` and its checksum alongside the MSI. Its checked route
+must reject a delayed worker failure and verify complete previous-MSI recovery without changing
+pairing, media or Windows protections. Retain the recovery receipt as well as the MSI logs.
 
 An unsigned MSI remains an **unsigned Windows preview**, even when published
 beside a stable container and notarised Mac app. State that beside the download;

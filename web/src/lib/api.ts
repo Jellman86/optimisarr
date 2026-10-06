@@ -183,6 +183,12 @@ export type LibraryRules = {
   maximumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
+  soundtrackQualityReportingEnabled?: boolean
+  soundtrackQualityGateEnabled?: boolean
+  maximumSoundtrackQualityDistance?: number | null
+  audioQualityReportingEnabled?: boolean
+  audioQualityGateEnabled?: boolean
+  maximumAudioQualityDistance?: number | null
   audioClippingGateEnabled: boolean
   maxTruePeakDbtp: number
   imageQualityGateEnabled: boolean
@@ -294,6 +300,12 @@ export function newLibraryDefaults(): SaveLibrary {
     maximumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
+    soundtrackQualityReportingEnabled: false,
+    soundtrackQualityGateEnabled: false,
+    maximumSoundtrackQualityDistance: null,
+    audioQualityReportingEnabled: false,
+    audioQualityGateEnabled: false,
+    maximumAudioQualityDistance: null,
     audioClippingGateEnabled: false,
     maxTruePeakDbtp: 0,
     imageQualityGateEnabled: true,
@@ -316,6 +328,8 @@ export type RuleProfileSpec = {
   hdrHandling: string
   videoAudioCodec: string | null
   videoAudioBitrateKbps: number
+  audioTargetCodec?: string
+  audioBitrateKbps?: number
   downmixToStereo: boolean
 }
 
@@ -451,7 +465,37 @@ export type VerificationCheck = {
 
 export type VerificationReport = {
   checks: VerificationCheck[]
+  soundtrackQuality?: SoundtrackQualityReport | null
+  audioQuality?: AudioQualityReport | null
   context?: VerificationContext | null
+}
+
+export type SoundtrackQualityReport = {
+  unavailableReason: string | null
+  gateEnabled?: boolean
+  maximumDistance?: number | null
+  gatePassed?: boolean | null
+  tracks: { track: { sourceAudioIndex: number; candidateAudioIndex: number; language: string | null; title: string | null }; report: AudioQualityReport }[]
+}
+
+export type AudioQualityReport = {
+  measurementLocation: 'Server' | 'Worker'
+  gateEnabled?: boolean
+  maximumDistance?: number | null
+  gatePassed?: boolean | null
+  unavailableReason: string | null
+  evidence: {
+    metric: string
+    revision: string
+    preparation: string
+    assessment: {
+      measured: boolean
+      elapsedSeconds: number
+      coveredSeconds: number
+      worstChannelDistance: number | null
+      windows: { window: { startSeconds: number; durationSeconds: number }; distances: { frames: number; channelDistances: number[] } }[]
+    }
+  } | null
 }
 
 export type VerificationContext = {
@@ -635,6 +679,8 @@ export type Job = {
   effectiveVideoQuality: number | null
   videoQualityMode: string | null
   qualityRetryCount: number
+  /** The original's size when the job started; null for jobs that predate the record. */
+  sourceSizeBytes: number | null
   outputSizeBytes: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
@@ -1106,7 +1152,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+export interface ExactDuplicateStatus {
+  libraryId: number
+  status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed'
+  startedAt: string | null
+  finishedAt: string | null
+  progress: { checked: number; skipped: number; total: number; bytesRead: number }
+  error: string | null
+  result: null | { checked: number; skipped: number; total: number; bytesRead: number; truncated: boolean;
+    groups: { sha256: string; sizeBytes: number; extraCopyBytes: number | null; totalCopies?: number;
+      copies: { id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string }[] }[] }
+}
+
 export const api = {
+  exactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`),
+  scanExactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`, { method: 'POST' }),
+  cancelExactDuplicates: (id: number) => request<void>(`/api/libraries/${id}/duplicates`, { method: 'DELETE' }),
   diagnosticCapture: () => request<DiagnosticCapture | null>('/api/diagnostics/capture'),
   startDiagnosticCapture: (body: { durationHours: number | null; scopedJobId: number | null; includePaths: boolean }) =>
     request<DiagnosticCapture>('/api/diagnostics/capture', { method: 'POST', body: JSON.stringify(body) }),
@@ -1298,6 +1359,8 @@ export const api = {
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
+  // A landscape backdrop for the job's title; 404 when no media server knows it.
+  jobArtworkUrl: (jobId: number) => `/api/jobs/${jobId}/artwork`,
   replacementOriginalContentUrl: (id: number) => `/api/replacements/${id}/original/content`,
   replacementReplacementContentUrl: (id: number) => `/api/replacements/${id}/replacement/content`,
   rollbackReplacement: (id: number) =>

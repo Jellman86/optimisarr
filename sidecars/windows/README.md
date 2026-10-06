@@ -109,6 +109,9 @@ folder, and optionally WSL with Docker for testing the server image against an N
 Use the [MSI installer](installer/README.md) for a normal installation. It includes FFmpeg, ffprobe,
 the service, the tray companion and private Microsoft .NET/Windows Desktop runtimes. No separate
 runtime installation is needed. First installation leaves the worker stopped until it is paired.
+For a paired MSI update, use the [checked update route](installer/README.md#checked-updates-and-recovery).
+It requires sustained service health and fresh server check-ins, and keeps the previous installer
+for verified recovery. File installation alone is not a completed worker update.
 
 1. Open **Optimisarr Sidecar** from Start and click its notification-area icon.
 2. In **Preferences**, choose **Pair this PC**, enter the server address and its short-lived pairing
@@ -158,6 +161,14 @@ invalid evidence fails the strict job rather than causing a server-side verifica
 This removes media verification from the server for those worker jobs. It does not remove server
 scheduling, file transfers and hashing, database work, evidence evaluation or replacement/quarantine.
 With the toggle off, the server retains normal verification and measurement fallback.
+
+
+Full videos keeping their original frame rate require matching source/candidate decoded-picture
+counts. Missing counts, lost pictures or added pictures block replacement. This needs protocol 9
+when strict verification is enabled. Counting adds a full decode of each file on the worker; those
+counts are reused when full-file or sampled VMAF needs frame pairing. With strict verification off, the server
+measures the counts. Update the sidecar alongside the server; existing pairing is retained.
+Previews and intentional frame-rate conversions keep their existing checks.
 
 ### Manual developer installation
 

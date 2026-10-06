@@ -1,5 +1,6 @@
 import json
 import math
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -8,7 +9,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance.core import Blocked, Report, inside, quality_failures, statistics
-from acceptance.media import compare_report, validate_shadow_report, vmaf_policy
+from acceptance.media import compare_report, validate_shadow_report, vmaf_policy, validate_soundtrack_report
 from acceptance.corpus import import_corpus
 from acceptance.runner import missing_workers, Harness
 from media_acceptance import strict_worker_verification_for_run, signal_owned_process
@@ -19,6 +20,140 @@ def frames(values):
 
 
 class AcceptanceTests(unittest.TestCase):
+
+    def test_dts_fixture_preserves_packet_order_when_decode_timestamps_repeat(self):
+        import struct
+        from acceptance.dts_fixture import vfw_matroska
+        header = bytearray(40)
+        struct.pack_into('<ii', header, 4, 320, 180)
+        prefix = b'strf' + struct.pack('<I', 40) + header
+        avi = prefix + b'ZfirstAsecond'
+        packets = [{'pos': len(prefix), 'size': 6, 'dts_time': '.2', 'flags': ''},
+                   {'pos': len(prefix) + 6, 'size': 7, 'dts_time': '.2', 'flags': ''}]
+        flac = b'fLaC\x80\x00\x00\x22' + bytes(34)
+        result = vfw_matroska(avi, packets, flac, [], 8, subtitles=False)
+        self.assertLess(result.index(b'Zfirst'), result.index(b'Asecond'))
+
+    def test_numbered_picture_oracle_rejects_lost_repeated_and_reordered_pictures(self):
+        from acceptance.picture_identity import validate_picture_ids
+        self.assertEqual(4, validate_picture_ids([0, 1, 2, 3], [0, 1, 2, 3]))
+        for changed in [[1, 2, 3], [0, 1, 1, 3], [0, 2, 1, 3], [0, 1, 2, 3, 4], []]:
+            with self.assertRaises(AssertionError):
+                validate_picture_ids([0, 1, 2, 3], changed)
+        with self.assertRaises(AssertionError):
+            validate_picture_ids([0, 1, 1, 3], [0, 1, 1, 3])
+
+    def test_numbered_picture_oracle_refuses_partial_ambiguous_and_unbounded_markers(self):
+        from acceptance.picture_identity import parse_picture_ids
+        def picture(number):
+            row = b''.join(bytes([240 if number & (1 << i) else 16]) * 32 for i in range(10))
+            return row * 48
+        self.assertEqual([0, 1, 511, 1023], parse_picture_ids(b''.join(picture(i) for i in [0, 1, 511, 1023])))
+        for raw in [b'', picture(0)[:-1], bytes([128]) * 320 * 48, picture(0) * 1001]:
+            with self.assertRaises(AssertionError):
+                parse_picture_ids(raw)
+
+    def test_repeated_picture_times_are_allowed_only_for_the_numbered_fixture(self):
+        from acceptance.media import Tools
+        tools = Tools('ffmpeg', 'ffprobe')
+        values = [0, .04, .08, .12, .16, .16, .24]
+        tools.run = Mock(return_value=json.dumps({'frames': [
+            {'best_effort_timestamp_time': value, 'pts_time': value} for value in values]}))
+        with self.assertRaisesRegex(AssertionError, 'Non-increasing'):
+            tools.frame_times('/fixture.mkv')
+        self.assertEqual(values, tools.frame_times('/fixture.mkv', numbered_repeated_fixture=True))
+        for bad in [[0, .04, .03], [0, float('nan')], [float('inf')], []]:
+            tools.run.return_value = json.dumps({'frames': [
+                {'best_effort_timestamp_time': value, 'pts_time': value} for value in bad]})
+            with self.assertRaises(AssertionError):
+                tools.frame_times('/fixture.mkv', numbered_repeated_fixture=True)
+
+    def test_complete_picture_quality_keeps_every_picture_without_a_cadence_grid(self):
+        from acceptance.media import quality_picture_preparation
+        from fractions import Fraction
+        ordinary = quality_picture_preparation(Fraction(25), 320, 180, 'yuv420p10le')
+        fractional = quality_picture_preparation(Fraction(24000, 1001), 320, 180, 'yuv420p10le')
+        for prep in [ordinary, fractional]:
+            self.assertNotIn('fps=', prep)
+            self.assertNotIn('trim=', prep)
+        self.assertIn('setpts=N*1/25/TB', ordinary)
+        self.assertIn('setpts=N*1001/24000/TB', fractional)
+
+    def test_complete_picture_oracle_rejects_loss_and_timing_drift_before_quality(self):
+        from acceptance.media import Tools
+        tools = Tools('ffmpeg', 'ffprobe')
+        tools.probe = Mock(return_value={'streams': [{'codec_type': 'video', 'width': 320, 'height': 180}]})
+        tools.run = Mock()
+        times = [0, .001, .084, .085, .168, .169]
+        for candidate in [times[:-1], [*times[:-1], .173]]:
+            tools.frame_times = Mock(side_effect=[times, candidate])
+            with tempfile.TemporaryDirectory() as directory:
+                with self.assertRaises(AssertionError):
+                    tools.measure('/source.mkv', '/candidate.mp4', directory)
+            tools.run.assert_not_called()
+
+    def test_numbered_candidate_requires_written_presentation_times_and_retains_both_fields(self):
+        from acceptance.media import Tools
+        tools = Tools('ffmpeg', 'ffprobe')
+        frames = [{'pts_time': 0, 'best_effort_timestamp_time': 0},
+                  {'pts_time': .04, 'best_effort_timestamp_time': .000062},
+                  {'pts_time': .08, 'best_effort_timestamp_time': .04}]
+        tools.run = Mock(return_value=json.dumps({'frames': frames}))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'timestamps.json'
+            self.assertEqual([0, .04, .08], tools.frame_times('/candidate.mp4',
+                numbered_repeated_fixture=True, evidence_path=path))
+            self.assertEqual(frames, json.loads(path.read_text())['frames'])
+        tools.run.return_value = json.dumps({'frames': [{'best_effort_timestamp_time': 0}]})
+        with self.assertRaises(AssertionError):
+            tools.frame_times('/candidate.mp4', numbered_repeated_fixture=True)
+
+    def test_numbered_fixture_cannot_be_requested_outside_its_focused_regression(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'must-not-be-created'
+            result = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / 'media_acceptance.py'),
+                '--native', str(Path(directory) / 'missing.dll'), '--root', str(root),
+                '--fixture-variant', 'dts-repeated'], capture_output=True, text=True, timeout=10)
+            self.assertEqual(2, result.returncode)
+            self.assertIn('invalid choice', result.stderr)
+            self.assertFalse(root.exists())
+
+    def test_uneven_timing_fixture_requires_misleading_rates_and_tight_frame_pairs(self):
+        from acceptance.media import validate_uneven_timing_fixture
+        probe = {"streams": [{"codec_type": "video", "r_frame_rate": "24/1", "avg_frame_rate": "24/1"}]}
+        irregular = [0, .001, 8.084, 8.085, 8.168, 8.169]
+        result = validate_uneven_timing_fixture(probe, irregular)
+        self.assertEqual(6, result["frames"])
+        self.assertAlmostEqual(.001, result["minimumGapSeconds"])
+        self.assertAlmostEqual(8.083, result["maximumGapSeconds"])
+        for changed in [
+            {"streams": [{"codec_type": "video", "r_frame_rate": "24/1", "avg_frame_rate": "12/1"}]},
+            {"streams": [{"codec_type": "video", "r_frame_rate": "0/0", "avg_frame_rate": "24/1"}]},
+            {"streams": []},
+        ]:
+            with self.assertRaises(AssertionError):
+                validate_uneven_timing_fixture(changed, irregular)
+        for changed in [[i / 24 for i in range(6)], [0, .001, .042, .043, .084, .085],
+                        [0, .001, .084, float("nan"), .168, .169], [0, .001, .084, .084, .168, .169], [], [0]]:
+            with self.assertRaises(AssertionError):
+                validate_uneven_timing_fixture(probe, changed)
+
+    def test_soundtrack_report_checks_each_channel_track_mapping_and_measurement_host(self):
+        def track(index, distance=0.01):
+            return {"track": {"sourceAudioIndex": index, "candidateAudioIndex": index, "language": "eng"},
+                    "report": {"measurementLocation": "Worker", "gateEnabled": True, "gatePassed": distance <= 0.1,
+                        "evidence": {"preparation": "audio-f32le-48k-video-timeline-v1", "assessment": {
+                            "measured": True, "referenceAudioIndex": index, "candidateAudioIndex": index,
+                            "windows": [{"distances": {"channelDistances": [distance, distance]}}]}}}}
+        report = {"gateEnabled": True, "gatePassed": True, "tracks": [track(0), track(1)]}
+        validate_soundtrack_report(report, [0, 1], "Worker", 0.1)
+        for changed in [{**report, "tracks": [track(0)]}, {**report, "tracks": [track(1), track(0)]},
+                        {**report, "tracks": [track(0), track(1, 0.2)]}]:
+            with self.assertRaises(AssertionError): validate_soundtrack_report(changed, [0, 1], "Worker", 0.1)
+        with self.assertRaises(AssertionError): validate_soundtrack_report(report, [0, 1], "Server", 0.1)
+        bad = {**report, "gatePassed": False, "tracks": [track(0), track(1, 0.2)]}
+        validate_soundtrack_report(bad, [0, 1], "Worker", 0.1, passes=False)
+
     def test_v1_oracle_uses_candidate_format_and_legacy_only_for_high_frame_rates(self):
         source = {"width": 3840, "height": 1600}
         encoded = {"width": 1280, "height": 720, "pix_fmt": "yuv420p", "bits_per_raw_sample": "0"}

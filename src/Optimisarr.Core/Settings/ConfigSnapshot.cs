@@ -16,7 +16,7 @@ public sealed record ConfigSnapshot(
     IReadOnlyList<ArrConnectionSnapshot> ArrConnections)
 {
     /// <summary>The current snapshot schema version. Bump when the shape changes incompatibly.</summary>
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 3;
 }
 
 /// <summary>A library definition, matched on its unique <see cref="Path"/> when imported.</summary>
@@ -89,7 +89,13 @@ public sealed record LibrarySnapshot(
     // Null on an older snapshot means "anywhere", the placement every library had before it existed.
     string? WorkPlacement = null,
     double? MinimumSizeSavingPercent = null,
-    double? MaximumSizeSavingPercent = null);
+    double? MaximumSizeSavingPercent = null,
+    bool? AudioQualityReportingEnabled = null,
+    bool? AudioQualityGateEnabled = null,
+    double? MaximumAudioQualityDistance = null,
+    bool? SoundtrackQualityReportingEnabled = null,
+    bool? SoundtrackQualityGateEnabled = null,
+    double? MaximumSoundtrackQualityDistance = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

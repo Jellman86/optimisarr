@@ -41,7 +41,7 @@ public struct AssignmentCommand: Sendable, Equatable {
         "-crf", "-preset", "-q:v", "-qp", "-cq", "-rc", "-b:v", "-b:a", "-ac",
         "-global_quality", "-rc_mode", "-quality", "-lossless",
         "-tune", "-maxrate", "-minrate", "-bufsize", "-x264-params", "-x265-params",
-        "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0",
+        "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0", "-itsoffset",
         "-ss", "-t", "-movflags", "-hwaccel", "-color_range:v:0", "-bsf:v:0",
     ]
 
@@ -81,7 +81,9 @@ public struct AssignmentCommand: Sendable, Equatable {
                 throw AssignmentCommandError.optionWithoutValue(token)
             }
             let value = body[index + 1]
-            if token == "-color_range:v:0" {
+            if token == "-itsoffset" {
+                guard let offset = Double(value), offset.isFinite, offset >= 0, offset <= 86400 else { throw AssignmentCommandError.unknownOption(value) }
+            } else if token == "-color_range:v:0" {
                 guard ["tv", "pc"].contains(value) else {
                     throw AssignmentCommandError.invalidColourMetadata(option: token)
                 }

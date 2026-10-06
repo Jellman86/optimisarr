@@ -65,6 +65,7 @@ async function mockApp(page: Page) {
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname
     if (path.endsWith('/thumbnail')) return route.fulfill({ contentType: 'image/svg+xml', body: fixtures.artwork(path.split('/')[3]) })
+    if (path.endsWith('/artwork')) return route.fulfill({ contentType: 'image/svg+xml', body: fixtures.artwork(path.split('/')[3]) })
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/health') return json(route, { status: 'healthy', service: 'optimisarr', version: 'audit' })

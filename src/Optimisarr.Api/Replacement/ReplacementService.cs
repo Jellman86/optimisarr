@@ -183,7 +183,13 @@ public sealed class ReplacementService
         return new BulkReplacementResult(jobIds.Count, replaced, failures);
     }
 
-    public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)
+    public Task<ReplacementActionResult> ReplaceAutomaticallyAsync(int jobId, CancellationToken cancellationToken) =>
+        ReplaceGuardedAsync(jobId, automatic: true, cancellationToken);
+
+    public Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken) =>
+        ReplaceGuardedAsync(jobId, automatic: false, cancellationToken);
+
+    private async Task<ReplacementActionResult> ReplaceGuardedAsync(int jobId, bool automatic, CancellationToken cancellationToken)
     {
         // Only one replacement may act on a source at a time. A job becomes replaceable the instant it
         // reaches ReadyToReplace, where the post-verify auto-replace, the reconcile sweep, and a
@@ -204,7 +210,7 @@ public sealed class ReplacementService
 
         try
         {
-            return await ReplaceCoreAsync(jobId, cancellationToken);
+            return await ReplaceCoreAsync(jobId, automatic, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -253,7 +259,10 @@ public sealed class ReplacementService
         return ReplacementActionResult.Failed(message, permanent: true);
     }
 
-    private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, CancellationToken cancellationToken)
+    private Task<bool> IsAutomaticAcceptanceEnabledAsync(int? libraryId, CancellationToken cancellationToken) =>
+        _db.Libraries.AsNoTracking().AnyAsync(library => library.Id == libraryId && library.AutoReplace, cancellationToken);
+
+    private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, bool automatic, CancellationToken cancellationToken)
     {
         var job = await _db.Jobs
             .Include(j => j.MediaFile)
@@ -298,6 +307,9 @@ public sealed class ReplacementService
         {
             return ReplacementActionResult.Invalid($"Job {jobId} has no media file to replace.");
         }
+
+        if (automatic && !await IsAutomaticAcceptanceEnabledAsync(media.LibraryId, cancellationToken))
+            return ReplacementActionResult.Deferred("Auto-accept is off for this library. The verified output is ready for manual replacement; the original was left untouched.");
 
         var settings = await _settings.GetQueueSettingsAsync(cancellationToken);
         if (settings.DryRunMode)
@@ -405,6 +417,11 @@ public sealed class ReplacementService
 
         var originalSize = new FileInfo(media.Path).Length;
         var outputSize = new FileInfo(job.WorkOutputPath).Length;
+
+        // File identity checks can take time. Re-read the saved opt-in before recording or moving
+        // anything so a setting cached when encoding began cannot authorise automatic replacement.
+        if (automatic && !await IsAutomaticAcceptanceEnabledAsync(media.LibraryId, cancellationToken))
+            return ReplacementActionResult.Deferred("Auto-accept was switched off while preparing this replacement. The original and verified output were left untouched.");
 
         // Record the rollback path durably before the first filesystem mutation. If the process
         // stops at any later instruction, startup recovery can restore the quarantined original or

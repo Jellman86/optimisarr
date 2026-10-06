@@ -5,6 +5,7 @@
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
+  import AutoAccept from '../components/AutoAccept.svelte'
   import Icon from '../components/Icon.svelte'
   import InfoTip from '../components/InfoTip.svelte'
   import Banner from '../components/Banner.svelte'
@@ -12,6 +13,8 @@
   import CandidateTable from '../components/CandidateTable.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ActionMenu from '../components/ActionMenu.svelte'
+  import AudioEncodingPreset from '../components/AudioEncodingPreset.svelte'
+  import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
 
   let {
     embeddedEditorId = null,
@@ -125,6 +128,8 @@
     hdrHandling: string
     videoAudioCodec: string | null
     videoAudioBitrateKbps: number
+    audioTargetCodec: string
+    audioBitrateKbps: number
     downmixToStereo: boolean
   }
   const FALLBACK_SPEC: PresetSpec = {
@@ -134,6 +139,8 @@
     hdrHandling: 'Exclude',
     videoAudioCodec: 'aac',
     videoAudioBitrateKbps: 160,
+    audioTargetCodec: 'aac',
+    audioBitrateKbps: 128,
     downmixToStereo: false,
   }
 
@@ -150,6 +157,10 @@
         hdrHandling: spec.hdrHandling,
         videoAudioCodec: spec.videoAudioCodec,
         videoAudioBitrateKbps: spec.videoAudioBitrateKbps,
+        audioTargetCodec: spec.audioTargetCodec ?? 'aac',
+        // Older API responses omit standalone defaults. Retain their known profile values
+        // during rolling updates until the new server-owned fields are available.
+        audioBitrateKbps: spec.audioBitrateKbps ?? (spec.profile === 'ScottsSettings' ? 96 : 128),
         downmixToStereo: spec.downmixToStereo,
       }
     }
@@ -187,6 +198,64 @@
   // Keep an explicitly selected Custom mode visible even while its initial values happen to match
   // a named preset. Loaded libraries still derive Custom from any non-preset values.
   let vmafCustomSelected = $state(false)
+
+  // These are numeric shortcuts, not calibrated quality tiers. Equal spacing follows orders of
+  // magnitude so useful small distances do not bunch together at the end of a linear 0–1 range.
+  const audioDifferenceStops = [0, 0.0001, 0.001, 0.01, 0.1] as const
+  let audioDifferenceCustomSelected = $state(false)
+  const audioDifferenceStop = $derived.by(() => {
+    if (audioDifferenceCustomSelected) return audioDifferenceStops.length
+    const index = audioDifferenceStops.findIndex(value => value === form.maximumAudioQualityDistance)
+    return index < 0 ? audioDifferenceStops.length : index
+  })
+  function setAudioDifferenceStop(index: number) {
+    audioDifferenceCustomSelected = index === audioDifferenceStops.length
+    if (!audioDifferenceCustomSelected) form.maximumAudioQualityDistance = audioDifferenceStops[index]
+  }
+
+  let soundtrackDifferenceCustomSelected = $state(false)
+  const soundtrackDifferenceStop = $derived.by(() => {
+    if (soundtrackDifferenceCustomSelected) return audioDifferenceStops.length
+    const index = audioDifferenceStops.findIndex(value => value === form.maximumSoundtrackQualityDistance)
+    return index < 0 ? audioDifferenceStops.length : index
+  })
+  function setSoundtrackDifferenceStop(index: number) {
+    soundtrackDifferenceCustomSelected = index === audioDifferenceStops.length
+    if (!soundtrackDifferenceCustomSelected) form.maximumSoundtrackQualityDistance = audioDifferenceStops[index]
+  }
+
+  let audioEncodingSelection = $state<AudioEncodingMode | null>(null)
+  let videoAudioEncodingSelection = $state<AudioEncodingMode | null>(null)
+
+  function chooseAudioEncoding(mode: AudioEncodingMode, video = false) {
+    if (video) {
+      videoAudioEncodingSelection = mode
+      if (mode === 'custom') {
+        form.videoAudioBitrateKbps ??= specFor(form.ruleProfile).videoAudioBitrateKbps
+        goRoom('encode/audio/advanced')
+      }
+      else form.videoAudioBitrateKbps = mode === 'default' ? null : audioPresetBitrate(form.videoAudioCodec ?? 'aac', mode) ?? form.videoAudioBitrateKbps
+    } else {
+      audioEncodingSelection = mode
+      if (mode === 'custom') {
+        form.audioBitrateKbps ??= specFor(form.ruleProfile).audioBitrateKbps
+        goRoom('encode/audio/advanced')
+      }
+      else form.audioBitrateKbps = mode === 'default' ? null : audioPresetBitrate(form.audioTargetCodec ?? specFor(form.ruleProfile).audioTargetCodec, mode) ?? form.audioBitrateKbps
+    }
+  }
+
+  function changeAudioCodec(codec: string, video = false) {
+    if (video) {
+      form.videoAudioBitrateKbps = audioBitrateAfterCodecChange(form.videoAudioCodec ?? 'copy', codec || 'copy', form.videoAudioBitrateKbps, videoAudioEncodingSelection)
+      form.videoAudioCodec = codec || null
+      if (!codec || codec === 'copy') videoAudioEncodingSelection = null
+    } else {
+      const defaultCodec = specFor(form.ruleProfile).audioTargetCodec
+      form.audioBitrateKbps = audioBitrateAfterCodecChange(form.audioTargetCodec ?? defaultCodec, codec || defaultCodec, form.audioBitrateKbps, audioEncodingSelection)
+      form.audioTargetCodec = codec || null
+    }
+  }
 
   const vmafMode = $derived.by<VmafMode>(() => {
     if (form.vmafQualityGateEnabled !== true) return 'off'
@@ -257,6 +326,16 @@
       || Number(form.minimumImageSsim) < 0
       || Number(form.minimumImageSsim) > 1) {
       return i18n.m.settings.validation_ssim
+    }
+    if (showVideoOptions && form.soundtrackQualityGateEnabled
+      && (form.maximumSoundtrackQualityDistance == null || !Number.isFinite(Number(form.maximumSoundtrackQualityDistance))
+        || Number(form.maximumSoundtrackQualityDistance) < 0 || Number(form.maximumSoundtrackQualityDistance) > 1)) {
+      return i18n.m.soundtrack_quality.validation
+    }
+    if (showAudioOptions && form.audioQualityGateEnabled
+      && (form.maximumAudioQualityDistance == null || !Number.isFinite(Number(form.maximumAudioQualityDistance))
+        || Number(form.maximumAudioQualityDistance) < 0 || Number(form.maximumAudioQualityDistance) > 1)) {
+      return i18n.m.audio_quality.validation
     }
     return null
   })
@@ -634,6 +713,7 @@
 
   function resetToPreset() {
     const preset = specFor(form.ruleProfile)
+    videoAudioEncodingSelection = null
     form.targetVideoCodec = null
     form.targetContainer = null
     form.hdrHandling = preset.hdrHandling
@@ -732,7 +812,7 @@
   const workflowStages = $derived([
     { room: 'source' as const, title: roomNames.source, icon: 'folder' as const, summary: `${mediaTypeLabel(form.mediaType, i18n.m)} · ${i18n.m.libraries.queue_priority}: ${priorityLabel(form.priority)}` },
     { room: 'encode' as const, title: roomNames.encode, icon: 'sliders' as const, summary: showVideoOptions ? isCustom ? i18n.m.libraries.stop_custom : profileLabel(form.ruleProfile) : showImageOptions ? (form.targetImageFormat ?? 'jpeg').toUpperCase() : (form.audioTargetCodec ?? 'aac').toUpperCase() },
-    { room: 'verify' as const, title: roomNames.verify, icon: 'shield-check' as const, summary: showVideoOptions && !isNoEncodeProfile ? `${i18n.m.settings.vmaf_label}: ${vmafMode === 'off' ? i18n.m.common.off : form.minVmafHarmonicMean}` : showImageOptions ? `${i18n.m.settings.ssim_label}: ${form.imageQualityGateEnabled ? form.minimumImageSsim : i18n.m.common.off}` : i18n.m.settings.always_on },
+    { room: 'verify' as const, title: roomNames.verify, icon: 'shield-check' as const, summary: (showVideoOptions && !isNoEncodeProfile ? `${i18n.m.settings.vmaf_label}: ${vmafMode === 'off' ? i18n.m.common.off : form.minVmafHarmonicMean}` : showImageOptions ? `${i18n.m.settings.ssim_label}: ${form.imageQualityGateEnabled ? form.minimumImageSsim : i18n.m.common.off}` : i18n.m.settings.always_on) + (showAudioOptions && form.audioQualityGateEnabled ? ` · ${i18n.m.audio_quality.gate_label}: ${form.maximumAudioQualityDistance ?? '?'}` : '') },
     { room: 'automate' as const, title: roomNames.automate, icon: 'clock' as const, summary: scheduleLabel(form as Library) },
   ])
   function overrideCount(target: LibraryRoom): number {
@@ -742,11 +822,11 @@
       'encode/video/advanced': ['targetVideoCodec', 'targetContainer', 'encoderPreset', 'qualityCrf', 'contentTune', 'maxBitrateKbps', 'minBitrateKbps', 'strongerAdaptiveQuantisation'],
       'encode/audio/advanced': ['audioBitrateKbps', 'videoAudioBitrateKbps', 'reencodeLossyAudio'],
       'encode/images/advanced': ['imageQuality', 'reencodeLossyImages'],
-      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
+      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample', 'maximumAudioQualityDistance', 'maximumSoundtrackQualityDistance'],
     }
     const keys = fields[target] ?? Object.entries(fields).filter(([key]) => key.startsWith(target + '/')).flatMap(([, fields]) => fields)
     return keys.filter(key => {
-      const baseline = key === 'videoAudioBitrateKbps' ? specFor(form.ruleProfile).videoAudioBitrateKbps : defaults[key]
+      const baseline = key === 'videoAudioBitrateKbps' ? specFor(form.ruleProfile).videoAudioBitrateKbps : key === 'audioBitrateKbps' ? specFor(form.ruleProfile).audioBitrateKbps : defaults[key]
       return form[key] != null && form[key] !== baseline
     }).length
       + (target.startsWith('source') && sameCodecGb !== '' ? 1 : 0)
@@ -921,6 +1001,10 @@
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
     customSelected = false
     vmafCustomSelected = false
+    audioDifferenceCustomSelected = false
+    soundtrackDifferenceCustomSelected = false
+    audioEncodingSelection = null
+    videoAudioEncodingSelection = null
     minSizeMb = ''
     sameCodecGb = ''
     activeTab = 'rules'
@@ -1007,6 +1091,12 @@
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
+      soundtrackQualityReportingEnabled: library.soundtrackQualityReportingEnabled ?? false,
+      soundtrackQualityGateEnabled: library.soundtrackQualityGateEnabled ?? false,
+      maximumSoundtrackQualityDistance: library.maximumSoundtrackQualityDistance ?? null,
+      audioQualityReportingEnabled: library.audioQualityReportingEnabled ?? false,
+      audioQualityGateEnabled: library.audioQualityGateEnabled ?? false,
+      maximumAudioQualityDistance: library.maximumAudioQualityDistance ?? null,
       audioClippingGateEnabled:
         library.audioClippingGateEnabled ?? defaults.audioClippingGateEnabled,
       maxTruePeakDbtp:
@@ -1031,6 +1121,10 @@
     // (isCustom derives that); the explicit flag starts clear so it doesn't leak between edits.
     customSelected = false
     vmafCustomSelected = false
+    audioDifferenceCustomSelected = false
+    soundtrackDifferenceCustomSelected = false
+    audioEncodingSelection = null
+    videoAudioEncodingSelection = null
     activeTab = 'rules'
     editingId = library.id
     markPristine()
@@ -1090,6 +1184,11 @@
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
+      soundtrackQualityReportingEnabled: showVideoOptions && form.soundtrackQualityReportingEnabled,
+      soundtrackQualityGateEnabled: showVideoOptions && form.soundtrackQualityGateEnabled,
+      maximumSoundtrackQualityDistance: soundtrackLimitForSave(),
+      audioQualityGateEnabled: showAudioOptions && form.audioQualityGateEnabled,
+      maximumAudioQualityDistance: toNullableNumber(form.maximumAudioQualityDistance ?? null),
       durationTolerancePercent: Number(form.durationTolerancePercent),
       minimumSizeSavingPercent: form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
         ? toNullableNumber(form.minimumSizeSavingPercent) : null,
@@ -1105,6 +1204,11 @@
     if (value === null || (value as unknown) === '') return null
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : null
+  }
+
+  function soundtrackLimitForSave(): number | null {
+    const limit = toNullableNumber(form.maximumSoundtrackQualityDistance ?? null)
+    return form.soundtrackQualityGateEnabled || limit == null || (limit >= 0 && limit <= 1) ? limit : null
   }
 
   async function save() {
@@ -1412,7 +1516,7 @@
               <input
                 type="radio"
                 name="processing-mode"
-                class="mt-0.5 accent-cyan-600"
+                class="mt-0.5 accent-accent-fill"
                 value={mode.value}
                 checked={processingMode === mode.value}
                 onchange={() => setProcessingMode(mode.value as ProcessingMode)}
@@ -1436,7 +1540,7 @@
         <div class="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
           {#each encodeStopLabels as stop, index}
             <label class="choice flex min-h-20 cursor-pointer items-start gap-2 rounded-xl p-3 {encodeStop === index ? 'choice-selected' : ''}">
-              <input class="mt-0.5 accent-cyan-600" type="radio" name="library-preset" value={index} checked={encodeStop === index} onchange={() => { setEncodeStop(String(index)); if (index === customStopIndex) goRoom('encode/video/advanced') }} />
+              <input class="mt-0.5 accent-accent-fill" type="radio" name="library-preset" value={index} checked={encodeStop === index} onchange={() => { setEncodeStop(String(index)); if (index === customStopIndex) goRoom('encode/video/advanced') }} />
               <span class="min-w-0"><span class="block text-sm font-medium">{stop}</span>{#if index < encodeProfiles.length}<span class="mt-1 block font-mono text-xs text-ink-3">{specFor(encodeProfiles[index]).codec}</span>{/if}</span>
             </label>
           {/each}
@@ -1484,7 +1588,7 @@
       <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP. -->
       <div class="mt-1">
         <input
-          class="w-full accent-cyan-600"
+          class="w-full accent-accent-fill"
           type="range"
           min="0"
           max={imageFormats.length - 1}
@@ -1498,7 +1602,7 @@
             <span class={imageStop === i ? 'font-semibold uppercase text-ink-2' : 'uppercase'}>{stop}</span>
           {/each}
         </div>
-        <div class="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-ink-4">
+        <div class="mt-1 flex justify-between text-[11px] text-ink-4">
           <span>{i18n.m.libraries.most_compatible}</span>
           <span>{i18n.m.libraries.most_efficient}</span>
         </div>
@@ -1543,14 +1647,14 @@
 
         <div class="mt-3 grid w-full gap-3 md:grid-cols-2" data-testid="video-quality-strategies">
           <label
-            class="relative choice flex min-h-44 flex-col rounded-xl p-4 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'choice-selected' : ''}"
+            class="relative choice flex min-h-44 flex-col rounded-xl p-4 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'choice-selected' : ''}"
           >
             <div class="flex items-start gap-3">
               <input
                 type="radio"
                 name="video-quality-strategy"
                 value="AdaptiveVmaf"
-                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
+                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-accent-fill"
                 checked={form.videoQualityStrategy === 'AdaptiveVmaf'}
                 onchange={() => setVideoQualityStrategy('AdaptiveVmaf')}
               />
@@ -1576,14 +1680,14 @@
           </label>
 
           <label
-            class="relative choice flex min-h-44 flex-col rounded-xl p-4 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'Fixed' ? 'choice-selected' : ''}"
+            class="relative choice flex min-h-44 flex-col rounded-xl p-4 {form.videoQualityStrategy === 'Fixed' ? 'choice-selected' : ''}"
           >
             <div class="flex items-start gap-3">
               <input
                 type="radio"
                 name="video-quality-strategy"
                 value="Fixed"
-                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
+                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-accent-fill"
                 checked={form.videoQualityStrategy === 'Fixed'}
                 onchange={() => setVideoQualityStrategy('Fixed')}
               />
@@ -1753,6 +1857,123 @@
             {i18n.m.libraries.audio}
           </legend>
 
+          {#if showAudioOptions}
+            <div class="mb-5 border-b border-line pb-4">
+              <Toggle bind:checked={form.audioQualityReportingEnabled}
+                label={i18n.m.audio_quality.title} hint={i18n.m.audio_quality.hint} />
+              {#if form.audioQualityReportingEnabled && !form.audioQualityGateEnabled}
+                <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
+              {/if}
+              <div class="mt-4 border-t border-line-soft pt-4">
+                <Toggle bind:checked={form.audioQualityGateEnabled}
+                  label={i18n.m.audio_quality.gate_label} hint={i18n.m.audio_quality.gate_hint} />
+                {#if form.audioQualityGateEnabled}
+                  {#if room === 'verify/advanced'}
+                  <div class="mt-4 min-w-0" data-audio-quality-limit>
+                    <label class="label" for="lib-audio-quality-slider">{i18n.m.audio_quality.maximum}
+                      <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.audio_quality.maximum })} text={i18n.m.audio_quality.limit_hint} />
+                    </label>
+                    <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
+                      <div class="mx-[8.333%]">
+                        <input id="lib-audio-quality-slider" class="block h-11 w-full cursor-pointer accent-accent-fill"
+                          type="range" min="0" max={audioDifferenceStops.length} step="1" value={audioDifferenceStop}
+                          aria-label={i18n.m.audio_quality.maximum}
+                          aria-valuetext={audioDifferenceStop === audioDifferenceStops.length ? i18n.m.libraries.stop_custom : String(audioDifferenceStops[audioDifferenceStop])}
+                          aria-describedby="lib-audio-quality-help"
+                          oninput={event => setAudioDifferenceStop(Number(event.currentTarget.value))} />
+                      </div>
+                      <div class="grid grid-cols-6">
+                        {#each [...audioDifferenceStops.map(String), i18n.m.libraries.stop_custom] as label, index}
+                          <button type="button" class="flex min-h-11 min-w-0 flex-col items-center justify-center gap-2 rounded-md px-0.5 text-[10px] tabular-nums transition-colors hover:bg-lit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:text-xs"
+                            class:text-accent={audioDifferenceStop === index} class:text-ink-3={audioDifferenceStop !== index}
+                            aria-pressed={audioDifferenceStop === index} onclick={() => setAudioDifferenceStop(index)}>
+                            <span class="h-1.5 w-1.5 rounded-full" class:bg-accent={audioDifferenceStop === index} class:bg-line={audioDifferenceStop !== index} aria-hidden="true"></span>
+                            <span class="max-w-full break-words font-medium">{label}</span>
+                          </button>
+                        {/each}
+                      </div>
+                    </div>
+                    {#if audioDifferenceStop === audioDifferenceStops.length}
+                      <div class="mt-3 max-w-sm">
+                        <label class="label" for="lib-audio-quality-limit">{i18n.m.libraries.stop_custom}</label>
+                        <input id="lib-audio-quality-limit" aria-label={i18n.m.audio_quality.maximum}
+                          class="input w-full" type="number" min="0" max="1" step="any"
+                          aria-invalid={verificationError === i18n.m.audio_quality.validation}
+                          aria-describedby="lib-audio-quality-help lib-verification-error"
+                          oninput={() => { audioDifferenceCustomSelected = true }}
+                          bind:value={form.maximumAudioQualityDistance} />
+                      </div>
+                    {/if}
+                    <p id="lib-audio-quality-help" class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.limit_hint}</p>
+                  </div>
+                  {:else}
+                    {#if form.maximumAudioQualityDistance != null}<p class="mt-3 text-xs leading-relaxed text-ink-3">{t(i18n.m.audio_quality.gate_limit, { limit: form.maximumAudioQualityDistance })}</p>{/if}
+                    <button type="button" class="btn mt-3 min-h-11" onclick={() => goRoom('verify/advanced')}>{i18n.m.audio_encoding.set_limit}</button>
+                  {/if}
+                  <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+          {#if showVideoOptions}
+            <div class="mb-5 border-b border-line pb-4">
+              <Toggle bind:checked={form.soundtrackQualityReportingEnabled}
+                label={i18n.m.soundtrack_quality.title} hint={i18n.m.soundtrack_quality.hint} />
+              {#if form.soundtrackQualityReportingEnabled && !form.soundtrackQualityGateEnabled}
+                <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
+              {/if}
+              <div class="mt-4 border-t border-line-soft pt-4">
+                <Toggle bind:checked={form.soundtrackQualityGateEnabled}
+                  label={i18n.m.soundtrack_quality.gate_label} hint={i18n.m.soundtrack_quality.gate_hint} />
+                {#if form.soundtrackQualityGateEnabled}
+                  {#if room === 'verify/advanced'}
+                  <div class="mt-4 min-w-0" data-soundtrack-quality-limit>
+                    <label class="label" for="lib-soundtrack-quality-slider">{i18n.m.soundtrack_quality.maximum}
+                      <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.soundtrack_quality.maximum })} text={i18n.m.audio_quality.limit_hint} />
+                    </label>
+                    <div class="rounded-lg border border-line-soft bg-sunken px-1 py-2 sm:px-2">
+                      <div class="mx-[8.333%]">
+                        <input id="lib-soundtrack-quality-slider" class="block h-11 w-full cursor-pointer accent-accent-fill"
+                          type="range" min="0" max={audioDifferenceStops.length} step="1" value={soundtrackDifferenceStop}
+                          aria-label={i18n.m.soundtrack_quality.maximum}
+                          aria-valuetext={soundtrackDifferenceStop === audioDifferenceStops.length ? i18n.m.libraries.stop_custom : String(audioDifferenceStops[soundtrackDifferenceStop])}
+                          aria-describedby="lib-soundtrack-quality-help"
+                          oninput={event => setSoundtrackDifferenceStop(Number(event.currentTarget.value))} />
+                      </div>
+                      <div class="grid grid-cols-6">
+                        {#each [...audioDifferenceStops.map(String), i18n.m.libraries.stop_custom] as label, index}
+                          <button type="button" class="flex min-h-11 min-w-0 flex-col items-center justify-center gap-2 rounded-md px-0.5 text-[10px] tabular-nums transition-colors hover:bg-lit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:text-xs"
+                            class:text-accent={soundtrackDifferenceStop === index} class:text-ink-3={soundtrackDifferenceStop !== index}
+                            aria-pressed={soundtrackDifferenceStop === index} onclick={() => setSoundtrackDifferenceStop(index)}>
+                            <span class="h-1.5 w-1.5 rounded-full" class:bg-accent={soundtrackDifferenceStop === index} class:bg-line={soundtrackDifferenceStop !== index} aria-hidden="true"></span>
+                            <span class="max-w-full break-words font-medium">{label}</span>
+                          </button>
+                        {/each}
+                      </div>
+                    </div>
+                    {#if soundtrackDifferenceStop === audioDifferenceStops.length}
+                      <div class="mt-3 max-w-sm">
+                        <label class="label" for="lib-soundtrack-quality-limit">{i18n.m.libraries.stop_custom}</label>
+                        <input id="lib-soundtrack-quality-limit" aria-label={i18n.m.soundtrack_quality.maximum}
+                          class="input w-full" type="number" min="0" max="1" step="any"
+                          aria-invalid={verificationError === i18n.m.soundtrack_quality.validation}
+                          aria-describedby="lib-soundtrack-quality-help lib-verification-error"
+                          oninput={() => { soundtrackDifferenceCustomSelected = true }}
+                          bind:value={form.maximumSoundtrackQualityDistance} />
+                      </div>
+                    {/if}
+                    <p id="lib-soundtrack-quality-help" class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.limit_hint}</p>
+                  </div>
+                  {:else}
+                    {#if form.maximumSoundtrackQualityDistance != null}<p class="mt-3 text-xs leading-relaxed text-ink-3">{t(i18n.m.audio_quality.gate_limit, { limit: form.maximumSoundtrackQualityDistance })}</p>{/if}
+                    <button type="button" class="btn mt-3 min-h-11" onclick={() => goRoom('verify/advanced')}>{i18n.m.audio_encoding.set_limit}</button>
+                  {/if}
+                  <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
+                {/if}
+              </div>
+              <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.soundtrack_quality.coverage_note}</p>
+            </div>
+          {/if}
           <Toggle
             bind:checked={form.audioLoudnessGateEnabled}
             label={i18n.m.settings.loudness_label}
@@ -1935,11 +2156,7 @@
       </div>
     {/if}
 
-    <Toggle
-      bind:checked={form.autoReplace}
-      label={i18n.m.libraries.auto_replace_label}
-      hint={i18n.m.libraries.auto_replace_hint}
-    />
+    <AutoAccept bind:checked={form.autoReplace} libraryName={form.name} />
 
       <section class="border-t border-line pt-5">
         <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.completed_output}</h3>
@@ -2081,13 +2298,13 @@
             <div class="grid gap-2 md:grid-cols-2" role="radiogroup" aria-label={i18n.m.libraries.placement_label}>
               {#each placements as placement (placement)}
                 <label
-                  class="choice flex items-start gap-3 rounded-xl p-3 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.workPlacement === placement ? 'choice-selected' : ''}"
+                  class="choice flex items-start gap-3 rounded-xl p-3 {form.workPlacement === placement ? 'choice-selected' : ''}"
                 >
                   <input
                     type="radio"
                     name="work-placement"
                     value={placement}
-                    class="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-600"
+                    class="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent-fill"
                     checked={form.workPlacement === placement}
                     onchange={() => (form.workPlacement = placement)}
                   />
@@ -2252,7 +2469,7 @@
           {#if form.qualityCrf != null}
             <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
               <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="min-w-0 w-full accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="min-w-0 w-full accent-accent-fill" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
               <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
               <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.qualityCrf}</span>
             </div>
@@ -2332,8 +2549,8 @@
 {#if showVideoOptions}{#if !isNoEncodeProfile}        <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-video-audio-codec">{i18n.m.libraries.audio_track} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.audio_track })} text={i18n.m.libraries.audio_track_tip} /></label>
-            <select id="lib-video-audio-codec" aria-label={i18n.m.libraries.audio_track} class="input" bind:value={form.videoAudioCodec}>
-              <option value={null}>{i18n.m.libraries.audio_profile_default}</option>
+            <select id="lib-video-audio-codec" aria-label={i18n.m.libraries.audio_track} class="input" value={form.videoAudioCodec ?? ''} onchange={event => changeAudioCodec(event.currentTarget.value, true)}>
+              <option value="">{i18n.m.libraries.audio_profile_default}</option>
               <option value="copy">{i18n.m.libraries.audio_copy}</option>
               {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
             </select>
@@ -2346,20 +2563,27 @@
               type="number"
               min="32"
               max="512"
-              placeholder={i18n.m.libraries.audio_bitrate_ph}
+              placeholder={`${i18n.m.audio_encoding.default} (${specFor(form.ruleProfile).videoAudioBitrateKbps} kbps)`}
               disabled={!form.videoAudioCodec || form.videoAudioCodec === 'copy'}
+              oninput={() => { videoAudioEncodingSelection = 'custom' }}
               bind:value={form.videoAudioBitrateKbps}
             />
           </div>{/if}
         </div>
+        {#if form.videoAudioCodec && form.videoAudioCodec !== 'copy'}
+          <AudioEncodingPreset id="lib-video-audio-preset" codec={form.videoAudioCodec}
+            bitrate={form.videoAudioBitrateKbps} defaultBitrate={specFor(form.ruleProfile).videoAudioBitrateKbps}
+            mode={audioEncodingMode(form.videoAudioCodec, form.videoAudioBitrateKbps, videoAudioEncodingSelection, specFor(form.ruleProfile).videoAudioBitrateKbps)}
+            video onselect={mode => chooseAudioEncoding(mode, true)} />
+        {/if}
 {/if}{@render keepLanguageFields()}{/if}{#if showAudioOptions}      <div class="rounded-lg border border-line bg-lit p-4">
         <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.audio}</h3>
         <p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.libraries.music_note}</p>
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_codec })} text={i18n.m.libraries.audio_codec_tip} /></label>
-            <select id="lib-audio-codec" aria-label={i18n.m.libraries.target_codec} class="input" bind:value={form.audioTargetCodec}>
-              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
+            <select id="lib-audio-codec" aria-label={i18n.m.libraries.target_codec} class="input" value={form.audioTargetCodec ?? ''} onchange={event => changeAudioCodec(event.currentTarget.value)}>
+              <option value="">{i18n.m.audio_encoding.default} ({specFor(form.ruleProfile).audioTargetCodec.toUpperCase()})</option>
               {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
             </select>
           </div>
@@ -2371,11 +2595,16 @@
               type="number"
               min="32"
               max="512"
-              placeholder={i18n.m.libraries.bitrate_ph}
+              placeholder={`${i18n.m.audio_encoding.default} (${specFor(form.ruleProfile).audioBitrateKbps} kbps)`}
+              oninput={() => { audioEncodingSelection = 'custom' }}
               bind:value={form.audioBitrateKbps}
             />
           </div>{/if}
         </div>
+        <AudioEncodingPreset id="lib-audio-preset" codec={form.audioTargetCodec ?? specFor(form.ruleProfile).audioTargetCodec}
+          bitrate={form.audioBitrateKbps} defaultBitrate={specFor(form.ruleProfile).audioBitrateKbps}
+          mode={audioEncodingMode(form.audioTargetCodec ?? specFor(form.ruleProfile).audioTargetCodec, form.audioBitrateKbps, audioEncodingSelection, specFor(form.ruleProfile).audioBitrateKbps)}
+          onselect={mode => chooseAudioEncoding(mode)} />
         {#if room === 'encode/audio/advanced'}<label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
           <span>
@@ -2389,7 +2618,7 @@
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
       <section class="space-y-4">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.audio_channels}</h3>
+        <h3 class="text-xs font-semibold text-ink-3">{i18n.m.libraries.audio_channels}</h3>
         <p class="mt-0.5 mb-3 text-xs text-ink-4">{i18n.m.libraries.audio_channels_desc}</p>
         <label class="flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
@@ -2470,7 +2699,7 @@
             {#if form.imageQuality != null}
               <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
                 <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="min-w-0 w-full accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
+                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="min-w-0 w-full accent-accent-fill" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
                 <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
                 <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.imageQuality}</span>
               </div>
@@ -2506,7 +2735,7 @@
         {#each workflowStages as stage, index}
           <button type="button" class="card card-interactive focus-ring workflow-card flex items-center gap-4 p-5 text-left sm:p-6" onclick={() => goRoom(stage.room)}>
             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-raised text-accent"><Icon name={stage.icon} class="h-5 w-5" /></span>
-            <span class="min-w-0 flex-1"><span class="mb-1 block text-xs font-medium uppercase tracking-wider text-ink-3">{index + 1} / 4</span><span class="flex flex-wrap items-center gap-2 text-base font-semibold">{stage.title}{#if overrideCount(stage.room)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(stage.room) })}</span>{/if}</span><span class="mt-1 block text-sm text-ink-3">{stage.summary}</span></span>
+            <span class="min-w-0 flex-1"><span class="mb-1 block text-xs font-semibold text-ink-3">{index + 1} / 4</span><span class="flex flex-wrap items-center gap-2 text-base font-semibold">{stage.title}{#if overrideCount(stage.room)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(stage.room) })}</span>{/if}</span><span class="mt-1 block text-sm text-ink-3">{stage.summary}</span></span>
             <Icon name="arrow-right" class="h-5 w-5 shrink-0 text-accent" />
           </button>
         {/each}
@@ -2578,10 +2807,10 @@
 
 {#if editingId !== null}
   {#if editingId !== 0 && !embedded}
-    <nav class="mb-4 flex gap-1 overflow-x-auto border-b border-line" aria-label={i18n.m.libraries.configure}>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'rules' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'candidates' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'excluded' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
+    <nav class="segmented mb-4" aria-label={i18n.m.libraries.configure}>
+      <button class="segment" aria-pressed={activeTab === 'rules'} onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
+      <button class="segment" aria-pressed={activeTab === 'candidates'} onclick={() => (activeTab = 'candidates')}><span>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading}{' '}({editorEligibleCount}){/if}</span></button>
+      <button class="segment" aria-pressed={activeTab === 'excluded'} onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}><span>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading}{' '}({editorExclusions.length}){/if}</span></button>
     </nav>
   {/if}
 
@@ -2620,7 +2849,7 @@
           <div class="flex items-center justify-between gap-3 px-3 py-2">
             <div class="min-w-0">
               <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
-              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason} · {ex.reason}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
+              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
             </div>
             <button class="btn btn-ghost min-h-11 flex-shrink-0 px-3 text-xs" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
           </div>
@@ -2644,20 +2873,10 @@
             <span class="truncate text-base font-semibold text-ink">{library.name}</span>
             <span class="badge tone-info">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
             {#if library.priority !== 0}
-              <span class="badge tone-warn">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
+              <span class="badge tone-muted">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
             {/if}
             {#if !library.enabled}
               <span class="badge tone-muted">{i18n.m.libraries.badge_disabled}</span>
-            {/if}
-            <!-- Access is only worth a badge when it is a problem; a healthy path says nothing. -->
-            {#if a && !a.ok}
-              {#if !a.exists}
-                <span class="badge tone-bad" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
-              {:else if !a.readable}
-                <span class="badge tone-bad" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
-              {:else}
-                <span class="badge tone-warn" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
-              {/if}
             {/if}
           </div>
           <ActionMenu
@@ -2699,8 +2918,9 @@
           <div class="flex items-center gap-2"><Icon name="clock" class="h-3.5 w-3.5 flex-shrink-0" /><span>{scheduleLabel(library)}</span></div>
         </div>
 
+        <!-- Access is only worth a line when it is a problem; a healthy path says nothing. -->
         {#if a && !a.ok}
-          <div class="flex items-start gap-1.5 text-xs text-warn">
+          <div class="flex items-start gap-1.5 text-xs {a.exists && a.readable ? 'text-warn' : 'text-bad'}">
             <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             <span>{accessMessage(a)}</span>
           </div>

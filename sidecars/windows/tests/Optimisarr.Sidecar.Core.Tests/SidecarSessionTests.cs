@@ -440,8 +440,8 @@ public sealed class ConcurrentSidecarSessionTests
     public async Task A_machine_with_room_for_two_takes_two()
     {
         var running = 0;
-        var peak = 0;
-        var gate = new TaskCompletionSource();
+        var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var handler = new Handler(
             (HttpStatusCode.OK, Beat),
             (HttpStatusCode.OK, Assignment(1)),
@@ -451,22 +451,26 @@ public sealed class ConcurrentSidecarSessionTests
         var session = Session(handler, maxConcurrency: 2, runJob: async (_, assignment, _) =>
         {
             var now = Interlocked.Increment(ref running);
-            Interlocked.Exchange(ref peak, Math.Max(peak, now));
+            if (now == 2) bothStarted.TrySetResult();
             await gate.Task;
             Interlocked.Decrement(ref running);
             return new JobOutcome(assignment.JobId, Delivered: true, "done");
         }, stopAfterBeats: 3);
 
-        var loop = session.RunAsync(CancellationToken.None);
-        while (Volatile.Read(ref peak) < 2 && !loop.IsCompleted)
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var loop = session.RunAsync(deadline.Token);
+        try
         {
-            await Task.Delay(5);
+            await bothStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), deadline.Token);
+            Assert.Equal(2, Volatile.Read(ref running));
         }
-
-        gate.SetResult();
-        await loop;
-
-        Assert.Equal(2, peak);
+        finally
+        {
+            gate.TrySetResult();
+            await deadline.CancelAsync();
+            await loop;
+        }
+        Assert.Equal(0, Volatile.Read(ref running));
     }
 
     [Fact]

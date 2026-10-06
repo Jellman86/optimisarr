@@ -339,6 +339,334 @@
         ],
         "type": "object"
       },
+      "AudioQualityAssessmentResult": {
+        "properties": {
+          "candidate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "candidateAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "candidateSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "coveredSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "durationDriftSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "elapsedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ffmpegSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ffprobeSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "metric": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "metricSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "preparation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "referenceAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "referenceSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sampled": {
+            "type": "boolean"
+          },
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/AudioQualityWindowMeasurement"
+            },
+            "type": "array"
+          },
+          "worstChannelDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "error",
+          "reference",
+          "candidate",
+          "referenceSha256",
+          "candidateSha256",
+          "metricSha256",
+          "ffmpegSha256",
+          "ffprobeSha256",
+          "windows",
+          "elapsedSeconds"
+        ],
+        "type": "object"
+      },
+      "AudioQualityDistances": {
+        "properties": {
+          "channelDistances": {
+            "items": {
+              "format": "double",
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "type": "array"
+          },
+          "frames": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "worstChannelDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "frames",
+          "channelDistances"
+        ],
+        "type": "object"
+      },
+      "AudioQualityInput": {
+        "properties": {
+          "channelLayout": {
+            "type": "string"
+          },
+          "channels": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "containerLeadSeconds": {
+            "default": 0,
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "durationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "sampleRate": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "durationSeconds",
+          "channels",
+          "sampleRate",
+          "channelLayout"
+        ],
+        "type": "object"
+      },
+      "AudioQualityReport": {
+        "properties": {
+          "evidence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteAudioQualityEvidence"
+              }
+            ]
+          },
+          "gateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "gatePassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "maximumDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measurementLocation": {
+            "type": "string"
+          },
+          "unavailableReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measurementLocation",
+          "evidence",
+          "unavailableReason"
+        ],
+        "type": "object"
+      },
+      "AudioQualityWindow": {
+        "properties": {
+          "durationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "startSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "startSeconds",
+          "durationSeconds"
+        ],
+        "type": "object"
+      },
+      "AudioQualityWindowMeasurement": {
+        "properties": {
+          "distances": {
+            "$ref": "#/components/schemas/AudioQualityDistances"
+          },
+          "window": {
+            "$ref": "#/components/schemas/AudioQualityWindow"
+          }
+        },
+        "required": [
+          "window",
+          "distances"
+        ],
+        "type": "object"
+      },
       "BulkReplacementFailure": {
         "properties": {
           "jobId": {
@@ -525,6 +853,255 @@
         },
         "required": [
           "healthy",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateFile": {
+        "properties": {
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hardLinkCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "relativePath",
+          "sizeBytes",
+          "sha256",
+          "hardLinkCount",
+          "checkedAt"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateGroup": {
+        "properties": {
+          "copies": {
+            "items": {
+              "$ref": "#/components/schemas/ExactDuplicateFile"
+            },
+            "type": "array"
+          },
+          "extraCopyBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "totalCopies": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "sha256",
+          "sizeBytes",
+          "copies",
+          "extraCopyBytes"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateProgress": {
+        "properties": {
+          "bytesRead": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "checked": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "skipped": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "total": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "checked",
+          "skipped",
+          "total",
+          "bytesRead"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateResult": {
+        "properties": {
+          "bytesRead": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "checked": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ExactDuplicateGroup"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "total": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "checked",
+          "skipped",
+          "total",
+          "bytesRead",
+          "groups",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateStatus": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ExactDuplicateProgress"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExactDuplicateResult"
+              }
+            ]
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "libraryId",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "progress",
+          "result",
           "error"
         ],
         "type": "object"
@@ -888,6 +1465,18 @@
               "boolean"
             ]
           },
+          "audioQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "audioQualityReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioTargetCodec": {
             "type": [
               "null",
@@ -1059,7 +1648,25 @@
               "string"
             ]
           },
+          "maximumAudioQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "maximumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumSoundtrackQualityDistance": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -1209,6 +1816,18 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "soundtrackQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "soundtrackQualityReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "strongerAdaptiveQuantisation": {
@@ -1839,8 +2458,35 @@
         ],
         "type": "object"
       },
+      "RemoteAudioQualityEvidence": {
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/AudioQualityAssessmentResult"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "preparation": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "revision",
+          "preparation",
+          "assessment"
+        ],
+        "type": "object"
+      },
       "RemoteVerificationContract": {
         "properties": {
+          "countVideoFrames": {
+            "default": false,
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -1850,6 +2496,20 @@
           },
           "measureAudio": {
             "type": "boolean"
+          },
+          "measureAudioQuality": {
+            "default": false,
+            "type": "boolean"
+          },
+          "soundtrackQuality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SoundtrackQualityRequest"
+              }
+            ]
           },
           "version": {
             "format": "int32",
@@ -1869,6 +2529,16 @@
       },
       "RemoteVerificationEvidence": {
         "properties": {
+          "audioQuality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteAudioQualityEvidence"
+              }
+            ]
+          },
           "candidateAudio": {
             "oneOf": [
               {
@@ -1877,6 +2547,15 @@
               {
                 "$ref": "#/components/schemas/TimestampCheckResult"
               }
+            ]
+          },
+          "candidateDecodedFrameCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
             ]
           },
           "candidateLoudness": {
@@ -1928,6 +2607,16 @@
               "string"
             ]
           },
+          "soundtrackQuality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SoundtrackQualityReport"
+              }
+            ]
+          },
           "sourceAudio": {
             "oneOf": [
               {
@@ -1936,6 +2625,15 @@
               {
                 "$ref": "#/components/schemas/TimestampCheckResult"
               }
+            ]
+          },
+          "sourceDecodedFrameCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
             ]
           },
           "sourceLoudness": {
@@ -2155,6 +2853,18 @@
               "boolean"
             ]
           },
+          "audioQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "audioQualityReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioTargetCodec": {
             "type": [
               "null",
@@ -2341,7 +3051,25 @@
               "string"
             ]
           },
+          "maximumAudioQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "maximumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumSoundtrackQualityDistance": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -2522,6 +3250,18 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "soundtrackQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "soundtrackQualityReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "strongerAdaptiveQuantisation": {
@@ -2917,6 +3657,127 @@
         },
         "required": [
           "observedBytes"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityPair": {
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/AudioQualityInput"
+          },
+          "candidateAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reference": {
+            "$ref": "#/components/schemas/AudioQualityInput"
+          },
+          "sourceAudioIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "sourceAudioIndex",
+          "candidateAudioIndex",
+          "language",
+          "title",
+          "reference",
+          "candidate"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityReport": {
+        "properties": {
+          "gateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "gatePassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "maximumDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "tracks": {
+            "items": {
+              "$ref": "#/components/schemas/SoundtrackQualityTrack"
+            },
+            "type": "array"
+          },
+          "unavailableReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "tracks",
+          "unavailableReason"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityRequest": {
+        "properties": {
+          "removedSourceAudioIndexes": {
+            "items": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "removedSourceAudioIndexes"
+        ],
+        "type": "object"
+      },
+      "SoundtrackQualityTrack": {
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/AudioQualityReport"
+          },
+          "track": {
+            "$ref": "#/components/schemas/SoundtrackQualityPair"
+          }
+        },
+        "required": [
+          "track",
+          "report"
         ],
         "type": "object"
       },
@@ -3502,7 +4363,7 @@
   "info": {
     "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
     "title": "Optimisarr API",
-    "version": "0.2.19.0"
+    "version": "0.2.20.0"
   },
   "openapi": "3.1.1",
   "paths": {
@@ -5015,6 +5876,112 @@
           },
           "401": {
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/libraries/{id}/duplicates": {
+      "delete": {
+        "operationId": "CancelExactDuplicateScan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      },
+      "get": {
+        "operationId": "GetExactDuplicates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExactDuplicateStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      },
+      "post": {
+        "operationId": "ScanExactDuplicates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExactDuplicateStatus"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           }
         },
         "tags": [

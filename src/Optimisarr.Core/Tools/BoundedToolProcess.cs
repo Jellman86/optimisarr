@@ -14,6 +14,7 @@ internal static class BoundedToolProcess
         string command, IReadOnlyList<string> arguments, CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout ?? TimeSpan.FromSeconds(30));
         using var process = new Process
@@ -29,6 +30,7 @@ internal static class BoundedToolProcess
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             process.Start();
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)

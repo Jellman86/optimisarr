@@ -330,6 +330,17 @@ Before replacement, all required checks must pass:
 - Output size is below original by the configured threshold unless the rule is
   explicitly quality-normalisation rather than size-saving.
 
+Standalone audio and video soundtracks have separate opt-in Zimtohrli reporting and gates.
+For full video jobs with re-encoded audio, the soundtrack planner maps retained source tracks
+using frozen removals and source order to output positions and checks language/title/commentary identity,
+channel layout and bounded timing differences. Up to eight mono/stereo tracks receive up to
+90 seconds of assessment each; surround/downmix assessment is unavailable. All channels and
+windows must meet the explicit operator limit. Copied audio and previews bypass this assessment.
+Strict worker assessment uses protocol 8/full-verification contract 3, with validated file/tool
+identity and complete track evidence and no server fallback. Reporting alone cannot change
+replacement decisions. These sampled metrics do not guarantee inaudibility or lip-sync; see
+[controls and limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
+
 Preview jobs reuse the same verification path but never enter replacement. For
 long video previews, the worker encodes a 60-second segment from the middle of
 the source and the verifier creates a temporary clipped reference from that same

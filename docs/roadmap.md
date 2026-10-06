@@ -19,6 +19,16 @@ the replacement workflow is trustworthy.
   describing finished work as outstanding sends effort at an item that has none.
 - Status claims last verified against the repository: **2026-08-24**.
 
+## Current hardening follow-up, reviewed 2026-10-04
+
+The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
+trial and pairing records with current implementation. Priorities are checked Windows
+upgrades, retained real-source playback evidence, reliable guard/concurrency tests and
+opt-in diagnostic provenance. Audio reports and explicit gates are implemented in
+development; image perceptual assessment and broader audio/dedupe coverage remain planned.
+Completed slices belong in the changelog; do not treat the historical trial's size holds
+or VMAF v0 policy as current behavior.
+
 ## Up next (priority order, updated 2026-08-24)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
@@ -1075,10 +1085,14 @@ the replacement workflow is trustworthy.
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: planned, researched 2026-10-01.** Add
+14. **Perceptual quality for audio and still images: audio and video soundtrack reporting and explicit gates implemented in development; broader work planned, 2026-10-02.** Add
     understandable, optional quality evidence alongside the existing structural, timing,
     loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
-    introduce enforced gates only after the metric, coverage and threshold policy are proved.
+    An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with
+    no preset cutoff. Every assessed channel/sample must pass; unavailable evidence blocks
+    replacement. Coverage and supported inputs are documented in
+    [configuration](setup/configuration.md#audio-quality-reports-and-gates-development).
+    Broader coverage and a calibrated default remain future work.
     The [research and implementation plan](development/perceptual-audio-image-quality-plan.md)
     records the sources, tradeoffs and platform qualification still needed.
     Track delivery in [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
@@ -1087,12 +1101,25 @@ the replacement workflow is trustworthy.
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
       HDR or transparent-image fidelity from one perceptual score.
-    - **Audio direction:** implement Google's newer Zimtohrli, selected by the operator after
-      research. Qualify native packaging, runtime and coverage using free speech, music,
+    - **Audio direction:** Google's newer Zimtohrli is implemented for the documented
+      mono/stereo coverage. Extend qualification using free speech, music,
       mixed soundtracks and stereo/5.1 fixtures with actual Opus/AAC/MP3 encodes. ViSQOL is
       an optional offline comparator, not a required shipped dependency or runtime fallback.
       This selection does not claim a universal benchmark winner. Mono aggregation must not hide
       missing/swapped channels or override timing, loudness and clipping checks.
+    - **Encoding presets:** codec-aware bitrate starting points are implemented in development
+      for standalone audio and explicitly re-encoded video soundtracks. They preserve existing
+      settings and never choose a quality gate limit. A bounded sample search for a suitable
+      bitrate remains planned; include cancellation, cost reporting, source-bitrate and size
+      checks, and final verification before replacement.
+    - **Video soundtracks:** opt-in reporting and a separate explicit gate are implemented in
+      development for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
+      source tracks to output order, with language/title/commentary identity and timing checks.
+      Copied audio retains existing preservation checks. Protocol 8/contract 3 keeps strict worker
+      measurement on the worker; unavailable evidence blocks a configured gate. Each track has
+      up to 90 seconds of assessed coverage. Surround/downmix assessment, broader timing/lip-sync
+      qualification and calibrated defaults remain future work. See
+      [coverage and limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
     - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
       additive/idempotent evidence storage and a versioned worker capability/evidence contract.
       Strict sidecar-only verification must complete the required metric on the worker, with
@@ -1103,6 +1130,42 @@ the replacement workflow is trustworthy.
       and channel preparation; clear UI/tooltips separating unmeasured, measured and failed.
       Thresholds are explicit policies, not a conversion from VMAF or SSIM's numeric scale.
       No listening-panel programme or promised release date is required.
+
+15. **Duplicate detection and safe dedupe for every library type: first read-only slice
+    implemented, broader matching and cleanup planned, 2026-10-02.** The manual
+    [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within one
+    selected library. Scans are cancellable, rate limited and bounded; reports remain until
+    restart or eviction after ten libraries. It makes no changes to media. Persistent caching,
+    incremental indexing, cross-library scope and safe cleanup remain future work.
+    Cover image, audio, video and mixed libraries. Find exact file copies first,
+    then offer review of matching content saved in different formats or qualities. Make
+    scanning opt-in per library, with cross-library comparisons selected explicitly.
+    The [research and delivery plan](development/perceptual-audio-image-quality-plan.md#duplicate-detection-for-all-library-types)
+    records the candidate tools, resource costs and safety requirements.
+
+    - **Shared foundation:** cached full-file SHA-256, file-size filtering, change detection,
+      incremental indexing and cancellable background work. Keep exact copies, matching
+      content and related versions clearly labelled. Recheck identities before acting.
+    - **Images:** qualify PDQ perceptual hashes with one consistent image-decoding path.
+      Evaluate optional local SigLIP 2 image features for harder candidate searches, then
+      verify visual correspondence. Protect bursts, crops, edits, RAW/JPEG pairs, Live Photos,
+      animation, colour profiles and metadata. A similar scene is a suggestion to review.
+    - **Audio:** qualify local Chromaprint matching for near-identical recordings, backed by
+      duration, channel/track and metadata checks. Protect remasters, live performances,
+      different mixes, album versions and spoken material with unproved coverage.
+    - **Video:** evaluate TMK+PDQF and vPDQ for candidate retrieval, with ordered timeline
+      checks and audio/stream comparisons. Protect alternate cuts, episodes sharing an intro,
+      clips, HDR/SDR editions, languages and subtitles. A matching poster is insufficient.
+    - **Review and cleanup:** show previews, differences, paths, estimated recoverable space
+      and why each file is suggested for keeping. Allow keeping several versions and ignoring
+      a group. Require explicit selection, a verified retained copy and a recorded rollback
+      path before quarantine. Respect read-only libraries and connected media-manager records.
+      Detection never starts an automatic deletion or hard-link conversion.
+    - **Evidence to call it complete:** TDD-backed matching and safe-action policies; measured
+      false positives, scan cost and incremental performance on representative media; platform
+      parity and cancellation/recovery tests on available hosts; no unintended removal in
+      changed-file, linked-file, cross-filesystem or concurrent encode/replace cases. Models
+      run locally, with pinned tools, audited licences and explicit RAM/storage budgets.
 
 ## Guiding principles
 

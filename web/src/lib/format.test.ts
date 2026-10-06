@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatRelative, mediaTitle, savedPercent } from './format.ts'
+import { containerLabel, formatRelative, languageList, mediaTitle, savedPercent } from './format.ts'
 
 const now = new Date('2026-09-25T07:00:00Z')
 
@@ -28,4 +28,19 @@ test('films read as their name and year, and anything else as its file name', ()
   assert.deepEqual(mediaTitle('Blackfish (2013)/Blackfish (2013) Bluray-1080p.mp4'), { primary: 'Blackfish (2013)', episode: null, secondary: null })
   assert.deepEqual(mediaTitle('odd/home_video.final.mkv'), { primary: 'home video final', episode: null, secondary: null })
   assert.deepEqual(mediaTitle(null), { primary: null, episode: null, secondary: null })
+})
+
+test('containers read as the file type a person knows, not the ffprobe demuxer list', () => {
+  assert.equal(containerLabel('mov,mp4,m4a,3gp,3g2,mj2', 'Films/Blackfish (2013).mp4'), 'MP4')
+  assert.equal(containerLabel('mov,mp4,m4a,3gp,3g2,mj2', 'clip.mov'), 'MOV')
+  assert.equal(containerLabel('matroska,webm', 'Show - S01E01.mkv'), 'MKV')
+  assert.equal(containerLabel('matroska,webm', 'clip.webm'), 'WebM')
+  assert.equal(containerLabel('mpegts', 'recording.ts'), 'MPEG-TS')
+  assert.equal(containerLabel('flac', null), 'FLAC')
+  assert.equal(containerLabel(null, 'a.mkv'), null)
+})
+
+test('untagged track languages read as unknown', () => {
+  assert.equal(languageList('und', 'unknown language'), 'unknown language')
+  assert.equal(languageList('eng, und,jpn', 'unknown language'), 'eng, unknown language, jpn')
 })

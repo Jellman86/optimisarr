@@ -21,7 +21,49 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     }
 
     private RemoteVerificationEvidence Evidence() => new(Guid.NewGuid(), new('a', 64), new('b', 64),
-        Probe, Probe, DecodeHealthResult.Ok, new(true, 0, null, 8), new(true, 0, null, 8), TimestampCheckResult.NotMeasured);
+        Probe, Probe, DecodeHealthResult.Ok, new(true, 0, null, 8), new(true, 0, null, 8), TimestampCheckResult.NotMeasured,
+        SourceDecodedFrameCount: 96, CandidateDecodedFrameCount: 96);
+
+
+    [Fact]
+    public async Task Missing_picture_evidence_refuses_strict_verification_without_server_fallback()
+    {
+        var original = new OriginalSnapshot("unread-source", 1000, 8, 0, 0, false, false);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Service().VerifyAsync(original, "candidate",
+            VerificationPolicy.Default, default, remoteEvidence: Evidence() with { SourceDecodedFrameCount = null }));
+        Assert.Contains("picture counts", error.Message);
+    }
+
+    [Fact]
+    public async Task Lost_initial_pictures_fail_even_when_worker_duration_and_decode_pass()
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot("unread-source", 1000, 8, 0, 0, false, false, ExpectedVideoCodec: "hevc");
+        var result = await Service().VerifyAsync(original, output, VerificationPolicy.Default, default,
+            remoteEvidence: Evidence() with { CandidateDecodedFrameCount = 94 });
+        Assert.False(result.Report.Passed);
+        Assert.Contains(result.Report.Checks, c => c.Name == "Duration" && c.Outcome == CheckOutcome.Passed);
+        Assert.Contains(result.Report.Checks, c => c.Name == "Picture retention" && c.Outcome == CheckOutcome.Failed);
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public async Task Silent_video_skips_soundtrack_quality_but_a_missing_expected_soundtrack_fails(int sourceTracks, bool passes)
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "silent-candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot(Path.Combine(_root, "unread-source.mkv"), 1000, 8, sourceTracks, 0, false, false,
+            AudioReencoded: true, ExpectedVideoCodec: "hevc");
+        var outcome = await Service().VerifyAsync(original, output, VerificationPolicy.Default with {
+            SoundtrackQualityGateEnabled = true, MaximumSoundtrackQualityDistance = 0.01 }, default, remoteEvidence: Evidence());
+        Assert.Equal(passes, outcome.Report.Passed);
+        if (passes) Assert.Null(outcome.Report.SoundtrackQuality);
+        else Assert.Contains(outcome.Report.Checks, check => check.Outcome == CheckOutcome.Failed);
+    }
 
     [Fact]
     public async Task Full_remote_evidence_passes_all_applicable_gates_without_any_installed_media_tools()
@@ -154,6 +196,61 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
                 && check.Detail.Contains("decode", StringComparison.OrdinalIgnoreCase));
     }
 
+
+    [Fact]
+    public async Task Audio_gate_checks_valid_worker_measurements_and_rejects_a_report_for_different_files()
+    {
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "gated-candidate.m4a");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot("unread-source.flac", 1000, 8, 1, 0, false, false,
+            Kind: MediaKind.Audio, VideoReencoded: false);
+        var evidence = Evidence() with { SourceProbe = audio, CandidateProbe = audio,
+            SourceVideo = null, CandidateVideo = null, SourceAudio = new(true, 0, null, 8), CandidateAudio = new(true, 0, null, 8) };
+        var policy = AudioQualityGateTests.Policy(0.01);
+        foreach (var distance in new[] { 0.005, 0.02 })
+        {
+            var assessment = new AudioQualityAssessmentResult(true, null, new(8, 2, 48000, "stereo"), new(8, 2, 48000, "stereo"),
+                evidence.SourceSha256, evidence.CandidateSha256, new('c', 64), new('d', 64), new('e', 64),
+                [new(new(0, 8), new(384000, [0, distance]))], 1);
+            var outcome = await Service().VerifyAsync(original, output, policy, default,
+                remoteEvidence: evidence with { AudioQuality = RemoteAudioQualityEvidence.From(assessment) });
+            Assert.Equal(distance <= 0.01, outcome.Report.Passed);
+            Assert.Equal("Worker", outcome.Report.AudioQuality!.MeasurementLocation);
+            var mismatched = await Service().VerifyAsync(original, output, policy, default,
+                remoteEvidence: evidence with { AudioQuality = RemoteAudioQualityEvidence.From(assessment with { ReferenceSha256 = new('f', 64) }) });
+            Assert.False(mismatched.Report.Passed);
+            Assert.Contains("delivered files", mismatched.Report.AudioQuality!.UnavailableReason);
+        }
+    }
+
+    [Fact]
+    public async Task Opt_in_audio_reporting_never_reads_remote_media_when_the_worker_omits_observations()
+    {
+        const string audio = """{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000","duration":"8"}],"format":{"duration":"8","format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}""";
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.m4a");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot("unread-source.flac", 1000, 8, 1, 0, false, false,
+            Kind: MediaKind.Audio, VideoReencoded: false);
+        var evidence = Evidence() with { SourceProbe = audio, CandidateProbe = audio,
+            SourceVideo = null, CandidateVideo = null, SourceAudio = new(true, 0, null, 8), CandidateAudio = new(true, 0, null, 8) };
+        var baseline = await Service().VerifyAsync(original, output, VerificationPolicy.Default, default, remoteEvidence: evidence);
+        var actual = await Service().VerifyAsync(original, output,
+            VerificationPolicy.Default with { AudioQualityReportingEnabled = true }, default, remoteEvidence: evidence);
+        Assert.Equal(baseline.Report.Checks, actual.Report.Checks);
+        Assert.True(actual.Report.Passed);
+        Assert.Equal("Worker", actual.Report.AudioQuality!.MeasurementLocation);
+        Assert.Contains("no audio quality report", actual.Report.AudioQuality.UnavailableReason);
+        var gated = await Service().VerifyAsync(original, output,
+            VerificationPolicy.Default with { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 },
+            default, remoteEvidence: evidence);
+        Assert.False(gated.Report.Passed);
+        Assert.Contains(gated.Report.Checks, check => check.Name == AudioQualityGate.CheckName && check.Outcome == CheckOutcome.Failed);
+        Assert.Equal("Worker", gated.Report.AudioQuality!.MeasurementLocation);
+        Assert.False(gated.Report.AudioQuality.GatePassed);
+    }
 
     [Fact]
     public async Task Audio_worker_evidence_is_evaluated_without_server_media_tools_or_VMAF()

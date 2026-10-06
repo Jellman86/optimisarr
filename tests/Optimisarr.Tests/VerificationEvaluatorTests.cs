@@ -15,6 +15,42 @@ public sealed class VerificationEvaluatorTests
         OutputSubtitleTrackCount = 0
     };
 
+    [Theory]
+    [InlineData(400, 390)]
+    [InlineData(400, 401)]
+    [InlineData(400, null)]
+    [InlineData(null, 400)]
+    [InlineData(0, 0)]
+    public void Required_picture_retention_rejects_lost_added_or_unmeasured_pictures(int? source, int? candidate)
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy() with {
+            RequireVideoFrameRetention = true, OriginalDecodedFrameCount = source, OutputDecodedFrameCount = candidate
+        }, VerificationPolicy.Default);
+        Assert.Contains(report.Checks, c => c.Name == "Picture retention" && c.Outcome == CheckOutcome.Failed);
+        Assert.False(report.Passed);
+    }
+
+    [Fact]
+    public void Every_decoded_picture_passes_the_retention_check()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy() with {
+            RequireVideoFrameRetention = true, OriginalDecodedFrameCount = 400, OutputDecodedFrameCount = 400
+        }, VerificationPolicy.Default);
+        Assert.True(report.Passed);
+        Assert.Contains(report.Checks, c => c.Name == "Picture retention" && c.Detail.Contains("400"));
+    }
+
+    [Fact]
+    public void Intentional_frame_rate_conversion_does_not_require_equal_picture_counts()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy() with {
+            RequireVideoFrameRetention = true, OriginalDecodedFrameCount = 400, OutputDecodedFrameCount = 200,
+            ExpectedFrameRate = 12, OutputFrameRate = 12
+        }, VerificationPolicy.Default);
+        Assert.DoesNotContain(report.Checks, c => c.Name == "Picture retention");
+        Assert.True(report.Passed);
+    }
+
     [Fact]
     public void An_audio_output_passes_without_a_video_stream_check()
     {
@@ -1043,6 +1079,28 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Duration"));
+    }
+
+    [Theory]
+    [InlineData("1371.370000,1275.899625,95.470375\n1397.020625,1396.853792,0.041708", CheckOutcome.Passed)]
+    [InlineData("1371.370000,1275.899625,95.470375\n1397.020625,1396.853792,70.000000", CheckOutcome.Failed)]
+    public void Duration_gate_uses_the_final_presented_picture_and_still_rejects_a_long_final_hold(
+        string packets, CheckOutcome expected)
+    {
+        var endpoint = PacketTimestampParser.Parse(packets).LastPresentationSeconds;
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 1397.062,
+            OutputDurationSeconds = endpoint,
+            OriginalAudioLastPresentationSeconds = null,
+            OutputLastPresentationSeconds = endpoint,
+            TimestampsMeasured = true
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(expected, Outcome(report, "Duration"));
+        Assert.Equal(expected == CheckOutcome.Passed, report.Passed);
     }
 
     [Fact]

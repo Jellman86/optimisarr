@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Worker } from '../api'
-  import { formatSize } from '../format'
+  import { formatRelative, formatSize } from '../format'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
@@ -26,6 +26,17 @@
       : null,
   )
 
+  // A problem is news for a day; after that it is history, still worth reading but not a warning.
+  const PROBLEM_FRESH_MS = 24 * 60 * 60 * 1000
+  function problemIsFresh(worker: Worker): boolean {
+    return worker.lastProblemAt != null && Date.now() - new Date(worker.lastProblemAt).getTime() < PROBLEM_FRESH_MS
+  }
+
+  function problemLine(worker: Worker): string {
+    const when = worker.lastProblemAt ? formatRelative(worker.lastProblemAt, new Date(), i18n.locale) : null
+    return when ? `${when} · ${worker.lastProblem}` : worker.lastProblem ?? ''
+  }
+
   // Built here rather than in the template: Svelte trims the leading space out of an inline
   // {#if} block, which silently rendered "1 job· 0.1.4".
   function workerSubtitle(worker: Worker): string {
@@ -49,7 +60,7 @@
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.fleet}</span>
     {#if workersAvailable}
-      <span class="ml-auto font-mono text-xs text-ink-3">
+      <span class="ml-auto text-xs text-ink-3">
         {t(i18n.m.dashboard.fleet_reporting, { online: online.toLocaleString(), total: total.toLocaleString() })}
       </span>
     {/if}
@@ -64,11 +75,11 @@
           <span class="h-1.5 w-1.5 flex-none rounded-full bg-ok" aria-hidden="true"></span>
           {i18n.m.dashboard.this_server}
         </div>
-        <div class="mt-1 font-mono text-xs text-ink-3">
+        <div class="mt-1 text-xs text-ink-3">
           {plural(runningLocally, i18n.m.dashboard.fleet_jobs_one, i18n.m.dashboard.fleet_jobs_other, runningLocally.toLocaleString())}
         </div>
       </div>
-      <div class="font-mono text-[10px] text-ink-2">
+      <div class="text-[11px] font-medium text-ink-3">
         <div class="mb-1 flex items-center gap-2">
           <span class="w-7">CPU</span>
           <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-sunken"><span class="block h-full rounded-full bg-ink-3" style="width: {localCpu ?? 0}%"></span></span>
@@ -84,7 +95,7 @@
           <div class="text-ink-3">{i18n.m.dashboard.gpu_not_reported}</div>
         {/if}
       </div>
-      <div class="font-mono text-xs tabular-nums text-ink-3 sm:text-right"></div>
+      <div class="text-xs tabular-nums text-ink-3 sm:text-right"></div>
     </li>
 
     {#each active as worker (worker.id)}
@@ -99,16 +110,16 @@
             ></span>
             <span class="truncate">{worker.name}</span>
           </div>
-          <div class="mt-1 truncate font-mono text-xs text-ink-3">
+          <div class="mt-1 truncate text-xs text-ink-3">
             {worker.online ? workerSubtitle(worker) : i18n.m.dashboard.fleet_offline}
           </div>
           {#if worker.lastProblem}
             <!-- The server's most recent objection to this worker. Without it, a machine quietly
                  refusing every job is invisible until someone goes looking for it. -->
-            <div class="mt-1 line-clamp-2 text-xs text-warn" title={worker.lastProblem}>{worker.lastProblem}</div>
+            <div class="mt-1 line-clamp-2 text-xs {problemIsFresh(worker) ? 'text-warn' : 'text-ink-4'}" title={worker.lastProblem}>{problemLine(worker)}</div>
           {/if}
         </div>
-        <div class="font-mono text-[10px] text-ink-2">
+        <div class="text-[11px] font-medium text-ink-3">
           {#if cpu != null}
             <div class="mb-1 flex items-center gap-2">
               <span class="w-7">CPU</span>
@@ -128,7 +139,7 @@
             <div class="text-ink-3">{i18n.m.dashboard.gpu_not_reported}</div>
           {/if}
         </div>
-        <div class="font-mono text-xs tabular-nums text-ink-3 sm:text-right">
+        <div class="text-xs tabular-nums text-ink-3 sm:text-right">
           {worker.online ? formatSize(worker.freeScratchBytes) : '—'}
         </div>
       </li>

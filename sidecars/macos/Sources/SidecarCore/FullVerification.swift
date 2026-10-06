@@ -4,6 +4,9 @@ public struct FullVerificationContract: Codable, Sendable, Equatable {
     public let version: Int
     public let id: String
     public let measureAudio: Bool
+    public var measureAudioQuality: Bool? = nil
+    public var soundtrackQuality: SoundtrackQualityRequest? = nil
+    public var countVideoFrames: Bool? = nil
 }
 
 public struct VerificationDecode: Codable, Sendable, Equatable {
@@ -39,7 +42,11 @@ public struct FullVerificationEvidence: Codable, Sendable {
     public var candidateAudio: VerificationTimestamps?
     public var sourceLoudness: VerificationLoudness?
     public var candidateLoudness: VerificationLoudness?
+    public var audioQuality: RemoteAudioQualityEvidence?
+    public var soundtrackQuality: SoundtrackQualityReport?
     public var error: String?
+    public var sourceDecodedFrameCount: Int?
+    public var candidateDecodedFrameCount: Int?
 }
 
 /// Reduces arbitrarily long packet streams without returning them to the server or retaining them in RAM.
@@ -47,6 +54,7 @@ struct VerificationTimestampAccumulator {
     var count = 0
     var regressions = 0
     var previousDts: Double?
+    var latestPts: Double?
     var lastPresentation: Double?
     var firstRegression: String?
 
@@ -60,7 +68,13 @@ struct VerificationTimestampAccumulator {
         if pts != nil || dts != nil { count += 1 }
         if let pts {
             let endpoint = pts + max(0, number(2) ?? 0)
-            lastPresentation = max(lastPresentation ?? endpoint, endpoint)
+            // Reordered packets can carry a long decode span that does not extend presentation.
+            if latestPts == nil || pts > latestPts! {
+                latestPts = pts
+                lastPresentation = endpoint
+            } else if pts == latestPts {
+                lastPresentation = max(lastPresentation ?? endpoint, endpoint)
+            }
         }
         if let dts {
             if let previousDts, dts < previousDts {
@@ -87,7 +101,7 @@ public struct FullVerification: Sendable {
                         candidate: URL, scratch: URL, sourceHash: String, candidateHash: String) async throws -> FullVerificationEvidence {
         var evidence = FullVerificationEvidence(contractId: contract.id, sourceSha256: sourceHash, candidateSha256: candidateHash)
         do {
-            guard [1, 2].contains(contract.version), let ffprobe else { throw Failure("This worker cannot run the requested full verification contract.") }
+            guard [1, 2, 3].contains(contract.version), contract.version != 3 || contract.soundtrackQuality != nil, let ffprobe else { throw Failure("This worker cannot run the requested full verification contract.") }
             evidence.sourceProbe = try await probe(ffprobe, file: source, scratch: scratch, name: "source")
             evidence.candidateProbe = try await probe(ffprobe, file: candidate, scratch: scratch, name: "candidate")
             // The runner retains a bounded diagnostic tail. Stop on decode errors so a later
@@ -114,6 +128,32 @@ public struct FullVerification: Sendable {
                 evidence.sourceLoudness = try await loudness(ffmpeg, file: source)
                 evidence.candidateLoudness = try await loudness(ffmpeg, file: candidate)
             }
+            if contract.version == 2, contract.measureAudioQuality == true, evidence.decode?.healthy == true,
+               let sourceProbe = evidence.sourceProbe, let candidateProbe = evidence.candidateProbe {
+                let override = ProcessInfo.processInfo.environment["OPTIMISARR_AUDIO_QUALITY"]
+                let metric = override.map { URL(fileURLWithPath: $0) }
+                    ?? ffmpeg.deletingLastPathComponent().appendingPathComponent("optimisarr-audio-quality")
+                evidence.audioQuality = try await AudioQualityAssessment(runner: runner).measure(
+                    ffmpeg: ffmpeg, ffprobe: ffprobe, metric: metric, source: source, candidate: candidate,
+                    sourceProbe: sourceProbe, candidateProbe: candidateProbe, scratch: scratch)
+            }
+            if contract.version == 3, let request = contract.soundtrackQuality,
+               let sourceProbe = evidence.sourceProbe, let candidateProbe = evidence.candidateProbe {
+                let metric = ProcessInfo.processInfo.environment["OPTIMISARR_AUDIO_QUALITY"].map { URL(fileURLWithPath: $0) }
+                    ?? ffmpeg.deletingLastPathComponent().appendingPathComponent("optimisarr-audio-quality")
+                evidence.soundtrackQuality = try await SoundtrackQualityAssessment(runner: runner).measure(
+                    ffmpeg: ffmpeg, ffprobe: ffprobe, metric: metric, source: source, candidate: candidate,
+                    sourceProbe: sourceProbe, candidateProbe: candidateProbe, request: request,
+                    healthy: evidence.decode?.healthy == true, scratch: scratch)
+            }
+            if contract.countVideoFrames == true {
+                guard contract.version != 2 else { throw Failure("Picture counts require a video contract.") }
+                evidence.sourceDecodedFrameCount = try await pictureCount(ffprobe, file: source, scratch: scratch, name: "source")
+                evidence.candidateDecodedFrameCount = try await pictureCount(ffprobe, file: candidate, scratch: scratch, name: "candidate")
+                guard evidence.sourceDecodedFrameCount != nil, evidence.candidateDecodedFrameCount != nil else {
+                    throw Failure("Complete decoded picture counts are required; packet counts cannot prove picture retention.")
+                }
+            }
             let scans = contract.version == 2
                 ? [("source-audio", evidence.sourceAudio), ("candidate-audio", evidence.candidateAudio)]
                 : [("source-video", evidence.sourceVideo), ("candidate-video", evidence.candidateVideo)]
@@ -126,6 +166,27 @@ public struct FullVerification: Sendable {
           catch { evidence.error = "Full verification could not complete: \(error)" }
         try Task.checkCancellation()
         return evidence
+    }
+
+    static func parsePictureCount(_ text: String) -> Int? {
+        guard let value = Int(text.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ","))),
+              value > 0, value <= Int32.max else { return nil }
+        return value
+    }
+
+    static func pictureCountArguments(file: URL, output: URL) -> [String] {
+        ["-v", "error", "-select_streams", movingPictureStreamSpecifier, "-count_frames",
+         "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", "-o", output.path, file.path]
+    }
+
+    private func pictureCount(_ ffprobe: URL, file: URL, scratch: URL, name: String) async throws -> Int? {
+        let output = scratch.appendingPathComponent("verification-\(name)-pictures.csv")
+        defer { try? FileManager.default.removeItem(at: output) }
+        let result = try await runner.run(ffprobe, Self.pictureCountArguments(file: file, output: output)) { _ in }
+        guard result.exitCode == 0 else { throw Failure("\(name) picture count failed (\(result.exitCode)).") }
+        let size = (try FileManager.default.attributesOfItem(atPath: output.path)[.size] as? NSNumber)?.intValue ?? 0
+        guard size > 0, size <= 128 else { return nil }
+        return Self.parsePictureCount(try String(contentsOf: output, encoding: .utf8))
     }
 
     private func probe(_ ffprobe: URL, file: URL, scratch: URL, name: String) async throws -> String {

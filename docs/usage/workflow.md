@@ -55,6 +55,14 @@ Do this:
 8. Use the overview or breadcrumbs to move between stages. The draft is retained, and **Save**
    applies changes from all stages together. Advanced pages are optional refinements.
 
+For explicitly re-encoded video audio, **Verify** also offers **Soundtrack quality report**
+and **Require soundtrack quality**, both off by default and separate from standalone audio.
+When enabling the gate, choose **Maximum soundtrack difference** in **Advanced verification**.
+Reports alone do not block replacement; a configured gate needs every retained supported track
+and sample to pass. Copied audio and previews skip this assessment. Review the
+[supported tracks, sample coverage and cost](../setup/configuration.md#assess-re-encoded-video-soundtracks)
+before using it on a library.
+
 The library overview groups controls by processing stage. Each stage opens its own page, and
 breadcrumbs return to the overview without discarding your draft.
 
@@ -194,15 +202,18 @@ ratio is applied to the source's picture, with copied audio and subtitles counte
 unchanged and re-encoded audio estimated from its target bitrate.
 
 If the chosen quality's samples forecast a file larger than the library allows,
-the job moves to **Needs review** instead of spending a full encode. A sample
-that misses the VMAF target and still does not fit also stops the search at once,
-because any quality that passes would be larger. Open the job to read the
-estimate and how each sampled scene compared. **Encode anyway** repeats the
-quality search on the assigned encoder and permits one full encode; the final
-size and quality checks still apply. **Stop and remove** clears the held job.
-The forecast is an estimate from three scenes, so the rest of the video can
-differ. No original file changes while a job waits for review. Searches on Mac
-and Windows sidecars are forecast the same way.
+Optimisarr marks the job **Failed** before running the full encode. A sample
+that misses the VMAF target and still does not fit also stops the search, because
+raising its quality would normally require a larger file. Open the failed job to
+read the **Size saving prediction**, estimated growth and sampled scene ratios.
+The reason states that this is a prediction and the full encode did not run.
+
+The forecast samples three scenes, so the rest of the video can differ. If you
+want to try again, adjust the library's size or quality settings and use **Retry**.
+A retry repeats the samples and keeps the final size and quality gates. Originals
+are unchanged. Predictions on container, Mac, Windows and Linux workers follow
+the same rule. On upgrade, jobs previously held for size review become predicted
+size failures; their reasons remain available in the failure history.
 
 Use **Pause queue** at the top right of the Queue page when you need Optimisarr to yield the server
 for maintenance or other work. It stops new jobs and automatic replacements from starting. On the
@@ -293,9 +304,12 @@ Once a manual batch looks good, enable automation per library.
 Use **Optimise automatically** when you want eligible files queued and started
 inside a local-time window. Use `00:00` to `00:00` for all day.
 
-Use **Auto-replace** only after you have reviewed successful jobs for that
-library and preset. Auto-replace still verifies outputs and quarantines originals
-first, but it removes the manual click between verification and replacement.
+Use **Auto-accept passed jobs** in **Schedule & replace** only after reviewing a
+small manual batch for that library and preset. It is off by default for every
+library type. Read the warning, acknowledge the risk, confirm, then **Save**.
+Already-ready jobs are included. Originals stay in Quarantine until approval or
+retention cleanup deletes them; keep a separate backup. Incorrect settings can
+damage files or lose quality, tracks and metadata even when enabled checks pass.
 
 Keep dry-run on while testing automation if you want evidence without original
 file changes.

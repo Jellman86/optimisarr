@@ -158,6 +158,12 @@ internal static class LibraryEndpoints
                 AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled,
                 MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs,
                 AudioClippingGateEnabled = parsed.AudioClippingGateEnabled,
+                AudioQualityReportingEnabled = parsed.AudioQualityReportingEnabled,
+                AudioQualityGateEnabled = parsed.AudioQualityGateEnabled,
+                MaximumAudioQualityDistance = parsed.MaximumAudioQualityDistance,
+                SoundtrackQualityReportingEnabled = parsed.SoundtrackQualityReportingEnabled,
+                SoundtrackQualityGateEnabled = parsed.SoundtrackQualityGateEnabled,
+                MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance,
                 MaxTruePeakDbtp = parsed.MaxTruePeakDbtp,
                 ImageQualityGateEnabled = parsed.ImageQualityGateEnabled,
                 MinimumImageSsim = parsed.MinimumImageSsim,
@@ -187,6 +193,14 @@ internal static class LibraryEndpoints
             {
                 return ApiErrors.NotFound("library.notFound", $"No library with id {id}.", new { id });
             }
+
+            request = request with
+            {
+                AudioQualityGateEnabled = request.AudioQualityGateEnabled ?? library.AudioQualityGateEnabled,
+                MaximumAudioQualityDistance = request.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance,
+                SoundtrackQualityGateEnabled = request.SoundtrackQualityGateEnabled ?? library.SoundtrackQualityGateEnabled,
+                MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance
+            };
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
             {
@@ -255,6 +269,12 @@ internal static class LibraryEndpoints
             library.AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled;
             library.MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs;
             library.AudioClippingGateEnabled = parsed.AudioClippingGateEnabled;
+            library.AudioQualityReportingEnabled = request.AudioQualityReportingEnabled ?? library.AudioQualityReportingEnabled;
+            library.AudioQualityGateEnabled = parsed.AudioQualityGateEnabled;
+            library.MaximumAudioQualityDistance = parsed.MaximumAudioQualityDistance;
+            library.SoundtrackQualityReportingEnabled = request.SoundtrackQualityReportingEnabled ?? library.SoundtrackQualityReportingEnabled;
+            library.SoundtrackQualityGateEnabled = parsed.SoundtrackQualityGateEnabled;
+            library.MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance;
             library.MaxTruePeakDbtp = parsed.MaxTruePeakDbtp;
             library.ImageQualityGateEnabled = parsed.ImageQualityGateEnabled;
             library.MinimumImageSsim = parsed.MinimumImageSsim;

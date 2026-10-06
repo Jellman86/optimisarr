@@ -8,7 +8,10 @@
   import Icon from '../components/Icon.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
+  import AudioQualityReport from '../components/AudioQualityReport.svelte'
+  import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import MediaCompare from '../components/MediaCompare.svelte'
+  import PosterGlow from '../components/PosterGlow.svelte'
 
   let replacements = $state<Replacement[]>([])
   let error = $state<string | null>(null)
@@ -173,6 +176,15 @@
     return Math.round((1 - r.newSizeBytes / r.originalSizeBytes) * 100)
   }
 
+  function audioReport(detail: ReplacementDetail | null | undefined) {
+    try { return detail?.verificationReportJson ? (JSON.parse(detail.verificationReportJson) as VerificationReport).audioQuality ?? null : null }
+    catch { return null }
+  }
+  function soundtrackReport(detail: ReplacementDetail | null | undefined) {
+    try { return detail?.verificationReportJson ? (JSON.parse(detail.verificationReportJson) as VerificationReport).soundtrackQuality ?? null : null }
+    catch { return null }
+  }
+
   function parseChecks(detail: ReplacementDetail | undefined): VerificationCheck[] | null {
     if (!detail?.verificationReportJson) return null
     try {
@@ -194,9 +206,9 @@
       <a class="focus-ring inline-flex min-h-11 items-center rounded px-1 hover:text-accent" href="#/quarantine">{i18n.m.nav.quarantine}</a>
       <span aria-hidden="true">/</span><span aria-current="page" class="text-ink">{i18n.m.quarantine.review_title}</span>
     </nav>
-    <header class="card flex items-center gap-5 p-5 sm:p-6">
-      {#if selected}<Thumbnail mediaFileId={selected.mediaFileId} size="md" />{/if}
-      <div class="min-w-0 flex-1">
+    <header class="card relative flex items-center gap-5 overflow-hidden p-5 sm:p-6">
+      {#if selected}<PosterGlow mediaFileId={selected.mediaFileId} /><div class="relative"><Thumbnail mediaFileId={selected.mediaFileId} size="lg" /></div>{/if}
+      <div class="relative min-w-0 flex-1">
         <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={heading}>{selected ? fileName(selected.finalPath) : i18n.m.quarantine.review_title}</h1>
         {#if selected}
           <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink-3">
@@ -220,10 +232,21 @@
         <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{i18n.m.quarantine.col_saving}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl text-accent">{formatSize(r.originalSizeBytes - r.newSizeBytes)} <span class="text-sm text-ink-3">({savingPercent(r)}%)</span></p></div>
       </div>
       {#if r.status === 'Replaced'}
+        <section class="card p-5 sm:p-6" aria-labelledby="quarantine-decision">
+          <h2 id="quarantine-decision" class="text-base font-semibold">{i18n.m.quarantine.decision_title}</h2>
+          <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-3">{i18n.m.quarantine.action_note}</p>
+          {#if error}<div role="alert"><Banner kind="error" class="mt-4">{error}</Banner></div>{/if}
+          <div class="mt-5 flex flex-wrap gap-3">
+            <button class="btn btn-primary min-h-11" onclick={() => decide(r, 'approve')} disabled={busy}><Icon name="check" />{busyId === r.id ? i18n.m.quarantine.working : i18n.m.quarantine.approve_free_space}</button>
+            <button class="btn btn-danger min-h-11" onclick={() => decide(r, 'reject')} disabled={busy}><Icon name="rotate" />{i18n.m.quarantine.reject_roll_back}</button>
+          </div>
+        </section>
+      {/if}
+      {#if r.status === 'Replaced'}
         <section class="card p-4 sm:p-6" aria-labelledby="quarantine-compare">
           <h2 id="quarantine-compare" class="mb-4 text-base font-semibold">{i18n.m.quarantine.compare_title}</h2>
           {#key r.id}
-            <MediaCompare mediaKind={r.mediaKind}
+            <MediaCompare mediaKind={r.mediaKind} poster={api.jobArtworkUrl(r.jobId)}
               left={{ label: i18n.m.quarantine.original_quarantined, url: api.replacementOriginalContentUrl(r.id), sizeBytes: r.originalSizeBytes }}
               right={{ label: i18n.m.quarantine.replacement_in_place, url: api.replacementReplacementContentUrl(r.id), sizeBytes: r.newSizeBytes }} />
           {/key}
@@ -240,19 +263,10 @@
         <div class="mb-4 flex flex-wrap items-center gap-3"><h2 id="quarantine-verification" class="text-base font-semibold">{i18n.m.quarantine.verification}</h2>
           {#if r.verificationPassed !== null}<span class="badge {r.verificationPassed ? 'tone-ok' : 'tone-bad'}">{r.verificationPassed ? i18n.m.quarantine.passed : i18n.m.quarantine.failed}</span>{/if}
         </div>
+        <AudioQualityReport report={audioReport(detail)} />
+        <SoundtrackQualityReport report={soundtrackReport(detail)} />
         {#if checks}<VerificationChecks {checks} />{:else}<p class="text-sm text-ink-3">{i18n.m.quarantine.no_report}</p>{/if}
       </section>
-      {#if r.status === 'Replaced'}
-        <section class="card p-5 sm:p-6" aria-labelledby="quarantine-decision">
-          <h2 id="quarantine-decision" class="text-base font-semibold">{i18n.m.quarantine.decision_title}</h2>
-          <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-3">{i18n.m.quarantine.action_note}</p>
-          {#if error}<div role="alert"><Banner kind="error" class="mt-4">{error}</Banner></div>{/if}
-          <div class="mt-5 flex flex-wrap gap-3">
-            <button class="btn btn-primary min-h-11" onclick={() => decide(r, 'approve')} disabled={busy}><Icon name="check" />{busyId === r.id ? i18n.m.quarantine.working : i18n.m.quarantine.approve_free_space}</button>
-            <button class="btn btn-danger min-h-11" onclick={() => decide(r, 'reject')} disabled={busy}><Icon name="rotate" />{i18n.m.quarantine.reject_roll_back}</button>
-          </div>
-        </section>
-      {/if}
     {:else}<div class="card p-8 text-sm text-ink-3">{i18n.m.quarantine.unavailable}</div>{/if}
     <a class="btn min-h-11" href="#/quarantine"><Icon name="arrow-left" />{i18n.m.nav.quarantine}</a>
   </div>
@@ -321,12 +335,17 @@
                 {/if}
               </td>
               <td class="px-4 py-2">
+                <div class="flex items-center gap-3">
+                <Thumbnail mediaFileId={r.mediaFileId} alt="" />
+                <div class="min-w-0">
                 <a id={`replacement-${r.id}`} class="focus-ring flex min-h-11 items-center gap-2 rounded text-sm font-medium text-ink hover:text-accent" href={`#/quarantine/${r.id}`} onclick={() => rememberList(r.id)}><span class="min-w-0 truncate" title={r.finalPath}>{fileName(r.finalPath)}</span><Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" /></a>
                 {#if r.status === 'Purged'}
                   <div class="text-[11px] text-ink-3">{i18n.m.quarantine.original_purged}</div>
                 {:else if r.status === 'Replaced'}
                   <div class="max-w-md truncate font-mono text-[11px] text-ink-3" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
                 {/if}
+                </div>
+                </div>
               </td>
               <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
                 {formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}

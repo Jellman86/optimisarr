@@ -197,7 +197,7 @@ exists in quarantine.
 | `GET` | `/api/diagnostics/capture` | Latest opt-in capture session, or `null`. |
 | `POST` | `/api/diagnostics/capture` | Start a session with `durationHours` (`1`, `24`, `168`, or `null` for until stopped), optional `scopedJobId`, and `includePaths` (default `false`). Returns `409` if another session is active. |
 | `POST` | `/api/diagnostics/capture/{id}/stop` | Stop a session; its evidence remains downloadable until retention removes it. |
-| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. Schema version 2 adds sanitized retained worker timestamp/decode measurements, record availability and hash comparisons. The manifest lists omissions, current-registration identity limits, unrecorded timeline methods and whether full paths were included. |
+| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. Schema version 3 includes sanitized worker timestamps/decode measurements, record availability, hash comparisons, stored contract version, decoded picture counts and candidate audio timestamps. Identity comparisons cover supported video, audio and soundtrack contracts; they do not authorise replacement. Missing counts remain unknown, and packet counts are separate. The manifest lists omissions, current-registration identity limits, unrecorded timeline methods and whether full paths were included. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
@@ -237,6 +237,11 @@ Health response:
 | `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
 | `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
+
+Configuration exports use format version `3` to preserve soundtrack reporting and gates. Imports
+accept legacy versions `1` and `2` and preserve existing soundtrack controls when omitted.
+Version `1` imports also preserve an existing standalone audio gate when its fields are omitted.
+Older builds reject version `3`.
 
 Settings fields include:
 
@@ -297,9 +302,27 @@ deleting anything so the operator can review and confirm the new preview.
 
 ## Libraries and Inventory
 
+Library create/update requests accept `audioQualityReportingEnabled`, `audioQualityGateEnabled`
+and `maximumAudioQualityDistance`. The gate starts off. Enabling it requires an explicit finite
+limit from 0 to 1 and a `Music` or `Other` library. It applies only to standalone audio jobs.
+Gate-enabled jobs measure even with reporting off; every assessed channel/sample must meet the
+limit, and missing measurements block replacement. Older update requests preserve the saved gate
+and limit. See [coverage and controls](setup/configuration.md#audio-quality-reports-and-gates-development).
+
+Video soundtrack controls are separate: `soundtrackQualityReportingEnabled`,
+`soundtrackQualityGateEnabled` and `maximumSoundtrackQualityDistance`. Both switches default
+`false`; the limit defaults `null`. Enabling the gate requires a Film, TV or Other library
+(`Film`, `Tv` or `Other`) and an explicit finite limit from 0 to 1. It applies only to retained,
+explicitly re-encoded audio in full video jobs. Copied audio and previews bypass this assessment.
+Every channel/sample of every retained track must meet the limit, and unavailable evidence
+blocks a gated job. Reporting alone leaves the verification verdict unchanged. Omitted update
+fields preserve saved soundtrack controls. Configuration format `3` carries them; imports of
+versions `1` and `2` preserve existing controls when omitted. See
+[supported tracks and safety limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
+
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/library-options` | Available media types, rule profiles, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
+| `GET` | `/api/library-options` | Available media types, rule profiles with video/standalone-audio defaults, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
 | `GET` | `/api/libraries` | List configured libraries. |
 | `GET` | `/api/libraries/{id}/access` | Check whether the configured path exists and is readable/writable. |
 | `POST` | `/api/libraries` | Create a library. |
@@ -312,6 +335,9 @@ deleting anything so the operator can review and confirm the new preview.
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
 | `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts. |
+| `GET` | `/api/libraries/{id}/duplicates` | Current in-memory exact-copy scan status and bounded snapshot for this library. |
+| `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Returns `202`, or `409` if busy or over the 50,000-candidate preview limit. |
+| `DELETE` | `/api/libraries/{id}/duplicates` | Cancel this library's running scan. Does not delete files or results. Returns `202`, or `409` if the scan has stopped. |
 
 Create and update library bodies use the same shape. Common fields:
 

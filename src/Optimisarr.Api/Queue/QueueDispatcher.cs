@@ -150,6 +150,7 @@ public sealed class QueueDispatcher(
     {
         await pauseManager.RestoreAsync(stoppingToken);
         await PurgeDisposableJobsAsync(stoppingToken);
+        await FailLegacySizeReviewsAsync(stoppingToken);
         await RecoverInterruptedJobsAsync(stoppingToken);
         await PurgeAbandonedWorkAsync(stoppingToken);
 
@@ -339,7 +340,7 @@ public sealed class QueueDispatcher(
 
     // Replaces jobs already in ReadyToReplace whose library auto-replaces. This makes "Replace
     // automatically" apply retrospectively (a job that verified before the toggle was on, or was
-    // left ready by a transient replace failure). ReplaceAsync still quarantines the original and
+    // left ready by a transient replace failure). ReplaceAutomaticallyAsync still quarantines the original and
     // records a rollback first, so the safety model is unchanged; a failure leaves the job ready
     // for the next cycle to retry.
     private async Task ReconcileAutoReplaceAsync(CancellationToken cancellationToken)
@@ -385,7 +386,7 @@ public sealed class QueueDispatcher(
             {
                 await using var replaceScope = scopeFactory.CreateAsyncScope();
                 var replacement = replaceScope.ServiceProvider.GetRequiredService<ReplacementService>();
-                return await replacement.ReplaceAsync(jobId, cancellationToken);
+                return await replacement.ReplaceAutomaticallyAsync(jobId, cancellationToken);
             }, cancellationToken);
             if (!guarded.Started)
             {
@@ -976,7 +977,7 @@ public sealed class QueueDispatcher(
 
         WorkerProblems.Record(
             worker,
-            $"Its candidate for {verdict.Path ?? $"job {jobId}"} failed verification: {verdict.ErrorMessage ?? "no reason recorded"}.",
+            WorkerProblems.FailedVerification(verdict.Path, jobId, verdict.ErrorMessage),
             DateTimeOffset.UtcNow);
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -1165,8 +1166,7 @@ public sealed class QueueDispatcher(
                 var selection = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
                 if (selection is null)
                 {
-                    // The sample-size forecast is advisory, so this job waits for an operator
-                    // rather than producing or failing a candidate. It owns no full output.
+                    // The samples rejected the size prediction before any full output existed.
                     return;
                 }
                 preparedWork = selection.Value;
@@ -1473,7 +1473,13 @@ public sealed class QueueDispatcher(
                 library?.MinimumImageSsim,
                 library?.ImageMetadataGateEnabled,
                 library?.MinimumSizeSavingPercent,
-                library?.MaximumSizeSavingPercent));
+                library?.MaximumSizeSavingPercent,
+                library?.AudioQualityReportingEnabled,
+                library?.AudioQualityGateEnabled,
+                library?.MaximumAudioQualityDistance,
+                library?.SoundtrackQualityReportingEnabled,
+                library?.SoundtrackQualityGateEnabled,
+                library?.MaximumSoundtrackQualityDistance));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
@@ -1589,8 +1595,13 @@ public sealed class QueueDispatcher(
             work.UsedHardwareDecode && work.VideoEncoder is not null ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
             work.Spec.AudioEncoder,
             search,
-            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2 : 1, Guid.NewGuid(),
-                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
+            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2
+                : work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded) ? 3 : 1, Guid.NewGuid(),
+                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled,
+                work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind),
+                work.Spec.Kind == MediaKind.Video && work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded)
+                    ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null,
+                CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
@@ -1803,6 +1814,20 @@ public sealed class QueueDispatcher(
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
             sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null);
 
+        if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null
+            && TranscodeSpecResolver.IsMp4Container(Path.GetExtension(spec.OutputPath)))
+        {
+            freshSourceProbe ??= await scope.ServiceProvider.GetRequiredService<IMediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
+                throw new InvalidOperationException("Fresh source probe required for safe MP4 picture timing failed: " + freshSourceProbe.Error);
+            // Correct the common input origin before hardware encoders see negative pictures.
+            // This metadata-only head read shifts every retained track together.
+            if (freshSourceProbe.ContainerStartSeconds is > 0)
+                spec = spec with { InputTimestampOffsetSeconds = await scope.ServiceProvider.GetRequiredService<InputTimestampOffset>()
+                    .MeasureAsync(media.Path, freshSourceProbe.ContainerStartSeconds, cancellationToken) };
+        }
+
         if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
             && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.Path),
                 freshSourceProbe?.AudioCodecs, spec.RemoveAudioStreamIndexes ?? []))
@@ -1891,7 +1916,8 @@ public sealed class QueueDispatcher(
             media.MediaKind,
             // A video job whose audio was re-encoded (not copied) may legitimately normalise
             // the sample rate, so the audio-fidelity gate must treat it like an audio job.
-            AudioReencoded: media.MediaKind != MediaKind.Audio && spec.AudioEncoder is not null,
+            AudioReencoded: media.MediaKind != MediaKind.Audio && spec.AudioEncoder is not null
+                && media.AudioTrackCount > (spec.RemoveAudioStreamIndexes?.Count ?? 0),
             // An operator-requested stereo downmix is an intentional channel reduction.
             AudioDownmixed: spec.DownmixToStereo,
             // A requested image downscale is an intentional dimension reduction, not corruption.
@@ -2267,9 +2293,9 @@ public sealed class QueueDispatcher(
                     decision,
                     maximumCandidateBytes,
                     work.BypassSizePreflight);
-                if (sizeReview.ShouldHold)
+                if (sizeReview.ShouldReject)
                 {
-                    await HoldForSizeReviewAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
+                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
                     return null;
                 }
 
@@ -2545,29 +2571,48 @@ public sealed class QueueDispatcher(
         return work;
     }
 
-    private async Task HoldForSizeReviewAsync(
-        int jobId,
-        int selectedQuality,
-        SizePreflightAssessment forecast,
-        CancellationToken cancellationToken)
+    internal async Task RejectPredictedSizeAsync(
+        int jobId, int selectedQuality, SizePreflightAssessment forecast, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        await WithJobAsync(jobId, job =>
+        await _dbLock.WaitAsync(cancellationToken);
+        try
         {
-            if (job.Status != JobStatus.Probing)
-            {
-                return;
-            }
-            job.Status = JobStatus.AwaitingSizeReview;
-            job.AdaptiveVideoQuality = selectedQuality;
-            job.Progress = 0;
-            job.ErrorMessage = forecast.Reason;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
-        }, cancellationToken);
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+            if (job is null || job.Status != JobStatus.Probing) return;
+            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow);
+            await ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally { _dbLock.Release(); }
         logger.LogInformation(
-            "Job {JobId}: full encode held for size review; samples were {Ratio:P1} of the source video over the same scenes, projecting {ProjectedBytes} bytes",
+            "Job {JobId}: full encode rejected by a size prediction; samples were {Ratio:P1} of the source video, projecting {ProjectedBytes} bytes",
             jobId, forecast.VideoRatio, forecast.ProjectedBytes);
         await NotifyAsync();
+    }
+
+    internal async Task FailLegacySizeReviewsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var held = await db.Jobs.Where(j => j.Type == JobType.Normal && j.Status == JobStatus.AwaitingSizeReview)
+            .ToListAsync(cancellationToken);
+        foreach (var job in held)
+        {
+            SizePredictionFailure.Apply(job, job.AdaptiveVideoQuality, job.ErrorMessage, DateTimeOffset.UtcNow);
+            await ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        if (held.Count > 0)
+        {
+            logger.LogInformation("Marked {Count} existing size-review jobs as predicted size failures; originals were unchanged", held.Count);
+            await NotifyAsync();
+        }
     }
 
     /// <summary>
@@ -2669,7 +2714,7 @@ public sealed class QueueDispatcher(
     }
 
     /// <summary>
-    /// Every forecast that let a job through is logged beside the one that held a job, so its
+    /// Every forecast that let a job through is logged beside the one that rejected a job, so its
     /// accuracy can be checked against the finished file rather than taken on trust.
     /// </summary>
     internal static void LogSizeForecast(ILogger logger, int jobId, SizePreflightAssessment forecast)
@@ -3324,6 +3369,8 @@ public sealed class QueueDispatcher(
                 MeasureVmaf = work.Spec.Kind == MediaKind.Video,
                 AudioLoudnessGateEnabled = false,
                 AudioClippingGateEnabled = false,
+                AudioQualityGateEnabled = false,
+                SoundtrackQualityGateEnabled = false,
                 ImageQualityGateEnabled = false
             };
         }
@@ -3574,7 +3621,7 @@ public sealed class QueueDispatcher(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();
-                return await replacement.ReplaceAsync(jobId, CancellationToken.None);
+                return await replacement.ReplaceAutomaticallyAsync(jobId, CancellationToken.None);
             }, CancellationToken.None);
             if (!guarded.Started)
             {

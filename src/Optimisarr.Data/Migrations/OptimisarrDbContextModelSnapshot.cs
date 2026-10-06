@@ -546,6 +546,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("AudioLoudnessGateEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("AudioQualityGateEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AudioQualityReportingEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("AudioTargetCodec")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -643,7 +649,13 @@ namespace Optimisarr.Data.Migrations
                     b.Property<double>("MaxTruePeakDbtp")
                         .HasColumnType("REAL");
 
+                    b.Property<double?>("MaximumAudioQualityDistance")
+                        .HasColumnType("REAL");
+
                     b.Property<double?>("MaximumSizeSavingPercent")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MaximumSoundtrackQualityDistance")
                         .HasColumnType("REAL");
 
                     b.Property<string>("MediaType")
@@ -725,6 +737,12 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("SkipSourceCodecs")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("SoundtrackQualityGateEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("SoundtrackQualityReportingEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("StrongerAdaptiveQuantisation")
                         .HasColumnType("INTEGER");

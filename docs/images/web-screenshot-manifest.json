@@ -30,11 +30,13 @@
     "optimisarr-library-advanced-encoding-dark.png",
     "optimisarr-library-advanced-verification-dark.png",
     "optimisarr-library-automation-dark.png",
+    "optimisarr-auto-accept-confirmation-dark.png",
     "optimisarr-library-candidates-dark.png",
     "optimisarr-library-excluded-dark.png",
     "optimisarr-inventory-dark.png",
     "optimisarr-inventory-main-dark.png",
     "optimisarr-inventory-detail-dark.png",
+    "optimisarr-exact-copies-dark.png",
     "optimisarr-queue-dark.png",
     "optimisarr-queue-main-dark.png",
     "optimisarr-queue-working-job-dark.png",
@@ -59,6 +61,12 @@
     "optimisarr-settings-backup-dark.png",
     "optimisarr-personal-quality-check-dark.png",
     "optimisarr-personal-quality-video-dark.png",
-    "optimisarr-personal-quality-image-dark.png"
+    "optimisarr-personal-quality-image-dark.png",
+    "optimisarr-audio-report-dark.png",
+    "optimisarr-audio-encoding-presets-dark.png",
+    "optimisarr-audio-quality-settings-dark.png",
+    "optimisarr-audio-gate-dark.png",
+    "optimisarr-soundtrack-report-dark.png",
+    "optimisarr-soundtrack-quality-settings-dark.png"
   ]
 }

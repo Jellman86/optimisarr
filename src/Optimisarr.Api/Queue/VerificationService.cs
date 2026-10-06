@@ -93,7 +93,9 @@ public sealed class VerificationService(
     ImageQualityService imageQuality,
     ImageMetadataService imageMetadata,
     TranscodeOptions transcodeOptions,
-    VmafShadowService? shadow = null)
+    VmafShadowService? shadow = null,
+    AudioQualityObservationService? audioQuality = null,
+    SoundtrackQualityObservationService? soundtrackQuality = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -109,7 +111,8 @@ public sealed class VerificationService(
         if (remoteEvidence is not null)
         {
             var objections = RemoteVerificationEvidenceValidator.ValidateMeasurements(remoteEvidence,
-                policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled, original.Kind);
+                policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled, original.Kind,
+                original.Kind == MediaKind.Video && original.FrameRate is null);
             if (objections.Count > 0)
                 throw new InvalidOperationException("Sidecar-only verification evidence is incomplete; server fallback is disabled. "
                     + string.Join(" ", objections));
@@ -197,6 +200,11 @@ public sealed class VerificationService(
             // a removed track (e.g. dropping a foreign 7.1 track must not excuse downmixing the
             // kept one, and must not demand 8 channels the output was never meant to have).
             var keptAudioTracks = KeptAudioTracks(originalProbe, reference.RemovedAudioStreamIndexes);
+            var requirePictureRetention = clip is null && reference.Kind == MediaKind.Video && reference.FrameRate is null;
+            var sourceDecodedFrames = remoteEvidence?.SourceDecodedFrameCount ?? (requirePictureRetention && inspectFullFile
+                ? await timestamps.CountDecodedFramesAsync(reference.Path, cancellationToken) : null);
+            var candidateDecodedFrames = remoteEvidence?.CandidateDecodedFrameCount ?? (requirePictureRetention && inspectFullFile
+                ? await timestamps.CountDecodedFramesAsync(outputPath, cancellationToken) : null);
 
             // VMAF is expensive (a second full decode of both files), so run it only for
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
@@ -226,10 +234,8 @@ public sealed class VerificationService(
                     : "Three 40-second samples (early, middle and late)";
 
                 var pairDecodedFrames = clip is null && reference.FrameRate is null
-                    && windows.Any(window => window.StartSeconds is not null)
                     && FramePairing.Applies(
-                        await timestamps.CountDecodedFramesAsync(reference.Path, cancellationToken),
-                        await timestamps.CountDecodedFramesAsync(outputPath, cancellationToken));
+                        sourceDecodedFrames, candidateDecodedFrames);
                 var measurements = new List<QualityResult>(windows.Count);
                 for (var index = 0; index < windows.Count; index++)
                 {
@@ -434,6 +440,9 @@ public sealed class VerificationService(
                         originalProbe.AudioTracks.Select(track => track.Codec).ToList(),
                         reference.RemovedAudioStreamIndexes)
                     : null,
+                RequireVideoFrameRetention: requirePictureRetention,
+                OriginalDecodedFrameCount: sourceDecodedFrames,
+                OutputDecodedFrameCount: candidateDecodedFrames,
                 ExpectedAudioCodec: reference.ExpectedAudioCodec,
                 OutputAudioCodecs: reference.ContainerMustMatch || reference.Kind == MediaKind.Audio
                     ? outputProbe.AudioTracks.Select(track => track.Codec).ToList()
@@ -465,6 +474,20 @@ public sealed class VerificationService(
             if (shadow is not null)
                 report = report with { ShadowVmaf = await shadow.ObserveAsync(
                     reference.Path, outputPath, shadowContext, shadowSkip, cancellationToken) };
+
+            report = report with { AudioQuality = await (audioQuality ?? new AudioQualityObservationService(null)).ObserveAsync(
+                policy.RequiresAudioQuality(reference.Kind), reference.Kind, decodeResult.Healthy, clip is not null,
+                reference.Path, outputPath, remoteEvidence, cancellationToken) };
+            report = AudioQualityGate.Apply(report, reference.Kind, policy, preview: clip is not null);
+            if (reference.Kind == MediaKind.Video)
+            {
+                var soundtrackReencoded = reference.AudioReencoded && reference.AudioTrackCount > (reference.RemovedAudioStreamIndexes?.Count ?? 0);
+                report = report with { SoundtrackQuality = await (soundtrackQuality ?? new SoundtrackQualityObservationService(null)).ObserveAsync(
+                    policy.RequiresSoundtrackQuality(soundtrackReencoded), soundtrackReencoded, decodeResult.Healthy, clip is not null,
+                    reference.Path, outputPath, originalProbe.RawJson ?? "", outputProbe.RawJson ?? "",
+                    new(reference.RemovedAudioStreamIndexes ?? []), remoteEvidence, cancellationToken) };
+                report = SoundtrackQualityGate.Apply(report, policy, soundtrackReencoded, preview: clip is not null);
+            }
 
             return new VerificationOutcome(
                 report,

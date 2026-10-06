@@ -37,6 +37,9 @@ public sealed class AdminTokenAuthEndpointTests
 
     [Theory]
     [InlineData("GET", "/api/settings")]
+    [InlineData("GET", "/api/libraries/1/duplicates")]
+    [InlineData("POST", "/api/libraries/1/duplicates")]
+    [InlineData("DELETE", "/api/libraries/1/duplicates")]
     [InlineData("PUT", "/api/settings")]
     [InlineData("GET", "/api/settings/cleanup")]
     [InlineData("POST", "/api/settings/cleanup")]
@@ -87,6 +90,69 @@ public sealed class AdminTokenAuthEndpointTests
             .SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Audio_gate_policy_survives_legacy_updates_and_rejected_limits_cannot_weaken_it()
+    {
+        var root = Path.Combine(_api.LibraryDirectory, "audio-gate-" + Guid.NewGuid()); Directory.CreateDirectory(root);
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var created = await client.PostAsJsonAsync("/api/libraries", new { name = "Audio gate test", path = root,
+            mediaType = "Music", ruleProfile = "ConservativeHevc", enabled = false,
+            audioQualityGateEnabled = true, maximumAudioQualityDistance = 0.005 });
+        created.EnsureSuccessStatusCode();
+        var dto = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = dto.GetProperty("id").GetInt32();
+        var oldUpdate = new { name = "Renamed audio gate test", path = root, mediaType = "Music", ruleProfile = "ConservativeHevc", enabled = false };
+        (await client.PutAsJsonAsync($"/api/libraries/{id}", oldUpdate)).EnsureSuccessStatusCode();
+        var invalid = await client.PutAsJsonAsync($"/api/libraries/{id}", new { name = "Invalid", path = root,
+            mediaType = "Music", ruleProfile = "ConservativeHevc", enabled = false,
+            audioQualityGateEnabled = true, maximumAudioQualityDistance = 2 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var saved = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Libraries.FindAsync(id);
+        Assert.True(saved!.AudioQualityGateEnabled);
+        Assert.Equal(0.005, saved.MaximumAudioQualityDistance);
+        Assert.Equal(oldUpdate.name, saved.Name);
+    }
+
+    [Fact]
+    public async Task Duplicate_scan_uses_inventory_scope_and_skips_unfinished_jobs_without_writing_media()
+    {
+        var root = Path.Combine(_api.LibraryDirectory, "duplicates-" + Guid.NewGuid()); Directory.CreateDirectory(root);
+        int libraryId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = new Library { Name = "Duplicate fixture", Path = root }; db.Libraries.Add(library); await db.SaveChangesAsync(); libraryId = library.Id;
+            for (var i = 0; i < 3; i++)
+            {
+                var path = Path.Combine(root, i + ".wav"); await File.WriteAllBytesAsync(path, [1, 2, 3]);
+                var media = new MediaFile { LibraryId = libraryId, Path = path, RelativePath = i + ".wav", SizeBytes = 3, ModifiedAt = File.GetLastWriteTimeUtc(path) };
+                db.MediaFiles.Add(media); await db.SaveChangesAsync();
+                if (i == 2) { db.Jobs.Add(new Job { MediaFileId = media.Id, Status = JobStatus.ReadyToReplace }); await db.SaveChangesAsync(); }
+            }
+        }
+        var scans = _api.Services.GetRequiredService<ExactDuplicateCoordinator>(); await scans.StartAsync(default);
+        try
+        {
+            using var client = _api.CreateClient(); client.DefaultRequestHeaders.Authorization = new("Bearer", TokenedApi.Token);
+            Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/libraries/2147483647/duplicates", null)).StatusCode);
+            var response = await client.PostAsync($"/api/libraries/{libraryId}/duplicates", null); Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            ExactDuplicateStatus? status = null;
+            for (var i = 0; i < 100; i++) { status = await client.GetFromJsonAsync<ExactDuplicateStatus>($"/api/libraries/{libraryId}/duplicates"); if (status?.Status == "Completed") break; await Task.Delay(20); }
+            Assert.Equal("Completed", status!.Status);
+            Assert.Equal(2, status.Result!.Checked); Assert.Equal(2, Assert.Single(status.Result.Groups).Copies.Count);
+            for (var i = 0; i < 3; i++) Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(root, i + ".wav")));
+        }
+        finally
+        {
+            await scans.StopAsync(default);
+            using var scope = _api.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Jobs.RemoveRange(db.Jobs.Where(j => j.MediaFile!.LibraryId == libraryId)); await db.SaveChangesAsync();
+            db.Libraries.Remove(db.Libraries.Single(l => l.Id == libraryId)); await db.SaveChangesAsync(); Directory.Delete(root, true);
+        }
     }
 
     [Fact]
@@ -356,6 +422,14 @@ public sealed class AdminTokenAuthEndpointTests
         Assert.Equal("aac", scotts["videoAudioCodec"]!.GetValue<string>());
         Assert.Equal(96, scotts["videoAudioBitrateKbps"]!.GetValue<int>());
         Assert.True(scotts["downmixToStereo"]!.GetValue<bool>());
+        foreach (var value in specs)
+        {
+            var spec = value!.AsObject();
+            var profile = Enum.Parse<RuleProfile>(spec["profile"]!.GetValue<string>());
+            var rules = Optimisarr.Core.Rules.RuleProfileDefaults.For(profile);
+            Assert.Equal(rules.TargetAudioCodec, spec["audioTargetCodec"]!.GetValue<string>());
+            Assert.Equal(rules.AudioBitrateKbps, spec["audioBitrateKbps"]!.GetValue<int>());
+        }
     }
 
     [Fact]
@@ -387,7 +461,7 @@ public sealed class AdminTokenAuthEndpointTests
             var paused = JsonNode.Parse(await pause.Content.ReadAsStringAsync())!.AsObject();
             Assert.Equal(HttpStatusCode.OK, pause.StatusCode);
             Assert.True(paused["manuallyPaused"]!.GetValue<bool>());
-            Assert.Equal("suspended", paused["manualPauseMode"]!.GetValue<string>());
+            Assert.Equal(OperatingSystem.IsWindows() ? "dispatchOnly" : "suspended", paused["manualPauseMode"]!.GetValue<string>());
             Assert.False(paused["runningEncodesSuspended"]!.GetValue<bool>());
 
             var status = JsonNode.Parse(await client.GetStringAsync("/api/queue/status"))!.AsObject();

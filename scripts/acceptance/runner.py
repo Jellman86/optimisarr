@@ -9,7 +9,7 @@ import shutil
 import time
 
 from .core import Blocked, inside, quality_failures, require, save, sha256
-from .media import compare_report, validate_shadow_report
+from .media import compare_report, validate_shadow_report, validate_soundtrack_report
 
 TERMINAL = {"ReadyToReplace", "Completed", "Failed", "Cancelled"}
 MODES = {"libx264": "Cpu", "libx265": "Cpu", "libsvtav1": "Cpu",
@@ -190,7 +190,7 @@ class Harness:
             audio_expectations=(["flac"], ["eng"], [0]) if mode == "filtered" else (["alac"], ["eng"], [0]),
             expected_container="mkv" if mode == "matroska" else "mp4")
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None):
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False, numbered_repeated_fixture=False):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -254,7 +254,8 @@ class Harness:
         source_bytes, candidate_bytes = case["source"].stat().st_size, candidate.stat().st_size
         scores = self.tools.measure(case["source"], candidate, directory,
             kept_subtitle_indexes=subtitle_expectations[2] if subtitle_expectations else None,
-            kept_audio_indexes=audio_expectations[2] if audio_expectations else None)
+            kept_audio_indexes=audio_expectations[2] if audio_expectations else None,
+            numbered_repeated_fixture=numbered_repeated_fixture)
         require(not quality_failures(scores, gates), f"Independent quality gate failed: {scores}")
         compare_report(verification, scores)
         if audio_gates:
@@ -267,6 +268,8 @@ class Harness:
             require([stream["codec_name"] for stream in audio] == codecs, "Copied audio codec changed")
             require([stream.get("tags", {}).get("language") for stream in audio] == languages,
                     "Copied audio language or order changed")
+        if check_picture_origin:
+            self.tools.check_av_start_offset(case["source"], candidate, directory)
         if check_subtitles or subtitle_expectations:
             codecs, languages, source_indexes = subtitle_expectations or (["ass", "ass"], ["eng", "fra"], [0, 1])
             subtitles = [stream for stream in streams if stream["codec_type"] == "subtitle"]
@@ -275,8 +278,8 @@ class Harness:
             require([stream.get("tags", {}).get("language") for stream in subtitles] == languages,
                     "Subtitle language or order changed")
             for index, source_index in enumerate(source_indexes):
-                before = self.tools.subtitle_cues(case["source"], source_index)
-                after = self.tools.subtitle_cues(candidate, index)
+                before = self.tools.subtitle_cues(case["source"], source_index, picture_origin=check_picture_origin, generate_pts=check_picture_origin)
+                after = self.tools.subtitle_cues(candidate, index, picture_origin=check_picture_origin)
                 require(bool(before) and before == after, f"Subtitle {index} text or timing changed")
                 (directory / f"subtitle-{index}.srt").write_text(after, encoding="utf-8")
         self.replace_restore(case, candidate)
@@ -284,6 +287,29 @@ class Harness:
                 "encoder": encoder, "strategy": strategy, "scores": scores, "restoredOriginal": True,
                 "sourceBytes": source_bytes, "candidateBytes": candidate_bytes,
                 "savingPercent": 100 * (1 - candidate_bytes / source_bytes)}
+
+    def numbered_picture_quality_control(self, fixture):
+        directory = self.report.root / "numbered-picture-quality-control"
+        directory.mkdir(parents=True, exist_ok=True)
+        candidate = directory / "damaged.mp4"
+        original_hash = sha256(fixture)
+        probe = self.tools.probe(fixture)
+        first = self.tools.first_av_timestamps(fixture, generate_pts=True)["video"]
+        offset = max(0, float(probe["format"]["start_time"]) - first)
+        # The ordinary cadence filter discards picture 4 at the repeated time. Damage
+        # only its body: identity markers must survive and sequential quality must see it.
+        self.tools.encode(["-fflags", "+genpts", "-itsoffset", str(offset), "-i", self.tools.path(fixture),
+            "-map", "0:V:0", "-map", "0:a:0", "-map", "0:s:0",
+            "-vf", "drawbox=y=48:h=132:color=black:t=fill:enable='eq(n,4)'",
+            "-c:v", "libx264", "-crf", "0", "-preset", "fast", "-fps_mode", "passthrough",
+            "-enc_time_base:v:0", "demux", "-c:a", "alac", "-c:s", "mov_text", self.tools.path(candidate)])
+        scores = self.tools.measure(fixture, candidate, directory, numbered_repeated_fixture=True)
+        frames = json.loads((directory / "vmaf.json").read_text())["frames"]
+        damaged_score = frames[4]["metrics"]["vmaf"]
+        require(damaged_score < 75, "Quality oracle omitted the damaged repeated-time picture")
+        require(sha256(fixture) == original_hash, "Negative quality control changed its source")
+        return {"damagedPictureIndex": 4, "damagedPictureVmaf": damaged_score,
+                "numberedPictures": scores["frames"], "originalUnchanged": True}
 
     def replace_restore(self, case, candidate):
         candidate_hash = sha256(candidate)
@@ -316,6 +342,58 @@ class Harness:
             return {"jobId": case["jobId"], "originalUnchanged": True}
         finally:
             self.api.post("/api/queue/resume")
+
+
+    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False):
+        self.select_worker(worker)
+        name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
+        name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
+        name += "-long" if long else "-short-mp4" if short else ""
+        seconds = 120 if long else 12 if short else 8
+        audio_seconds = seconds - 0.5 if short else seconds
+        commentary_seconds = seconds - 2.5 if long else audio_seconds
+        fixture = self.root / "fixtures" / (name + ".mkv")
+        self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
+            "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42",
+            "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
+            "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", "-c:a", "pcm_s16le", "-ac", "2",
+            "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=" if short else "title=Main",
+            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary", self.tools.path(fixture)])
+        # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
+        limit = 0 if reject else 1
+        case = self.create_job(name, fixture, encoder="libx264", worker=worker, overrides={
+            "targetVideoCodec": None, "targetContainer": "mp4" if short else "mkv", "videoAudioCodec": "copy" if copied else codec,
+            "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
+            "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,
+            "keepAudioLanguages": "fra" if filtered else None})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        verification = json.loads(job["verificationReportJson"] or "{}")
+        require(job["workerName"] == (worker["name"] if worker else None), "Soundtrack ran on the wrong host")
+        require(sha256(case["source"]) == case["sourceSha256"], "Assessment changed the source")
+        require(job["status"] == ("Failed" if reject else "ReadyToReplace"), f"Unexpected soundtrack job verdict: {job['errorMessage']}")
+        if copied:
+            require(not verification.get("soundtrackQuality"), "Copied audio launched perceptual assessment")
+        else:
+            location = "Worker" if worker and self.strict_worker_verification else "Server"
+            validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject)
+            if long:
+                for track in verification["soundtrackQuality"]["tracks"]:
+                    assessment = track["report"]["evidence"]["assessment"]
+                    require(len(assessment["windows"]) == 3, "Long soundtrack did not sample beginning, middle and end")
+                    require(abs(sum(w["window"]["durationSeconds"] for w in assessment["windows"]) - 90) < 1e-6,
+                            "Long soundtrack exceeds the assigned 90-second budget")
+        if reject:
+            require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Failed gate replaced media")
+            return {"originalUnchanged": True, "gateBlocked": True}
+        candidate = self.output(case)
+        probe = self.tools.probe(candidate)
+        tracks = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+        require([track.get("tags", {}).get("language") for track in tracks] == (["fra"] if filtered else ["eng", "fra"]),
+                "Retained soundtrack language changed")
+        self.tools.run(self.tools.ffmpeg, ["-v", "error", "-xerror", "-i", self.tools.path(candidate), "-f", "null", "-"])
+        self.replace_restore(case, candidate)
+        return {"originalUnchanged": True, "restoredOriginal": True, "tracks": len(tracks), "copied": copied}
 
     def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False):
         self.select_worker(worker)
@@ -627,6 +705,10 @@ class Harness:
             variants = variants or (["sdr"] if tier == "smoke" else ["sdr", "vfr", "offset", "ten-bit"])
             if regression == "fractional-timing" and "fractional" not in variants:
                 variants = [*variants, "fractional"]
+            if regression == "uneven-timing" and "uneven" not in variants:
+                variants = [*variants, "uneven"]
+            if regression == "initial-pictures":
+                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles", "dts-repeated"]))
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}
@@ -651,6 +733,20 @@ class Harness:
             self.report.environment["matrix"] = {"localEncoders": encoders, "fixtures": list(fixtures),
                                                 "expectedWorkers": list(expected_workers), "tier": tier,
                                                 "soakCycles": soak_cycles, "fixtureSeconds": fixture_seconds}
+
+            if regression == "soundtrack-quality":
+                for worker in [None, *[w for w in self.workers if w["online"] and not w["revokedAt"]]]:
+                    label = f"worker-{worker['id']}" if worker else "local"
+                    for codec in ("aac", "opus", "mp3"):
+                        self.report.case(label + "-soundtrack-" + codec, lambda c=codec, w=worker: self.soundtrack(c, w))
+                    self.report.case(label + "-soundtrack-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True))
+                    self.report.case(label + "-soundtrack-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True))
+                    self.report.case(label + "-soundtrack-copied", lambda w=worker: self.soundtrack("aac", w, copied=True))
+                    self.report.case(label + "-soundtrack-short", lambda w=worker: self.soundtrack("aac", w, short=True))
+                    self.report.case(label + "-soundtrack-long", lambda w=worker: self.soundtrack("aac", w, long=True))
+                if tier == "fleet" and not any(w["online"] and not w["revokedAt"] for w in self.workers):
+                    self.report.case("soundtrack-workers", lambda: (_ for _ in ()).throw(Blocked("No soundtrack workers paired")))
+                return self.report.exit_code
             if regression == "audio":
                 for codec in ("aac", "opus", "mp3"):
                     self.report.case(f"local-audio-{codec}", lambda c=codec: self.audio(c))
@@ -668,7 +764,11 @@ class Harness:
                     self.report.case(f"worker-{worker['id']}-audio-downmix", lambda w=worker: self.audio("aac", w, downmix=True))
                     self.report.case(f"worker-{worker['id']}-audio-artwork", lambda w=worker: self.audio("mp3", w, artwork=True))
                 return self.report.exit_code
-            if regression in ("subtitle-mux", "fractional-timing", "subtitle-overlap", "alac-copy"):
+            if regression in ("subtitle-mux", "fractional-timing", "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy"):
+                if regression == "initial-pictures":
+                    require("dts-repeated" in fixtures, "Numbered repeated-timestamp fixture could not be generated")
+                    self.report.case("numbered-picture-quality-control",
+                                     lambda: self.numbered_picture_quality_control(fixtures["dts-repeated"]))
                 def regression_case(name, encoder, worker=None):
                     if regression == "subtitle-mux":
                         return self.subtitle_mux(name, primary, encoder, worker)
@@ -676,9 +776,26 @@ class Harness:
                         return self.subtitle_overlap(name, primary, encoder, worker)
                     if regression == "alac-copy":
                         return self.alac_copy(name, primary, encoder, worker)
+                    if regression == "initial-pictures":
+                        require("dts-only" in fixtures, "DTS-only fixture could not be generated")
+                        with_subtitles = self.video(name, fixtures["dts-only"], encoder, worker, container="mp4",
+                            subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True)
+                        require("dts-only-no-subtitles" in fixtures, "Subtitle-free DTS-only fixture could not be generated")
+                        without_subtitles = self.video(name + "-no-subtitles", fixtures["dts-only-no-subtitles"], encoder, worker,
+                            container="mp4", check_picture_origin=True)
+                        require("dts-repeated" in fixtures, "Numbered repeated-timestamp fixture could not be generated")
+                        repeated = self.video(name + "-repeated", fixtures["dts-repeated"], encoder, worker, container="mp4",
+                            subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True,
+                            numbered_repeated_fixture=True)
+                        return {"withSubtitles": with_subtitles, "withoutSubtitles": without_subtitles,
+                                "repeatedTimestamps": repeated}
+                    if regression == "uneven-timing":
+                        require("uneven" in fixtures, "Uneven timestamp fixture could not be generated")
+                        return self.video(name, fixtures["uneven"], encoder, worker, container="mp4")
                     require("fractional" in fixtures, "Fractional timestamp fixture could not be generated")
                     return self.video(name, fixtures["fractional"], encoder, worker, container="mp4")
                 suffix = {"subtitle-mux": "mov-text-to-mkv", "fractional-timing": "fractional-to-mp4",
+                          "uneven-timing": "uneven-to-mp4", "initial-pictures": "dts-only-to-mp4",
                           "subtitle-overlap": "overlapping-cues-to-mkv", "alac-copy": "alac-to-mkv"}[regression]
                 for encoder in encoders:
                     name = f"local-{encoder}-{suffix}"

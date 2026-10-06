@@ -7,7 +7,62 @@ from fractions import Fraction
 from pathlib import Path
 import re
 
+from .dts_fixture import vfw_matroska
+from .picture_identity import parse_picture_ids, validate_picture_ids
 from .core import Blocked, command, require, save, sha256, statistics
+
+
+def validate_uneven_timing_fixture(probe, times):
+    """Prove the fixture hides close frame pairs behind apparently constant rate metadata."""
+    pictures = [stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"
+                and not stream.get("disposition", {}).get("attached_pic")]
+    require(pictures, "Uneven timing fixture has no moving picture stream")
+    try:
+        nominal = Fraction(pictures[0].get("r_frame_rate", "0/1"))
+        average = Fraction(pictures[0].get("avg_frame_rate", "0/1"))
+    except (ValueError, ZeroDivisionError, TypeError):
+        raise AssertionError("Uneven timing fixture has invalid rate metadata") from None
+    require(0 < nominal <= 240 and nominal == average,
+            "Uneven timing fixture no longer appears constant rate")
+    require(len(times) >= 4 and all(math.isfinite(value) for value in times),
+            "Uneven timing fixture lacks complete finite picture timestamps")
+    gaps = [after - before for before, after in zip(times, times[1:])]
+    require(all(gap > 0 for gap in gaps), "Uneven timing fixture has unordered pictures")
+    period = 1 / float(nominal)
+    require(min(gaps) < period / 2 and max(gaps) > max(1, period * 1.5),
+            "Uneven timing fixture no longer contains tight frame pairs and a long pause")
+    return {"frames": len(times), "declaredFramesPerSecond": float(nominal),
+            "minimumGapSeconds": min(gaps), "maximumGapSeconds": max(gaps)}
+
+
+def validate_soundtrack_report(report, source_indexes, location, limit, *, passes=True):
+    """Check retained-track coverage and every channel independently of the server verdict."""
+    require(report and not report.get("unavailableReason"), "Soundtrack assessment unavailable")
+    tracks = report.get("tracks") or []
+    require(len(tracks) == len(source_indexes) and tracks, "Missing retained soundtrack evidence")
+    measured_passes = []
+    for index, (item, source_index) in enumerate(zip(tracks, source_indexes)):
+        mapping, quality = item.get("track") or {}, item.get("report") or {}
+        require(mapping.get("sourceAudioIndex") == source_index and mapping.get("candidateAudioIndex") == index,
+                "Incorrect retained soundtrack mapping")
+        require(quality.get("measurementLocation") == location and not quality.get("unavailableReason"),
+                "Soundtrack measurement ran on the wrong host or was unavailable")
+        evidence = quality.get("evidence") or {}
+        assessment = evidence.get("assessment") or {}
+        require(evidence.get("preparation") == "audio-f32le-48k-video-timeline-v1" and assessment.get("measured"),
+                "Missing versioned soundtrack evidence")
+        require(assessment.get("referenceAudioIndex") == source_index and assessment.get("candidateAudioIndex") == index,
+                "Score belongs to a different soundtrack")
+        windows = assessment.get("windows") or []
+        require(0 < len(windows) <= 3, "Missing or unbounded soundtrack windows")
+        values = [value for window in windows for value in (window.get("distances") or {}).get("channelDistances", [])]
+        require(values and all(isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 1 for value in values),
+                "Invalid channel distances")
+        passed = all(value <= limit for value in values)
+        require(quality.get("gateEnabled") is True and quality.get("gatePassed") == passed, "Incorrect per-track gate verdict")
+        measured_passes.append(passed)
+    require(report.get("gateEnabled") is True and report.get("gatePassed") == all(measured_passes) == passes,
+            "Incorrect aggregate soundtrack gate verdict")
 
 
 def vmaf_policy(reference_video, encoded_video, rate):
@@ -28,6 +83,13 @@ def vmaf_policy(reference_video, encoded_video, rate):
     options = (f"'version={model}\\:cambi.enc_width={encoded_video['width']}"
                f"\\:cambi.enc_height={encoded_video['height']}\\:cambi.enc_bitdepth={depth}'")
     return model, options, "yuv420p10le"
+
+
+def quality_picture_preparation(rate, width, height, pixel):
+    # The oracle first checks counts and each picture's timing. A cadence grid can
+    # omit tightly spaced pictures or repeat a long-held picture and hide damage.
+    return (f"settb=AVTB,setpts=N*{rate.denominator}/{rate.numerator}/TB,"
+            f"scale={width}:{height}:flags=bicubic:in_range=auto:out_range=tv,format={pixel}")
 
 
 def validate_shadow_report(report):
@@ -97,12 +159,15 @@ class Tools:
     def fixture(self, path, variant="sdr", seconds=8, source=None, start=0):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        if variant in ("dts-only", "dts-only-no-subtitles", "dts-repeated"):
+            return self.dts_only_fixture(path, seconds, subtitles=variant != "dts-only-no-subtitles",
+                                         numbered_repeated_fixture=variant == "dts-repeated")
         if source:
             inputs = ["-ss", str(start), "-i", self.path(source)]
             mapping = ["-map", "0:v:0", "-map", "0:a?"]
             filters = ["-vf", "scale=640:-2,format=yuv420p"]
         else:
-            rate = "24000/1001" if variant == "fractional" else "12"
+            rate = "24000/1001" if variant == "fractional" else "24" if variant == "uneven" else "12"
             inputs = ["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate={rate}:duration={seconds}",
                       "-f", "lavfi", "-i", f"sine=frequency=880:sample_rate=48000:duration={seconds}"]
             mapping = ["-map", "0:v", "-map", "1:a"]
@@ -113,25 +178,72 @@ class Tools:
                 filters = ["-output_ts_offset", "2.5"]
             elif variant == "ten-bit":
                 filters = ["-pix_fmt", "yuv420p10le"]
-            elif variant == "fractional":
-                # A half-frame lead rounded to milliseconds reproduces collisions when a
-                # nominally constant source is rounded again to the encoder's frame timebase.
-                # A cue at zero pins the container start without introducing cross-container
-                # audio priming/padding into this picture-timestamp regression.
+            elif variant in ("fractional", "uneven"):
+                # Millisecond frame pairs and a long pause exercise reordered packet durations;
+                # the fractional variant instead stresses rounding of a half-frame lead.
+                # A cue at zero pins the origin without audio priming/padding differences.
                 cue = path.with_suffix(".srt")
                 cue.write_text("1\n00:00:00,000 --> 00:00:00,100\nTimestamp reference\n", encoding="utf-8")
                 inputs = inputs[:4] + ["-i", self.path(cue)]
                 mapping = ["-map", "0:v", "-map", "1:s"]
-                filters = ["-vf", "settb=1/1000,setpts=PTS+21", "-fps_mode", "passthrough",
+                pause_frame, pause_ms = int(seconds * 6), int(seconds * 500)
+                timing = ("PTS+21" if variant == "fractional" else
+                          f"floor(N/2)*84+mod(N\\,2)*1+gte(N\\,{pause_frame})*{pause_ms}")
+                filters = ["-vf", "settb=1/1000,setpts=" + timing, "-fps_mode", "passthrough",
                            "-enc_time_base:v:0", "1/1000"]
         codecs = (["-c:v", "libx264", "-crf", "3", "-preset", "fast", "-bf", "3", "-c:s", "srt",
                    "-metadata:s:s:0", "language=eng"]
-                  if variant == "fractional" else ["-c:v", "ffv1", "-level", "3", "-c:a", "flac"])
+                  if variant in ("fractional", "uneven") else ["-c:v", "ffv1", "-level", "3", "-c:a", "flac"])
         self.encode(inputs + mapping + filters + ["-t", str(seconds), *codecs,
                     "-metadata:s:a:0", "language=eng", self.path(path)])
-        return {"path": str(path), "sha256": sha256(path), "variant": variant,
+        evidence = {"path": str(path), "sha256": sha256(path), "variant": variant,
                 "seconds": seconds, "sourceSha256": sha256(source) if source else None,
                 "start": start, "probe": self.probe(path, True)}
+        if variant == "uneven":
+            evidence["timing"] = validate_uneven_timing_fixture(evidence["probe"], self.frame_times(path))
+        return evidence
+
+    def dts_only_fixture(self, path, seconds, *, subtitles=True, numbered_repeated_fixture=False):
+        avi, flac = path.with_suffix(".avi"), path.with_suffix(".flac")
+        markers = []
+        if numbered_repeated_fixture:
+            require(8 <= seconds <= 40, "Numbered DTS fixture requires 8 to 40 seconds")
+            markers = ["-vf", "geq=lum='if(lt(Y,48),16+219*mod(floor(N/pow(2,floor(X/32))),2),p(X,Y))':cb='cb(X,Y)':cr='cr(X,Y)'"]
+        self.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=25:duration={seconds}",
+                     *markers, "-c:v", "mpeg4", "-bf", "2", "-q:v", "3", self.path(avi)])
+        self.encode(["-f", "lavfi", "-i", f"sine=frequency=880:sample_rate=48000:duration={seconds}",
+                     "-c:a", "flac", self.path(flac)])
+        def packets(file):
+            return json.loads(self.run(self.ffprobe, ["-v", "error", "-show_packets", "-show_entries",
+                "packet=pts_time,dts_time,pos,size,flags", "-of", "json", self.path(file)]))["packets"]
+        video, audio = packets(avi), packets(flac)
+        if numbered_repeated_fixture:
+            # Adjacent B pictures repeat a decode time without changing packet content/order.
+            video[6]["dts_time"] = video[5]["dts_time"]
+        path.write_bytes(vfw_matroska(avi.read_bytes(), video, flac.read_bytes(), audio, seconds, subtitles=subtitles))
+        probe = self.probe(path, True)
+        moving = next(stream for stream in probe["streams"] if stream["codec_type"] == "video")
+        source_packets = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "V:0",
+            "-show_entries", "packet=pts_time,dts_time", "-of", "json", self.path(path)]))["packets"]
+        require(source_packets and "pts_time" not in source_packets[0] and all("dts_time" in packet for packet in source_packets),
+                "DTS-only fixture no longer carries decode timestamps alone")
+        require(int(moving["nb_read_frames"]) == round(seconds * 25), "Generated fixture lost pictures")
+        require(sum(stream["codec_type"] == "subtitle" for stream in probe["streams"]) == int(subtitles),
+                "Generated fixture has the wrong subtitle coverage")
+        first_picture = json.loads(self.run(self.ffprobe, ["-v", "error", "-fflags", "+genpts", "-select_streams", "V:0",
+            "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))["frames"][0]
+        require(float(first_picture["best_effort_timestamp_time"]) < float(probe["format"]["start_time"]),
+                "Generated picture no longer precedes the declared input start")
+        if numbered_repeated_fixture:
+            times = self.frame_times(path, generate_pts=True, numbered_repeated_fixture=True)
+            expected = [i / 25 for i in range(round(seconds * 25))]
+            expected[5] = expected[4]
+            require(len(times) == len(expected) and all(abs(a - b) < .0005 for a, b in zip(times, expected)),
+                    "Numbered source no longer contains the expected repeated initial timestamp")
+            identities = self.picture_ids(path, path.parent / (path.stem + "-markers.gray"), generate_pts=True)
+            validate_picture_ids(identities, identities)
+        return {"path": str(path), "sha256": sha256(path),
+                "variant": "dts-repeated" if numbered_repeated_fixture else "dts-only", "seconds": seconds, "probe": probe}
 
     def alac_fixture(self, path, source, *, mixed=False):
         path = Path(path)
@@ -158,8 +270,10 @@ class Tools:
             "-metadata:s:s:1", "language=fra", self.path(path)])
         return {"sha256": sha256(path), "probe": self.probe(path)}
 
-    def subtitle_cues(self, path, index):
-        text = self.run(self.ffmpeg, ["-v", "error", "-i", self.path(path), "-map", f"0:s:{index}",
+    def subtitle_cues(self, path, index, *, picture_origin=False, generate_pts=False):
+        origin = self.first_av_timestamps(path, generate_pts=generate_pts)["video"] if picture_origin else None
+        flags = ["-copyts", "-itsoffset", str(-origin)] if origin is not None else []
+        text = self.run(self.ffmpeg, ["-v", "error", *flags, "-i", self.path(path), "-map", f"0:s:{index}",
             "-c:s", "srt", "-f", "srt", "-"])
         return text.strip().replace("\r\n", "\n")
 
@@ -180,15 +294,47 @@ class Tools:
         self.encode(inputs + maps + ["-c", "copy", "-c:s", "srt", *metadata, self.path(path)])
         return path
 
-    def frame_times(self, path):
-        result = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "v:0",
-            "-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))
-        times = [float(frame["best_effort_timestamp_time"]) for frame in result["frames"]]
-        require(bool(times), "No decoded picture timestamps")
-        require(all(b > a for a, b in zip(times, times[1:])), "Non-increasing picture timestamps")
+    def first_av_timestamps(self, path, *, generate_pts=False):
+        frames = json.loads(self.run(self.ffprobe, ["-v", "error", *(["-fflags", "+genpts"] if generate_pts else []),
+            "-read_intervals", "%+#32", "-show_entries", "frame=media_type,best_effort_timestamp_time", "-of", "json",
+            self.path(path)]))["frames"]
+        starts = {}
+        for frame in frames:
+            kind = frame.get("media_type")
+            if kind in ("video", "audio") and kind not in starts and "best_effort_timestamp_time" in frame:
+                starts[kind] = float(frame["best_effort_timestamp_time"])
+        require(set(starts) == {"video", "audio"}, "Missing decoded A/V start evidence")
+        return starts
+
+    def check_av_start_offset(self, source, candidate, directory):
+        before = self.first_av_timestamps(source, generate_pts=True)
+        after = self.first_av_timestamps(candidate)
+        delta = abs((after["video"] - after["audio"]) - (before["video"] - before["audio"]))
+        save(Path(directory) / "decoded-av-offset.json", {"source": before, "candidate": after, "offsetChangeSeconds": delta})
+        require(delta <= .003, "Changed decoded picture/audio alignment")
+
+    def picture_ids(self, path, raw_path, *, generate_pts=False):
+        self.encode([*(["-fflags", "+genpts"] if generate_pts else []), "-i", self.path(path),
+            "-map", "0:V:0", "-vf", "crop=320:48:0:0,format=gray", "-fps_mode", "passthrough",
+            "-frames:v", "1001", "-pix_fmt", "gray", "-f", "rawvideo", self.path(raw_path)])
+        return parse_picture_ids(Path(raw_path).read_bytes())
+
+    def frame_times(self, path, *, generate_pts=False, numbered_repeated_fixture=False, evidence_path=None):
+        entries = "frame=pts_time,best_effort_timestamp_time" if numbered_repeated_fixture else "frame=best_effort_timestamp_time"
+        result = json.loads(self.run(self.ffprobe, ["-v", "error", *(["-fflags", "+genpts"] if generate_pts else []), "-select_streams", "V:0",
+            "-show_frames", "-show_entries", entries, "-of", "json", self.path(path)]))
+        field = "pts_time" if numbered_repeated_fixture and not generate_pts else "best_effort_timestamp_time"
+        if evidence_path is not None:
+            save(evidence_path, {"selectedField": field, **result})
+        require(all(field in frame for frame in result["frames"]), "Missing required picture timestamp field")
+        times = [float(frame[field]) for frame in result["frames"]]
+        require(times and all(math.isfinite(value) for value in times), "Missing or non-finite decoded picture timestamps")
+        require(all(b >= a if numbered_repeated_fixture else b > a for a, b in zip(times, times[1:])),
+                "Non-increasing picture timestamps")
         return [x - times[0] for x in times]
 
-    def measure(self, reference, candidate, evidence_dir, *, kept_subtitle_indexes=None, kept_audio_indexes=None):
+    def measure(self, reference, candidate, evidence_dir, *, kept_subtitle_indexes=None, kept_audio_indexes=None,
+                numbered_repeated_fixture=False):
         evidence_dir = Path(evidence_dir)
         evidence_dir.mkdir(parents=True, exist_ok=True)
         ref, out = self.probe(reference, True), self.probe(candidate, True)
@@ -197,7 +343,17 @@ class Tools:
         rv = next(x for x in ref["streams"] if x["codec_type"] == "video")
         ov = next(x for x in out["streams"] if x["codec_type"] == "video")
         # A score must not erase lost pictures by blindly resetting, duplicating or trimming frames.
-        rt, ot = self.frame_times(reference), self.frame_times(candidate)
+        if numbered_repeated_fixture:
+            require((rv["width"], rv["height"]) == (320, 180) == (ov["width"], ov["height"]),
+                    "Numbered picture fixture dimensions changed")
+            before = self.picture_ids(reference, evidence_dir / "reference-markers.gray", generate_pts=True)
+            after = self.picture_ids(candidate, evidence_dir / "candidate-markers.gray")
+            save(evidence_dir / "picture-identities.json", {"reference": before, "candidate": after})
+            validate_picture_ids(before, after)
+        rt = self.frame_times(reference, generate_pts=True, numbered_repeated_fixture=numbered_repeated_fixture,
+            evidence_path=evidence_dir / "reference-frame-timestamps.json" if numbered_repeated_fixture else None)
+        ot = self.frame_times(candidate, numbered_repeated_fixture=numbered_repeated_fixture,
+            evidence_path=evidence_dir / "candidate-frame-timestamps.json" if numbered_repeated_fixture else None)
         require(len(rt) == len(ot), f"Frame loss/duplication: {len(rt)} reference, {len(ot)} output")
         drift = max(abs(a - b) for a, b in zip(rt, ot))
         require(drift <= .003, f"Picture cadence drift {drift:.6f}s")
@@ -238,10 +394,9 @@ class Tools:
             rate = Fraction(rv["r_frame_rate"])
         require(0 < rate <= 240, "Reference has no trustworthy picture cadence")
         model, options, pixel = vmaf_policy(rv, ov, float(rate))
-        prep = (f"fps={rate}:start_time=0,scale={rv['width']}:{rv['height']}:"
-                f"flags=bicubic:in_range=auto:out_range=tv,format={pixel}")
-        graph = (f"[0:v]settb=AVTB,setpts=PTS-STARTPTS,{prep}[d];"
-                 f"[1:v]settb=AVTB,setpts=PTS-STARTPTS,{prep}[r];"
+        prep = quality_picture_preparation(rate, rv['width'], rv['height'], pixel)
+        graph = (f"[0:v]{prep}[d];"
+                 f"[1:v]{prep}[r];"
                  f"[d][r]libvmaf=model={options}:n_threads=2:n_subsample=1:"
                  "log_fmt=json:log_path=vmaf.json:shortest=1:repeatlast=0")
         args = ["-nostdin", "-v", "error", "-i", self.path(candidate), "-i", self.path(reference),
@@ -251,10 +406,7 @@ class Tools:
              "maxTimestampDriftSeconds": drift})
         self.run(self.vmaf, args, cwd=evidence_dir)
         scores = statistics(json.loads((evidence_dir / "vmaf.json").read_text()))
-        # VFR pictures were checked one-for-one above; VMAF's documented common-cadence
-        # comparison intentionally repeats them. Do not confuse that with encoder frame loss.
-        expected_frames = round(rt[-1] * float(rate)) + 1
-        require(scores["frames"] == expected_frames, "VMAF silently omitted pictures")
+        require(scores["frames"] == len(rt), "VMAF silently omitted or repeated pictures")
         return {**scores, "model": model, "candidateSha256": sha256(candidate)}
 
     def damaged(self, reference, path, damage):

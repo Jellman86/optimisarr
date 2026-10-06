@@ -2,6 +2,8 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.EventLog;
+using Microsoft.Extensions.Options;
 using Optimisarr.Sidecar.Core.Capabilities;
 using Optimisarr.Sidecar.Core.Session;
 
@@ -77,15 +79,7 @@ public static class Program
 
         builder.Services.AddWindowsService(options => options.ServiceName = ServiceControl.ServiceName);
 
-        // Where a headless machine gets to explain itself. Console logging is useless under a
-        // service with no console, and the Event Log is the one place an operator will think to
-        // look on a Windows box.
-        builder.Logging.AddEventLog(settings => settings.SourceName = ServiceControl.ServiceName);
-        // The Event Log provider keeps Warning and above by default, so without this the sidecar
-        // would say everything it does into a sink that drops all of it — which is how the first
-        // attempt at giving this service a voice appeared to work and wrote nothing at all.
-        builder.Logging.AddFilter<Microsoft.Extensions.Logging.EventLog.EventLogLoggerProvider>(
-            null, LogLevel.Information);
+        ConfigureEventLogging(builder.Logging);
 
         builder.Services.AddSingleton<WorkerMonitor>();
         builder.Services.AddSingleton<HostShutdown>();
@@ -110,6 +104,27 @@ public static class Program
         using var host = builder.Build();
         await host.RunAsync();
         return 0;
+    }
+
+    internal static void ConfigureEventLogging(ILoggingBuilder logging)
+    {
+        logging.AddEventLog(settings => settings.SourceName = ServiceControl.ServiceName);
+        // Both the generic host and AddWindowsService can add the raw provider. Replace
+        // it, so host-lifetime logs and worker logs use the same guarded native sink.
+        foreach (var registration in logging.Services.Where(registration =>
+                     registration.ServiceType == typeof(ILoggerProvider)
+                     && registration.ImplementationType == typeof(EventLogLoggerProvider)).ToArray())
+            logging.Services.Remove(registration);
+        logging.Services.AddSingleton<ILoggerProvider>(services =>
+        {
+            var clock = TimeProvider.System;
+            var notices = new EventLogAvailabilityFile(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Optimisarr", "Sidecar", "event-log-availability.log"), clock);
+            return new NonFatalEventLogProvider(new NativeEventLogProvider(
+                services.GetRequiredService<IOptions<EventLogSettings>>().Value), notices.Write, clock);
+        });
+        logging.AddFilter<NonFatalEventLogProvider>(null, LogLevel.Information);
     }
 
     private static async Task<int> PairAsync(string[] args, int pairIndex, CancellationToken cancellationToken)

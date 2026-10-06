@@ -36,7 +36,7 @@ public sealed class SizePreflightTests
         // the file that is picture, with the copied audio unchanged, that is 91.7% of the source.
         var result = SizePreflight.Assess(Basis(), Probe(270_000_000), 10 * OneGigabyte - 1, bypass: false);
 
-        Assert.False(result.ShouldHold);
+        Assert.False(result.ShouldReject);
         Assert.Equal(0.9, result.VideoRatio!.Value, 6);
         Assert.Equal(9_166_666_667, result.ProjectedBytes);
     }
@@ -48,9 +48,12 @@ public sealed class SizePreflightTests
         // needed a 25% overshoot before it said a word.
         var result = SizePreflight.Assess(Basis(), Probe(315_000_000), 10 * OneGigabyte - 1, bypass: false);
 
-        Assert.True(result.ShouldHold);
+        Assert.True(result.ShouldReject);
         Assert.Contains("105% of the source's own video", result.Reason);
         Assert.Contains("smaller than the source", result.Reason);
+        Assert.Contains("Size saving prediction:", result.Reason);
+        Assert.Contains("full encode was not run", result.Reason);
+        Assert.DoesNotContain("held until", result.Reason);
     }
 
     [Fact]
@@ -63,7 +66,7 @@ public sealed class SizePreflightTests
 
         var result = SizePreflight.Assess(dense, Probe(720_000_000), 10 * OneGigabyte - 1, bypass: false);
 
-        Assert.False(result.ShouldHold);
+        Assert.False(result.ShouldReject);
         Assert.Equal(0.6, result.VideoRatio!.Value, 6);
     }
 
@@ -73,7 +76,7 @@ public sealed class SizePreflightTests
         // 95% of the video plus unchanged audio is 95.8% of the source; a 10% saving needs 90%.
         var result = SizePreflight.Assess(Basis(), Probe(285_000_000), 9 * OneGigabyte, bypass: false);
 
-        Assert.True(result.ShouldHold);
+        Assert.True(result.ShouldReject);
         Assert.Contains("at most 90% of the source", result.Reason);
     }
 
@@ -85,7 +88,7 @@ public sealed class SizePreflightTests
         Assert.Equal(0, withoutAudio.CarriedShare);
         var result = SizePreflight.Assess(withoutAudio, Probe(315_000_000), 10 * OneGigabyte - 1, bypass: false);
         // 105% of the picture share (5/6) is 87.5% of the source once the audio is gone.
-        Assert.False(result.ShouldHold);
+        Assert.False(result.ShouldReject);
     }
 
     [Fact]
@@ -114,16 +117,16 @@ public sealed class SizePreflightTests
     {
         var result = SizePreflight.Assess(Basis(), Probe(500_000_000), 10 * OneGigabyte - 1, bypass: true);
 
-        Assert.False(result.ShouldHold);
+        Assert.False(result.ShouldReject);
     }
 
     [Fact]
     public void Without_a_size_gate_or_evidence_nothing_is_held()
     {
-        Assert.False(SizePreflight.Assess(Basis(), Probe(500_000_000), null, bypass: false).ShouldHold);
-        Assert.False(SizePreflight.Assess(null, Probe(500_000_000), 10 * OneGigabyte - 1, false).ShouldHold);
-        Assert.False(SizePreflight.Assess(Basis(), null, 10 * OneGigabyte - 1, false).ShouldHold);
-        Assert.False(SizePreflight.Assess(Basis(), Probe(0), 10 * OneGigabyte - 1, false).ShouldHold);
+        Assert.False(SizePreflight.Assess(Basis(), Probe(500_000_000), null, bypass: false).ShouldReject);
+        Assert.False(SizePreflight.Assess(null, Probe(500_000_000), 10 * OneGigabyte - 1, false).ShouldReject);
+        Assert.False(SizePreflight.Assess(Basis(), null, 10 * OneGigabyte - 1, false).ShouldReject);
+        Assert.False(SizePreflight.Assess(Basis(), Probe(0), 10 * OneGigabyte - 1, false).ShouldReject);
     }
 
     [Fact]
@@ -148,7 +151,7 @@ public sealed class SizePreflightTests
 
         var review = SizePreflight.Review(Basis(), [failing], failing, decision, 10 * OneGigabyte - 1, bypass: false);
 
-        Assert.True(review.ShouldHold);
+        Assert.True(review.ShouldReject);
         Assert.Contains("missed the VMAF target", review.Reason);
         Assert.Contains("search stopped here", review.Reason);
     }
@@ -163,7 +166,7 @@ public sealed class SizePreflightTests
 
         var review = SizePreflight.Review(Basis(), [passing], passing, decision, 10 * OneGigabyte - 1, bypass: false);
 
-        Assert.False(review.ShouldHold);
+        Assert.False(review.ShouldReject);
     }
 
     [Fact]
@@ -174,7 +177,7 @@ public sealed class SizePreflightTests
 
         var review = SizePreflight.Review(Basis(), [failing], failing, decision, 10 * OneGigabyte - 1, bypass: false);
 
-        Assert.False(review.ShouldHold);
+        Assert.False(review.ShouldReject);
     }
 
     [Fact]
@@ -193,7 +196,7 @@ public sealed class SizePreflightTests
 
         var review = SizePreflight.Review(Basis(), probes, probes[^1], decision, 10 * OneGigabyte - 1, bypass: false);
 
-        Assert.True(review.ShouldHold);
+        Assert.True(review.ShouldReject);
         Assert.Contains("At quality 51 the samples cleared the VMAF target", review.Reason);
     }
 }

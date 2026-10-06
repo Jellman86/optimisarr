@@ -284,6 +284,17 @@ public sealed class Library
     /// <summary>Whether an encode that introduces true-peak clipping is rejected.</summary>
     public bool AudioClippingGateEnabled { get; set; }
 
+    /// <summary>Opt-in perceptual reports for standalone mono/stereo audio.</summary>
+    public bool AudioQualityReportingEnabled { get; set; }
+
+    public bool AudioQualityGateEnabled { get; set; }
+
+    /// <summary>Explicit maximum Zimtohrli distance, 0 to 1. No assumed quality cutoff.</summary>
+    public double? MaximumAudioQualityDistance { get; set; }
+    public bool SoundtrackQualityReportingEnabled { get; set; }
+    public bool SoundtrackQualityGateEnabled { get; set; }
+    public double? MaximumSoundtrackQualityDistance { get; set; }
+
     /// <summary>True-peak ceiling in dBTP used by the clipping gate.</summary>
     public double MaxTruePeakDbtp { get; set; }
 

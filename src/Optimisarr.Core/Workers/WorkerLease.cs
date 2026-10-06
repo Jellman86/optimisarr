@@ -17,7 +17,10 @@ public enum LeaseState
 public enum LeaseEndReason
 {
     /// <summary>The worker's samples forecast an oversized output and the job waits for review.</summary>
-    HeldForSizeReview
+    HeldForSizeReview,
+
+    /// <summary>The server rejected the full encode because samples predict a size-gate failure.</summary>
+    PredictedSizeFailure
 }
 
 /// <summary>Why a lease operation was accepted or refused.</summary>

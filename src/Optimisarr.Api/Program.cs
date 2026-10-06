@@ -48,6 +48,7 @@ var mediaProbe = new MediaProbeService(ffprobe);
 builder.Services.AddSingleton(mediaProbe);
 builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new SubtitleTimelineProbe(ffprobe));
+builder.Services.AddSingleton(new InputTimestampOffset(ffprobe));
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 // Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
@@ -78,12 +79,28 @@ builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpe
 // -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
 builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton(new ImageMetadataService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
+builder.Services.AddSingleton(_ =>
+{
+    var metric = Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY");
+    var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, metric,
+        Path.Combine(Path.GetTempPath(), "optimisarr-audio-quality"));
+    return new AudioQualityObservationService(service is null ? null : service.MeasureAsync);
+});
 builder.Services.AddSingleton<VerificationService>();
+builder.Services.AddSingleton(_ =>
+{
+    var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY"),
+        Path.Combine(Path.GetTempPath(), "optimisarr-soundtrack-quality"));
+    return new SoundtrackQualityObservationService(null, service is null ? null : service.MeasureTracksAsync);
+});
 builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
+builder.Services.AddSingleton<ExactDuplicateScanner>();
+builder.Services.AddSingleton<ExactDuplicateCoordinator>();
+builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordinator>());
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
@@ -242,6 +259,7 @@ app.MapLibraryEndpoints();
 app.MapCalibrationEndpoints();
 
 app.MapMediaAndQueueEndpoints();
+app.MapExactDuplicateEndpoints();
 
 app.MapStatsEndpoints(configDirectory);
 
@@ -436,7 +454,13 @@ internal sealed record SaveLibraryRequest(
     double? MaxTruePeakDbtp = null,
     bool? ImageQualityGateEnabled = null,
     double? MinimumImageSsim = null,
-    bool? ImageMetadataGateEnabled = null);
+    bool? ImageMetadataGateEnabled = null,
+    bool? AudioQualityReportingEnabled = null,
+    bool? AudioQualityGateEnabled = null,
+    double? MaximumAudioQualityDistance = null,
+    bool? SoundtrackQualityReportingEnabled = null,
+    bool? SoundtrackQualityGateEnabled = null,
+    double? MaximumSoundtrackQualityDistance = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -512,6 +536,12 @@ internal sealed record LibraryDto(
     bool ImageQualityGateEnabled,
     double MinimumImageSsim,
     bool ImageMetadataGateEnabled,
+    bool AudioQualityReportingEnabled,
+    bool AudioQualityGateEnabled,
+    double? MaximumAudioQualityDistance,
+    bool SoundtrackQualityReportingEnabled,
+    bool SoundtrackQualityGateEnabled,
+    double? MaximumSoundtrackQualityDistance,
     string VideoQualityStrategy,
     string WorkPlacement,
     bool AutoEnqueueEnabled,
@@ -586,6 +616,12 @@ internal sealed record LibraryDto(
         library.ImageQualityGateEnabled,
         library.MinimumImageSsim,
         library.ImageMetadataGateEnabled,
+        library.AudioQualityReportingEnabled,
+        library.AudioQualityGateEnabled,
+        library.MaximumAudioQualityDistance,
+        library.SoundtrackQualityReportingEnabled,
+        library.SoundtrackQualityGateEnabled,
+        library.MaximumSoundtrackQualityDistance,
         library.VideoQualityStrategy.ToString(),
         library.WorkPlacement.ToString(),
         library.AutoEnqueueEnabled,

@@ -6,6 +6,21 @@ namespace Optimisarr.Tests;
 
 public sealed class LibraryRuleResolutionTests
 {
+    [Theory]
+    [InlineData(MediaType.Music)]
+    [InlineData(MediaType.Other)]
+    public void Standalone_audio_without_a_bitrate_override_retains_the_selected_profiles_default(MediaType mediaType)
+    {
+        var library = new Library
+        {
+            Name = "Audio", Path = "/data/audio", MediaType = mediaType,
+            RuleProfile = RuleProfile.ScottsSettings, AudioBitrateKbps = null
+        };
+
+        var rules = LibraryRuleResolution.Resolve(library);
+
+        Assert.Equal(96, rules.AudioBitrateKbps);
+    }
     [Fact]
     public void A_library_keeps_the_profile_efficiency_floor_by_default()
     {

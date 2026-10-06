@@ -4,6 +4,9 @@ param(
     [Parameter(Mandatory)][string] $HeartbeatEvidence
 )
 $ErrorActionPreference = 'Stop'
+$lastCheckIn=$null
+$version=$null
+$drainId=[DateTime]::UtcNow.ToString('O')
 while ($Listener.IsListening) {
     try { $context = $Listener.GetContext() }
     catch [Net.HttpListenerException] { break }
@@ -15,7 +18,10 @@ while ($Listener.IsListening) {
         $response = $context.Response
         $response.ContentType = 'application/json'
         $json = '{}'
-        if ($context.Request.HttpMethod -ne 'POST') {
+        if ($context.Request.HttpMethod -eq 'GET' -and $context.Request.Url.AbsolutePath -eq '/api/workers') {
+            $json=ConvertTo-Json -InputObject @(@{id=1; sidecarVersion=$version; online=($null -ne $lastCheckIn); lastSeenAt=$lastCheckIn; heldLeases=0; drainRequestedAt=$drainId}) -Compress
+        }
+        elseif ($context.Request.HttpMethod -ne 'POST') {
             $response.StatusCode = 405
         }
         elseif ($context.Request.Url.AbsolutePath -eq '/api/workers/pair' -and ($body | ConvertFrom-Json).code -eq '00000000') {
@@ -25,6 +31,8 @@ while ($Listener.IsListening) {
             $response.StatusCode = 401
         }
         elseif ($context.Request.Url.AbsolutePath -eq '/api/workers/heartbeat') {
+            $lastCheckIn=[DateTime]::UtcNow.ToString('O')
+            $version=($body | ConvertFrom-Json).sidecarVersion
             $json = @{ workerId = 1; protocolVersion = 4; serverTimeUtc = [DateTime]::UtcNow.ToString('O'); heartbeatIntervalSeconds = 5; draining = $true } | ConvertTo-Json -Compress
             [IO.File]::AppendAllText($HeartbeatEvidence, [DateTime]::UtcNow.ToString('O') + [Environment]::NewLine)
         }

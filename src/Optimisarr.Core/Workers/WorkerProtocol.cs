@@ -22,16 +22,17 @@ public sealed record ProtocolNegotiation(bool Compatible, int AgreedVersion, str
 public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
-    // Protocol 7 resolves v1 CAMBI geometry and depth from each actual worker candidate.
-    public const int Current = 7;
+    // Protocol 9 adds preserving MP4 timestamps and decoded-picture evidence.
+    public const int Current = 9;
 
     public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments, MediaKind kind = MediaKind.Video) =>
-        kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
+        arguments.Contains("-itsoffset") ? 9 : kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
             : arguments.Any(argument => argument.StartsWith("-c:s:", StringComparison.Ordinal)) ? 4 : 1;
 
-    public static int MinimumForAssignment(IReadOnlyList<string> arguments, MediaKind kind, string model, bool measuresVmaf) =>
-        measuresVmaf && model.StartsWith("vmaf_v1.", StringComparison.Ordinal)
-            ? 7 : MinimumForEncodeCommand(arguments, kind);
+    public static int MinimumForAssignment(IReadOnlyList<string> arguments, MediaKind kind, string model, bool measuresVmaf,
+        bool measuresSoundtracks = false, bool countsVideoFrames = false) =>
+        Math.Max(MinimumForEncodeCommand(arguments, kind), countsVideoFrames ? 9
+            : measuresSoundtracks ? 8 : measuresVmaf && model.StartsWith("vmaf_v1.", StringComparison.Ordinal) ? 7 : 1);
 
     /// <summary>The oldest contract version this build still accepts.</summary>
     public const int MinimumSupported = 1;

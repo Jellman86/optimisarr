@@ -104,9 +104,32 @@ jobs:
       # the platform it ships on, and a Windows-only compile error should fail on a Windows runner
       # rather than on someone's machine.
       - run: dotnet build Optimisarr.Sidecar.slnx --configuration Release -warnaserror
+      - name: Require elevation for native Event Log integration tests
+        run: |
+          $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+          if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'Native Event Log integration tests require an administrator token.'
+          }
       - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
-      - name: Verify Windows process and replacement safety regressions
-        run: dotnet test ../../tests/Optimisarr.Tests --configuration Release --filter "FullyQualifiedName~ReviewToolProcessTests|FullyQualifiedName~ReplacementServiceTests|FullyQualifiedName~MigrationTests|FullyQualifiedName~FfmpegCommandBuilderTests|FullyQualifiedName~WorkerProtocolTests"
+      - name: Verify size-guard abort latency under CPU load
+        run: |
+          $load = @(1..2 | ForEach-Object { Start-Job {
+            'load-ready'
+            while ($true) { [void][Math]::Sqrt(123456789) }
+          } })
+          try {
+            $startup = [Diagnostics.Stopwatch]::StartNew()
+            while (@($load | Receive-Job -Keep).Count -ne 2) {
+              if ($startup.Elapsed.TotalSeconds -gt 60) { throw 'CPU load jobs did not start.' }
+              Start-Sleep -Milliseconds 100
+            }
+            dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build --filter "FullyQualifiedName~ProcessTranscoderSizeBudgetTests|FullyQualifiedName~A_machine_with_room_for_two_takes_two" --logger "console;verbosity=detailed"
+            if ($LASTEXITCODE -ne 0) { throw 'The size guard failed under CPU load.' }
+          }
+          finally { $load | Stop-Job; $load | Remove-Job -Force }
+      - name: Verify portable backend contracts on Windows
+        run: dotnet test ../../tests/Optimisarr.Tests --configuration Release
+
       - name: Verify native popover anchoring
         run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --verify-popover
       - name: Render native tray states
@@ -177,6 +200,19 @@ jobs:
             --root "$RUNNER_TEMP/optimisarr-fractional-acceptance" \
             --regression fractional-timing --local-encoder libx265 --fixture-seconds 16
 
+      - name: Verify initial picture retention in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-initial-pictures-acceptance" \
+            --regression initial-pictures --local-encoder libx265 --fixture-seconds 16
+      - name: Verify uneven timing regression in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-uneven-acceptance" \
+            --regression uneven-timing --local-encoder libx265 --fixture-seconds 16
+
       - name: Verify overlapping subtitle preservation in the final container
         run: |
           first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
@@ -197,12 +233,21 @@ jobs:
           python3 scripts/media_acceptance.py --image "$first_tag" \
             --root "$RUNNER_TEMP/optimisarr-audio-acceptance" --regression audio
 
+      - name: Verify retained video soundtracks and quality gates in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-soundtrack-acceptance" --regression soundtrack-quality
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: media-acceptance
           path: |
+            ${{ runner.temp }}/optimisarr-soundtrack-acceptance/report/
+            ${{ runner.temp }}/optimisarr-soundtrack-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-soundtrack-acceptance/image.json
             ${{ runner.temp }}/optimisarr-audio-acceptance/report/
             ${{ runner.temp }}/optimisarr-audio-acceptance/server.log
             ${{ runner.temp }}/optimisarr-audio-acceptance/image.json
@@ -212,6 +257,12 @@ jobs:
             ${{ runner.temp }}/optimisarr-fractional-acceptance/report/
             ${{ runner.temp }}/optimisarr-fractional-acceptance/server.log
             ${{ runner.temp }}/optimisarr-fractional-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-initial-pictures-acceptance/report/
+            ${{ runner.temp }}/optimisarr-initial-pictures-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-initial-pictures-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-uneven-acceptance/report/
+            ${{ runner.temp }}/optimisarr-uneven-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-uneven-acceptance/image.json
             ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/report/
             ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/server.log
             ${{ runner.temp }}/optimisarr-subtitle-overlap-acceptance/image.json

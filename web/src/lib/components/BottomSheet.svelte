@@ -64,7 +64,7 @@
   bind:this={sheetEl}
 >
   <div
-    class="relative overflow-hidden border-t border-line bg-panel shadow-[0_-4px_24px_rgba(0,0,0,0.1)] dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]"
+    class="relative overflow-hidden border-t border-line bg-panel shadow-[var(--lift-3)]"
   >
     {#if backdrop}
       <!-- Ambient backdrop behind the entire sheet; pointer-transparent and clipped to the panel. -->

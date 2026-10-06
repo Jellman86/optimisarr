@@ -9,6 +9,25 @@ namespace Optimisarr.Tests;
 /// </summary>
 public class WorkerProtocolTests
 {
+
+    [Fact]
+    public void Picture_counts_and_preserving_mux_flags_require_protocol_nine_even_with_other_features()
+    {
+        Assert.Equal(9, WorkerProtocol.MinimumForAssignment([], Optimisarr.Core.Domain.MediaKind.Video,
+            "vmaf_v0.6.1", false, countsVideoFrames: true));
+        Assert.Equal(9, WorkerProtocol.MinimumForAssignment(["-itsoffset", "0.391"],
+            Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", true, measuresSoundtracks: true));
+    }
+
+    [Fact]
+    public void Soundtrack_assignments_require_protocol_eight_and_ordinary_video_keeps_its_older_minimum()
+    {
+        Assert.Equal(8, WorkerProtocol.MinimumForAssignment(["-c:v:0", "hevc_nvenc"],
+            Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v0.6.1", false, measuresSoundtracks: true));
+        Assert.Equal(1, WorkerProtocol.MinimumForAssignment(["-c:v:0", "hevc_nvenc"],
+            Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v0.6.1", false));
+    }
+
     [Fact]
     public void V1_measurements_require_candidate_format_protocol_but_legacy_jobs_remain_compatible()
     {

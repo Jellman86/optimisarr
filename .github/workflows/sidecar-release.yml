@@ -28,6 +28,9 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Install the native audio build tools
+        run: brew install cmake
+
       - name: Work out the version
         id: version
         env:

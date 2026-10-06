@@ -25,6 +25,18 @@ private let serverCommand: [String] = [
 
 @Suite("Assignment command contract")
 struct AssignmentCommandTests {
+    @Test("input timestamp correction is finite, nonnegative and bounded")
+    func inputTimestampCorrection() throws {
+        for value in ["0", "0.391", "86400"] {
+            _ = try AssignmentCommand.validate(["-itsoffset", value, "-i", "{{input}}", "{{output}}.mp4"], outputExtension: "mp4")
+        }
+        for value in ["NaN", "Infinity", "-0.04", "86401", "/tmp/source"] {
+            #expect(throws: AssignmentCommandError.self) {
+                try AssignmentCommand.validate(["-itsoffset", value, "-i", "{{input}}", "{{output}}.mp4"], outputExtension: "mp4")
+            }
+        }
+    }
+
     @Test("only declared primary H.264 range operations are accepted")
     func acceptsDeclaredRange() throws {
         for (range, flag) in [("tv", "0"), ("pc", "1")] {
@@ -1697,8 +1709,8 @@ struct AdaptiveSearchWorkLoopTests {
         if case .released = outcome {} else { Issue.record("expected the job to be handed back") }
     }
 
-    @Test("size review from the server stops a worker before the full encode")
-    func sizeReviewStopsBeforeEncode() async throws {
+    @Test("a predicted size failure stops a worker before the full encode")
+    func predictedSizeStopsBeforeEncode() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
         server.probeStatus = 409
         let runner = JobRunner(
@@ -1714,7 +1726,7 @@ struct AdaptiveSearchWorkLoopTests {
         #expect(server.probeReports.count == 1)
         #expect(server.deliveredFile == nil)
         #expect(!server.released)
-        if case .leaseLost = outcome {} else { Issue.record("expected size review to end the lease, got \(outcome)") }
+        if case .leaseLost = outcome {} else { Issue.record("expected the size prediction to end the lease, got \(outcome)") }
     }
 
     @Test("the lease is renewed while a candidate is being measured")

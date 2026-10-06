@@ -4,6 +4,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Icon from './Icon.svelte'
+  import { jobFailureShortLabel } from '../i18n/jobErrors'
 
   let { stats, failures = [] }: { stats: Stats | null; failures?: FailureGroup[] } = $props()
 
@@ -13,7 +14,7 @@
     [...failures]
       .sort((a, b) => b.count - a.count)
       .slice(0, 3)
-      .map((group) => `${group.description || group.category} ×${group.count}`)
+      .map((group) => `${group.count.toLocaleString()} ${jobFailureShortLabel(group.category, i18n.m, group.description)}`)
       .join(' · '),
   )
 
@@ -36,7 +37,7 @@
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-ok">
             <Icon name="check" class="h-4 w-4" />
-            <span class="font-mono text-lg font-medium tabular-nums">{ready.toLocaleString()}</span>
+            <span class="text-xl font-semibold tabular-nums">{ready.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.ready_to_replace}</div>
@@ -50,7 +51,7 @@
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-ink-2">
             <Icon name="clock" class="h-4 w-4" />
-            <span class="font-mono text-lg font-medium tabular-nums">{quarantined.toLocaleString()}</span>
+            <span class="text-xl font-semibold tabular-nums">{quarantined.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.awaiting_review}</div>
@@ -66,13 +67,13 @@
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-bad">
             <Icon name="warning" class="h-4 w-4" />
-            <span class="font-mono text-lg font-medium tabular-nums">{failed.toLocaleString()}</span>
+            <span class="text-xl font-semibold tabular-nums">{failed.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-ink">{i18n.m.dashboard.failed_heading}</div>
             <div class="mt-0.5 text-xs text-ink-3">{failureSummary || i18n.m.dashboard.failed_nothing_replaced}</div>
           </div>
-          <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue')}>{i18n.m.dashboard.action_inspect}</button>
+          <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue/failures')}>{i18n.m.dashboard.action_inspect}</button>
         </li>
       {/if}
     </ul>

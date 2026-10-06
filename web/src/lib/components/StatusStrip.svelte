@@ -54,7 +54,7 @@
       <span class="h-2 w-2 flex-none rounded-full bg-ink-5" aria-hidden="true"></span>
     {/if}
     <span class="label mb-0">{i18n.m.dashboard.state}</span>
-    <span class="font-mono text-sm font-medium {tone}">{state ? LABEL[state.kind]() : '—'}</span>
+    <span class="text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
     {#if detail}
       <span class="status-strip-reason" title={detail}>{detail}</span>
     {/if}
@@ -62,25 +62,25 @@
 
   <div class="status-strip-fact">
     <span class="label mb-0">{i18n.m.dashboard.slots}</span>
-    <span class="font-mono text-sm font-medium tabular-nums text-ink">{slots}</span>
+    <span class="text-sm font-semibold tabular-nums text-ink">{slots}</span>
   </div>
 
   {#if workerSlots}
     <div class="status-strip-fact">
       <span class="label mb-0">{i18n.m.dashboard.worker_slots}</span>
-      <span class="font-mono text-sm font-medium tabular-nums text-ink">{workerSlots}</span>
+      <span class="text-sm font-semibold tabular-nums text-ink">{workerSlots}</span>
     </div>
   {/if}
 
   <div class="status-strip-fact">
     <span class="label mb-0">{i18n.m.nav.queue}</span>
-    <span class="font-mono text-sm font-medium tabular-nums text-ink">{(counts.stats?.queued ?? 0).toLocaleString()}</span>
+    <span class="text-sm font-semibold tabular-nums text-ink">{(counts.stats?.queued ?? 0).toLocaleString()}</span>
   </div>
 
   {#if queue?.freeDiskBytes != null}
     <div class="status-strip-fact status-strip-optional">
       <span class="label mb-0">{t(i18n.m.dashboard.free_on, { path: queue.workRoot || '/work' })}</span>
-      <span class="font-mono text-sm font-medium tabular-nums text-ink">{formatSize(queue.freeDiskBytes)}</span>
+      <span class="text-sm font-semibold tabular-nums text-ink">{formatSize(queue.freeDiskBytes)}</span>
     </div>
   {/if}
 

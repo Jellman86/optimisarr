@@ -43,7 +43,8 @@ public sealed record Assignment(
         if (Kind is not (MediaKind.Video or MediaKind.Audio)) return "Unsupported media kind.";
         if (string.IsNullOrWhiteSpace(Kind == MediaKind.Audio ? AudioEncoder : VideoEncoder)) return "The media encoder is missing.";
         if (Kind == MediaKind.Audio && (Quality.Measure || Search is not null)) return "Audio jobs cannot request video quality measurements or searches.";
-        if (FullVerification is { } contract && contract.Version != (Kind == MediaKind.Audio ? 2 : 1))
+        if (FullVerification is { } contract && (contract.Kind != Kind || contract.Version is not (1 or 2 or 3)
+            || (contract.Version == 3 && contract.SoundtrackQuality is null)))
             return "The verification contract does not match the media kind.";
         return null;
     }

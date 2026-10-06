@@ -11,6 +11,37 @@ public sealed class MigrationTests : IDisposable
         "optimisarr-tests",
         $"{Guid.NewGuid():N}.db");
 
+
+    [Fact]
+    public async Task Existing_video_library_soundtrack_checks_default_off_and_repeated_migration_preserves_opt_in()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261002114547_AddAudioQualityGate");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES ('Films', '/data/films', 'Film', 'ConservativeHevc', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        var library = await db.Libraries.SingleAsync();
+        Assert.False(library.SoundtrackQualityReportingEnabled);
+        Assert.False(library.SoundtrackQualityGateEnabled);
+        Assert.Null(library.MaximumSoundtrackQualityDistance);
+        library.SoundtrackQualityReportingEnabled = true;
+        library.SoundtrackQualityGateEnabled = true;
+        library.MaximumSoundtrackQualityDistance = 0;
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        var restored = await db.Libraries.SingleAsync();
+        Assert.True(restored.SoundtrackQualityReportingEnabled);
+        Assert.True(restored.SoundtrackQualityGateEnabled);
+        Assert.Equal(0, restored.MaximumSoundtrackQualityDistance);
+    }
+
     [Fact]
     public async Task Review_migrations_preserve_populated_history_and_exact_offset_times()
     {
@@ -69,6 +100,35 @@ public sealed class MigrationTests : IDisposable
         await db.Database.MigrateAsync();
         Assert.Equal(applied, (await db.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.Equal("ok", (await db.AppSettings.SingleAsync()).Value);
+    }
+
+    [Fact]
+    public async Task Existing_music_libraries_keep_reporting_off_and_repeated_migration_preserves_opt_in()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261001112013_FreezeJobVmafModel");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES ('Music', '/data/music', 'Music', 'ConservativeHevc', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        var library = await db.Libraries.SingleAsync();
+        Assert.False(library.AudioQualityReportingEnabled);
+        Assert.False(library.AudioQualityGateEnabled);
+        Assert.Null(library.MaximumAudioQualityDistance);
+        library.AudioQualityReportingEnabled = true;
+        library.AudioQualityGateEnabled = true;
+        library.MaximumAudioQualityDistance = 0.005;
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        Assert.True((await db.Libraries.SingleAsync()).AudioQualityReportingEnabled);
+        Assert.True((await db.Libraries.SingleAsync()).AudioQualityGateEnabled);
+        Assert.Equal(0.005, (await db.Libraries.SingleAsync()).MaximumAudioQualityDistance);
     }
 
     [Fact]

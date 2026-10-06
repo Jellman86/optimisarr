@@ -54,3 +54,12 @@ Strict audio verification uses the encoding FFmpeg for loudness/true-peak checks
 The dashboard shows a labelled, measured source spectrogram while viewed. See the
 [worker guide](../../docs/setup/remote-workers.md#standalone-audio) for placement,
 verification, preview limits and cover-art restrictions.
+
+## Decoded-picture verification
+
+Full videos keeping their original frame rate require matching source/candidate decoded-picture
+counts. Missing counts, lost pictures or added pictures block replacement. This needs protocol 9
+when strict verification is enabled. Counting adds a full decode of each file on the worker; those
+counts are reused when full-file or sampled VMAF needs frame pairing. With strict verification off, the server
+measures the counts. Update the sidecar alongside the server; existing pairing is retained.
+Previews and intentional frame-rate conversions keep their existing checks.

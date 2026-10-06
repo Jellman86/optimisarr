@@ -58,6 +58,7 @@ try {
   if(path==='/hubs/jobs/negotiate') return json(route,{negotiateVersion:1,connectionId:'documentation',connectionToken:'documentation',availableTransports:[{transport:'WebSockets',transferFormats:['Text']}]})
   if(!path.startsWith('/api/'))return route.continue()
   if(path.endsWith('/thumbnail'))return route.fulfill({contentType:'image/svg+xml',body:f.artwork(path.split('/')[3])})
+  if(path.endsWith('/artwork'))return route.fulfill({contentType:'image/svg+xml',body:f.artwork(path.split('/')[3])})
   if(path==='/api/auth/status')return json(route,{required:false})
   if(path==='/api/setup')return json(route,{version:1,completedStep:5,currentStep:5,stepCount:5,completed:true})
   if(path==='/api/health')return json(route,{status:'healthy',service:'optimisarr',version:f.applicationVersion})
@@ -74,6 +75,7 @@ try {
   if(path==='/api/jobs/failures')return json(route,[{category:'Verification',description:'The output did not meet a required verification gate.',count:1,samples:[{jobId:6,mediaFileId:6,relativePath:f.files[5].relativePath,jobType:'Normal',errorMessage:f.jobs[5].errorMessage,verificationChecks:[]}]}])
   if(path==='/api/queue/status')return json(route,f.queue)
   if(path==='/api/libraries')return json(route,f.libraries)
+  if(path==='/api/libraries/1/duplicates')return json(route,f.duplicateReport)
   if(path==='/api/library-options')return json(route,f.options)
   if(/^\/api\/libraries\/\d+\/access$/.test(path)) {const library=f.libraries[Number(path.split('/')[3])-1];return json(route,{path:library.path,exists:true,readable:true,writable:true,ok:true,message:'Ready',issue:'none',fileSystemId:'documentation',mountId:'1',mountPoint:'/data',fileSystemType:'ext4',availableBytes:680e9,totalBytes:2e12,atomicWithWork:true,atomicWithQuarantine:true})}
   if(path==='/api/candidates/summary')return json(route,f.libraries.map(l=>({libraryId:l.id,eligible:l.id===1?7:12,skipped:l.fileCount-(l.id===1?7:12)})))
@@ -109,8 +111,10 @@ try {
  await go('/libraries');await expect(page.locator('[data-library-card="1"]')).toBeVisible();await shot('libraries',null);await shot('libraries-main')
  await go('/libraries/1/configure');await expect(page.getByRole('button',{name:/Choose files/}).first()).toBeVisible();await shot('library-configure')
  for(const [route,name]of[['source','library-choose-files'],['source/advanced','library-advanced-eligibility'],['encode','library-encode'],['encode/video/advanced','library-advanced-encoding'],['verify/advanced','library-advanced-verification'],['automate','library-automation']]){await go('/libraries/1/configure/'+route);await shot(name)}
+ await page.getByRole('checkbox',{name:'Auto-accept passed jobs',exact:true}).click();await expect(page.getByRole('dialog',{name:'Do you really, really mean it?'})).toBeVisible();await shot('auto-accept-confirmation','dialog');await page.keyboard.press('Escape')
  await go('/libraries/1/configure');await page.getByRole('button',{name:/^Candidates/}).click();await shot('library-candidates');await page.getByRole('button',{name:/^Excluded/}).click();await shot('library-excluded')
  await go('/inventory');await expect(page.getByRole('button',{name:/Lumen Coast.mkv/})).toBeVisible();await shot('inventory',null);await shot('inventory-main');await page.getByRole('button',{name:/Lumen Coast.mkv/}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('inventory-detail','dialog')
+ await page.setViewportSize({width:1440,height:1400});await go('/inventory/duplicates');await page.getByLabel('Library',{exact:true}).selectOption('1');await expect(page.getByText('Archive/Lumen Coast copy.mkv',{exact:true})).toBeVisible();await shot('exact-copies','.duplicate-view');await page.setViewportSize({width:1440,height:1000})
  await go('/queue');await expect(page.getByRole('region',{name:'Working now'})).toBeVisible();await shot('queue',null);await shot('queue-main');await shot('queue-working-job','[aria-label="Working now"]');await page.getByRole('region',{name:'Working now'}).getByRole('button',{name:'View job',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('queue-detail','dialog');await page.keyboard.press('Escape')
  await page.setViewportSize({width:390,height:1000});await shot('queue-mobile',null);await page.setViewportSize({width:1440,height:1000})
  await page.route('**/api/libraries',route=>json(route,f.libraries.map(library=>library.id===1?{...library,autoEnqueueEnabled:true,autoReplace:true}:library)))
@@ -121,6 +125,22 @@ try {
  await go('/settings/system');await page.getByRole('heading',{name:'Tools',exact:true}).scrollIntoViewIfNeeded();await shot('settings-tools','[data-config-section]:has(h2:text-is("Tools"))');await aliases('settings-tools',['tools']);await page.getByRole('heading',{name:'Hardware acceleration',exact:true}).scrollIntoViewIfNeeded();await page.locator('#global-hardware').evaluate(el=>el.scrollIntoView({block:'start'}));await page.waitForTimeout(100);const hardwareBounds=await page.locator('#global-hardware').boundingBox(),encoderBounds=await page.locator('#global-encoders').boundingBox();await page.screenshot({path:resolve(output,'optimisarr-settings-hardware-dark.png'),clip:{x:hardwareBounds.x,y:hardwareBounds.y,width:hardwareBounds.width,height:encoderBounds.y+encoderBounds.height-hardwareBounds.y},animations:'disabled'});captured.push('settings-hardware')
  await page.getByRole('heading',{name:'Backup & restore',exact:true}).scrollIntoViewIfNeeded();await shot('settings-backup','[data-config-section]:has(h2:text-is("Backup & restore"))')
  await page.setViewportSize({width:1440,height:1250});await go('/libraries/1/quality-check');await expect(page.getByRole('button',{name:'Prepare blind samples'})).toBeVisible();await shot('personal-quality-check');await page.getByRole('button',{name:'Prepare blind samples'}).click();await expect(page.locator('video')).toBeVisible();await expect.poll(()=>page.locator('video').evaluate(v=>v.readyState>=2)).toBe(true);await shot('personal-quality-video');await go('/libraries/4/quality-check');await page.getByRole('button',{name:'Prepare blind samples'}).click();await expect(page.locator('main img').first()).toBeVisible();await shot('personal-quality-image')
+ await page.route('**/api/jobs?*',route=>json(route,[f.audioJob]));await page.route('**/api/jobs',route=>json(route,[f.audioJob]));
+ await page.setViewportSize({width:1440,height:1000});await go('/queue');await page.locator('tbody tr').first().getByRole('button').first().click();
+ await expect(page.getByRole('region',{name:'Audio quality report',exact:true})).toBeVisible();await shot('audio-report','[aria-label="Audio quality report"]');await page.keyboard.press('Escape')
+ await go('/libraries/3/configure/encode/audio');await expect(page.locator('[data-audio-encoding-preset]')).toBeVisible();await shot('audio-encoding-presets','[data-config-section]:has([data-audio-encoding-preset])')
+ await go('/libraries/3/configure/verify/advanced');await expect(page.getByRole('spinbutton',{name:'Maximum audio difference',exact:true})).toHaveValue('0.005');await shot('audio-quality-settings','fieldset:not([data-library-workflow]):has(#lib-audio-quality-limit)')
+ await page.route('**/api/jobs?*',route=>json(route,[f.audioGatedJob]));await page.route('**/api/jobs',route=>json(route,[f.audioGatedJob]));
+ await go('/queue');await page.locator('tbody tr').first().getByRole('button').first().click();await expect(page.getByRole('region',{name:'Audio quality report',exact:true})).toContainText('Blocked');await shot('audio-gate','[aria-label="Audio quality report"]');await page.keyboard.press('Escape')
+
+ await page.route('**/api/jobs?*',route=>json(route,[f.soundtrackJob]));await page.route('**/api/jobs',route=>json(route,[f.soundtrackJob]));
+ await page.setViewportSize({width:1440,height:1900});await go('/queue');await page.reload();await page.getByRole('button',{name:'View job',exact:true}).first().click();
+ await expect(page.locator('[aria-label="Soundtrack quality report"]')).toContainText('Director commentary');
+ await shot('soundtrack-report','[aria-label="Soundtrack quality report"]');await page.keyboard.press('Escape');await page.setViewportSize({width:1440,height:1000});
+ await page.route('**/api/libraries',route=>json(route,f.libraries.map(library=>library.id===1?{...library,
+   soundtrackQualityReportingEnabled:true,soundtrackQualityGateEnabled:true,maximumSoundtrackQualityDistance:0.005}:library)));
+ await go('/libraries/1/configure/verify/advanced');await expect(page.locator('#lib-soundtrack-quality-limit')).toHaveValue('0.005');
+ await shot('soundtrack-quality-settings','fieldset:not([data-library-workflow]):has(#lib-soundtrack-quality-limit)');
  if(errors.length)throw Error('UI errors: '+errors.join('\n'))
  if(unexpected.size)throw Error('Unmocked requests: '+[...unexpected].join(', '))
  await writeFile(resolve(output,'web-screenshot-manifest.json'),JSON.stringify({description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',command:'cd web && node scripts/capture-docs.mjs',viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},images:captured.map(name=>`optimisarr-${name}-dark.png`)},null,2)+'\n')

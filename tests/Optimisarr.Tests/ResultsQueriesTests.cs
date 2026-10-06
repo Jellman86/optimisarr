@@ -128,5 +128,48 @@ public sealed class ResultsQueriesTests : IDisposable
         Assert.Equal(2_600, days.Sum(d => d.BytesSaved));
     }
 
+    // A rolled-back replacement restored the original, so it saved nothing. Showing it as a saving
+    // on the Dashboard would claim space the operator never got back.
+    [Fact]
+    public async Task Results_leave_out_jobs_whose_replacement_was_rolled_back()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var libraryId = await SeedLibraryAsync(db);
+            var kept = Completed(libraryId, "kept.mkv", 1_000, 400, Now.AddHours(-1));
+            var rolledBack = Completed(libraryId, "rolled-back.mkv", 2_000, 300, Now.AddHours(-2));
+            var rollingBack = Completed(libraryId, "rolling-back.mkv", 4_000, 300, Now.AddHours(-3));
+            var purged = Completed(libraryId, "purged.mkv", 8_000, 1_000, Now.AddHours(-4));
+            db.Jobs.AddRange(kept, rolledBack, rollingBack, purged);
+            await db.SaveChangesAsync();
+            db.Replacements.AddRange(
+                ReplacementFor(kept, ReplacementStatus.Replaced),
+                ReplacementFor(rolledBack, ReplacementStatus.RolledBack),
+                ReplacementFor(rollingBack, ReplacementStatus.RollbackPending),
+                ReplacementFor(purged, ReplacementStatus.Purged));
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = new OptimisarrDbContext(_options);
+        var recent = await ResultsQueries.RecentAsync(read, take: 10, CancellationToken.None);
+        var days = await ResultsQueries.DailyAsync(read, days: 2, Now, TimeSpan.Zero, CancellationToken.None);
+
+        Assert.Equal(["kept.mkv", "purged.mkv"], recent.Select(r => r.RelativePath));
+        Assert.Equal(600 + 7_000, days.Sum(d => d.BytesSaved));
+        Assert.Equal(2, days.Sum(d => d.Files));
+    }
+
+    private static Optimisarr.Data.Replacement ReplacementFor(Job job, ReplacementStatus status) => new()
+    {
+        JobId = job.Id,
+        MediaFileId = job.MediaFileId,
+        OriginalPath = job.MediaFile!.Path,
+        QuarantinePath = "/trash/" + job.MediaFile.RelativePath,
+        FinalPath = job.MediaFile.Path,
+        OriginalSizeBytes = job.SourceSizeBytes!.Value,
+        NewSizeBytes = job.OutputSizeBytes!.Value,
+        Status = status,
+    };
+
     public void Dispose() => _connection.Dispose();
 }

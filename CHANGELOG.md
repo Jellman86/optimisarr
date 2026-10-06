@@ -1,5 +1,112 @@
 # Changelog
 
+## 0.2.20 — 2026-10-06
+
+### Documentation
+
+- Reconciled the older worker-hardening and sampled-quality records with current behavior, preserving dated evidence and distinguishing video packets from decoded pictures. The hardware matrix links current all-platform acceptance and identifies remaining scope.
+- Added a roadmap item for opt-in duplicate detection and safe dedupe across image, audio,
+  video and mixed libraries, with researched matching tools, review, rollback and resource limits.
+- Expanded the planned audio/image quality checks with pipeline placement, settings,
+  cost estimates and a licensed/private test-fixture starting set. These features are planned.
+
+### Fixed
+
+- The Dashboard's **Recent results** and **Saved per day** no longer count replacements that were rolled back. Restoring an original gives that space back, and these views now agree with the **Total space saved** figure, which already did.
+- A failed job is explained by its most fundamental cause rather than the first rule it broke. A damaged source (picture ending well before its sound) leads, then a broken output, then picture or sound quality, lost tracks or metadata, and finally the size rule. Every failed check is still listed. The Queue job details, queue rows and **Failures** tab use the same explanation.
+- A worker's last problem shows how long ago it happened and stops being shown as a warning after a day. A rejected candidate no longer reads "failed verification: Verification failed:".
+- Fixed missing spaces before "·" separators in inventory, failure, attempt history and exclusion lines.
+- Artwork from Plex, Jellyfin or Emby is used only when the search result is the same title, of the right kind (film or show) and, when both years are known, from the same year give or take one. Their search is fuzzy, so a film missing from the media server could be shown with another title's artwork, for example The Simpsons for a new film called The Odyssey. A title the media server does not know now shows the plain placeholder. Shows found through an episode use the show's poster rather than an episode still.
+- A Windows Event Log write failure no longer stops the sidecar. Writes are serialized and retried; a bounded, protected availability notice records failure and recovery without retaining application messages or exception text.
+- Opt-in diagnostic bundles compare stored audio and soundtrack contract identities as well as video contracts. Schema version 3 includes decoded picture counts, their request flag and candidate audio timestamps without raw process text. Missing evidence stays unknown; the export does not authorise replacement.
+
+- Updated the frontend toolchain's devalue dependency to reject malformed non-string object keys. The pending frontend patch updates and test coverage collector update are included.
+- The Windows checked updater preserves server check-in dates across regional formats. PowerShell's already-parsed dates are no longer converted to text and parsed again, which could exchange the day and month and block a healthy update.
+
+- Windows paired updates have a checked route that verifies installed files, sustained service/tray health and three fresh server check-ins. A failed update attempts complete previous-MSI recovery and verifies it separately. Pairing, media and Windows protections are preserved; restart-required, timed-out and unverified recovery results cannot report success. Direct MSI completion still confirms installation only.
+
+- Full-file video quality checks compare corresponding decoded pictures when their counts match. Repeated timestamps can no longer make a clean short encode fail VMAF by comparing neighbouring pictures. The container and worker commands use the same comparison; quality limits and the other verification gates are unchanged.
+
+- MP4 video encodes keep initial pictures whose reconstructed timestamps precede the source’s declared start. Full video verification also checks decoded picture counts, so silent picture loss or duplication blocks replacement even when duration and quality pass. Strict video verification that keeps the source frame rate needs protocol 9 sidecars; intentional frame-rate changes and disposable previews keep their own checks.
+
+- Duration checks use the last presented picture and its duration. A long decode span on an earlier NVIDIA packet no longer makes a complete video appear too long. Container and worker checks agree; genuinely extended final frames and oversized outputs still fail.
+
+- Switching a library's auto-accept setting off during encoding or replacement preparation now leaves its original and verified output untouched. Automatic replacement rechecks the saved setting before moving files.
+- Adaptive quality samples that predict an output above the library’s size limit now fail the job before the full encode. The failure reason clearly identifies the estimate. Existing size-review holds become failures on startup; originals remain unchanged. Container and worker paths behave alike.
+- Soundtrack assessment uses per-track duration, shares file identity checks across retained tracks, and formats tiny Mac seek offsets consistently. Long and short soundtrack workflows have additional regression coverage. Tracks without a usable duration or with conflicting Matroska duration writers are reported as unavailable and block an enabled gate.
+- macOS bundled FFmpeg includes the upstream Opus parser EOF fix, preventing a false corruption report for valid Opus soundtracks.
+
+- Queue detail styles no longer remove padding from nested measurement cards.
+- Windows installer tests wait for the installer process with a deadline, allowing upgraded
+  workers to stay running. A regression test covers live descendants, exit codes and timeouts.
+
+### Changed
+
+- Inventory shows why each skipped file was skipped, under its verdict, for example "Already hevc (no expected saving)".
+- The Settings overview no longer leaves an empty slot beside a two-room group, and the **Exact copies** reassurance no longer looks like a link.
+- **Personal quality check** describes its samples as unlabelled test encodes rather than "media-specific anonymous outputs".
+- The Dashboard's **In flight** panel shows each job's artwork with the show and episode. When nothing is running it shows the last finished title, its size before and after, where it ran and when, instead of an empty box.
+- The Quarantine review leads with the title's artwork and puts **Approve & free space** / **Reject (roll back)** directly under the sizes, above the comparison and the verification details. Before playback, both video players show the title's backdrop rather than two black frames.
+- Job details show the original and new size, for example "4.4 GB → 1.7 GB 61% smaller". The job list API now includes `sourceSizeBytes`.
+- Clearer wording across the app. The status bar reads **Running here** and **On workers**. Queue lanes are titled **Where work runs**, and job progress talks about "this server" instead of "the container" or "sidecar evidence". The Dashboard summarises failures as "40 not small enough · 11 failed a check", in the chosen language, and **Inspect** opens the **Failures** tab.
+- Queue filters no longer overlap. **Verified** and **Verification failed** are replaced by **Ready to replace**, **In progress** no longer includes jobs waiting for a decision, and **Needs review** appears only when something needs review.
+- The **Failures** tab shows each file's artwork, show and episode, with the check details moved under **Technical detail**.
+- Schedule shows an all-day window as **All day** instead of "00:00 → 00:00". Inventory details show the file type (MP4, MKV) instead of ffprobe's demuxer list, count "1 track" correctly, and show untagged audio as "unknown language".
+- Library cards state a folder access problem once, and a non-default priority no longer uses the warning colour.
+
+### Added
+
+- The initial-picture acceptance tests include a generated source with repeated timestamps and numbered pictures. They check every picture's identity and order alongside timing, quality, audio, subtitles and rollback. Equal-time fixture packets keep their bitstream order; production verification settings are unchanged.
+
+- Every library type has **Auto-accept passed jobs** under **Schedule & replace**. It is off by default. Enabling it requires a risk acknowledgement and a **Do you really, really mean it?** confirmation with a gentle red pulse that respects reduced-motion settings. Originals stay in Quarantine; approval or retention cleanup still removes rollback ability. Existing saved choices are preserved.
+- Video libraries can opt into **Soundtrack quality report** and **Require soundtrack quality**
+  separately, with an explicit maximum difference in Advanced verification. Reports
+  cover every retained re-encoded mono/stereo track, up to eight tracks and 90 seconds each.
+  Intentional removals preserve source/output mapping and language/title/commentary identity;
+  unsupported tracks or missing evidence block an enabled gate. Copied audio and previews skip
+  the assessment. Queue and Quarantine show track coverage and verdicts. This is experimental
+  sampled evidence without a calibrated threshold or listening-quality guarantee. Strict worker
+  assessment requires updated protocol 8 sidecars and verification contract 3, with no server
+  fallback. Configuration exports use format 3; older imports preserve omitted settings.
+
+- Audio encoding has codec-aware Space saver, Balanced, High and Very high bitrate presets
+  for AAC, Opus and MP3, including explicitly re-encoded video soundtracks. Custom settings
+  and defaults remain available. Presets change the encode budget without changing the audio
+  quality gate. Experimental difference limits now live in Advanced verification; existing
+  saved bitrates and limits remain unchanged until edited.
+
+- Add an optional audio quality gate to music and mixed libraries. Set your own maximum
+  difference with a horizontal control, clickable numeric points or Custom; every assessed channel/sample must pass, and missing measurements block
+  replacement. Strict sidecar verification keeps measurement on the worker. Job details
+  show the verdict and selected limit. Existing libraries retain their previous settings.
+  New configuration backups protect the gate from being silently lost on older builds;
+  older backups remain importable.
+
+- Inventory has an opt-in **Exact copies** review for every library type. It compares complete
+  file hashes within a selected library, shows paths and link counts, and supports cancellation.
+  Reads are limited to about 8 MiB/s on the server. Reports are temporary snapshots; no files
+  are removed or changed. Disk savings are unknown for linked or unclassified storage.
+
+- Experimental audio quality reports can be enabled per library under Verify. Reports compare
+  each mono/stereo channel with pinned Zimtohrli, show coverage and measurement location in
+  Queue and Quarantine, and record file/tool identity. Reports do not change replacement gates.
+  Strict worker jobs measure on Mac, Windows and Linux workers without server fallback.
+- The container and sidecar packages include the native audio metric, licences and corresponding
+  source records. Existing libraries keep reports off.
+
+
+### Development tools
+
+- Backend tests now state their POSIX requirements explicitly and use portable paths and decoded JSON elsewhere. Native Windows CI runs the complete backend suite, with eight explained POSIX skips. This does not add Windows-native server deployment support or change replacement checks.
+- Output-size guard tests measure stopping time from the candidate crossing its budget, report fixture startup separately, and check that the sleeping child is stopped. A controlled delayed startup and loaded Windows run retain the existing 15-second abort limit and an overall cancellation deadline.
+- Worker concurrency tests coordinate two active runners directly. A race in the test's peak counter can no longer report one runner when two jobs are actually running; timeout cleanup releases both fixtures.
+- The native Windows logging fixture reads only its owned provider with a bounded modern Event Log query. Transient read refusal and entry publication cannot be mistaken for missing startup writes.
+
+- Added an opt-in audio quality assessment tool using pinned Zimtohrli and per-channel
+  distances. It reports media/tool hashes, measured windows and errors for mono/stereo
+  audio, with bounded preparation, cancellation and cleanup. It does not enable a library
+  gate or change any replacement decision.
+
 ## 0.2.19 — 2026-10-01
 
 ### Fixed
@@ -19,6 +126,7 @@
 - New ordinary SDR video jobs use VMAF v1 HD/UHD models for adaptive selection and final verification. Numeric preset/custom floors stay unchanged; scores can change because v1 detects banding and chroma artifacts. HDR, sources at 45 fps or above, frame-rate conversions and already-started legacy jobs retain their existing model.
 - VMAF v1 uses 10-bit measurement and the candidate's actual encoded dimensions/depth. Update sidecars together with the server: gated v1 work requires protocol 7 and real HD/UHD model probes. Strict worker verification keeps scoring on the worker; incomplete evidence cannot approve replacement.
 - Container/Linux measurement now pins libvmaf v3.2.1, matching the Mac bundle. The Windows bundle pins a verified upstream revision eight commits later. Both include long-measurement backpressure fixes. NVIDIA encoding/decode remain supported; complete v1 scoring runs on the CPU because upstream CUDA lacks its full feature set.
+- Thanks to [@snellejelle99](https://github.com/snellejelle99) for proposing VMAF 1, sharing an early implementation and discussing the scoring in [PR #114](https://github.com/Jellman86/optimisarr/pull/114).
 
 ### Added
 
@@ -27,6 +135,11 @@
 - Real-media audio acceptance covers all three codecs, metadata, MP3 cover art, downmixing, independent decode/loudness/peak checks and exact rollback. Final server and paired Linux images run the matrix in CI.
 
 ### Changed
+
+- The web app has a native macOS look in both light and dark: the system typeface, a window-grey ground, white grouped surfaces, capsule buttons, segmented controls for switching views, a floating tinted sidebar and filled symbol tiles in Settings. Labels are sentence case and figures use the system face; code, paths and encoder names stay monospaced.
+- Status colours are chosen to stay distinguishable with colour blindness. Success is blue rather than green, warnings are gold and failures raspberry; every text step, including hints, clears WCAG AA on every surface. A unit test simulates deuteranopia and protanopia and fails if a future palette brings them back together.
+- Artwork is used more: larger posters in recent results, posters on quarantine rows, and the working job and job details take a soft glow from their own poster. Missing artwork still degrades silently, and the glow never retries artwork already known to be missing.
+- Every accent and state colour now comes from the theme, including the quality lab's player chrome (which is always dark), so no stray cyan, sky or emerald remains when the theme changes. A test keeps palette hues out of components.
 
 - Remote workers are available and enabled on fresh installations without a preview flag. Existing saved choices are preserved, including older installations without a saved worker setting. Explicit pairing, library placement and strict verification remain required; the existing environment variable still supports disabling the service.
 - Unraid Community Apps metadata now describes video, audio, image and distributed processing, with setup, license and screenshot links. The install guide reflects the live listing and the shared current application icon.

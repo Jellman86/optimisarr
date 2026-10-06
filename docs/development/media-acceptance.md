@@ -44,6 +44,111 @@ Native orchestration is for macOS/Linux. FFmpeg must support the tested codecs, 
 file can be decoded or that a required bit depth is supported; these are acceptance failures.
 For image metadata coverage, use the application's normal ExifTool installation.
 
+## Uneven timing regression
+
+Run the focused regression against a new disposable instance:
+
+```bash
+python3 scripts/media_acceptance.py --image optimisarr:test \
+  --root /tmp/optimisarr-uneven-001 --regression uneven-timing \
+  --local-encoder libx265 --fixture-seconds 16
+```
+
+The generated H.264 source declares equal 24 fps rates but contains 1 ms frame pairs and a long
+pause. The harness verifies that those properties survived fixture creation. It then checks the
+application verdict, every decoded picture timestamp, independent quality evidence, replacement
+of its own fixture copy and byte-for-byte rollback. Add the normal fleet/worker arguments to run
+it through strict worker verification. Both final-container and paired Linux-worker CI run this
+case before publishing images.
+
+This covers a duration measurement error exposed by [issue #289](https://github.com/Jellman86/optimisarr/issues/289).
+Reordered packets can report a long decode span on a picture presented before the final picture.
+Adding that span to each presentation time and taking the largest result can falsely extend the
+video. The endpoint is the latest presentation timestamp plus that packet's duration. A genuinely
+long final picture still counts in full. Duration tolerances, size gates and replacement safeguards
+are unchanged. The regression uses generated media; private investigation inputs are not included.
+
+Hardware checks on 3 October 2026 reproduced the same error with that generated source on
+NVIDIA NVENC: the old packet calculation reported 20.199 seconds, while the corrected endpoint
+was 15.982 seconds. Mac VideoToolbox, Intel QSV in the running server container, NVIDIA NVENC
+and the Linux worker's libx265 each retained all 192 decoded pictures. Their largest timestamp
+difference from the source was 0.063 ms. Quality and strict worker verification passed with the
+existing gates. An isolated Mac fleet run also passed replacement and rollback.
+
+For the longer input behind #289, a fresh NVIDIA candidate retained all 22,567 pictures with
+identical decoded timestamps. Its corrected endpoint was 1,397.062 seconds rather than the old
+calculation's 1,466.840 seconds. Fresh VMAF v1 samples passed the existing quality limits, but the
+candidate was 93.1% larger and remained rejected by the size gate. Historical reports were kept
+unchanged, and no production job or original was replaced during these checks.
+
+## Initial-picture regression
+
+```bash
+python3 scripts/media_acceptance.py --image optimisarr:test \
+  --root /tmp/optimisarr-initial-pictures-001 --regression initial-pictures \
+  --local-encoder libx265 --fixture-seconds 16
+```
+
+This generates three MPEG-4 sources in VFW Matroska, with and without subtitles. Their initial
+packets carry decode timestamps without presentation timestamps, using the same demuxer path
+that exposed [issue #351](https://github.com/Jellman86/optimisarr/issues/351) with VC-1. Each source
+has 400 pictures and lossless FLAC audio starting later than its first picture. Two also contain
+a timed text cue. The third repeats an initial decode timestamp and puts a binary luminance
+identifier on every picture. This proves picture order and identity independently of the frame
+count. Equal-time packets retain their original bitstream order. Use 8 to 40 seconds for this
+focused regression so its identifiers and evidence stay bounded. No private source media is
+included in CI.
+
+A full MP4-family video re-encode keeping the original frame rate checks the fresh source start.
+For a positive declared start, a head probe reconstructs the first 128 video packet timestamps,
+with a 30-second deadline and bounded output. If pictures precede that start, a shared input
+offset corrects their origin before the encoder. Every retained track receives the same shift.
+MP4 edit lists remain enabled. Missing timing evidence stops the job before encoding.
+Other containers, remuxes, previews and intentional frame-rate conversions retain their existing
+commands. The server performs this small planning probe even in strict worker mode.
+
+Full video verification without an intentional frame-rate change now checks exact decoded-picture
+counts. Packet counts are not a substitute. A count mismatch or unavailable counts blocks
+replacement. Counting adds one full decode of the source and candidate; full-file and sampled VMAF reuse those
+counts for frame pairing. Strict verification requests this evidence from protocol 9 sidecars,
+with no server media-tool fallback. Older sidecars can still handle compatible assignments.
+
+The regression independently checks normal-playback picture counts and every decoded timestamp,
+quality, copied audio samples, the actual audio/picture start offset and retained subtitle timing.
+It then replaces only its own fixture copy and proves byte-for-byte rollback. Source timestamp
+reconstruction is explicit; the candidate is never repaired or read with edit lists disabled.
+Both the final-container and paired Linux-worker CI gates run this regression.
+
+Only the numbered repeated-timestamp fixture permits equal timestamps in the independent
+oracle. It first requires complete picture identities in their expected order, then checks the
+written candidate presentation timestamps against the known reconstructed source times with
+the same 3 ms limit. Both presentation and best-effort fields are retained as evidence: FFmpeg
+can choose decode timestamps for its best-effort field after repeated presentation times
+([FFmpeg's selection code](https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/decode.c)).
+Ordinary fixtures retain their existing strictly increasing timestamp checks. A negative control
+damages the body of one repeated-time picture while keeping its identifier, and proves VMAF
+measures it. Quality compares every decoded picture sequentially after count/timing checks, including
+uneven sources. The numbered fixture also requires picture identity before measurement.
+This test does not repair candidates or change production verification limits.
+[Issue #353](https://github.com/Jellman86/optimisarr/issues/353) tracks the separate VC-1 timing
+investigation; passing this generated regression alone does not settle that source's timing.
+
+Production full-file VMAF also uses sequential picture comparison when source and candidate
+decoded counts are equal and the encode keeps the source frame rate. Workers receive this
+alternative and select it only after measuring both counts. Missing or unequal counts retain
+the previous comparison, and the picture-retention gate still fails. Previews and intentional
+frame-rate conversions retain their own preparation. Sampled windows keep their existing
+selection. Timing and quality are separate checks; equal counts alone do not prove identity.
+
+Hardware checks on 3 October 2026 retained all 400 generated pictures using Mac VideoToolbox,
+Windows NVIDIA NVENC, Intel QSV in the server container and libx265 in the Linux worker.
+Local and strict worker verification passed on each, with the configured quality and size gates.
+The application-level Mac checks also cover the subtitle-free source, replacement and rollback.
+These results cover the tested encoders and generated inputs, rather than every timestamp format.
+Matching counts alone do not prove picture identity or identical timing. Quality and timing checks
+remain separate. DTS-only sources without original presentation timestamps can have ambiguous
+reconstructed timing; exact cadence preservation needs additional evidence for those inputs.
+
 ## Openly licensed corpus
 
 ```bash

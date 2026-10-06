@@ -21,13 +21,15 @@
     failed = false
   })
 
+  // Artwork corners scale with the artwork, as album and poster art does in the Apple apps.
+  const corner = $derived(size === 'poster' || size === 'lg' ? 'rounded-[10px]' : 'rounded-[5px]')
   const box = $derived(size === 'poster' ? (shape === 'square' ? 'h-32 w-32' : 'h-48 w-32') : size === 'lg' ? 'h-36 w-24' : size === 'md' ? 'h-16 w-11' : 'h-12 w-8')
 </script>
 
 {#key mediaFileId}
 <div
   data-thumbnail data-shape={shape}
-  class="relative shrink-0 overflow-hidden rounded bg-raised ring-1 ring-line {box}"
+  class="relative shrink-0 overflow-hidden bg-raised shadow-[0_1px_3px_rgba(0,0,0,0.18)] ring-1 ring-line {corner} {box}"
 >
   {#if !failed}
     <img

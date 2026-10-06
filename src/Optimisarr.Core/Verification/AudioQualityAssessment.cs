@@ -1,0 +1,155 @@
+using System.Globalization;
+using System.Text.Json;
+
+namespace Optimisarr.Core.Verification;
+
+public sealed record AudioQualityWindow(double StartSeconds, double DurationSeconds);
+
+public static class AudioQualityWindowPlanner
+{
+    public static IReadOnlyList<AudioQualityWindow> Plan(double durationSeconds, bool soundtrack = false)
+    {
+        if (!double.IsFinite(durationSeconds) || durationSeconds < 1 || durationSeconds > 86400) return [];
+        // Container duration can include encoder padding. Keep soundtrack samples clear of that boundary.
+        if (soundtrack) durationSeconds -= Math.Min(0.1, durationSeconds - 1);
+        var duration = Math.Floor(durationSeconds * 48000) / 48000;
+        if (duration <= 90)
+        {
+            var count = (int)Math.Ceiling(duration / 30);
+            var frames = (long)Math.Floor(duration * 48000);
+            var length = frames / count;
+            var remainder = frames % count;
+            return Enumerable.Range(0, count)
+                .Select(i => new AudioQualityWindow((i * length + Math.Min(i, remainder)) / 48000.0,
+                    (length + (i < remainder ? 1 : 0)) / 48000.0))
+                .ToArray();
+        }
+        return [new(0, 30), new(Math.Floor((duration - 30) * 24000) / 48000, 30), new(duration - 30, 30)];
+    }
+}
+
+public sealed record AudioQualityInput(double DurationSeconds, int Channels, int SampleRate, string ChannelLayout, double ContainerLeadSeconds = 0)
+{
+    public static AudioQualityInput? Parse(string json)
+        => ParseTrack(json, 0, standalone: true);
+
+    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var streams = doc.RootElement.GetProperty("streams").EnumerateArray().ToArray();
+            var audio = streams.Where(s => s.GetProperty("codec_type").GetString() == "audio").ToArray();
+            if (audioIndex < 0 || audioIndex >= audio.Length || (standalone && (audio.Length != 1 || streams.Any(s => s.GetProperty("codec_type").GetString() == "video"
+                && (!s.TryGetProperty("disposition", out var d) || !d.TryGetProperty("attached_pic", out var p) || p.GetInt32() != 1))))) return null;
+            var track = audio[audioIndex];
+            var channels = track.GetProperty("channels").GetInt32();
+            var sampleRate = int.Parse(track.GetProperty("sample_rate").GetString()!, CultureInfo.InvariantCulture);
+            var durationText = track.TryGetProperty("duration", out var t) && t.GetString() != "N/A" ? t.GetString() : null;
+            double duration;
+            if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out duration))
+            {
+                if (!standalone && track.TryGetProperty("tags", out var tags)
+                    && tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("DURATION", StringComparison.OrdinalIgnoreCase)).Value is { ValueKind: JsonValueKind.String } end)
+                {
+                    var parts = end.GetString()!.Split(':');
+                    if (parts.Length != 3 || !int.TryParse(parts[0], out var hours) || !int.TryParse(parts[1], out var minutes)
+                        || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                        || hours < 0 || minutes is < 0 or > 59 || seconds is < 0 or >= 60
+                        || !track.TryGetProperty("start_time", out var start)
+                        || !double.TryParse(start.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var began)) return null;
+                    var statistics = tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("_STATISTICS_WRITING_APP", StringComparison.OrdinalIgnoreCase)).Value;
+                    var format = doc.RootElement.GetProperty("format");
+                    var encoder = format.TryGetProperty("tags", out var formatTags)
+                        ? formatTags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("encoder", StringComparison.OrdinalIgnoreCase)).Value : default;
+                    var statisticsLength = statistics.ValueKind == JsonValueKind.String
+                        && (statistics.GetString()!.StartsWith("mkvmerge", StringComparison.OrdinalIgnoreCase)
+                            || statistics.GetString()!.StartsWith("mkvpropedit", StringComparison.OrdinalIgnoreCase));
+                    // FFmpeg can retain stale statistics, or mkvpropedit can refresh them after muxing.
+                    if (statisticsLength && encoder.ValueKind == JsonValueKind.String
+                        && encoder.GetString()!.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase) && began != 0) return null;
+                    // MKVToolNix statistics store elapsed time; FFmpeg rewrites DURATION as an end timestamp.
+                    duration = hours * 3600.0 + minutes * 60 + seconds - (statisticsLength ? 0 : began);
+                }
+                else if (!standalone || !double.TryParse(doc.RootElement.GetProperty("format").GetProperty("duration").GetString(),
+                    NumberStyles.Float, CultureInfo.InvariantCulture, out duration)) return null;
+            }
+            if (AudioQualityWindowPlanner.Plan(duration).Count == 0 || channels is not (1 or 2) || sampleRate is < 8000 or > 384000) return null;
+            var expectedLayout = channels == 1 ? "mono" : "stereo";
+            var layout = track.TryGetProperty("channel_layout", out var l) ? l.GetString() : null;
+            if (!string.IsNullOrEmpty(layout) && layout != expectedLayout) return null;
+            var lead = 0.0;
+            if (!standalone)
+            {
+                static double Start(JsonElement value) => value.TryGetProperty("start_time", out var t) && t.GetString() != "N/A"
+                    ? double.Parse(t.GetString()!, CultureInfo.InvariantCulture) : throw new FormatException("Unknown picture timeline.");
+                var video = streams.FirstOrDefault(s => s.GetProperty("codec_type").GetString() == "video"
+                    && (!s.TryGetProperty("disposition", out var d) || !d.TryGetProperty("attached_pic", out var p) || p.GetInt32() != 1));
+                if (video.ValueKind != JsonValueKind.Undefined)
+                    lead = Start(video) - Start(doc.RootElement.GetProperty("format"));
+                if (!double.IsFinite(lead) || lead is < 0 or > 0.1) return null;
+            }
+            return new(duration, channels, sampleRate, expectedLayout, lead);
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException or ArgumentNullException)
+        { return null; }
+    }
+
+    public static string? Incompatibility(AudioQualityInput reference, AudioQualityInput candidate) =>
+        reference.Channels != candidate.Channels || reference.ChannelLayout != candidate.ChannelLayout
+            ? "The candidate's channels do not match the reference."
+            : Math.Abs(reference.DurationSeconds - candidate.DurationSeconds) > 0.1
+                ? "The candidate's duration differs by more than the assessment's 100 ms tolerance."
+                : null;
+}
+
+public static class AudioQualityCommandBuilder
+{
+    public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window, int audioIndex = 0, double containerLeadSeconds = 0, bool soundtrack = false)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(audioIndex);
+        if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
+        var seek = window.StartSeconds + containerLeadSeconds;
+        var frames = (long)Math.Round(window.DurationSeconds * 48000);
+        return [
+        "-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
+        .. soundtrack && seek == 0 ? Array.Empty<string>() : ["-ss", seek.ToString("0.########", CultureInfo.InvariantCulture)],
+        "-i", source, "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
+        "-vn", "-sn", "-dn", "-ar", "48000",
+        .. soundtrack ? new[] { "-af", $"aresample=48000,atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [], "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
+        ];
+    }
+}
+
+public sealed record AudioQualityDistances(int Frames, IReadOnlyList<double> ChannelDistances)
+{
+    public double? WorstChannelDistance => ChannelDistances is { Count: > 0 } ? ChannelDistances.Max() : null;
+}
+
+public static class AudioQualityResultParser
+{
+    public const string Revision = "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3";
+    public const string Preparation = "audio-f32le-48k-native-defaults-v1";
+    public const string SoundtrackPreparation = "audio-f32le-48k-video-timeline-v1";
+
+    public static AudioQualityDistances? Parse(string json, int channels, double durationSeconds)
+    {
+        if (json.Length > 8192 || channels is not (1 or 2) || !double.IsFinite(durationSeconds) || durationSeconds is < 1 or > 30) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.EnumerateObject().GroupBy(p => p.Name).Any(g => g.Count() != 1)) return null;
+            if (root.GetProperty("schema").GetInt32() != 1 || root.GetProperty("metric").GetString() != "zimtohrli"
+                || root.GetProperty("revision").GetString() != Revision || root.GetProperty("sampleRate").GetInt32() != 48000
+                || root.GetProperty("channels").GetInt32() != channels || Math.Abs(root.GetProperty("fullScaleSineDb").GetDouble() - 78.3) > 0.0001) return null;
+            var frames = root.GetProperty("frames").GetInt32();
+            if (Math.Abs(frames - durationSeconds * 48000) > 64) return null;
+            var values = root.GetProperty("distances").EnumerateArray().Select(v => v.GetDouble()).ToArray();
+            if (values.Length != channels || values.Any(v => !double.IsFinite(v) || v is < 0 or > 1)) return null;
+            return new(frames, values);
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
+        { return null; }
+    }
+}

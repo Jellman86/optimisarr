@@ -6,7 +6,8 @@ using Optimisarr.Core.Verification;
 namespace Optimisarr.Core.Workers;
 
 /// <summary>Lease-specific measurement request. Thresholds remain authoritative on the server.</summary>
-public sealed record RemoteVerificationContract(int Version, Guid Id, bool MeasureAudio)
+public sealed record RemoteVerificationContract(int Version, Guid Id, bool MeasureAudio, bool MeasureAudioQuality = false,
+    SoundtrackQualityRequest? SoundtrackQuality = null, bool CountVideoFrames = false)
 {
     // Version 1 remains the video contract; version 2 adds standalone audio.
     public MediaKind Kind => Version == 2 ? MediaKind.Audio : MediaKind.Video;
@@ -26,7 +27,10 @@ public sealed record RemoteVerificationEvidence(
     LoudnessResult? SourceLoudness = null,
     LoudnessResult? CandidateLoudness = null,
     string? Error = null,
-    TimestampCheckResult? CandidateAudio = null);
+    TimestampCheckResult? CandidateAudio = null,
+    RemoteAudioQualityEvidence? AudioQuality = null,
+    SoundtrackQualityReport? SoundtrackQuality = null,
+    int? SourceDecodedFrameCount = null, int? CandidateDecodedFrameCount = null);
 
 public static class RemoteVerificationEvidenceValidator
 {
@@ -38,15 +42,16 @@ public static class RemoteVerificationEvidenceValidator
     {
         if (evidence is null) return ["The sidecar returned no full verification evidence."];
         var reasons = new List<string>();
-        if (contract.Version is not (1 or 2) || contract.Id != evidence.ContractId)
+        if (contract.Version is not (1 or 2 or 3) || contract.Id != evidence.ContractId
+            || (contract.Version == 3 && contract.SoundtrackQuality is null))
             reasons.Add("Verification evidence belongs to a different or unsupported contract.");
         if (!Matches(sourceSha256, evidence.SourceSha256) || !Matches(candidateSha256, evidence.CandidateSha256))
             reasons.Add("Verification evidence does not match the source and delivered candidate hashes.");
-        reasons.AddRange(ValidateMeasurements(evidence, contract.MeasureAudio, contract.Kind));
+        reasons.AddRange(ValidateMeasurements(evidence, contract.MeasureAudio, contract.Kind, contract.CountVideoFrames));
         return reasons;
     }
 
-    public static IReadOnlyList<string> ValidateMeasurements(RemoteVerificationEvidence evidence, bool measureAudio, MediaKind kind = MediaKind.Video)
+    public static IReadOnlyList<string> ValidateMeasurements(RemoteVerificationEvidence evidence, bool measureAudio, MediaKind kind = MediaKind.Video, bool countVideoFrames = false)
     {
         var reasons = new List<string>();
         if (!string.IsNullOrWhiteSpace(evidence.Error)) reasons.Add(evidence.Error);
@@ -67,6 +72,9 @@ public static class RemoteVerificationEvidenceValidator
         }
         if (evidence.SourceAudio is null || (hasAudio && !TimestampValid(evidence.SourceAudio)))
             reasons.Add("The source audio timestamp check is missing or incomplete.");
+        if (countVideoFrames && (kind != MediaKind.Video
+            || evidence.SourceDecodedFrameCount is not > 0 || evidence.CandidateDecodedFrameCount is not > 0))
+            reasons.Add("Complete decoded picture counts are required; packet counts cannot prove picture retention.");
         if (measureAudio && (!LoudnessValid(evidence.SourceLoudness) || !LoudnessValid(evidence.CandidateLoudness)))
             reasons.Add("Both requested loudness/true-peak measurements are required.");
         return reasons;

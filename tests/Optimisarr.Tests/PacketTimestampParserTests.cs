@@ -4,6 +4,47 @@ namespace Optimisarr.Tests;
 
 public sealed class PacketTimestampParserTests
 {
+    [Fact]
+    public void Earlier_decode_span_does_not_extend_the_last_presented_picture()
+    {
+        const string csv = """
+        1371.370000,1275.899625,95.470375
+        1397.020625,1396.853792,0.041708
+        1396.937208,1396.937208,0.041708
+        """;
+
+        var integrity = PacketTimestampParser.Parse(csv);
+
+        Assert.Equal(3, integrity.TimestampCount);
+        Assert.Equal(0, integrity.NonMonotonicCount);
+        Assert.Equal(1397.062333, integrity.LastPresentationSeconds!.Value, precision: 6);
+    }
+
+    [Fact]
+    public void A_genuinely_extended_final_picture_keeps_its_full_duration()
+    {
+        var integrity = PacketTimestampParser.Parse("0,0,1\n1,1,1\n2,2,5");
+
+        Assert.Equal(7, integrity.LastPresentationSeconds);
+    }
+
+    [Fact]
+    public void Repeated_final_presentation_time_keeps_the_longest_final_duration()
+    {
+        var integrity = PacketTimestampParser.Parse("0,0,1\n2,1,0.01\n2,2,0.04\n1,3,9");
+
+        Assert.Equal(2.04, integrity.LastPresentationSeconds);
+    }
+
+    [Fact]
+    public void Nonfinite_timestamps_are_not_successful_packet_evidence()
+    {
+        var integrity = PacketTimestampParser.Parse("NaN,Infinity,N/A\nInfinity,NaN,0.04");
+
+        Assert.Equal(0, integrity.TimestampCount);
+        Assert.Null(integrity.LastPresentationSeconds);
+    }
+
     // ffprobe emits "pts_time,dts_time,duration_time" per packet at -of csv=p=0.
     [Fact]
     public void A_strictly_increasing_stream_has_no_regressions()

@@ -17,6 +17,21 @@ public sealed class ConfigSnapshotValidatorTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData(-1.0)]
+    [InlineData(2.0)]
+    [InlineData(double.NaN)]
+    public void An_enabled_audio_gate_cannot_be_imported_without_a_valid_limit(double? limit)
+    {
+        var library = new LibrarySnapshot("Music", "/data/music", "Music", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+            { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = limit };
+        var result = ConfigSnapshotValidator.Validate(Empty() with { Libraries = [library] }, AllowedKeys);
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("audio quality gate"));
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(100)]
     [InlineData(double.NaN)]
@@ -62,6 +77,17 @@ public sealed class ConfigSnapshotValidatorTests
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, error => error.Contains("maximum allowed saving", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Enforced_audio_gates_require_a_backup_version_that_older_software_rejects()
+    {
+        Assert.True(ConfigSnapshot.CurrentVersion >= 2);
+        var library = new LibrarySnapshot("Music", "/data/music", "Music", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+            { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.01 };
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Version = 1, Libraries = [library] }, AllowedKeys).IsValid);
+        Assert.True(ConfigSnapshotValidator.Validate(Empty() with { Version = 1 }, AllowedKeys).IsValid);
     }
 
     [Fact]

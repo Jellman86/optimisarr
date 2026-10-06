@@ -185,7 +185,7 @@ internal static class DiagnosticJobBundleQueries
             job.FailureCategory?.ToString(),
             SummariseReport(job.VerificationReportJson, omissions));
         return new DiagnosticJobBundle(
-            new DiagnosticBundleManifest(2, session.Id, nowUtc, session.IncludePaths,
+            new DiagnosticBundleManifest(3, session.Id, nowUtc, session.IncludePaths,
                 session.EventLimitReached, omissions),
             summary,
             attempts.Select(attempt => new DiagnosticAttemptSummary(

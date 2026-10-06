@@ -9,6 +9,22 @@ namespace Optimisarr.Tests;
 public sealed class QueueDispatcherSafetyTests
 {
     [Fact]
+    public void Predicted_size_failure_is_terminal_without_claiming_a_finished_output()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var job = new Job { Status = JobStatus.Probing, SourceSha256 = new string('a', 64) };
+        SizePredictionFailure.Apply(job, 20, "Size saving prediction: samples project 125%. The full encode was not run.", now);
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Equal(FailureCategory.SizeSaving, job.FailureCategory);
+        Assert.Equal(now, job.FinishedAt);
+        Assert.Equal(20, job.AdaptiveVideoQuality);
+        Assert.Null(job.WorkOutputPath);
+        Assert.Null(job.VerificationPassed);
+        Assert.Null(job.OutputSizeBytes);
+        Assert.Equal(new string('a', 64), job.SourceSha256);
+    }
+
+    [Fact]
     public void Software_decode_retry_keeps_source_identity_but_discards_the_previous_verdict()
     {
         var job = new Job
