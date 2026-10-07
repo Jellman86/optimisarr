@@ -708,7 +708,7 @@ class Harness:
             if regression == "uneven-timing" and "uneven" not in variants:
                 variants = [*variants, "uneven"]
             if regression == "initial-pictures":
-                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles", "dts-repeated"]))
+                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles", "dts-repeated", "dts-bframes"]))
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}

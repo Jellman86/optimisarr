@@ -159,9 +159,10 @@ class Tools:
     def fixture(self, path, variant="sdr", seconds=8, source=None, start=0):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        if variant in ("dts-only", "dts-only-no-subtitles", "dts-repeated"):
+        if variant in ("dts-only", "dts-only-no-subtitles", "dts-repeated", "dts-bframes"):
             return self.dts_only_fixture(path, seconds, subtitles=variant != "dts-only-no-subtitles",
-                                         numbered_repeated_fixture=variant == "dts-repeated")
+                                         numbered_repeated_fixture=variant == "dts-repeated",
+                                         reordered_h264=variant == "dts-bframes")
         if source:
             inputs = ["-ss", str(start), "-i", self.path(source)]
             mapping = ["-map", "0:v:0", "-map", "0:a?"]
@@ -203,14 +204,18 @@ class Tools:
             evidence["timing"] = validate_uneven_timing_fixture(evidence["probe"], self.frame_times(path))
         return evidence
 
-    def dts_only_fixture(self, path, seconds, *, subtitles=True, numbered_repeated_fixture=False):
+    def dts_only_fixture(self, path, seconds, *, subtitles=True, numbered_repeated_fixture=False, reordered_h264=False):
         avi, flac = path.with_suffix(".avi"), path.with_suffix(".flac")
         markers = []
         if numbered_repeated_fixture:
             require(8 <= seconds <= 40, "Numbered DTS fixture requires 8 to 40 seconds")
             markers = ["-vf", "geq=lum='if(lt(Y,48),16+219*mod(floor(N/pow(2,floor(X/32))),2),p(X,Y))':cb='cb(X,Y)':cr='cr(X,Y)'"]
+        # MPEG-4's parser fills in presentation times for its B-frames; H.264 in VfW Matroska stays
+        # decode-only like the VC-1 that showed +genpts mistiming reordered pictures (#373).
+        video_codec = (["-c:v", "libx264", "-preset", "fast", "-x264-params", "bframes=2:b-pyramid=none"]
+                       if reordered_h264 else ["-c:v", "mpeg4", "-bf", "2", "-q:v", "3"])
         self.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=25:duration={seconds}",
-                     *markers, "-c:v", "mpeg4", "-bf", "2", "-q:v", "3", self.path(avi)])
+                     *markers, *video_codec, self.path(avi)])
         self.encode(["-f", "lavfi", "-i", f"sine=frequency=880:sample_rate=48000:duration={seconds}",
                      "-c:a", "flac", self.path(flac)])
         def packets(file):
@@ -227,6 +232,9 @@ class Tools:
             "-show_entries", "packet=pts_time,dts_time", "-of", "json", self.path(path)]))["packets"]
         require(source_packets and "pts_time" not in source_packets[0] and all("dts_time" in packet for packet in source_packets),
                 "DTS-only fixture no longer carries decode timestamps alone")
+        if reordered_h264:
+            require(all("pts_time" not in packet for packet in source_packets),
+                    "Reordered fixture must carry no presentation time on any picture")
         require(int(moving["nb_read_frames"]) == round(seconds * 25), "Generated fixture lost pictures")
         require(sum(stream["codec_type"] == "subtitle" for stream in probe["streams"]) == int(subtitles),
                 "Generated fixture has the wrong subtitle coverage")
@@ -243,7 +251,8 @@ class Tools:
             identities = self.picture_ids(path, path.parent / (path.stem + "-markers.gray"), generate_pts=True)
             validate_picture_ids(identities, identities)
         return {"path": str(path), "sha256": sha256(path),
-                "variant": "dts-repeated" if numbered_repeated_fixture else "dts-only", "seconds": seconds, "probe": probe}
+                "variant": "dts-repeated" if numbered_repeated_fixture else "dts-bframes" if reordered_h264 else "dts-only",
+                "seconds": seconds, "probe": probe}
 
     def alac_fixture(self, path, source, *, mixed=False):
         path = Path(path)

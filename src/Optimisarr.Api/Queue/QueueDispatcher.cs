@@ -1828,6 +1828,22 @@ public sealed class QueueDispatcher(
                     .MeasureAsync(media.Path, freshSourceProbe.ContainerStartSeconds, cancellationToken) };
         }
 
+        if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
+        {
+            // Decode-only sources with B-frames are mistimed by +genpts (#373). Without a reading the
+            // job keeps the regeneration it always had: this refines timing, it is not a safety gate.
+            try
+            {
+                spec = spec with { RegeneratePresentationTimestamps = await scope.ServiceProvider
+                    .GetRequiredService<SourceTimestampFacts>()
+                    .NeedsGeneratedPresentationTimesAsync(media.Path, audioIsCopied: !spec.VideoOnly && spec.AudioEncoder is null, cancellationToken) };
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                logger.LogWarning(error, "Job {JobId} keeps regenerated presentation times: the source timestamp read failed", job.Id);
+            }
+        }
+
         if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
             && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.Path),
                 freshSourceProbe?.AudioCodecs, spec.RemoveAudioStreamIndexes ?? []))

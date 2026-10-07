@@ -1151,6 +1151,15 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void A_source_whose_demuxer_timing_is_kept_is_not_given_regenerated_timestamps()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { RegeneratePresentationTimestamps = false });
+
+        Assert.DoesNotContain("+genpts", args);
+        Assert.DoesNotContain("-fflags", args);
+    }
+
+    [Fact]
     public void Drops_attachment_and_data_streams_for_an_mp4_remux()
     {
         // A remux from .mkv to .mp4 hits the same wall, so the exclusion must apply there too.

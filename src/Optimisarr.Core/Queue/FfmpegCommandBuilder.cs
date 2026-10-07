@@ -65,6 +65,10 @@ public sealed record TranscodeSpec(
     /// <summary>Shared input shift for pictures preceding the demuxer's declared start.</summary>
     public double InputTimestampOffsetSeconds { get; init; }
 
+    /// <summary>False when the source's video carries decode times only and nothing copied needs
+    /// generated presentation times; +genpts would mistime its reordered pictures (SourceTimestampFacts).</summary>
+    public bool RegeneratePresentationTimestamps { get; init; } = true;
+
     /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
     public double? TargetFrameRate => FrameRate?.TargetFps;
 
@@ -164,7 +168,7 @@ public static class FfmpegCommandBuilder
         // Regenerate presentation timestamps for a video source whose DTS/PTS are missing or
         // non-monotonic, so it muxes cleanly instead of warning ("Non-monotonous DTS …") or aborting.
         // A demuxer input flag, so it precedes -i; a no-op when the source's timestamps are valid.
-        if (spec.Kind is not (MediaKind.Audio or MediaKind.Image))
+        if (spec.Kind is not (MediaKind.Audio or MediaKind.Image) && spec.RegeneratePresentationTimestamps)
         {
             args.Add("-fflags");
             args.Add("+genpts");
