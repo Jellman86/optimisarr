@@ -190,7 +190,7 @@ class Harness:
             audio_expectations=(["flac"], ["eng"], [0]) if mode == "filtered" else (["alac"], ["eng"], [0]),
             expected_container="mkv" if mode == "matroska" else "mp4")
 
-    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False, numbered_repeated_fixture=False):
+    def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False, numbered_repeated_fixture=False, check_regular_cadence=False):
         self.select_worker(worker)
         self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
@@ -270,6 +270,8 @@ class Harness:
                     "Copied audio language or order changed")
         if check_picture_origin:
             self.tools.check_av_start_offset(case["source"], candidate, directory)
+        if check_regular_cadence:
+            self.tools.check_regular_stored_cadence(candidate)
         if check_subtitles or subtitle_expectations:
             codecs, languages, source_indexes = subtitle_expectations or (["ass", "ass"], ["eng", "fra"], [0, 1])
             subtitles = [stream for stream in streams if stream["codec_type"] == "subtitle"]
@@ -787,8 +789,12 @@ class Harness:
                         repeated = self.video(name + "-repeated", fixtures["dts-repeated"], encoder, worker, container="mp4",
                             subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True,
                             numbered_repeated_fixture=True)
+                        require("dts-bframes" in fixtures, "Decode-only B-frame fixture could not be generated")
+                        reordered = self.video(name + "-bframes", fixtures["dts-bframes"], encoder, worker, container="mp4",
+                            subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True,
+                            check_regular_cadence=True)
                         return {"withSubtitles": with_subtitles, "withoutSubtitles": without_subtitles,
-                                "repeatedTimestamps": repeated}
+                                "repeatedTimestamps": repeated, "reorderedDecodeOnly": reordered}
                     if regression == "uneven-timing":
                         require("uneven" in fixtures, "Uneven timestamp fixture could not be generated")
                         return self.video(name, fixtures["uneven"], encoder, worker, container="mp4")

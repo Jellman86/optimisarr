@@ -328,6 +328,17 @@ class Tools:
             "-frames:v", "1001", "-pix_fmt", "gray", "-f", "rawvideo", self.path(raw_path)])
         return parse_picture_ids(Path(raw_path).read_bytes())
 
+    def check_regular_stored_cadence(self, path):
+        """Every stored picture time evenly spaced: no late, early or shared timestamp (#373)."""
+        output = self.run(self.ffprobe, ["-v", "error", "-select_streams", "V:0", "-show_entries", "packet=pts",
+                                         "-of", "csv=p=0", self.path(path)])
+        times = sorted(int(value) for value in output.split() if value.strip() not in ("", "N/A"))
+        require(len(times) > 2, "Too few stored picture timestamps to check their cadence")
+        steps = [b - a for a, b in zip(times, times[1:])]
+        irregular = [(index, step) for index, step in enumerate(steps) if step != steps[len(steps) // 2]]
+        require(not irregular, f"Stored picture times are not evenly spaced: {irregular[:4]}")
+        return steps[len(steps) // 2]
+
     def frame_times(self, path, *, generate_pts=False, numbered_repeated_fixture=False, evidence_path=None):
         entries = "frame=pts_time,best_effort_timestamp_time" if numbered_repeated_fixture else "frame=best_effort_timestamp_time"
         result = json.loads(self.run(self.ffprobe, ["-v", "error", *(["-fflags", "+genpts"] if generate_pts else []), "-select_streams", "V:0",

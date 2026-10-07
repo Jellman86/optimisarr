@@ -31,10 +31,25 @@ public sealed class SourceTimestampFactsTests
     }
 
     [Fact]
-    public void Only_the_main_video_stream_decides_and_a_cover_picture_does_not_mask_it()
+    public void The_first_video_stream_is_the_encoded_one_and_a_timed_copied_cover_picture_is_fine()
     {
         const string withCover = "video,1,0,0\nvideo,0,N/A,0\nvideo,0,N/A,40\nvideo,0,N/A,80\n";
         Assert.False(SourceTimestampFacts.NeedsGeneratedPresentationTimes(withCover, audioIsCopied: true));
+    }
+
+    [Fact]
+    public void A_copied_second_video_track_without_its_own_times_still_needs_regeneration()
+    {
+        // Only v:0 is re-encoded; another decode-only video track is copied and cannot be muxed untimed.
+        const string twoDecodeOnlyTracks = "video,0,N/A,0\nvideo,1,N/A,0\nvideo,0,N/A,40\nvideo,1,N/A,40\n";
+        Assert.True(SourceTimestampFacts.NeedsGeneratedPresentationTimes(twoDecodeOnlyTracks, audioIsCopied: true));
+    }
+
+    [Fact]
+    public void When_only_the_encoded_video_is_kept_the_other_streams_do_not_matter()
+    {
+        const string untimedOthers = "video,0,N/A,0\nvideo,1,N/A,0\naudio,2,N/A,N/A\nvideo,0,N/A,40\n";
+        Assert.False(SourceTimestampFacts.NeedsGeneratedPresentationTimes(untimedOthers, audioIsCopied: true, otherStreamsKept: false));
     }
 
     [Theory]

@@ -1836,7 +1836,8 @@ public sealed class QueueDispatcher(
             {
                 spec = spec with { RegeneratePresentationTimestamps = await scope.ServiceProvider
                     .GetRequiredService<SourceTimestampFacts>()
-                    .NeedsGeneratedPresentationTimesAsync(media.Path, audioIsCopied: !spec.VideoOnly && spec.AudioEncoder is null, cancellationToken) };
+                    .NeedsGeneratedPresentationTimesAsync(media.Path, audioIsCopied: spec.AudioEncoder is null,
+                        otherStreamsKept: !spec.VideoOnly, cancellationToken) };
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
