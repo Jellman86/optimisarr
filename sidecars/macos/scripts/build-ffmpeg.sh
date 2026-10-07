@@ -73,6 +73,11 @@ mkdir -p "${VENDOR}" "${BUILD}" "${PREFIX}"
 # refuses to start on a user's Mac: "Library not loaded: /opt/homebrew/opt/libxcb/lib/libxcb.1.dylib".
 # LIBDIR *replaces* that search path, so only what this script built is visible.
 export PKG_CONFIG_LIBDIR="${PREFIX}/lib/pkgconfig"
+# The app runs on macOS 14 (LSMinimumSystemVersion, Package.swift). Without a deployment target
+# every library and ffmpeg itself inherits the build machine's macOS — 15 on CI — and the bundled
+# tools refuse to start on a Mac the app happily installs on. clang, cmake and meson all read this.
+MINIMUM_MACOS=14.0
+export MACOSX_DEPLOYMENT_TARGET="${MINIMUM_MACOS}"
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
 export PATH="${PREFIX}/bin:${PATH}"
 
@@ -254,6 +259,7 @@ if [[ "${portable}" != true ]]; then
   exit 1
 fi
 echo "  both link only the OS"
+python3 ../../scripts/check_macos_minimum.py --minimum "${MINIMUM_MACOS}" "${VENDOR}/ffmpeg" "${VENDOR}/ffprobe"
 
 # Listings alone missed both bugs: an encoder can silently reduce bit depth, and AV1 hardware
 # decode does not provide the software decoder used by full verification.
