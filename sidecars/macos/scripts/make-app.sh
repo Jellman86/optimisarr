@@ -20,7 +20,14 @@ APP_VERSION="${APP_VERSION:-$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' 
 BUILD_NUMBER="${BUILD_NUMBER:-$(date -u +%Y%m%d%H%M)}"
 BUNDLE="build/${APP_NAME}.app"
 
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+# Build with the selected Xcode (CI selects the newest, whose SDK has the menu's glass controls).
+# The Command Line Tools have no macOS app SDK, so fall back to the default Xcode when they are
+# what is selected.
+if [[ -z "${DEVELOPER_DIR:-}" ]]; then
+  DEVELOPER_DIR="$(xcode-select -p 2>/dev/null || true)"
+  [[ -z "${DEVELOPER_DIR}" || "${DEVELOPER_DIR}" == */CommandLineTools ]] && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
+export DEVELOPER_DIR
 
 echo "Building (${CONFIGURATION})…"
 swift build --configuration "${CONFIGURATION}"

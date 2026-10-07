@@ -36,11 +36,13 @@ struct GpuStatisticsTests {
 struct FramePreviewTests {
     @Test("an unresponsive preview process is stopped without holding up the worker")
     func previewDeadline() async {
+        // The runner kills a preview at its 3-second deadline. A 30-second sleep finishing well
+        // inside 10 seconds proves the deadline fired, with margin for a loaded CI runner.
         let start = Date()
-        let result = await ProcessBinaryCommandRunner().run(URL(fileURLWithPath: "/bin/sleep"), ["6"])
+        let result = await ProcessBinaryCommandRunner().run(URL(fileURLWithPath: "/bin/sleep"), ["30"])
         #expect(result.exitCode != 0)
         #expect(result.output.isEmpty)
-        #expect(Date().timeIntervalSince(start) < 5)
+        #expect(Date().timeIntervalSince(start) < 10)
     }
 
     @Test("audio previews measure a bounded source window and do not select a picture stream")

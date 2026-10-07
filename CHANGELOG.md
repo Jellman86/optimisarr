@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- macOS release builds compile the menu's glass controls. The packaging script had always used the default Xcode, so 0.2.21's downloadable app shipped the bordered fallback on macOS 26 as well.
+
+### Development tools
+
+- The frame-preview deadline test allows for a loaded CI runner: a 30-second process must still be stopped within 10 seconds, instead of a 6-second one within 5.
+
 ## 0.2.21 — 2026-10-06
 
 ### Changed
