@@ -211,8 +211,9 @@ class Tools:
             require(8 <= seconds <= 40, "Numbered DTS fixture requires 8 to 40 seconds")
             markers = ["-vf", "geq=lum='if(lt(Y,48),16+219*mod(floor(N/pow(2,floor(X/32))),2),p(X,Y))':cb='cb(X,Y)':cr='cr(X,Y)'"]
         # MPEG-4's parser fills in presentation times for its B-frames; H.264 in VfW Matroska stays
-        # decode-only like the VC-1 that showed +genpts mistiming reordered pictures (#373).
-        video_codec = (["-c:v", "libx264", "-preset", "fast", "-x264-params", "bframes=2:b-pyramid=none"]
+        # decode-only like the VC-1 that showed +genpts mistiming reordered pictures (#373). A fixed
+        # high-quality quantiser, like MPEG-4's -q:v 3, leaves a real saving for the size gate.
+        video_codec = (["-c:v", "libx264", "-preset", "fast", "-qp", "10", "-x264-params", "bframes=2:b-pyramid=none"]
                        if reordered_h264 else ["-c:v", "mpeg4", "-bf", "2", "-q:v", "3"])
         self.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=25:duration={seconds}",
                      *markers, *video_codec, self.path(avi)])
