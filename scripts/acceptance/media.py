@@ -340,6 +340,24 @@ class Tools:
         require(not irregular, f"Stored picture times are not evenly spaced: {irregular[:4]}")
         return steps[len(steps) // 2]
 
+    def decoder_frame_times(self, path):
+        """Decoded picture times without +genpts, for a decode-only source with B-frames (#373).
+
+        Only the final picture may lack a time: the decoder flushes it at end of stream with none,
+        because the stream stores no presentation times. It takes one more step of the cadence;
+        every other picture must carry a strictly increasing time."""
+        result = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "V:0", "-show_frames",
+            "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))
+        times = [float(frame["best_effort_timestamp_time"]) if "best_effort_timestamp_time" in frame else None
+                 for frame in result["frames"]]
+        require(len(times) > 2 and all(value is not None for value in times[:-1]),
+                "Only the final decoded picture may lack a time")
+        if times[-1] is None:
+            times[-1] = times[-2] + (times[-2] - times[-3])
+        require(all(math.isfinite(value) for value in times) and all(b > a for a, b in zip(times, times[1:])),
+                "Non-increasing decoded picture times")
+        return [x - times[0] for x in times]
+
     def frame_times(self, path, *, generate_pts=False, numbered_repeated_fixture=False, evidence_path=None):
         entries = "frame=pts_time,best_effort_timestamp_time" if numbered_repeated_fixture else "frame=best_effort_timestamp_time"
         result = json.loads(self.run(self.ffprobe, ["-v", "error", *(["-fflags", "+genpts"] if generate_pts else []), "-select_streams", "V:0",
@@ -355,7 +373,7 @@ class Tools:
         return [x - times[0] for x in times]
 
     def measure(self, reference, candidate, evidence_dir, *, kept_subtitle_indexes=None, kept_audio_indexes=None,
-                numbered_repeated_fixture=False):
+                numbered_repeated_fixture=False, reference_decoder_timing=False):
         evidence_dir = Path(evidence_dir)
         evidence_dir.mkdir(parents=True, exist_ok=True)
         ref, out = self.probe(reference, True), self.probe(candidate, True)
@@ -371,8 +389,11 @@ class Tools:
             after = self.picture_ids(candidate, evidence_dir / "candidate-markers.gray")
             save(evidence_dir / "picture-identities.json", {"reference": before, "candidate": after})
             validate_picture_ids(before, after)
-        rt = self.frame_times(reference, generate_pts=True, numbered_repeated_fixture=numbered_repeated_fixture,
-            evidence_path=evidence_dir / "reference-frame-timestamps.json" if numbered_repeated_fixture else None)
+        # A decode-only source with B-frames is exactly what +genpts mistimes (#373); its reference
+        # cadence is the decoder's own, which the fixed encode keeps.
+        rt = (self.decoder_frame_times(reference) if reference_decoder_timing else
+              self.frame_times(reference, generate_pts=True, numbered_repeated_fixture=numbered_repeated_fixture,
+                  evidence_path=evidence_dir / "reference-frame-timestamps.json" if numbered_repeated_fixture else None))
         ot = self.frame_times(candidate, numbered_repeated_fixture=numbered_repeated_fixture,
             evidence_path=evidence_dir / "candidate-frame-timestamps.json" if numbered_repeated_fixture else None)
         require(len(rt) == len(ot), f"Frame loss/duplication: {len(rt)} reference, {len(ot)} output")

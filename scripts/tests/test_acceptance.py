@@ -34,6 +34,19 @@ class AcceptanceTests(unittest.TestCase):
         result = vfw_matroska(avi, packets, flac, [], 8, subtitles=False)
         self.assertLess(result.index(b'Zfirst'), result.index(b'Asecond'))
 
+    def test_decoder_reference_times_allow_only_an_untimed_final_picture(self):
+        import json
+        from acceptance.media import Tools
+        tools = Tools("ffmpeg", "ffprobe")
+        def frames(*times):
+            return json.dumps({"frames": [{} if value is None else {"best_effort_timestamp_time": str(value)} for value in times]})
+        tools.run = lambda exe, args: frames(0.04, 0.08, 0.12, None)
+        self.assertEqual([0, 0.04, 0.08, 0.12], [round(value, 6) for value in tools.decoder_frame_times("source.mkv")])
+        for bad in (frames(0.04, None, 0.12, 0.16), frames(0.04, 0.08, 0.08, 0.12)):
+            tools.run = lambda exe, args, bad=bad: bad
+            with self.assertRaises(Exception):
+                tools.decoder_frame_times("source.mkv")
+
     def test_stored_cadence_check_rejects_a_late_or_shared_picture_time(self):
         from acceptance.media import Tools
         tools = Tools("ffmpeg", "ffprobe")
