@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.22 — 2026-10-08
+
 ### Added
 
 - When a media server pauses the queue for playback, Optimisarr says what is playing and who is watching: the series, season, episode and title for TV, the title and year for a film, or the track and artist for music, with the viewer, device and whether it is paused. The status bar shows the first playback and how many more, with every playback in its tooltip; the Queue and Schedule pages list them all. Plex, Jellyfin and Emby are supported. Missing details are left out, and a server that reports none keeps the stream count.
