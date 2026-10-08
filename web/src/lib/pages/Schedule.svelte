@@ -5,6 +5,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import PlaybackHolds from '../components/PlaybackHolds.svelte'
 
   let queueStatus = $state<QueueStatus | null>(null)
   let libraries = $state<Library[]>([])
@@ -101,6 +102,7 @@
       <button class="btn min-h-11" onclick={() => router.go('/settings/encoding')}>{i18n.m.settings.room_encoding}</button>
     </div>
     <p class="schedule-dispatch-reason" class:blocked={!queueStatus.canStart}>{dispatchExplanation}</p>
+    {#if !queueStatus.canStart}<PlaybackHolds holds={queueStatus.playbackHolds ?? []} />{/if}
     <dl class="schedule-metrics">
       <div><dt>{i18n.m.schedule.running_jobs}</dt><dd>{queueStatus.runningJobs} / {localWorkloadCapacity(queueStatus)}</dd></div>
       <div><dt>{i18n.m.schedule.scan_interval}</dt><dd>{scanIntervalHours != null ? t(i18n.m.schedule.every_hours, { hours: scanIntervalHours }) : '—'}</dd></div>

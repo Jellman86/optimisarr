@@ -23,28 +23,48 @@ public sealed class ActivityMonitor(
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
-    private ActivityDecision _cached = new(false, null);
-    private DateTimeOffset _cachedAt = DateTimeOffset.MinValue;
+    private sealed record CachedActivity(ActivityDecision Decision, DateTimeOffset At, long Generation);
+    private CachedActivity _cache = new(new(false, null), DateTimeOffset.MinValue, -1);
+    // Bumped whenever a watcher changes, so a cached or in-flight poll made under the old
+    // settings — viewer names included — is never served after the change.
+    private long _generation;
+
+    /// <summary>Drops the cached poll after a watcher is added, changed, removed or imported.</summary>
+    public void Invalidate()
+    {
+        Interlocked.Increment(ref _generation);
+    }
 
     public async Task<ActivityDecision> GetActivityAsync(CancellationToken cancellationToken)
     {
-        if (timeProvider.GetUtcNow() - _cachedAt < CacheTtl)
+        var cached = Volatile.Read(ref _cache);
+        if (timeProvider.GetUtcNow() - cached.At < CacheTtl && cached.Generation == Interlocked.Read(ref _generation))
         {
-            return _cached;
+            return cached.Decision;
         }
 
         await _refreshLock.WaitAsync(cancellationToken);
         try
         {
             // Re-check inside the lock: another caller may have just refreshed.
-            if (timeProvider.GetUtcNow() - _cachedAt < CacheTtl)
+            cached = Volatile.Read(ref _cache);
+            if (timeProvider.GetUtcNow() - cached.At < CacheTtl && cached.Generation == Interlocked.Read(ref _generation))
             {
-                return _cached;
+                return cached.Decision;
             }
 
-            _cached = await MeasureAsync(cancellationToken);
-            _cachedAt = timeProvider.GetUtcNow();
-            return _cached;
+            // A poll the watchers changed under is measured again rather than cached or returned.
+            while (true)
+            {
+                var generation = Interlocked.Read(ref _generation);
+                var measured = await MeasureAsync(cancellationToken);
+                var refreshed = new CachedActivity(measured, timeProvider.GetUtcNow(), generation);
+                if (generation != Interlocked.Read(ref _generation)) continue;
+                // Publish one immutable snapshot. An invalidation racing this write leaves an old
+                // generation that every later reader rejects, rather than refreshing stale names.
+                Volatile.Write(ref _cache, refreshed);
+                return measured;
+            }
         }
         finally
         {
@@ -87,10 +107,15 @@ public sealed class ActivityMonitor(
             response.EnsureSuccessStatusCode();
             var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
-            var sessions = watcher.Type == ActivityWatcherType.Plex
-                ? PlexSessionsParser.ParseActiveSessions(body)
-                : JellyfinSessionsParser.ParseActiveSessions(body);
-            return new WatcherActivity(watcher.Name, sessions, Reachable: true);
+            var plex = watcher.Type == ActivityWatcherType.Plex;
+            var count = plex ? PlexSessionsParser.ParseActiveSessions(body) : JellyfinSessionsParser.ParseActiveSessions(body);
+            var sessions = plex ? PlexSessionsParser.ParseSessions(body) : JellyfinSessionsParser.ParseSessions(body);
+            // Dropped here, before the details leave this watcher, when its viewers are hidden.
+            if (!watcher.ShowViewerNames)
+            {
+                sessions = sessions.Select(session => session.WithoutViewer()).ToList();
+            }
+            return new WatcherActivity(watcher.Name, count, Reachable: true, sessions);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

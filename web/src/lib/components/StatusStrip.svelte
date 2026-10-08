@@ -3,6 +3,7 @@
   import { formatSize } from '../format'
   import { localWorkloadCapacity } from '../job-presentation'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import { playbackLine, playbackPhrases, playbackSummary } from '../playback'
   import { counts } from '../stores/counts.svelte'
   import Icon from './Icon.svelte'
 
@@ -33,13 +34,19 @@
   let workerSlots = $derived(workers && (workers.capacity > 0 || workers.active > 0) ? `${workers.active} / ${workers.capacity}` : null)
   // While workers encode, a hold on this server is the explanation rather than the state, so say
   // whose hold it is. A state with no reason of its own gets a plain sentence instead of nothing.
+  // Held by playback: name what is playing and who, rather than only how many streams.
+  let phrases = $derived(playbackPhrases(i18n.m))
+  let holds = $derived(state?.kind === 'blocked' ? queue?.playbackHolds ?? [] : [])
   let detail = $derived(
     !state ? null
     : state.kind === 'workers' && state.localPaused ? i18n.m.dashboard.state_workers_local_paused
     : state.kind === 'workers' && state.detail ? t(i18n.m.dashboard.state_workers_local_held, { reason: state.detail })
     : state.kind === 'unexplained' ? i18n.m.dashboard.state_unexplained_detail
+    : holds.length > 0 ? t(i18n.m.queue.playback_status, { count: holds.length, summary: playbackSummary(holds, phrases) ?? '' })
     : state.detail,
   )
+  // Keep the strip to one line; its link opens the queue details on touch and keyboard too.
+  let detailTitle = $derived(holds.length > 0 ? holds.map((hold) => `${hold.watcher} · ${playbackLine(hold, phrases)}`).join('\n') : detail)
 </script>
 
 <!-- A labelled region rather than a live one: it re-reads every fifteen seconds, and a region
@@ -56,7 +63,11 @@
     <span class="label mb-0">{i18n.m.dashboard.state}</span>
     <span class="text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
     {#if detail}
-      <span class="status-strip-reason" title={detail}>{detail}</span>
+      {#if holds.length > 0}
+        <a class="status-strip-reason status-strip-playback focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
+      {:else}
+        <span class="status-strip-reason" title={detailTitle}>{detail}</span>
+      {/if}
     {/if}
   </div>
 
@@ -124,6 +135,13 @@
     white-space: nowrap;
     font-size: 0.8125rem;
     color: var(--ink-2);
+  }
+  .status-strip-playback {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  @media (pointer: coarse) {
+    .status-strip-playback { min-height: 44px; line-height: 44px; }
   }
   .status-strip-fact {
     display: flex;

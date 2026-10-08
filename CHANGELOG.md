@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.22 — 2026-10-08
+
+### Added
+
+- When a media server pauses the queue for playback, Optimisarr says what is playing and who is watching: the series, season, episode and title for TV, the title and year for a film, or the track and artist for music, with the viewer, device and whether it is paused. The status bar shows the first playback and how many more, with every playback in its tooltip; the Queue and Schedule pages list them all. Plex, Jellyfin and Emby are supported. Missing details are left out, and a server that reports none keeps the stream count.
+- Media-server watchers have a **Show who is watching** setting, on by default. Turn it off on a shared server to name only what is playing; the viewer and device are dropped on the server. Names and titles are never logged or included in diagnostics, and an older client saving a watcher keeps the stored choice. Configuration backups carry the setting; older backups leave it unchanged.
+
+### Fixed
+
+- Playback holds in the status strip now begin with an explicit playback count and link to Queue for keyboard and touch access to the full details; lists with more than eight streams expand to show the rest. Saving, removing or importing media-server settings refreshes the strip immediately; hiding viewers clears old identities even if the next poll fails. Documentation fixtures reflect the default viewer setting, and the Queue pause explanation no longer doubles its final full stop.
+- Video encodes of sources that store decode times only, such as VC-1 or H.264 in Matroska's VfW mode, keep the decoder's own picture timing. Regenerating presentation times put the first reordered pictures of a B-frame stream 40 ms late or on the same timestamp and could repeat the last one, and without B-frames it shifted every picture 40 ms late against the sound. The regeneration is still used whenever a copied stream has not shown its own times in the sampled start of the file.
+- macOS release builds compile the menu's glass controls. The packaging script had always used the default Xcode, so 0.2.21's downloadable app shipped the bordered fallback on macOS 26 as well.
+- The Mac sidecar's bundled FFmpeg and FFprobe run on macOS 14, the minimum the app declares. They were built without a deployment target and required macOS 15, so on a macOS 14 Mac the app could install and pair but not run its media tools. Releases now fail packaging if any bundled binary needs a newer macOS than the app declares.
+
+### Development tools
+
+- The frame-preview deadline test allows for a loaded CI runner: a 30-second process must still be stopped within 10 seconds, instead of a 6-second one within 5.
+
 ## 0.2.21 — 2026-10-06
 
 ### Changed

@@ -104,7 +104,9 @@ public sealed record ActivityWatcherSnapshot(
     string BaseUrl,
     bool Enabled,
     bool RefreshOnReplace,
-    string? ApiToken = null);
+    string? ApiToken = null,
+    // Absent from backups made before the setting existed; importing those keeps the stored choice.
+    bool? ShowViewerNames = null);
 
 /// <summary>A notification target definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record NotificationTargetSnapshot(

@@ -32,6 +32,12 @@ public sealed class ActivityWatcher
     /// </summary>
     public bool RefreshOnReplace { get; set; } = true;
 
+    /// <summary>
+    /// When false, an activity pause names what is playing but not who is watching or on which
+    /// device — for a shared server whose viewers should not appear to everyone using Optimisarr.
+    /// </summary>
+    public bool ShowViewerNames { get; set; } = true;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

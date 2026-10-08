@@ -28,6 +28,24 @@ public sealed class InputTimestampOffsetTests
     }
 
     [Fact]
+    public void A_frame_line_carrying_side_data_still_contributes_its_time()
+    {
+        // The first decoded H.264 picture can carry an SEI note after its time.
+        Assert.Equal(0.081, InputTimestampOffset.Calculate(0.081, "0.000000,H.26[45] User Data Unregistered SEI message\n0.040000\n"), 9);
+    }
+
+    [Fact]
+    public void Without_regeneration_the_offset_is_measured_from_the_decoders_own_picture_times()
+    {
+        var args = InputTimestampOffset.Arguments("source", generatedPresentationTimes: false);
+        Assert.DoesNotContain("+genpts", args);
+        Assert.Contains("-show_frames", args);
+        Assert.Contains("frame=best_effort_timestamp_time", args);
+        Assert.Contains("V:0", args);
+        Assert.Equal("source", args[^1]);
+    }
+
+    [Fact]
     public void Head_read_is_bounded_and_reconstructs_only_the_source_timestamps()
     {
         var args = InputTimestampOffset.Arguments("source with spaces");

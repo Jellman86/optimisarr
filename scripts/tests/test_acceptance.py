@@ -34,6 +34,29 @@ class AcceptanceTests(unittest.TestCase):
         result = vfw_matroska(avi, packets, flac, [], 8, subtitles=False)
         self.assertLess(result.index(b'Zfirst'), result.index(b'Asecond'))
 
+    def test_decoder_reference_times_allow_only_an_untimed_final_picture(self):
+        import json
+        from acceptance.media import Tools
+        tools = Tools("ffmpeg", "ffprobe")
+        def frames(*times):
+            return json.dumps({"frames": [{} if value is None else {"best_effort_timestamp_time": str(value)} for value in times]})
+        tools.run = lambda exe, args: frames(0.04, 0.08, 0.12, None)
+        self.assertEqual([0, 0.04, 0.08, 0.12], [round(value, 6) for value in tools.decoder_frame_times("source.mkv")])
+        for bad in (frames(0.04, None, 0.12, 0.16), frames(0.04, 0.08, 0.08, 0.12)):
+            tools.run = lambda exe, args, bad=bad: bad
+            with self.assertRaises(Exception):
+                tools.decoder_frame_times("source.mkv")
+
+    def test_stored_cadence_check_rejects_a_late_or_shared_picture_time(self):
+        from acceptance.media import Tools
+        tools = Tools("ffmpeg", "ffprobe")
+        tools.run = lambda exe, args: "0\n40\n80\n120\n160\n"
+        self.assertEqual(40, tools.check_regular_stored_cadence("candidate.mp4"))
+        for stored in ("0\n80\n80\n120\n160\n", "0\n40\n80\n120\n120\n"):
+            tools.run = lambda exe, args, stored=stored: stored
+            with self.assertRaises(Exception):
+                tools.check_regular_stored_cadence("candidate.mp4")
+
     def test_numbered_picture_oracle_rejects_lost_repeated_and_reordered_pictures(self):
         from acceptance.picture_identity import validate_picture_ids
         self.assertEqual(4, validate_picture_ids([0, 1, 2, 3], [0, 1, 2, 3]))

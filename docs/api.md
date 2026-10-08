@@ -136,7 +136,13 @@ curl -fsS http://localhost:8787/api/jobs
 ```
 
 Use `waitingReason` and `blockedReason` from `/api/queue/status` to understand
-why jobs are not starting.
+why jobs are not starting. While media-server playback holds the queue,
+`playbackHolds` lists each playback: `watcher`, `kind` (`Episode`, `Movie`,
+`Track` or `Other`), `title`, `series`, `season`, `episode`, `year`, `artist`,
+`user`, `device` and `paused`. Any detail can be null. `user` and `device` are
+always null for a watcher with `showViewerNames` off. The list is empty when
+playback is not the reason, including during a manual pause.
+`blockedReason` itself only counts streams.
 
 ### Pause and Resume Queue Work
 

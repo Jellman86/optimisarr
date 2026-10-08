@@ -421,6 +421,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             }
             watcher.Enabled = snapshot.Enabled;
             watcher.RefreshOnReplace = snapshot.RefreshOnReplace;
+            watcher.ShowViewerNames = snapshot.ShowViewerNames ?? watcher.ShowViewerNames;
         }
 
         return (created, updated);
@@ -579,7 +580,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         watcher.BaseUrl,
         watcher.Enabled,
         watcher.RefreshOnReplace,
-        watcher.ApiToken);
+        watcher.ApiToken,
+        watcher.ShowViewerNames);
 
     private static NotificationTargetSnapshot ToSnapshot(NotificationTarget target) => new(
         target.Name,

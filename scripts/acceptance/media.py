@@ -159,9 +159,10 @@ class Tools:
     def fixture(self, path, variant="sdr", seconds=8, source=None, start=0):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        if variant in ("dts-only", "dts-only-no-subtitles", "dts-repeated"):
+        if variant in ("dts-only", "dts-only-no-subtitles", "dts-repeated", "dts-bframes", "dts-h264"):
             return self.dts_only_fixture(path, seconds, subtitles=variant != "dts-only-no-subtitles",
-                                         numbered_repeated_fixture=variant == "dts-repeated")
+                                         numbered_repeated_fixture=variant == "dts-repeated",
+                                         h264_bframes={"dts-bframes": 2, "dts-h264": 0}.get(variant))
         if source:
             inputs = ["-ss", str(start), "-i", self.path(source)]
             mapping = ["-map", "0:v:0", "-map", "0:a?"]
@@ -203,14 +204,22 @@ class Tools:
             evidence["timing"] = validate_uneven_timing_fixture(evidence["probe"], self.frame_times(path))
         return evidence
 
-    def dts_only_fixture(self, path, seconds, *, subtitles=True, numbered_repeated_fixture=False):
+    def dts_only_fixture(self, path, seconds, *, subtitles=True, numbered_repeated_fixture=False, h264_bframes=None):
         avi, flac = path.with_suffix(".avi"), path.with_suffix(".flac")
         markers = []
         if numbered_repeated_fixture:
             require(8 <= seconds <= 40, "Numbered DTS fixture requires 8 to 40 seconds")
             markers = ["-vf", "geq=lum='if(lt(Y,48),16+219*mod(floor(N/pow(2,floor(X/32))),2),p(X,Y))':cb='cb(X,Y)':cr='cr(X,Y)'"]
+        # MPEG-4's parser fills in presentation times for its B-frames; H.264 in VfW Matroska stays
+        # decode-only like the VC-1 that showed +genpts mistiming reordered pictures (#373). Without
+        # B-frames its first decoded picture starts a frame earlier than +genpts claims, which the
+        # input offset must follow. A fixed high-quality quantiser, like MPEG-4's -q:v 3, leaves a
+        # real saving for the size gate.
+        video_codec = (["-c:v", "libx264", "-preset", "fast", "-qp", "10", "-x264-params",
+                        f"bframes={h264_bframes}:b-pyramid=none"]
+                       if h264_bframes is not None else ["-c:v", "mpeg4", "-bf", "2", "-q:v", "3"])
         self.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=25:duration={seconds}",
-                     *markers, "-c:v", "mpeg4", "-bf", "2", "-q:v", "3", self.path(avi)])
+                     *markers, *video_codec, self.path(avi)])
         self.encode(["-f", "lavfi", "-i", f"sine=frequency=880:sample_rate=48000:duration={seconds}",
                      "-c:a", "flac", self.path(flac)])
         def packets(file):
@@ -227,6 +236,9 @@ class Tools:
             "-show_entries", "packet=pts_time,dts_time", "-of", "json", self.path(path)]))["packets"]
         require(source_packets and "pts_time" not in source_packets[0] and all("dts_time" in packet for packet in source_packets),
                 "DTS-only fixture no longer carries decode timestamps alone")
+        if h264_bframes is not None:
+            require(all("pts_time" not in packet for packet in source_packets),
+                    "H.264 decode-only fixture must carry no presentation time on any picture")
         require(int(moving["nb_read_frames"]) == round(seconds * 25), "Generated fixture lost pictures")
         require(sum(stream["codec_type"] == "subtitle" for stream in probe["streams"]) == int(subtitles),
                 "Generated fixture has the wrong subtitle coverage")
@@ -243,7 +255,8 @@ class Tools:
             identities = self.picture_ids(path, path.parent / (path.stem + "-markers.gray"), generate_pts=True)
             validate_picture_ids(identities, identities)
         return {"path": str(path), "sha256": sha256(path),
-                "variant": "dts-repeated" if numbered_repeated_fixture else "dts-only", "seconds": seconds, "probe": probe}
+                "variant": "dts-repeated" if numbered_repeated_fixture else {2: "dts-bframes", 0: "dts-h264"}.get(h264_bframes, "dts-only"),
+                "seconds": seconds, "probe": probe}
 
     def alac_fixture(self, path, source, *, mixed=False):
         path = Path(path)
@@ -306,8 +319,10 @@ class Tools:
         require(set(starts) == {"video", "audio"}, "Missing decoded A/V start evidence")
         return starts
 
-    def check_av_start_offset(self, source, candidate, directory):
-        before = self.first_av_timestamps(source, generate_pts=True)
+    def check_av_start_offset(self, source, candidate, directory, *, decoder_timing=False):
+        # A decode-only H.264 source's true first picture time is the decoder's: +genpts places it
+        # a frame late without B-frames, which would make a correctly synced output look shifted.
+        before = self.first_av_timestamps(source, generate_pts=not decoder_timing)
         after = self.first_av_timestamps(candidate)
         delta = abs((after["video"] - after["audio"]) - (before["video"] - before["audio"]))
         save(Path(directory) / "decoded-av-offset.json", {"source": before, "candidate": after, "offsetChangeSeconds": delta})
@@ -318,6 +333,35 @@ class Tools:
             "-map", "0:V:0", "-vf", "crop=320:48:0:0,format=gray", "-fps_mode", "passthrough",
             "-frames:v", "1001", "-pix_fmt", "gray", "-f", "rawvideo", self.path(raw_path)])
         return parse_picture_ids(Path(raw_path).read_bytes())
+
+    def check_regular_stored_cadence(self, path):
+        """Every stored picture time evenly spaced: no late, early or shared timestamp (#373)."""
+        output = self.run(self.ffprobe, ["-v", "error", "-select_streams", "V:0", "-show_entries", "packet=pts",
+                                         "-of", "csv=p=0", self.path(path)])
+        times = sorted(int(value) for value in output.split() if value.strip() not in ("", "N/A"))
+        require(len(times) > 2, "Too few stored picture timestamps to check their cadence")
+        steps = [b - a for a, b in zip(times, times[1:])]
+        irregular = [(index, step) for index, step in enumerate(steps) if step != steps[len(steps) // 2]]
+        require(not irregular, f"Stored picture times are not evenly spaced: {irregular[:4]}")
+        return steps[len(steps) // 2]
+
+    def decoder_frame_times(self, path):
+        """Decoded picture times without +genpts, for a decode-only H.264 source (#373).
+
+        Only the final picture may lack a time: the decoder flushes it at end of stream with none,
+        because the stream stores no presentation times. It takes one more step of the cadence;
+        every other picture must carry a strictly increasing time."""
+        result = json.loads(self.run(self.ffprobe, ["-v", "error", "-select_streams", "V:0", "-show_frames",
+            "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", self.path(path)]))
+        times = [float(frame["best_effort_timestamp_time"]) if "best_effort_timestamp_time" in frame else None
+                 for frame in result["frames"]]
+        require(len(times) > 2 and all(value is not None for value in times[:-1]),
+                "Only the final decoded picture may lack a time")
+        if times[-1] is None:
+            times[-1] = times[-2] + (times[-2] - times[-3])
+        require(all(math.isfinite(value) for value in times) and all(b > a for a, b in zip(times, times[1:])),
+                "Non-increasing decoded picture times")
+        return [x - times[0] for x in times]
 
     def frame_times(self, path, *, generate_pts=False, numbered_repeated_fixture=False, evidence_path=None):
         entries = "frame=pts_time,best_effort_timestamp_time" if numbered_repeated_fixture else "frame=best_effort_timestamp_time"
@@ -334,7 +378,7 @@ class Tools:
         return [x - times[0] for x in times]
 
     def measure(self, reference, candidate, evidence_dir, *, kept_subtitle_indexes=None, kept_audio_indexes=None,
-                numbered_repeated_fixture=False):
+                numbered_repeated_fixture=False, reference_decoder_timing=False):
         evidence_dir = Path(evidence_dir)
         evidence_dir.mkdir(parents=True, exist_ok=True)
         ref, out = self.probe(reference, True), self.probe(candidate, True)
@@ -350,8 +394,11 @@ class Tools:
             after = self.picture_ids(candidate, evidence_dir / "candidate-markers.gray")
             save(evidence_dir / "picture-identities.json", {"reference": before, "candidate": after})
             validate_picture_ids(before, after)
-        rt = self.frame_times(reference, generate_pts=True, numbered_repeated_fixture=numbered_repeated_fixture,
-            evidence_path=evidence_dir / "reference-frame-timestamps.json" if numbered_repeated_fixture else None)
+        # A decode-only source with B-frames is exactly what +genpts mistimes (#373); its reference
+        # cadence is the decoder's own, which the fixed encode keeps.
+        rt = (self.decoder_frame_times(reference) if reference_decoder_timing else
+              self.frame_times(reference, generate_pts=True, numbered_repeated_fixture=numbered_repeated_fixture,
+                  evidence_path=evidence_dir / "reference-frame-timestamps.json" if numbered_repeated_fixture else None))
         ot = self.frame_times(candidate, numbered_repeated_fixture=numbered_repeated_fixture,
             evidence_path=evidence_dir / "candidate-frame-timestamps.json" if numbered_repeated_fixture else None)
         require(len(rt) == len(ot), f"Frame loss/duplication: {len(rt)} reference, {len(ot)} output")

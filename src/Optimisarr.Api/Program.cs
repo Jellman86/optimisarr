@@ -49,6 +49,7 @@ builder.Services.AddSingleton(mediaProbe);
 builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new SubtitleTimelineProbe(ffprobe));
 builder.Services.AddSingleton(new InputTimestampOffset(ffprobe));
+builder.Services.AddSingleton(new SourceTimestampFacts(ffprobe));
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 // Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
 builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
@@ -353,7 +354,8 @@ internal sealed record QueueStatusDto(
     long? FreeDiskBytes,
     string WorkRoot,
     string? WaitingReason,
-    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null)
+    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null,
+    IReadOnlyList<PlaybackHoldDto>? PlaybackHolds = null)
 {
     public static QueueStatusDto From(QueueDispatchStatus status) => new(
         status.CanStart,
@@ -372,7 +374,8 @@ internal sealed record QueueStatusDto(
         status.FreeDiskBytes,
         status.WorkRoot,
         status.WaitingReason,
-        status.WorkloadLanes);
+        status.WorkloadLanes,
+        status.PlaybackHolds ?? []);
 }
 
 internal sealed record JellyfinConnectRequest(string? BaseUrl);
