@@ -627,6 +627,7 @@ export const zh: Messages = {
     queued_waiting_other: "{count} 处理排队等待启动的任务。",
     dispatch_paused: "队列调度已暂停：{reason}。允许现有编码安全完成；这只会阻止新的处理任务开始。",
     waiting_window: "{reason} — 将窗口设置为 00:00–00:00（全天）或禁用媒体库上的“自动优化”以立即运行。",
+    playback_status: '播放中（{count}）：{summary}',
     playback_heading: "正在播放",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title}（{year}）",

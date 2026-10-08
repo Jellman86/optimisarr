@@ -650,6 +650,7 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
       'El envío de la cola está pausado: {reason}. Los codificados existentes pueden terminar con seguridad; esto solo impide que comiencen nuevos trabajos.',
     waiting_window:
       '{reason} — ajusta la ventana a 00:00–00:00 (todo el día) o desactiva “Optimizar automáticamente” en la biblioteca para ejecutar ahora.',
+    playback_status: 'Reproducción ({count}): {summary}',
     playback_heading: "Reproduciendo ahora",
     playback_episode_number: "T{season}E{episode}",
     playback_with_year: "{title} ({year})",

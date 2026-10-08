@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Playback holds in the status strip now begin with an explicit playback count and link to Queue for keyboard and touch access to the full details; lists with more than eight streams expand to show the rest. Saving, removing or importing media-server settings refreshes the strip immediately; hiding viewers clears old identities even if the next poll fails. Documentation fixtures reflect the default viewer setting, and the Queue pause explanation no longer doubles its final full stop.
 - Video encodes of sources that store decode times only, such as VC-1 or H.264 in Matroska's VfW mode, keep the decoder's own picture timing. Regenerating presentation times put the first reordered pictures of a B-frame stream 40 ms late or on the same timestamp and could repeat the last one, and without B-frames it shifted every picture 40 ms late against the sound. The regeneration is still used whenever a copied stream has not shown its own times in the sampled start of the file.
 - macOS release builds compile the menu's glass controls. The packaging script had always used the default Xcode, so 0.2.21's downloadable app shipped the bordered fallback on macOS 26 as well.
 - The Mac sidecar's bundled FFmpeg and FFprobe run on macOS 14, the minimum the app declares. They were built without a deployment target and required macOS 15, so on a macOS 14 Mac the app could install and pair but not run its media tools. Releases now fail packaging if any bundled binary needs a newer macOS than the app declares.

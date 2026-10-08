@@ -20,6 +20,7 @@
   // `t` is aliased to `tr` here because this component already uses `t`/`c`/`w` as local
   // names for notification-target, connection, and watcher records.
   import { i18n, plural, t as tr } from '../i18n/i18n.svelte'
+  import { counts } from '../stores/counts.svelte'
   import { brand } from '../stores/brand.svelte'
   import { parseBrandStyle } from '../brand-style'
   import { router } from '../stores/ui.svelte'
@@ -406,6 +407,7 @@
       } else {
         await api.updateActivityWatcher(editingId, watcherDraft)
       }
+      await counts.refreshPlayback()
       watcherDraft = emptyWatcher()
       editingId = null
       resetConnect()
@@ -422,6 +424,7 @@
     watcherError = null
     try {
       await api.deleteActivityWatcher(w.id)
+      await counts.refreshPlayback()
       if (editingId === w.id) startAdd()
       await loadWatchers()
     } catch (err) {
@@ -777,6 +780,7 @@
     try {
       const snapshot = JSON.parse(await file.text())
       const result = await api.importSettings(snapshot)
+      await counts.refreshPlayback()
       backupMessage = tr(i18n.m.settings.import_done, {
         libraries: result.librariesCreated + result.librariesUpdated,
         watchers: result.watchersCreated + result.watchersUpdated,

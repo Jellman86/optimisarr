@@ -647,6 +647,7 @@ dispatch_paused:
   'La file d’attente est en pause : {reason}. Les encodages en cours se terminent en toute sécurité ; seuls les nouveaux travaux sont bloqués.',
 waiting_window:
   '{reason} — définissez la plage sur 00:00–00:00 (toute la journée) ou désactivez “Optimiser automatiquement” sur la médiathèque pour exécuter maintenant.',
+playback_status: 'Lecture ({count}) : {summary}',
 playback_heading: "Lecture en cours",
 playback_episode_number: "S{season}E{episode}",
 playback_with_year: "{title} ({year})",

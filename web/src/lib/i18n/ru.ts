@@ -627,6 +627,7 @@ export const ru: Messages = {
     queued_waiting_other: "{count} задачи обработки поставлены в очередь и ожидают запуска.",
     dispatch_paused: "Отправка очереди приостановлена: {reason}. Существующим кодировкам разрешено безопасное завершение; это только предотвращает запуск новых задач обработки.",
     waiting_window: "{reason} — установите окно на 00:00–00:00 (весь день) или отключите «Автоматическую оптимизацию» в медиатеке, чтобы запустить ее сейчас.",
+    playback_status: 'Воспроизведение ({count}): {summary}',
     playback_heading: "Сейчас воспроизводится",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title} ({year})",

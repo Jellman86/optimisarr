@@ -87,7 +87,7 @@ try {
   if(path.endsWith('/content')||path.includes('/stream'))return calibrationKind==='Image'&&path.includes('/calibration/')?route.fulfill({contentType:'image/svg+xml',body:f.artwork(1,true)}):route.fulfill({status:200,contentType:'video/webm',body:clip})
   if(path==='/api/workers')return json(route,f.workers)
   if(path==='/api/workers/pairing-code')return route.fulfill({status:204})
-  if(path==='/api/activity-watchers')return json(route,[{id:1,name:'Living room media',type:'Jellyfin',baseUrl:'https://media.example.com',hasToken:true,enabled:true,refreshOnReplace:true,createdAt:f.when,updatedAt:f.when}])
+  if(path==='/api/activity-watchers')return json(route,[{id:1,name:'Living room media',type:'Jellyfin',baseUrl:'https://media.example.com',hasToken:true,enabled:true,refreshOnReplace:true,showViewerNames:true,createdAt:f.when,updatedAt:f.when}])
   if(path==='/api/arr-connections')return json(route,[{id:1,name:'Film imports',type:'Radarr',baseUrl:'https://films.example.com',hasApiKey:true,enabled:true,createdAt:f.when,updatedAt:f.when}])
   if(path==='/api/notification-targets')return json(route,[{id:1,name:'Media updates',type:'Webhook',url:'https://notifications.example.com/optimisarr',hasToken:false,enabled:true,notifyOnReplacement:true,notifyOnFailure:true,createdAt:f.when,updatedAt:f.when}])
   if(path.endsWith('/calibration/sources')) {calibrationLibrary=Number(path.split('/')[3]);calibrationKind=calibrationLibrary===4?'Image':'Video';return json(route,[{mediaFileId:1,relativePath:calibrationKind==='Image'?'Lumen landscape.png':f.files[0].relativePath,durationSeconds:calibrationKind==='Image'?0:4200,width:1920,height:1080,mediaKind:calibrationKind,isHdr:false}])}

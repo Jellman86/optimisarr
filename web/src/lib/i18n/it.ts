@@ -645,6 +645,7 @@ quarantine: {
       'Gestione della coda in pausa: {reason}. Le codifiche attuali saranno completate in sicurezza; questa impostazione impedisce solo l’avvio di nuovi processi.',
     waiting_window:
       '{reason} — imposta la finestra su 00:00–00:00 (tutto il giorno) o disattiva “Ottimizza automaticamente” sulla libreria per avviare ora.',
+    playback_status: 'Riproduzione ({count}): {summary}',
     playback_heading: "In riproduzione",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title} ({year})",
