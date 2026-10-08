@@ -29,6 +29,19 @@ public sealed class ActivityWatcherRequestParserTests
         Assert.True(parsed.Enabled);   // defaults to enabled
     }
 
+    [Fact]
+    public void Showing_viewer_names_is_passed_through_and_left_unset_when_omitted()
+    {
+        var hidden = new SaveActivityWatcherRequest("Plex", "Plex", "http://h:32400", "k", true, ShowViewerNames: false);
+        var omitted = new SaveActivityWatcherRequest("Plex", "Plex", "http://h:32400", "k", true);
+
+        Assert.True(ActivityWatcherRequestParser.TryParse(hidden, out var parsedHidden, out _));
+        Assert.True(ActivityWatcherRequestParser.TryParse(omitted, out var parsedOmitted, out _));
+        Assert.False(parsedHidden.ShowViewerNames);
+        // Unset, so an update from an older client keeps the stored choice instead of re-showing names.
+        Assert.Null(parsedOmitted.ShowViewerNames);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

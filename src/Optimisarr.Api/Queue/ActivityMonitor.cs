@@ -87,10 +87,15 @@ public sealed class ActivityMonitor(
             response.EnsureSuccessStatusCode();
             var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
-            var sessions = watcher.Type == ActivityWatcherType.Plex
-                ? PlexSessionsParser.ParseActiveSessions(body)
-                : JellyfinSessionsParser.ParseActiveSessions(body);
-            return new WatcherActivity(watcher.Name, sessions, Reachable: true);
+            var plex = watcher.Type == ActivityWatcherType.Plex;
+            var count = plex ? PlexSessionsParser.ParseActiveSessions(body) : JellyfinSessionsParser.ParseActiveSessions(body);
+            var sessions = plex ? PlexSessionsParser.ParseSessions(body) : JellyfinSessionsParser.ParseSessions(body);
+            // Dropped here, before the details leave this watcher, when its viewers are hidden.
+            if (!watcher.ShowViewerNames)
+            {
+                sessions = sessions.Select(session => session.WithoutViewer()).ToList();
+            }
+            return new WatcherActivity(watcher.Name, count, Reachable: true, sessions);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

@@ -54,7 +54,8 @@ internal static class IntegrationEndpoints
                 BaseUrl = parsed.BaseUrl,
                 ApiToken = parsed.ApiToken,
                 Enabled = parsed.Enabled,
-                RefreshOnReplace = parsed.RefreshOnReplace
+                RefreshOnReplace = parsed.RefreshOnReplace,
+                ShowViewerNames = parsed.ShowViewerNames ?? true
             };
             db.ActivityWatchers.Add(watcher);
             await db.SaveChangesAsync(cancellationToken);
@@ -90,6 +91,8 @@ internal static class IntegrationEndpoints
             }
             watcher.Enabled = parsed.Enabled;
             watcher.RefreshOnReplace = parsed.RefreshOnReplace;
+            // Omitted by an older client: keep the stored choice rather than re-showing names.
+            watcher.ShowViewerNames = parsed.ShowViewerNames ?? watcher.ShowViewerNames;
             watcher.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 

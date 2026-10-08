@@ -13,6 +13,28 @@ public sealed class MigrationTests : IDisposable
 
 
     [Fact]
+    public async Task Existing_watchers_keep_showing_who_is_watching_and_a_hidden_choice_survives_remigration()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261002144723_AddSoundtrackQuality");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO ActivityWatchers (Name, Type, BaseUrl, Enabled, RefreshOnReplace, CreatedAt, UpdatedAt)
+            VALUES ('Plex', 'Plex', 'http://plex:32400', 1, 1, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        var watcher = await db.ActivityWatchers.SingleAsync();
+        Assert.True(watcher.ShowViewerNames);
+        watcher.ShowViewerNames = false;
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        Assert.False((await db.ActivityWatchers.SingleAsync()).ShowViewerNames);
+    }
+
+    [Fact]
     public async Task Existing_video_library_soundtrack_checks_default_off_and_repeated_migration_preserves_opt_in()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);

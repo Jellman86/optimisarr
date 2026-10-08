@@ -211,6 +211,26 @@ test('a queue held by playback says so instead of showing an empty page', async 
   await expect(page.getByText('Paused while Riker Plex is active (1 stream).').first()).toBeVisible()
 })
 
+test('a queue held by playback names what is playing and who is watching', async ({ page }) => {
+  const hold = { watcher: 'Riker Plex', year: null, artist: null, paused: false }
+  await mockDashboard(page, {
+    queue: {
+      canStart: false, blockedReason: 'Paused while Riker Plex is active (2 streams).',
+      playbackHolds: [
+        { ...hold, kind: 'Episode', title: 'Pilot', series: 'Example Show', season: 2, episode: 5, user: 'alex', device: 'Living Room TV' },
+        { ...hold, kind: 'Movie', title: 'Example Film', series: null, season: null, episode: null, year: 1999, user: null, device: null, paused: true },
+      ],
+    },
+  })
+
+  await page.goto('/#/')
+
+  // The strip has one line: the first playback and who, then how many more; every playback is in its tooltip.
+  const reason = page.locator('.status-strip-reason')
+  await expect(reason).toHaveText('Example Show · S2E5 · Pilot — alex +1 more')
+  await expect(reason).toHaveAttribute('title', 'Riker Plex · Example Show · S2E5 · Pilot — alex on Living Room TV\nRiker Plex · Example Film (1999) (paused)')
+})
+
 test('a shut optimise window is reported as waiting, in the server’s own words', async ({ page }) => {
   const waiting = '1418 job(s) waiting for the TV optimise window (00:00–05:00)'
   await mockDashboard(page, { queue: { waitingReason: waiting } })

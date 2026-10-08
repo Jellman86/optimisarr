@@ -3769,7 +3769,8 @@ public sealed class QueueDispatcher(
             freeDiskBytes,
             _workRoot,
             waitingReason,
-            lanes);
+            lanes,
+            ActivityPauseEvaluator.HoldsExplainingThePause(activity, pause.IsPaused).Select(PlaybackHoldDto.From).ToList());
     }
 
     private async Task<IReadOnlyList<WorkloadLaneStatus>> GetWorkloadLanesAsync(
@@ -4245,6 +4246,36 @@ public sealed record QueueDispatchStatus(
     // Set when dispatch is ready but nothing starts because every queued job's library window is
     // shut (e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)"). Null otherwise.
     string? WaitingReason,
-    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null);
+    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null,
+    // What is playing and who is watching while media-server playback holds the queue; empty
+    // otherwise. Never logged: the BlockedReason text stays a count.
+    IReadOnlyList<PlaybackHoldDto>? PlaybackHolds = null);
+
+public sealed record PlaybackHoldDto(
+    string Watcher,
+    string Kind,
+    string? Title,
+    string? Series,
+    int? Season,
+    int? Episode,
+    int? Year,
+    string? Artist,
+    string? User,
+    string? Device,
+    bool Paused)
+{
+    public static PlaybackHoldDto From(PlaybackHold hold) => new(
+        hold.Watcher,
+        hold.Session.Kind.ToString(),
+        hold.Session.Title,
+        hold.Session.Series,
+        hold.Session.Season,
+        hold.Session.Episode,
+        hold.Session.Year,
+        hold.Session.Artist,
+        hold.Session.User,
+        hold.Session.Device,
+        hold.Session.Paused);
+}
 
 public sealed record WorkloadLaneStatus(string Lane, int Active, int Capacity, int Waiting, string? Reason);
