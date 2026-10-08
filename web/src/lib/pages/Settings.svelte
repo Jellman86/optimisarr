@@ -244,7 +244,7 @@
   }
 
   const watcherTypes: ActivityWatcherType[] = ['Plex', 'Jellyfin', 'Emby']
-  const emptyWatcher = (): SaveActivityWatcher => ({ name: '', type: 'Plex', baseUrl: '', apiToken: '', enabled: true, refreshOnReplace: true })
+  const emptyWatcher = (): SaveActivityWatcher => ({ name: '', type: 'Plex', baseUrl: '', apiToken: '', enabled: true, refreshOnReplace: true, showViewerNames: true })
 
   let watchers = $state<ActivityWatcher[]>([])
   let watcherError = $state<string | null>(null)
@@ -393,7 +393,7 @@
   function startEdit(w: ActivityWatcher) {
     editingId = w.id
     // Token is write-only; leave blank to keep the stored secret.
-    watcherDraft = { name: w.name, type: w.type, baseUrl: w.baseUrl, apiToken: '', enabled: w.enabled, refreshOnReplace: w.refreshOnReplace }
+    watcherDraft = { name: w.name, type: w.type, baseUrl: w.baseUrl, apiToken: '', enabled: w.enabled, refreshOnReplace: w.refreshOnReplace, showViewerNames: w.showViewerNames }
     resetConnect()
   }
 
@@ -1105,6 +1105,7 @@
               <div class="flex flex-wrap items-center gap-2">
                 {#if !w.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
                 {#if w.refreshOnReplace}<span class="badge tone-ok" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
+                {#if !w.showViewerNames}<span class="badge tone-neutral" title={i18n.m.settings.badge_viewers_hidden_title}>{i18n.m.settings.badge_viewers_hidden}</span>{/if}
                 {#if !w.hasToken}<span class="badge tone-warn" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
@@ -1191,6 +1192,7 @@
         <div class="mt-3 grid gap-3">
           <Toggle bind:checked={watcherDraft.enabled} label={i18n.m.settings.pause_streaming} hint={i18n.m.settings.pause_streaming_hint} />
           <Toggle bind:checked={watcherDraft.refreshOnReplace} label={i18n.m.settings.refresh_replace} hint={i18n.m.settings.refresh_replace_hint} />
+          <Toggle bind:checked={watcherDraft.showViewerNames} label={i18n.m.settings.show_viewer_names} hint={i18n.m.settings.show_viewer_names_hint} />
         </div>
         {#if testResult}
           <p class="mt-3 text-sm {testResult.ok ? 'text-ok' : 'text-bad'}">

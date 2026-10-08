@@ -4,10 +4,16 @@ namespace Optimisarr.Core.Activity;
 /// <param name="Name">The watcher's display name, used in the pause reason.</param>
 /// <param name="ActiveSessions">Active playback sessions; only meaningful when reachable.</param>
 /// <param name="Reachable">False when the server could not be queried (offline, bad token).</param>
-public sealed record WatcherActivity(string Name, int ActiveSessions, bool Reachable);
+/// <param name="Sessions">What each session is playing, where the server reported it.</param>
+public sealed record WatcherActivity(string Name, int ActiveSessions, bool Reachable, IReadOnlyList<PlaybackSession>? Sessions = null);
 
 /// <summary>Whether configured services are active right now, and which ones if so.</summary>
-public sealed record ActivityDecision(bool Active, string? Reason);
+/// <param name="Reason">A count-only summary. It is logged, so it never names a viewer or title.</param>
+/// <param name="Holds">The playbacks holding the queue, for the people who can already see the app.</param>
+public sealed record ActivityDecision(bool Active, string? Reason, IReadOnlyList<PlaybackHold>? Holds = null)
+{
+    public IReadOnlyList<PlaybackHold> Holds { get; init; } = Holds ?? [];
+}
 
 /// <summary>
 /// Pure policy for the optional "pause while a media server is streaming" gate. New
@@ -18,6 +24,13 @@ public sealed record ActivityDecision(bool Active, string? Reason);
 /// </summary>
 public static class ActivityPauseEvaluator
 {
+    /// <summary>
+    /// The playbacks to name beside the queue's pause. Only playback that is the reason counts:
+    /// the operator's own pause outranks it (see <c>DispatchPolicyEvaluator</c>).
+    /// </summary>
+    public static IReadOnlyList<PlaybackHold> HoldsExplainingThePause(ActivityDecision activity, bool manuallyPaused) =>
+        activity.Active && !manuallyPaused ? activity.Holds : [];
+
     public static ActivityDecision Evaluate(IReadOnlyList<WatcherActivity> watchers)
     {
         var streaming = watchers
@@ -31,6 +44,9 @@ public static class ActivityPauseEvaluator
         var names = string.Join(", ", streaming.Select(watcher => watcher.Name));
         var sessions = streaming.Sum(watcher => watcher.ActiveSessions);
         var plural = sessions == 1 ? "stream" : "streams";
-        return new ActivityDecision(true, $"Paused while {names} {(streaming.Count == 1 ? "is" : "are")} active ({sessions} {plural}).");
+        var holds = streaming
+            .SelectMany(watcher => (watcher.Sessions ?? []).Select(session => new PlaybackHold(watcher.Name, session)))
+            .ToList();
+        return new ActivityDecision(true, $"Paused while {names} {(streaming.Count == 1 ? "is" : "are")} active ({sessions} {plural}).", holds);
     }
 }

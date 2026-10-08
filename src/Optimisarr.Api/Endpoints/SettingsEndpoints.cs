@@ -118,9 +118,12 @@ internal static class SettingsEndpoints
         app.MapPost("/api/settings/import", async (
             ConfigSnapshot snapshot,
             ConfigPortabilityService portability,
+            ActivityMonitor activity,
             CancellationToken cancellationToken) =>
         {
             var result = await portability.ImportAsync(snapshot, cancellationToken);
+            // An import can change watchers, their viewer setting included.
+            activity.Invalidate();
             return result.Applied
                 ? Results.Ok(result)
                 : ApiErrors.BadRequest("settings.import.invalid", "The config file is invalid.", details: result.Errors);

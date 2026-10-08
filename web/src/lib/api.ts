@@ -438,6 +438,23 @@ export type QueueStatus = Pick<Settings, 'maxConcurrentJobs' | 'minFreeDiskBytes
   // window is shut, e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)".
   waitingReason: string | null
   workloadLanes?: WorkloadLaneStatus[]
+  // What is playing and who is watching while media-server playback holds the queue; empty
+  // otherwise. A watcher that hides viewers sends no user or device.
+  playbackHolds?: PlaybackHold[]
+}
+
+export type PlaybackHold = {
+  watcher: string
+  kind: 'Episode' | 'Movie' | 'Track' | 'Other'
+  title: string | null
+  series: string | null
+  season: number | null
+  episode: number | null
+  year: number | null
+  artist: string | null
+  user: string | null
+  device: string | null
+  paused: boolean
 }
 
 export type Stats = {
@@ -788,6 +805,7 @@ export type ActivityWatcher = {
   hasToken: boolean
   enabled: boolean
   refreshOnReplace: boolean
+  showViewerNames: boolean
   createdAt: string
   updatedAt: string
 }
@@ -799,6 +817,7 @@ export type SaveActivityWatcher = {
   apiToken: string
   enabled: boolean
   refreshOnReplace: boolean
+  showViewerNames: boolean
 }
 
 export type NotificationType = 'Webhook' | 'Discord' | 'Telegram' | 'Ntfy' | 'Apprise'

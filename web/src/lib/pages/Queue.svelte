@@ -22,6 +22,7 @@
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import FailuresPanel from '../components/FailuresPanel.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
+  import PlaybackHolds from '../components/PlaybackHolds.svelte'
 
   let jobs = $state<Job[]>([])
   let queueStatus = $state<QueueStatus | null>(null)
@@ -547,6 +548,7 @@
 {:else if queueStatus && !queueStatus.canStart}
   <div class="card tone-warn mb-4 p-3 text-sm">
     {t(i18n.m.queue.dispatch_paused, { reason: queueStatus.blockedReason ?? '' })}
+    <PlaybackHolds holds={queueStatus.playbackHolds ?? []} />
   </div>
 {:else if queueStatus?.waitingReason}
   <div class="card tone-warn mb-4 p-3 text-sm">

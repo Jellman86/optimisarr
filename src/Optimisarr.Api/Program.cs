@@ -354,7 +354,8 @@ internal sealed record QueueStatusDto(
     long? FreeDiskBytes,
     string WorkRoot,
     string? WaitingReason,
-    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null)
+    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null,
+    IReadOnlyList<PlaybackHoldDto>? PlaybackHolds = null)
 {
     public static QueueStatusDto From(QueueDispatchStatus status) => new(
         status.CanStart,
@@ -373,7 +374,8 @@ internal sealed record QueueStatusDto(
         status.FreeDiskBytes,
         status.WorkRoot,
         status.WaitingReason,
-        status.WorkloadLanes);
+        status.WorkloadLanes,
+        status.PlaybackHolds ?? []);
 }
 
 internal sealed record JellyfinConnectRequest(string? BaseUrl);

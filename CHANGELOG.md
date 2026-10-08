@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- When a media server pauses the queue for playback, Optimisarr says what is playing and who is watching: the series, season, episode and title for TV, the title and year for a film, or the track and artist for music, with the viewer, device and whether it is paused. The status bar shows the first playback and how many more, with every playback in its tooltip; the Queue and Schedule pages list them all. Plex, Jellyfin and Emby are supported. Missing details are left out, and a server that reports none keeps the stream count.
+- Media-server watchers have a **Show who is watching** setting, on by default. Turn it off on a shared server to name only what is playing; the viewer and device are dropped on the server. Names and titles are never logged or included in diagnostics, and an older client saving a watcher keeps the stored choice. Configuration backups carry the setting; older backups leave it unchanged.
+
 ### Fixed
 
 - Video encodes of sources that store decode times only, such as VC-1 or H.264 in Matroska's VfW mode, keep the decoder's own picture timing. Regenerating presentation times put the first reordered pictures of a B-frame stream 40 ms late or on the same timestamp and could repeat the last one, and without B-frames it shifted every picture 40 ms late against the sound. The regeneration is still used whenever a copied stream has not shown its own times in the sampled start of the file.

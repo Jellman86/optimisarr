@@ -241,6 +241,38 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Hiding_viewer_names_survives_export_and_an_older_backup_leaves_it_alone()
+    {
+        await using (var db = CreateDb())
+        {
+            db.ActivityWatchers.Add(new ActivityWatcher
+            {
+                Name = "Plex", Type = ActivityWatcherType.Plex, BaseUrl = "http://plex:32400", ShowViewerNames = false
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var exported = await ExportAsync();
+        Assert.False(Assert.Single(exported.ActivityWatchers).ShowViewerNames);
+
+        // A backup from before the setting existed carries no value: the stored choice stays.
+        var older = exported with { ActivityWatchers = [new ActivityWatcherSnapshot("Plex", "Plex", "http://plex:32400", true, true)] };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var db = CreateDb())
+        {
+            Assert.False((await db.ActivityWatchers.SingleAsync()).ShowViewerNames);
+        }
+
+        // A new watcher from an older backup shows names, the default.
+        var newWatcher = exported with { ActivityWatchers = [new ActivityWatcherSnapshot("Jellyfin", "Jellyfin", "http://jf:8096", true, true)] };
+        Assert.True((await ImportAsync(newWatcher)).Applied);
+        await using (var db = CreateDb())
+        {
+            Assert.True((await db.ActivityWatchers.SingleAsync(watcher => watcher.Name == "Jellyfin")).ShowViewerNames);
+        }
+    }
+
+    [Fact]
     public async Task Import_updates_a_matching_library_without_creating_a_duplicate()
     {
         await using (var db = CreateDb())

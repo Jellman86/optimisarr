@@ -24,6 +24,23 @@ No copyrighted material is used.
 Test each connection before enabling it. Keep only the pause and refresh
 behaviour you actually need.
 
+### What a playback pause shows
+
+While playback holds the queue, Optimisarr says what is playing and who is
+watching: the series, season, episode and title for TV, the title and year for a
+film, and the track and artist for music, followed by the viewer and device, and
+"(paused)" for a paused stream. The status bar shows the first playback and how
+many more, with the full list in its tooltip. The Queue and Schedule pages list
+every playback. A detail the server does not report is left out rather than
+guessed; if a server reports none, the pause reads as before, with a stream count.
+
+Turn off **Show who is watching** on a watcher to name only what is playing, which
+suits a shared server. The viewer and device are then dropped before they leave
+the server. Names and titles are only shown to people who can open Optimisarr,
+which is protected by the admin token when one is set. They are never written to
+logs or diagnostics bundles. They only explain a pause: which sessions pause the
+queue is unchanged.
+
 ![Download managers settings showing a fabricated Radarr connection and its connection controls](../images/optimisarr-settings-downloads-dark.png)
 
 ## Notifications

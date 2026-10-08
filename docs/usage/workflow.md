@@ -192,7 +192,8 @@ Do this:
 
 The Queue tells you why work is running or waiting. Common waiting reasons are a
 closed auto-optimise window, an activity watcher pause, concurrency limits, or
-low free space in `/work`.
+low free space in `/work`. An activity watcher pause lists what is playing, who is
+watching and on which device (see [media servers](../integrations/media-servers.md#what-a-playback-pause-shows)).
 
 For adaptive per-title quality with a required size saving, Optimisarr forecasts
 the finished file's size from the quality samples before starting the full encode.
