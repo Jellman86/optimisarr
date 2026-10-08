@@ -4,7 +4,7 @@ These terms appear throughout Optimisarr and the documentation.
 
 | Term | Meaning |
 |---|---|
-| Activity watcher | A Plex, Jellyfin, or Emby connection that can pause new work while users are streaming. Running jobs are not interrupted. |
+| Activity watcher | A Plex, Jellyfin, or Emby connection that can pause new work while users are streaming. Running jobs are not interrupted. While it holds the queue, Optimisarr names what is playing and, unless **Show who is watching** is off, who is watching and on which device. |
 | Auto-optimise | A per-library setting that queues and starts eligible work inside that library's time window. |
 | Auto-replace | A per-library setting that applies a verified output automatically. The original is still quarantined first. |
 | Candidate | A discovered media file after Optimisarr has applied the library rules and decided whether it is eligible. |

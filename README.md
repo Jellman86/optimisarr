@@ -35,7 +35,7 @@ for rollback rather than deleted immediately.
   duration, and size-reduction checks.
 - Run one Docker container on a homelab, Unraid-style server, or other
   self-hosted setup.
-- Pause processing while Plex, Jellyfin, or Emby has active streams.
+- Pause processing while Plex, Jellyfin, or Emby has active streams, and see what is playing and who is watching.
 - Send video encoding and optional strict verification to paired Mac, Windows and Linux workers.
 
 <p align="center">
