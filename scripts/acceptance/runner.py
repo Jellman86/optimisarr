@@ -269,7 +269,7 @@ class Harness:
             require([stream.get("tags", {}).get("language") for stream in audio] == languages,
                     "Copied audio language or order changed")
         if check_picture_origin:
-            self.tools.check_av_start_offset(case["source"], candidate, directory)
+            self.tools.check_av_start_offset(case["source"], candidate, directory, decoder_timing=reference_decoder_timing)
         if check_regular_cadence:
             self.tools.check_regular_stored_cadence(candidate)
         if check_subtitles or subtitle_expectations:
@@ -710,7 +710,7 @@ class Harness:
             if regression == "uneven-timing" and "uneven" not in variants:
                 variants = [*variants, "uneven"]
             if regression == "initial-pictures":
-                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles", "dts-repeated", "dts-bframes"]))
+                variants = list(dict.fromkeys([*variants, "dts-only", "dts-only-no-subtitles", "dts-repeated", "dts-bframes", "dts-h264"]))
             if "sdr" not in variants:
                 variants = ["sdr", *variants]
             fixtures = {}
@@ -793,8 +793,13 @@ class Harness:
                         reordered = self.video(name + "-bframes", fixtures["dts-bframes"], encoder, worker, container="mp4",
                             subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True,
                             check_regular_cadence=True, reference_decoder_timing=True)
+                        require("dts-h264" in fixtures, "Decode-only H.264 fixture could not be generated")
+                        in_order = self.video(name + "-h264", fixtures["dts-h264"], encoder, worker, container="mp4",
+                            subtitle_expectations=(["mov_text"], ["eng"], [0]), check_picture_origin=True,
+                            check_regular_cadence=True, reference_decoder_timing=True)
                         return {"withSubtitles": with_subtitles, "withoutSubtitles": without_subtitles,
-                                "repeatedTimestamps": repeated, "reorderedDecodeOnly": reordered}
+                                "repeatedTimestamps": repeated, "reorderedDecodeOnly": reordered,
+                                "inOrderDecodeOnly": in_order}
                     if regression == "uneven-timing":
                         require("uneven" in fixtures, "Uneven timestamp fixture could not be generated")
                         return self.video(name, fixtures["uneven"], encoder, worker, container="mp4")

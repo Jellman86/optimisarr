@@ -1814,24 +1814,11 @@ public sealed class QueueDispatcher(
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
             sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null);
 
-        if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null
-            && TranscodeSpecResolver.IsMp4Container(Path.GetExtension(spec.OutputPath)))
-        {
-            freshSourceProbe ??= await scope.ServiceProvider.GetRequiredService<IMediaProbeService>()
-                .ProbeAsync(media.Path, cancellationToken);
-            if (!freshSourceProbe.Success)
-                throw new InvalidOperationException("Fresh source probe required for safe MP4 picture timing failed: " + freshSourceProbe.Error);
-            // Correct the common input origin before hardware encoders see negative pictures.
-            // This metadata-only head read shifts every retained track together.
-            if (freshSourceProbe.ContainerStartSeconds is > 0)
-                spec = spec with { InputTimestampOffsetSeconds = await scope.ServiceProvider.GetRequiredService<InputTimestampOffset>()
-                    .MeasureAsync(media.Path, freshSourceProbe.ContainerStartSeconds, cancellationToken) };
-        }
-
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
         {
             // Decode-only sources with B-frames are mistimed by +genpts (#373). Without a reading the
             // job keeps the regeneration it always had: this refines timing, it is not a safety gate.
+            // Decided before the input offset, which must be measured in the same timestamp mode.
             try
             {
                 spec = spec with { RegeneratePresentationTimestamps = await scope.ServiceProvider
@@ -1843,6 +1830,21 @@ public sealed class QueueDispatcher(
             {
                 logger.LogWarning(error, "Job {JobId} keeps regenerated presentation times: the source timestamp read failed", job.Id);
             }
+        }
+
+        if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null
+            && TranscodeSpecResolver.IsMp4Container(Path.GetExtension(spec.OutputPath)))
+        {
+            freshSourceProbe ??= await scope.ServiceProvider.GetRequiredService<IMediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
+                throw new InvalidOperationException("Fresh source probe required for safe MP4 picture timing failed: " + freshSourceProbe.Error);
+            // Correct the common input origin before hardware encoders see negative pictures.
+            // This metadata-only head read shifts every retained track together.
+            if (freshSourceProbe.ContainerStartSeconds is > 0)
+                spec = spec with { InputTimestampOffsetSeconds = await scope.ServiceProvider.GetRequiredService<InputTimestampOffset>()
+                    .MeasureAsync(media.Path, freshSourceProbe.ContainerStartSeconds, cancellationToken,
+                        generatedPresentationTimes: spec.RegeneratePresentationTimestamps) };
         }
 
         if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
