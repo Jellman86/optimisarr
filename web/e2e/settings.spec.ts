@@ -515,3 +515,83 @@ test('the application icon is the server’s choice, so sidecars can show it too
   await select.selectOption('stellar')
   await expect(page.getByRole('alert')).toContainText('Could not save the icon on the server')
 })
+
+
+test('hiding viewers refreshes playback immediately and persists the saved choice', async ({ page }) => {
+  await mockSettings(page)
+  let watcher = { id: 1, name: 'Plex', type: 'Plex', baseUrl: 'http://plex:32400', hasToken: true,
+    enabled: true, refreshOnReplace: true, showViewerNames: true }
+  await page.route('**/api/activity-watchers', r => json(r, [watcher]))
+  await page.route('**/api/activity-watchers/1', r => {
+    const saved = r.request().postDataJSON()
+    watcher = { ...watcher, showViewerNames: saved.showViewerNames }
+    return json(r, watcher)
+  })
+  await page.route('**/api/stats', r => json(r, { queued: 1 }))
+  await page.route('**/api/queue/status', r => json(r, {
+    canStart: false, manuallyPaused: false, runningJobs: 0,
+    blockedReason: 'Paused while Plex is active (1 stream).',
+    playbackHolds: [{watcher:'Plex',kind:'Movie',title:'Example Film',year:1999,
+      user:watcher.showViewerNames ? 'Alex' : null, device:watcher.showViewerNames ? 'Living Room' : null,paused:false}],
+  }))
+  await page.goto('/#/settings/media-servers')
+  const strip = page.locator('.status-strip-reason')
+  await expect(strip).toContainText('Alex')
+  await page.getByRole('button', {name:'Edit', exact:true}).click()
+  const choice = page.getByRole('checkbox', {name:/Show who is watching/})
+  await expect(choice).toBeChecked()
+  await choice.uncheck()
+  await page.getByRole('button', {name:'Save changes',exact:true}).click()
+  await expect(strip).not.toContainText('Alex', {timeout:2000})
+  await expect(strip).toContainText('Example Film')
+  await expect(page.getByText('viewers hidden',{exact:true})).toBeVisible()
+  await page.getByRole('button', {name:'Edit',exact:true}).click()
+  await expect(choice).not.toBeChecked()
+  expect(watcher.showViewerNames).toBe(false)
+})
+
+for (const refreshFails of [false, true]) {
+  test(`hiding viewers discards an older poll when refresh ${refreshFails ? 'fails' : 'succeeds'}`, async ({ page }) => {
+    await mockSettings(page)
+    let hidden = false
+    let pending: Route | undefined
+    let holdNextPoll = false
+    const watcher = { id: 1, name: 'Plex', type: 'Plex', baseUrl: 'http://plex:32400', hasToken: true,
+      enabled: true, refreshOnReplace: true, showViewerNames: true }
+    const status = (user: string | null) => ({ canStart: false, manuallyPaused: false, runningJobs: 0,
+      blockedReason: 'Paused while Plex is active (1 stream).',
+      playbackHolds: [{ watcher: 'Plex', kind: 'Movie', title: 'Example Film', user, paused: false }] })
+    await page.route('**/api/activity-watchers', r => json(r, [{ ...watcher, showViewerNames: !hidden }]))
+    await page.route('**/api/activity-watchers/1', r => {
+      hidden = true
+      return json(r, { ...watcher, showViewerNames: false })
+    })
+    await page.route('**/api/stats', r => json(r, { queued: 1 }))
+    await page.route('**/api/queue/status', r => {
+      if (holdNextPoll) { holdNextPoll = false; pending = r; return }
+      if (hidden && refreshFails) return json(r, { error: 'unavailable' }, 503)
+      return json(r, status(hidden ? null : 'Alex'))
+    })
+    await page.goto('/#/settings/media-servers')
+    const strip = page.locator('.status-strip-reason')
+    await expect(strip).toContainText('Alex')
+    holdNextPoll = true
+    await page.evaluate(async () => {
+      const modulePath = '/src/lib/stores/counts.svelte.ts'
+      const { counts } = await import(modulePath)
+      void counts.refresh()
+    })
+    await expect.poll(() => pending !== undefined).toBe(true)
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await page.getByRole('checkbox', { name: /Show who is watching/ }).uncheck()
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await expect(strip).not.toContainText('Alex')
+    const lateResponse = page.waitForResponse('**/api/queue/status')
+    await json(pending!, status('Alex'))
+    await (await lateResponse).finished()
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+    await expect(strip).not.toContainText('Alex')
+    await expect(strip).not.toHaveAttribute('title', /Alex/)
+    await expect(strip).toContainText(refreshFails ? 'Paused while Plex' : 'Example Film')
+  })
+}

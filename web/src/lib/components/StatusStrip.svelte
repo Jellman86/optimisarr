@@ -42,10 +42,10 @@
     : state.kind === 'workers' && state.localPaused ? i18n.m.dashboard.state_workers_local_paused
     : state.kind === 'workers' && state.detail ? t(i18n.m.dashboard.state_workers_local_held, { reason: state.detail })
     : state.kind === 'unexplained' ? i18n.m.dashboard.state_unexplained_detail
-    : holds.length > 0 ? playbackSummary(holds, phrases)
+    : holds.length > 0 ? t(i18n.m.queue.playback_status, { count: holds.length, summary: playbackSummary(holds, phrases) ?? '' })
     : state.detail,
   )
-  // The strip has room for one line; the full list of what is playing sits in its tooltip.
+  // Keep the strip to one line; its link opens the queue details on touch and keyboard too.
   let detailTitle = $derived(holds.length > 0 ? holds.map((hold) => `${hold.watcher} · ${playbackLine(hold, phrases)}`).join('\n') : detail)
 </script>
 
@@ -63,7 +63,11 @@
     <span class="label mb-0">{i18n.m.dashboard.state}</span>
     <span class="text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
     {#if detail}
-      <span class="status-strip-reason" title={detailTitle}>{detail}</span>
+      {#if holds.length > 0}
+        <a class="status-strip-reason status-strip-playback focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
+      {:else}
+        <span class="status-strip-reason" title={detailTitle}>{detail}</span>
+      {/if}
     {/if}
   </div>
 
@@ -131,6 +135,13 @@
     white-space: nowrap;
     font-size: 0.8125rem;
     color: var(--ink-2);
+  }
+  .status-strip-playback {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  @media (pointer: coarse) {
+    .status-strip-playback { min-height: 44px; line-height: 44px; }
   }
   .status-strip-fact {
     display: flex;

@@ -627,6 +627,7 @@ export const ja: Messages = {
     queued_waiting_other: "{count} 処理タスクがキューに入れられ、開始を待機しています。",
     dispatch_paused: "キューのディスパッチが一時停止されています: {reason}。既存のエンコードは安全に終了できます。これは、新しい処理タスクの開始を妨げるだけです。",
     waiting_window: "{reason} — ウィンドウを 00:00 ～ 00:00 (終日) に設定するか、今すぐ実行するメディア ライブラリの「自動的に最適化」を無効にします。",
+    playback_status: '再生中（{count}）：{summary}',
     playback_heading: "再生中",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title}（{year}）",

@@ -8,7 +8,7 @@
   // nothing when no playback is named, so the pause message stands alone as it did before.
   let { holds }: { holds: PlaybackHold[] } = $props()
   let phrases = $derived(playbackPhrases(i18n.m))
-  // A busy server can hold the queue with many streams; the first few say enough.
+  // Keep a busy server compact while letting touch and keyboard users reach every stream.
   const SHOWN = 8
   let shown = $derived(holds.slice(0, SHOWN))
 </script>
@@ -21,7 +21,21 @@
         <span><span class="font-semibold">{hold.watcher}</span> · {playbackLine(hold, phrases)}</span>
       </li>
     {/each}
-    {#if holds.length > SHOWN}<li class="text-ink-3">{t(i18n.m.queue.playback_more, { count: holds.length - SHOWN })}</li>{/if}
+    {#if holds.length > SHOWN}
+      <li>
+        <details>
+          <summary class="focus-ring cursor-pointer text-ink-3">{t(i18n.m.queue.playback_more, { count: holds.length - SHOWN })}</summary>
+          <ul class="playback-holds">
+            {#each holds.slice(SHOWN) as hold, index (index)}
+              <li>
+                <Icon name={hold.paused ? 'pause' : 'play'} class="h-3.5 w-3.5 flex-none" />
+                <span><span class="font-semibold">{hold.watcher}</span> · {playbackLine(hold, phrases)}</span>
+              </li>
+            {/each}
+          </ul>
+        </details>
+      </li>
+    {/if}
   </ul>
 {/if}
 
@@ -30,6 +44,9 @@
     margin-top: 0.5rem;
     display: grid;
     gap: 0.25rem;
+  }
+  @media (pointer: coarse) {
+    summary { min-height: 44px; line-height: 44px; }
   }
   .playback-holds li {
     display: flex;

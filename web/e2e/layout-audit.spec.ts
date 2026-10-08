@@ -115,7 +115,7 @@ async function mockApp(page: Page) {
     if (path === '/api/workers/pairing-code') return route.fulfill({ status: 204 })
     if (path === '/api/activity-watchers') return json(route, [{
       id: 1, name: 'Living room media', type: 'Jellyfin', baseUrl: 'https://media.example.com',
-      hasToken: true, enabled: true, refreshOnReplace: true, createdAt: fixtures.when, updatedAt: fixtures.when,
+      hasToken: true, enabled: true, refreshOnReplace: true, showViewerNames: true, createdAt: fixtures.when, updatedAt: fixtures.when,
     }])
     if (path === '/api/arr-connections') return json(route, [{
       id: 1, name: 'Film imports', type: 'Radarr', baseUrl: 'https://films.example.com',

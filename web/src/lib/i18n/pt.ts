@@ -627,6 +627,7 @@ export const pt: Messages = {
     queued_waiting_other: "{count} processando tarefas enfileiradas e aguardando para serem iniciadas.",
     dispatch_paused: "O envio da fila está pausado: {reason}. As codificações existentes podem ser concluídas com segurança; isso apenas impede o início de novas tarefas de processamento.",
     waiting_window: "{reason} – defina a janela para 00h00–00h00 (o dia todo) ou desative “Otimizar automaticamente” na biblioteca de mídia para executar agora.",
+    playback_status: 'Reprodução ({count}): {summary}',
     playback_heading: "Reproduzindo agora",
     playback_episode_number: "T{season}E{episode}",
     playback_with_year: "{title} ({year})",

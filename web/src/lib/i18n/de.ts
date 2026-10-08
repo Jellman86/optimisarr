@@ -654,6 +654,7 @@ export const de: Messages = {
       'Die Warteschlangen-Ausführung ist pausiert: {reason}. Laufende Kodierungen dürfen sicher abgeschlossen werden; dies verhindert nur den Start neuer Aufgaben.',
     waiting_window:
       '{reason} — setzen Sie das Fenster auf 00:00–00:00 (ganztägig) oder deaktivieren Sie „Automatisch optimieren“ für die Bibliothek, um jetzt auszuführen.',
+    playback_status: 'Wiedergabe ({count}): {summary}',
     playback_heading: "Läuft gerade",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title} ({year})",

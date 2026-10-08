@@ -547,7 +547,7 @@
   </div>
 {:else if queueStatus && !queueStatus.canStart}
   <div class="card tone-warn mb-4 p-3 text-sm">
-    {t(i18n.m.queue.dispatch_paused, { reason: queueStatus.blockedReason ?? '' })}
+    {t(i18n.m.queue.dispatch_paused, { reason: (queueStatus.blockedReason ?? '').replace(/\.$/, '') })}
     <PlaybackHolds holds={queueStatus.playbackHolds ?? []} />
   </div>
 {:else if queueStatus?.waitingReason}

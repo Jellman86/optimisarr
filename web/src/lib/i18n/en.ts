@@ -790,6 +790,7 @@ export const en = {
       'Queue dispatch is paused: {reason}. Existing encodes are allowed to finish safely; this only prevents new jobs from starting.',
     waiting_window:
       '{reason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.',
+    playback_status: 'Playback ({count}): {summary}',
     playback_heading: "Playing now",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title} ({year})",

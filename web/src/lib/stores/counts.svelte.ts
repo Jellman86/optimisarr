@@ -20,15 +20,29 @@ function createCounts() {
   let revision = $state(0)
   let pauseBusy = $state(false)
   let pauseError = $state<string | null>(null)
+  let refreshVersion = 0
+  let appliedRefreshVersion = 0
   let started = false
   let timer: ReturnType<typeof setInterval> | null = null
 
   async function refresh() {
+    const version = ++refreshVersion
     // Each half keeps its last known value on a missed poll. Flicking to zero would read as
     // "nothing there", which is a claim the app has no evidence for.
     const [nextStats, nextQueue] = await Promise.allSettled([api.stats(), api.queueStatus()])
+    if (version < appliedRefreshVersion) return
+    appliedRefreshVersion = version
     if (nextStats.status === 'fulfilled') stats = nextStats.value
     if (nextQueue.status === 'fulfilled') queue = nextQueue.value
+  }
+
+  // A watcher privacy change invalidates the displayed details as well as the server's poll.
+  // Failed refreshes must not leave identities visible after they were hidden.
+  async function refreshPlayback() {
+    appliedRefreshVersion = ++refreshVersion
+    if (queue) queue = { ...queue, playbackHolds: [] }
+    await refresh()
+    revision++
   }
 
   function start() {
@@ -64,6 +78,7 @@ function createCounts() {
     start,
     stop,
     refresh,
+    refreshPlayback,
     togglePause,
     get stats() { return stats },
     get queue() { return queue },

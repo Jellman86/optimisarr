@@ -227,7 +227,12 @@ test('a queue held by playback names what is playing and who is watching', async
 
   // The strip has one line: the first playback and who, then how many more; every playback is in its tooltip.
   const reason = page.locator('.status-strip-reason')
-  await expect(reason).toHaveText('Example Show · S2E5 · Pilot — alex +1 more')
+  await expect(reason).toHaveText('Playback (2): Example Show · S2E5 · Pilot — alex +1 more')
+  await expect(reason).toHaveAttribute('href', '#/queue')
+  await reason.focus()
+  await expect(reason).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/#\/queue$/)
   await expect(reason).toHaveAttribute('title', 'Riker Plex · Example Show · S2E5 · Pilot — alex on Living Room TV\nRiker Plex · Example Film (1999) (paused)')
 })
 
@@ -865,4 +870,39 @@ test('an idle in-flight panel with no history says so and nothing more', async (
   await page.goto('/#/')
   await expect(page.getByText('Nothing queued and nothing running. Everything eligible is done.')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Last finished' })).toHaveCount(0)
+})
+
+test('all playback holds are reachable by keyboard on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 })
+  await mockDashboard(page, { queue: { canStart: false, blockedReason: 'Playback active.',
+    playbackHolds: Array.from({ length: 10 }, (_, i) => ({ watcher: 'Plex', kind: 'Movie',
+      title: `Film number ${i + 1}`, user: null, device: null, paused: false })),
+  } })
+  await page.goto('/#/queue')
+  const more = page.locator('.playback-holds summary')
+  await expect(more).toHaveText('+2 more')
+  await more.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.playback-holds').getByText('Film number 10', { exact: false })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(2)
+})
+
+test('an overlapping later poll does not starve a completed status response', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/#/')
+  await expect(page.locator('.status-strip')).toBeVisible()
+  const pending: Route[] = []
+  await page.route('**/api/queue/status', route => { pending.push(route) })
+  for (let i = 0; i < 2; i++) {
+    await page.evaluate(async () => {
+      const modulePath = '/src/lib/stores/counts.svelte.ts'
+      const { counts } = await import(modulePath)
+      void counts.refresh()
+    })
+    await expect.poll(() => pending.length).toBe(i + 1)
+  }
+  await json(pending[0], { ...QUEUE_CLEAR, canStart: false, blockedReason: 'First completed poll' })
+  await expect(page.locator('.status-strip-reason')).toHaveText('First completed poll')
+  await json(pending[1], { ...QUEUE_CLEAR, canStart: false, blockedReason: 'Second completed poll' })
+  await expect(page.locator('.status-strip-reason')).toHaveText('Second completed poll')
 })
