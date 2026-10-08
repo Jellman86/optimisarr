@@ -31,7 +31,7 @@ public sealed class ActivityMonitorTests : IDisposable
             .AddDbContext<OptimisarrDbContext>(options => options.UseSqlite(_connection))
             .BuildServiceProvider();
         using var scope = _services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Database.EnsureCreated();
+        scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Database.Migrate();
     }
 
     [Fact]
@@ -90,6 +90,45 @@ public sealed class ActivityMonitorTests : IDisposable
 
         Assert.Null(Assert.Single((await inFlight).Holds).Session.User);
         Assert.Null(Assert.Single((await monitor.GetActivityAsync(CancellationToken.None)).Holds).Session.User);
+    }
+
+    [Fact]
+    public async Task Hiding_viewers_during_cache_publication_cannot_restore_the_old_poll()
+    {
+        await SeedAsync("Plex", showViewerNames: true);
+        using var clock = new PublicationClock();
+        var monitor = new ActivityMonitor(_services.GetRequiredService<IServiceScopeFactory>(),
+            new StubHttpClientFactory(new PlexHandler()), clock, NullLogger<ActivityMonitor>.Instance);
+        var inFlight = Task.Run(() => monitor.GetActivityAsync(CancellationToken.None));
+        try
+        {
+            await clock.Publishing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await SetShowViewerNamesAsync(false);
+            monitor.Invalidate();
+        }
+        finally
+        {
+            clock.Release.Set();
+        }
+        Assert.Null(Assert.Single((await inFlight).Holds).Session.User);
+        Assert.Null(Assert.Single((await monitor.GetActivityAsync(CancellationToken.None)).Holds).Session.User);
+    }
+
+    private sealed class PublicationClock : TimeProvider, IDisposable
+    {
+        private int _calls;
+        public TaskCompletionSource Publishing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim Release { get; } = new(false);
+        public override DateTimeOffset GetUtcNow()
+        {
+            if (Interlocked.Increment(ref _calls) == 3)
+            {
+                Publishing.SetResult();
+                if (!Release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Cache publication was not released");
+            }
+            return DateTimeOffset.UtcNow;
+        }
+        public void Dispose() => Release.Dispose();
     }
 
     private ActivityMonitor Monitor(HttpMessageHandler handler) =>

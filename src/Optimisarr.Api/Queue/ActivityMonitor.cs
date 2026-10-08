@@ -23,8 +23,8 @@ public sealed class ActivityMonitor(
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
-    private ActivityDecision _cached = new(false, null);
-    private DateTimeOffset _cachedAt = DateTimeOffset.MinValue;
+    private sealed record CachedActivity(ActivityDecision Decision, DateTimeOffset At, long Generation);
+    private CachedActivity _cache = new(new(false, null), DateTimeOffset.MinValue, -1);
     // Bumped whenever a watcher changes, so a cached or in-flight poll made under the old
     // settings — viewer names included — is never served after the change.
     private long _generation;
@@ -33,38 +33,38 @@ public sealed class ActivityMonitor(
     public void Invalidate()
     {
         Interlocked.Increment(ref _generation);
-        _cachedAt = DateTimeOffset.MinValue;
     }
 
     public async Task<ActivityDecision> GetActivityAsync(CancellationToken cancellationToken)
     {
-        if (timeProvider.GetUtcNow() - _cachedAt < CacheTtl)
+        var cached = Volatile.Read(ref _cache);
+        if (timeProvider.GetUtcNow() - cached.At < CacheTtl && cached.Generation == Interlocked.Read(ref _generation))
         {
-            return _cached;
+            return cached.Decision;
         }
 
         await _refreshLock.WaitAsync(cancellationToken);
         try
         {
             // Re-check inside the lock: another caller may have just refreshed.
-            if (timeProvider.GetUtcNow() - _cachedAt < CacheTtl)
+            cached = Volatile.Read(ref _cache);
+            if (timeProvider.GetUtcNow() - cached.At < CacheTtl && cached.Generation == Interlocked.Read(ref _generation))
             {
-                return _cached;
+                return cached.Decision;
             }
 
             // A poll the watchers changed under is measured again rather than cached or returned.
-            ActivityDecision measured;
-            long generation;
-            do
+            while (true)
             {
-                generation = Interlocked.Read(ref _generation);
-                measured = await MeasureAsync(cancellationToken);
+                var generation = Interlocked.Read(ref _generation);
+                var measured = await MeasureAsync(cancellationToken);
+                var refreshed = new CachedActivity(measured, timeProvider.GetUtcNow(), generation);
+                if (generation != Interlocked.Read(ref _generation)) continue;
+                // Publish one immutable snapshot. An invalidation racing this write leaves an old
+                // generation that every later reader rejects, rather than refreshing stale names.
+                Volatile.Write(ref _cache, refreshed);
+                return measured;
             }
-            while (generation != Interlocked.Read(ref _generation));
-
-            _cached = measured;
-            _cachedAt = timeProvider.GetUtcNow();
-            return measured;
         }
         finally
         {
