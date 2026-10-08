@@ -25,6 +25,16 @@ public sealed class ActivityMonitor(
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private ActivityDecision _cached = new(false, null);
     private DateTimeOffset _cachedAt = DateTimeOffset.MinValue;
+    // Bumped whenever a watcher changes, so a cached or in-flight poll made under the old
+    // settings — viewer names included — is never served after the change.
+    private long _generation;
+
+    /// <summary>Drops the cached poll after a watcher is added, changed, removed or imported.</summary>
+    public void Invalidate()
+    {
+        Interlocked.Increment(ref _generation);
+        _cachedAt = DateTimeOffset.MinValue;
+    }
 
     public async Task<ActivityDecision> GetActivityAsync(CancellationToken cancellationToken)
     {
@@ -42,9 +52,19 @@ public sealed class ActivityMonitor(
                 return _cached;
             }
 
-            _cached = await MeasureAsync(cancellationToken);
+            // A poll the watchers changed under is measured again rather than cached or returned.
+            ActivityDecision measured;
+            long generation;
+            do
+            {
+                generation = Interlocked.Read(ref _generation);
+                measured = await MeasureAsync(cancellationToken);
+            }
+            while (generation != Interlocked.Read(ref _generation));
+
+            _cached = measured;
             _cachedAt = timeProvider.GetUtcNow();
-            return _cached;
+            return measured;
         }
         finally
         {

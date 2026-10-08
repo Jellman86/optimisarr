@@ -62,11 +62,49 @@ public sealed class ActivityMonitorTests : IDisposable
         Assert.Null(hold.Session.Device);
     }
 
-    private async Task<ActivityDecision> MonitorAsync()
+    [Fact]
+    public async Task Hiding_viewers_takes_effect_at_once_rather_than_after_the_cached_poll_expires()
     {
-        var monitor = new ActivityMonitor(_services.GetRequiredService<IServiceScopeFactory>(),
-            new StubHttpClientFactory(new PlexHandler()), TimeProvider.System, NullLogger<ActivityMonitor>.Instance);
-        return await monitor.GetActivityAsync(CancellationToken.None);
+        await SeedAsync("Plex", showViewerNames: true);
+        var monitor = Monitor(new PlexHandler());
+        Assert.Equal("alex", Assert.Single((await monitor.GetActivityAsync(CancellationToken.None)).Holds).Session.User);
+
+        await SetShowViewerNamesAsync(false);
+        monitor.Invalidate();
+
+        Assert.Null(Assert.Single((await monitor.GetActivityAsync(CancellationToken.None)).Holds).Session.User);
+    }
+
+    [Fact]
+    public async Task A_poll_already_in_flight_cannot_restore_names_hidden_while_it_ran()
+    {
+        await SeedAsync("Plex", showViewerNames: true);
+        var gate = new GatedPlexHandler();
+        var monitor = Monitor(gate);
+
+        var inFlight = monitor.GetActivityAsync(CancellationToken.None);
+        await gate.FirstRequestStarted.Task;
+        await SetShowViewerNamesAsync(false);
+        monitor.Invalidate();
+        gate.Release.SetResult();
+
+        Assert.Null(Assert.Single((await inFlight).Holds).Session.User);
+        Assert.Null(Assert.Single((await monitor.GetActivityAsync(CancellationToken.None)).Holds).Session.User);
+    }
+
+    private ActivityMonitor Monitor(HttpMessageHandler handler) =>
+        new(_services.GetRequiredService<IServiceScopeFactory>(), new StubHttpClientFactory(handler),
+            TimeProvider.System, NullLogger<ActivityMonitor>.Instance);
+
+    private async Task<ActivityDecision> MonitorAsync() =>
+        await Monitor(new PlexHandler()).GetActivityAsync(CancellationToken.None);
+
+    private async Task SetShowViewerNamesAsync(bool show)
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        (await db.ActivityWatchers.SingleAsync()).ShowViewerNames = show;
+        await db.SaveChangesAsync();
     }
 
     private async Task SeedAsync(string name, bool showViewerNames)
@@ -84,6 +122,24 @@ public sealed class ActivityMonitorTests : IDisposable
     private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    // Holds the first response until released, so a watcher can change while that poll runs.
+    private sealed class GatedPlexHandler : HttpMessageHandler
+    {
+        private int _requests;
+        public TaskCompletionSource FirstRequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _requests) == 1)
+            {
+                FirstRequestStarted.SetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(PlexSessions) };
+        }
     }
 
     private sealed class PlexHandler : HttpMessageHandler

@@ -40,6 +40,7 @@ internal static class IntegrationEndpoints
         app.MapPost("/api/activity-watchers", async (
             SaveActivityWatcherRequest request,
             OptimisarrDbContext db,
+            ActivityMonitor activity,
             CancellationToken cancellationToken) =>
         {
             if (!ActivityWatcherRequestParser.TryParse(request, out var parsed, out var error))
@@ -59,6 +60,7 @@ internal static class IntegrationEndpoints
             };
             db.ActivityWatchers.Add(watcher);
             await db.SaveChangesAsync(cancellationToken);
+            activity.Invalidate();
 
             return Results.Created($"/api/activity-watchers/{watcher.Id}", ActivityWatcherDto.From(watcher));
         })
@@ -68,6 +70,7 @@ internal static class IntegrationEndpoints
             int id,
             SaveActivityWatcherRequest request,
             OptimisarrDbContext db,
+            ActivityMonitor activity,
             CancellationToken cancellationToken) =>
         {
             var watcher = await db.ActivityWatchers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
@@ -95,6 +98,8 @@ internal static class IntegrationEndpoints
             watcher.ShowViewerNames = parsed.ShowViewerNames ?? watcher.ShowViewerNames;
             watcher.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
+            // A hidden viewer must disappear at once, not when the cached poll expires.
+            activity.Invalidate();
 
             return Results.Ok(ActivityWatcherDto.From(watcher));
         })
@@ -103,6 +108,7 @@ internal static class IntegrationEndpoints
         app.MapDelete("/api/activity-watchers/{id:int}", async (
             int id,
             OptimisarrDbContext db,
+            ActivityMonitor activity,
             CancellationToken cancellationToken) =>
         {
             var watcher = await db.ActivityWatchers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
@@ -113,6 +119,7 @@ internal static class IntegrationEndpoints
 
             db.ActivityWatchers.Remove(watcher);
             await db.SaveChangesAsync(cancellationToken);
+            activity.Invalidate();
             return Results.NoContent();
         })
         .WithName("DeleteActivityWatcher");
