@@ -280,7 +280,8 @@ class Harness:
             require([stream.get("tags", {}).get("language") for stream in subtitles] == languages,
                     "Subtitle language or order changed")
             for index, source_index in enumerate(source_indexes):
-                before = self.tools.subtitle_cues(case["source"], source_index, picture_origin=check_picture_origin, generate_pts=check_picture_origin)
+                before = self.tools.subtitle_cues(case["source"], source_index, picture_origin=check_picture_origin,
+                    generate_pts=check_picture_origin and not reference_decoder_timing)
                 after = self.tools.subtitle_cues(candidate, index, picture_origin=check_picture_origin)
                 require(bool(before) and before == after, f"Subtitle {index} text or timing changed")
                 (directory / f"subtitle-{index}.srt").write_text(after, encoding="utf-8")
