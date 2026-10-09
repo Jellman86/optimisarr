@@ -113,14 +113,15 @@ SHA-256 hashes and source provenance. Most names gain `optimisarr-sidecar-macos-
 becomes `idle`, and Mac `unpaired` becomes `pairing`. Light audio retains the older
 `audio-light` suffix. Copy only the listed states, retaining existing documentation filenames.
 
-The 2026-10-09 refresh uses a local release build of the Mac 0.2.22 UI with corrected capture
-fixtures, and native WPF renders from Windows dev CI. Mac `OPTIMISARR_RENDER_FRAME` supplies
-an original generated landscape instead of the renderer's default colour ramp. Without a
-bundle the Mac executable reports an unknown build; its source revision and renderer hashes
-are recorded in the manifest. The installed app is not changed.
+The 2026-10-09 refresh uses local release builds of the reviewed Mac and Windows UI with
+0.2.23 version metadata, corrected capture fixtures and native WPF renders on Windows.
+Mac `OPTIMISARR_RENDER_FRAME` supplies an original generated landscape instead of the
+renderer's default colour ramp. Without a bundle the Mac executable reports an unknown
+build; its source revision and renderer hashes are recorded in the manifest. These capture
+commands do not modify the installed apps.
 
-Windows CI supplies the committed spectrum fixture. Download its `windows-sidecar-ui` artifact
-from the exact run linked in the native manifest:
+Windows CI also supplies the committed spectrum fixture. Its `windows-sidecar-ui` artifact can
+be used for a separate capture with that exact run recorded in the manifest:
 
 ```bash
 gh run download <run-id> --repo jellman86/optimisarr \

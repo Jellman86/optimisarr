@@ -24,8 +24,10 @@ the replacement workflow is trustworthy.
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
 trial and pairing records with current implementation. Priorities are checked Windows
 upgrades, retained real-source playback evidence and broader quality coverage.
-Correlated opt-in diagnostic capture and local exports are implemented in development; see the
-[9 October acceptance](engineering/hardware-validation/2026-10-09-correlated-diagnostics.md). Audio reports and explicit gates are implemented in
+Correlated opt-in diagnostic capture, local exports and playback artwork shipped in 0.2.23;
+see the [release acceptance](engineering/hardware-validation/2026-10-09-release-0.2.23.md),
+which distinguishes installed fleet checks from disposable media tests and records the
+pending Mac upgrade. Audio reports and explicit gates are implemented in
 development; image perceptual assessment and broader audio/dedupe coverage remain planned.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
