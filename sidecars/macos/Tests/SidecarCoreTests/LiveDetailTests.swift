@@ -268,9 +268,10 @@ struct PreviewProcessBoundsTests {
 
     @Test("cancelling a preview stops its child without waiting for the deadline")
     func cancellation() async throws {
-        let start = Date()
         let task = Task { await ProcessBinaryCommandRunner().run(URL(fileURLWithPath: "/bin/sleep"), ["6"]) }
         try await Task.sleep(for: .milliseconds(100))
+        // Measure cancellation itself; an overloaded runner can delay the setup sleep.
+        let start = Date()
         task.cancel()
         let result = await task.value
         #expect(result.exitCode != 0)
