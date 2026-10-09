@@ -96,7 +96,9 @@ responses, private caching, viewer privacy and stable missing-image fallbacks.
 A real isolated API with fabricated provider responses verifies all three proxy paths
 and rejects unauthenticated image requests. Picard opens the
 actual native Save As dialog in its logged-in session; it starts in Documents, and
-cancelling exits the export helper with the service and journal unchanged. The unelevated tray requests normal administrator access
+both saving a valid local diagnostic JSON export and cancelling exit the helper with the service
+and journal unchanged. The saved fixture is copied to private evidence and its owned Documents
+file is removed after hash verification. The unelevated tray requests normal administrator access
 for export; automated tests did not approve a UAC prompt.
 
 Native Windows shared tests include the Event Log cases. The native backend suite retains its

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.23 - 2026-10-09
 
 ### Fixed
 
@@ -36,7 +36,7 @@
 
 ### Documentation
 
-- Refreshed the main application and native Mac/Windows screenshots for 0.2.22, added playback-pause and viewer-privacy examples, and added Linux sidecar pairing, activity, idle, audio and phone views. A screenshot gallery links the platform guides; capture scripts and manifests record reproducible fixtures and platform provenance.
+- Refreshed the main application and native Mac/Windows screenshots for 0.2.23, added playback-pause and viewer-privacy examples, and added Linux sidecar pairing, activity, idle, audio and phone views. A screenshot gallery links the platform guides; capture scripts and manifests record reproducible fixtures and platform provenance.
 
 ## 0.2.22 — 2026-10-08
 
