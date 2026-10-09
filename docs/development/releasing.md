@@ -28,7 +28,7 @@ Before writing, collect:
 
 1. Start `release/vX.Y.Z` from the exact reviewed `dev` commit. Change
    `Directory.Build.props` to `X.Y.Z`, rename the leading `## Unreleased`
-   changelog section to `## X.Y.Z — YYYY-MM-DD`, and regenerate
+   changelog section to `## X.Y.Z - YYYY-MM-DD`, and regenerate
    `docs/openapi.json`.
 2. Run the Definition of Done, then open the release pull request into `main`.
    No everyday feature or fix pull request targets `main`.

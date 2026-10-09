@@ -12,6 +12,9 @@ confirmed Opus 5.5 review fixes. Later playback-artwork and export-dialog update
 separate backend, native and browser coverage below. These development runs do not certify
 an installed release.
 
+The subsequent [0.2.23 release acceptance](2026-10-09-release-0.2.23.md) records
+exact-tag package verification, hardware matrices and installed fleet checks separately.
+
 ## Physical media matrix
 
 | Host | Actual worker path | Strict worker verification | Ordinary server verification + VMAF shadow |
@@ -96,7 +99,9 @@ responses, private caching, viewer privacy and stable missing-image fallbacks.
 A real isolated API with fabricated provider responses verifies all three proxy paths
 and rejects unauthenticated image requests. Picard opens the
 actual native Save As dialog in its logged-in session; it starts in Documents, and
-cancelling exits the export helper with the service and journal unchanged. The unelevated tray requests normal administrator access
+both saving a valid local diagnostic JSON export and cancelling exit the helper with the service
+and journal unchanged. The saved fixture is copied to private evidence and its owned Documents
+file is removed after hash verification. The unelevated tray requests normal administrator access
 for export; automated tests did not approve a UAC prompt.
 
 Native Windows shared tests include the Event Log cases. The native backend suite retains its
