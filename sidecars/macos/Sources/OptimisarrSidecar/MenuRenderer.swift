@@ -122,7 +122,8 @@ enum MenuRenderer {
             ("details", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
-                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"], filmStrips: [5846: strip])),
+                jobTitles: [5846: "Prism Field · Demo clip"], jobEncoders: [5846: "hevc_videotoolbox"], filmStrips: [5846: strip],
+                gpu: GpuUsage(device: 0.31, memoryInUse: 1_253_064_704), cpu: 0.18, freeScratchBytes: 459_561_500_672)),
             ("preferences", .posed(status: .connected(workerId: 1, lastCheckIn: Date()))),
             ("revoked", .posed(status: .revoked)),
             ("unreachable", .posed(
@@ -148,10 +149,10 @@ enum MenuRenderer {
             hosting.setFrameSize(size)
             window.setContentSize(size)
             hosting.layoutSubtreeIfNeeded()
-            // Focus the documentation details capture on the disclosure; its scroll viewport
-            // otherwise leaves a sliver of the next controls visible above the fixed footer.
+            // End the focused disclosure capture after its final readout row, before the
+            // safety note and controls continue inside the live panel's scroll viewport.
             let capture = name == "details"
-                ? NSRect(x: 0, y: 0, width: size.width, height: min(size.height, 620))
+                ? NSRect(x: 0, y: 0, width: size.width, height: min(size.height, 600))
                 : hosting.bounds
             guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: capture) else { continue }
             hosting.cacheDisplay(in: capture, to: bitmap)

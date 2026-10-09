@@ -798,7 +798,9 @@ public extension SidecarSession {
         shutdown: ShutdownCountdown = ShutdownCountdown(),
         availableUpdate: SidecarUpdate? = nil
     ) -> SidecarSession {
-        let session = SidecarSession(prober: nil, executor: nil)
+        let session = SidecarSession(prober: nil, executor: nil,
+            jobConcurrency: min(max(activeJobs.count, 1), concurrencyRange.upperBound),
+            persistConcurrency: { _ in })
         session.isPosed = true
         session.status = status
         // A pose of a connected machine is a paired one, so its controls draw as they would.
