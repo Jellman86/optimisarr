@@ -403,7 +403,7 @@ struct SidecarSessionTests {
         transport.onClaim = { await session.setPaused(true) }
         session.restore()
         try await waitFor { transport.claims > 0 }
-        try await Task.sleep(nanoseconds: 10_000_000)
+        try await waitFor { transport.releases == 1 }
         #expect(!executor.started)
         #expect(transport.releases == 1)
         await session.prepareToQuit()
