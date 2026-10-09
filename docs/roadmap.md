@@ -22,8 +22,8 @@ the replacement workflow is trustworthy.
 ## Current hardening follow-up, reviewed 2026-10-09
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
-trial and pairing records with current implementation. Priorities are checked Windows
-upgrades, retained real-source playback evidence and broader quality coverage.
+trial and pairing records with current implementation. Priorities are Windows signing,
+retained real-source playback evidence and broader quality coverage.
 Correlated opt-in diagnostic capture, local exports and playback artwork shipped in 0.2.23;
 see the [release acceptance](engineering/hardware-validation/2026-10-09-release-0.2.23.md),
 which distinguishes installed fleet checks from disposable media tests and records the
