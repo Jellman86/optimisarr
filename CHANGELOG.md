@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Diagnostic concurrency tests tolerate a scheduled outer writer on busy Windows runners while retaining bounded deadlock checks and exact capture-limit assertions.
+
 ## 0.2.23 - 2026-10-09
 
 ### Fixed
