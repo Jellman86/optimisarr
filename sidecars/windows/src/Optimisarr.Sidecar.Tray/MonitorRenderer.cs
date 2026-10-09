@@ -29,7 +29,7 @@ internal static class MonitorRenderer
                 $"Synthetic job {id} · Demo clip", "hevc_nvenc", RemoteStage.Encoding, id,
                 id < 46 ? DemoFrame(Color.FromRgb(180, 120, 220)) : null))];
             model.Update(new MonitorSnapshot("Studio PC", "Connected", "Connected to server", false, "https://optimisarr.example.com",
-                new MachineLoad(0.18, 0.64), 428L * 1_073_741_824,
+                new MachineLoad(0.18, pose == "audio" ? 0.02 : 0.64), 428L * 1_073_741_824,
                 jobs,
                 "Job #41: candidate returned to server", SidecarBuild.Version,
                 pose == "shutdown-countdown", pose == "shutdown-countdown" ? "No jobs held. Shutting down in 48 seconds; cancel at any time." : null,

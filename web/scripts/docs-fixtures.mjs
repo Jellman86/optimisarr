@@ -147,6 +147,12 @@ export const queue = { ...settings, canStart: true, blockedReason: null, manuall
     { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
   ] }
 export const stats = { bytesSaved: 184e9, originalBytes: 320e9, optimisedBytes: 136e9, filesOptimised: 84, averageSavingPercent: 57.5, inQuarantine: 3, quarantineReclaimableBytes: 28e9, queued: 2, running: 1, readyToReplace: 1, failed: 1, libraries: 4, enabledLibraries: 4, discoveredFiles: 478 }
+export const watcher = { id: 1, name: 'Living room media', type: 'Jellyfin', baseUrl: 'https://media.example.com', hasToken: true, enabled: true, refreshOnReplace: true, showViewerNames: true, createdAt: when, updatedAt: when }
+export const playbackQueue = { ...queue, canStart: false, runningJobs: 0, workloadLanes: queue.workloadLanes.map(lane=>({...lane,active:0,waiting:lane.lane==='Video'?3:0,reason:null})), blockedReason: 'Paused while Living room media is active (3 streams).', playbackHolds: [
+  { watcher: watcher.name, kind: 'Movie', title: 'Lumen Coast', year: 2026, user: 'Taylor', device: 'Living room TV', paused: false },
+  { watcher: watcher.name, kind: 'Episode', series: 'Night Survey', season: 1, episode: 2, title: 'The Signal', user: 'Morgan', device: 'Tablet', paused: true },
+  { watcher: watcher.name, kind: 'Track', title: 'Blue Hour', artist: 'Studio Arc', user: 'Casey', device: 'Kitchen speaker', paused: false },
+] }
 export const results = files.slice(6, 8).map((file, i) => ({
   jobId: 20 + i, mediaFileId: file.id, relativePath: file.relativePath, libraryId: 1,
   libraryName: library.name, sourceSizeBytes: file.sizeBytes, outputSizeBytes: Math.round(file.sizeBytes * .38),

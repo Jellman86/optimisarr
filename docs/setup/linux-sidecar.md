@@ -5,6 +5,8 @@ job copies to its own scratch space; it needs no media-library mount. The main O
 keeps scheduling, transfers, policy checks, replacement, quarantine and rollback. Originals are
 replaced only after the configured verification gates pass.
 
+Screenshots use fabricated dummy media created for documentation. No copyrighted material is used.
+
 ## Start and pair
 
 You need Docker with Compose on a Linux x86-64 host, a reachable Optimisarr server, and enough
@@ -24,6 +26,8 @@ working storage for source and candidate files. The published sidecar build curr
 4. Confirm the page shows a connection and proved encoders. Follow
    [worker placement and verification](remote-workers.md#placement) to choose which libraries
    may use it. Start with a small test job and inspect its verification report.
+
+![Unpaired Linux worker asking for the server address and one-time pairing code](../images/optimisarr-sidecar-linux-pairing-dark.png)
 
 The example's core configuration is:
 
@@ -108,6 +112,8 @@ memory is separate from RAM working-file storage.
 
 ## Watch work and load
 
+![Linux worker showing a fabricated video encode, source preview, progress, CPU load and scratch capacity](../images/optimisarr-sidecar-linux-encoding-dark.png)
+
 The worker page shows connection state, source codec/resolution/duration/audio, poster and small
 live preview frames, encoding progress/speed/time left, current stages and recent results. It
 also shows proved encoders/decoders, VMAF capabilities, filesystem type and remaining scratch
@@ -118,6 +124,9 @@ CPU is host-wide. Intel/AMD DRM GPU readings cover the worker's child processes;
 may use device-wide counters as a fallback. Missing telemetry stays blank and short jobs may
 finish before a useful GPU sample. Pause, drain, resume, revoke, scheduling and library settings
 remain on the main server. The page also reports when the server offers a newer sidecar release.
+
+See the [sidecar screenshot gallery](../usage/screenshots.md#linux-container) for light,
+phone, idle and audio views.
 
 ## Settings
 

@@ -1,0 +1,57 @@
+{
+  "applicationVersion": "0.2.22",
+  "uiRevision": "d053b261f747187e5123317522ebaa116e3e6bd1",
+  "source": "web/src/Sidecar.svelte",
+  "fixtureClock": "2026-09-17T12:00:00Z",
+  "fabricated": true,
+  "capturedOn": "2026-10-09",
+  "spectrumSha256": "f5e157702958c7c209a96e3d2aec921fdfd053a8d0f623875a9dbab4136ebc1c",
+  "variants": [
+    {
+      "name": "dark",
+      "width": 1440,
+      "height": 1000,
+      "theme": "dark"
+    },
+    {
+      "name": "light",
+      "width": 1440,
+      "height": 1000,
+      "theme": "light"
+    },
+    {
+      "name": "phone",
+      "width": 390,
+      "height": 844,
+      "theme": "light"
+    }
+  ],
+  "images": [
+    "optimisarr-sidecar-linux-audio-dark.png",
+    "optimisarr-sidecar-linux-audio-light.png",
+    "optimisarr-sidecar-linux-audio-phone.png",
+    "optimisarr-sidecar-linux-encoding-dark.png",
+    "optimisarr-sidecar-linux-encoding-light.png",
+    "optimisarr-sidecar-linux-encoding-phone.png",
+    "optimisarr-sidecar-linux-idle-dark.png",
+    "optimisarr-sidecar-linux-idle-light.png",
+    "optimisarr-sidecar-linux-idle-phone.png",
+    "optimisarr-sidecar-linux-pairing-dark.png",
+    "optimisarr-sidecar-linux-pairing-light.png",
+    "optimisarr-sidecar-linux-pairing-phone.png"
+  ],
+  "sha256": {
+    "optimisarr-sidecar-linux-audio-dark.png": "b1ca838ee622774353948c3b2e6bf37d03e59a2ebf079fb777bc1d036895493e",
+    "optimisarr-sidecar-linux-audio-light.png": "81c34859e9c0845000d8ca5cbc65cc17056f00c99706ce9a900859e58cbd6eef",
+    "optimisarr-sidecar-linux-audio-phone.png": "eba1d6f24cfc5ab744fb73fcc6fa53c163632586bf2440a16cd14e308c0f4ddd",
+    "optimisarr-sidecar-linux-encoding-dark.png": "53835db4c3cae373ebd5a6fbb19252f1edb39ac2d864219b3e4175d99e9e778f",
+    "optimisarr-sidecar-linux-encoding-light.png": "b98d865dbe027999a3a017e91eee0964f96e76d4e4ced1885d612e649f7cb98d",
+    "optimisarr-sidecar-linux-encoding-phone.png": "4ececeaa8f87d63d7d8254619398dfe371e264083a341c07a24ea9fbeb2c5bed",
+    "optimisarr-sidecar-linux-idle-dark.png": "febaf4964497a036a28ba48ca60358acfbd42a32583fda881c0c4bf9aad4a07f",
+    "optimisarr-sidecar-linux-idle-light.png": "782259484721de4ab0d4a2f109157ac97720fd6b64eef5bb7e1e549e61f66362",
+    "optimisarr-sidecar-linux-idle-phone.png": "cf6acc0a1aa2f171290f99858068a35d051974d01a2ef8972010bb94a901f6e6",
+    "optimisarr-sidecar-linux-pairing-dark.png": "c8f2e7ffbea258ce85947890a35884894f663f7976be51b3a082c59bdd75cbf3",
+    "optimisarr-sidecar-linux-pairing-light.png": "c6eeae8bf4c5261a5d0d27a4a4e272914cf988b7110daec316400cb8e39fd26a",
+    "optimisarr-sidecar-linux-pairing-phone.png": "a30246fca8e186f37618b39783c4cad245b5d44d4dc082419617057c52d0102f"
+  }
+}

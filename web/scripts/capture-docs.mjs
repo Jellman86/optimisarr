@@ -2,8 +2,9 @@
 // Run from web: node scripts/capture-docs.mjs. Starts an isolated Vite server; every API response
 // and media image is fabricated locally. External requests and unexpected API paths are rejected.
 import { chromium, expect } from '@playwright/test'
-import { spawn } from 'node:child_process'
-import { mkdir, writeFile, copyFile } from 'node:fs/promises'
+import { spawn, execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFile, mkdir, writeFile, copyFile } from 'node:fs/promises'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as f from './docs-fixtures.mjs'
@@ -48,6 +49,7 @@ try {
   draw();recorder.start();const timer=setInterval(draw,40);await new Promise(r=>setTimeout(r,12000));clearInterval(timer);recorder.stop();return await result
  }),'base64');await mediaPage.close()
  let calibrationKind='Video',calibrationLibrary=1
+ let queueStatus=f.queue,watcher={...f.watcher}
  const sessionId='11111111-1111-1111-1111-111111111111'
  function comparison(){return {id:sessionId,libraryId:calibrationLibrary,mediaFileId:1,source:calibrationKind==='Image'?'Lumen landscape.png':f.files[0].relativePath,mediaKind:calibrationKind,status:'Comparing',preparationProgress:1,preparationState:'Working',error:null,result:null,variants:['ORIGINAL','A','B','C','D',...(calibrationKind==='Image'?['E']:[])].map((name,index)=>({name,isOriginal:index===0,diagnostics:null,samples:Array.from({length:calibrationKind==='Image'?1:3},(_,scene)=>({sampleNumber:scene+1,sampleCount:calibrationKind==='Image'?1:3,durationSeconds:calibrationKind==='Image'?0:12,url:`/api/calibration/${sessionId}/variants/${name}/samples/${scene}/content`,startSeconds:0,gainDb:0}))}))}}
  const context=await browser.newContext({viewport:{width:1440,height:1000},deviceScaleFactor:1,colorScheme:'dark',reducedMotion:'reduce',locale:'en-GB',timezoneId:'UTC'})
@@ -70,10 +72,13 @@ try {
   if(path==='/api/settings/cleanup')return json(route,{retentionDays:14,dryRunMode:true,failedOutputCount:1,failedOutputBytes:2e9,quarantinedOriginalCount:0,quarantinedOriginalBytes:0,planToken:'documentation',totalCount:1,totalBytes:2e9})
   if(path==='/api/system/tools')return json(route,{tools:f.tools})
   if(path==='/api/system/hardware')return json(route,{hardware:f.hardware})
-  if(path==='/api/stats')return json(route,f.stats)
-  if(path==='/api/jobs')return json(route,url.searchParams.get('live')==='true'?f.jobs.filter(job=>['Probing','Transcoding','Verifying','Leased','AwaitingVerification'].includes(job.status)):f.jobs)
+  if(path==='/api/stats')return json(route,{...f.stats,running:queueStatus.runningJobs,queued:queueStatus.canStart?f.stats.queued:3})
+  if(path==='/api/jobs') {
+   const jobs=queueStatus.canStart?f.jobs:f.jobs.map(job=>job.status==='Transcoding'?{...job,status:'Queued',progress:null,startedAt:null}:job)
+   return json(route,url.searchParams.get('live')==='true'?jobs.filter(job=>['Probing','Transcoding','Verifying','Leased','AwaitingVerification'].includes(job.status)):jobs)
+  }
   if(path==='/api/jobs/failures')return json(route,[{category:'Verification',description:'The output did not meet a required verification gate.',count:1,samples:[{jobId:6,mediaFileId:6,relativePath:f.files[5].relativePath,jobType:'Normal',errorMessage:f.jobs[5].errorMessage,verificationChecks:[]}]}])
-  if(path==='/api/queue/status')return json(route,f.queue)
+  if(path==='/api/queue/status')return json(route,queueStatus)
   if(path==='/api/libraries')return json(route,f.libraries)
   if(path==='/api/libraries/1/duplicates')return json(route,f.duplicateReport)
   if(path==='/api/library-options')return json(route,f.options)
@@ -87,7 +92,12 @@ try {
   if(path.endsWith('/content')||path.includes('/stream'))return calibrationKind==='Image'&&path.includes('/calibration/')?route.fulfill({contentType:'image/svg+xml',body:f.artwork(1,true)}):route.fulfill({status:200,contentType:'video/webm',body:clip})
   if(path==='/api/workers')return json(route,f.workers)
   if(path==='/api/workers/pairing-code')return route.fulfill({status:204})
-  if(path==='/api/activity-watchers')return json(route,[{id:1,name:'Living room media',type:'Jellyfin',baseUrl:'https://media.example.com',hasToken:true,enabled:true,refreshOnReplace:true,showViewerNames:true,createdAt:f.when,updatedAt:f.when}])
+  if(path==='/api/activity-watchers')return json(route,[watcher])
+  if(path==='/api/activity-watchers/1'&&route.request().method()==='PUT') {
+   watcher={...watcher,...route.request().postDataJSON()}
+   queueStatus={...f.playbackQueue,playbackHolds:f.playbackQueue.playbackHolds.map(hold=>({...hold,user:watcher.showViewerNames?hold.user:null,device:watcher.showViewerNames?hold.device:null}))}
+   return json(route,watcher)
+  }
   if(path==='/api/arr-connections')return json(route,[{id:1,name:'Film imports',type:'Radarr',baseUrl:'https://films.example.com',hasApiKey:true,enabled:true,createdAt:f.when,updatedAt:f.when}])
   if(path==='/api/notification-targets')return json(route,[{id:1,name:'Media updates',type:'Webhook',url:'https://notifications.example.com/optimisarr',hasToken:false,enabled:true,notifyOnReplacement:true,notifyOnFailure:true,createdAt:f.when,updatedAt:f.when}])
   if(path.endsWith('/calibration/sources')) {calibrationLibrary=Number(path.split('/')[3]);calibrationKind=calibrationLibrary===4?'Image':'Video';return json(route,[{mediaFileId:1,relativePath:calibrationKind==='Image'?'Lumen landscape.png':f.files[0].relativePath,durationSeconds:calibrationKind==='Image'?0:4200,width:1920,height:1080,mediaKind:calibrationKind,isHdr:false}])}
@@ -95,7 +105,7 @@ try {
   if(path===`/api/calibration/${sessionId}`)return route.request().method()==='DELETE'?route.fulfill({status:204}):json(route,comparison())
   unexpected.add(path);return route.fulfill({status:404,contentType:'application/json',body:'{}'})
  })
- await context.routeWebSocket('**/hubs/jobs?*',socket=>{socket.onMessage(message=>{if(String(message).includes('"protocol"')){socket.send('{}\u001e');for(let i=0;i<60;i++)socket.send(JSON.stringify({type:1,target:'systemMetrics',arguments:[{cpuPercent:34+Math.sin(i/6)*8,gpuSupported:true,gpuPercent:68+Math.sin(i/8)*11,gpuEngine:'Intel video engine'}]})+'\u001e');socket.send(JSON.stringify({type:1,target:'jobProgress',arguments:[{jobId:1,progress:.68,fps:124,speed:4.2,etaSeconds:320}]})+'\u001e')}})})
+ await context.routeWebSocket('**/hubs/jobs?*',socket=>{socket.onMessage(message=>{if(String(message).includes('"protocol"')){socket.send('{}\u001e');for(let i=0;i<60;i++)socket.send(JSON.stringify({type:1,target:'systemMetrics',arguments:[{cpuPercent:34+Math.sin(i/6)*8,gpuSupported:true,gpuPercent:68+Math.sin(i/8)*11,gpuEngine:'Intel video engine'}]})+'\u001e');if(queueStatus.canStart)socket.send(JSON.stringify({type:1,target:'jobProgress',arguments:[{jobId:1,progress:.68,fps:124,speed:4.2,etaSeconds:320}]})+'\u001e')}})})
  const page=await context.newPage(),errors=[]
  await page.clock.setFixedTime(new Date('2026-09-17T12:00:30Z'))
  page.on('pageerror',error=>errors.push(error.message))
@@ -141,8 +151,24 @@ try {
    soundtrackQualityReportingEnabled:true,soundtrackQualityGateEnabled:true,maximumSoundtrackQualityDistance:0.005}:library)));
  await go('/libraries/1/configure/verify/advanced');await expect(page.locator('#lib-soundtrack-quality-limit')).toHaveValue('0.005');
  await shot('soundtrack-quality-settings','fieldset:not([data-library-workflow]):has(#lib-soundtrack-quality-limit)');
+ await page.unroute('**/api/jobs?*');await page.unroute('**/api/jobs');await page.unroute('**/api/libraries');queueStatus=f.playbackQueue
+ await page.reload()
+ await go('/queue');await expect(page.locator('.status-strip-reason')).toContainText('Lumen Coast');await expect(page.locator('.playback-holds').first()).toContainText('Taylor on Living room TV');await shot('queue-playback',null)
+ await page.setViewportSize({width:390,height:1000});await shot('queue-playback-mobile',null);await page.setViewportSize({width:1440,height:1000})
+ await go('/schedule');await expect(page.locator('.playback-holds').first()).toContainText('Night Survey');await shot('schedule-playback')
+ await go('/settings/media-servers');await page.getByRole('button',{name:'Edit',exact:true}).click()
+ const viewers=page.getByRole('checkbox',{name:/Show who is watching/});await expect(viewers).toBeChecked();await viewers.uncheck();await shot('settings-viewer-privacy')
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();await expect(page.getByText('viewers hidden',{exact:true})).toBeVisible();await expect(page.locator('.status-strip-reason')).toContainText('Lumen Coast');await expect(page.locator('.status-strip-reason')).not.toContainText('Taylor');await shot('settings-viewers-hidden','#global-media-servers ul')
+ await go('/queue');await expect(page.locator('.playback-holds').first()).not.toContainText('Taylor');await expect(page.locator('.playback-holds').first()).toContainText('Lumen Coast');await shot('queue-playback-private',null)
  if(errors.length)throw Error('UI errors: '+errors.join('\n'))
  if(unexpected.size)throw Error('Unmocked requests: '+[...unexpected].join(', '))
- await writeFile(resolve(output,'web-screenshot-manifest.json'),JSON.stringify({description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',command:'cd web && node scripts/capture-docs.mjs',viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},images:captured.map(name=>`optimisarr-${name}-dark.png`)},null,2)+'\n')
+ await writeFile(resolve(output,'web-screenshot-manifest.json'),JSON.stringify({
+  description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',
+  command:'cd web && node scripts/capture-docs.mjs',applicationVersion:f.applicationVersion,capturedOn:new Date().toISOString().slice(0,10),
+  uiRevision:execFileSync('git',['rev-parse','HEAD'],{cwd:web,encoding:'utf8'}).trim(),
+  viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
+  images:captured.map(name=>`optimisarr-${name}-dark.png`),
+  sha256:Object.fromEntries(await Promise.all(captured.map(async name=>{const file=`optimisarr-${name}-dark.png`;return [file,createHash('sha256').update(await readFile(resolve(output,file))).digest('hex')]}))),
+ },null,2)+'\n')
  }
 }finally{await browser?.close();server.kill('SIGTERM')}

@@ -60,6 +60,14 @@ on the server.
 A [Linux container sidecar preview](docs/setup/linux-sidecar.md) adds browser pairing and a
 live work/load dashboard, with CPU encoding, optional Intel QSV/VAAPI and bounded tmpfs scratch.
 
+| Mac menu bar | Windows tray |
+|---|---|
+| <img src="docs/images/optimisarr-sidecar-macos-encoding.png" width="330" alt="Mac Compact Monitor showing the current encoding stage, encoded time and resource readings"> | <img src="docs/images/optimisarr-sidecar-windows-encoding.png" width="330" alt="Windows Compact Monitor showing the current encoding stage, encoded time and resource readings"> |
+
+[View the screenshot gallery](docs/usage/screenshots.md) for Linux, light appearance, pairing,
+processing details and playback pauses. Screenshots use fabricated dummy media created for
+documentation; no copyrighted material is used.
+
 See [worker setup and placement](docs/setup/remote-workers.md) and the
 [release downloads](https://github.com/Jellman86/optimisarr/releases). The Mac download is signed
 and notarised. Windows MSI downloads are currently unsigned previews, clearly labelled in their

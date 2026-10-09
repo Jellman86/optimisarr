@@ -135,10 +135,13 @@ example server addresses. No copyrighted media material is used.
 
 <img src="../../docs/images/optimisarr-sidecar-macos-light-preferences.png" width="390" alt="Light Mac Preferences showing disk, chosen-folder and memory work-location choices inside the native panel">
 
-[Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).
+[Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html),
+or browse the [sidecar screenshot gallery](../../docs/usage/screenshots.md#mac-menu-bar).
+These offscreen captures use the renderer's flat snapshot background and bordered controls;
+the live macOS 26 popover uses system glass. See [capture provenance](../../docs/images/README.md#sidecar-captures).
 
 Click the Precession icon in the menu bar for the compact activity panel. It shows the Mac's name,
-connection state, current jobs or **Ready for work**, and CPU/GPU/held-job readings. Unknown values
+connection state, current jobs or **Ready for work**, and CPU/GPU/free-space readings. Unknown values
 stay unavailable; macOS does not expose VideoToolbox media-engine utilisation, so the GPU reading
 must not be interpreted as encoder utilisation.
 

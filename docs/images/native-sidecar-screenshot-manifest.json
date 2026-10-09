@@ -1,0 +1,189 @@
+{
+  "capturedOn": "2026-10-09",
+  "fabricated": true,
+  "platforms": {
+    "macos": {
+      "applicationVersion": "0.2.22",
+      "uiRevision": "bbdc5d349f4c7f2406c56c1c43f0a9e9817fc81c",
+      "source": "sidecars/macos/Sources/OptimisarrSidecar",
+      "renderer": "Local Swift release build of the 0.2.22 UI with corrected capture fixtures, --render-menu; offscreen snapshot background and bordered controls",
+      "spectrum": "Measured three-second generated chirp",
+      "images": [
+        {
+          "file": "optimisarr-sidecar-macos-encoding.png",
+          "rendererFile": "encoding.png",
+          "sha256": "54d03c40ff40a0fe80615c08e475fe1d7228b78b77fe235706210f79d9d61e63"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-light-encoding.png",
+          "rendererFile": "light-encoding.png",
+          "sha256": "85aa89c7e194d8df8b17a87d7398fdabb4255609c8769f363332a7b2859cd9dd"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-details.png",
+          "rendererFile": "details.png",
+          "sha256": "5453cff14a18c3f6ec7928f57977d441eb89e50c5a1e197bc93bcb4c2e5978d2"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-light-details.png",
+          "rendererFile": "light-details.png",
+          "sha256": "49450675148b4826904ae921b973d1b951f6080c4daa2635a1597df75888a60a"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-preferences.png",
+          "rendererFile": "preferences.png",
+          "sha256": "eddc039cbfabceea81a0d98c2807b97a12c5e85562db89510139ccf0e3def6d4"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-light-preferences.png",
+          "rendererFile": "light-preferences.png",
+          "sha256": "5a304314323d41d602997a418cc66ff03f41b23cbe6034714bdb14734ac2131b"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-shutdown.png",
+          "rendererFile": "shutdown-countdown.png",
+          "sha256": "a510334dfd33dedeb1db49fc4cfe63f10668589c1b51df5a278a04af98c57e26"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-light-shutdown.png",
+          "rendererFile": "light-shutdown-countdown.png",
+          "sha256": "3089b2dfd7a994fa44b7d02a89c8000727a4a0386f094a4df3a5b77b70353974"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-audio.png",
+          "rendererFile": "audio.png",
+          "sha256": "08252759ceaa09d751b3614034c4bbe242242593aa9fbe9b35bcec2f9267288b"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-audio-light.png",
+          "rendererFile": "light-audio.png",
+          "sha256": "cd6ce188820cb99f573c5aee2bce150987492560f4766d0c3bd325321d3d81ed"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-idle.png",
+          "rendererFile": "connected-idle.png",
+          "sha256": "2dfe772e8dc327c276b3fae6dfa03ad63120ffe21198b3b9e121544368a394eb"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-light-idle.png",
+          "rendererFile": "light-connected-idle.png",
+          "sha256": "fe0d6fa4e410d0223129616e271ed937d428f881350dda2556b0b4a7bd1ac179"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-pairing.png",
+          "rendererFile": "unpaired.png",
+          "sha256": "2e68c877b1e9bca77fd602f21f93fc8384cce19fc6cba35fcc82eb5b5998f298"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-light-pairing.png",
+          "rendererFile": "light-unpaired.png",
+          "sha256": "7c60db5ad7a090bffd14bd9e24917d72bd0e532d46f174fae77a11f853b9ed6a"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-two-jobs.png",
+          "rendererFile": "two-jobs.png",
+          "sha256": "d71c65d01e28ed2d275c619dd659772d4b1b38d2a1648dd8155ea205b358a2e1"
+        },
+        {
+          "file": "optimisarr-sidecar-macos-light-two-jobs.png",
+          "rendererFile": "light-two-jobs.png",
+          "sha256": "70ea3f62613c78a58e94bb1e07ae882c89ced5adf2c4c6597741c38750dd8bfb"
+        }
+      ],
+      "rendererRevision": "3fa3dd9e4f80e1caa73d5e56763406fcf4bf4cd4",
+      "rendererFiles": {
+        "sidecars/macos/Sources/OptimisarrSidecar/MenuRenderer.swift": "386cf2904679b8683177d93c309ed1b4b0b4a2d9b98092caa33332742bf7b72f",
+        "sidecars/macos/Sources/SidecarCore/SidecarSession.swift": "802d48155baf6bde5c2394e781fb8fba9785a723e47e23cc037e598a66f168c5"
+      }
+    },
+    "windows": {
+      "applicationVersion": "0.2.22",
+      "uiRevision": "d053b261f747187e5123317522ebaa116e3e6bd1",
+      "source": "sidecars/windows/src/Optimisarr.Sidecar.Tray",
+      "renderer": "Native WPF --render-monitor, Windows CI",
+      "artifactUrl": "https://github.com/jellman86/optimisarr/actions/runs/37899766573/artifacts/11602615025",
+      "spectrum": "Measured three-second generated chirp from web/scripts/fixtures/sidecar-spectrum.jpg",
+      "images": [
+        {
+          "file": "optimisarr-sidecar-windows-encoding.png",
+          "rendererFile": "encoding.png",
+          "sha256": "a6d98421de8f76372e6db2a1433dd079c476d576cd32d704761f779e0e56a141"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-light-encoding.png",
+          "rendererFile": "light-encoding.png",
+          "sha256": "cc6825ece468883d3231ac6db91385105132f24cda7db87c55473b10d4aab83d"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-details.png",
+          "rendererFile": "details.png",
+          "sha256": "69bb6d2bc2244553dc2a97c6a001b7eddc8d41461beb567572566e90539a74ee"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-light-details.png",
+          "rendererFile": "light-details.png",
+          "sha256": "eb304067c0c5caf4876e8314573548ce112161a5a1943f635854ec71702d857a"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-preferences.png",
+          "rendererFile": "preferences.png",
+          "sha256": "fc1a2a340384627bca4994c19a1105c570a1412acf805528ea3b24d917d736c0"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-light-preferences.png",
+          "rendererFile": "light-preferences.png",
+          "sha256": "c9848e0dd25ba6b92ea766394fb2613fee9d41cafe11156052f2b822422d238d"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-shutdown.png",
+          "rendererFile": "shutdown-countdown.png",
+          "sha256": "0c3e34fd7463996de32c103befc52d83c973cc84969c76b8ed61837e9e9eefdd"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-light-shutdown.png",
+          "rendererFile": "light-shutdown-countdown.png",
+          "sha256": "23e4c07b8119a4e95cd7fb22867620da07b2d7ab3d5d8c2c2210379120b0425e"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-audio.png",
+          "rendererFile": "audio.png",
+          "sha256": "b2f69b935297569a0dcbef86eccf8209ed4167ad35e54e00b2103235b9ba6b41"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-audio-light.png",
+          "rendererFile": "light-audio.png",
+          "sha256": "2944829af74de727f4203b3ce907e8940e87ea2aa45b3b2acb391af2420d3202"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-idle.png",
+          "rendererFile": "idle.png",
+          "sha256": "c14a4e5e43649897d2c30b6ab3df29ffa79b9b4e24dfc04f8185cfb156583c11"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-two-jobs.png",
+          "rendererFile": "two-jobs.png",
+          "sha256": "ec010881d896be10f183e2d51d8c930de34e16bbccadfb93dbb15d162abe0480"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-light-two-jobs.png",
+          "rendererFile": "light-two-jobs.png",
+          "sha256": "bd5dd5c5688e77c0fd092b36e4568124c9ada5cf89c13c235e8261138494ae52"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-preview-fallback.png",
+          "rendererFile": "preview-fallback.png",
+          "sha256": "389c3de84d0841a88fa1d39f668a24d787563c6c5dec6a76acf63b3c735057fc"
+        },
+        {
+          "file": "optimisarr-sidecar-windows-light-preview-fallback.png",
+          "rendererFile": "light-preview-fallback.png",
+          "sha256": "bd16da575382c6080f7e875b622c173ba33d5f3b4f711f0f3b2a73cd4cf8e758"
+        }
+      ]
+    }
+  },
+  "fixtures": {
+    "web/scripts/fixtures/sidecar-frame.png": "cf418e541ffdbbc38329c4606b04f8456d2ab229f5d9c4b77a646f8df4b70ea9",
+    "web/scripts/fixtures/sidecar-spectrum.jpg": "f5e157702958c7c209a96e3d2aec921fdfd053a8d0f623875a9dbab4136ebc1c"
+  }
+}
