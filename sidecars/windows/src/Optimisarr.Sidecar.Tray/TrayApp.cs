@@ -109,7 +109,7 @@ public sealed class TrayApp : Application
             if (save.ShowDialog() != Forms.DialogResult.OK) return;
             try
             {
-                var journal = new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Optimisarr", "Sidecar"));
+                var journal = new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Optimisarr", "Sidecar"), readOnly: true);
                 File.WriteAllBytes(save.FileName, journal.Export());
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)

@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Windows tray diagnostic exports read a snapshot without pruning or rewriting the running service’s journal, preserving newer records during concurrent activity.
+
 - Stopping and collecting a diagnostic capture always exports its complete retained history, even when an earlier manual download used a time range.
 
 ### Added

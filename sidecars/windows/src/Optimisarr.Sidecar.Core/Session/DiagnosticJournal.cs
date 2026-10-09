@@ -5,7 +5,7 @@ using Optimisarr.Core.Diagnostics;
 namespace Optimisarr.Sidecar.Core.Session;
 
 /// <summary>A private, bounded local mirror. Consent must be renewed by a healthy server check-in.</summary>
-public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg = null, string? ffprobe = null, string? measurementFfmpeg = null)
+public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg = null, string? ffprobe = null, string? measurementFfmpeg = null, bool readOnly = false)
 {
     private readonly object gate = new();
     private SidecarDiagnosticConsent? consent;
@@ -118,7 +118,7 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
         {
             var path = Path.Combine(directory, FileName);
             if (!File.Exists(path)) return;
-            if (new FileInfo(path).Length > MaximumFileBytes || File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-7)) { File.Delete(path); return; }
+            if (new FileInfo(path).Length > MaximumFileBytes || File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-7)) { if (!readOnly) File.Delete(path); return; }
             using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
             var saved = doc.RootElement.GetProperty("entries").Deserialize<List<JournalEntry>>(Json) ?? [];
             entries.AddRange(saved.Where(e => e is not null && e.Event is not null && e.Event.Sequence > 0 && e.Event.JobId > 0 && DiagnosticTelemetry.Reasons.Contains(e.Event.ReasonCode)).TakeLast(MaximumEntries)
@@ -154,7 +154,7 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
     }
     private void Persist()
     {
-        if (directory is null) return;
+        if (readOnly || directory is null) return;
         try
         {
             var path = Path.Combine(directory, FileName);

@@ -110,4 +110,47 @@ public sealed class DiagnosticJournalTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public void Tray_snapshot_export_never_rewrites_newer_service_records()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var now = DateTimeOffset.UtcNow; var writer = new DiagnosticJournal(root);
+            writer.Apply(new(Guid.NewGuid(), now, now.AddHours(1), null), now);
+            var lease = Guid.NewGuid(); writer.Assignment(lease, 42);
+            var reader = new DiagnosticJournal(root, readOnly: true);
+            reader.Apply(null, now);
+            writer.Record(lease, "Worker.TransferAcknowledged", offset: 123);
+            var path = Path.Combine(root, DiagnosticJournal.FileName);
+            var latest = File.ReadAllBytes(path);
+            reader.Apply(null, now.AddDays(8));
+            Assert.Empty(JsonDocument.Parse(reader.Export()).RootElement.GetProperty("entries").EnumerateArray());
+            Assert.True(File.Exists(path));
+            Assert.Equal(latest, File.ReadAllBytes(path));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Tray_snapshot_export_does_not_delete_stale_or_oversized_service_files(bool oversized)
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, DiagnosticJournal.FileName);
+            var original = oversized ? new byte[DiagnosticJournal.MaximumFileBytes + 1] : "{\"entries\":[]}"u8.ToArray();
+            File.WriteAllBytes(path, original);
+            if (!oversized) File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-8));
+            var reader = new DiagnosticJournal(root, readOnly: true);
+            Assert.Empty(JsonDocument.Parse(reader.Export()).RootElement.GetProperty("entries").EnumerateArray());
+            Assert.True(File.Exists(path));
+            Assert.Equal(original, File.ReadAllBytes(path));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
 }
