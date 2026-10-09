@@ -2,13 +2,17 @@
 
 ## Unreleased
 
-### Fixed
+### Development tools
 
-- Closing a folder picker returns keyboard focus to its Browse button in Safari, including the destination-folder picker.
+- Updated the frontend source-map parser to 1.2.2, resolving a build-time denial-of-service advisory in the transitive development dependency.
 
 ### Documentation
 
 - Refreshed the main application and native Mac/Windows screenshots for 0.2.22, added playback-pause and viewer-privacy examples, and added Linux sidecar pairing, activity, idle, audio and phone views. A screenshot gallery links the platform guides; capture scripts and manifests record reproducible fixtures and platform provenance.
+
+### Fixed
+
+- Closing a folder picker returns keyboard focus to its Browse button in Safari, including the destination-folder picker.
 
 ## 0.2.22 — 2026-10-08
 
