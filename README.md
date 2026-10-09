@@ -62,7 +62,7 @@ live work/load dashboard, with CPU encoding, optional Intel QSV/VAAPI and bounde
 
 | Mac menu bar | Windows tray |
 |---|---|
-| <img src="docs/images/optimisarr-sidecar-macos-encoding.png" width="330" alt="Mac Compact Monitor showing the current encoding stage, progress and resource readings"> | <img src="docs/images/optimisarr-sidecar-windows-encoding.png" width="330" alt="Windows Compact Monitor showing the current encoding stage, progress and resource readings"> |
+| <img src="docs/images/optimisarr-sidecar-macos-encoding.png" width="330" alt="Mac Compact Monitor showing the current encoding stage, encoded time and resource readings"> | <img src="docs/images/optimisarr-sidecar-windows-encoding.png" width="330" alt="Windows Compact Monitor showing the current encoding stage, encoded time and resource readings"> |
 
 [View the screenshot gallery](docs/usage/screenshots.md) for Linux, light appearance, pairing,
 processing details and playback pauses. Screenshots use fabricated dummy media created for

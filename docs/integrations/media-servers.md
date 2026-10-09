@@ -49,6 +49,10 @@ After saving, the pause still identifies the titles while omitting viewers and d
 
 ![Queue playback hold listing only the fabricated titles with viewer names and devices hidden](../images/optimisarr-queue-playback-private-dark.png)
 
+## Sonarr and Radarr
+
+Configure import-aware exclusions under **Settings → Download managers**.
+
 ![Download managers settings showing a fabricated Radarr connection and its connection controls](../images/optimisarr-settings-downloads-dark.png)
 
 ## Notifications

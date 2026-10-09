@@ -1,5 +1,6 @@
 // Capture the shipped Linux view with fabricated state, never a paired worker.
 import { chromium, expect } from '@playwright/test'
+import { createHash } from 'node:crypto'
 import { spawn, execFileSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, dirname } from 'node:path'
@@ -48,8 +49,7 @@ const states = {
     pairing: { ...base.pairing, required: true } },
 }
 
-export async function captureLinuxSidecar(spectrumPath, selectedStates = Object.keys(states)) {
-  if (!spectrumPath) throw Error('Pass a generated JPEG spectrum path; see docs/images/README.md')
+export async function captureLinuxSidecar(spectrumPath = resolve(web, 'scripts/fixtures/sidecar-spectrum.jpg'), selectedStates = Object.keys(states)) {
   const spectrum = await readFile(spectrumPath)
   if (spectrum.length > 8192) throw Error('Preview exceeds the worker thumbnail limit')
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host',
@@ -120,7 +120,10 @@ export async function captureLinuxSidecar(spectrumPath, selectedStates = Object.
       resolve(images, 'linux-sidecar-screenshot-manifest.json'), JSON.stringify({
         applicationVersion, uiRevision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: web, encoding: 'utf8' }).trim(),
         source: 'web/src/Sidecar.svelte', fixtureClock: when, fabricated: true,
+        capturedOn: new Date().toISOString().slice(0, 10), spectrumSha256: createHash('sha256').update(spectrum).digest('hex'),
         variants, images: captured,
+        sha256: Object.fromEntries(await Promise.all(captured.map(async file =>
+          [file, createHash('sha256').update(await readFile(resolve(images, file))).digest('hex')]))),
       }, null, 2) + '\n')
     console.log(`Captured ${captured.length} Linux sidecar screenshots`)
   } finally {

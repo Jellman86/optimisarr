@@ -30,9 +30,13 @@ for the full details, including on a phone. Names and devices can be hidden per 
 
 ![Schedule paused for fabricated film, episode and music playback with viewer and device details](../images/optimisarr-schedule-playback-dark.png)
 
-| Phone Queue | Viewer names hidden |
+| Phone Queue | Titles only |
 |---|---|
-| <img src="../images/optimisarr-queue-playback-mobile-dark.png" width="260" alt="Phone Queue showing three fabricated playback holds above the waiting jobs"> | <img src="../images/optimisarr-settings-viewers-hidden-dark.png" width="650" alt="Saved media-server connection labelled Viewers hidden, with titles still shown in the playback pause"> |
+| <img src="../images/optimisarr-queue-playback-mobile-dark.png" width="260" alt="Phone Queue showing three fabricated playback holds above the work lanes"> | <img src="../images/optimisarr-queue-playback-private-dark.png" width="650" alt="Queue playback holds listing only fabricated titles, with viewers and devices hidden"> |
+
+The saved connection confirms the privacy choice:
+
+![Saved media-server connection labelled Viewers hidden](../images/optimisarr-settings-viewers-hidden-dark.png)
 
 See [media-server settings](../integrations/media-servers.md#what-a-playback-pause-shows) for the
 privacy control and a title-only Queue example.
@@ -50,7 +54,7 @@ All three show work and available resource readings; missing telemetry stays una
 
 | Processing details | Preferences |
 |---|---|
-| <img src="../images/optimisarr-sidecar-macos-details.png" width="390" alt="Mac Processing details showing receive, encode, verify and return stages for a fabricated job"> | <img src="../images/optimisarr-sidecar-macos-light-preferences.png" width="390" alt="Mac Preferences with work location and login controls"> |
+| <img src="../images/optimisarr-sidecar-macos-details.png" width="390" alt="Focused Mac Processing details showing the job, preview and technical readouts"> | <img src="../images/optimisarr-sidecar-macos-light-preferences.png" width="390" alt="Mac Preferences with work location and login controls"> |
 
 | State | Dark | Light |
 |---|---|---|
@@ -62,8 +66,9 @@ All three show work and available resource readings; missing telemetry stays una
 | Processing details | Shown above | [Details](../images/optimisarr-sidecar-macos-light-details.png) |
 | Preferences | [Preferences](../images/optimisarr-sidecar-macos-preferences.png) | Shown above |
 
-These are actual native views rendered offscreen by the 0.2.22 app. The renderer uses a flat
+These are actual native views rendered offscreen from the 0.2.22 UI with corrected capture fixtures. The renderer uses a flat
 snapshot background and bordered controls; macOS 26 supplies glass in the live popover.
+Indeterminate activity bars freeze in native snapshots; encoded time remains readable.
 See the [Mac installation guide](../../sidecars/macos/README.md).
 
 ### Windows tray
@@ -81,13 +86,14 @@ See the [Mac installation guide](../../sidecars/macos/README.md).
 | Ready for work | [Idle](../images/optimisarr-sidecar-windows-idle.png) | — |
 | One job's Processing details | [Details](../images/optimisarr-sidecar-windows-details.png) | [Details](../images/optimisarr-sidecar-windows-light-details.png) |
 | Two jobs | Shown above | [Activity](../images/optimisarr-sidecar-windows-light-two-jobs.png) |
-| Audio preview unavailable | [Labelled fallback](../images/optimisarr-sidecar-windows-audio.png) | [Labelled fallback](../images/optimisarr-sidecar-windows-audio-light.png) |
-| Video preview unavailable | [Labelled fallback](../images/optimisarr-sidecar-windows-preview-fallback.png) | [Labelled fallback](../images/optimisarr-sidecar-windows-light-preview-fallback.png) |
+| Audio with generated spectrum | [Audio](../images/optimisarr-sidecar-windows-audio.png) | [Audio](../images/optimisarr-sidecar-windows-audio-light.png) |
+| Video preview unavailable | [Placeholder](../images/optimisarr-sidecar-windows-preview-fallback.png) | [Placeholder](../images/optimisarr-sidecar-windows-light-preview-fallback.png) |
 | Cancelable shutdown countdown | [Countdown](../images/optimisarr-sidecar-windows-shutdown.png) | [Countdown](../images/optimisarr-sidecar-windows-light-shutdown.png) |
 | Preferences | [Preferences](../images/optimisarr-sidecar-windows-preferences.png) | Shown above |
 
-These are native WPF renders from the current Windows CI build. Its audio fixture does not
-supply a spectrum, so that capture demonstrates the labelled fallback. The background service
+These are native WPF renders from the current Windows CI build. Audio shows the same generated
+chirp spectrum as Mac and Linux. The video fallback is an icon placeholder. Indeterminate
+activity bars freeze in native snapshots; they do not show a completion percentage. The background service
 continues working when the tray closes. See the [Windows guide](../../sidecars/windows/README.md).
 
 ### Linux container

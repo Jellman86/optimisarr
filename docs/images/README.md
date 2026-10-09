@@ -26,7 +26,8 @@ and sidecar versions are read from project metadata.
 
 The script uses English, dark appearance, a fixed documentation clock, and reduced motion. The
 standard viewport is 1440 × 1000; the Quarantine review uses 1440 × 1500 to show both the comparison
-and decision controls, the quality lab uses 1440 × 1250, and the mobile Queue uses 390 × 1000.
+and decision controls, the quality lab uses 1440 × 1250, Exact copies uses 1440 × 1400,
+the soundtrack report uses 1440 × 1900, and the mobile Queue uses 390 × 1000.
 Focused dialogs/cards are captured without unrelated surrounding UI. Some stable filenames remain
 aliases for the same current capture so existing documentation links continue to work.
 
@@ -55,8 +56,10 @@ run `python3 scripts/check_docs.py` and `git diff --check` from the repository r
 ## Sidecar captures
 
 The [user gallery](../usage/screenshots.md#sidecars) links the current native and Linux images.
-All job state, telemetry, machine names and addresses are fabricated. Spectrograms on Mac and
-Linux are measured from this generated three-second chirp, not private audio:
+All job state, telemetry, machine names and addresses are fabricated. Spectrograms on Mac,
+Windows and Linux are measured from the committed original fixture
+[`sidecar-spectrum.jpg`](../../web/scripts/fixtures/sidecar-spectrum.jpg), generated from this
+three-second chirp, not private audio:
 
 ```bash
 ffmpeg -hide_banner -loglevel error -f lavfi \
@@ -69,19 +72,20 @@ ffmpeg -hide_banner -loglevel error -f lavfi \
 
 ```bash
 cd web
-node scripts/capture-linux-sidecar.mjs /tmp/generated-spectrum.jpg
+node scripts/capture-linux-sidecar.mjs
+# Optional: pass an alternative generated spectrum JPEG as the first argument.
 ```
 
 This captures audio, video encoding, idle and pairing in dark, light and phone layouts. It
 starts its own Vite server on `127.0.0.1:4219`, refuses an occupied port, blocks external and
 unexpected API requests, and never submits a pairing code. It uses the shipped
 [`Sidecar.svelte`](../../web/src/Sidecar.svelte), a fixed clock, English, UTC and reduced motion.
-The supplied spectrum must fit the worker's 8 KiB preview limit. Layout overflow, application
-errors or an unloaded preview fail the capture. The original `capture-audio-sidecar.mjs`
+The default is the committed generated chirp spectrum; a supplied spectrum must fit the
+worker's 8 KiB preview limit. Layout overflow, application errors or an unloaded preview fail the capture. The original `capture-audio-sidecar.mjs`
 command remains available for audio-only refreshes.
 
 [`linux-sidecar-screenshot-manifest.json`](linux-sidecar-screenshot-manifest.json) records the
-source revision, version, viewport variants and generated filenames.
+capture date, source revision, version, viewport variants, spectrum hash and image hashes.
 
 ### Native Mac and Windows
 
@@ -90,14 +94,15 @@ fabricated state; they never pair with a server or claim work:
 
 ```bash
 # macOS: release app or locally built executable
-OPTIMISARR_RENDER_SPECTRUM=/tmp/generated-spectrum.jpg \
-  /Applications/OptimisarrSidecar.app/Contents/MacOS/OptimisarrSidecar \
-  --render-menu /tmp/mac-sidecar-captures
+swift build --package-path sidecars/macos -c release
+OPTIMISARR_RENDER_SPECTRUM="$PWD/web/scripts/fixtures/sidecar-spectrum.jpg" \
+OPTIMISARR_RENDER_FRAME="$PWD/web/scripts/fixtures/sidecar-frame.png" \
+  sidecars/macos/.build/release/OptimisarrSidecar --render-menu /tmp/mac-sidecar-captures
 ```
 
 ```powershell
 # Windows: run on Windows after building the app
-$env:OPTIMISARR_RENDER_SPECTRUM = 'C:\Temp\generated-spectrum.jpg'
+$env:OPTIMISARR_RENDER_SPECTRUM = 'C:\path\to\optimisarr\web\scripts\fixtures\sidecar-spectrum.jpg'
 .\Optimisarr.Sidecar.Tray.exe --render-monitor C:\Temp\windows-sidecar-captures
 ```
 
@@ -108,12 +113,25 @@ SHA-256 hashes and source provenance. Most names gain `optimisarr-sidecar-macos-
 becomes `idle`, and Mac `unpaired` becomes `pairing`. Light audio retains the older
 `audio-light` suffix. Copy only the listed states, retaining existing documentation filenames.
 
-The 2026-10-09 refresh uses the notarised Mac 0.2.22 release app and native WPF renders from
-[the green Windows dev CI run](https://github.com/jellman86/optimisarr/actions/runs/37832347462).
-Windows CI does not supply `OPTIMISARR_RENDER_SPECTRUM`, so its audio image deliberately shows
-the labelled preview-unavailable fallback. Mac snapshots use a flat background and bordered
-controls because offscreen rendering cannot capture the live window-server glass; on macOS 26
-the live popover uses system glass. These rendering limits are not measurements of a live fleet.
+The 2026-10-09 refresh uses a local release build of the Mac 0.2.22 UI with corrected capture
+fixtures, and native WPF renders from Windows dev CI. Mac `OPTIMISARR_RENDER_FRAME` supplies
+an original generated landscape instead of the renderer's default colour ramp. Without a
+bundle the Mac executable reports an unknown build; its source revision and renderer hashes
+are recorded in the manifest. The installed app is not changed.
+
+Windows CI supplies the committed spectrum fixture. Download its `windows-sidecar-ui` artifact
+from the exact run linked in the native manifest:
+
+```bash
+gh run download <run-id> --repo jellman86/optimisarr \
+  --name windows-sidecar-ui --dir /tmp/windows-sidecar-captures
+```
+
+Mac snapshots use a flat background and bordered controls because offscreen rendering cannot
+capture the live window-server glass; on macOS 26 the live popover uses system glass.
+Indeterminate activity bars freeze in native snapshots and do not show a completion percentage;
+encoded time remains readable. The focused Mac details crop ends at the final technical row.
+These rendering limits are not measurements of a live fleet.
 
 ## Dated application review evidence
 

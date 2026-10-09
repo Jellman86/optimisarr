@@ -34,7 +34,7 @@ processing details, pause, preferences, and diagnostics.
 
 | Mac menu bar | Windows tray |
 |---|---|
-| <img src="../images/optimisarr-sidecar-macos-encoding.png" width="330" alt="Mac worker encoding a fabricated clip with stage, progress, CPU load and free space"> | <img src="../images/optimisarr-sidecar-windows-encoding.png" width="330" alt="Windows worker encoding a fabricated clip with stage, progress, CPU and GPU load"> |
+| <img src="../images/optimisarr-sidecar-macos-encoding.png" width="330" alt="Mac worker encoding a fabricated clip with stage, encoded time, CPU load and free space"> | <img src="../images/optimisarr-sidecar-windows-encoding.png" width="330" alt="Windows worker encoding a fabricated clip with stage, encoded time, CPU and GPU load"> |
 
 ![Linux worker dashboard showing a fabricated video encode, proved encoders and recent activity](../images/optimisarr-sidecar-linux-encoding-dark.png)
 
@@ -179,12 +179,11 @@ channel compatibility and timed-lyrics guards apply unchanged.
 
 ![Mac Compact Monitor encoding a generated audio fixture with measured source spectrum](../images/optimisarr-sidecar-macos-audio.png)
 
-![Windows Compact Monitor encoding a fabricated audio job with the labelled spectrum-unavailable fallback](../images/optimisarr-sidecar-windows-audio.png)
+![Windows Compact Monitor encoding a fabricated audio job with the measured generated spectrum](../images/optimisarr-sidecar-windows-audio.png)
 
 ![Linux sidecar audio monitor with a generated fixture](../images/optimisarr-sidecar-linux-audio-dark.png)
 
-Documentation captures use fabricated jobs, never private media. Mac and Linux show a
-spectrogram measured from a three-second generated chirp. The Windows CI capture shows
-the labelled fallback because its fixture does not supply a spectrum. Native captures use
+Documentation captures use fabricated jobs, never private media. All three platforms show a
+spectrogram measured from a three-second generated chirp. Native captures use
 the apps’ `--render-menu` and `--render-monitor` modes. See [capture instructions and
 provenance](../images/README.md#sidecar-captures) to reproduce all three platforms.

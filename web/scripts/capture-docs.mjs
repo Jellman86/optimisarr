@@ -3,7 +3,8 @@
 // and media image is fabricated locally. External requests and unexpected API paths are rejected.
 import { chromium, expect } from '@playwright/test'
 import { spawn, execFileSync } from 'node:child_process'
-import { mkdir, writeFile, copyFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { readFile, mkdir, writeFile, copyFile } from 'node:fs/promises'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as f from './docs-fixtures.mjs'
@@ -157,16 +158,17 @@ try {
  await go('/schedule');await expect(page.locator('.playback-holds').first()).toContainText('Night Survey');await shot('schedule-playback')
  await go('/settings/media-servers');await page.getByRole('button',{name:'Edit',exact:true}).click()
  const viewers=page.getByRole('checkbox',{name:/Show who is watching/});await expect(viewers).toBeChecked();await viewers.uncheck();await shot('settings-viewer-privacy')
- await page.getByRole('button',{name:'Save changes',exact:true}).click();await expect(page.getByText('viewers hidden',{exact:true})).toBeVisible();await expect(page.locator('.status-strip-reason')).toContainText('Lumen Coast');await expect(page.locator('.status-strip-reason')).not.toContainText('Taylor');await shot('settings-viewers-hidden',null)
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();await expect(page.getByText('viewers hidden',{exact:true})).toBeVisible();await expect(page.locator('.status-strip-reason')).toContainText('Lumen Coast');await expect(page.locator('.status-strip-reason')).not.toContainText('Taylor');await shot('settings-viewers-hidden','#global-media-servers ul')
  await go('/queue');await expect(page.locator('.playback-holds').first()).not.toContainText('Taylor');await expect(page.locator('.playback-holds').first()).toContainText('Lumen Coast');await shot('queue-playback-private',null)
  if(errors.length)throw Error('UI errors: '+errors.join('\n'))
  if(unexpected.size)throw Error('Unmocked requests: '+[...unexpected].join(', '))
  await writeFile(resolve(output,'web-screenshot-manifest.json'),JSON.stringify({
   description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',
-  command:'cd web && node scripts/capture-docs.mjs',applicationVersion:f.applicationVersion,
+  command:'cd web && node scripts/capture-docs.mjs',applicationVersion:f.applicationVersion,capturedOn:new Date().toISOString().slice(0,10),
   uiRevision:execFileSync('git',['rev-parse','HEAD'],{cwd:web,encoding:'utf8'}).trim(),
   viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
   images:captured.map(name=>`optimisarr-${name}-dark.png`),
+  sha256:Object.fromEntries(await Promise.all(captured.map(async name=>{const file=`optimisarr-${name}-dark.png`;return [file,createHash('sha256').update(await readFile(resolve(output,file))).digest('hex')]}))),
  },null,2)+'\n')
  }
 }finally{await browser?.close();server.kill('SIGTERM')}
