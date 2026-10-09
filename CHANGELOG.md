@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Closing a folder picker returns keyboard focus to its Browse button in Safari, including the destination-folder picker.
+
 ### Documentation
 
 - Refreshed the main application and native Mac/Windows screenshots for 0.2.22, added playback-pause and viewer-privacy examples, and added Linux sidecar pairing, activity, idle, audio and phone views. A screenshot gallery links the platform guides; capture scripts and manifests record reproducible fixtures and platform provenance.
