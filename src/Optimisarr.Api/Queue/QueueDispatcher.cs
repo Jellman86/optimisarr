@@ -414,7 +414,8 @@ public sealed class QueueDispatcher(
                 // gone, or a different optimised file occupies the destination) can never succeed on
                 // retry. Reconciling it every cycle would loop forever and bury real warnings, so fail
                 // it once. Replacement leaves the original untouched in each of these cases.
-                await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
+                if (!result.FailureAlreadyRecorded)
+                    await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
                 logger.LogWarning(
                     "Job {JobId}: auto-replace cannot complete ({Kind}): {Message}. Marked Failed (will not retry).",
                     jobId, result.Kind, result.Message);
@@ -3670,7 +3671,8 @@ public sealed class QueueDispatcher(
             {
                 // This replacement can never succeed (see ReplacementActionResult.Permanent), so fail
                 // the job now rather than leaving it ReadyToReplace for the reconcile sweep to retry.
-                await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
+                if (!result.FailureAlreadyRecorded)
+                    await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
                 logger.LogWarning(
                     "Job {JobId}: auto-replace cannot complete ({Kind}): {Message}. Marked Failed (will not retry).",
                     jobId, result.Kind, result.Message);

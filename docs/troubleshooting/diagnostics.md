@@ -61,6 +61,11 @@ view also offers a direct download; when no capture exists, it opens capture set
 Schema version **4** correlates job, execution attempt, parent job, worker, lease, sidecar
 instance and local sequence. Server receipt IDs and timestamps provide ordering; worker
 clock times are retained separately and may differ. Replay uploads do not duplicate events.
+If a preview or comparison lease has been deleted, a bounded
+`Worker.LeaseEvidenceUnavailable` marker acknowledges the missing evidence so later records
+can still arrive. `Worker.JournalRecoveryIncomplete` discloses a corrupt or oversized local
+journal; the number of lost records is unknown. These participants report collection with
+omissions. Local exports also retain the recovery warning.
 Attempt archive events preserve rejected reports even when a retry clears the current report.
 New lease events freeze worker version, OS, architecture, protocol and advertised encoders;
 sidecars record SHA-256 identities for their actual encoding, probe and measurement tools.
@@ -106,8 +111,10 @@ Each sidecar keeps a private local journal, bounded to 2,048 entries, 1 MiB and 
 Rotation counts records lost before acknowledgement; the bundle reports
 `CollectedWithLocalOmissions` when a final upload discloses such a loss. Acknowledged records
 remain locally exportable until local retention removes them. Local recovery never reactivates
-recording without renewed consent. Use **Export local diagnostics…** in the Mac menu or Windows
-tray, or the Linux sidecar's **Export local diagnostics** link, if the server is unavailable.
+recording without renewed consent. Use **Export local diagnostics…** in the Mac menu,
+**Export local diagnostics… (administrator)** in the Windows tray, or the Linux sidecar's
+**Export local diagnostics** link if the server is unavailable. Windows asks for administrator
+access to read the protected service journal; cancelling the prompt leaves the worker running.
 Local exports contain structured records and tool hashes, not the worker credential or raw logs.
 
 This is an administrative feature. Protect remote UI/API access with an authenticated reverse

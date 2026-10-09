@@ -12,7 +12,7 @@ public sealed record SidecarDiagnosticEvent(
     string? Stage = null, double? EncodedSeconds = null, long? OffsetBytes = null,
     int? HttpStatus = null, string? FfmpegSha256 = null, string? FfprobeSha256 = null, string? MeasurementFfmpegSha256 = null);
 public sealed record SidecarDiagnosticBatch(int SchemaVersion, Guid SessionId, Guid InstanceId,
-    IReadOnlyList<SidecarDiagnosticEvent> Events, bool Final = false, long DroppedEvents = 0);
+    IReadOnlyList<SidecarDiagnosticEvent> Events, bool Final = false, long DroppedEvents = 0, bool RecoveryIncomplete = false);
 public sealed record SidecarDiagnosticConsent(Guid SessionId, DateTimeOffset ServerTimeUtc,
     DateTimeOffset? ExpiresAt, int? ScopedJobId, bool Recording = true);
 

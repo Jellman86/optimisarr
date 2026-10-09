@@ -173,6 +173,7 @@ try {
   description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',
   command:'cd web && node scripts/capture-docs.mjs',applicationVersion:f.applicationVersion,capturedOn:new Date().toISOString().slice(0,10),
   uiRevision:execFileSync('git',['rev-parse','HEAD'],{cwd:web,encoding:'utf8'}).trim(),
+  uiWorkingTreeModified:execFileSync('git',['status','--porcelain','--','web/src','web/scripts'],{cwd:resolve(web,'..'),encoding:'utf8'}).trim().length>0,
   viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},diagnosticMobileViewport:{width:390,height:1800},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
   images:captured.map(name=>`optimisarr-${name}-dark.png`),
   sha256:Object.fromEntries(await Promise.all(captured.map(async name=>{const file=`optimisarr-${name}-dark.png`;return [file,createHash('sha256').update(await readFile(resolve(output,file))).digest('hex')]}))),

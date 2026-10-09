@@ -4,7 +4,6 @@ namespace Optimisarr.Data;
 
 public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options) : DbContext(options)
 {
-    public static readonly SemaphoreSlim DiagnosticTransitionGate = new(1, 1);
 
     public override async Task<int> SaveChangesAsync(
         bool acceptAllChangesOnSuccess,
@@ -38,31 +37,25 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
 
-        // The event cap is read before insertion. Hold the gate through the write so concurrent
-        // transitions in this host cannot both reserve the final event slot.
-        await DiagnosticTransitionGate.WaitAsync(cancellationToken);
-        try
-        {
-            var nowUtc = DateTimeOffset.UtcNow;
-            foreach (var (job, previous) in archives)
-                await DiagnosticEventCapture.AppendArchivedAttemptsAsync(this, job, previous, nowUtc, cancellationToken);
-            foreach (var (job, previous) in transitions)
-            {
-                await DiagnosticEventCapture.AppendJobTransitionAsync(
-                    this, job, previous, nowUtc, cancellationToken);
-            }
-
-            foreach (var lease in leases)
-                await DiagnosticEventCapture.AppendLeaseAsync(this, lease, nowUtc, cancellationToken);
-            foreach (var replacement in replacements)
-                await DiagnosticEventCapture.AppendReplacementAsync(this, replacement, nowUtc, cancellationToken);
-            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-        }
-        finally
-        {
-            DiagnosticTransitionGate.Release();
-        }
+        // Reserve SQLite's write transaction before reading capture counters. Reuse an outer
+        // operational transaction so its events and cap reservations commit together.
+        await using var write = await BeginDiagnosticWriteAsync(cancellationToken);
+        var nowUtc = DateTimeOffset.UtcNow;
+        foreach (var (job, previous) in archives)
+            await DiagnosticEventCapture.AppendArchivedAttemptsAsync(this, job, previous, nowUtc, cancellationToken);
+        foreach (var (job, previous) in transitions)
+            await DiagnosticEventCapture.AppendJobTransitionAsync(this, job, previous, nowUtc, cancellationToken);
+        foreach (var lease in leases)
+            await DiagnosticEventCapture.AppendLeaseAsync(this, lease, nowUtc, cancellationToken);
+        foreach (var replacement in replacements)
+            await DiagnosticEventCapture.AppendReplacementAsync(this, replacement, nowUtc, cancellationToken);
+        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        await write.CommitAsync(cancellationToken);
+        return saved;
     }
+
+    public async Task<DiagnosticWriteScope> BeginDiagnosticWriteAsync(CancellationToken token = default) =>
+        new(Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(token) : null);
 
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 

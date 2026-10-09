@@ -1077,8 +1077,14 @@ async function diagnosticBundle(sessionId: string, jobId?: number, workerId?: nu
 async function waitForDiagnosticUploads(sessionId: string): Promise<void> {
   const deadline = Date.now() + 35000
   while (Date.now() < deadline) {
-    const workers = await request<{ state: string }[]>(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}/participants`,
-      { signal: AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now()))) })
+    let workers: { state: string }[]
+    try {
+      workers = await request<{ state: string }[]>(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}/participants`,
+        { signal: AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now()))) })
+    } catch {
+      // The bundle itself discloses pending evidence even when collection status is unavailable.
+      return
+    }
     if (!workers.some(worker => worker.state === 'MirroredLocalEvidenceMayBePending' || worker.state === 'NoLocalEvidenceReceived')) return
     await new Promise(resolve => window.setTimeout(resolve, 1000))
   }

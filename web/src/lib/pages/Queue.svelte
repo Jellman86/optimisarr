@@ -49,6 +49,8 @@
   let diagnosticLookupPending = $state(false)
   let downloadingDiagnostics = $state(false)
   let diagnosticSummaryCopied = $state(false)
+  let diagnosticSummaryText = $state('')
+  let diagnosticSummaryError = $state('')
   let captureLookup = 0
   let detailOpener: HTMLElement | null = null
   let loadError = $state<string | null>(null)
@@ -307,6 +309,7 @@
     selectedJobId = id
     diagnosticCapture = null
     diagnosticSummaryCopied = false
+    diagnosticSummaryText = ''; diagnosticSummaryError = ''
     diagnosticLookupPending = true
     const lookup = ++captureLookup
     error = null
@@ -352,6 +355,7 @@
   async function copyDiagnosticSummary() {
     if (!selectedJob || !diagnosticCapture) return
     downloadingDiagnostics = true
+    diagnosticSummaryCopied = false; diagnosticSummaryText = ''; diagnosticSummaryError = ''
     try {
       const blob = await api.diagnosticBundle(diagnosticCapture.id, selectedJob.id)
       const bundle = JSON.parse(await blob.text())
@@ -362,15 +366,19 @@
           ({ reasonCode: event.reasonCode, attempt: event.attempt, workerId: event.workerId, receivedAt: event.receivedAt, details: event.details })), omissions: bundle.manifest.omissions }
       // Paths are deliberately excluded even if the operator selected them for the private bundle.
       delete summary.job.path
-      await navigator.clipboard.writeText(JSON.stringify(summary, null, 2))
-      diagnosticSummaryCopied = true
-    } catch (cause) { error = cause instanceof Error ? cause.message : String(cause) }
+      const text = JSON.stringify(summary, null, 2)
+      try {
+        if (!navigator.clipboard?.writeText) { diagnosticSummaryText = text; return }
+        await navigator.clipboard.writeText(text)
+        diagnosticSummaryCopied = true
+      } catch { diagnosticSummaryText = text }
+    } catch (cause) { diagnosticSummaryError = cause instanceof Error ? cause.message : String(cause) }
     finally { downloadingDiagnostics = false }
   }
 
   async function openDiagnosticSettings() {
     await closeDetails()
-    router.go('/settings/system')
+    router.go('/settings/system#diagnostic-capture')
   }
 
   async function closeDetails() {
@@ -762,20 +770,29 @@
         </section>
       {/if}
 
-      {#if diagnosticCapture && selectedJob}<CapturedDiagnosticTimeline captureId={diagnosticCapture.id} jobId={selectedJob.id} />{/if}
+      {#if diagnosticCapture && selectedJob}<CapturedDiagnosticTimeline captureId={diagnosticCapture.id} jobId={selectedJob.id} recording={diagnosticCapture.status === 'Recording'} />{/if}
       <section class="queue-diagnostic-action" aria-label={i18n.m.settings.diagnostics_title}>
         <div>
           <h3>{i18n.m.settings.diagnostics_title}</h3>
-          {#if !diagnosticLookupPending}<p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) + ` · ${diagnosticCapture.eventsStored} ${i18n.m.settings.diagnostics_events}` : i18n.m.settings.diagnostics_desc}</p>{/if}
+          {#if !diagnosticLookupPending}<p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) : i18n.m.settings.diagnostics_desc}</p>{/if}
         </div>
         {#if diagnosticLookupPending}
           <span class="queue-diagnostic-pending" role="status">{i18n.m.common.loading_short}</span>
         {:else if diagnosticCapture}
           <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
           <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
-          {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
+          {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
         {:else}
           <button class="btn min-h-11" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
+        {/if}
+        {#if diagnosticSummaryError}<p class="basis-full text-sm text-bad" role="alert">{diagnosticSummaryError}</p>{/if}
+        {#if diagnosticSummaryText}
+          <div class="basis-full min-w-0">
+            <p id="diagnostic-copy-help" class="mb-2 text-sm text-ink-2" role="status">{i18n.m.settings.diagnostics_copy_manual}</p>
+            <textarea class="input w-full min-w-0 font-mono text-xs" rows="8" readonly value={diagnosticSummaryText}
+              aria-label={i18n.m.settings.diagnostics_copy_summary} aria-describedby="diagnostic-copy-help"
+              onfocus={event => event.currentTarget.select()} onclick={event => event.currentTarget.select()}></textarea>
+          </div>
         {/if}
       </section>
 

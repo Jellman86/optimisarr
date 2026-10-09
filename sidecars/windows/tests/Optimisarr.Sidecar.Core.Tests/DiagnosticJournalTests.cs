@@ -146,11 +146,55 @@ public sealed class DiagnosticJournalTests
             File.WriteAllBytes(path, original);
             if (!oversized) File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-8));
             var reader = new DiagnosticJournal(root, readOnly: true);
-            Assert.Empty(JsonDocument.Parse(reader.Export()).RootElement.GetProperty("entries").EnumerateArray());
+            if (oversized) Assert.Throws<IOException>(() => reader.Export());
+            else Assert.Empty(JsonDocument.Parse(reader.Export()).RootElement.GetProperty("entries").EnumerateArray());
             Assert.True(File.Exists(path));
             Assert.Equal(original, File.ReadAllBytes(path));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void A_read_only_export_reports_a_journal_read_failure_instead_of_claiming_empty_evidence()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            File.WriteAllText(Path.Combine(root, DiagnosticJournal.FileName), "invalid-json");
+            var reader = new DiagnosticJournal(root, readOnly: true);
+            Assert.Throws<IOException>(() => reader.Export());
+            Assert.Throws<IOException>(() => reader.Export());
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void Corrupt_recovery_is_disclosed_in_the_export_and_every_following_upload()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, DiagnosticJournal.FileName), "{broken");
+            var journal = new DiagnosticJournal(root); var now = DateTimeOffset.UtcNow;
+            journal.Apply(new(Guid.NewGuid(), now, now.AddHours(1), null), now);
+            journal.Assignment(Guid.NewGuid(), 42);
+            Assert.True(JsonDocument.Parse(JsonSerializer.Serialize(journal.Pending(), new JsonSerializerOptions(JsonSerializerDefaults.Web))).RootElement.GetProperty("recoveryIncomplete").GetBoolean());
+            Assert.True(JsonDocument.Parse(journal.Export()).RootElement.GetProperty("recoveryIncomplete").GetBoolean());
+            Assert.True(JsonDocument.Parse(new DiagnosticJournal(root).Export()).RootElement.GetProperty("recoveryIncomplete").GetBoolean());
+            var batch = journal.Pending()!; journal.Acknowledge(batch, batch.Events.Max(e => e.Sequence));
+            Assert.False(JsonDocument.Parse(new DiagnosticJournal(root).Export()).RootElement.GetProperty("recoveryIncomplete").GetBoolean());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void A_read_only_export_cannot_mistake_a_journal_directory_for_a_missing_file()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, DiagnosticJournal.FileName));
+        try { Assert.Throws<IOException>(() => new DiagnosticJournal(root, readOnly: true).Export()); }
+        finally { Directory.Delete(root, true); }
     }
 
 }

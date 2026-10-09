@@ -48,7 +48,7 @@ public sealed class DiagnosticCaptureEndpointTests(AdminTokenAuthEndpointTests.T
             (await workerClient.PostAsJsonAsync("/api/workers/diagnostics", batch)).EnsureSuccessStatusCode();
             (await workerClient.PostAsJsonAsync("/api/workers/diagnostics", batch)).EnsureSuccessStatusCode();
             Assert.Equal(HttpStatusCode.BadRequest, (await workerClient.PostAsJsonAsync("/api/workers/diagnostics", batch with { SchemaVersion = 999 })).StatusCode);
-            Assert.Equal(HttpStatusCode.BadRequest, (await workerClient.PostAsJsonAsync("/api/workers/diagnostics", batch with { Events = [batch.Events[0] with { LeaseId = Guid.NewGuid() }] })).StatusCode);
+            (await workerClient.PostAsJsonAsync("/api/workers/diagnostics", batch with { Events = [batch.Events[0] with { LeaseId = Guid.NewGuid() }] })).EnsureSuccessStatusCode();
             var json = await admin.GetStringAsync($"/api/diagnostics/capture/{id}/bundle?workerId={workerId}");
             using var bundle = JsonDocument.Parse(json); Assert.Equal(1, bundle.RootElement.GetProperty("events").GetArrayLength());
             Assert.DoesNotContain("private-title", json); Assert.DoesNotContain(credential, json); Assert.Contains("Sidecar", json);

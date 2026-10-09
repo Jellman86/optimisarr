@@ -236,7 +236,7 @@ public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnostic
                         {
                             var batch = Diagnostics.Pending();
                             if (batch is null && consent.Recording) break;
-                            batch ??= new SidecarDiagnosticBatch(1, consent.SessionId, Guid.NewGuid(), [], Final: true, DroppedEvents: Diagnostics.DroppedEvents);
+                            batch ??= new SidecarDiagnosticBatch(1, consent.SessionId, Guid.NewGuid(), [], Final: true, DroppedEvents: Diagnostics.DroppedEvents, RecoveryIncomplete: Diagnostics.RecoveryIncomplete);
                             using var captureRequest = new HttpRequestMessage(HttpMethod.Post, Endpoint(pairing.ServerAddress, "/api/workers/diagnostics"))
                             { Content = JsonContent.Create(batch, options: Json) };
                             captureRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);

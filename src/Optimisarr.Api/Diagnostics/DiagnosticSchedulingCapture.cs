@@ -16,20 +16,15 @@ internal sealed class DiagnosticSchedulingCapture
     {
         var session = await new DiagnosticCaptureStore(db).GetActiveAsync(now, token);
         if (session is null || session.EventLimitReached) return;
-        await OptimisarrDbContext.DiagnosticTransitionGate.WaitAsync(token);
-        try
-        {
-            if (lastSession == session.Id && lastSnapshot == snapshot) return;
-            if (await DiagnosticEventCapture.AppendAsync(db, new DiagnosticEvent
-                {
-                    SessionId = session.Id, JobId = session.ScopedJobId ?? 0, ReasonCode = "Queue.DispatchDecision", CurrentStatus = "Unknown",
-                    DetailsJson = JsonSerializer.Serialize(new { scheduling = snapshot }, Json)
-                }, now, token))
+        if (lastSession == session.Id && lastSnapshot == snapshot) return;
+        await using var write = await db.BeginDiagnosticWriteAsync(token);
+        var appended = await DiagnosticEventCapture.AppendAsync(db, new DiagnosticEvent
             {
-                lastSession = session.Id; lastSnapshot = snapshot;
-            }
-            await db.SaveChangesAsync(token);
-        }
-        finally { OptimisarrDbContext.DiagnosticTransitionGate.Release(); }
+                SessionId = session.Id, JobId = session.ScopedJobId ?? 0, ReasonCode = "Queue.DispatchDecision", CurrentStatus = "Unknown",
+                DetailsJson = JsonSerializer.Serialize(new { scheduling = snapshot }, Json)
+            }, now, token);
+        await db.SaveChangesAsync(token);
+        await write.CommitAsync(token);
+        if (appended) { lastSession = session.Id; lastSnapshot = snapshot; }
     }
 }

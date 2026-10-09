@@ -194,7 +194,8 @@ test('job detail downloads only a matching opt-in diagnostic capture', async ({ 
   releaseLookup()
   await expect(otherDetails.getByRole('button', { name: 'Download diagnostics' })).toHaveCount(0)
   await otherDetails.getByRole('button', { name: 'Open diagnostic settings' }).click()
-  await expect(page).toHaveURL(/#\/settings\/system$/)
+  await expect(page).toHaveURL(/#\/settings\/system#diagnostic-capture$/)
+  await expect(page.locator('#diagnostic-capture')).toBeInViewport()
   await page.goto('/#/queue')
   await page.locator('#queue-job-8').click()
   const details = page.getByRole('dialog', { name: /Job details/ })
@@ -824,3 +825,26 @@ test('retained capture shows historical gates after a newer capture targets anot
   await expect(details.getByText('TimestampIntegrity', { exact: true })).toBeVisible()
   await expect(details.getByText('VMAF: 97.50')).toBeVisible()
 })
+
+for (const clipboard of ['missing', 'denied']) {
+  test(`diagnostic summaries remain copyable when clipboard access is ${clipboard}`, async ({ page }) => {
+    await page.addInitScript(mode => Object.defineProperty(navigator, 'clipboard', { configurable: true,
+      value: mode === 'missing' ? undefined : { writeText: () => Promise.reject(new Error('Permission denied')) } }), clipboard)
+    await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false)] })
+    const capture = { id: 'summary', status: 'Recording', scopedJobId: null, eventsStored: 146, startedAt: '2026-10-09T10:00:00Z' }
+    await page.route('**/api/diagnostics/capture', route => json(route, capture))
+    await page.route('**/api/diagnostics/captures?jobId=8', route => json(route, [capture]))
+    await page.route('**/api/diagnostics/capture/summary/jobs/8/bundle', route => json(route, {
+      manifest: { manifestId: 'summary-reference', schemaVersion: 4, omissions: [] }, job: { id: 8, path: '/private/title.mkv' }, attempts: [], events: [] }))
+    await page.goto('/#/queue')
+    await page.locator('#queue-job-8').click()
+    const details = page.getByRole('dialog', { name: /Job details/ })
+    await details.getByRole('button', { name: 'Copy issue summary', exact: true }).click()
+    const summary = details.getByRole('textbox', { name: 'Copy issue summary', exact: true })
+    await expect(summary).toBeVisible()
+    await expect(summary).toHaveValue(/summary-reference/)
+    expect(await summary.inputValue()).not.toContain('/private/title.mkv')
+    await expect(details.getByText('No events were captured for this job.', { exact: true })).toBeVisible()
+    await expect(details.locator('.queue-diagnostic-action')).not.toContainText('146 events')
+  })
+}

@@ -31,23 +31,20 @@ internal static class DiagnosticTransferMiddleware
                 if (lease is null) return;
                 var reason = segments[4] == "source" ? "Transfer.SourceServed" : segments.Length > 5 && segments[5] == "complete"
                     ? "Transfer.ResultAcknowledged" : segments.Length > 5 && segments[5] == "offset" ? "Transfer.OffsetReported" : "Transfer.ChunkReceived";
-                await OptimisarrDbContext.DiagnosticTransitionGate.WaitAsync();
-                try
+                await using var write = await db.BeginDiagnosticWriteAsync();
+                await DiagnosticEventCapture.AppendAsync(db, new DiagnosticEvent
                 {
-                    await DiagnosticEventCapture.AppendAsync(db, new DiagnosticEvent
+                    JobId = lease.JobId, Attempt = lease.ExecutionAttempt, LeaseId = leaseId, WorkerId = worker.Id,
+                    ReasonCode = reason, CurrentStatus = lease.Job?.Status.ToString() ?? "Unknown",
+                    DetailsJson = JsonSerializer.Serialize(new
                     {
-                        JobId = lease.JobId, Attempt = lease.ExecutionAttempt, LeaseId = leaseId, WorkerId = worker.Id,
-                        ReasonCode = reason, CurrentStatus = lease.Job?.Status.ToString() ?? "Unknown",
-                        DetailsJson = JsonSerializer.Serialize(new
-                        {
-                            httpStatus = context.Response.StatusCode,
-                            offsetBytes = long.TryParse(context.Request.Headers["X-Optimisarr-Offset"], out var offset) && offset >= 0 ? offset : (long?)null,
-                            transferBytes = context.Request.Method == "GET" ? context.Response.ContentLength : context.Request.ContentLength
-                        })
-                    }, now, CancellationToken.None);
-                    await db.SaveChangesAsync();
-                }
-                finally { OptimisarrDbContext.DiagnosticTransitionGate.Release(); }
+                        httpStatus = context.Response.StatusCode,
+                        offsetBytes = long.TryParse(context.Request.Headers["X-Optimisarr-Offset"], out var offset) && offset >= 0 ? offset : (long?)null,
+                        transferBytes = context.Request.Method == "GET" ? context.Response.ContentLength : context.Request.ContentLength
+                    })
+                }, now, CancellationToken.None);
+                await db.SaveChangesAsync();
+                await write.CommitAsync();
             }
             catch (Exception error)
             {

@@ -682,3 +682,98 @@ for (const width of [390, 1440]) {
     expect((await download).suggestedFilename()).toContain(`session-${id}`)
   })
 }
+
+function captureFixture(id: string, status = 'Stopped', scopedJobId: number | null = null) {
+  return { id, status, scopedJobId, startedAt: '2026-10-09T10:00:00Z', expiresAt: null,
+    stoppedAt: status === 'Recording' ? null : '2026-10-09T10:01:00Z', includePaths: false,
+    eventsStored: 7, maximumEvents: 10000, eventLimitReached: false, pinned: false,
+    retentionDays: 7, failureRetentionDays: 30, maximumBytes: 4194304, bytesStored: 2048 }
+}
+
+async function diagnosticSettings(page: Page, initial = [captureFixture('active', 'Recording')]) {
+  await mockSettings(page)
+  const state = { captures: initial, stopped: '', deleted: 0, starts: 0, failPoll: false }
+  await page.route('**/api/diagnostics/capture**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/participants')) return json(route, state.failPoll ? { message: 'Unavailable' } : [{ state: 'Collected' }], state.failPoll ? 503 : 200)
+    if (path.endsWith('/stop')) {
+      state.stopped = path.split('/').at(-2)!
+      const capture = state.captures.find(item => item.id === state.stopped)!
+      capture.status = 'Stopped'; capture.stoppedAt = '2026-10-09T10:02:00Z'
+      return json(route, capture)
+    }
+    if (path.endsWith('/bundle')) return json(route, { manifest: { omissions: state.failPoll ? ['Pending worker'] : [] } })
+    if (route.request().method() === 'DELETE') {
+      state.deleted++; state.captures = state.captures.filter(item => !path.endsWith('/' + item.id))
+      return route.fulfill({ status: 204 })
+    }
+    if (route.request().method() === 'POST') { state.starts++; return json(route, captureFixture('new', 'Recording'), 201) }
+    return json(route, path === '/api/diagnostics/captures' ? state.captures : state.captures[0] ?? null)
+  })
+  await page.goto('/#/settings/system')
+  await expect(page.locator('#diagnostic-capture').getByLabel('Retained captures')).toBeVisible()
+  return state
+}
+
+for (const width of [390, 1440]) {
+  test(`diagnostic recording stays visible while exporting an older capture at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    const state = await diagnosticSettings(page, [captureFixture('active', 'Recording'), captureFixture('older')])
+    const panel = page.locator('#diagnostic-capture')
+    await panel.getByLabel('Retained captures').selectOption('older')
+    await expect(panel.getByText('Recording diagnostics', { exact: true })).toBeVisible()
+    const download = page.waitForEvent('download', { timeout: 3000 })
+    await panel.getByRole('button', { name: 'Stop and collect', exact: true }).click()
+    expect((await download).suggestedFilename()).toContain('session-active')
+    expect(state.stopped).toBe('active')
+  })
+}
+
+test('diagnostic collection downloads available evidence when participant polling fails', async ({ page }) => {
+  const state = await diagnosticSettings(page)
+  state.failPoll = true
+  const download = page.waitForEvent('download', { timeout: 3000 })
+  await page.locator('#diagnostic-capture').getByRole('button', { name: 'Stop and collect', exact: true }).click()
+  expect((await download).suggestedFilename()).toContain('session-active')
+})
+
+test('diagnostic settings follow capture changes from the persistent banner', async ({ page }) => {
+  await diagnosticSettings(page)
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Stop and collect', exact: true }).first().click()
+  await download
+  await expect(page.locator('#diagnostic-capture').getByText('Enhanced diagnostics off', { exact: true })).toBeVisible()
+})
+
+test('deleting a diagnostic capture asks first and clears unrelated export filters', async ({ page }) => {
+  const state = await diagnosticSettings(page, [captureFixture('scoped', 'Stopped', 42), captureFixture('other')])
+  const panel = page.locator('#diagnostic-capture')
+  await expect(panel.getByLabel('Job ID to export (optional)', { exact: true })).toHaveValue('42')
+  page.once('dialog', dialog => dialog.dismiss())
+  await panel.getByRole('button', { name: 'Delete this capture', exact: true }).click()
+  expect(state.deleted).toBe(0)
+  page.once('dialog', dialog => dialog.accept())
+  await panel.getByRole('button', { name: 'Delete this capture', exact: true }).click()
+  await expect(panel.getByLabel('Retained captures')).toHaveValue('other')
+  await expect(panel.getByLabel('Job ID to export (optional)', { exact: true })).toHaveValue('')
+  await expect(panel.getByLabel('From (optional)', { exact: true })).toBeEnabled()
+})
+
+test('switching diagnostic captures clears a previous time range', async ({ page }) => {
+  await diagnosticSettings(page, [captureFixture('first'), captureFixture('second')])
+  const panel = page.locator('#diagnostic-capture')
+  await panel.getByLabel('From (optional)', { exact: true }).fill('2026-10-08T00:00')
+  await panel.getByLabel('Retained captures').selectOption('second')
+  await expect(panel.getByLabel('From (optional)', { exact: true })).toHaveValue('')
+})
+
+for (const value of ['', '1.5']) {
+  test(`diagnostic retention rejects invalid whole-day input ${JSON.stringify(value)}`, async ({ page }) => {
+    const state = await diagnosticSettings(page, [captureFixture('old')])
+    const panel = page.locator('#diagnostic-capture')
+    await panel.getByLabel('Routine retention (days)', { exact: true }).fill(value)
+    await panel.getByRole('button', { name: 'Start capture', exact: true }).click()
+    await expect(panel.getByRole('alert')).toContainText('whole')
+    expect(state.starts).toBe(0)
+  })
+}

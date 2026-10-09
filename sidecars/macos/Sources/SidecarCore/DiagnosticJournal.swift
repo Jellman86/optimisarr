@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Darwin
 
 public struct DiagnosticConsent: Codable, Sendable {
     public let sessionId: String
@@ -30,6 +31,7 @@ public struct LocalDiagnosticBatch: Codable, Sendable {
     public let events: [LocalDiagnosticEvent]
     public var final: Bool = false
     public var droppedEvents: Int64 = 0
+    public var recoveryIncomplete: Bool = false
 }
 
 /// Local records require renewed server consent. A disconnected capture expires after 90 seconds.
@@ -42,7 +44,7 @@ public actor DiagnosticJournal {
     }
     public static let fileName = "diagnostic-events.json"
     private struct Entry: Codable { let sessionId: String; let instanceId: String; let event: LocalDiagnosticEvent; var acknowledged: Bool }
-    private struct Export: Codable { let schemaVersion: Int; let collection: String; let maximumEntries: Int; let entries: [Entry]; var droppedBySession: [String: Int64]? = nil }
+    private struct Export: Codable { let schemaVersion: Int; let collection: String; let maximumEntries: Int; let entries: [Entry]; var droppedBySession: [String: Int64]? = nil; var recoveryIncomplete: Bool? = nil }
     private let directory: URL?
     private let instance = UUID().uuidString
     private var consent: DiagnosticConsent?
@@ -52,6 +54,7 @@ public actor DiagnosticJournal {
     private var leases: [String: (job: Int, stage: String?)] = [:]
     private var sequence: Int64 = 0
     private var loaded = false
+    public private(set) var recoveryIncomplete = false
     private var toolHashes: (String?, String?)?
     private var toolsRecorded: Set<String> = []
     private static let reasons: Set<String> = ["Worker.AssignmentReceived", "Worker.StageChanged", "Worker.LeaseReleased", "Worker.VerificationAcknowledged", "Worker.TransferOffset", "Worker.TransferAcknowledged", "Worker.RequestFailed", "Worker.ToolsIdentified"]
@@ -109,10 +112,11 @@ public actor DiagnosticJournal {
     public func pending() -> LocalDiagnosticBatch? {
         guard let consent, (!consent.isRecording || Date() < deadline), let first = entries.first(where: { $0.sessionId == consent.sessionId && !$0.acknowledged }) else { return nil }
         return LocalDiagnosticBatch(schemaVersion: 1, sessionId: consent.sessionId, instanceId: first.instanceId,
-            events: Array(entries.filter { $0.sessionId == consent.sessionId && $0.instanceId == first.instanceId && !$0.acknowledged }.prefix(100).map(\.event)), droppedEvents: droppedEvents)
+            events: Array(entries.filter { $0.sessionId == consent.sessionId && $0.instanceId == first.instanceId && !$0.acknowledged }.prefix(100).map(\.event)), droppedEvents: droppedEvents, recoveryIncomplete: recoveryIncomplete)
     }
     public func acknowledge(_ batch: LocalDiagnosticBatch, through: Int64) {
         for i in entries.indices where entries[i].sessionId == batch.sessionId && entries[i].instanceId == batch.instanceId && entries[i].event.sequence <= through { entries[i].acknowledged = true }
+        if batch.recoveryIncomplete && through > 0 { recoveryIncomplete = false }
         persist()
     }
     public func export() throws -> Data {
@@ -122,7 +126,7 @@ public actor DiagnosticJournal {
     }
     private func serialize() throws -> Data {
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(Export(schemaVersion: 1, collection: "LocalSidecar", maximumEntries: 2048, entries: entries, droppedBySession: droppedBySession))
+        return try encoder.encode(Export(schemaVersion: 1, collection: "LocalSidecar", maximumEntries: 2048, entries: entries, droppedBySession: droppedBySession, recoveryIncomplete: recoveryIncomplete))
     }
     private func prune(_ now: Date) {
         for entry in entries where entry.event.occurredAt < now.addingTimeInterval(-7 * 86400) { countDropped(entry) }
@@ -139,12 +143,15 @@ public actor DiagnosticJournal {
         guard let directory else { return }
         let path = directory.appendingPathComponent(Self.fileName)
         guard let attributes = try? path.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else { return }
-        guard (attributes.fileSize ?? Int.max) <= 1024 * 1024,
-              (attributes.contentModificationDate ?? .distantPast) >= Date().addingTimeInterval(-7 * 86400) else {
+        guard (attributes.fileSize ?? Int.max) <= 1024 * 1024 else {
+            recoveryIncomplete = true; try? FileManager.default.removeItem(at: path); return
+        }
+        guard (attributes.contentModificationDate ?? .distantPast) >= Date().addingTimeInterval(-7 * 86400) else {
             try? FileManager.default.removeItem(at: path); return
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         if let bytes = try? Data(contentsOf: path), let saved = try? decoder.decode(Export.self, from: bytes), saved.schemaVersion == 1 {
+            recoveryIncomplete = saved.recoveryIncomplete ?? false
             entries = Array(saved.entries.compactMap { entry -> Entry? in
                 let e = entry.event
                 guard Self.reasons.contains(e.reasonCode), UUID(uuidString: entry.sessionId) != nil,
@@ -162,18 +169,26 @@ public actor DiagnosticJournal {
             for (key, value) in saved.droppedBySession ?? [:] where UUID(uuidString: key) != nil && (0...1_000_000_000).contains(value) {
                 if droppedBySession.count < 20 { droppedBySession[key] = value }
             }
+        } else {
+            recoveryIncomplete = true
         }
     }
     private func persist() {
         guard let directory else { return }
         do {
             let file = directory.appendingPathComponent(Self.fileName)
-            if entries.isEmpty { if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }; return }
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            if entries.isEmpty && !recoveryIncomplete { if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }; return }
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             var data = try serialize()
             while data.count > 1024 * 1024 && !entries.isEmpty { countDropped(entries.removeFirst()); data = try serialize() }
-            try data.write(to: file, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+            let temporary = directory.appendingPathComponent(UUID().uuidString + ".tmp")
+            let descriptor = Darwin.open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            defer { try? handle.close(); try? FileManager.default.removeItem(at: temporary) }
+            try handle.write(contentsOf: data)
+            try handle.close()
+            guard Darwin.rename(temporary.path, file.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         } catch { }
     }
     private static func safeHash(_ value: String?) -> String? {

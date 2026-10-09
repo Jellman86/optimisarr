@@ -104,4 +104,30 @@ struct DiagnosticJournalTests {
         #expect(batch.events.contains { $0.reasonCode == "Worker.TransferAcknowledged" && $0.offsetBytes == 11 })
     }
 
+    @Test("corrupt recovery is disclosed in exports and following uploads")
+    func corruptRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("{broken".utf8).write(to: root.appendingPathComponent(DiagnosticJournal.fileName))
+        let journal = DiagnosticJournal(directory: root); let now = Date()
+        await journal.apply(DiagnosticConsent(sessionId: UUID().uuidString, serverTimeUtc: now, expiresAt: now.addingTimeInterval(3600), scopedJobId: nil))
+        await journal.assignment(leaseId: UUID().uuidString, jobId: 42)
+        let batch = try #require(await journal.pending())
+        let data = try JSONEncoder().encode(batch)
+        let pending = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(pending["recoveryIncomplete"] as? Bool == true)
+        let exportData = try await journal.export()
+        let exported = try #require(JSONSerialization.jsonObject(with: exportData) as? [String: Any])
+        #expect(exported["recoveryIncomplete"] as? Bool == true)
+        let reopened = DiagnosticJournal(directory: root)
+        let reopenedData = try await reopened.export()
+        let saved = try #require(JSONSerialization.jsonObject(with: reopenedData) as? [String: Any])
+        #expect(saved["recoveryIncomplete"] as? Bool == true)
+        await journal.acknowledge(batch, through: batch.events.map(\.sequence).max() ?? 0)
+        let clearedData = try await DiagnosticJournal(directory: root).export()
+        let cleared = try #require(JSONSerialization.jsonObject(with: clearedData) as? [String: Any])
+        #expect(cleared["recoveryIncomplete"] as? Bool == false)
+    }
+
 }

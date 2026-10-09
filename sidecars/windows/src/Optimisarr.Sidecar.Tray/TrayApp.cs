@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Principal;
@@ -62,6 +63,12 @@ public sealed class TrayApp : Application
             Shutdown();
             return;
         }
+        if (args.Contains("--export-diagnostics"))
+        {
+            if (IsAdministrator()) ExportLocalDiagnostics();
+            else MessageBox.Show("Administrator access is required to read the worker's private diagnostic journal.", "Optimisarr Sidecar");
+            Shutdown(); return;
+        }
         if (args.Contains("--setup") || args.Contains("--start-worker"))
         {
             using var identity = WindowsIdentity.GetCurrent();
@@ -103,21 +110,41 @@ public sealed class TrayApp : Application
             }
         };
         menu.Items.Add(shutdownItem);
-        menu.Items.Add("Export local diagnostics…", null, (_, _) => Dispatcher.Invoke(() =>
+        menu.Items.Add("Export local diagnostics… (administrator)", null, (_, _) => Dispatcher.Invoke(() =>
         {
-            using var save = new Forms.SaveFileDialog { Filter = "Diagnostic JSON|*.json", FileName = "optimisarr-sidecar-diagnostics.json" };
-            if (save.ShowDialog() != Forms.DialogResult.OK) return;
+            if (IsAdministrator()) { ExportLocalDiagnostics(); return; }
             try
             {
-                var journal = new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Optimisarr", "Sidecar"), readOnly: true);
-                File.WriteAllBytes(save.FileName, journal.Export());
+                var start = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Optimisarr.Sidecar.Tray.exe"))
+                { UseShellExecute = true, Verb = "runas" };
+                start.ArgumentList.Add("--export-diagnostics");
+                Process.Start(start);
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            { Forms.MessageBox.Show("Could not export diagnostics: " + e.Message, "Optimisarr Sidecar"); }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+            { Forms.MessageBox.Show("Diagnostic export was cancelled or administrator access could not start.", "Optimisarr Sidecar"); }
         }));
         menu.Items.Add("Quit tray — keep worker running", null, (_, _) => Dispatcher.Invoke(Shutdown));
         tray.ContextMenuStrip = menu;
         _ = WatchActivityAsync();
+    }
+
+    private static bool IsAdministrator()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    private static void ExportLocalDiagnostics()
+    {
+        using var save = new Forms.SaveFileDialog { Filter = "Diagnostic JSON|*.json", FileName = "optimisarr-sidecar-diagnostics.json" };
+        if (save.ShowDialog() != Forms.DialogResult.OK) return;
+        try
+        {
+            var journal = new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Optimisarr", "Sidecar"), readOnly: true);
+            File.WriteAllBytes(save.FileName, journal.Export());
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { Forms.MessageBox.Show("Could not export diagnostics: " + error.Message, "Optimisarr Sidecar"); }
     }
 
     private async Task WatchActivityAsync()

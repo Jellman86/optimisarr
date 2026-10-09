@@ -62,7 +62,7 @@
   function roomFromPath(path: string): RoomKey | null {
     // The old /tools route, and anything linking to it, lands in the room that absorbed it.
     if (path.startsWith('/tools')) return 'system'
-    const tail = path.replace(/^\/settings\/?/, '')
+    const tail = path.split('#')[0].replace(/^\/settings\/?/, '')
     if (!tail) return null
     const match = (Object.entries(ROOM_PATHS) as [RoomKey, string][]).find(([, slug]) => slug === tail)
     return match ? match[0] : null
@@ -621,6 +621,12 @@
   }
 
   $effect(() => router.guardLeave(confirmLeavingUnsaved))
+
+  $effect(() => {
+    if (!loading && openRoom === 'system' && router.path.endsWith('#diagnostic-capture')) {
+      void tick().then(() => document.getElementById('diagnostic-capture')?.scrollIntoView({ block: 'start' }))
+    }
+  })
 
   async function load() {
     loading = true

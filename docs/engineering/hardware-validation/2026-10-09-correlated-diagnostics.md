@@ -7,6 +7,10 @@ VMAF shadow comparisons, and the existing
 quality, timing, decode, size and replacement gates. Production libraries, installed pairing
 and managed container lifecycle were not changed by these runs.
 
+The physical matrices below exercised development revision `94aa4632`. Subsequent Opus 5.5
+review fixes are covered by the final native and browser suites listed below; these earlier
+media results do not certify the later source revision or an installed release.
+
 ## Physical media matrix
 
 | Host | Actual worker path | Strict worker verification | Ordinary server verification + VMAF shadow |
@@ -56,11 +60,12 @@ final receipts, local rotation and recovery, secret exclusion, frozen reports, r
 pinning, failure retention, stale tracked storage counters, scheduling reasons, migration upgrade
 and repeat application, export size and receipt-time ranges. Browser tests cover retained
 historical gates, Stop and collect/pinning on desktop and phone layouts, and local Linux export
-without a server connection. Final local checks pass 2,855 backend tests, 285 browser tests,
-97 frontend unit tests, 282 Swift tests, three live Mac RAM-volume checks, 325 shared sidecar
-tests (three Windows-only skips), 31 Linux dashboard/host tests and 99 Python harness tests.
-Native Picard passes all 328 shared tests and 2,847 backend tests with the eight documented
-POSIX-only skips. Quark and Riker run the backend/shared/Linux suites on their native hosts too.
+without a server connection. Final local checks pass 2,876 backend tests, all 295 browser tests in each of Chromium and
+WebKit, 97 frontend unit tests, 283 Swift tests, three live Mac RAM-volume checks, 328 shared
+sidecar tests (three Windows-only skips), 31 Linux dashboard/host tests and 99 Python harness
+tests. Native Picard passes all 331 shared tests and 2,868 backend tests with the eight
+documented POSIX-only skips. Quark and Riker each pass all 2,876 backend tests, 328 shared
+tests with the same three Windows-only skips, and 31 Linux tests on their native hosts.
 
 Testing caught and fixed several concrete faults: expired local records remaining on disk,
 unsafe recovered Swift fields, capture enabled mid-job missing its stage/tool identity,
@@ -71,6 +76,21 @@ numeric state, Stop and collect inheriting an earlier manual-download time filte
 Windows tray journal instance pruning newer service records. Tray exports now use a read-only
 snapshot; tests prove newer, expired and oversized service files remain untouched. The remote harness now explicitly disables
 observations of the Mac's local dashboard and scratch when its worker command launches over SSH.
+
+Actual Opus 5.5 UI and backend reviews identified additional defects. Regression tests now
+cover transaction lock ordering, exact session and attempt attribution, concurrent report
+arrival, cancellation and newer-attempt races during automatic replacement, bounded omission
+reporting, secure journal recovery and acknowledgement, active controls while browsing older
+captures, failed collection polls, retention validation, clipboard fallback, delete confirmation
+and the diagnostic Settings anchor. No semaphore is held across database write acquisition.
+
+A headed browser against an isolated real server also passes desktop and phone start, stop and
+collect, pin/unpin, delete cancellation and confirmation, invalid-range guidance, cleared-input
+validation, selection reset and banner-to-panel refresh. Neither viewport overflows horizontally
+and no page exception occurs. Refreshed screenshots use fabricated data. Picard opens the
+actual native Save As dialog in its logged-in session; cancelling exits the export helper with
+the service and journal unchanged. The unelevated tray requests normal administrator access
+for export; automated tests did not approve a UAC prompt.
 
 Native Windows shared tests include the Event Log cases. The native backend suite retains its
 eight documented POSIX-only skips; native Windows server hosting remains outside supported

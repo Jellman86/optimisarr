@@ -4,6 +4,17 @@
 
 ### Fixed
 
+- Closing a folder picker returns keyboard focus to its Browse button in Safari, including the destination-folder picker.
+- Automatic replacement identity refusals preserve concurrent cancellations and newer attempts; recorded verification failures keep their category.
+
+- Keep diagnostic writes in the operational database transaction, preserve exact capture and
+  attempt attribution, and record replacement refusals and incoming verification evidence.
+- Keep active capture controls visible while browsing saved history, collect available bundles
+  when a worker poll fails, validate retention inputs, confirm deletions and offer a selectable
+  issue summary when clipboard access is unavailable.
+- Disclose deleted-lease and local-journal recovery omissions; report Windows export read errors
+  and create local journal files with private permissions before writing their contents.
+
 - Windows tray diagnostic exports read a snapshot without pruning or rewriting the running service’s journal, preserving newer records during concurrent activity.
 
 - Stopping and collecting a diagnostic capture always exports its complete retained history, even when an earlier manual download used a time range.
@@ -12,6 +23,10 @@
 
 - Opt-in diagnostic capture now follows a job across the server and Mac, Windows and Linux sidecars. It retains correlated attempts, worker and tool identities, verification measurements, scheduling decisions, transfers and replacement outcomes. Queue details, failures, workers and System settings offer downloads; a persistent indicator provides **Stop and collect**. Local sidecar exports remain available when a worker cannot upload.
 - Diagnostic history has configurable routine and failure retention, storage limits, pinning and deletion, plus session and time-range exports. Recording stops on server restart unless continued recording was explicitly selected. Bundles identify missing evidence and local rotation, and exclude credentials, arbitrary process text and media content.
+
+### Development tools
+
+- Updated the frontend source-map parser to 1.2.2, resolving a build-time denial-of-service advisory in the transitive development dependency.
 
 ### Documentation
 

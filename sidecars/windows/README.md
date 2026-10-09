@@ -239,8 +239,11 @@ Enhanced capture is off by default and requires an explicit session in the serve
 stage, transfer and tool-identity records during that session. Loss of server contact
 stops recording within 90 seconds; restarting a sidecar never reactivates capture by itself.
 
-Use **Export local diagnostics…** in the tray menu to recover retained records while the server is unavailable.
+Use **Export local diagnostics… (administrator)** in the tray menu to recover retained records while the server is unavailable.
 The local journal is bounded to 2,048 records, 1 MiB and seven days. It excludes pairing
 credentials, arbitrary process output and media payloads. See the
 [diagnostic guide](../../docs/troubleshooting/diagnostics.md#collect-diagnostic-evidence)
 for collection, retention and sharing boundaries.
+
+Local diagnostic export requests administrator access because the service journal shares the
+protected worker data directory. Cancelling that Windows prompt leaves the worker running.

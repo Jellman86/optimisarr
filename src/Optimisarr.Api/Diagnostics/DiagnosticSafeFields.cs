@@ -61,7 +61,7 @@ internal static class DiagnosticSafeFields
 
     public static string EventReason(string? value)
     {
-        if (value is "Job.StatusChanged" or "Queue.DispatchDecision" or "Attempt.Archived" or "Retry.SoftwareDecode" or "Lease.Updated" or "Transfer.SourceServed" or "Transfer.ResultAcknowledged" or "Transfer.OffsetReported" or "Transfer.ChunkReceived"
+        if (value is "Worker.LeaseEvidenceUnavailable" or "Worker.JournalRecoveryIncomplete" or "Job.StatusChanged" or "Queue.DispatchDecision" or "Attempt.Archived" or "Retry.SoftwareDecode" or "Lease.Updated" or "Transfer.SourceServed" or "Transfer.ResultAcknowledged" or "Transfer.OffsetReported" or "Transfer.ChunkReceived"
             || value is not null && Optimisarr.Core.Diagnostics.DiagnosticTelemetry.Reasons.Contains(value)
             || value is "Replacement.Pending" or "Replacement.Replaced" or "Replacement.RollbackPending" or "Replacement.RolledBack" or "Replacement.Purged")
         {

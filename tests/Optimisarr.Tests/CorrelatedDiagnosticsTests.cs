@@ -258,4 +258,86 @@ public sealed class CorrelatedDiagnosticsTests : IAsyncLifetime
         Assert.Equal(7, session.RetentionDays); Assert.Equal(30, session.FailureRetentionDays); Assert.False(session.PersistAcrossRestart);
     }
 
+    [Fact]
+    public async Task Final_upload_targets_its_stopped_capture_when_a_new_capture_is_running()
+    {
+        await using var db = Db(); var now = DateTimeOffset.UtcNow;
+        // Insert the running row first: session selection must not depend on query ordering.
+        var next = new DiagnosticCaptureSession { Id = Guid.NewGuid(), StartedAt = now.AddSeconds(2) };
+        var first = new DiagnosticCaptureSession { Id = Guid.NewGuid(), StartedAt = now, StoppedAt = now.AddSeconds(1) };
+        db.AddRange(next, first); await db.SaveChangesAsync();
+        var entry = new DiagnosticEvent { SessionId = first.Id, JobId = 42, ReasonCode = "Worker.StageChanged" };
+        Assert.True(await DiagnosticEventCapture.AppendAsync(db, entry, now.AddSeconds(3), default, allowEndedUpload: true));
+        await db.SaveChangesAsync();
+        Assert.Equal(first.Id, (await db.DiagnosticEvents.SingleAsync()).SessionId);
+        Assert.Equal(0, next.EventsStored);
+    }
+
+    [Fact]
+    public async Task A_new_attempt_never_inherits_the_previous_attempts_worker_identity()
+    {
+        await using var db = Db(); var now = DateTimeOffset.UtcNow;
+        var media = new MediaFile { Path = "/synthetic/attempt.mkv", RelativePath = "attempt.mkv" };
+        var worker = new Worker { Name = "previous" }; db.AddRange(media, worker); await db.SaveChangesAsync();
+        var job = new Job { MediaFileId = media.Id, ExecutionAttempt = 1 }; db.Jobs.Add(job); await db.SaveChangesAsync();
+        db.JobLeases.Add(new() { Id = Guid.NewGuid(), JobId = job.Id, WorkerId = worker.Id, ExecutionAttempt = 1, State = LeaseState.Released });
+        await db.SaveChangesAsync();
+        await new DiagnosticCaptureStore(db).StartAsync(1, null, false, now, default);
+        job.ExecutionAttempt = 2; job.Status = JobStatus.AwaitingVerification; await db.SaveChangesAsync();
+        var entry = Assert.Single(await db.DiagnosticEvents.ToListAsync());
+        Assert.Equal(2, entry.Attempt); Assert.Null(entry.LeaseId); Assert.Null(entry.WorkerId);
+    }
+
+    [Fact]
+    public async Task Deleted_leases_leave_bounded_replay_safe_omissions_without_blocking_later_records()
+    {
+        await using var db = Db(); var now = DateTimeOffset.UtcNow;
+        var worker = new Worker { Name = "test", ProtocolVersion = 10, LastSeenAt = now };
+        var media = new MediaFile { Path = "/synthetic/deleted.mkv", RelativePath = "deleted.mkv" };
+        db.AddRange(worker, media); await db.SaveChangesAsync();
+        var job = new Job { MediaFileId = media.Id }; db.Add(job); await db.SaveChangesAsync();
+        var lease = new JobLease { Id = Guid.NewGuid(), WorkerId = worker.Id, JobId = job.Id };
+        db.Add(lease); await db.SaveChangesAsync();
+        var session = await new DiagnosticCaptureStore(db).StartAsync(1, null, false, now, default);
+        var batch = new SidecarDiagnosticBatch(1, session.Id, Guid.NewGuid(),
+            [new(1, now, Guid.NewGuid(), job.Id, "Worker.StageChanged"), new(2, now, lease.Id, job.Id, "Worker.StageChanged")], Final: true);
+        var store = new SidecarDiagnosticStore(db);
+        Assert.Equal(2, await store.AppendAsync(worker.Id, batch, now.AddSeconds(1), default));
+        Assert.Equal(2, await store.AppendAsync(worker.Id, batch, now.AddSeconds(2), default));
+        var entries = await db.DiagnosticEvents.ToListAsync(); Assert.Equal(2, entries.Count);
+        var missing = Assert.Single(entries, e => e.ReasonCode == "Worker.LeaseEvidenceUnavailable");
+        Assert.Null(missing.LeaseId); Assert.Equal(0, missing.JobId);
+        Assert.Equal("CollectedWithOmissions", (await DiagnosticSessionBundleQueries.ParticipantsAsync(db, session.Id, now, default)).Single().State);
+    }
+
+    [Fact]
+    public async Task A_final_journal_recovery_warning_is_replay_safe_and_never_claims_complete_collection()
+    {
+        await using var db = Db(); var now = DateTimeOffset.UtcNow;
+        var worker = new Worker { Name = "test", ProtocolVersion = 10, LastSeenAt = now }; db.Add(worker); await db.SaveChangesAsync();
+        var session = await new DiagnosticCaptureStore(db).StartAsync(1, null, false, now, default);
+        var batch = new SidecarDiagnosticBatch(1, session.Id, Guid.NewGuid(), [], Final: true, RecoveryIncomplete: true);
+        var store = new SidecarDiagnosticStore(db);
+        await store.AppendAsync(worker.Id, batch, now, default);
+        await store.AppendAsync(worker.Id, batch with { InstanceId = Guid.NewGuid() }, now, default);
+        Assert.Equal("Worker.JournalRecoveryIncomplete", (await db.DiagnosticEvents.SingleAsync()).ReasonCode);
+        var participant = Assert.Single(await DiagnosticSessionBundleQueries.ParticipantsAsync(db, session.Id, now, default));
+        Assert.Equal("CollectedWithOmissions", participant.State); Assert.Equal(0, participant.DroppedEvents);
+        using var export = JsonDocument.Parse(await DiagnosticSessionBundleQueries.BuildAsync(db, session.Id, null, null, null, now, default));
+        Assert.Contains(export.RootElement.GetProperty("manifest").GetProperty("omissions").EnumerateArray(), e => e.GetString()!.Contains("unknown"));
+    }
+
+    [Fact]
+    public async Task A_capped_capture_discloses_recovery_omissions_even_when_the_marker_cannot_fit()
+    {
+        await using var db = Db(); var now = DateTimeOffset.UtcNow;
+        var worker = new Worker { Name = "test", ProtocolVersion = 10, LastSeenAt = now }; db.Add(worker); await db.SaveChangesAsync();
+        var session = await new DiagnosticCaptureStore(db).StartAsync(1, null, false, now, default);
+        session.BytesStored = session.MaximumBytes; await db.SaveChangesAsync();
+        await new SidecarDiagnosticStore(db).AppendAsync(worker.Id,
+            new(1, session.Id, Guid.NewGuid(), [], Final: true, RecoveryIncomplete: true), now, default);
+        Assert.Empty(await db.DiagnosticEvents.ToListAsync());
+        Assert.Equal("CollectedWithOmissions", (await DiagnosticSessionBundleQueries.ParticipantsAsync(db, session.Id, now, default)).Single().State);
+    }
+
 }

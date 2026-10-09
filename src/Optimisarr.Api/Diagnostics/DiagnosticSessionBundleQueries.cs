@@ -17,8 +17,11 @@ internal static class DiagnosticSessionBundleQueries
         var counts = await db.DiagnosticEvents.AsNoTracking().Where(e => e.SessionId == sessionId && e.Source == "Sidecar" && e.WorkerId != null)
             .GroupBy(e => e.WorkerId).Select(g => new { Id = g.Key, Count = g.Count() }).ToListAsync(token);
         var receipts = await db.DiagnosticWorkerReceipts.AsNoTracking().Where(r => r.SessionId == sessionId).ToListAsync(token);
+        var omissions = await db.DiagnosticEvents.AsNoTracking().Where(e => e.SessionId == sessionId && e.WorkerId != null
+            && (e.ReasonCode == "Worker.LeaseEvidenceUnavailable" || e.ReasonCode == "Worker.JournalRecoveryIncomplete"))
+            .Select(e => e.WorkerId).Distinct().ToListAsync(token);
         return workers.OrderByDescending(w => receipts.Any(r => r.WorkerId == w.Id)).ThenByDescending(w => w.LastSeenAt).ThenByDescending(w => w.Id).Select(w => new DiagnosticParticipant(w.Id, DiagnosticSafeFields.OperatingSystem(w.OperatingSystem),
-            DiagnosticSafeFields.Version(w.SidecarVersion), receipts.Any(r => r.WorkerId == w.Id && r.FinalUploadAt != null) ? receipts.Any(r => r.WorkerId == w.Id && r.DroppedEvents > 0) ? "CollectedWithLocalOmissions" : "Collected" : w.ProtocolVersion < 10 ? "SidecarUpdateRequiredForLocalCapture" : w.LastSeenAt is null || now - w.LastSeenAt > TimeSpan.FromMinutes(2)
+            DiagnosticSafeFields.Version(w.SidecarVersion), receipts.Any(r => r.WorkerId == w.Id && r.FinalUploadAt != null) ? session.EventLimitReached || omissions.Contains(w.Id) ? "CollectedWithOmissions" : receipts.Any(r => r.WorkerId == w.Id && r.DroppedEvents > 0) ? "CollectedWithLocalOmissions" : "Collected" : w.ProtocolVersion < 10 ? "SidecarUpdateRequiredForLocalCapture" : w.LastSeenAt is null || now - w.LastSeenAt > TimeSpan.FromMinutes(2)
                 ? "OfflineLocalEvidenceUnavailable" : counts.Any(c => c.Id == w.Id) ? "MirroredLocalEvidenceMayBePending" : "NoLocalEvidenceReceived",
             counts.FirstOrDefault(c => c.Id == w.Id)?.Count ?? 0,
             receipts.FirstOrDefault(r => r.WorkerId == w.Id)?.DroppedEvents ?? 0,
@@ -58,6 +61,7 @@ internal static class DiagnosticSessionBundleQueries
             if (size > remainingBytes) { omissions.Add("Later events omitted to keep bundle below 8 MiB. Select a narrower time range."); break; }
             summaries.Add(value); remainingBytes -= size;
         }
+        omissions.Add("Worker.LeaseEvidenceUnavailable marks records whose lease was deleted. Worker.JournalRecoveryIncomplete means the local journal could not be fully recovered; the number of lost records is unknown.");
         omissions.Add("Sidecar-local records are mirrored on check-in. Offline or unacknowledged records may require a local export.");
         omissions.Add("Raw process text, commands, media payloads and credentials are excluded. Server receipt IDs order events; local clocks may differ.");
         var participants = await ParticipantsAsync(db, sessionId, now, token);

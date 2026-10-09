@@ -19,6 +19,7 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
     private bool toolsRead;
     private readonly HashSet<Guid> toolsRecorded = [];
     private bool loaded;
+    public bool RecoveryIncomplete { get; private set; }
     public const int MaximumEntries = 2048;
     public const int MaximumFileBytes = 1024 * 1024;
     public const string FileName = "diagnostic-events.json";
@@ -97,7 +98,7 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
             var pending = entries.Where(e => e.SessionId == consent.SessionId && !e.Acknowledged).Take(100).ToArray();
             if (pending.Length == 0) return null;
             var batchInstance = pending[0].InstanceId;
-            return new(1, consent.SessionId, batchInstance, pending.Where(e => e.InstanceId == batchInstance).Select(e => e.Event).ToArray(), DroppedEvents: DroppedEvents);
+            return new(1, consent.SessionId, batchInstance, pending.Where(e => e.InstanceId == batchInstance).Select(e => e.Event).ToArray(), DroppedEvents: DroppedEvents, RecoveryIncomplete: RecoveryIncomplete);
         }
     }
     public void Acknowledge(SidecarDiagnosticBatch batch, long throughSequence)
@@ -107,6 +108,7 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
             for (var i = 0; i < entries.Count; i++)
                 if (entries[i].SessionId == batch.SessionId && entries[i].InstanceId == batch.InstanceId && entries[i].Event.Sequence <= throughSequence)
                     entries[i] = entries[i] with { Acknowledged = true };
+            if (batch.RecoveryIncomplete && throughSequence > 0) RecoveryIncomplete = false;
             Persist();
         }
     }
@@ -117,9 +119,17 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
         try
         {
             var path = Path.Combine(directory, FileName);
-            if (!File.Exists(path)) return;
-            if (new FileInfo(path).Length > MaximumFileBytes || File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-7)) { if (!readOnly) File.Delete(path); return; }
+            try { _ = File.GetAttributes(path); }
+            catch (FileNotFoundException) { return; }
+            catch (DirectoryNotFoundException) { return; }
+            if (new FileInfo(path).Length > MaximumFileBytes)
+            {
+                if (readOnly) throw new IOException("The local diagnostic journal exceeds its storage limit.");
+                RecoveryIncomplete = true; File.Delete(path); return;
+            }
+            if (File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-7)) { if (!readOnly) File.Delete(path); return; }
             using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
+            RecoveryIncomplete = doc.RootElement.TryGetProperty("recoveryIncomplete", out var recovery) && recovery.GetBoolean();
             var saved = doc.RootElement.GetProperty("entries").Deserialize<List<JournalEntry>>(Json) ?? [];
             entries.AddRange(saved.Where(e => e is not null && e.Event is not null && e.Event.Sequence > 0 && e.Event.JobId > 0 && DiagnosticTelemetry.Reasons.Contains(e.Event.ReasonCode)).TakeLast(MaximumEntries)
                 .Select(e => e with { Event = DiagnosticTelemetry.Sanitize(e.Event) }));
@@ -127,7 +137,11 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
                 foreach (var pair in (dropped.Deserialize<Dictionary<Guid, long>>(Json) ?? []).Where(p => p.Value is >= 0 and <= 1_000_000_000).Take(20))
                     droppedBySession[pair.Key] = pair.Value;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException) { }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            if (readOnly) { loaded = false; throw new IOException("Could not read the local diagnostic journal.", e); }
+            entries.Clear(); droppedBySession.Clear(); RecoveryIncomplete = true;
+        }
     }
     // Keep acknowledged records locally too, so the operator can export them if the server loses its database.
     public byte[] Export()
@@ -139,7 +153,7 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
             return Serialize();
         }
     }
-    private byte[] Serialize() => JsonSerializer.SerializeToUtf8Bytes(new { schemaVersion = 1, collection = "LocalSidecar", maximumEntries = MaximumEntries, droppedBySession, entries }, Json);
+    private byte[] Serialize() => JsonSerializer.SerializeToUtf8Bytes(new { schemaVersion = 1, collection = "LocalSidecar", maximumEntries = MaximumEntries, recoveryIncomplete = RecoveryIncomplete, droppedBySession, entries }, Json);
     private void Prune(DateTimeOffset now)
     {
         foreach (var entry in entries.Where(e => e.Event.OccurredAt < now.AddDays(-7))) CountDropped(entry);
@@ -158,14 +172,19 @@ public sealed class DiagnosticJournal(string? directory = null, string? ffmpeg =
         try
         {
             var path = Path.Combine(directory, FileName);
-            if (entries.Count == 0) { File.Delete(path); return; }
+            if (entries.Count == 0 && !RecoveryIncomplete) { File.Delete(path); return; }
             Directory.CreateDirectory(directory);
-            var temp = path + ".tmp";
+            var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             var bytes = Serialize();
             while (bytes.Length > MaximumFileBytes && entries.Count > 0) { CountDropped(entries[0]); entries.RemoveAt(0); bytes = Serialize(); }
-            File.WriteAllBytes(temp, bytes);
-            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            File.Move(temp, path, true);
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            try
+            {
+                using (var stream = new FileStream(temp, options)) stream.Write(bytes);
+                File.Move(temp, path, true);
+            }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* Telemetry must not fail a media job. */ }
     }

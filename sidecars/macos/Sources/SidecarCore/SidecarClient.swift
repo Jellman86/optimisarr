@@ -336,7 +336,8 @@ public struct SidecarClient: Sendable {
                     let pending = await diagnostics.pending()
                     if pending == nil && consent.isRecording { break }
                     let dropped = await diagnostics.droppedEvents
-                    let batch = pending ?? LocalDiagnosticBatch(schemaVersion: 1, sessionId: consent.sessionId, instanceId: UUID().uuidString, events: [], final: true, droppedEvents: dropped)
+                    let recoveryIncomplete = await diagnostics.recoveryIncomplete
+                    let batch = pending ?? LocalDiagnosticBatch(schemaVersion: 1, sessionId: consent.sessionId, instanceId: UUID().uuidString, events: [], final: true, droppedEvents: dropped, recoveryIncomplete: recoveryIncomplete)
                     do {
                         var upload = try authorised(serverAddress, "/api/workers/diagnostics", credential: credential, method: "POST")
                         upload.timeoutInterval = max(0.1, uploadDeadline.timeIntervalSinceNow)

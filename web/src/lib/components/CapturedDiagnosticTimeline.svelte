@@ -1,28 +1,34 @@
 <script lang="ts">
   import { api } from '../api'
   import { i18n } from '../i18n/i18n.svelte'
-  let { captureId, jobId }: { captureId: string; jobId: number } = $props()
+  let { captureId, jobId, recording = false }: { captureId: string; jobId: number; recording?: boolean } = $props()
   type Event = { id: number; receivedAt: string; occurredAt: string; attempt: number; workerId: number | null;
     reasonCode: string; source: string; currentStatus: string; details?: { report?: { passed: boolean; checks: { name: string; outcome: string }[]; vmafHarmonicMean: number | null; location: string } } }
   let events = $state<Event[]>([])
   let loading = $state(true)
   let error = $state('')
   $effect(() => {
-    const id = captureId, job = jobId
-    let disposed = false
+    const id = captureId, job = jobId, refreshWhileRecording = recording
+    let disposed = false, generation = 0
     loading = true; events = []; error = ''
-    void api.diagnosticBundle(id, job).then(blob => blob.text()).then(text => {
-      if (!disposed) { const bundle = JSON.parse(text); events = Array.isArray(bundle.events) ? bundle.events : [] }
-    }).catch(cause => { if (!disposed) error = cause instanceof Error ? cause.message : String(cause) })
-      .finally(() => { if (!disposed) loading = false })
-    return () => { disposed = true }
+    async function load() {
+      const request = ++generation
+      try {
+        const bundle = JSON.parse(await (await api.diagnosticBundle(id, job)).text())
+        if (!disposed && request === generation) { events = Array.isArray(bundle.events) ? bundle.events : []; error = '' }
+      } catch (cause) { if (!disposed && request === generation) error = cause instanceof Error ? cause.message : String(cause) }
+      finally { if (!disposed && request === generation) loading = false }
+    }
+    void load()
+    const timer = refreshWhileRecording ? window.setInterval(() => { void load() }, 30000) : undefined
+    return () => { disposed = true; if (timer !== undefined) window.clearInterval(timer) }
   })
 </script>
 <section class="mt-6 min-w-0 border-t pt-4" style="border-color: var(--edge)" aria-label={i18n.m.settings.diagnostics_history}>
   <h3 class="text-sm font-semibold text-ink">{i18n.m.settings.diagnostics_history}</h3>
   {#if loading}<p class="mt-2 text-sm text-ink-3" role="status">{i18n.m.common.loading_short}</p>
   {:else if error}<p class="mt-2 text-sm text-bad" role="alert">{error}</p>
-  {:else if events.length === 0}<p class="mt-2 text-sm text-ink-3">{i18n.m.settings.diagnostics_desc}</p>
+  {:else if events.length === 0}<p class="mt-2 text-sm text-ink-3">{i18n.m.settings.diagnostics_history_empty}</p>
   {:else}
     <p class="mt-2 text-xs text-ink-3">{Math.min(events.length, 100)} / {events.length} {i18n.m.settings.diagnostics_events}</p>
     <ol class="mt-3 space-y-2" aria-label={i18n.m.settings.diagnostics_events}>

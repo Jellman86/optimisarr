@@ -219,4 +219,21 @@ public sealed class DiagnosticWorkerEvidenceTests
         QualitySourceSha256 = new string('a', 64),
         DeliveredSha256 = new string('b', 64)
     };
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("{broken")]
+    [InlineData("{\"format\":null}")]
+    [InlineData("{\"format\":{\"format_name\":12}}")]
+    [InlineData("{\"streams\":[null]}")]
+    [InlineData("{\"streams\":[{\"codec_type\":\"video\",\"width\":\"invalid\"}]}")]
+    [InlineData("{\"streams\":[{\"codec_type\":\"video\",\"width\":1e100,\"height\":-1}]}")]
+    [InlineData("{\"streams\":[{\"codec_type\":\"audio\",\"channels\":{}}]}")]
+    [InlineData("{\"format\":{\"duration\":\"Infinity\",\"bit_rate\":\"9223372036854775807\"}}")]
+    public void Malformed_probe_shapes_cannot_abort_diagnostic_evidence_capture(string probe)
+    {
+        var evidence = new RemoteVerificationEvidence(Guid.NewGuid(), new string('a', 64), new string('b', 64), SourceProbe: probe, CandidateProbe: probe);
+        Assert.NotNull(Optimisarr.Core.Diagnostics.DiagnosticExecutionEvidence.Read(null, JsonSerializer.Serialize(evidence, JsonOptions)));
+    }
+
 }

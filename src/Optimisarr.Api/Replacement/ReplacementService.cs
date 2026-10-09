@@ -37,7 +37,8 @@ public sealed record ReplacementActionResult(
     // A permanent failure can never succeed on a later retry (the verified output is gone, the
     // original is gone, or a different optimised file permanently occupies the destination). The
     // dispatcher fails such a job once rather than reconciling it on every cycle forever.
-    bool Permanent = false)
+    bool Permanent = false,
+    [property: System.Text.Json.Serialization.JsonIgnore] bool FailureAlreadyRecorded = false)
 {
     public static ReplacementActionResult Ok(ReplacementEntity replacement) =>
         new(ReplacementResultKind.Success, null, replacement);
@@ -54,8 +55,8 @@ public sealed record ReplacementActionResult(
     public static ReplacementActionResult Deferred(string message) =>
         new(ReplacementResultKind.Deferred, message, null);
 
-    public static ReplacementActionResult Failed(string message, bool permanent = false) =>
-        new(ReplacementResultKind.Failed, message, null, permanent);
+    public static ReplacementActionResult Failed(string message, bool permanent = false, bool failureAlreadyRecorded = false) =>
+        new(ReplacementResultKind.Failed, message, null, permanent, failureAlreadyRecorded);
 }
 
 public sealed record BulkReplacementFailure(int JobId, string Message);
@@ -222,7 +223,7 @@ public sealed class ReplacementService
         }
     }
 
-    private async Task<ReplacementActionResult> RefuseIdentityAsync(Job job, string message, CancellationToken token)
+    private async Task<ReplacementActionResult> RefuseIdentityAsync(Job job, string message, bool automatic, CancellationToken token)
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         { Converters = { new JsonStringEnumConverter() } };
@@ -242,7 +243,8 @@ public sealed class ReplacementService
         var now = DateTimeOffset.UtcNow;
         // Make manual refusal retryable too. A concurrent cancel or newer attempt must not be
         // overwritten, and historical quality measurements remain alongside the failed gate.
-        await _db.Jobs.Where(row => row.Id == job.Id && row.Status == JobStatus.ReadyToReplace
+        await using var write = await _db.BeginDiagnosticWriteAsync(token);
+        var written = await _db.Jobs.Where(row => row.Id == job.Id && row.Status == JobStatus.ReadyToReplace
                 && row.ExecutionAttempt == job.ExecutionAttempt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(row => row.Status, JobStatus.Failed)
@@ -256,7 +258,13 @@ public sealed class ReplacementService
                 .SetProperty(row => row.FinishedAt, now)
                 .SetProperty(row => row.UpdatedAt, now), token);
         await _db.Entry(job).ReloadAsync(token);
-        return ReplacementActionResult.Failed(message, permanent: true);
+        if (written == 0)
+            return ReplacementActionResult.Invalid("The job changed during the identity check. No replacement was made.");
+        await DiagnosticEventCapture.AppendJobTransitionAsync(_db, job, JobStatus.ReadyToReplace, now, token);
+        if (automatic) await QueueDispatcher.ApplyFailureTrackingAsync(_db, job, JobStatus.Failed);
+        await _db.SaveChangesAsync(token);
+        await write.CommitAsync(token);
+        return ReplacementActionResult.Failed(message, permanent: true, failureAlreadyRecorded: true);
     }
 
     private Task<bool> IsAutomaticAcceptanceEnabledAsync(int? libraryId, CancellationToken cancellationToken) =>
@@ -406,14 +414,14 @@ public sealed class ReplacementService
 
         if (!FileContentIdentity.IsHash(job.VerifiedSourceSha256) || !FileContentIdentity.IsHash(job.VerifiedOutputSha256))
             return await RefuseIdentityAsync(job,
-                "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", cancellationToken);
+                "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", automatic, cancellationToken);
 
         await using var sourceGuard = FileContentIdentity.OpenGuard(media.Path);
         await using var outputGuard = FileContentIdentity.OpenGuard(job.WorkOutputPath);
         if (!await FileContentIdentity.MatchesAsync(media.Path, job.VerifiedSourceSha256, cancellationToken)
             || !await FileContentIdentity.MatchesAsync(job.WorkOutputPath, job.VerifiedOutputSha256, cancellationToken))
             return await RefuseIdentityAsync(job,
-                "Source or output bytes changed after verification. The original was left untouched; create a fresh verified attempt.", cancellationToken);
+                "Source or output bytes changed after verification. The original was left untouched; create a fresh verified attempt.", automatic, cancellationToken);
 
         var originalSize = new FileInfo(media.Path).Length;
         var outputSize = new FileInfo(job.WorkOutputPath).Length;

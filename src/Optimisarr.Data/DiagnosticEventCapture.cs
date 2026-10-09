@@ -16,10 +16,10 @@ public static class DiagnosticEventCapture
         if (job.Status == previousStatus || !await IsCapturingAsync(db, job.Id, nowUtc, cancellationToken)) return false;
         var reason = job.Status == JobStatus.Failed && job.FailureCategory is { } category ? $"Failure.{category}"
             : job.Status == JobStatus.Queued && job.RetryReason == "SoftwareDecode" ? "Retry.SoftwareDecode" : "Job.StatusChanged";
-        var lease = db.ChangeTracker.Entries<JobLease>().Where(e => e.State != EntityState.Deleted && e.Entity.JobId == job.Id)
+        var lease = db.ChangeTracker.Entries<JobLease>().Where(e => e.State != EntityState.Deleted && e.Entity.JobId == job.Id && e.Entity.ExecutionAttempt == job.ExecutionAttempt)
             .Select(e => e.Entity).OrderByDescending(l => l.AcquiredAt).FirstOrDefault();
         if (lease is null && (job.Status is JobStatus.Leased or JobStatus.AwaitingVerification || previousStatus is JobStatus.Leased or JobStatus.AwaitingVerification))
-            lease = (await db.JobLeases.AsNoTracking().Where(l => l.JobId == job.Id).ToListAsync(cancellationToken)).OrderByDescending(l => l.AcquiredAt).FirstOrDefault();
+            lease = (await db.JobLeases.AsNoTracking().Where(l => l.JobId == job.Id && l.ExecutionAttempt == job.ExecutionAttempt).ToListAsync(cancellationToken)).OrderByDescending(l => l.AcquiredAt).FirstOrDefault();
         var library = (job.LibraryId is { } libraryId
             ? await db.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Id == libraryId, cancellationToken) : null);
         return await AppendAsync(db, new DiagnosticEvent
@@ -129,7 +129,7 @@ public static class DiagnosticEventCapture
 
     public static async Task<bool> AppendAsync(OptimisarrDbContext db, DiagnosticEvent entry, DateTimeOffset now, CancellationToken token, bool allowEndedUpload = false)
     {
-        var sessions = await db.DiagnosticCaptureSessions.Where(s => (s.StoppedAt == null || allowEndedUpload && s.Id == entry.SessionId) && (s.ScopedJobId == null || s.ScopedJobId == entry.JobId)).ToListAsync(token);
+        var sessions = await db.DiagnosticCaptureSessions.Where(s => (entry.SessionId == Guid.Empty || s.Id == entry.SessionId) && (s.StoppedAt == null || allowEndedUpload && s.Id == entry.SessionId) && (s.ScopedJobId == null || s.ScopedJobId == entry.JobId)).ToListAsync(token);
         foreach (var candidate in sessions.Where(s => db.Entry(s).State == EntityState.Unchanged))
             await db.Entry(candidate).ReloadAsync(token);
         var session = sessions.FirstOrDefault(s => DiagnosticCapturePolicy.AllowsEvent(s.StartedAt, s.ExpiresAt, s.StoppedAt, s.ScopedJobId, entry.JobId, now)
