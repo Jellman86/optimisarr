@@ -152,7 +152,7 @@ enum MenuRenderer {
             // End the focused disclosure capture after its final readout row, before the
             // safety note and controls continue inside the live panel's scroll viewport.
             let capture = name == "details"
-                ? NSRect(x: 0, y: 0, width: size.width, height: min(size.height, 600))
+                ? NSRect(x: 0, y: 0, width: size.width, height: min(size.height, 575))
                 : hosting.bounds
             guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: capture) else { continue }
             hosting.cacheDisplay(in: capture, to: bitmap)
