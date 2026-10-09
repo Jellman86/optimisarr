@@ -5,6 +5,8 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Diagnostics;
+using Optimisarr.Core.Diagnostics;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
@@ -40,6 +42,7 @@ public sealed class QueueDispatcher(
     ActiveEncodeRegistry encodes,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
+    private readonly DiagnosticSchedulingCapture _diagnosticScheduling = new();
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan OrphanWorkGracePeriod = TimeSpan.FromDays(7);
     private const int MaxAttempts = 3;
@@ -534,6 +537,8 @@ public sealed class QueueDispatcher(
         var policy = EvaluateDispatchPolicy(settings, activity, hasActivityBypass);
         if (!policy.CanStart)
         {
+            await CaptureSchedulingAsync(DiagnosticSchedulingSnapshot.Create(false, pauseManager.IsPaused,
+                activity.Active && !hasActivityBypass, queued.Count, null, null, null, remoteWorkersOn, aWorkerCouldTakeWork), stoppingToken);
             logger.LogDebug("Queue dispatch paused: {Reason}", policy.BlockedReason);
             return;
         }
@@ -594,6 +599,9 @@ public sealed class QueueDispatcher(
         var toStart = JobScheduler.SelectJobsByWorkload(runnable, running, limits,
             mediaServicesActive: activity.Active, lastStartedLibraryId: _lastStartedLibraryId,
             lastStartedVideoClass: _lastStartedVideoClass);
+
+        await CaptureSchedulingAsync(DiagnosticSchedulingSnapshot.Create(true, false, false, queued.Count,
+            withinWindow.Count, runnable.Count, toStart.Count, remoteWorkersOn, aWorkerCouldTakeWork), stoppingToken);
 
         // Say why nothing started, when something plainly could have.
         //
@@ -3975,6 +3983,12 @@ public sealed class QueueDispatcher(
         await using var scope = scopeFactory.CreateAsyncScope();
         var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
         return await settings.GetQueueSettingsAsync(cancellationToken);
+    }
+
+    private async Task CaptureSchedulingAsync(DiagnosticSchedulingSnapshot snapshot, CancellationToken token)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await _diagnosticScheduling.RecordAsync(scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>(), snapshot, DateTimeOffset.UtcNow, token);
     }
 
     private DispatchDecision EvaluateDispatchPolicy(

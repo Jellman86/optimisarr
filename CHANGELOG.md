@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Opt-in diagnostic capture now follows a job across the server and Mac, Windows and Linux sidecars. It retains correlated attempts, worker and tool identities, verification measurements, scheduling decisions, transfers and replacement outcomes. Queue details, failures, workers and System settings offer downloads; a persistent indicator provides **Stop and collect**. Local sidecar exports remain available when a worker cannot upload.
+- Diagnostic history has configurable routine and failure retention, storage limits, pinning and deletion, plus session and time-range exports. Recording stops on server restart unless continued recording was explicitly selected. Bundles identify missing evidence and local rotation, and exclude credentials, arbitrary process text and media content.
+
 ### Documentation
 
 - Refreshed the main application and native Mac/Windows screenshots for 0.2.22, added playback-pause and viewer-privacy examples, and added Linux sidecar pairing, activity, idle, audio and phone views. A screenshot gallery links the platform guides; capture scripts and manifests record reproducible fixtures and platform provenance.

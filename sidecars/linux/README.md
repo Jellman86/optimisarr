@@ -63,3 +63,16 @@ when strict verification is enabled. Counting adds a full decode of each file on
 counts are reused when full-file or sampled VMAF needs frame pairing. With strict verification off, the server
 measures the counts. Update the sidecar alongside the server; existing pairing is retained.
 Previews and intentional frame-rate conversions keep their existing checks.
+
+## Diagnostic capture and local export
+
+Enhanced capture is off by default and requires an explicit session in the server’s
+**Settings → System → Diagnostic capture**. Protocol 10 sidecars mirror structured job,
+stage, transfer and tool-identity records during that session. Loss of server contact
+stops recording within 90 seconds; restarting a sidecar never reactivates capture by itself.
+
+Use the dashboard’s **Export local diagnostics** link to recover retained records while the server is unavailable.
+The local journal is bounded to 2,048 records, 1 MiB and seven days. It excludes pairing
+credentials, arbitrary process output and media payloads. See the
+[diagnostic guide](../../docs/troubleshooting/diagnostics.md#collect-diagnostic-evidence)
+for collection, retention and sharing boundaries.

@@ -38,9 +38,9 @@ capabilities = capabilities with { VideoEncoders = [encoder] };
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-var client = new SidecarClient(http);
+var client = new SidecarClient(http, new DiagnosticJournal(Path.Combine(scratch, "diagnostics"), ffmpeg, Environment.GetEnvironmentVariable("OPTIMISARR_FFPROBE")));
 var server = Required("OPTIMISARR_ACCEPTANCE_SERVER");
-var runner = new JobRunner(client, new JobTransfer(http), new ProcessTranscoder(), ffmpeg, scratch,
+var runner = new JobRunner(client, new JobTransfer(http, client.Diagnostics), new ProcessTranscoder(), ffmpeg, scratch,
     () => null, Console.WriteLine);
 // Use the service's recovery, heartbeat and claim lifecycle, including server restarts.
 var session = new SidecarSession(client, new InMemoryCredentialStore(),

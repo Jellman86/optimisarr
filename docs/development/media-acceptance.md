@@ -566,3 +566,17 @@ legitimately reach 100, so a floor of 100 alone is not a negative control.
 model remains authoritative. Strict sidecar-only mode without that flag performs media scoring
 on its worker; the server still orchestrates transfers, validates evidence and replaces files.
 See the [implementation and NVIDIA plan](vmaf-v1-and-nvidia-plan.md).
+
+## Correlated diagnostic acceptance
+
+Add `--diagnostics` to a smoke or fleet run to start an explicit capture on the disposable
+server, collect final worker uploads, validate schema/privacy/correlation/tool and replacement
+evidence, pin the result, and prove history survives restart. The first capture explicitly
+persists across the harness restart; a second default capture must stop on restart.
+The standard server smoke and Linux paired fleet CI gates enable this check.
+
+For an SSH adapter passed with `--worker-command`, use `--worker-remote` to disable local
+scratch/dashboard observations that cannot inspect the remote host. The adapter must forward
+termination to its own disposable process, preserve the acceptance environment, and make the
+server reachable; use `--listen 0.0.0.0` only on a trusted test network. This option cannot be
+combined with `--require-worker-ram`, whose local observations would be invalid for that worker.

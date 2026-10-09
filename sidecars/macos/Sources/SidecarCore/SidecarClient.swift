@@ -190,12 +190,15 @@ public struct URLSessionTransport: HTTPTransport {
 /// with the server tests nothing about the contract.
 public struct SidecarClient: Sendable {
     private let transport: HTTPTransport
+    public let diagnostics: DiagnosticJournal
     private let downloadChunkBytes: Int64
 
     public init(
         transport: HTTPTransport = URLSessionTransport(),
-        downloadChunkBytes: Int64 = 64 * 1024 * 1024
+        downloadChunkBytes: Int64 = 64 * 1024 * 1024,
+        diagnostics: DiagnosticJournal = .shared
     ) {
+        self.diagnostics = diagnostics
         self.transport = transport
         self.downloadChunkBytes = max(1, downloadChunkBytes)
     }
@@ -313,6 +316,42 @@ public struct SidecarClient: Sendable {
             else {
                 throw SidecarError.unexpectedResponse(status: 200)
             }
+            let consent: DiagnosticConsent?
+            if let capture = body["diagnosticCapture"] as? [String: Any], let captureData = try? JSONSerialization.data(withJSONObject: capture) {
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .custom { input in
+                    let text = try input.singleValueContainer().decode(String.self)
+                    let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    if let date = formatter.date(from: text) { return date }
+                    formatter.formatOptions = [.withInternetDateTime]
+                    if let date = formatter.date(from: text) { return date }
+                    throw DecodingError.dataCorrupted(.init(codingPath: input.codingPath, debugDescription: "Invalid UTC date"))
+                }
+                consent = try? decoder.decode(DiagnosticConsent.self, from: captureData)
+            } else { consent = nil }
+            await diagnostics.apply(consent)
+            if let consent {
+                let uploadDeadline = Date().addingTimeInterval(3)
+                while Date() < uploadDeadline {
+                    let pending = await diagnostics.pending()
+                    if pending == nil && consent.isRecording { break }
+                    let dropped = await diagnostics.droppedEvents
+                    let batch = pending ?? LocalDiagnosticBatch(schemaVersion: 1, sessionId: consent.sessionId, instanceId: UUID().uuidString, events: [], final: true, droppedEvents: dropped)
+                    do {
+                        var upload = try authorised(serverAddress, "/api/workers/diagnostics", credential: credential, method: "POST")
+                        upload.timeoutInterval = max(0.1, uploadDeadline.timeIntervalSinceNow)
+                        upload.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+                        upload.httpBody = try encoder.encode(batch)
+                        let (reply, status) = try await perform(upload)
+                        guard status.statusCode == 200, let ack = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
+                              let sequence = ack["acknowledgedSequence"] as? NSNumber else { break }
+                        if batch.final { break }
+                        if sequence.int64Value == 0 { break }
+                        await diagnostics.acknowledge(batch, through: sequence.int64Value)
+                    } catch { break }
+                }
+            }
             return HeartbeatResult(
                 workerId: workerId,
                 protocolVersion: version,
@@ -351,6 +390,7 @@ public struct SidecarClient: Sendable {
             else {
                 throw SidecarError.unexpectedResponse(status: 200)
             }
+            await diagnostics.assignment(leaseId: assignment.leaseId, jobId: assignment.jobId)
             return assignment
         case 204:
             return nil
@@ -392,6 +432,9 @@ public struct SidecarClient: Sendable {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         let (data, response) = try await perform(request)
+        var seconds: Double?
+        if case let .encoding(value) = progress { seconds = value }
+        await diagnostics.stage(leaseId: leaseId, stage: progress.map(Self.stageName), seconds: seconds, status: response.statusCode)
         try Self.checkLease(response.statusCode, data)
     }
 
@@ -456,6 +499,7 @@ public struct SidecarClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(evidence)
         let (data, response) = try await perform(request)
+        await diagnostics.record(leaseId: leaseId, reason: (200..<300).contains(response.statusCode) ? "Worker.VerificationAcknowledged" : "Worker.RequestFailed", httpStatus: response.statusCode)
         guard response.statusCode == 200 else {
             throw SidecarError.deliveryRefused(reason: Self.message(data) ?? "Full verification evidence was refused.")
         }
@@ -493,6 +537,7 @@ public struct SidecarClient: Sendable {
         let request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/release", credential: credential, method: "POST")
         let (data, response) = try await perform(request)
+        await diagnostics.record(leaseId: leaseId, reason: (200..<300).contains(response.statusCode) ? "Worker.LeaseReleased" : "Worker.RequestFailed", httpStatus: response.statusCode)
         try Self.checkLease(response.statusCode, data)
     }
 
@@ -543,6 +588,7 @@ public struct SidecarClient: Sendable {
                 throw SidecarError.transferFailed(reason: "The source transfer failed: \(error.localizedDescription)")
             }
 
+            await diagnostics.record(leaseId: leaseId, reason: (200..<300).contains(response.statusCode) ? "Worker.TransferAcknowledged" : "Worker.RequestFailed", offset: Self.fileSize(destination), httpStatus: response.statusCode)
             switch response.statusCode {
             case 200:
                 // The whole file in one body: nothing to count on the way, so report it complete.
@@ -648,12 +694,14 @@ public struct SidecarClient: Sendable {
         let request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/result/offset", credential: credential, method: "GET")
         let (data, response) = try await perform(request)
+        if response.statusCode != 200 { await diagnostics.record(leaseId: leaseId, reason: "Worker.RequestFailed", httpStatus: response.statusCode) }
         switch response.statusCode {
         case 200:
             guard
                 let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                 let bytes = (body["bytes"] as? NSNumber)?.int64Value
             else { throw SidecarError.unexpectedResponse(status: 200) }
+            await diagnostics.record(leaseId: leaseId, reason: "Worker.TransferOffset", offset: bytes, httpStatus: response.statusCode)
             return bytes
         case 404, 405:
             return nil
@@ -677,12 +725,14 @@ public struct SidecarClient: Sendable {
         request.setValue(String(offset), forHTTPHeaderField: "X-Optimisarr-Offset")
         request.httpBody = chunk
         let (data, response) = try await perform(request)
+        if response.statusCode != 200 { await diagnostics.record(leaseId: leaseId, reason: "Worker.RequestFailed", offset: offset, httpStatus: response.statusCode) }
         switch response.statusCode {
         case 200:
             guard
                 let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                 let bytes = (body["bytes"] as? NSNumber)?.int64Value
             else { throw SidecarError.unexpectedResponse(status: 200) }
+            await diagnostics.record(leaseId: leaseId, reason: "Worker.TransferAcknowledged", offset: bytes, httpStatus: response.statusCode)
             return bytes
         case 409:
             if let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -711,6 +761,7 @@ public struct SidecarClient: Sendable {
         request.setValue(sourceSha256, forHTTPHeaderField: "X-Optimisarr-Source-Sha256")
         request.setValue(candidateSha256, forHTTPHeaderField: "X-Optimisarr-Candidate-Sha256")
         let (data, response) = try await perform(request)
+        await diagnostics.record(leaseId: leaseId, reason: (200..<300).contains(response.statusCode) ? "Worker.TransferAcknowledged" : "Worker.RequestFailed", httpStatus: response.statusCode)
         return try Self.receipt(data, response)
     }
 

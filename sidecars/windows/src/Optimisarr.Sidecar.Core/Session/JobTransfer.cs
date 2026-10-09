@@ -16,7 +16,7 @@ namespace Optimisarr.Sidecar.Core.Session;
 /// corrupted transfer into a clear local failure rather than a delivery the server discards after
 /// the machine has already spent an hour on the encode.</para>
 /// </summary>
-public sealed class JobTransfer(HttpClient http)
+public sealed class JobTransfer(HttpClient http, DiagnosticJournal? diagnostics = null)
 {
     private const string SourceHashHeader = "X-Optimisarr-Source-Sha256";
     private const string CandidateHashHeader = "X-Optimisarr-Candidate-Sha256";
@@ -51,6 +51,7 @@ public sealed class JobTransfer(HttpClient http)
         using var response = await http.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
+        diagnostics?.Record(leaseId, "Worker.TransferOffset", offset: already, httpStatus: (int)response.StatusCode);
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
             // Already have the whole thing: the server has nothing beyond what is on disk.
@@ -90,6 +91,7 @@ public sealed class JobTransfer(HttpClient http)
             }
         }
 
+        diagnostics?.Record(leaseId, "Worker.TransferAcknowledged", offset: new FileInfo(destination).Length, httpStatus: (int)response.StatusCode);
         return DeclaredHash(response);
     }
 
@@ -142,6 +144,7 @@ public sealed class JobTransfer(HttpClient http)
                         chunk.Headers.Add(OffsetHeader, offset.ToString());
 
                         using var response = await http.SendAsync(chunk, cancellationToken);
+                        diagnostics?.Record(leaseId, response.IsSuccessStatusCode ? "Worker.TransferAcknowledged" : "Worker.RequestFailed", offset: offset, httpStatus: (int)response.StatusCode);
                         if (!response.IsSuccessStatusCode && WorthAnotherAttempt(response.StatusCode))
                         {
                             throw new SidecarException(
@@ -186,6 +189,7 @@ public sealed class JobTransfer(HttpClient http)
                 complete.Headers.Add(CandidateHashHeader, candidateSha256);
 
                 using var finished = await http.SendAsync(complete, cancellationToken);
+                diagnostics?.Record(leaseId, finished.IsSuccessStatusCode ? "Worker.TransferAcknowledged" : "Worker.RequestFailed", offset: total, httpStatus: (int)finished.StatusCode);
                 if (finished.IsSuccessStatusCode)
                 {
                     return true;
@@ -252,6 +256,7 @@ public sealed class JobTransfer(HttpClient http)
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
 
         using var response = await http.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode) diagnostics?.Record(leaseId, "Worker.RequestFailed", httpStatus: (int)response.StatusCode);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             // An older server offers no resumable delivery at all, so it holds nothing and the
@@ -271,7 +276,9 @@ public sealed class JobTransfer(HttpClient http)
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         using var document = System.Text.Json.JsonDocument.Parse(body);
-        return document.RootElement.TryGetProperty("bytes", out var bytes) ? bytes.GetInt64() : 0;
+        var held = document.RootElement.TryGetProperty("bytes", out var bytes) ? bytes.GetInt64() : 0;
+        diagnostics?.Record(leaseId, "Worker.TransferOffset", offset: held, httpStatus: (int)response.StatusCode);
+        return held;
     }
 
     /// <summary>

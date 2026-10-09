@@ -120,3 +120,14 @@ See [Linux container setup](../setup/linux-sidecar.md) and [worker placement and
 [Capture instructions and manifests](../images/README.md) record source versions, fixture data,
 native-renderer limitations and repeatable commands. Dated review evidence is kept separately
 and retains its original screenshots.
+
+## Diagnostic capture
+
+Explicit consent, bounded retention, final collection and local recovery are described in the
+[diagnostic guide](../troubleshooting/diagnostics.md#collect-diagnostic-evidence).
+
+![Diagnostic capture controls before recording](../images/optimisarr-diagnostics-settings-dark.png)
+
+![Recording diagnostics and retained-history controls](../images/optimisarr-diagnostics-recording-dark.png)
+
+![Diagnostic capture on a phone](../images/optimisarr-diagnostics-mobile-dark.png)

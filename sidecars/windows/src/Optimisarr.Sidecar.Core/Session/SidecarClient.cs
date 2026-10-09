@@ -1,3 +1,4 @@
+using Optimisarr.Core.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -65,8 +66,10 @@ public sealed record SidecarUpdate(string Version, Uri ReleasePage)
 /// Deliberately free of any Windows service machinery so the whole conversation can be tested
 /// against a fake handler rather than a live server.
 /// </summary>
-public sealed class SidecarClient(HttpClient http)
+public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnosticJournal = null)
 {
+    public DiagnosticJournal Diagnostics { get; } = diagnosticJournal ?? new();
+
     /// <summary>
     /// The options every request and response is read with. Internal so a test can decode a real
     /// server payload exactly as this client would, which is the check that was missing when a
@@ -222,6 +225,31 @@ public sealed class SidecarClient(HttpClient http)
             case HttpStatusCode.OK:
                 var payload = await response.Content.ReadFromJsonAsync<HeartbeatResponse>(Json, cancellationToken)
                     ?? throw new SidecarException("The server's check-in reply could not be read.", recoverable: true);
+                Diagnostics.Apply(payload.DiagnosticCapture, DateTimeOffset.UtcNow);
+                if (payload.DiagnosticCapture is { } consent)
+                {
+                    using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    bounded.CancelAfter(TimeSpan.FromSeconds(3));
+                    try
+                    {
+                        while (!bounded.IsCancellationRequested)
+                        {
+                            var batch = Diagnostics.Pending();
+                            if (batch is null && consent.Recording) break;
+                            batch ??= new SidecarDiagnosticBatch(1, consent.SessionId, Guid.NewGuid(), [], Final: true, DroppedEvents: Diagnostics.DroppedEvents);
+                            using var captureRequest = new HttpRequestMessage(HttpMethod.Post, Endpoint(pairing.ServerAddress, "/api/workers/diagnostics"))
+                            { Content = JsonContent.Create(batch, options: Json) };
+                            captureRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+                            using var captureResponse = await http.SendAsync(captureRequest, bounded.Token);
+                            if (!captureResponse.IsSuccessStatusCode) break;
+                            var ack = await captureResponse.Content.ReadFromJsonAsync<DiagnosticAck>(Json, bounded.Token);
+                            if (batch.Final) break;
+                            if (ack is null || ack.AcknowledgedSequence == 0) break;
+                            Diagnostics.Acknowledge(batch, ack.AcknowledgedSequence);
+                        }
+                    }
+                    catch (Exception e) when (e is HttpRequestException or OperationCanceledException or JsonException) { }
+                }
                 return new HeartbeatResult(
                     payload.WorkerId,
                     payload.ProtocolVersion,
@@ -262,7 +290,7 @@ public sealed class SidecarClient(HttpClient http)
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
 
         using var response = await http.SendAsync(request, cancellationToken);
-        return response.StatusCode switch
+        var assignment = response.StatusCode switch
         {
             HttpStatusCode.NoContent => null,
             HttpStatusCode.OK => await response.Content.ReadFromJsonAsync<Assignment>(Json, cancellationToken),
@@ -271,6 +299,8 @@ public sealed class SidecarClient(HttpClient http)
             _ => throw new SidecarException(
                 $"The server replied unexpectedly to a claim (HTTP {(int)response.StatusCode}).", recoverable: true),
         };
+        if (assignment is not null) Diagnostics.Assignment(assignment.LeaseId, assignment.JobId);
+        return assignment;
     }
 
     /// <summary>
@@ -312,6 +342,7 @@ public sealed class SidecarClient(HttpClient http)
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
 
         using var response = await http.SendAsync(request, cancellationToken);
+        Diagnostics.Stage(leaseId, stage.ToString(), encodedSeconds, (int)response.StatusCode);
         if (response.IsSuccessStatusCode)
         {
             return;
@@ -401,6 +432,7 @@ public sealed class SidecarClient(HttpClient http)
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
         using var response = await http.SendAsync(request, cancellationToken);
+        Diagnostics.Record(leaseId, response.IsSuccessStatusCode ? "Worker.VerificationAcknowledged" : "Worker.RequestFailed", httpStatus: (int)response.StatusCode);
         if (!response.IsSuccessStatusCode)
             throw new SidecarException($"Full verification evidence was refused (HTTP {(int)response.StatusCode}).", recoverable: false);
     }
@@ -434,6 +466,7 @@ public sealed class SidecarClient(HttpClient http)
         using var response = await http.SendAsync(request, cancellationToken);
         // A shutdown request must distinguish an acknowledged hand-back from a lease that may
         // still be held. The runner preserves its original failure reason in the returned outcome.
+        Diagnostics.Record(leaseId, response.IsSuccessStatusCode ? "Worker.LeaseReleased" : "Worker.RequestFailed", httpStatus: (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
     }
 
@@ -463,6 +496,8 @@ public sealed class SidecarClient(HttpClient http)
         response.EnsureSuccessStatusCode();
     }
 
+    private sealed record DiagnosticAck(long AcknowledgedSequence);
+
     private sealed record HeartbeatResponse(
         int WorkerId,
         int ProtocolVersion,
@@ -471,7 +506,8 @@ public sealed class SidecarClient(HttpClient http)
         bool Draining,
         string? UpdateVersion = null,
         string? UpdateUrl = null,
-        string? BrandStyle = null);
+        string? BrandStyle = null,
+        SidecarDiagnosticConsent? DiagnosticCapture = null);
 
     /// <summary>
     /// The server's machine-readable errors carry a human sentence in <c>error</c>. Surfacing that

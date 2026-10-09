@@ -103,6 +103,18 @@ public sealed class TrayApp : Application
             }
         };
         menu.Items.Add(shutdownItem);
+        menu.Items.Add("Export local diagnostics…", null, (_, _) => Dispatcher.Invoke(() =>
+        {
+            using var save = new Forms.SaveFileDialog { Filter = "Diagnostic JSON|*.json", FileName = "optimisarr-sidecar-diagnostics.json" };
+            if (save.ShowDialog() != Forms.DialogResult.OK) return;
+            try
+            {
+                var journal = new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Optimisarr", "Sidecar"));
+                File.WriteAllBytes(save.FileName, journal.Export());
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            { Forms.MessageBox.Show("Could not export diagnostics: " + e.Message, "Optimisarr Sidecar"); }
+        }));
         menu.Items.Add("Quit tray — keep worker running", null, (_, _) => Dispatcher.Invoke(Shutdown));
         tray.ContextMenuStrip = menu;
         _ = WatchActivityAsync();

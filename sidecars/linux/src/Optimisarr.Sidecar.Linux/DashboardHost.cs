@@ -22,6 +22,7 @@ public static class DashboardHost
         });
         app.UseDefaultFiles();
         app.UseStaticFiles();
+        app.MapGet("/api/sidecar/diagnostics", () => Results.File(dashboard.Diagnostics?.Export() ?? "{\"schemaVersion\":1,\"entries\":[]}"u8.ToArray(), "application/json", "optimisarr-sidecar-diagnostics.json"));
         app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
         app.MapGet("/api/sidecar/status", () =>
         {

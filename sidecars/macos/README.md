@@ -423,3 +423,16 @@ these repository secrets:
 | `SIDECAR_NOTARY_ISSUER` | The Issuer ID |
 
 Base64 a file for pasting with `base64 -i <file> | pbcopy`.
+
+## Diagnostic capture and local export
+
+Enhanced capture is off by default and requires an explicit session in the server’s
+**Settings → System → Diagnostic capture**. Protocol 10 sidecars mirror structured job,
+stage, transfer and tool-identity records during that session. Loss of server contact
+stops recording within 90 seconds; restarting a sidecar never reactivates capture by itself.
+
+Use **Export local diagnostics…** in the menu’s **More** actions to recover retained records while the server is unavailable.
+The local journal is bounded to 2,048 records, 1 MiB and seven days. It excludes pairing
+credentials, arbitrary process output and media payloads. See the
+[diagnostic guide](../../docs/troubleshooting/diagnostics.md#collect-diagnostic-evidence)
+for collection, retention and sharing boundaries.

@@ -10,6 +10,7 @@
   import { jobFailureDescription, jobFailureStory } from '../i18n/jobErrors'
   import { mediaTitle } from '../format'
   import Thumbnail from './Thumbnail.svelte'
+  import JobDiagnosticDownload from './JobDiagnosticDownload.svelte'
 
   let groups = $state<FailureGroup[]>([])
   let loading = $state(true)
@@ -137,6 +138,8 @@
                   {openLogJobId === sample.jobId ? i18n.m.shared.hide_log : i18n.m.shared.view_log}
                 </button>
               </div>
+
+              <div class="mt-2"><JobDiagnosticDownload jobId={sample.jobId} /></div>
 
               {#if openLogJobId === sample.jobId}
                 <div class="mt-2">

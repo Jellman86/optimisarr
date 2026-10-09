@@ -28,45 +28,91 @@ No copyrighted material is used.
 
 ![System Tools card showing FFmpeg, VMAF, and ffprobe availability and executable paths](../images/optimisarr-settings-tools-dark.png)
 
-## Collect a job diagnostic bundle
+## Collect diagnostic evidence
 
 Open **Settings → System → Diagnostic capture** before reproducing a problem. Choose
-**1 hour**, **24 hours**, **7 days**, or **Until stopped**. Enter a job ID to limit
-the capture to one job; leaving it empty records job transitions across the
-queue. **Include full media paths in the export** is off by default. Start the
-capture, reproduce the issue, then select **Stop capture**. Enter the job ID
-under **Job ID to export** and select **Download diagnostics**. The JSON file
-contains the selected job's server-held state transitions, attempt summaries,
-worker leases, and verification summaries. Schema version 2 also includes the
-server-held worker packet endpoints, timestamped packet counts, regression counts,
-and decode error counts when retained evidence contains them. Probe JSON, error
-text and commands remain excluded.
+**1 hour**, **24 hours**, **7 days**, or **Until stopped**, optionally limited to one job.
+The page lists online participants. Local capture requires protocol 10 sidecars; older
+workers remain usable for media work but are identified as needing an update for local diagnostics.
+**Include full media paths in the export** and **Continue recording after server restart**
+are off by default. Even an **Until stopped** capture stops on restart unless that second
+option was selected. A recording indicator remains visible throughout the application.
 
-Each lease labels its evidence as `Available`, `Missing`, `Malformed`, or
-`Oversized`. `Available` means a record could be read, not that verification passed
-or that the candidate file still exists. Hash comparisons identify whether the
-record matches the delivered candidate, the worker's reported quality-source hash,
-and the frozen contract; `null` means the comparison cannot be established.
-Stored work/contract SHA-256 values identify the exact saved JSON, not a semantic
-command hash. Worker version/OS/protocol are explicitly labelled as the **current
-registration**; they are not an attempt-time snapshot. Historical packet evidence
-has no recorded tool build or timestamp command, so its timeline method is
-`NotRecorded`. Do not assume an old endpoint used source `+genpts`.
+Choose **Stop and collect** to stop recording, allow online workers to send their final
+records, and download a session bundle. Collection waits up to 35 seconds; an offline worker
+or incomplete upload is explicitly listed in the manifest. **Stop capture** stops without
+downloading. Expiry also stops recording. Sidecars renew consent on check-in and stop local
+recording within 90 seconds of losing the server, or sooner at the disclosed expiry.
 
-The capture is off until you start it. Each session records at most 10,000
-enhanced events. Ended sessions and their events are removed after seven days;
-sessions containing a recorded failure remain for 30 days. An **Until stopped**
-session stays active across restarts until you stop it. You can still download
-a stopped session until retention removes it. The export omits raw FFmpeg logs,
-commands, stored credential fields and media content. Sidecar-local diagnostic logs are not
-yet collected; the bundle's manifest names that omission. If you opt in to
-full paths, review the file before sharing it publicly.
-Bundles also bound historical attempts, worker leases and verification check
-summaries; the manifest reports when older records were omitted.
+![Diagnostic capture settings with duration, scope, retention and privacy controls](../images/optimisarr-diagnostics-settings-dark.png)
 
-This is an administrative feature. Protect remote access to the UI/API with an
-authenticated reverse proxy or the admin token. A bundle may still reveal
-technical information about your server and media policy, even without paths.
+Select a retained capture to download it again, pin it, or delete an ended, unpinned capture.
+Leaving **Job ID to export** empty downloads the session; optional time limits filter its
+timeline by server receipt time. A job export includes that job's complete captured history.
+Worker downloads filter the session timeline by worker. Related current job summaries can
+contain context outside the selected time or worker filter. Queue job details separate current
+verification from captured historical gates and provide **Copy issue summary**. The Failures
+view also offers a direct download; when no capture exists, it opens capture settings.
+
+![Recording diagnostic capture with collection and retained-history controls](../images/optimisarr-diagnostics-recording-dark.png)
+
+### What the bundle establishes
+
+Schema version **4** correlates job, execution attempt, parent job, worker, lease, sidecar
+instance and local sequence. Server receipt IDs and timestamps provide ordering; worker
+clock times are retained separately and may differ. Replay uploads do not duplicate events.
+Attempt archive events preserve rejected reports even when a retry clears the current report.
+New lease events freeze worker version, OS, architecture, protocol and advertised encoders;
+sidecars record SHA-256 identities for their actual encoding, probe and measurement tools.
+Missing hashes remain unknown. Existing leases identify worker metadata as
+`CurrentWorkerRegistration`, which must not be mistaken for an attempt-time snapshot.
+
+Captured evidence includes bounded verification outcomes, VMAF and audio-distance summaries,
+source/candidate hashes and sizes, numeric stream/timestamp/decode summaries where available,
+contract identities, scheduling hold reasons, transfer acknowledgements and replacement or
+rollback outcomes. Policy snapshots are event-time values; saved contract hashes identify the
+frozen worker contracts. These identities do not establish that verification passed. Current
+lease evidence labels availability as `Available`, `Missing`, `Malformed`, or `Oversized`;
+`Available` means readable evidence, not a passing verdict or an existing candidate file.
+Legacy timing methods and tool identities that were never recorded remain unknown.
+
+The manifest reference identifies the selected captured event history and export scope. It
+is stable across repeated downloads of the same captured history; it is **not** a checksum
+of mutable current-job context or the complete downloaded file. Share the JSON alongside the
+copied summary when investigating an issue.
+
+### Privacy, bounds and local recovery
+
+Capture is off until explicitly started. A session stores at most 10,000 events and the chosen
+64 KiB–16 MiB storage budget (the UI offers 1–16 MiB, default 4 MiB). At most 20 sessions are
+retained. Routine retention defaults to seven days after capture ends, configurable from
+1–30 days; a recorded failure defaults to 30 days, configurable up to 90 days and never below
+routine retention. Pinning prevents automatic pruning. Cleanup runs at startup and every six
+hours. A visible cap warning and manifest omissions explain incomplete history.
+
+Session exports are bounded to 8 MiB, 200 job summaries and bounded attempts, leases and report
+checks. If necessary, later events or job context are omitted with an explanation; select a
+narrower time range for another export. Job bundles bound attempts to eight, leases to 500,
+and current report checks to 100; frozen event reports retain up to 32 checks, prioritising
+failures. The timeline displays the latest 100 captured records; downloads retain the bounded
+history. These limits do not stop or weaken media verification.
+
+Raw process text, commands, credentials, probe tags, viewer identities and media payloads are
+excluded. Only canonical known tool-error phrases and typed measurements enter captured events.
+Commands and saved contracts may be represented by hashes. Full paths require explicit opt-in;
+review any export before sharing it publicly.
+
+Each sidecar keeps a private local journal, bounded to 2,048 entries, 1 MiB and seven days.
+Rotation counts records lost before acknowledgement; the bundle reports
+`CollectedWithLocalOmissions` when a final upload discloses such a loss. Acknowledged records
+remain locally exportable until local retention removes them. Local recovery never reactivates
+recording without renewed consent. Use **Export local diagnostics…** in the Mac menu or Windows
+tray, or the Linux sidecar's **Export local diagnostics** link, if the server is unavailable.
+Local exports contain structured records and tool hashes, not the worker credential or raw logs.
+
+This is an administrative feature. Protect remote UI/API access with an authenticated reverse
+proxy or admin token. Bundles can reveal technical information about the media policy even
+without full paths.
 
 ## Common causes
 

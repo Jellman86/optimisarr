@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CapturedDiagnosticTimeline from '../components/CapturedDiagnosticTimeline.svelte'
   import { tick } from 'svelte'
   import { modal } from '../modal'
   import { isWorkingJob, isJobSuspended, jobLocation, verificationPhase } from '../job-presentation'
@@ -47,6 +48,7 @@
   let diagnosticCapture = $state<DiagnosticCapture | null>(null)
   let diagnosticLookupPending = $state(false)
   let downloadingDiagnostics = $state(false)
+  let diagnosticSummaryCopied = $state(false)
   let captureLookup = 0
   let detailOpener: HTMLElement | null = null
   let loadError = $state<string | null>(null)
@@ -304,6 +306,7 @@
     detailOpener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
     selectedJobId = id
     diagnosticCapture = null
+    diagnosticSummaryCopied = false
     diagnosticLookupPending = true
     const lookup = ++captureLookup
     error = null
@@ -314,10 +317,10 @@
 
   async function loadDiagnosticCapture(jobId: number, lookup: number) {
     try {
-      const capture = await api.diagnosticCapture()
+      const [latest, retained] = await Promise.all([api.diagnosticCapture(), api.diagnosticCaptures(jobId)])
       if (selectedJobId === jobId && captureLookup === lookup)
-        diagnosticCapture = capture && (capture.scopedJobId === null || capture.scopedJobId === jobId)
-          ? capture : null
+        diagnosticCapture = (Array.isArray(retained) ? retained[0] : null)
+          ?? (latest && (latest.scopedJobId === null || latest.scopedJobId === jobId) ? latest : null)
     } catch {
       // The operational job detail still works when enhanced capture is unavailable.
     } finally {
@@ -344,6 +347,25 @@
     } finally {
       downloadingDiagnostics = false
     }
+  }
+
+  async function copyDiagnosticSummary() {
+    if (!selectedJob || !diagnosticCapture) return
+    downloadingDiagnostics = true
+    try {
+      const blob = await api.diagnosticBundle(diagnosticCapture.id, selectedJob.id)
+      const bundle = JSON.parse(await blob.text())
+      const summary = { manifestId: bundle.manifest.manifestId, schemaVersion: bundle.manifest.schemaVersion,
+        collectedAt: bundle.manifest.collectedAt, job: bundle.job, attempts: bundle.attempts,
+        participants: bundle.manifest.participants,
+        events: bundle.events.slice(-100).map((event: { reasonCode: string; attempt: number; workerId: number | null; receivedAt: string; details?: unknown }) =>
+          ({ reasonCode: event.reasonCode, attempt: event.attempt, workerId: event.workerId, receivedAt: event.receivedAt, details: event.details })), omissions: bundle.manifest.omissions }
+      // Paths are deliberately excluded even if the operator selected them for the private bundle.
+      delete summary.job.path
+      await navigator.clipboard.writeText(JSON.stringify(summary, null, 2))
+      diagnosticSummaryCopied = true
+    } catch (cause) { error = cause instanceof Error ? cause.message : String(cause) }
+    finally { downloadingDiagnostics = false }
   }
 
   async function openDiagnosticSettings() {
@@ -740,6 +762,7 @@
         </section>
       {/if}
 
+      {#if diagnosticCapture && selectedJob}<CapturedDiagnosticTimeline captureId={diagnosticCapture.id} jobId={selectedJob.id} />{/if}
       <section class="queue-diagnostic-action" aria-label={i18n.m.settings.diagnostics_title}>
         <div>
           <h3>{i18n.m.settings.diagnostics_title}</h3>
@@ -749,6 +772,8 @@
           <span class="queue-diagnostic-pending" role="status">{i18n.m.common.loading_short}</span>
         {:else if diagnosticCapture}
           <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
+          <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
+          {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
         {:else}
           <button class="btn min-h-11" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
         {/if}

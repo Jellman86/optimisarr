@@ -200,10 +200,16 @@ exists in quarantine.
 | `GET` | `/api/ready` | Readiness check: database, writable paths, FFmpeg, and ffprobe are usable. |
 | `GET` | `/api/auth/status` | Authentication discovery: whether `OPTIMISARR_ADMIN_TOKEN` is configured. |
 | `GET` | `/api/diagnostics` | Admin support snapshot: version, environment, settings, library and integration summaries, stats, and the failure summary. Assembled from non-secret data only (no tokens, API keys, or webhook URLs). Protected by the admin token when one is set. |
-| `GET` | `/api/diagnostics/capture` | Latest opt-in capture session, or `null`. |
-| `POST` | `/api/diagnostics/capture` | Start a session with `durationHours` (`1`, `24`, `168`, or `null` for until stopped), optional `scopedJobId`, and `includePaths` (default `false`). Returns `409` if another session is active. |
-| `POST` | `/api/diagnostics/capture/{id}/stop` | Stop a session; its evidence remains downloadable until retention removes it. |
-| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. Schema version 3 includes sanitized worker timestamps/decode measurements, record availability, hash comparisons, stored contract version, decoded picture counts and candidate audio timestamps. Identity comparisons cover supported video, audio and soundtrack contracts; they do not authorise replacement. Missing counts remain unknown, and packet counts are separate. The manifest lists omissions, current-registration identity limits, unrecorded timeline methods and whether full paths were included. |
+| `GET` | `/api/diagnostics/capture` | Latest opt-in capture, or `null`. |
+| `GET` | `/api/diagnostics/captures` | Retained captures, newest first, optionally filtered by `jobId`. |
+| `POST` | `/api/diagnostics/capture` | Start capture: `durationHours` (`1`, `24`, `168`, or explicit `null`), optional `scopedJobId`, `includePaths` and `persistAcrossRestart` (both default false), `retentionDays` (1–30, default 7), `failureRetentionDays` (routine retention–90, default 30), `maximumBytes` (64 KiB–16 MiB, default 4 MiB). Returns `409` when already recording or 20 sessions are retained. |
+| `POST` | `/api/diagnostics/capture/{id}/stop` | Stop capture; retained evidence remains downloadable. |
+| `PUT` | `/api/diagnostics/capture/{id}/pin` | Set `{ "pinned": true/false }` to protect from automatic pruning. |
+| `DELETE` | `/api/diagnostics/capture/{id}` | Delete an ended, unpinned capture and its evidence; `409` otherwise. |
+| `GET` | `/api/diagnostics/capture/{id}/participants` | Collection receipt, mirrored count, local rotation count and availability for participating workers. |
+| `GET` | `/api/diagnostics/capture/{id}/bundle` | Schema 4 session export, bounded to 8 MiB; optional `workerId`, `fromUtc`, `toUtc` filter captured events by worker/server receipt time. Related current job context can include records outside that filter. |
+| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Schema 4 job history, immutable captured gates, current/archived reports, worker leases and sanitized numeric evidence. Manifest identifies omissions and distinguishes frozen snapshots from current registration. |
+| `POST` | `/api/workers/diagnostics` | Worker-credential-authenticated schema 1 batches, up to 100 records/128 KiB. Consent, scope and lease ownership are checked; instance/sequence replay is idempotent. Final upload receipts are accepted for 90 seconds after capture ends. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |

@@ -61,9 +61,10 @@ if (web is not null)
 var metricsTask = metrics.RunAsync(token);
 using var control = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 using var bulk = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-var client = new SidecarClient(control);
+var client = new SidecarClient(control, new DiagnosticJournal(options.Config, options.Ffmpeg, Path.Combine(Path.GetDirectoryName(options.Ffmpeg) ?? "", "ffprobe"), options.MeasurementFfmpeg));
+dashboard.Diagnostics = client.Diagnostics;
 var store = new FileCredentialStore(options.Config);
-var runner = new JobRunner(client, new JobTransfer(bulk), new ProcessTranscoder(), options.Ffmpeg,
+var runner = new JobRunner(client, new JobTransfer(bulk, client.Diagnostics), new ProcessTranscoder(), options.Ffmpeg,
     options.Scratch, metrics.Load, Console.WriteLine, measurementFfmpegPath: options.MeasurementFfmpeg,
     allowLinuxDevices: true, observe: dashboard.Observe,
     wantsPreview: () => dashboard.WantsPreview, publishPreview: dashboard.Preview);

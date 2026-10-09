@@ -42,6 +42,7 @@ async function mockQueue(page: Page) {
 
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
+    if (path === '/api/diagnostics/captures') return json(route, [])
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, {
       version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true,
@@ -111,6 +112,7 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
   const held = { ...job(9, 'Queued', null), relativePath: 'Severance S03E04.mkv', waitingForWorker: true }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
+    if (path === '/api/diagnostics/captures') return json(route, [])
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/jobs') return json(route, [remote, returned, held])
@@ -211,6 +213,7 @@ const clearQueue = {
 async function mockWorkingQueue(page: Page, fixture: { jobs: ReturnType<typeof job>[]; queue?: Record<string, unknown> }) {
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname
+    if (path === '/api/diagnostics/captures') return json(route, [])
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { completed: true, completedStep: 5, stepCount: 5 })
     if (path === '/api/jobs') return json(route, fixture.jobs)
@@ -273,6 +276,7 @@ test('a size preflight hold explains the estimate and requeues only after confir
   let approvals = 0
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname
+    if (path === '/api/diagnostics/captures') return json(route, [])
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { completed: true, completedStep: 5, stepCount: 5 })
     if (path === '/api/jobs') return json(route, [held])
@@ -799,4 +803,24 @@ test('a finished job says how big it was before and after', async ({ page }) => 
   await page.locator('#queue-job-52').click()
   await expect(details).toContainText('386 MB → 521 MB')
   await expect(details).not.toContainText('smaller')
+})
+
+
+test('retained capture shows historical gates after a newer capture targets another job', async ({ page }) => {
+  await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false)] })
+  const older = { id: 'retained', status: 'Stopped', scopedJobId: 8, eventsStored: 1, startedAt: '2026-10-01T10:00:00Z', retainUntil: '2026-11-01T10:00:00Z' }
+  await page.route('**/api/diagnostics/capture', route => json(route, { ...older, id: 'newer', scopedJobId: 9 }))
+  await page.route('**/api/diagnostics/captures?jobId=8', route => json(route, [older]))
+  await page.route('**/api/diagnostics/capture/retained/jobs/8/bundle', route => json(route, {
+    manifest: { manifestId: 'retained-reference', schemaVersion: 4, omissions: [] }, job: { id: 8, path: '/private/title.mkv' }, attempts: [],
+    events: [{ id: 1, receivedAt: '2026-10-01T10:00:00Z', occurredAt: '2026-10-01T10:00:00Z', attempt: 1, workerId: 4,
+      source: 'Server', reasonCode: 'Job.StatusChanged', currentStatus: 'Failed', details: { report: { passed: false, location: 'Worker', checks: [{ name: 'TimestampIntegrity', outcome: 'Failed' }], vmafHarmonicMean: 97.5 } } }],
+  }))
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-8').click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details.getByRole('button', { name: 'Download diagnostics' })).toBeVisible()
+  await details.getByText('Verification · Worker', { exact: true }).click()
+  await expect(details.getByText('TimestampIntegrity', { exact: true })).toBeVisible()
+  await expect(details.getByText('VMAF: 97.50')).toBeVisible()
 })

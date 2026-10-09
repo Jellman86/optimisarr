@@ -69,6 +69,7 @@ try {
   if(path==='/api/results')return json(route,f.results)
   if(path==='/api/results/daily')return json(route,f.dailyResults)
   if(path==='/api/diagnostics/capture')return json(route,null)
+  if(path==='/api/diagnostics/captures')return json(route,[])
   if(path==='/api/settings/cleanup')return json(route,{retentionDays:14,dryRunMode:true,failedOutputCount:1,failedOutputBytes:2e9,quarantinedOriginalCount:0,quarantinedOriginalBytes:0,planToken:'documentation',totalCount:1,totalBytes:2e9})
   if(path==='/api/system/tools')return json(route,{tools:f.tools})
   if(path==='/api/system/hardware')return json(route,{hardware:f.hardware})
@@ -134,6 +135,12 @@ try {
  for(const [room,name]of[['encoding','settings-general'],['files','settings-files'],['media-servers','settings-connections'],['download-managers','settings-downloads'],['notifications','settings-notifications'],['workers','settings-workers'],['system','settings-system']]){await go('/settings/'+room);await expect(page.getByRole('button',{name:'All settings',exact:true})).toBeVisible();if(room==='encoding')await page.locator('.workload-details summary').click();await shot(name)}
  await go('/settings/system');await page.getByRole('heading',{name:'Tools',exact:true}).scrollIntoViewIfNeeded();await shot('settings-tools','[data-config-section]:has(h2:text-is("Tools"))');await aliases('settings-tools',['tools']);await page.getByRole('heading',{name:'Hardware acceleration',exact:true}).scrollIntoViewIfNeeded();await page.locator('#global-hardware').evaluate(el=>el.scrollIntoView({block:'start'}));await page.waitForTimeout(100);const hardwareBounds=await page.locator('#global-hardware').boundingBox(),encoderBounds=await page.locator('#global-encoders').boundingBox();await page.screenshot({path:resolve(output,'optimisarr-settings-hardware-dark.png'),clip:{x:hardwareBounds.x,y:hardwareBounds.y,width:hardwareBounds.width,height:encoderBounds.y+encoderBounds.height-hardwareBounds.y},animations:'disabled'});captured.push('settings-hardware')
  await page.getByRole('heading',{name:'Backup & restore',exact:true}).scrollIntoViewIfNeeded();await shot('settings-backup','[data-config-section]:has(h2:text-is("Backup & restore"))')
+ const diagnosticCapture={id:'22222222-2222-4222-8222-222222222222',status:'Recording',startedAt:'2026-09-17T11:20:00Z',expiresAt:'2026-09-18T11:20:00Z',stoppedAt:null,scopedJobId:null,includePaths:false,eventsStored:146,maximumEvents:10000,eventLimitReached:false,pinned:false,bytesStored:78620,maximumBytes:4194304}
+ await go('/settings/system');await shot('diagnostics-settings','#diagnostic-capture')
+ await page.route('**/api/diagnostics/capture',route=>json(route,diagnosticCapture));await page.route('**/api/diagnostics/captures',route=>json(route,[diagnosticCapture]))
+ await page.reload();await expect(page.locator('#diagnostic-capture')).toContainText('Recording diagnostics');await shot('diagnostics-recording','#diagnostic-capture')
+ await page.setViewportSize({width:390,height:1800});await shot('diagnostics-mobile','#diagnostic-capture');await page.setViewportSize({width:1440,height:1000})
+ await page.unroute('**/api/diagnostics/capture');await page.unroute('**/api/diagnostics/captures');await page.reload();await go('/settings/system')
  await page.setViewportSize({width:1440,height:1250});await go('/libraries/1/quality-check');await expect(page.getByRole('button',{name:'Prepare blind samples'})).toBeVisible();await shot('personal-quality-check');await page.getByRole('button',{name:'Prepare blind samples'}).click();await expect(page.locator('video')).toBeVisible();await expect.poll(()=>page.locator('video').evaluate(v=>v.readyState>=2)).toBe(true);await shot('personal-quality-video');await go('/libraries/4/quality-check');await page.getByRole('button',{name:'Prepare blind samples'}).click();await expect(page.locator('main img').first()).toBeVisible();await shot('personal-quality-image')
  await page.route('**/api/jobs?*',route=>json(route,[f.audioJob]));await page.route('**/api/jobs',route=>json(route,[f.audioJob]));
  await page.setViewportSize({width:1440,height:1000});await go('/queue');await page.locator('tbody tr').first().getByRole('button').first().click();
@@ -166,7 +173,7 @@ try {
   description:'Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.',
   command:'cd web && node scripts/capture-docs.mjs',applicationVersion:f.applicationVersion,capturedOn:new Date().toISOString().slice(0,10),
   uiRevision:execFileSync('git',['rev-parse','HEAD'],{cwd:web,encoding:'utf8'}).trim(),
-  viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
+  viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},diagnosticMobileViewport:{width:390,height:1800},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
   images:captured.map(name=>`optimisarr-${name}-dark.png`),
   sha256:Object.fromEntries(await Promise.all(captured.map(async name=>{const file=`optimisarr-${name}-dark.png`;return [file,createHash('sha256').update(await readFile(resolve(output,file))).digest('hex')]}))),
  },null,2)+'\n')

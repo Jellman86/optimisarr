@@ -13,7 +13,9 @@ internal sealed record DiagnosticBundleManifest(
     DateTimeOffset CollectedAt,
     bool PathsIncluded,
     bool EventLimitReached,
-    IReadOnlyList<string> Omissions);
+    IReadOnlyList<string> Omissions,
+    string? ManifestId = null,
+    IReadOnlyList<DiagnosticParticipant>? Participants = null);
 
 internal sealed record DiagnosticReportSummary(
     bool Passed,
@@ -82,7 +84,8 @@ internal sealed record DiagnosticEventSummary(
     int? WorkerId,
     string ReasonCode,
     string PreviousStatus,
-    string CurrentStatus);
+    string CurrentStatus,
+    string Source, DateTimeOffset ReceivedAt, Guid? InstanceId, long? SourceSequence, JsonElement? Details);
 
 internal sealed record DiagnosticJobBundle(
     DiagnosticBundleManifest Manifest,
@@ -139,10 +142,13 @@ internal static class DiagnosticJobBundleQueries
             "Worker version, OS and protocol describe the current registration, not a frozen attempt-time identity.",
             "Historical packet evidence does not record the timestamp command or tool build; timeline method is NotRecorded.",
             "A worker evidence state describes record availability, not verification acceptance or media availability.",
-            "Sidecar-local diagnostic logs are not collected by this bundle; retained server-held lease measurements are included.",
+            "Sidecar events are mirrored on check-in; unacknowledged/offline local records may be missing. Export locally to recover retained records.",
+            "Events are ordered by server receipt ID. Sidecar occurredAt uses the sidecar clock; receivedAt and instance/sequence establish causal ordering.",
             "Raw FFmpeg output and commands are omitted because they may contain paths or credentials.",
             "Only retries already archived in job attempt history are listed as historical attempts; the current attempt is summarised on the job.",
-            "Each verification report includes at most 100 check names and outcomes; raw check details are omitted."
+            "Each current/historical job report includes at most 100 check names and outcomes. Captured transition reports retain at most 32 checks. Raw check text is omitted.",
+            "Captured event details are bounded to 4 KiB. detailsTruncated identifies records whose policy/report snapshot exceeded that bound; recorded hashes remain.",
+            "A missing attempt-time snapshot means it was not captured under consent. Current registration is never presented as historical provenance."
         };
         if (leaseCount > MaximumLeases)
         {
@@ -185,8 +191,9 @@ internal static class DiagnosticJobBundleQueries
             job.FailureCategory?.ToString(),
             SummariseReport(job.VerificationReportJson, omissions));
         return new DiagnosticJobBundle(
-            new DiagnosticBundleManifest(3, session.Id, nowUtc, session.IncludePaths,
-                session.EventLimitReached, omissions),
+            new DiagnosticBundleManifest(4, session.Id, nowUtc, session.IncludePaths,
+                session.EventLimitReached, omissions, DiagnosticManifestIdentifier.For(session.Id, $"job:{jobId}", events.Select(e => e.Id)),
+                await DiagnosticSessionBundleQueries.ParticipantsAsync(db, session.Id, nowUtc, cancellationToken)),
             summary,
             attempts.Select(attempt => new DiagnosticAttemptSummary(
                 attempt.Number,
@@ -224,15 +231,16 @@ internal static class DiagnosticJobBundleQueries
                 entry.WorkerId,
                 DiagnosticSafeFields.EventReason(entry.ReasonCode),
                 DiagnosticSafeFields.Status(entry.PreviousStatus),
-                DiagnosticSafeFields.Status(entry.CurrentStatus))).ToList());
+                DiagnosticSafeFields.Status(entry.CurrentStatus), entry.Source == "Sidecar" ? "Sidecar" : "Server",
+                entry.ReceivedAt, entry.InstanceId, entry.SourceSequence,
+                DiagnosticDetailSanitizer.Read(entry.DetailsJson))).ToList());
     }
 
     private static int? ResolveAttemptWorkerId(JobAttemptSnapshot attempt, IReadOnlyList<JobLease> leases)
     {
-        if (attempt.WorkerName is null)
-        {
-            return null;
-        }
+        var frozenIds = leases.Where(lease => lease.ExecutionAttempt == attempt.Number).Select(lease => lease.WorkerId).Distinct().Take(2).ToArray();
+        if (frozenIds.Length == 1) return frozenIds[0];
+        if (attempt.WorkerName is null) return null;
 
         var matches = leases.Where(lease => lease.Worker?.Name == attempt.WorkerName
                 && lease.AcquiredAt <= attempt.EndedAt

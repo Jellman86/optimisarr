@@ -891,6 +891,13 @@ test('an overlapping later poll does not starve a completed status response', as
   await mockDashboard(page)
   await page.goto('/#/')
   await expect(page.locator('.status-strip')).toBeVisible()
+  // Finish startup polling before intercepting the two requests this test controls.
+  await page.evaluate(async () => {
+    const modulePath = '/src/lib/stores/counts.svelte.ts'
+    const { counts } = await import(modulePath)
+    counts.stop()
+    await counts.refresh()
+  })
   const pending: Route[] = []
   await page.route('**/api/queue/status', route => { pending.push(route) })
   for (let i = 0; i < 2; i++) {

@@ -8,15 +8,14 @@ namespace Optimisarr.Api.Diagnostics;
 public sealed class DiagnosticCaptureStore(OptimisarrDbContext db)
 {
     private static readonly SemaphoreSlim StartLock = new(1, 1);
-    private static readonly TimeSpan RoutineRetention = TimeSpan.FromDays(7);
-    private static readonly TimeSpan FailureRetention = TimeSpan.FromDays(30);
+
 
     public async Task<DiagnosticCaptureSession> StartAsync(
         int? durationHours,
         int? scopedJobId,
         bool includePaths,
         DateTimeOffset nowUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, DiagnosticCaptureOptions? options = null)
     {
         if (!DiagnosticCapturePolicy.IsAllowedDuration(durationHours)
             || scopedJobId is <= 0)
@@ -24,6 +23,10 @@ public sealed class DiagnosticCaptureStore(OptimisarrDbContext db)
             throw new ArgumentException("Choose a disclosed capture duration and a valid job ID.");
         }
 
+        options ??= new();
+        if (options.RetentionDays is < 1 or > 30 || options.FailureRetentionDays < options.RetentionDays
+            || options.FailureRetentionDays > 90 || options.MaximumBytes is < 65536 or > 16 * 1024 * 1024)
+            throw new ArgumentException("Choose retention of 1–30 days, failure retention up to 90 days and storage of 64 KiB–16 MiB.");
         await StartLock.WaitAsync(cancellationToken);
         try
         {
@@ -32,13 +35,20 @@ public sealed class DiagnosticCaptureStore(OptimisarrDbContext db)
                 throw new InvalidOperationException("Stop the active diagnostic capture before starting another.");
             }
 
+            await PruneEndedAsync(nowUtc, cancellationToken);
+            if (await db.DiagnosticCaptureSessions.CountAsync(cancellationToken) >= 20)
+                throw new InvalidOperationException("Twenty captures are retained. Delete an ended capture before starting another.");
             var session = new DiagnosticCaptureSession
             {
                 Id = Guid.NewGuid(),
                 StartedAt = nowUtc,
                 ExpiresAt = durationHours is { } hours ? nowUtc.AddHours(hours) : null,
                 ScopedJobId = scopedJobId,
-                IncludePaths = includePaths
+                IncludePaths = includePaths,
+                PersistAcrossRestart = options.PersistAcrossRestart,
+                RetentionDays = options.RetentionDays,
+                FailureRetentionDays = options.FailureRetentionDays,
+                MaximumBytes = options.MaximumBytes
             };
             db.DiagnosticCaptureSessions.Add(session);
             await db.SaveChangesAsync(cancellationToken);
@@ -73,50 +83,103 @@ public sealed class DiagnosticCaptureStore(OptimisarrDbContext db)
 
     public async Task<bool> StopAsync(Guid id, DateTimeOffset nowUtc, CancellationToken cancellationToken)
     {
-        var session = await db.DiagnosticCaptureSessions
-            .FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
-        if (session is null || session.StoppedAt is not null)
+        await OptimisarrDbContext.DiagnosticTransitionGate.WaitAsync(cancellationToken);
+        try
         {
-            return false;
-        }
+            var session = await db.DiagnosticCaptureSessions
+                .FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
+            if (session is not null && db.Entry(session).State == EntityState.Unchanged) await db.Entry(session).ReloadAsync(cancellationToken);
+            if (session is null || session.StoppedAt is not null)
+            {
+                return false;
+            }
 
-        session.StoppedAt = nowUtc;
-        await db.SaveChangesAsync(cancellationToken);
-        return true;
+            session.StoppedAt = session.ExpiresAt is { } expiry && expiry < nowUtc ? expiry : nowUtc;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        finally { OptimisarrDbContext.DiagnosticTransitionGate.Release(); }
+    }
+
+    public async Task StopOnRestartAsync(DateTimeOffset nowUtc, CancellationToken token)
+    {
+        await OptimisarrDbContext.DiagnosticTransitionGate.WaitAsync(token);
+        try
+        {
+            var sessions = await db.DiagnosticCaptureSessions.Where(s => s.StoppedAt == null && !s.PersistAcrossRestart).ToListAsync(token);
+            foreach (var session in sessions) session.StoppedAt = session.ExpiresAt is { } expiry && expiry < nowUtc ? expiry : nowUtc;
+            await db.SaveChangesAsync(token);
+        }
+        finally { OptimisarrDbContext.DiagnosticTransitionGate.Release(); }
+    }
+
+    public async Task SetPinnedAsync(Guid id, bool pinned, CancellationToken token)
+    {
+        await OptimisarrDbContext.DiagnosticTransitionGate.WaitAsync(token);
+        try
+        {
+            var session = await db.DiagnosticCaptureSessions.FirstOrDefaultAsync(s => s.Id == id, token)
+                ?? throw new KeyNotFoundException("Diagnostic capture not found.");
+            if (db.Entry(session).State == EntityState.Unchanged) await db.Entry(session).ReloadAsync(token);
+            session.Pinned = pinned;
+            await db.SaveChangesAsync(token);
+        }
+        finally { OptimisarrDbContext.DiagnosticTransitionGate.Release(); }
+    }
+
+    public async Task<bool> DeleteEndedAsync(Guid id, DateTimeOffset nowUtc, CancellationToken token)
+    {
+        await OptimisarrDbContext.DiagnosticTransitionGate.WaitAsync(token);
+        try
+        {
+            var session = await db.DiagnosticCaptureSessions.FirstOrDefaultAsync(s => s.Id == id, token);
+            if (session is null) return false;
+            if (db.Entry(session).State == EntityState.Unchanged) await db.Entry(session).ReloadAsync(token);
+            if (session.Pinned || DiagnosticCapturePolicy.IsRunning(session.StartedAt, session.ExpiresAt, session.StoppedAt, nowUtc))
+                throw new InvalidOperationException("Stop and unpin the capture before deleting its evidence.");
+            db.DiagnosticCaptureSessions.Remove(session); await db.SaveChangesAsync(token); return true;
+        }
+        finally { OptimisarrDbContext.DiagnosticTransitionGate.Release(); }
     }
 
     /// <summary>Prunes ended sessions and their events. Active explicit consent is never removed.</summary>
     public async Task<int> PruneEndedAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken)
     {
-        var sessions = await db.DiagnosticCaptureSessions.ToListAsync(cancellationToken);
-        var removed = 0;
-        foreach (var session in sessions)
+        await OptimisarrDbContext.DiagnosticTransitionGate.WaitAsync(cancellationToken);
+        try
         {
-            var endedAt = session.StoppedAt ?? session.ExpiresAt;
-            if (endedAt is null || endedAt > nowUtc)
+            var sessions = await db.DiagnosticCaptureSessions.ToListAsync(cancellationToken);
+            var removed = 0;
+            foreach (var session in sessions)
             {
-                continue;
+                if (db.Entry(session).State == EntityState.Unchanged) await db.Entry(session).ReloadAsync(cancellationToken);
+                var endedAt = session.StoppedAt ?? session.ExpiresAt;
+                if (session.Pinned || endedAt is null || endedAt > nowUtc)
+                {
+                    continue;
+                }
+
+                var hasFailure = session.HasFailure || await db.DiagnosticEvents.AsNoTracking()
+                    .AnyAsync(entry => entry.SessionId == session.Id
+                        && (entry.ReasonCode.StartsWith("Failure.")
+                            || entry.CurrentStatus == "Failed"), cancellationToken);
+                var retention = TimeSpan.FromDays(hasFailure ? session.FailureRetentionDays : session.RetentionDays);
+                if (endedAt.Value.Add(retention) > nowUtc)
+                {
+                    continue;
+                }
+
+                db.DiagnosticCaptureSessions.Remove(session);
+                removed++;
             }
 
-            var hasFailure = await db.DiagnosticEvents.AsNoTracking()
-                .AnyAsync(entry => entry.SessionId == session.Id
-                    && (entry.ReasonCode.StartsWith("Failure.")
-                        || entry.CurrentStatus == "Failed"), cancellationToken);
-            var retention = hasFailure ? FailureRetention : RoutineRetention;
-            if (endedAt.Value.Add(retention) > nowUtc)
+            if (removed > 0)
             {
-                continue;
+                await db.SaveChangesAsync(cancellationToken);
             }
 
-            db.DiagnosticCaptureSessions.Remove(session);
-            removed++;
+            return removed;
         }
-
-        if (removed > 0)
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-
-        return removed;
+        finally { OptimisarrDbContext.DiagnosticTransitionGate.Release(); }
     }
 }
