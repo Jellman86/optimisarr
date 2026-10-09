@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
-RELEASE_HEADING = re.compile(r"^(?P<version>\d+\.\d+\.\d+) — \d{4}-\d{2}-\d{2}$")
+RELEASE_HEADING = re.compile(r"^(?P<version>\d+\.\d+\.\d+) (?:—|-) \d{4}-\d{2}-\d{2}$")
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ def validate(root: Path, context: ReleaseContext) -> list[str]:
                     f"release tag {context.latest_tag}"
                 )
             if not any(
-                heading.startswith(f"{latest_version} — ") for heading in headings[1:]
+                heading.startswith((f"{latest_version} — ", f"{latest_version} - ")) for heading in headings[1:]
             ):
                 errors.append(
                     f"development changelog must retain the {latest_version} release section"
@@ -95,7 +95,7 @@ def validate(root: Path, context: ReleaseContext) -> list[str]:
         if match is None or match.group("version") != application_version:
             errors.append(
                 "release changelog must begin with the dated application version "
-                f"'## {application_version} — YYYY-MM-DD'"
+                f"'## {application_version} - YYYY-MM-DD'"
             )
 
         if context.tag_name and context.tag_name != f"v{application_version}":

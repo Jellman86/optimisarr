@@ -136,7 +136,13 @@ public sealed class TrayApp : Application
 
     private static void ExportLocalDiagnostics()
     {
-        using var save = new Forms.SaveFileDialog { Filter = "Diagnostic JSON|*.json", FileName = "optimisarr-sidecar-diagnostics.json" };
+        using var save = new Forms.SaveFileDialog
+        {
+            Filter = "Diagnostic JSON|*.json",
+            FileName = "optimisarr-sidecar-diagnostics.json",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            RestoreDirectory = true,
+        };
         if (save.ShowDialog() != Forms.DialogResult.OK) return;
         try
         {

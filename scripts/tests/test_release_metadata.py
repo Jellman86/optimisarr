@@ -82,6 +82,20 @@ class ReleaseMetadataTests(unittest.TestCase):
 
         self.assertEqual([], errors)
 
+    def test_release_accepts_a_plain_hyphen_in_the_dated_heading(self) -> None:
+        self.assertEqual([], self.validate_fixture(
+            ReleaseContext.release(tag_name="v0.2.9"),
+            changelog_heading="0.2.9 - 2026-07-29", released_version=None,
+        ))
+
+    def test_development_retains_a_release_heading_with_a_plain_hyphen(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_repository(root)
+            changelog = root / "CHANGELOG.md"
+            changelog.write_text(changelog.read_text().replace(" — ", " - "))
+            self.assertEqual([], validate(root, ReleaseContext.development(latest_tag="v0.2.9")))
+
     def test_release_rejects_tag_that_does_not_match_application_version(self) -> None:
         errors = self.validate_fixture(
             ReleaseContext.release(tag_name="v0.2.8"),

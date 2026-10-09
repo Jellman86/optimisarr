@@ -2211,6 +2211,12 @@
               "string"
             ]
           },
+          "artworkUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "device": {
             "type": [
               "null",
@@ -6882,6 +6888,32 @@
         },
         "tags": [
           "Integrations"
+        ]
+      }
+    },
+    "/api/playback/{key}/artwork": {
+      "get": {
+        "operationId": "PlaybackArtwork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
         ]
       }
     },

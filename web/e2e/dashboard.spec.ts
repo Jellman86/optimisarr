@@ -227,13 +227,13 @@ test('a queue held by playback names what is playing and who is watching', async
 
   // The strip has one line: the first playback and who, then how many more; every playback is in its tooltip.
   const reason = page.locator('.status-strip-reason')
-  await expect(reason).toHaveText('Playback (2): Example Show · S2E5 · Pilot — alex +1 more')
+  await expect(reason).toHaveText('Playback (2): Example Show · S2E5 · Pilot · alex +1 more')
   await expect(reason).toHaveAttribute('href', '#/queue')
   await reason.focus()
   await expect(reason).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/#\/queue$/)
-  await expect(reason).toHaveAttribute('title', 'Riker Plex · Example Show · S2E5 · Pilot — alex on Living Room TV\nRiker Plex · Example Film (1999) (paused)')
+  await expect(reason).toHaveAttribute('title', 'Riker Plex · Example Show · S2E5 · Pilot · alex on Living Room TV\nRiker Plex · Example Film (1999) (paused)')
 })
 
 test('a shut optimise window is reported as waiting, in the server’s own words', async ({ page }) => {

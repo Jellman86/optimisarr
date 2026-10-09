@@ -50,10 +50,10 @@ export function playbackViewer(hold: PlaybackHold, phrases: PlaybackPhrases): st
   return null
 }
 
-/** One full line: "Show · S2E5 · Title — alex on Living Room TV (paused)". */
+/** One full line: "Show · S2E5 · Title · alex on Living Room TV (paused)". */
 export function playbackLine(hold: PlaybackHold, phrases: PlaybackPhrases): string {
   const viewer = playbackViewer(hold, phrases)
-  return [playbackTitle(hold, phrases) + (viewer ? ` — ${viewer}` : ''), hold.paused ? phrases.paused : null]
+  return [playbackTitle(hold, phrases) + (viewer ? ` · ${viewer}` : ''), hold.paused ? phrases.paused : null]
     .filter(Boolean).join(' ')
 }
 
@@ -61,6 +61,6 @@ export function playbackLine(hold: PlaybackHold, phrases: PlaybackPhrases): stri
 export function playbackSummary(holds: readonly PlaybackHold[], phrases: PlaybackPhrases): string | null {
   const [first] = holds
   if (!first) return null
-  const head = playbackTitle(first, phrases) + (first.user ? ` — ${first.user}` : '')
+  const head = playbackTitle(first, phrases) + (first.user ? ` · ${first.user}` : '')
   return holds.length > 1 ? `${head} ${fill(phrases.more, { count: holds.length - 1 })}` : head
 }

@@ -815,7 +815,7 @@ export const ja: Messages = {
     diagnostics_storage: "保存容量の上限（MiB）",
     diagnostics_participants: "接続中のサイドカー",
     diagnostics_saved: "保存された収集",
-    diagnostics_pinned: "固定済み — 自動削除を停止",
+    diagnostics_pinned: "固定済み: 自動削除を停止",
     diagnostics_retain_until: "証拠の保持期限",
     diagnostics_cap_reached: "キャプチャの保存容量がいっぱいです。以降のイベントは省略されます。",
     diagnostics_pin: "証拠を固定",

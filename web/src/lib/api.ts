@@ -444,6 +444,7 @@ export type QueueStatus = Pick<Settings, 'maxConcurrentJobs' | 'minFreeDiskBytes
 }
 
 export type PlaybackHold = {
+  artworkUrl?: string | null
   watcher: string
   kind: 'Episode' | 'Movie' | 'Track' | 'Other'
   title: string | null

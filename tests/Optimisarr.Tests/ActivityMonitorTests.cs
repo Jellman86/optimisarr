@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Activity;
 using Optimisarr.Core.Domain;
 using Optimisarr.Data;
@@ -112,6 +113,87 @@ public sealed class ActivityMonitorTests : IDisposable
         }
         Assert.Null(Assert.Single((await inFlight).Holds).Session.User);
         Assert.Null(Assert.Single((await monitor.GetActivityAsync(CancellationToken.None)).Holds).Session.User);
+    }
+
+    [Theory]
+    [InlineData(ActivityWatcherType.Plex, "X-Plex-Token")]
+    [InlineData(ActivityWatcherType.Jellyfin, "X-Emby-Token")]
+    [InlineData(ActivityWatcherType.Emby, "X-Emby-Token")]
+    public async Task Playback_art_is_proxied_from_the_exact_watcher_with_header_only_credentials(
+        ActivityWatcherType type, string header)
+    {
+        await SeedAsync("Media", showViewerNames: false);
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.ActivityWatchers.SingleAsync()).Type = type;
+            await db.SaveChangesAsync();
+        }
+        var handler = new PlaybackImageHandler(type);
+        var factory = new StubHttpClientFactory(handler);
+        var monitor = Monitor(handler);
+        var service = new ArtworkService(_services.GetRequiredService<IServiceScopeFactory>(), factory, new TranscodeOptions("unused"));
+        var hold = Assert.Single((await monitor.GetActivityAsync(CancellationToken.None)).Holds);
+        Assert.Null(hold.Session.User);
+        var key = hold.Session.Artwork!.ProxyKey(hold.WatcherId!.Value);
+        Assert.NotNull(await service.GetPlaybackAsync(key, monitor, CancellationToken.None));
+        Assert.Equal("tok", handler.ImageRequest!.Headers.GetValues(header).Single());
+        Assert.DoesNotContain("tok", handler.ImageRequest.RequestUri!.ToString());
+        Assert.Equal(1, handler.ImageRequests);
+        Assert.Null(await service.GetPlaybackAsync(new string('A', 64), monitor, CancellationToken.None));
+        Assert.Equal(1, handler.ImageRequests);
+
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.ActivityWatchers.SingleAsync()).Enabled = false;
+            await db.SaveChangesAsync();
+        }
+        // Even a cached poll cannot keep a disabled watcher available to the image proxy.
+        Assert.Null(await service.GetPlaybackAsync(key, monitor, CancellationToken.None));
+        Assert.Equal(1, handler.ImageRequests);
+    }
+
+    [Theory]
+    [InlineData("text/html", HttpStatusCode.OK, false)]
+    [InlineData("image/jpeg", HttpStatusCode.Redirect, false)]
+    [InlineData("image/jpeg", HttpStatusCode.OK, true)]
+    public async Task Failed_non_image_and_oversized_art_leave_the_playback_hold_intact(
+        string contentType, HttpStatusCode status, bool oversized)
+    {
+        await SeedAsync("Plex", showViewerNames: true);
+        var handler = new PlaybackImageHandler(ActivityWatcherType.Plex, contentType, status, oversized);
+        var monitor = Monitor(handler);
+        var service = new ArtworkService(_services.GetRequiredService<IServiceScopeFactory>(),
+            new StubHttpClientFactory(handler), new TranscodeOptions("unused"));
+        var decision = await monitor.GetActivityAsync(CancellationToken.None);
+        var hold = Assert.Single(decision.Holds);
+        Assert.Null(await service.GetPlaybackAsync(hold.Session.Artwork!.ProxyKey(hold.WatcherId!.Value), monitor, CancellationToken.None));
+        Assert.True((await monitor.GetActivityAsync(CancellationToken.None)).Active);
+        Assert.Equal(decision.Reason, (await monitor.GetActivityAsync(CancellationToken.None)).Reason);
+    }
+
+    private sealed class PlaybackImageHandler(ActivityWatcherType type, string contentType = "image/jpeg",
+        HttpStatusCode status = HttpStatusCode.OK, bool oversized = false) : HttpMessageHandler
+    {
+        public HttpRequestMessage? ImageRequest { get; private set; }
+        public int ImageRequests { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri!.AbsolutePath is "/status/sessions" or "/Sessions")
+            {
+                var body = type == ActivityWatcherType.Plex
+                    ? PlexSessions.Replace("title=\"Pilot\"", "title=\"Pilot\" grandparentThumb=\"/library/metadata/1/thumb/2\"")
+                    : """[{"UserName":"alex","NowPlayingItem":{"Type":"Movie","Id":"11111111222233334444555555555555","ImageTags":{"Primary":"abc"}}}]""";
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
+            }
+            ImageRequests++;
+            ImageRequest = request;
+            var content = new ByteArrayContent([0xff, 0xd8, 0xff, 0xd9]);
+            content.Headers.ContentType = new(contentType);
+            if (oversized) content.Headers.ContentLength = 11 * 1024 * 1024;
+            return Task.FromResult(new HttpResponseMessage(status) { Content = content });
+        }
     }
 
     private sealed class PublicationClock : TimeProvider, IDisposable

@@ -815,7 +815,7 @@ export const ru: Messages = {
     diagnostics_storage: "Лимит хранилища (МиБ)",
     diagnostics_participants: "Подключённые sidecar",
     diagnostics_saved: "Сохранённые сеансы",
-    diagnostics_pinned: "Закреплено — автоматическая очистка приостановлена",
+    diagnostics_pinned: "Закреплено: автоматическая очистка приостановлена",
     diagnostics_retain_until: "Данные хранятся до",
     diagnostics_cap_reached: "Хранилище записи заполнено. Дополнительные события пропускаются.",
     diagnostics_pin: "Закрепить данные",

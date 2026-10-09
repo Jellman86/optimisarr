@@ -160,7 +160,7 @@ try {
  await shot('soundtrack-quality-settings','fieldset:not([data-library-workflow]):has(#lib-soundtrack-quality-limit)');
  await page.unroute('**/api/jobs?*');await page.unroute('**/api/jobs');await page.unroute('**/api/libraries');queueStatus=f.playbackQueue
  await page.reload()
- await go('/queue');await expect(page.locator('.status-strip-reason')).toContainText('Lumen Coast');await expect(page.locator('.playback-holds').first()).toContainText('Taylor on Living room TV');await shot('queue-playback',null)
+ await go('/queue');await expect(page.locator('.status-strip-reason')).toContainText('Lumen Coast');await expect(page.locator('.playback-holds').first()).toContainText('Taylor on Living room TV');await expect(page.locator('.playback-holds img.opacity-100')).toHaveCount(3);await shot('queue-playback',null)
  await page.setViewportSize({width:390,height:1000});await shot('queue-playback-mobile',null);await page.setViewportSize({width:1440,height:1000})
  await go('/schedule');await expect(page.locator('.playback-holds').first()).toContainText('Night Survey');await shot('schedule-playback')
  await go('/settings/media-servers');await page.getByRole('button',{name:'Edit',exact:true}).click()

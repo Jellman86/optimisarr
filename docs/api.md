@@ -511,6 +511,7 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `GET` | `/api/jobs?status=Failed` | List jobs filtered by status. |
 | `GET` | `/api/jobs/failures` | Failure summary for normal work and failed preview/personal-quality comparisons. Optional `libraryId` scopes it to one library. Samples identify `jobType` and include structured failed `verificationChecks` (`name`, `outcome`, and measured `detail`). |
 | `GET` | `/api/jobs/{id}/log` | FFmpeg/process log for a failed job (plain text; `404` when none was captured). |
+| `GET` | `/api/playback/{key}/artwork` | Private, uncached artwork for a current playback hold. Use its opaque `artworkUrl` from queue status; `404` when unavailable. |
 | `GET` | `/api/jobs/{id}/artwork` | Proxied artwork for a job when a provider can resolve it. |
 | `POST` | `/api/jobs/{id}/cancel` | Cancel an active job. |
 | `DELETE` | `/api/jobs/{id}` | Remove a clearable job. |

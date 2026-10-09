@@ -815,7 +815,7 @@ export const pt: Messages = {
     diagnostics_storage: "Limite de armazenamento (MiB)",
     diagnostics_participants: "Sidecars ligados",
     diagnostics_saved: "Capturas guardadas",
-    diagnostics_pinned: "Fixada — limpeza automática suspensa",
+    diagnostics_pinned: "Fixada: limpeza automática suspensa",
     diagnostics_retain_until: "Dados retidos até",
     diagnostics_cap_reached: "O armazenamento da captura está cheio. Eventos adicionais são omitidos.",
     diagnostics_pin: "Fixar dados",

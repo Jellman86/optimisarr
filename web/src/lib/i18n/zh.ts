@@ -815,7 +815,7 @@ export const zh: Messages = {
     diagnostics_storage: "存储上限（MiB）",
     diagnostics_participants: "已连接的边车",
     diagnostics_saved: "保留的收集会话",
-    diagnostics_pinned: "已固定 — 暂停自动清理",
+    diagnostics_pinned: "已固定: 暂停自动清理",
     diagnostics_retain_until: "证据保留至",
     diagnostics_cap_reached: "捕获存储空间已满。后续事件将被省略。",
     diagnostics_pin: "固定证据",

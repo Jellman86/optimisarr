@@ -364,6 +364,16 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("MediaThumbnail");
 
+        app.MapGet("/api/playback/{key}/artwork", async (
+            string key, ArtworkService artwork, ActivityMonitor activityMonitor,
+            HttpContext context, CancellationToken cancellationToken) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            var result = await artwork.GetPlaybackAsync(key, activityMonitor, cancellationToken);
+            return result is null ? Results.NotFound() : Results.File(result.Value.Bytes, result.Value.ContentType);
+        })
+        .WithName("PlaybackArtwork");
+
         // Remove finished jobs (completed, failed, cancelled) to declutter the queue. A job whose
         // original is still in quarantine is the live rollback path and is kept; clearing it would
         // destroy a recorded rollback, which the safety standard forbids. Re-optimisation of the

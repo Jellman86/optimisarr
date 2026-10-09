@@ -104,6 +104,36 @@ public sealed class ArtworkService(
                 : null;
     }
 
+    /// <summary>Only current, exact playback images can be fetched; client-supplied URLs are never accepted.</summary>
+    public async Task<(byte[] Bytes, string ContentType)?> GetPlaybackAsync(
+        string key, ActivityMonitor activityMonitor, CancellationToken cancellationToken)
+    {
+        if (key.Length != 64 || key.Any(character => !char.IsAsciiHexDigitUpper(character))) return null;
+        var activity = await activityMonitor.GetActivityAsync(cancellationToken);
+        var hold = activity.Holds.FirstOrDefault(hold => hold.WatcherId is { } id
+            && hold.Session.Artwork?.ProxyKey(id) == key);
+        if (hold?.WatcherId is not { } watcherId || hold.Session.Artwork is not { } artwork) return null;
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var watcher = await db.ActivityWatchers.AsNoTracking()
+            .FirstOrDefaultAsync(watcher => watcher.Id == watcherId && watcher.Enabled, cancellationToken);
+        if (watcher is null) return null;
+        // Revalidate against the current watcher type after configuration changes.
+        var plex = watcher.Type == ActivityWatcherType.Plex;
+        if (plex != artwork.Path.StartsWith("/library/metadata/", StringComparison.Ordinal)) return null;
+        var resolved = new Resolved(watcher.BaseUrl.TrimEnd('/') + artwork.Path,
+            plex ? "X-Plex-Token" : "X-Emby-Token", watcher.ApiToken);
+        try
+        {
+            return await FetchAsync(resolved, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
     private async Task<(byte[] Bytes, string ContentType)?> GetVideoPosterAsync(int mediaFileId, CancellationToken cancellationToken)
     {
         var resolved = await CachedAsync(_posterCache, mediaFileId,

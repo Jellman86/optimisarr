@@ -747,7 +747,7 @@ export const en = {
     no_matches: "No jobs match this filter.",
     manage_queue: "Manage queue",
 
-    subtitle: 'Transcode jobs. Outputs are verified before they are marked ready — your originals are never touched.',
+    subtitle: 'Transcode jobs. Outputs are verified before they are marked ready. Your originals are never touched.',
     active_suffix: ' · {count} active',
     tab_failures: 'Failures',
     error_load: 'Unable to load jobs',
@@ -983,7 +983,7 @@ export const en = {
     diagnostics_storage: "Storage limit (MiB)",
     diagnostics_participants: "Connected sidecars",
     diagnostics_saved: "Retained captures",
-    diagnostics_pinned: "Pinned — automatic cleanup paused",
+    diagnostics_pinned: "Pinned: automatic cleanup paused",
     diagnostics_retain_until: "Evidence retained until",
     diagnostics_cap_reached: "Capture storage is full. Further events are omitted.",
     diagnostics_pin: "Pin evidence",

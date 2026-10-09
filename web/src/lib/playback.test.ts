@@ -22,14 +22,14 @@ const hold = (overrides: Partial<PlaybackHold>): PlaybackHold => ({
 const episode = hold({ kind: 'Episode', title: 'Pilot', series: 'Example Show', season: 2, episode: 5, user: 'alex', device: 'Living Room TV' })
 
 test('an episode names the show, its number and title, then who is watching and where', () => {
-  assert.equal(playbackLine(episode, phrases), 'Example Show · S2E5 · Pilot — alex on Living Room TV')
+  assert.equal(playbackLine(episode, phrases), 'Example Show · S2E5 · Pilot · alex on Living Room TV')
 })
 
 test('a film carries its year, a track its artist, and a pause is said', () => {
   assert.equal(playbackLine(hold({ kind: 'Movie', title: 'Example Film', year: 1999, user: 'sam', paused: true }), phrases),
-    'Example Film (1999) — sam (paused)')
+    'Example Film (1999) · sam (paused)')
   assert.equal(playbackLine(hold({ kind: 'Track', title: 'Example Song', artist: 'Example Artist', device: 'Kitchen' }), phrases),
-    'Example Song by Example Artist — on Kitchen')
+    'Example Song by Example Artist · on Kitchen')
 })
 
 test('missing details are left out rather than shown blank, and a hidden viewer leaves the title alone', () => {
@@ -40,6 +40,6 @@ test('missing details are left out rather than shown blank, and a hidden viewer 
 test('the compact summary names the first playback and counts the rest', () => {
   const film = hold({ kind: 'Movie', title: 'Example Film', user: 'sam' })
   assert.equal(playbackSummary([], phrases), null)
-  assert.equal(playbackSummary([episode], phrases), 'Example Show · S2E5 · Pilot — alex')
-  assert.equal(playbackSummary([episode, film], phrases), 'Example Show · S2E5 · Pilot — alex +1 more')
+  assert.equal(playbackSummary([episode], phrases), 'Example Show · S2E5 · Pilot · alex')
+  assert.equal(playbackSummary([episode, film], phrases), 'Example Show · S2E5 · Pilot · alex +1 more')
 })

@@ -31,7 +31,10 @@ watching: the series, season, episode and title for TV, the title and year for a
 film, and the track and artist for music, followed by the viewer and device, and
 "(paused)" for a paused stream. The status bar shows the first playback and how
 many more. Click or tap it to open Queue. The Queue and Schedule pages show up to
-eight playbacks, with an expandable list for the rest. A detail the server does not report is left out rather than
+eight playbacks, with an expandable list for the rest. Film and TV posters and
+square album covers come from the exact item, show or album reported by that
+server. Images are proxied by Optimisarr so credentials never reach the browser;
+unavailable art leaves a fixed-size placeholder. A detail the server does not report is left out rather than
 guessed; if a server reports none, the pause reads as before, with a stream count.
 
 ![Queue paused for three fabricated playbacks, showing a film, a paused TV episode and a music track](../images/optimisarr-queue-playback-dark.png)

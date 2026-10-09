@@ -4278,7 +4278,8 @@ public sealed record PlaybackHoldDto(
     string? Artist,
     string? User,
     string? Device,
-    bool Paused)
+    bool Paused,
+    string? ArtworkUrl = null)
 {
     public static PlaybackHoldDto From(PlaybackHold hold) => new(
         hold.Watcher,
@@ -4291,7 +4292,10 @@ public sealed record PlaybackHoldDto(
         hold.Session.Artist,
         hold.Session.User,
         hold.Session.Device,
-        hold.Session.Paused);
+        hold.Session.Paused,
+        hold.WatcherId is { } watcherId && hold.Session.Artwork is { } artwork
+            ? $"/api/playback/{artwork.ProxyKey(watcherId)}/artwork"
+            : null);
 }
 
 public sealed record WorkloadLaneStatus(string Lane, int Active, int Capacity, int Waiting, string? Reason);
