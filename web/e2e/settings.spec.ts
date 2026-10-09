@@ -615,13 +615,20 @@ for (const width of [390, 1440]) {
       }
       if (path.endsWith('/stop')) { capture = { ...capture, status: 'Stopped', stoppedAt: '2026-10-09T10:01:00Z' }; return json(route, capture) }
       if (path.endsWith('/pin')) { capture = { ...capture, pinned: route.request().postDataJSON().pinned }; return json(route, capture) }
-      if (path.endsWith('/bundle')) { expect(path).toBe(`/api/diagnostics/capture/${id}/bundle`); return json(route, { manifest: { participants: [{ state: 'Collected' }] } }) }
+      if (path.endsWith('/bundle')) {
+        expect(path).toBe(`/api/diagnostics/capture/${id}/bundle`)
+        expect(new URL(route.request().url()).searchParams.has('fromUtc')).toBe(false)
+        expect(new URL(route.request().url()).searchParams.has('toUtc')).toBe(false)
+        return json(route, { manifest: { participants: [{ state: 'Collected' }] } })
+      }
       return json(route, path === '/api/diagnostics/captures' ? [capture] : capture)
     })
     await page.goto('/#/settings/system')
     const panel = page.locator('#diagnostic-capture')
     await panel.getByRole('button', { name: 'Pin evidence', exact: true }).click()
     await expect(panel.getByRole('button', { name: 'Unpin evidence', exact: true })).toBeVisible()
+    await panel.getByLabel('From (optional)', { exact: true }).fill('2026-10-08T00:00')
+    await panel.getByLabel('To (optional)', { exact: true }).fill('2026-10-08T01:00')
     const download = page.waitForEvent('download')
     await panel.getByRole('button', { name: 'Stop and collect', exact: true }).click()
     await expect(panel.getByText(/Collecting final uploads/)).toBeVisible()

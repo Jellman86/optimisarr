@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Stopping and collecting a diagnostic capture always exports its complete retained history, even when an earlier manual download used a time range.
+
 ### Added
 
 - Opt-in diagnostic capture now follows a job across the server and Mac, Windows and Linux sidecars. It retains correlated attempts, worker and tool identities, verification measurements, scheduling decisions, transfers and replacement outcomes. Queue details, failures, workers and System settings offer downloads; a persistent indicator provides **Stop and collect**. Local sidecar exports remain available when a worker cannot upload.

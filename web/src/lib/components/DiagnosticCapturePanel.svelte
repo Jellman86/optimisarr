@@ -81,7 +81,7 @@
       if (collect) {
         collecting = true
         await api.waitForDiagnosticUploads(capture.id)
-        await saveBundle()
+        await saveBundle(undefined, false)
       }
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause)
@@ -109,10 +109,10 @@
     }
   }
 
-  async function saveBundle(jobId?: number) {
+  async function saveBundle(jobId?: number, applyTimeRange = true) {
     if (!capture) return
     const blob = await api.diagnosticBundle(capture.id, jobId, undefined,
-      fromUtc ? new Date(fromUtc).toISOString() : undefined, toUtc ? new Date(toUtc).toISOString() : undefined)
+      applyTimeRange && fromUtc ? new Date(fromUtc).toISOString() : undefined, applyTimeRange && toUtc ? new Date(toUtc).toISOString() : undefined)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
