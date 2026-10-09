@@ -44,7 +44,7 @@
 
   async function start() {
     // Svelte's number input binding may yield a number even when the state began as a string.
-    const job = String(scopedJob).trim() ? Number(scopedJob) : null
+    const job = String(scopedJob ?? '').trim() ? Number(scopedJob) : null
     if (job !== null && (!Number.isSafeInteger(job) || job < 1)) {
       error = i18n.m.settings.diagnostics_job_invalid
       return
@@ -94,14 +94,14 @@
   async function download() {
     if (!capture) return
     const jobId = Number(exportJob)
-    if (String(exportJob).trim() && (!Number.isSafeInteger(jobId) || jobId < 1)) {
+    if (String(exportJob ?? '').trim() && (!Number.isSafeInteger(jobId) || jobId < 1)) {
       error = i18n.m.settings.diagnostics_job_invalid
       return
     }
     busy = true
     error = null
     try {
-      await saveBundle(String(exportJob).trim() ? jobId : undefined)
+      await saveBundle(String(exportJob ?? '').trim() ? jobId : undefined)
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause)
     } finally {
@@ -213,10 +213,10 @@
           {#if capture.status !== 'Recording' && !capture.pinned}<button class="btn min-h-11" disabled={busy} onclick={remove}>{i18n.m.settings.diagnostics_delete}</button>{/if}
         </div>
         <div class="grid min-w-0 gap-3 sm:grid-cols-2">
-          <label class="label">{i18n.m.settings.diagnostics_from}<input class="input mt-2 w-full" type="datetime-local" disabled={busy || !!String(exportJob).trim()} bind:value={fromUtc} /></label>
-          <label class="label">{i18n.m.settings.diagnostics_to}<input class="input mt-2 w-full" type="datetime-local" disabled={busy || !!String(exportJob).trim()} bind:value={toUtc} /></label>
+          <label class="label">{i18n.m.settings.diagnostics_from}<input class="input mt-2 w-full" type="datetime-local" disabled={busy || !!String(exportJob ?? '').trim()} bind:value={fromUtc} /></label>
+          <label class="label">{i18n.m.settings.diagnostics_to}<input class="input mt-2 w-full" type="datetime-local" disabled={busy || !!String(exportJob ?? '').trim()} bind:value={toUtc} /></label>
         </div>
-        {#if String(exportJob).trim()}<p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_job_range}</p>{/if}
+        {#if String(exportJob ?? '').trim()}<p class="text-xs text-ink-3">{i18n.m.settings.diagnostics_job_range}</p>{/if}
         <div class="flex min-w-0 flex-wrap items-end gap-3 border-t pt-4" style="border-color: var(--edge)">
           <div class="min-w-40 flex-1">
             <label class="label" for="diagnostic-export-job">{i18n.m.settings.diagnostics_export_job} ({i18n.m.settings.diagnostics_optional})</label>

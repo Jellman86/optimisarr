@@ -81,7 +81,11 @@ struct DiagnosticJournalTests {
         let journal = DiagnosticJournal(); let now = Date(); let lease = UUID().uuidString
         await journal.apply(DiagnosticConsent(sessionId: UUID().uuidString, serverTimeUtc: now, expiresAt: now.addingTimeInterval(3600), scopedJobId: nil))
         await journal.assignment(leaseId: lease, jobId: 42)
-        for _ in 0..<3000 { await journal.record(leaseId: lease, reason: "Worker.RequestFailed", httpStatus: 503) }
+        for index in 0..<3000 {
+            await journal.record(leaseId: lease, reason: "Worker.RequestFailed", httpStatus: 503)
+            // This synthetic burst must leave executor time for concurrent lease/deadline tests.
+            if index.isMultiple(of: 8) { await Task.yield() }
+        }
         let batch = try #require(await journal.pending()); #expect(batch.events.count == 100); #expect(batch.droppedEvents > 0)
         #expect(try await journal.export().count <= 1024 * 1024)
     }

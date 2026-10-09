@@ -49,7 +49,7 @@ final receipts, local rotation and recovery, secret exclusion, frozen reports, r
 pinning, failure retention, stale tracked storage counters, scheduling reasons, migration upgrade
 and repeat application, export size and receipt-time ranges. Browser tests cover retained
 historical gates, Stop and collect/pinning on desktop and phone layouts, and local Linux export
-without a server connection. Final local checks pass 2,855 backend tests, 283 browser tests,
+without a server connection. Final local checks pass 2,855 backend tests, 285 browser tests,
 97 frontend unit tests, 282 Swift tests, three live Mac RAM-volume checks, 322 shared sidecar
 tests (three Windows-only skips), 31 Linux dashboard/host tests and 99 Python harness tests.
 Native Picard passes all 325 shared tests and 2,847 backend tests with the eight documented
@@ -59,7 +59,7 @@ Testing caught and fixed several concrete faults: expired local records remainin
 unsafe recovered Swift fields, capture enabled mid-job missing its stage/tool identity,
 a rejected report being cleared before the capture interceptor could retain it, a stale storage
 counter bypassing the cap, final receipts hidden by older worker registrations, and pretty-printed
-JSON nesting exceeding the export byte budget. The remote harness now explicitly disables
+JSON nesting exceeding the export byte budget, and cleared optional job inputs retaining an invalid numeric state. The remote harness now explicitly disables
 observations of the Mac's local dashboard and scratch when its worker command launches over SSH.
 
 Native Windows shared tests include the Event Log cases. The native backend suite retains its

@@ -631,3 +631,47 @@ for (const width of [390, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 }
+
+for (const width of [390, 1440]) {
+  test(`clearing optional diagnostic job inputs restores session scope at ${width}px`, async ({ page }) => {
+    await mockSettings(page)
+    await page.setViewportSize({ width, height: 1000 })
+    const id = '00000000-0000-4000-8000-000000000044'
+    let capture: Record<string, unknown> | null = null
+    await page.route('**/api/diagnostics/capture**', async route => {
+      const path = new URL(route.request().url()).pathname
+      if (path.endsWith('/bundle')) {
+        expect(path).toBe(`/api/diagnostics/capture/${id}/bundle`)
+        return json(route, { manifest: {} })
+      }
+      if (path.endsWith('/stop')) {
+        capture = { ...capture, status: 'Stopped', stoppedAt: '2026-10-09T10:01:00Z' }
+        return json(route, capture)
+      }
+      if (route.request().method() === 'POST') {
+        expect(route.request().postDataJSON().scopedJobId).toBeNull()
+        capture = { id, status: 'Recording', startedAt: '2026-10-09T10:00:00Z', expiresAt: null,
+          scopedJobId: null, includePaths: false, eventsStored: 0, maximumEvents: 10000, eventLimitReached: false }
+        return json(route, capture, 201)
+      }
+      return json(route, path === '/api/diagnostics/captures' ? capture ? [capture] : [] : capture)
+    })
+    await page.goto('/#/settings/system')
+    const panel = page.locator('#diagnostic-capture')
+    await panel.getByLabel('Job ID (optional)', { exact: true }).fill('0')
+    await panel.getByRole('button', { name: 'Start capture', exact: true }).click()
+    await expect(panel.getByRole('alert')).toContainText('valid positive job ID')
+    await panel.getByLabel('Job ID (optional)', { exact: true }).fill('')
+    await panel.getByRole('button', { name: 'Start capture', exact: true }).click()
+    await expect(panel.getByText('Recording diagnostics', { exact: true })).toBeVisible()
+    await panel.getByRole('button', { name: 'Stop capture', exact: true }).click()
+    await expect(panel.getByText('Enhanced diagnostics off', { exact: true })).toBeVisible()
+    await panel.getByLabel('Job ID to export (optional)', { exact: true }).fill('42')
+    await expect(panel.getByLabel('From (optional)', { exact: true })).toBeDisabled()
+    await panel.getByLabel('Job ID to export (optional)', { exact: true }).fill('')
+    await expect(panel.getByLabel('From (optional)', { exact: true })).toBeEnabled()
+    const download = page.waitForEvent('download')
+    await panel.getByRole('button', { name: 'Download diagnostics', exact: true }).click()
+    expect((await download).suggestedFilename()).toContain(`session-${id}`)
+  })
+}
