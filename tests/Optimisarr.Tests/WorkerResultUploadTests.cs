@@ -453,6 +453,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         var other = await PairWorker("Different verifier");
         await QueueAJob();
         var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        Guid captureId;
         var contract = new RemoteVerificationContract(1, Guid.NewGuid(), false);
         using (var scope = _api.Services.CreateScope())
         {
@@ -460,6 +461,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             var lease = await db.JobLeases.FindAsync(Guid.Parse(leaseId));
             lease!.VerificationContractJson = JsonSerializer.Serialize(contract, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             await db.SaveChangesAsync();
+            captureId = (await new Optimisarr.Api.Diagnostics.DiagnosticCaptureStore(db).StartAsync(1, null, false, DateTimeOffset.UtcNow, default)).Id;
         }
         var endpoint = $"/api/workers/leases/{leaseId}/verification";
         var evidence = new RemoteVerificationEvidence(contract.Id, sourceHash, Sha256(CandidateBytes),
@@ -471,6 +473,13 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             evidence with { SourceSha256 = new string('f', 64) })).StatusCode);
         (await worker.PostAsJsonAsync(endpoint, evidence)).EnsureSuccessStatusCode();
         (await worker.PostAsJsonAsync(endpoint, evidence)).EnsureSuccessStatusCode();
+        using (var captured = _api.Services.CreateScope())
+        {
+            var db = captured.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var entry = Assert.Single(await db.DiagnosticEvents.ToListAsync());
+            Assert.Equal("Lease.Updated", entry.ReasonCode);
+            Assert.Contains("evidenceSha256", entry.DetailsJson);
+        }
         Assert.Equal(HttpStatusCode.Conflict, (await worker.PostAsJsonAsync(endpoint,
             evidence with { Error = null })).StatusCode);
         (await worker.SendAsync(Upload(leaseId, CandidateBytes, sourceHash))).EnsureSuccessStatusCode();
@@ -478,6 +487,9 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         using var read = _api.Services.CreateScope();
         var recorded = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.FindAsync(Guid.Parse(leaseId));
         Assert.Contains("decoder is unavailable", recorded!.VerificationEvidenceJson);
+        var captureStore = new Optimisarr.Api.Diagnostics.DiagnosticCaptureStore(read.ServiceProvider.GetRequiredService<OptimisarrDbContext>());
+        await captureStore.StopAsync(captureId, DateTimeOffset.UtcNow, default);
+        await captureStore.DeleteEndedAsync(captureId, DateTimeOffset.UtcNow, default);
     }
 
     [Fact]
@@ -487,6 +499,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         var worker = await PairWorker("Concurrent verification");
         await QueueAJob();
         var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        Guid captureId;
         var contract = new RemoteVerificationContract(1, Guid.NewGuid(), false);
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         using (var scope = _api.Services.CreateScope())
@@ -495,6 +508,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             var lease = await db.JobLeases.FindAsync(Guid.Parse(leaseId));
             lease!.VerificationContractJson = JsonSerializer.Serialize(contract, options);
             await db.SaveChangesAsync();
+            captureId = (await new Optimisarr.Api.Diagnostics.DiagnosticCaptureStore(db).StartAsync(1, null, false, DateTimeOffset.UtcNow, default)).Id;
         }
         var endpoint = $"/api/workers/leases/{leaseId}/verification";
         var reports = Enumerable.Range(0, 8).Select(index => new RemoteVerificationEvidence(
@@ -508,6 +522,11 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             .JobLeases.FindAsync(Guid.Parse(leaseId));
         Assert.Equal(JsonSerializer.Serialize(reports[winner], options), recorded!.VerificationEvidenceJson);
         (await worker.PostAsJsonAsync(endpoint, reports[winner])).EnsureSuccessStatusCode();
+        var capturedDb = read.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Single(await capturedDb.DiagnosticEvents.ToListAsync());
+        var captureStore = new Optimisarr.Api.Diagnostics.DiagnosticCaptureStore(capturedDb);
+        await captureStore.StopAsync(captureId, DateTimeOffset.UtcNow, default);
+        await captureStore.DeleteEndedAsync(captureId, DateTimeOffset.UtcNow, default);
     }
 
     [Fact]

@@ -280,7 +280,7 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
 
         await using (var db = Db())
         {
-            var entry = await db.DiagnosticEvents.SingleAsync();
+            var entry = await db.DiagnosticEvents.SingleAsync(e => e.ReasonCode == "Job.StatusChanged");
             Assert.Equal(leaseId, entry.LeaseId);
             Assert.Equal(workerId, entry.WorkerId);
             Assert.Equal("Leased", entry.CurrentStatus);
@@ -477,7 +477,7 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
         {
             var bundle = await DiagnosticJobBundleQueries.BuildAsync(
                 db, sessionId, jobId, _now.AddMinutes(40), CancellationToken.None);
-            Assert.Equal(3, bundle.Manifest.SchemaVersion);
+            Assert.Equal(4, bundle.Manifest.SchemaVersion);
             var previousEvidence = bundle.Leases[0].VerificationEvidence;
             Assert.Equal("Available", previousEvidence.State);
             Assert.Equal(1290.04, previousEvidence.SourceVideo!.LastPresentationSeconds);
@@ -490,7 +490,7 @@ public sealed class DiagnosticCaptureStoreTests : IAsyncLifetime
             using var wire = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(bundle,
                 new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
             var wireEvidence = wire.RootElement.GetProperty("leases")[0].GetProperty("verificationEvidence");
-            Assert.Equal(3, wire.RootElement.GetProperty("manifest").GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(4, wire.RootElement.GetProperty("manifest").GetProperty("schemaVersion").GetInt32());
             Assert.Equal(32304, wireEvidence.GetProperty("sourceDecodedFrameCount").GetInt32());
             Assert.Equal(32304, wireEvidence.GetProperty("candidateDecodedFrameCount").GetInt32());
             Assert.Equal(1289.84, wireEvidence.GetProperty("candidateAudio").GetProperty("lastPresentationSeconds").GetDouble());

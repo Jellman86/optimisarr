@@ -1343,6 +1343,16 @@
               "string"
             ]
           },
+          "diagnosticCapture": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SidecarDiagnosticConsent"
+              }
+            ]
+          },
           "draining": {
             "type": "boolean"
           },
@@ -2182,9 +2192,26 @@
         ],
         "type": "object"
       },
+      "PinDiagnosticRequest": {
+        "properties": {
+          "pinned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pinned"
+        ],
+        "type": "object"
+      },
       "PlaybackHoldDto": {
         "properties": {
           "artist": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "artworkUrl": {
             "type": [
               "null",
               "string"
@@ -3733,6 +3760,185 @@
         ],
         "type": "object"
       },
+      "SidecarDiagnosticBatch": {
+        "properties": {
+          "droppedEvents": {
+            "default": 0,
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SidecarDiagnosticEvent"
+            },
+            "type": "array"
+          },
+          "final": {
+            "default": false,
+            "type": "boolean"
+          },
+          "instanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "recoveryIncomplete": {
+            "default": false,
+            "type": "boolean"
+          },
+          "schemaVersion": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "sessionId",
+          "instanceId",
+          "events"
+        ],
+        "type": "object"
+      },
+      "SidecarDiagnosticConsent": {
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recording": {
+            "default": true,
+            "type": "boolean"
+          },
+          "scopedJobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "serverTimeUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "serverTimeUtc",
+          "expiresAt",
+          "scopedJobId"
+        ],
+        "type": "object"
+      },
+      "SidecarDiagnosticEvent": {
+        "properties": {
+          "encodedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "ffmpegSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ffprobeSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "httpStatus": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "leaseId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "measurementFfmpegSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "offsetBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "sequence": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "stage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "sequence",
+          "occurredAt",
+          "leaseId",
+          "jobId",
+          "reasonCode"
+        ],
+        "type": "object"
+      },
       "SizeBudgetExceededRequest": {
         "properties": {
           "observedBytes": {
@@ -3925,9 +4131,40 @@
               "string"
             ]
           },
+          "failureRetentionDays": {
+            "default": 30,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
           "includePaths": {
             "default": false,
             "type": "boolean"
+          },
+          "maximumBytes": {
+            "default": 4194304,
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "persistAcrossRestart": {
+            "default": false,
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "default": 7,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
           },
           "scopedJobId": {
             "format": "int32",
@@ -4468,7 +4705,7 @@
   "info": {
     "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
     "title": "Optimisarr API",
-    "version": "0.2.22.0"
+    "version": "0.2.23.0"
   },
   "openapi": "3.1.1",
   "paths": {
@@ -5123,6 +5360,88 @@
         ]
       }
     },
+    "/api/diagnostics/capture/{id}": {
+      "delete": {
+        "operationId": "DeleteDiagnosticCapture",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/capture/{id}/bundle": {
+      "get": {
+        "operationId": "DownloadDiagnosticSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workerId",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "fromUtc",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "toUtc",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/diagnostics/capture/{id}/jobs/{jobId}/bundle": {
       "get": {
         "operationId": "DownloadJobDiagnostics",
@@ -5160,6 +5479,70 @@
         ]
       }
     },
+    "/api/diagnostics/capture/{id}/participants": {
+      "get": {
+        "operationId": "GetDiagnosticParticipants",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/capture/{id}/pin": {
+      "put": {
+        "operationId": "PinDiagnosticCapture",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinDiagnosticRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/diagnostics/capture/{id}/stop": {
       "post": {
         "operationId": "StopDiagnosticCapture",
@@ -5171,6 +5554,36 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/captures": {
+      "get": {
+        "operationId": "ListDiagnosticCaptures",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "jobId",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
             }
           }
         ],
@@ -6478,6 +6891,32 @@
         ]
       }
     },
+    "/api/playback/{key}/artwork": {
+      "get": {
+        "operationId": "PlaybackArtwork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/preview/{jobId}": {
       "delete": {
         "operationId": "DeletePreview",
@@ -7337,6 +7776,29 @@
               }
             },
             "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/diagnostics": {
+      "post": {
+        "operationId": "AppendSidecarDiagnostics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SidecarDiagnosticBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         },
         "tags": [

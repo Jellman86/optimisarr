@@ -5,6 +5,8 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Diagnostics;
+using Optimisarr.Core.Diagnostics;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
@@ -40,6 +42,7 @@ public sealed class QueueDispatcher(
     ActiveEncodeRegistry encodes,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
+    private readonly DiagnosticSchedulingCapture _diagnosticScheduling = new();
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan OrphanWorkGracePeriod = TimeSpan.FromDays(7);
     private const int MaxAttempts = 3;
@@ -411,7 +414,8 @@ public sealed class QueueDispatcher(
                 // gone, or a different optimised file occupies the destination) can never succeed on
                 // retry. Reconciling it every cycle would loop forever and bury real warnings, so fail
                 // it once. Replacement leaves the original untouched in each of these cases.
-                await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
+                if (!result.FailureAlreadyRecorded)
+                    await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
                 logger.LogWarning(
                     "Job {JobId}: auto-replace cannot complete ({Kind}): {Message}. Marked Failed (will not retry).",
                     jobId, result.Kind, result.Message);
@@ -534,6 +538,8 @@ public sealed class QueueDispatcher(
         var policy = EvaluateDispatchPolicy(settings, activity, hasActivityBypass);
         if (!policy.CanStart)
         {
+            await CaptureSchedulingAsync(DiagnosticSchedulingSnapshot.Create(false, pauseManager.IsPaused,
+                activity.Active && !hasActivityBypass, queued.Count, null, null, null, remoteWorkersOn, aWorkerCouldTakeWork), stoppingToken);
             logger.LogDebug("Queue dispatch paused: {Reason}", policy.BlockedReason);
             return;
         }
@@ -594,6 +600,9 @@ public sealed class QueueDispatcher(
         var toStart = JobScheduler.SelectJobsByWorkload(runnable, running, limits,
             mediaServicesActive: activity.Active, lastStartedLibraryId: _lastStartedLibraryId,
             lastStartedVideoClass: _lastStartedVideoClass);
+
+        await CaptureSchedulingAsync(DiagnosticSchedulingSnapshot.Create(true, false, false, queued.Count,
+            withinWindow.Count, runnable.Count, toStart.Count, remoteWorkersOn, aWorkerCouldTakeWork), stoppingToken);
 
         // Say why nothing started, when something plainly could have.
         //
@@ -3662,7 +3671,8 @@ public sealed class QueueDispatcher(
             {
                 // This replacement can never succeed (see ReplacementActionResult.Permanent), so fail
                 // the job now rather than leaving it ReadyToReplace for the reconcile sweep to retry.
-                await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
+                if (!result.FailureAlreadyRecorded)
+                    await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
                 logger.LogWarning(
                     "Job {JobId}: auto-replace cannot complete ({Kind}): {Message}. Marked Failed (will not retry).",
                     jobId, result.Kind, result.Message);
@@ -3977,6 +3987,12 @@ public sealed class QueueDispatcher(
         return await settings.GetQueueSettingsAsync(cancellationToken);
     }
 
+    private async Task CaptureSchedulingAsync(DiagnosticSchedulingSnapshot snapshot, CancellationToken token)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await _diagnosticScheduling.RecordAsync(scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>(), snapshot, DateTimeOffset.UtcNow, token);
+    }
+
     private DispatchDecision EvaluateDispatchPolicy(
         QueueSettings settings,
         ActivityDecision activity,
@@ -4262,7 +4278,8 @@ public sealed record PlaybackHoldDto(
     string? Artist,
     string? User,
     string? Device,
-    bool Paused)
+    bool Paused,
+    string? ArtworkUrl = null)
 {
     public static PlaybackHoldDto From(PlaybackHold hold) => new(
         hold.Watcher,
@@ -4275,7 +4292,10 @@ public sealed record PlaybackHoldDto(
         hold.Session.Artist,
         hold.Session.User,
         hold.Session.Device,
-        hold.Session.Paused);
+        hold.Session.Paused,
+        hold.WatcherId is { } watcherId && hold.Session.Artwork is { } artwork
+            ? $"/api/playback/{artwork.ProxyKey(watcherId)}/artwork"
+            : null);
 }
 
 public sealed record WorkloadLaneStatus(string Lane, int Active, int Capacity, int Waiting, string? Reason);

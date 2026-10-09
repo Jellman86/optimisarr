@@ -19,12 +19,13 @@ the replacement workflow is trustworthy.
   describing finished work as outstanding sends effort at an item that has none.
 - Status claims last verified against the repository: **2026-08-24**.
 
-## Current hardening follow-up, reviewed 2026-10-04
+## Current hardening follow-up, reviewed 2026-10-09
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
 trial and pairing records with current implementation. Priorities are checked Windows
-upgrades, retained real-source playback evidence, reliable guard/concurrency tests and
-opt-in diagnostic provenance. Audio reports and explicit gates are implemented in
+upgrades, retained real-source playback evidence and broader quality coverage.
+Correlated opt-in diagnostic capture and local exports are implemented in development; see the
+[9 October acceptance](engineering/hardware-validation/2026-10-09-correlated-diagnostics.md). Audio reports and explicit gates are implemented in
 development; image perceptual assessment and broader audio/dedupe coverage remain planned.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.

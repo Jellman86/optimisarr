@@ -24,6 +24,8 @@ public sealed class JobLease
 
     public int JobId { get; set; }
 
+    public int ExecutionAttempt { get; set; }
+
     public Job? Job { get; set; }
 
     public int WorkerId { get; set; }

@@ -49,6 +49,7 @@ def main():
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--vmaf", help="Independent reference FFmpeg with libvmaf (native mode)")
+    parser.add_argument("--diagnostics", action="store_true", help="Capture and validate correlated diagnostics, final worker collection and restart consent")
     parser.add_argument("--vmaf-shadow", action="store_true", help="Require paired server v0/v1 research alongside the selected production verification")
     verification = parser.add_mutually_exclusive_group()
     verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
@@ -59,6 +60,7 @@ def main():
     parser.add_argument("--expected-worker", action="append", default=[])
     worker_runtime = parser.add_mutually_exclusive_group()
     worker_runtime.add_argument("--worker-image", help="Linux sidecar image; disposable local Linux Docker daemons only")
+    parser.add_argument("--worker-remote", action="store_true", help="Worker command launches on another host; do not assume its dashboard or scratch is local")
     parser.add_argument("--worker-scratch-root", type=Path, help="New native-worker scratch directory, separate from durable evidence")
     parser.add_argument("--require-worker-ram", action="store_true", help="Require observed Linux source/candidate RAM files and cleanup")
     worker_runtime.add_argument("--worker-command", help='JSON argument array for a local disposable worker, e.g. ["/path/AcceptanceWorker"]')
@@ -86,6 +88,8 @@ def main():
         parser.error("Worker launchers require --tier fleet")
     if (args.worker_encoder or args.require_worker_ram) and not (args.worker_command or args.worker_image):
         parser.error("Worker encoder/RAM requirements need --worker-command or --worker-image")
+    if args.worker_remote and (not args.worker_command or args.require_worker_ram):
+        parser.error("--worker-remote requires --worker-command and cannot observe local RAM files")
     if args.worker_scratch_root and not args.worker_command:
         parser.error("--worker-scratch-root requires --worker-command")
     if args.timeout <= 0 or args.pairing_wait < 0:
@@ -154,6 +158,10 @@ def main():
                 if time.monotonic() > deadline or (process and process.poll() is not None):
                     raise Blocked("Test server did not become ready; inspect server.log")
                 time.sleep(.5)
+        capture_id = None
+        if args.diagnostics:
+            from acceptance.diagnostics import start_capture
+            capture_id = start_capture(api)
         if args.pairing_wait:
             settings = api.request("/api/settings")
             settings["remoteWorkersEnabled"] = True
@@ -173,7 +181,7 @@ def main():
         if args.worker_command:
             argv = json.loads(args.worker_command)
             require(isinstance(argv, list) and argv and all(isinstance(x, str) for x in argv), "Worker command must be a JSON argument array")
-            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe, vmaf=args.vmaf, require_ram=args.require_worker_ram, scratch_root=scratch_root)
+            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe, vmaf=args.vmaf, require_ram=args.require_worker_ram, scratch_root=scratch_root, observe_local=not args.worker_remote)
             workers.start(argv, args.worker_encoder, report=report)
         corpus = args.corpus
         if corpus:
@@ -205,6 +213,10 @@ def main():
                            corpus=corpus, expected_workers=args.expected_worker,
                            local_encoders=args.local_encoder, variants=args.fixture_variant,
                            soak_cycles=args.soak_cycles, fixture_seconds=args.fixture_seconds, regression=args.regression)
+        if capture_id:
+            from acceptance.diagnostics import collect_capture
+            report.case("correlated-diagnostic-collection-and-restart", lambda: collect_capture(
+                api, capture_id, root, require_sidecar=args.tier == "fleet", restart=restart))
     except KeyboardInterrupt:
         report.case("interrupted", lambda: (_ for _ in ()).throw(Blocked("Run interrupted; isolated server stopped")))
         exit_code = 130

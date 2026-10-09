@@ -50,6 +50,7 @@ public sealed class WorkerDashboard(string name, string? serverAddress, string s
     private SidecarCapabilities? _capabilities;
 
     public PairingDesk Pairing { get; } = new();
+    public DiagnosticJournal? Diagnostics { get; set; }
     public string ScratchPath => scratchPath;
     public bool WantsPreview => Environment.TickCount64 - Interlocked.Read(ref _lastViewer) < 12_000;
     public void Viewed() => Interlocked.Exchange(ref _lastViewer, Environment.TickCount64);

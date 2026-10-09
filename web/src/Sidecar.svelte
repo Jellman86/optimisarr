@@ -388,6 +388,7 @@
       </div>
 
       <footer class="sidecar-footer">
+        <a class="btn btn-ghost min-h-11" href="/api/sidecar/diagnostics" download="optimisarr-sidecar-diagnostics.json">Export local diagnostics</a>
         <span class="font-mono">{status.name} · v{status.version}</span>
         <span>This page is read-only apart from pairing. Pause, drain and scheduling live on the server.</span>
       </footer>

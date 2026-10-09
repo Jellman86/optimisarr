@@ -22,8 +22,8 @@ public sealed record ProtocolNegotiation(bool Compatible, int AgreedVersion, str
 public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
-    // Protocol 9 adds preserving MP4 timestamps and decoded-picture evidence.
-    public const int Current = 9;
+    // Protocol 10 adds opt-in correlated diagnostic capture; media verification contracts are unchanged.
+    public const int Current = 10;
 
     public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments, MediaKind kind = MediaKind.Video) =>
         arguments.Contains("-itsoffset") ? 9 : kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5

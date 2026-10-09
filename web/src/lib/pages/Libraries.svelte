@@ -1476,7 +1476,7 @@
         <label class="label" for="lib-path">{i18n.m.libraries.path} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.path })} text={i18n.m.libraries.section_library_intro} /></label>
         <div class="flex gap-2">
           <input id="lib-path" aria-label={i18n.m.libraries.path} class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
-          <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
+          <button type="button" class="btn min-h-11 flex-shrink-0" onclick={event => { event.currentTarget.focus({ preventScroll: true }); pickerOpen = true }}>{i18n.m.libraries.browse}</button>
         </div>
       </div>
       <div>
@@ -2171,7 +2171,7 @@
             <label class="label" for="lib-target">{i18n.m.libraries.target_folder} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_folder })} text={i18n.m.libraries.move_hint} /></label>
             <div class="flex gap-2">
               <input id="lib-target" aria-label={i18n.m.libraries.target_folder} class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
-              <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
+              <button type="button" class="btn min-h-11 flex-shrink-0" onclick={event => { event.currentTarget.focus({ preventScroll: true }); targetPickerOpen = true }}>{i18n.m.libraries.browse}</button>
             </div>
           </div>
           <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">

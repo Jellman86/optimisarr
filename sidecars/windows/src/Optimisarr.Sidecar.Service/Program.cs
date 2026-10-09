@@ -319,12 +319,13 @@ public static class Program
         // 40 GB download on a connection-limited handler.
         var control = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         var bulk = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        var client = new SidecarClient(control);
+        var client = new SidecarClient(control, new DiagnosticJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Optimisarr", "Sidecar"), FindFfmpeg(), Path.Combine(Path.GetDirectoryName(FindFfmpeg() ?? "") ?? "", "ffprobe.exe")));
         var loadSampler = new MachineLoadSampler();
 
         var runner = new JobRunner(
             client,
-            new JobTransfer(bulk),
+            new JobTransfer(bulk, client.Diagnostics),
             new ProcessTranscoder(),
             FindFfmpeg() ?? "ffmpeg.exe",
             scratch,

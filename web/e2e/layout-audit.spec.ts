@@ -72,6 +72,7 @@ async function mockApp(page: Page) {
     if (path === '/api/settings') return json(route, fixtures.settings)
     if (path === '/api/settings/appearance') return json(route, { brandStyle: 'precession' })
     if (path === '/api/diagnostics/capture') return json(route, null)
+    if (path === '/api/diagnostics/captures') return json(route, [])
     if (path === '/api/settings/cleanup') return json(route, {
       retentionDays: 14, dryRunMode: true, failedOutputCount: 1, failedOutputBytes: 2e9,
       quarantinedOriginalCount: 0, quarantinedOriginalBytes: 0, planToken: 'layout-audit',

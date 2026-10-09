@@ -444,6 +444,7 @@ export type QueueStatus = Pick<Settings, 'maxConcurrentJobs' | 'minFreeDiskBytes
 }
 
 export type PlaybackHold = {
+  artworkUrl?: string | null
   watcher: string
   kind: 'Episode' | 'Movie' | 'Track' | 'Other'
   title: string | null
@@ -1048,10 +1049,22 @@ export type DiagnosticCapture = {
   maximumEvents: number
   eventLimitReached: boolean
   status: 'Recording' | 'Stopped' | 'Expired'
+  persistAcrossRestart: boolean
+  pinned: boolean
+  retentionDays: number
+  failureRetentionDays: number
+  maximumBytes: number
+  bytesStored: number
+  retainUntil: string | null
 }
 
-async function diagnosticBundle(sessionId: string, jobId: number): Promise<Blob> {
-  const response = await fetch(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}/jobs/${jobId}/bundle`, {
+async function diagnosticBundle(sessionId: string, jobId?: number, workerId?: number, fromUtc?: string, toUtc?: string): Promise<Blob> {
+  const query = new URLSearchParams()
+  if (workerId != null) query.set('workerId', String(workerId))
+  if (fromUtc) query.set('fromUtc', fromUtc)
+  if (toUtc) query.set('toUtc', toUtc)
+  const route = jobId != null ? `/jobs/${jobId}/bundle` : `/bundle?${query}`
+  const response = await fetch(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}${route}`, {
     headers: authorizedHeaders(),
   })
   if (response.status === 401) handleAuthRequired()
@@ -1060,6 +1073,22 @@ async function diagnosticBundle(sessionId: string, jobId: number): Promise<Blob>
     throw new Error(apiErrorMessage(payload, response.status))
   }
   return response.blob()
+}
+
+async function waitForDiagnosticUploads(sessionId: string): Promise<void> {
+  const deadline = Date.now() + 35000
+  while (Date.now() < deadline) {
+    let workers: { state: string }[]
+    try {
+      workers = await request<{ state: string }[]>(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}/participants`,
+        { signal: AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now()))) })
+    } catch {
+      // The bundle itself discloses pending evidence even when collection status is unavailable.
+      return
+    }
+    if (!workers.some(worker => worker.state === 'MirroredLocalEvidenceMayBePending' || worker.state === 'NoLocalEvidenceReceived')) return
+    await new Promise(resolve => window.setTimeout(resolve, 1000))
+  }
 }
 
 function authorizedHeaders(init?: RequestInit): Headers {
@@ -1187,12 +1216,17 @@ export const api = {
   exactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`),
   scanExactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`, { method: 'POST' }),
   cancelExactDuplicates: (id: number) => request<void>(`/api/libraries/${id}/duplicates`, { method: 'DELETE' }),
+  diagnosticParticipants: (id: string) => request<{ workerId: number; state: string }[]>(`/api/diagnostics/capture/${encodeURIComponent(id)}/participants`),
+  diagnosticCaptures: (jobId?: number) => request<DiagnosticCapture[]>(`/api/diagnostics/captures${jobId == null ? '' : `?jobId=${jobId}`}`),
+  pinDiagnosticCapture: (id: string, pinned: boolean) => request<void>(`/api/diagnostics/capture/${encodeURIComponent(id)}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
+  deleteDiagnosticCapture: (id: string) => request<void>(`/api/diagnostics/capture/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   diagnosticCapture: () => request<DiagnosticCapture | null>('/api/diagnostics/capture'),
-  startDiagnosticCapture: (body: { durationHours: number | null; scopedJobId: number | null; includePaths: boolean }) =>
+  startDiagnosticCapture: (body: { durationHours: number | null; scopedJobId: number | null; includePaths: boolean; persistAcrossRestart?: boolean; retentionDays?: number; failureRetentionDays?: number; maximumBytes?: number }) =>
     request<DiagnosticCapture>('/api/diagnostics/capture', { method: 'POST', body: JSON.stringify(body) }),
   stopDiagnosticCapture: (id: string) =>
     request<DiagnosticCapture>(`/api/diagnostics/capture/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
   diagnosticBundle,
+  waitForDiagnosticUploads,
   health: () => request<Health>('/api/health'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
   setup: () => request<SetupState>('/api/setup'),

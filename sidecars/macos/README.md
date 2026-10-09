@@ -135,10 +135,13 @@ example server addresses. No copyrighted media material is used.
 
 <img src="../../docs/images/optimisarr-sidecar-macos-light-preferences.png" width="390" alt="Light Mac Preferences showing disk, chosen-folder and memory work-location choices inside the native panel">
 
-[Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).
+[Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html),
+or browse the [sidecar screenshot gallery](../../docs/usage/screenshots.md#mac-menu-bar).
+These offscreen captures use the renderer's flat snapshot background and bordered controls;
+the live macOS 26 popover uses system glass. See [capture provenance](../../docs/images/README.md#sidecar-captures).
 
 Click the Precession icon in the menu bar for the compact activity panel. It shows the Mac's name,
-connection state, current jobs or **Ready for work**, and CPU/GPU/held-job readings. Unknown values
+connection state, current jobs or **Ready for work**, and CPU/GPU/free-space readings. Unknown values
 stay unavailable; macOS does not expose VideoToolbox media-engine utilisation, so the GPU reading
 must not be interpreted as encoder utilisation.
 
@@ -420,3 +423,16 @@ these repository secrets:
 | `SIDECAR_NOTARY_ISSUER` | The Issuer ID |
 
 Base64 a file for pasting with `base64 -i <file> | pbcopy`.
+
+## Diagnostic capture and local export
+
+Enhanced capture is off by default and requires an explicit session in the server’s
+**Settings → System → Diagnostic capture**. Protocol 10 sidecars mirror structured job,
+stage, transfer and tool-identity records during that session. Loss of server contact
+stops recording within 90 seconds; restarting a sidecar never reactivates capture by itself.
+
+Use **Export local diagnostics…** in the menu’s **More** actions to recover retained records while the server is unavailable.
+The local journal is bounded to 2,048 records, 1 MiB and seven days. It excludes pairing
+credentials, arbitrary process output and media payloads. See the
+[diagnostic guide](../../docs/troubleshooting/diagnostics.md#collect-diagnostic-evidence)
+for collection, retention and sharing boundaries.

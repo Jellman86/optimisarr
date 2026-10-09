@@ -9,6 +9,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 
 - [Getting started](setup/getting-started.md) - deploy the container and run the first dry-run workflow.
 - [User workflow](usage/workflow.md) - a friendly walkthrough of the app, from first library to quarantine review.
+- [Screenshot gallery](usage/screenshots.md) - the main app and Mac, Windows and Linux sidecars, including light and phone views.
 
 ## Day-to-day operation
 

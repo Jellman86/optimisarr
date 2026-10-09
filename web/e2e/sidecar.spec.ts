@@ -147,3 +147,15 @@ test('audio work shows a source spectrogram with an honest verification label', 
   await page.setViewportSize({ width: 375, height: 812 })
   await noHorizontalScroll(page)
 })
+
+test('local diagnostics can be exported without a server connection', async ({ page }) => {
+  await serve(page, { ...status, state: 'Disconnected' })
+  await page.route('**/api/sidecar/diagnostics', route => route.fulfill({
+    contentType: 'application/json', headers: { 'content-disposition': 'attachment; filename="optimisarr-sidecar-diagnostics.json"' },
+    body: '{"schemaVersion":1,"entries":[]}',
+  }))
+  await page.goto('/sidecar.html')
+  const download = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Export local diagnostics', exact: true }).click()
+  expect((await download).suggestedFilename()).toBe('optimisarr-sidecar-diagnostics.json')
+})

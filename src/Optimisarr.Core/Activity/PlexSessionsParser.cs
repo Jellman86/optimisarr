@@ -93,8 +93,18 @@ public static class PlexSessionsParser
             kind == PlaybackKind.Track ? Text(session.Attribute("originalTitle")) ?? Text(session.Attribute("grandparentTitle")) : null,
             Text(session.Element("User")?.Attribute("title")),
             Text(player?.Attribute("title")),
-            string.Equals((string?)player?.Attribute("state"), "paused", StringComparison.OrdinalIgnoreCase));
+            string.Equals((string?)player?.Attribute("state"), "paused", StringComparison.OrdinalIgnoreCase),
+            Artwork(session, kind));
     }
+
+    private static PlaybackArtwork? Artwork(XElement session, PlaybackKind kind) =>
+        (kind switch
+        {
+            PlaybackKind.Episode => PlaybackArtwork.Plex(Text(session.Attribute("grandparentThumb")))
+                ?? PlaybackArtwork.Plex(Text(session.Attribute("parentThumb"))),
+            PlaybackKind.Track => PlaybackArtwork.Plex(Text(session.Attribute("parentThumb"))),
+            _ => null,
+        }) ?? PlaybackArtwork.Plex(Text(session.Attribute("thumb")));
 
     private static string? Text(XAttribute? attribute) =>
         string.IsNullOrWhiteSpace(attribute?.Value) ? null : attribute.Value.Trim();

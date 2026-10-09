@@ -4,43 +4,58 @@ namespace Optimisarr.Data;
 
 public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options) : DbContext(options)
 {
-    private static readonly SemaphoreSlim DiagnosticTransitionGate = new(1, 1);
 
     public override async Task<int> SaveChangesAsync(
         bool acceptAllChangesOnSuccess,
         CancellationToken cancellationToken = default)
     {
         ChangeTracker.DetectChanges();
+        foreach (var entry in ChangeTracker.Entries<JobLease>().Where(e => e.State == EntityState.Added && e.Entity.ExecutionAttempt == 0))
+        {
+            var job = ChangeTracker.Entries<Job>().FirstOrDefault(j => j.Entity.Id == entry.Entity.JobId)?.Entity;
+            if (job is not null) entry.Entity.ExecutionAttempt = job.ExecutionAttempt;
+        }
         var transitions = ChangeTracker.Entries<Job>()
             .Where(entry => entry.State == EntityState.Modified
                 && entry.Property(job => job.Status).IsModified)
             .Select(entry => (entry.Entity, Previous: entry.Property(job => job.Status).OriginalValue))
             .Where(entry => entry.Entity.Status != entry.Previous)
             .ToArray();
-        if (transitions.Length == 0)
+        var archives = ChangeTracker.Entries<Job>()
+            .Where(entry => entry.State == EntityState.Modified && entry.Property(j => j.AttemptHistoryJson).IsModified)
+            .Select(entry => (entry.Entity, Previous: entry.Property(j => j.AttemptHistoryJson).OriginalValue)).ToArray();
+        var leases = ChangeTracker.Entries<JobLease>()
+            .Where(entry => entry.State == EntityState.Added || entry.State == EntityState.Modified
+                && (entry.Property(lease => lease.State).IsModified || entry.Property(lease => lease.Stage).IsModified
+                    || entry.Property(lease => lease.DeliveredSha256).IsModified || entry.Property(lease => lease.VerificationEvidenceJson).IsModified))
+            .Select(entry => entry.Entity).ToArray();
+        var replacements = ChangeTracker.Entries<Replacement>()
+            .Where(entry => entry.State == EntityState.Added || entry.State == EntityState.Modified && entry.Property(r => r.Status).IsModified)
+            .Select(entry => entry.Entity).ToArray();
+        if (transitions.Length == 0 && archives.Length == 0 && leases.Length == 0 && replacements.Length == 0)
         {
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
 
-        // The event cap is read before insertion. Hold the gate through the write so concurrent
-        // transitions in this host cannot both reserve the final event slot.
-        await DiagnosticTransitionGate.WaitAsync(cancellationToken);
-        try
-        {
-            var nowUtc = DateTimeOffset.UtcNow;
-            foreach (var (job, previous) in transitions)
-            {
-                await DiagnosticEventCapture.AppendJobTransitionAsync(
-                    this, job, previous, nowUtc, cancellationToken);
-            }
-
-            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-        }
-        finally
-        {
-            DiagnosticTransitionGate.Release();
-        }
+        // Reserve SQLite's write transaction before reading capture counters. Reuse an outer
+        // operational transaction so its events and cap reservations commit together.
+        await using var write = await BeginDiagnosticWriteAsync(cancellationToken);
+        var nowUtc = DateTimeOffset.UtcNow;
+        foreach (var (job, previous) in archives)
+            await DiagnosticEventCapture.AppendArchivedAttemptsAsync(this, job, previous, nowUtc, cancellationToken);
+        foreach (var (job, previous) in transitions)
+            await DiagnosticEventCapture.AppendJobTransitionAsync(this, job, previous, nowUtc, cancellationToken);
+        foreach (var lease in leases)
+            await DiagnosticEventCapture.AppendLeaseAsync(this, lease, nowUtc, cancellationToken);
+        foreach (var replacement in replacements)
+            await DiagnosticEventCapture.AppendReplacementAsync(this, replacement, nowUtc, cancellationToken);
+        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        await write.CommitAsync(cancellationToken);
+        return saved;
     }
+
+    public async Task<DiagnosticWriteScope> BeginDiagnosticWriteAsync(CancellationToken token = default) =>
+        new(Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(token) : null);
 
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
@@ -66,6 +81,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<DiagnosticCaptureSession> DiagnosticCaptureSessions => Set<DiagnosticCaptureSession>();
 
+    public DbSet<DiagnosticWorkerReceipt> DiagnosticWorkerReceipts => Set<DiagnosticWorkerReceipt>();
+
     public DbSet<DiagnosticEvent> DiagnosticEvents => Set<DiagnosticEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -80,7 +97,16 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         modelBuilder.Entity<DiagnosticCaptureSession>(entity =>
         {
             entity.HasKey(session => session.Id);
+            entity.Property(session => session.RetentionDays).HasDefaultValue(7);
+            entity.Property(session => session.FailureRetentionDays).HasDefaultValue(30);
+            entity.Property(session => session.MaximumBytes).HasDefaultValue(4L * 1024 * 1024);
             entity.HasIndex(session => session.StartedAt);
+        });
+
+        modelBuilder.Entity<DiagnosticWorkerReceipt>(entity =>
+        {
+            entity.HasKey(receipt => new { receipt.SessionId, receipt.WorkerId });
+            entity.HasOne<DiagnosticCaptureSession>().WithMany().HasForeignKey(receipt => receipt.SessionId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<DiagnosticEvent>(entity =>
@@ -89,7 +115,10 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(entry => entry.ReasonCode).IsRequired().HasMaxLength(64);
             entity.Property(entry => entry.PreviousStatus).HasMaxLength(32);
             entity.Property(entry => entry.CurrentStatus).IsRequired().HasMaxLength(32);
+            entity.Property(entry => entry.Source).IsRequired().HasMaxLength(16).HasDefaultValue("Server");
+            entity.Property(entry => entry.DetailsJson).HasMaxLength(4096);
             entity.HasIndex(entry => new { entry.SessionId, entry.JobId, entry.Id });
+            entity.HasIndex(entry => new { entry.SessionId, entry.WorkerId, entry.InstanceId, entry.SourceSequence }).IsUnique();
             entity.HasOne<DiagnosticCaptureSession>()
                 .WithMany()
                 .HasForeignKey(entry => entry.SessionId)

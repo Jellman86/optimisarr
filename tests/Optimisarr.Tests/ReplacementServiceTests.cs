@@ -5,6 +5,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Data;
 
@@ -78,6 +79,54 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Empty(await db.Replacements.ToListAsync());
         Assert.Equal("ORIGINAL", File.ReadAllText(original));
         Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Automatic_identity_refusal_never_authorises_failing_a_concurrently_changed_job(bool newerAttempt)
+    {
+        var (original, output) = WriteFiles("Race.avi", "Race.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await using var db = new OptimisarrDbContext(_options);
+        var row = await db.Jobs.FindAsync(id); row!.VerifiedSourceSha256 = null; await db.SaveChangesAsync();
+        var changedOnce = false;
+        var result = await NewService(db, canMoveAtomically: (_, _) =>
+        {
+            if (!changedOnce)
+            {
+                changedOnce = true;
+                using var changed = new OptimisarrDbContext(_options);
+                changed.Jobs.Where(j => j.Id == id).ExecuteUpdate(setters => setters
+                    .SetProperty(j => j.Status, newerAttempt ? JobStatus.Queued : JobStatus.Cancelled)
+                    .SetProperty(j => j.ExecutionAttempt, j => newerAttempt ? j.ExecutionAttempt + 1 : j.ExecutionAttempt));
+            }
+            return true;
+        }).ReplaceAutomaticallyAsync(id, default);
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind); Assert.False(result.Permanent);
+        Assert.Equal(newerAttempt ? JobStatus.Queued : JobStatus.Cancelled, (await db.Jobs.AsNoTracking().SingleAsync()).Status);
+        Assert.Empty(await db.Replacements.ToListAsync());
+        Assert.Equal("ORIGINAL", File.ReadAllText(original)); Assert.Equal("VERIFIED", File.ReadAllText(output));
+    }
+
+
+    [Fact]
+    public async Task Automatic_identity_refusal_records_verification_failure_tracking_once()
+    {
+        var (original, output) = WriteFiles("Refused.avi", "Refused.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
+        await using var db = new OptimisarrDbContext(_options);
+        var row = await db.Jobs.FindAsync(id); row!.VerifiedSourceSha256 = null; await db.SaveChangesAsync();
+        var service = NewService(db);
+        var result = await service.ReplaceAutomaticallyAsync(id, default);
+        Assert.True(result.FailureAlreadyRecorded); Assert.True(result.Permanent);
+        Assert.Equal(FailureCategory.Verification, (await db.Jobs.AsNoTracking().SingleAsync()).FailureCategory);
+        Assert.Equal(1, (await db.MediaFiles.AsNoTracking().SingleAsync()).FailureCount);
+        await service.ReplaceAutomaticallyAsync(id, default);
+        Assert.Equal(1, (await db.MediaFiles.AsNoTracking().SingleAsync()).FailureCount);
     }
 
     private async Task AttachLibraryAsync(int jobId, MediaType type, bool autoReplace)
@@ -255,6 +304,8 @@ public sealed class ReplacementServiceTests : IDisposable
             row.VerifiedOutputSha256 = null;
             await db.SaveChangesAsync();
         }
+        await using (var captureDb = new OptimisarrDbContext(_options))
+            await new Optimisarr.Api.Diagnostics.DiagnosticCaptureStore(captureDb).StartAsync(1, null, false, DateTimeOffset.UtcNow, default);
         var result = await ReplaceAsync(id);
         Assert.Equal(ReplacementResultKind.Failed, result.Kind);
         Assert.True(result.Permanent);
@@ -266,6 +317,8 @@ public sealed class ReplacementServiceTests : IDisposable
             Assert.False(failed.VerificationPassed);
             Assert.Contains("File identity", failed.VerificationReportJson);
             Assert.Contains("Decode health", failed.VerificationReportJson);
+            Assert.Equal("Failure.Verification", (await db.DiagnosticEvents.SingleAsync()).ReasonCode);
+            Assert.True((await db.DiagnosticCaptureSessions.SingleAsync()).HasFailure);
         }
         Assert.Equal("ORIGINAL", File.ReadAllText(original));
         Assert.Equal("VERIFIED", File.ReadAllText(output));

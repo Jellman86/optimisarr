@@ -487,6 +487,15 @@ struct SidecarMenu: View {
             Spacer()
             Menu {
                 if let url = serverURL { Button("Open Optimisarr") { NSWorkspace.shared.open(url) } }
+                Button("Export local diagnostics…") {
+                    let panel = NSSavePanel(); panel.nameFieldStringValue = "optimisarr-sidecar-diagnostics.json"
+                    if panel.runModal() == .OK, let file = panel.url {
+                        Task {
+                            do { try await DiagnosticJournal.shared.export().write(to: file, options: .atomic) }
+                            catch { let alert = NSAlert(); alert.messageText = "Could not export diagnostics"; alert.informativeText = error.localizedDescription; alert.runModal() }
+                        }
+                    }
+                }
                 Button("Quit sidecar") { NSApplication.shared.terminate(nil) }
             } label: { Image(systemName: "ellipsis").frame(width: 28, height: 24) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 32).help("More actions")

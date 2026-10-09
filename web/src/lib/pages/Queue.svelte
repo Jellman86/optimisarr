@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CapturedDiagnosticTimeline from '../components/CapturedDiagnosticTimeline.svelte'
   import { tick } from 'svelte'
   import { modal } from '../modal'
   import { isWorkingJob, isJobSuspended, jobLocation, verificationPhase } from '../job-presentation'
@@ -47,6 +48,9 @@
   let diagnosticCapture = $state<DiagnosticCapture | null>(null)
   let diagnosticLookupPending = $state(false)
   let downloadingDiagnostics = $state(false)
+  let diagnosticSummaryCopied = $state(false)
+  let diagnosticSummaryText = $state('')
+  let diagnosticSummaryError = $state('')
   let captureLookup = 0
   let detailOpener: HTMLElement | null = null
   let loadError = $state<string | null>(null)
@@ -304,6 +308,8 @@
     detailOpener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
     selectedJobId = id
     diagnosticCapture = null
+    diagnosticSummaryCopied = false
+    diagnosticSummaryText = ''; diagnosticSummaryError = ''
     diagnosticLookupPending = true
     const lookup = ++captureLookup
     error = null
@@ -314,10 +320,10 @@
 
   async function loadDiagnosticCapture(jobId: number, lookup: number) {
     try {
-      const capture = await api.diagnosticCapture()
+      const [latest, retained] = await Promise.all([api.diagnosticCapture(), api.diagnosticCaptures(jobId)])
       if (selectedJobId === jobId && captureLookup === lookup)
-        diagnosticCapture = capture && (capture.scopedJobId === null || capture.scopedJobId === jobId)
-          ? capture : null
+        diagnosticCapture = (Array.isArray(retained) ? retained[0] : null)
+          ?? (latest && (latest.scopedJobId === null || latest.scopedJobId === jobId) ? latest : null)
     } catch {
       // The operational job detail still works when enhanced capture is unavailable.
     } finally {
@@ -346,9 +352,33 @@
     }
   }
 
+  async function copyDiagnosticSummary() {
+    if (!selectedJob || !diagnosticCapture) return
+    downloadingDiagnostics = true
+    diagnosticSummaryCopied = false; diagnosticSummaryText = ''; diagnosticSummaryError = ''
+    try {
+      const blob = await api.diagnosticBundle(diagnosticCapture.id, selectedJob.id)
+      const bundle = JSON.parse(await blob.text())
+      const summary = { manifestId: bundle.manifest.manifestId, schemaVersion: bundle.manifest.schemaVersion,
+        collectedAt: bundle.manifest.collectedAt, job: bundle.job, attempts: bundle.attempts,
+        participants: bundle.manifest.participants,
+        events: bundle.events.slice(-100).map((event: { reasonCode: string; attempt: number; workerId: number | null; receivedAt: string; details?: unknown }) =>
+          ({ reasonCode: event.reasonCode, attempt: event.attempt, workerId: event.workerId, receivedAt: event.receivedAt, details: event.details })), omissions: bundle.manifest.omissions }
+      // Paths are deliberately excluded even if the operator selected them for the private bundle.
+      delete summary.job.path
+      const text = JSON.stringify(summary, null, 2)
+      try {
+        if (!navigator.clipboard?.writeText) { diagnosticSummaryText = text; return }
+        await navigator.clipboard.writeText(text)
+        diagnosticSummaryCopied = true
+      } catch { diagnosticSummaryText = text }
+    } catch (cause) { diagnosticSummaryError = cause instanceof Error ? cause.message : String(cause) }
+    finally { downloadingDiagnostics = false }
+  }
+
   async function openDiagnosticSettings() {
     await closeDetails()
-    router.go('/settings/system')
+    router.go('/settings/system#diagnostic-capture')
   }
 
   async function closeDetails() {
@@ -740,17 +770,29 @@
         </section>
       {/if}
 
+      {#if diagnosticCapture && selectedJob}<CapturedDiagnosticTimeline captureId={diagnosticCapture.id} jobId={selectedJob.id} recording={diagnosticCapture.status === 'Recording'} />{/if}
       <section class="queue-diagnostic-action" aria-label={i18n.m.settings.diagnostics_title}>
         <div>
           <h3>{i18n.m.settings.diagnostics_title}</h3>
-          {#if !diagnosticLookupPending}<p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) + ` · ${diagnosticCapture.eventsStored} ${i18n.m.settings.diagnostics_events}` : i18n.m.settings.diagnostics_desc}</p>{/if}
+          {#if !diagnosticLookupPending}<p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) : i18n.m.settings.diagnostics_desc}</p>{/if}
         </div>
         {#if diagnosticLookupPending}
           <span class="queue-diagnostic-pending" role="status">{i18n.m.common.loading_short}</span>
         {:else if diagnosticCapture}
           <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
+          <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={copyDiagnosticSummary}>{diagnosticSummaryCopied ? i18n.m.settings.diagnostics_copied : i18n.m.settings.diagnostics_copy_summary}</button>
+          {#if diagnosticCapture.retainUntil}<span class="text-xs text-ink-3">{diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_retention_estimate : i18n.m.settings.diagnostics_retain_until}: {new Date(diagnosticCapture.retainUntil).toLocaleString()}</span>{/if}
         {:else}
           <button class="btn min-h-11" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
+        {/if}
+        {#if diagnosticSummaryError}<p class="basis-full text-sm text-bad" role="alert">{diagnosticSummaryError}</p>{/if}
+        {#if diagnosticSummaryText}
+          <div class="basis-full min-w-0">
+            <p id="diagnostic-copy-help" class="mb-2 text-sm text-ink-2" role="status">{i18n.m.settings.diagnostics_copy_manual}</p>
+            <textarea class="input w-full min-w-0 font-mono text-xs" rows="8" readonly value={diagnosticSummaryText}
+              aria-label={i18n.m.settings.diagnostics_copy_summary} aria-describedby="diagnostic-copy-help"
+              onfocus={event => event.currentTarget.select()} onclick={event => event.currentTarget.select()}></textarea>
+          </div>
         {/if}
       </section>
 

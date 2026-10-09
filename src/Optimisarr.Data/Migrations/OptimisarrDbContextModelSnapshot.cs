@@ -125,6 +125,9 @@ namespace Optimisarr.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("BytesStored")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("EventLimitReached")
                         .HasColumnType("INTEGER");
 
@@ -134,8 +137,32 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("FailureRetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(30);
+
+                    b.Property<bool>("HasFailure")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IncludePaths")
                         .HasColumnType("INTEGER");
+
+                    b.Property<long>("MaximumBytes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(4194304L);
+
+                    b.Property<bool>("PersistAcrossRestart")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Pinned")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(7);
 
                     b.Property<int?>("ScopedJobId")
                         .HasColumnType("INTEGER");
@@ -167,6 +194,13 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DetailsJson")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("JobId")
                         .HasColumnType("INTEGER");
 
@@ -185,8 +219,21 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("SessionId")
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Server");
+
+                    b.Property<long?>("SourceSequence")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("WorkerId")
                         .HasColumnType("INTEGER");
@@ -195,7 +242,32 @@ namespace Optimisarr.Data.Migrations
 
                     b.HasIndex("SessionId", "JobId", "Id");
 
+                    b.HasIndex("SessionId", "WorkerId", "InstanceId", "SourceSequence")
+                        .IsUnique();
+
                     b.ToTable("DiagnosticEvents");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DiagnosticWorkerReceipt", b =>
+                {
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("WorkerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("DroppedEvents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("FinalUploadAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastUploadAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("SessionId", "WorkerId");
+
+                    b.ToTable("DiagnosticWorkerReceipts");
                 });
 
             modelBuilder.Entity("Optimisarr.Data.Exclusion", b =>
@@ -459,6 +531,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<DateTimeOffset?>("EndedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ExecutionAttempt")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("TEXT");
@@ -1139,6 +1214,15 @@ namespace Optimisarr.Data.Migrations
                 });
 
             modelBuilder.Entity("Optimisarr.Data.DiagnosticEvent", b =>
+                {
+                    b.HasOne("Optimisarr.Data.DiagnosticCaptureSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DiagnosticWorkerReceipt", b =>
                 {
                     b.HasOne("Optimisarr.Data.DiagnosticCaptureSession", null)
                         .WithMany()

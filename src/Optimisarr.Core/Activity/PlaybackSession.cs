@@ -22,11 +22,12 @@ public sealed record PlaybackSession(
     string? Artist,
     string? User,
     string? Device,
-    bool Paused)
+    bool Paused,
+    PlaybackArtwork? Artwork = null)
 {
     /// <summary>The same playback without who is watching or where, for a watcher that hides viewers.</summary>
     public PlaybackSession WithoutViewer() => this with { User = null, Device = null };
 }
 
 /// <summary>A playback holding the queue, and the watcher that reported it.</summary>
-public sealed record PlaybackHold(string Watcher, PlaybackSession Session);
+public sealed record PlaybackHold(string Watcher, PlaybackSession Session, int? WatcherId = null);
