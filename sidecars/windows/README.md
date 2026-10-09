@@ -58,6 +58,9 @@ restart. If Windows denies the shutdown request, the monitor shows the error wit
 Screenshots use fabricated dummy media created for documentation, invented machine names and
 example server addresses. No copyrighted media material is used.
 
+See the [sidecar screenshot gallery](../../docs/usage/screenshots.md#windows-tray) for idle,
+light appearance, preferences and audio fallback views, and [capture provenance](../../docs/images/README.md#sidecar-captures).
+
 <img src="../../docs/images/optimisarr-sidecar-windows-encoding.png" width="390" alt="Dark Windows Compact Monitor showing a fabricated Prism Field encoding job and resource readings">
 
 <img src="../../docs/images/optimisarr-sidecar-windows-two-jobs.png" width="390" alt="Expanded Windows Processing details showing two separate fabricated job previews">

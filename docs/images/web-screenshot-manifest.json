@@ -1,6 +1,8 @@
 {
   "description": "Captured from the current local UI using fabricated API responses and original vector artwork. No production data or third-party media.",
   "command": "cd web && node scripts/capture-docs.mjs",
+  "applicationVersion": "0.2.22",
+  "uiRevision": "bbdc5d349f4c7f2406c56c1c43f0a9e9817fc81c",
   "viewport": {
     "width": 1440,
     "height": 1000
@@ -67,6 +69,12 @@
     "optimisarr-audio-quality-settings-dark.png",
     "optimisarr-audio-gate-dark.png",
     "optimisarr-soundtrack-report-dark.png",
-    "optimisarr-soundtrack-quality-settings-dark.png"
+    "optimisarr-soundtrack-quality-settings-dark.png",
+    "optimisarr-queue-playback-dark.png",
+    "optimisarr-queue-playback-mobile-dark.png",
+    "optimisarr-schedule-playback-dark.png",
+    "optimisarr-settings-viewer-privacy-dark.png",
+    "optimisarr-settings-viewers-hidden-dark.png",
+    "optimisarr-queue-playback-private-dark.png"
   ]
 }

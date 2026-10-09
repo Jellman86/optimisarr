@@ -30,16 +30,24 @@ While playback holds the queue, Optimisarr says what is playing and who is
 watching: the series, season, episode and title for TV, the title and year for a
 film, and the track and artist for music, followed by the viewer and device, and
 "(paused)" for a paused stream. The status bar shows the first playback and how
-many more, with the full list in its tooltip. The Queue and Schedule pages list
-every playback. A detail the server does not report is left out rather than
+many more. Click or tap it to open Queue. The Queue and Schedule pages show up to
+eight playbacks, with an expandable list for the rest. A detail the server does not report is left out rather than
 guessed; if a server reports none, the pause reads as before, with a stream count.
 
-Turn off **Show who is watching** on a watcher to name only what is playing, which
-suits a shared server. The viewer and device are then dropped before they leave
+![Queue paused for three fabricated playbacks, showing a film, a paused TV episode and a music track](../images/optimisarr-queue-playback-dark.png)
+
+Turn off **Show who is watching** on a watcher and choose **Save changes** to name
+only what is playing, which suits a shared server. The viewer and device are then dropped before they leave
 the server. Names and titles are only shown to people who can open Optimisarr,
 which is protected by the admin token when one is set. They are never written to
 logs or diagnostics bundles. They only explain a pause: which sessions pause the
 queue is unchanged.
+
+![Unsaved media-server edit with Show who is watching turned off, ready to save](../images/optimisarr-settings-viewer-privacy-dark.png)
+
+After saving, the pause still identifies the titles while omitting viewers and devices:
+
+![Queue playback hold listing only the fabricated titles with viewer names and devices hidden](../images/optimisarr-queue-playback-private-dark.png)
 
 ![Download managers settings showing a fabricated Radarr connection and its connection controls](../images/optimisarr-settings-downloads-dark.png)
 

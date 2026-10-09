@@ -32,6 +32,15 @@ installation, upgrades, and packaging/signing status. Windows installs a backgro
 tray companion. The Mac runs from the menu bar. Both expose a compact current-work monitor,
 processing details, pause, preferences, and diagnostics.
 
+| Mac menu bar | Windows tray |
+|---|---|
+| <img src="../images/optimisarr-sidecar-macos-encoding.png" width="330" alt="Mac worker encoding a fabricated clip with stage, progress, CPU load and free space"> | <img src="../images/optimisarr-sidecar-windows-encoding.png" width="330" alt="Windows worker encoding a fabricated clip with stage, progress, CPU and GPU load"> |
+
+![Linux worker dashboard showing a fabricated video encode, proved encoders and recent activity](../images/optimisarr-sidecar-linux-encoding-dark.png)
+
+The [screenshot gallery](../usage/screenshots.md#sidecars) also shows idle, pairing, light
+appearance, processing details and preferences.
+
 Windows MSI upgrades restart a paired worker using its retained pairing; fresh installs and
 unpaired upgrades wait for pairing. Drain before upgrading and resume from the server afterward.
 An upgrade starts a paired service even if it was stopped before the update.
@@ -170,11 +179,12 @@ channel compatibility and timed-lyrics guards apply unchanged.
 
 ![Mac Compact Monitor encoding a generated audio fixture with measured source spectrum](../images/optimisarr-sidecar-macos-audio.png)
 
-![Windows Compact Monitor encoding the same generated audio fixture](../images/optimisarr-sidecar-windows-audio.png)
+![Windows Compact Monitor encoding a fabricated audio job with the labelled spectrum-unavailable fallback](../images/optimisarr-sidecar-windows-audio.png)
 
 ![Linux sidecar audio monitor with a generated fixture](../images/optimisarr-sidecar-linux-audio-dark.png)
 
-Documentation captures use fabricated jobs and a spectrogram measured from a
-three-second generated chirp, never private media. Native captures use the apps’
-`--render-menu` and `--render-monitor` modes. Linux captures can be regenerated with
-`cd web && node scripts/capture-audio-sidecar.mjs /absolute/path/generated-spectrum.jpg`.
+Documentation captures use fabricated jobs, never private media. Mac and Linux show a
+spectrogram measured from a three-second generated chirp. The Windows CI capture shows
+the labelled fallback because its fixture does not supply a spectrum. Native captures use
+the apps’ `--render-menu` and `--render-monitor` modes. See [capture instructions and
+provenance](../images/README.md#sidecar-captures) to reproduce all three platforms.

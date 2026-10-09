@@ -1,0 +1,41 @@
+{
+  "applicationVersion": "0.2.22",
+  "uiRevision": "bbdc5d349f4c7f2406c56c1c43f0a9e9817fc81c",
+  "source": "web/src/Sidecar.svelte",
+  "fixtureClock": "2026-09-17T12:00:00Z",
+  "fabricated": true,
+  "variants": [
+    {
+      "name": "dark",
+      "width": 1440,
+      "height": 1000,
+      "theme": "dark"
+    },
+    {
+      "name": "light",
+      "width": 1440,
+      "height": 1000,
+      "theme": "light"
+    },
+    {
+      "name": "phone",
+      "width": 390,
+      "height": 844,
+      "theme": "light"
+    }
+  ],
+  "images": [
+    "optimisarr-sidecar-linux-audio-dark.png",
+    "optimisarr-sidecar-linux-audio-light.png",
+    "optimisarr-sidecar-linux-audio-phone.png",
+    "optimisarr-sidecar-linux-encoding-dark.png",
+    "optimisarr-sidecar-linux-encoding-light.png",
+    "optimisarr-sidecar-linux-encoding-phone.png",
+    "optimisarr-sidecar-linux-idle-dark.png",
+    "optimisarr-sidecar-linux-idle-light.png",
+    "optimisarr-sidecar-linux-idle-phone.png",
+    "optimisarr-sidecar-linux-pairing-dark.png",
+    "optimisarr-sidecar-linux-pairing-light.png",
+    "optimisarr-sidecar-linux-pairing-phone.png"
+  ]
+}
