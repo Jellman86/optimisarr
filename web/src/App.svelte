@@ -19,6 +19,7 @@
   import Schedule from './lib/pages/Schedule.svelte'
   import Settings from './lib/pages/Settings.svelte'
   import Setup from './lib/pages/Setup.svelte'
+  import DiagnosticCaptureBanner from './lib/components/DiagnosticCaptureBanner.svelte'
   import StatusStrip from './lib/components/StatusStrip.svelte'
   import { pageWidth } from './lib/layout'
 
@@ -191,6 +192,7 @@
     >
       <div class="page-frame" class:page-frame-reading={pageWidth(router.path) === 'reading'}>
         <StatusStrip />
+        <DiagnosticCaptureBanner />
         {#key pageKey}
           {@const Page = page}
           <Page />

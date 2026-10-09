@@ -77,6 +77,28 @@ public sealed class DashboardTests
         await app.StopAsync();
     }
 
+    [Fact]
+    public async Task Local_diagnostics_export_works_offline_and_contains_only_opted_in_records()
+    {
+        var journal = new DiagnosticJournal();
+        var view = new WorkerDashboard("test", "https://server.test?token=private-credential", Path.GetTempPath(), 1) { Diagnostics = journal };
+        await using var app = DashboardHost.Create(view, "http://127.0.0.1:0");
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using var empty = JsonDocument.Parse(await client.GetStringAsync("/api/sidecar/diagnostics"));
+        Assert.Empty(empty.RootElement.GetProperty("entries").EnumerateArray());
+        var now = DateTimeOffset.UtcNow;
+        journal.Apply(new(Guid.NewGuid(), now, now.AddHours(1), null), now); journal.Assignment(Guid.NewGuid(), 42);
+        var response = await client.GetAsync("/api/sidecar/diagnostics");
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        Assert.Contains("attachment", response.Content.Headers.ContentDisposition!.ToString());
+        var json = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("private-credential", json);
+        using var doc = JsonDocument.Parse(json);
+        Assert.NotEmpty(doc.RootElement.GetProperty("entries").EnumerateArray());
+        await app.StopAsync();
+    }
+
     private static DashboardSnapshot Status(WorkerDashboard view) => view.Snapshot(new ScratchStorage("RAM", 1, 2));
 
     private static Assignment Assigned(int jobId, string title = "Clip") => new(Guid.NewGuid(), jobId, title, 1024, "hevc_qsv",

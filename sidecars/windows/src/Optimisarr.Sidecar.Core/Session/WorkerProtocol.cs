@@ -13,5 +13,5 @@ public static class WorkerProtocol
 {
     public const int Minimum = 1;
     // Protocol 9 supports preserving MP4 timestamps and decoded-picture evidence.
-    public const int Maximum = 9;
+    public const int Maximum = 10;
 }

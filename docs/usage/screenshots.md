@@ -25,7 +25,7 @@ See [the user workflow](workflow.md) for the steps behind these screens.
 
 ### Playback pauses and privacy
 
-Queue and Schedule explain which playbacks are holding new work. The status strip links to Queue
+Queue and Schedule show posters and album covers beside the playbacks holding new work. The status strip links to Queue
 for the full details, including on a phone. Names and devices can be hidden per media server.
 
 ![Schedule paused for fabricated film, episode and music playback with viewer and device details](../images/optimisarr-schedule-playback-dark.png)
@@ -83,7 +83,7 @@ See the [Mac installation guide](../../sidecars/macos/README.md).
 
 | State | Dark | Light |
 |---|---|---|
-| Ready for work | [Idle](../images/optimisarr-sidecar-windows-idle.png) | — |
+| Ready for work | [Idle](../images/optimisarr-sidecar-windows-idle.png) | Not applicable |
 | One job's Processing details | [Details](../images/optimisarr-sidecar-windows-details.png) | [Details](../images/optimisarr-sidecar-windows-light-details.png) |
 | Two jobs | Shown above | [Activity](../images/optimisarr-sidecar-windows-light-two-jobs.png) |
 | Audio with generated spectrum | [Audio](../images/optimisarr-sidecar-windows-audio.png) | [Audio](../images/optimisarr-sidecar-windows-audio-light.png) |
@@ -120,3 +120,14 @@ See [Linux container setup](../setup/linux-sidecar.md) and [worker placement and
 [Capture instructions and manifests](../images/README.md) record source versions, fixture data,
 native-renderer limitations and repeatable commands. Dated review evidence is kept separately
 and retains its original screenshots.
+
+## Diagnostic capture
+
+Explicit consent, bounded retention, final collection and local recovery are described in the
+[diagnostic guide](../troubleshooting/diagnostics.md#collect-diagnostic-evidence).
+
+![Diagnostic capture controls before recording](../images/optimisarr-diagnostics-settings-dark.png)
+
+![Recording diagnostics and retained-history controls](../images/optimisarr-diagnostics-recording-dark.png)
+
+![Diagnostic capture on a phone](../images/optimisarr-diagnostics-mobile-dark.png)

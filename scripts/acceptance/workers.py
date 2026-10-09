@@ -13,12 +13,13 @@ from .monitor import LinuxObserver, local_files
 
 
 class Workers:
-    def __init__(self, api, root, server, ffmpeg, ffprobe, *, vmaf=None, require_ram=False, scratch_root=None):
+    def __init__(self, api, root, server, ffmpeg, ffprobe, *, vmaf=None, require_ram=False, scratch_root=None, observe_local=True):
         self.api, self.root, self.server = api, Path(root), server
         self.scratch_root = Path(scratch_root) if scratch_root else self.root
         self.env = {**{k: v for k, v in os.environ.items() if not k.startswith("OPTIMISARR_")}, "OPTIMISARR_FFMPEG": ffmpeg, "OPTIMISARR_FFPROBE": ffprobe,
                     "OPTIMISARR_WEB_ENABLED": "false",
                     "OPTIMISARR_ACCEPTANCE_SERVER": server,
+                    "OPTIMISARR_DIAGNOSTIC_DIR": str(self.root / "diagnostics"),
                     "OPTIMISARR_SERVER": server,
                     "OPTIMISARR_CONFIG_DIR": str(self.root / "discovery-config"),
                     "OPTIMISARR_SIDECAR_WORK": str(self.scratch_root / "discovery"),
@@ -28,6 +29,7 @@ class Workers:
         self.processes = []
         self.observers = {}
         self.require_ram = require_ram
+        self.observe_local = observe_local
 
     def discover(self, argv):
         try:
@@ -61,7 +63,7 @@ class Workers:
         pin = self.api.post("/api/workers/pairing-code")["code"]
         name = f"acceptance-{capabilities['operatingSystem']}-{encoder}"
         require(re.fullmatch(r"[a-zA-Z0-9_-]+", name), "Unsafe worker capability name")
-        port = free_port() if capabilities["operatingSystem"] == "linux" else None
+        port = free_port() if capabilities["operatingSystem"] == "linux" and self.observe_local else None
         if self.require_ram and port is None:
             raise Blocked("RAM file observations currently require the Linux worker; use native platform RAM tests too")
         log = (self.root / (name + ".log")).open("w")
@@ -70,6 +72,7 @@ class Workers:
                "OPTIMISARR_ENCODER": encoder,
                "OPTIMISARR_CONFIG_DIR": str(self.root / (name + "-config")),
                "OPTIMISARR_SIDECAR_WORK": str(self.scratch_root / name),
+               "OPTIMISARR_DIAGNOSTIC_DIR": str(self.root / (name + "-diagnostics")),
                "OPTIMISARR_ACCEPTANCE_ENCODER": encoder,
                "OPTIMISARR_ACCEPTANCE_SCRATCH": str(self.scratch_root / name)}
         if port:

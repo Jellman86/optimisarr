@@ -27,7 +27,7 @@ internal static class DiagnosticSafeFields
 
     private static readonly IReadOnlySet<string> Decoders = new HashSet<string>(StringComparer.Ordinal)
     {
-        "videotoolbox", "cuda", "d3d11va", "qsv", "dxva2"
+        "videotoolbox", "cuda", "d3d11va", "qsv", "dxva2", "vaapi"
     };
 
     public static string CheckName(string? value) =>
@@ -42,7 +42,7 @@ internal static class DiagnosticSafeFields
     public static string? Version(string? value)
     {
         return value is { Length: <= 64 }
-            && Regex.IsMatch(value, @"\A[v]?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:\+[0-9a-f]{7,40}| \([0-9]{12}\))?\z",
+            && Regex.IsMatch(value, @"\A[v]?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:\+[0-9a-f]{7,40}| \([0-9]{1,12}\))?\z",
                 RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100))
             ? value : null;
     }
@@ -61,7 +61,9 @@ internal static class DiagnosticSafeFields
 
     public static string EventReason(string? value)
     {
-        if (value is "Job.StatusChanged" or "Retry.SoftwareDecode")
+        if (value is "Worker.LeaseEvidenceUnavailable" or "Worker.JournalRecoveryIncomplete" or "Job.StatusChanged" or "Queue.DispatchDecision" or "Attempt.Archived" or "Retry.SoftwareDecode" or "Lease.Updated" or "Transfer.SourceServed" or "Transfer.ResultAcknowledged" or "Transfer.OffsetReported" or "Transfer.ChunkReceived"
+            || value is not null && Optimisarr.Core.Diagnostics.DiagnosticTelemetry.Reasons.Contains(value)
+            || value is "Replacement.Pending" or "Replacement.Replaced" or "Replacement.RollbackPending" or "Replacement.RolledBack" or "Replacement.Purged")
         {
             return value;
         }
@@ -84,6 +86,7 @@ internal static class DiagnosticSafeFields
     public static string AttemptReason(string? value) => value switch
     {
         "HardwareDecodeCorruption" => "HardwareDecodeCorruption",
+        "ManualRetry" => "ManualRetry",
         _ => "Unclassified"
     };
 

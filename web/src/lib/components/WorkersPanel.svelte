@@ -1,4 +1,5 @@
 <script lang="ts">
+  import WorkerDiagnosticDownload from './WorkerDiagnosticDownload.svelte'
   // Remote transcoding sidecars: pair one with a PIN, see what is paired, revoke it.
   // Loads its own data so it can be dropped into the Settings "Workers" tab without the
   // host wiring anything up, the same way ToolsPanel does.
@@ -393,6 +394,9 @@
                   </ul>
                 {/if}
               </dd>
+
+              <dt class="text-ink-3">{i18n.m.settings.diagnostics_title}</dt>
+              <dd><WorkerDiagnosticDownload workerId={worker.id} /></dd>
 
               <dt class="text-ink-3">{i18n.m.workers.load}</dt>
               <dd class="min-w-0 break-words text-ink">

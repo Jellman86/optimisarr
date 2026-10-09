@@ -115,7 +115,7 @@ public sealed class ActivityMonitor(
             {
                 sessions = sessions.Select(session => session.WithoutViewer()).ToList();
             }
-            return new WatcherActivity(watcher.Name, count, Reachable: true, sessions);
+            return new WatcherActivity(watcher.Name, count, Reachable: true, sessions, watcher.Id);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

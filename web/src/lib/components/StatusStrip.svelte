@@ -6,6 +6,7 @@
   import { playbackLine, playbackPhrases, playbackSummary } from '../playback'
   import { counts } from '../stores/counts.svelte'
   import Icon from './Icon.svelte'
+  import Thumbnail from './Thumbnail.svelte'
 
   // The queue's state on every page, so the answer to "is it working?" is never a click away.
   let queue = $derived(counts.queue)
@@ -64,6 +65,7 @@
     <span class="text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
     {#if detail}
       {#if holds.length > 0}
+        {#if holds[0]?.artworkUrl}<Thumbnail src={holds[0].artworkUrl} size="sm" shape={holds[0].kind === 'Track' ? 'square' : 'portrait'} />{/if}
         <a class="status-strip-reason status-strip-playback focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
       {:else}
         <span class="status-strip-reason" title={detailTitle}>{detail}</span>

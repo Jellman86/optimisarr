@@ -97,6 +97,7 @@ builder.Services.AddSingleton(_ =>
 builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<DiagnosticCaptureStore>();
+builder.Services.AddScoped<SidecarDiagnosticStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddSingleton<ExactDuplicateScanner>();
@@ -173,6 +174,7 @@ using (var scope = app.Services.CreateScope())
     // is a no-op, so this is safe to run on every startup.
     var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
     await db.Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<DiagnosticCaptureStore>().StopOnRestartAsync(DateTimeOffset.UtcNow, CancellationToken.None);
 
     var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
     await settings.InitialiseSetupStateAsync(databaseExistedBeforeStartup, CancellationToken.None);
@@ -249,6 +251,7 @@ app.Use(async (context, next) =>
         context.RequestAborted);
 });
 
+app.UseDiagnosticTransferCapture();
 app.MapHealthEndpoints(adminToken, configDirectory);
 
 app.MapSystemEndpoints();

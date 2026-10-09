@@ -1,3 +1,5 @@
+using Optimisarr.Api.Diagnostics;
+using Optimisarr.Core.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
@@ -151,7 +153,8 @@ internal sealed record HeartbeatResponse(
     string? UpdateVersion = null,
     string? UpdateUrl = null,
     /// <summary>The server's brand mark, so a sidecar's own page shows what the operator chose.</summary>
-    string? BrandStyle = null);
+    string? BrandStyle = null,
+    SidecarDiagnosticConsent? DiagnosticCapture = null);
 
 internal static class WorkerEndpoints
 {
@@ -280,6 +283,7 @@ internal static class WorkerEndpoints
         app.MapPost("/api/workers/heartbeat", async (
             HeartbeatRequest request,
             HttpRequest http,
+            DiagnosticCaptureStore diagnostics,
             SettingsStore settings,
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
@@ -343,6 +347,10 @@ internal static class WorkerEndpoints
 
             await db.SaveChangesAsync(cancellationToken);
 
+            var capture = await diagnostics.GetActiveAsync(DateTimeOffset.UtcNow, cancellationToken);
+            capture ??= await diagnostics.GetLatestAsync(cancellationToken);
+            if (capture is not null && !DiagnosticCapturePolicy.IsRunning(capture.StartedAt, capture.ExpiresAt, capture.StoppedAt, DateTimeOffset.UtcNow)
+                && (capture.StoppedAt ?? capture.ExpiresAt) < DateTimeOffset.UtcNow.AddSeconds(-90)) capture = null;
             var update = SidecarUpdateCheck.Assess(ServerVersion, worker.SidecarVersion);
             return Results.Ok(new HeartbeatResponse(
                 worker.Id,
@@ -352,7 +360,9 @@ internal static class WorkerEndpoints
                 worker.DrainRequestedAt is not null,
                 update.ReleaseUrl is null ? null : update.LatestVersion,
                 update.ReleaseUrl,
-                BrandStyles.WireName(await settings.GetBrandStyleAsync(cancellationToken))));
+                BrandStyles.WireName(await settings.GetBrandStyleAsync(cancellationToken)),
+                capture is null || worker.ProtocolVersion < 10 ? null : new SidecarDiagnosticConsent(capture.Id, DateTimeOffset.UtcNow, capture.ExpiresAt, capture.ScopedJobId,
+                    !capture.EventLimitReached && DiagnosticCapturePolicy.IsRunning(capture.StartedAt, capture.ExpiresAt, capture.StoppedAt, DateTimeOffset.UtcNow))));
         })
         .WithName("WorkerHeartbeat")
         .Produces<HeartbeatResponse>()

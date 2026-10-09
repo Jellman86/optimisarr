@@ -5,7 +5,7 @@ namespace Optimisarr.Core.Activity;
 /// <param name="ActiveSessions">Active playback sessions; only meaningful when reachable.</param>
 /// <param name="Reachable">False when the server could not be queried (offline, bad token).</param>
 /// <param name="Sessions">What each session is playing, where the server reported it.</param>
-public sealed record WatcherActivity(string Name, int ActiveSessions, bool Reachable, IReadOnlyList<PlaybackSession>? Sessions = null);
+public sealed record WatcherActivity(string Name, int ActiveSessions, bool Reachable, IReadOnlyList<PlaybackSession>? Sessions = null, int? WatcherId = null);
 
 /// <summary>Whether configured services are active right now, and which ones if so.</summary>
 /// <param name="Reason">A count-only summary. It is logged, so it never names a viewer or title.</param>
@@ -45,7 +45,7 @@ public static class ActivityPauseEvaluator
         var sessions = streaming.Sum(watcher => watcher.ActiveSessions);
         var plural = sessions == 1 ? "stream" : "streams";
         var holds = streaming
-            .SelectMany(watcher => (watcher.Sessions ?? []).Select(session => new PlaybackHold(watcher.Name, session)))
+            .SelectMany(watcher => (watcher.Sessions ?? []).Select(session => new PlaybackHold(watcher.Name, session, watcher.WatcherId)))
             .ToList();
         return new ActivityDecision(true, $"Paused while {names} {(streaming.Count == 1 ? "is" : "are")} active ({sessions} {plural}).", holds);
     }

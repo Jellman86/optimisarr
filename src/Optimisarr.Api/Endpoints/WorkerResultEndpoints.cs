@@ -44,6 +44,7 @@ internal static class WorkerResultEndpoints
             var evidence = JsonSerializer.Serialize(request, options);
             // Compare-and-set in the database: overlapping retries must not overwrite the first
             // report, even when both requests read the lease before either saves it.
+            await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
             var written = await db.JobLeases
                 .Where(row => row.Id == lease.Id && row.State == LeaseState.Held && row.VerificationEvidenceJson == null)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(row => row.VerificationEvidenceJson, evidence), cancellationToken);
@@ -54,6 +55,13 @@ internal static class WorkerResultEndpoints
                 if (previous != evidence)
                     return ApiErrors.Conflict("worker.verification.alreadyRecorded", "Different evidence is already recorded or the lease has ended.");
             }
+            else
+            {
+                await db.Entry(lease).ReloadAsync(cancellationToken);
+                await DiagnosticEventCapture.AppendLeaseAsync(db, lease, DateTimeOffset.UtcNow, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            await write.CommitAsync(cancellationToken);
             return Results.Ok(new { leaseId });
         })
         .WithName("ReportWorkerVerification")

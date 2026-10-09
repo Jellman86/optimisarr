@@ -201,7 +201,7 @@ jobs:
         run: |
           first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
           python3 scripts/media_acceptance.py --image "$first_tag" \
-            --root "$RUNNER_TEMP/optimisarr-acceptance" --tier smoke --vmaf-shadow
+            --root "$RUNNER_TEMP/optimisarr-acceptance" --tier smoke --vmaf-shadow --diagnostics
 
       - name: Verify fractional timestamp regression in the final container
         run: |

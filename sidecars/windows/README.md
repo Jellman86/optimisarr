@@ -231,3 +231,19 @@ Gated VMAF v1 jobs require protocol 7. The worker probes the candidate's actual 
 measurement; NVENC can encode while complete v1 scoring runs on the same worker's CPU. A CUDA
 filter listing does not prove the missing upstream v1 feature extractors. Use the bundled pinned
 v3.2.1 toolchain; upstream score logs can still label that archive `3.2.0`.
+
+## Diagnostic capture and local export
+
+Enhanced capture is off by default and requires an explicit session in the server’s
+**Settings → System → Diagnostic capture**. Protocol 10 sidecars mirror structured job,
+stage, transfer and tool-identity records during that session. Loss of server contact
+stops recording within 90 seconds; restarting a sidecar never reactivates capture by itself.
+
+Use **Export local diagnostics… (administrator)** in the tray menu to recover retained records while the server is unavailable.
+The local journal is bounded to 2,048 records, 1 MiB and seven days. It excludes pairing
+credentials, arbitrary process output and media payloads. See the
+[diagnostic guide](../../docs/troubleshooting/diagnostics.md#collect-diagnostic-evidence)
+for collection, retention and sharing boundaries.
+
+Local diagnostic export requests administrator access because the service journal shares the
+protected worker data directory. Cancelling that Windows prompt leaves the worker running.

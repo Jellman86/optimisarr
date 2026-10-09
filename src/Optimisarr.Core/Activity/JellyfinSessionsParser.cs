@@ -118,7 +118,24 @@ public static class JellyfinSessionsParser
             kind == PlaybackKind.Track ? artist?.Trim() ?? Text(item, "AlbumArtist") : null,
             Text(session, "UserName"),
             Text(session, "DeviceName") ?? Text(session, "Client"),
-            paused);
+            paused,
+            Artwork(item, kind));
+    }
+
+    private static PlaybackArtwork? Artwork(JsonElement item, PlaybackKind kind)
+    {
+        var parent = kind switch
+        {
+            PlaybackKind.Episode => PlaybackArtwork.MediaBrowser(Text(item, "SeriesId"), Text(item, "SeriesPrimaryImageTag")),
+            PlaybackKind.Track => PlaybackArtwork.MediaBrowser(Text(item, "AlbumId"), Text(item, "AlbumPrimaryImageTag")),
+            _ => null,
+        };
+        if (parent is not null) return parent;
+        var inherited = PlaybackArtwork.MediaBrowser(Text(item, "ParentPrimaryImageItemId"), Text(item, "ParentPrimaryImageTag"));
+        if (inherited is not null) return inherited;
+        return item.TryGetProperty("ImageTags", out var tags) && tags.ValueKind == JsonValueKind.Object
+            ? PlaybackArtwork.MediaBrowser(Text(item, "Id"), Text(tags, "Primary"))
+            : null;
     }
 
     private static string? Text(JsonElement element, string property) =>
