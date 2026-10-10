@@ -34,8 +34,9 @@ Alpha differences are reported independently, including when only one input has 
 Scores are finite and at most 100; negative values are valid. There is no calibrated
 default threshold. The server verifies source, candidate and tool SHA-256 before and
 after measurement, runs one metric at a time, and kills the process tree on timeout
-or cancellation. A 16-megapixel synthetic comparison used about 1.3 GB resident memory
-on the development Mac. Reserve memory alongside encoding; this is not a lightweight
+or cancellation. A 16-megapixel synthetic comparison used about 2.3 GiB resident memory
+on both the development Mac and Quark; the Mac peak memory footprint was 2.8 GiB.
+Reserve memory alongside encoding; this is not a lightweight
 thumbnail metric.
 
 `test_native.py` uses the Python standard library and synthetic, public fixtures.

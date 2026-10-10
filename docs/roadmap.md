@@ -19,7 +19,7 @@ the replacement workflow is trustworthy.
   describing finished work as outstanding sends effort at an item that has none.
 - Status claims last verified against the repository: **2026-08-24**.
 
-## Current hardening follow-up, reviewed 2026-10-09
+## Current hardening follow-up, reviewed 2026-10-10
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
 trial and pairing records with current implementation. Priorities are retained real-source playback evidence and broader quality coverage.
@@ -31,7 +31,8 @@ see the [release acceptance](engineering/hardware-validation/2026-10-09-release-
 which distinguishes installed fleet checks from disposable media tests and records the
 pending Mac upgrade. Audio reports and explicit gates are implemented in
 development. Experimental SDR still-image reports and explicit SSIMULACRA2 gates are
-implemented in this development slice; broader image/audio qualification and dedupe remain planned.
+implemented in this development slice; see [qualification and limits](engineering/hardware-validation/2026-10-10-image-perceptual-quality.md).
+Broader image/audio qualification and dedupe remain planned.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
 

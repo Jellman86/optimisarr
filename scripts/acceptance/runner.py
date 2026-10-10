@@ -511,10 +511,11 @@ class Harness:
         job = self.wait_job(case)
         save(self.report.root / name / "job.json", job)
         require(sha256(case["source"]) == case["sourceSha256"], "Image assessment changed the source")
-        report = json.loads(job["verificationReportJson"])
-        image = report.get("imagePerceptualQuality")
         failed = reject or unsupported
         require(job["status"] == ("Failed" if failed else "ReadyToReplace"), f"Unexpected image verdict: {job['errorMessage']}")
+        require(job.get("verificationReportJson"), "Image verification did not produce a report")
+        report = json.loads(job["verificationReportJson"])
+        image = report.get("imagePerceptualQuality")
         if reporting or gate:
             require(image is not None and image["measurementLocation"] == "Server", "Missing server image evidence")
             if unsupported:

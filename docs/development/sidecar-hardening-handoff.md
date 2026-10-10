@@ -1,6 +1,6 @@
 # Sidecar hardening handoff
 
-Reviewed against development code and diagnostic acceptance on **9 October 2026**.
+Reviewed against development code and diagnostic acceptance on **10 October 2026**.
 Read the repository engineering and documentation standards before implementation. Start
 from current `dev`, preserve other agents' work, and deliver each fix through a reviewed PR.
 This document records evidence and remaining scope; check the latest issue and code before
@@ -15,7 +15,7 @@ retrying jobs or changing a deployment.
 | [#334](https://github.com/Jellman86/optimisarr/issues/334), test timing | Merged [#360](https://github.com/Jellman86/optimisarr/pull/360) separates process startup from output-size abort latency and checks child cleanup under Windows CPU load. It also removes a race in the concurrent-runner test. | Delivered. The 0.2.23 tagged Windows build, installer and physical acceptance passed; see [release acceptance](../engineering/hardware-validation/2026-10-09-release-0.2.23.md). |
 | [#331](https://github.com/Jellman86/optimisarr/issues/331), platform tests | [#361](https://github.com/Jellman86/optimisarr/pull/361) runs the backend suite on native Windows with eight explicitly documented POSIX-only skips. | Closed. Native Windows server hosting is still outside supported deployment scope. |
 | [#242](https://github.com/Jellman86/optimisarr/issues/242), opt-in diagnostics | Released in 0.2.23. Schema 4 opt-in capture correlates server and native sidecar records, frozen gate/provenance summaries, transfers, scheduling and replacement outcomes; retention, pinning and local exports are available. See [development acceptance](../engineering/hardware-validation/2026-10-09-correlated-diagnostics.md) and [release acceptance](../engineering/hardware-validation/2026-10-09-release-0.2.23.md). | The release record distinguishes exact-tag media tests from installed fleet checks. The Mac installation awaits an unlocked desktop. Legacy unrecorded tools/timing and offline local evidence remain explicit. |
-| [#332](https://github.com/Jellman86/optimisarr/issues/332), audio/image quality | Opt-in Zimtohrli audio and re-encoded soundtrack reports, explicit gates, codec-aware bitrate controls and strict worker measurement are implemented in development. | Experimental server-local SDR image SSIMULACRA2 reports and explicit gates are implemented in the current slice. Broader image/audio coverage, image worker placement, adaptive bitrate selection and any calibrated default remain planned. |
+| [#332](https://github.com/Jellman86/optimisarr/issues/332), audio/image quality | Opt-in Zimtohrli audio and re-encoded soundtrack reports, explicit gates, codec-aware bitrate controls and strict worker measurement are implemented in development. | Experimental server-local SDR image SSIMULACRA2 reports and explicit gates are implemented in the current slice. See [10 October qualification](../engineering/hardware-validation/2026-10-10-image-perceptual-quality.md). Broader image/audio coverage, image worker placement, adaptive bitrate selection and any calibrated default remain planned. |
 
 VMAF v1 is released for eligible SDR work. Existing numeric floors are operator policies,
 not thresholds calibrated by an Optimisarr listening or viewing study. Use the

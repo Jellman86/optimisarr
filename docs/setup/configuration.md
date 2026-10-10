@@ -407,8 +407,9 @@ separate check.
 Image jobs and measurements currently run on the server. Sidecars package the same helper
 for platform qualification but do not advertise image work. The server runs one image metric
 at a time with a 90-second process deadline and cancellation. A 16-megapixel synthetic
-comparison used about 1.3 GB of resident memory on the development Mac; allow adequate memory
-for the metric alongside encoding. No measurement reads or runtime downloads occur when both
+comparison used about 2.3 GiB of resident memory on both the development Mac and Quark,
+with a Mac peak memory footprint of 2.8 GiB. Allow adequate memory alongside encoding.
+See [hardware qualification and its limits](../engineering/hardware-validation/2026-10-10-image-perceptual-quality.md). No measurement reads or runtime downloads occur when both
 controls are off. Successful evidence records source, candidate and metric SHA-256 hashes
 before and after measurement. Configuration backups use format 4, and older backups preserve
 saved image choices where applicable. From-source servers can set `OPTIMISARR_IMAGE_QUALITY`

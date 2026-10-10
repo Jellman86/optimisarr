@@ -66,7 +66,10 @@ The source/build manifests are authoritative for shipped tools. The original res
 - [#344](https://github.com/Jellman86/optimisarr/pull/344): manual read-only exact-copy
   review for every library type; broader matching and cleanup remain planned.
 
-These slices are implemented in development. They do not complete the image provider,
+- [#395](https://github.com/Jellman86/optimisarr/pull/395): experimental bounded SDR still-image
+  reports and explicit SSIMULACRA2 gates, with [qualification and limits](../engineering/hardware-validation/2026-10-10-image-perceptual-quality.md).
+
+These slices are implemented in development. They do not complete broader image coverage,
 multichannel audio qualification, automatic bitrate search or perceptual dedupe. The
 [configuration guide](../setup/configuration.md#audio-quality-reports-and-gates-development)
 is the maintained source for user-facing coverage, cost and limits.
