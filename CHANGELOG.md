@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Experimental image quality reports use pinned SSIMULACRA2 for supported SDR PNG, JPEG and WebP stills. Photo and mixed libraries can separately enable a replacement gate with an explicit minimum score. Reports show complete dimensions and independent transparency checks; unavailable evidence blocks an enabled gate. Existing SSIM and metadata settings remain unchanged, and both new controls start off.
+
+
 ### Documentation
 
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.

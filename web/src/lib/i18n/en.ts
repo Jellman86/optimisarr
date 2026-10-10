@@ -3,6 +3,19 @@
 // keys — a missing or misspelled key fails `npm run check` (the CI completeness gate).
 // Use `{token}` placeholders for interpolation; resolve them with `t(...)`.
 export const en = {
+  image_quality: {
+      "title": "Image quality report",
+      "report_hint": "Measure SSIMULACRA2 after encoding. Optional and off by default.",
+      "gate_label": "Require perceptual image quality",
+      "gate_hint": "Block replacement when the selected score is missed, alpha changes or evidence is unavailable.",
+      "minimum": "Minimum SSIMULACRA2 score",
+      "validation": "Choose an explicit minimum score between 0 and 100.",
+      "limits": "Experimental. Same-size 8-bit sRGB PNG, JPEG and WebP stills, up to 16 megapixels. Other colour profiles, orientation transforms, downscaling and animation are unavailable. No calibrated quality threshold.",
+      "report_only": "Report only. Existing safety checks still decide whether an output can replace the original.",
+      "gate_note": "Every configured check must pass before replacement. Missing evidence blocks this gate.",
+      "coverage": "{width} × {height} · complete still image",
+      "alpha": "Maximum transparency difference: {difference}"
+  },
   autoAccept: {
     offByDefault: "Off by default",
     warning: "Misconfigured settings can leave you with broken files, lost quality or missing tracks and metadata. Passing checks only reflects the checks you enabled. Test a few files and keep a separate backup.",
@@ -1184,7 +1197,7 @@ export const en = {
     exif_label: 'Preserve image EXIF/ICC metadata',
     exif_hint:
       "Photo/image jobs only: fails the job when the re-encode drops the original's embedded ICC colour profile or EXIF (reads both with exiftool). Only flags loss — an output may gain metadata.",
-    exif_note: "No threshold — it simply requires the original's colour profile and EXIF to survive.",
+    exif_note: "No threshold. The original's colour profile and EXIF must survive.",
     replacement_title: 'Replacement and cleanup',
     replacement_desc: 'How verified outputs replace originals, and how long quarantined originals and failed scratch outputs are retained.',
     dry_run: 'Dry-run mode',

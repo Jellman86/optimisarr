@@ -1592,6 +1592,18 @@
               "boolean"
             ]
           },
+          "imagePerceptualGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "imagePerceptualReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "imageQuality": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1731,6 +1743,15 @@
             ]
           },
           "minVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumImagePerceptualScore": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -3111,6 +3132,18 @@
               "boolean"
             ]
           },
+          "imagePerceptualGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "imagePerceptualReportingEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "imageQuality": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -3253,6 +3286,15 @@
             ]
           },
           "minVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumImagePerceptualScore": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [

@@ -34,7 +34,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
             await db.SaveChangesAsync();
         }
         var snapshot = await ExportAsync();
-        Assert.Equal(3, snapshot.Version);
+        Assert.Equal(ConfigSnapshot.CurrentVersion, snapshot.Version);
         var exported = Assert.Single(snapshot.Libraries);
         Assert.True(exported.SoundtrackQualityGateEnabled);
         Assert.Equal(0, exported.MaximumSoundtrackQualityDistance);
@@ -54,6 +54,38 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         await using var changed = CreateDb();
         Assert.False((await changed.Libraries.SingleAsync()).SoundtrackQualityGateEnabled);
         Assert.False((await changed.Libraries.SingleAsync()).SoundtrackQualityReportingEnabled);
+    }
+
+    [Fact]
+    public async Task Image_quality_controls_survive_repeated_import_and_older_backups_preserve_saved_choices()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Photos", Path = "/data/photos", MediaType = MediaType.Photo,
+                ImagePerceptualReportingEnabled = true, ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 80,
+                MinimumImageSsim = 0.97 });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.Equal(4, snapshot.Version);
+        var exported = Assert.Single(snapshot.Libraries);
+        Assert.True(exported.ImagePerceptualGateEnabled);
+        Assert.Equal(80, exported.MinimumImagePerceptualScore);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        var legacy = snapshot with { Version = 3, Libraries = [exported with {
+            ImagePerceptualReportingEnabled = null, ImagePerceptualGateEnabled = null, MinimumImagePerceptualScore = null }] };
+        Assert.True((await ImportAsync(legacy)).Applied);
+        await using var restored = CreateDb();
+        var library = await restored.Libraries.SingleAsync();
+        Assert.True(library.ImagePerceptualReportingEnabled);
+        Assert.True(library.ImagePerceptualGateEnabled);
+        Assert.Equal(80, library.MinimumImagePerceptualScore);
+        Assert.Equal(0.97, library.MinimumImageSsim);
+        Assert.True((await ImportAsync(legacy with { Libraries = [legacy.Libraries[0] with { MediaType = "Music" }] })).Applied);
+        await using var changed = CreateDb();
+        Assert.False((await changed.Libraries.SingleAsync()).ImagePerceptualGateEnabled);
+        Assert.False((await changed.Libraries.SingleAsync()).ImagePerceptualReportingEnabled);
     }
 
     [Fact]

@@ -31,6 +31,22 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.Contains(result.Errors, error => error.Contains("audio quality gate"));
     }
 
+    [Fact]
+    public void Perceptual_image_gates_require_version_four_an_explicit_finite_limit_and_image_library()
+    {
+        var library = new LibrarySnapshot("Photos", "/data/photos", "Photo", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+            { ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 80 };
+        var snapshot = Empty() with { Libraries = [library] };
+        Assert.True(ConfigSnapshotValidator.Validate(snapshot, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(snapshot with { Version = 3 }, AllowedKeys).IsValid);
+        foreach (double? limit in new double?[] { null, -1, 101, double.NaN, double.PositiveInfinity })
+            Assert.False(ConfigSnapshotValidator.Validate(snapshot with { Libraries = [library with { MinimumImagePerceptualScore = limit }] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(snapshot with { Libraries = [library with { MediaType = "Music" }] }, AllowedKeys).IsValid);
+        Assert.True(ConfigSnapshotValidator.Validate(snapshot with { Libraries = [library with {
+            ImagePerceptualGateEnabled = false, ImagePerceptualReportingEnabled = true, MinimumImagePerceptualScore = null }] }, AllowedKeys).IsValid);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(100)]

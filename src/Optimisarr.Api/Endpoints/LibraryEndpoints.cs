@@ -166,6 +166,9 @@ internal static class LibraryEndpoints
                 MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance,
                 MaxTruePeakDbtp = parsed.MaxTruePeakDbtp,
                 ImageQualityGateEnabled = parsed.ImageQualityGateEnabled,
+                ImagePerceptualReportingEnabled = parsed.ImagePerceptualReportingEnabled,
+                ImagePerceptualGateEnabled = parsed.ImagePerceptualGateEnabled,
+                MinimumImagePerceptualScore = parsed.MinimumImagePerceptualScore,
                 MinimumImageSsim = parsed.MinimumImageSsim,
                 ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled,
                 VideoQualityStrategy = parsed.VideoQualityStrategy,
@@ -199,7 +202,10 @@ internal static class LibraryEndpoints
                 AudioQualityGateEnabled = request.AudioQualityGateEnabled ?? library.AudioQualityGateEnabled,
                 MaximumAudioQualityDistance = request.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance,
                 SoundtrackQualityGateEnabled = request.SoundtrackQualityGateEnabled ?? library.SoundtrackQualityGateEnabled,
-                MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance
+                MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance,
+                ImagePerceptualReportingEnabled = request.ImagePerceptualReportingEnabled ?? library.ImagePerceptualReportingEnabled,
+                ImagePerceptualGateEnabled = request.ImagePerceptualGateEnabled ?? library.ImagePerceptualGateEnabled,
+                MinimumImagePerceptualScore = request.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore
             };
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
@@ -277,6 +283,9 @@ internal static class LibraryEndpoints
             library.MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance;
             library.MaxTruePeakDbtp = parsed.MaxTruePeakDbtp;
             library.ImageQualityGateEnabled = parsed.ImageQualityGateEnabled;
+            library.ImagePerceptualReportingEnabled = request.ImagePerceptualReportingEnabled ?? library.ImagePerceptualReportingEnabled;
+            library.ImagePerceptualGateEnabled = request.ImagePerceptualGateEnabled ?? library.ImagePerceptualGateEnabled;
+            library.MinimumImagePerceptualScore = request.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore;
             library.MinimumImageSsim = parsed.MinimumImageSsim;
             library.ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = parsed.VideoQualityStrategy;

@@ -183,6 +183,9 @@ export type LibraryRules = {
   maximumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
+  imagePerceptualReportingEnabled?: boolean
+  imagePerceptualGateEnabled?: boolean
+  minimumImagePerceptualScore?: number | null
   soundtrackQualityReportingEnabled?: boolean
   soundtrackQualityGateEnabled?: boolean
   maximumSoundtrackQualityDistance?: number | null
@@ -300,6 +303,9 @@ export function newLibraryDefaults(): SaveLibrary {
     maximumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
+    imagePerceptualReportingEnabled: false,
+    imagePerceptualGateEnabled: false,
+    minimumImagePerceptualScore: null,
     soundtrackQualityReportingEnabled: false,
     soundtrackQualityGateEnabled: false,
     maximumSoundtrackQualityDistance: null,
@@ -483,9 +489,26 @@ export type VerificationCheck = {
 
 export type VerificationReport = {
   checks: VerificationCheck[]
+  imagePerceptualQuality?: ImagePerceptualReport | null
   soundtrackQuality?: SoundtrackQualityReport | null
   audioQuality?: AudioQualityReport | null
   context?: VerificationContext | null
+}
+
+export type ImagePerceptualReport = {
+  measurement: { width: number; height: number; alpha: boolean; maximumAlphaError: number;
+    score: number; backgroundScores: number[] } | null
+  error: string | null
+  metric?: string
+  revision?: string
+  preparation?: string
+  sourceSha256?: string | null
+  candidateSha256?: string | null
+  metricSha256?: string | null
+  elapsedSeconds?: number
+  gateEnabled?: boolean
+  minimumScore?: number | null
+  gatePassed?: boolean | null
 }
 
 export type SoundtrackQualityReport = {

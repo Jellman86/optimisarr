@@ -652,6 +652,26 @@ test('unknown bookmarked stages return to the overview instead of rendering an e
   await expect(page.getByRole('heading', { name: 'Films', exact: true, level: 1 })).toBeVisible()
 })
 
+test('image perceptual reporting and gates are separate opt-in controls and preserve SSIM', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Photo', minimumImageSsim: 0.97 })
+  await page.goto('/#/libraries/1/configure/verify')
+  const report = page.getByRole('checkbox', { name: 'Image quality report', exact: true })
+  const gate = page.getByRole('checkbox', { name: 'Require perceptual image quality', exact: true })
+  await expect(report).not.toBeChecked()
+  await expect(gate).not.toBeChecked()
+  await report.check()
+  await gate.check()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.getByLabel('Minimum SSIMULACRA2 score', { exact: true }).fill('80')
+  await page.getByRole('button', { name: 'Advanced verification', exact: true }).click()
+  await expect(report).toBeChecked()
+  await expect(gate).toBeChecked()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ imagePerceptualReportingEnabled: true,
+    imagePerceptualGateEnabled: true, minimumImagePerceptualScore: 80, minimumImageSsim: 0.97 })
+})
+
 test('audio quality reporting is opt-in and persists across verification breadcrumbs', async ({ page }) => {
   await mockLibraries(page, { ...library, mediaType: 'Music' })
   await page.goto('/#/libraries/1/configure/verify')

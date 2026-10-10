@@ -21,6 +21,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  image-quality:
+    name: Native image quality (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: cmake -S tools/image-quality-native -B image-build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build image-build --config Release --target optimisarr-image-quality --parallel 2
+      - run: ctest --test-dir image-build -C Release -R "^native_image_quality$" --output-on-failure
+      - run: cmake --install image-build --config Release --component ImageQuality --prefix image-install
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image-quality-${{ matrix.os }}
+          path: image-install/
+
   backend:
     name: Backend build & test
     runs-on: ubuntu-latest
@@ -151,7 +169,7 @@ jobs:
 
   docker:
     name: Docker image, smoke, and publish
-    needs: [backend, frontend, docs]
+    needs: [backend, frontend, docs, image-quality]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -249,12 +267,21 @@ jobs:
           python3 scripts/media_acceptance.py --image "$first_tag" \
             --root "$RUNNER_TEMP/optimisarr-soundtrack-acceptance" --regression soundtrack-quality
 
+      - name: Verify image perceptual reports, gates and rollback in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-image-quality-acceptance" --regression image-quality
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: media-acceptance
           path: |
+            ${{ runner.temp }}/optimisarr-image-quality-acceptance/report/
+            ${{ runner.temp }}/optimisarr-image-quality-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-image-quality-acceptance/image.json
             ${{ runner.temp }}/optimisarr-soundtrack-acceptance/report/
             ${{ runner.temp }}/optimisarr-soundtrack-acceptance/server.log
             ${{ runner.temp }}/optimisarr-soundtrack-acceptance/image.json

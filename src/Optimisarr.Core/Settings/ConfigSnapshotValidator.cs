@@ -151,6 +151,13 @@ public static class ConfigSnapshotValidator
                 errors.Add($"{where} soundtrack quality gate requires a video or mixed library and a maximum difference between 0 and 1.");
             RequireRange(library.MaxLoudnessDriftLufs, 0, double.MaxValue, $"{where} loudness drift tolerance", errors);
             RequireFinite(library.MaxTruePeakDbtp, $"{where} true-peak ceiling", errors);
+            if ((library.ImagePerceptualReportingEnabled == true || library.ImagePerceptualGateEnabled == true) && snapshot.Version < 4)
+                errors.Add($"{where} perceptual image quality requires config format version 4.");
+            if ((library.MinimumImagePerceptualScore is not null && !ImagePerceptualQualityGate.ValidLimit(library.MinimumImagePerceptualScore))
+                || (library.ImagePerceptualGateEnabled == true && !ImagePerceptualQualityGate.ValidLimit(library.MinimumImagePerceptualScore))
+                || ((library.ImagePerceptualReportingEnabled == true || library.ImagePerceptualGateEnabled == true)
+                    && mediaType is not (MediaType.Photo or MediaType.Other)))
+                errors.Add($"{where} perceptual image quality requires a photo or mixed library and an explicit gate score between 0 and 100.");
             RequireRange(library.MinimumImageSsim, 0, 1, $"{where} image SSIM floor", errors);
             if (library.MinVmafCatastrophicMin is { } catastrophic
                 && library.MinVmafMin is { } fifth

@@ -53,7 +53,10 @@ public static class DiagnosticEventCapture
                     ["soundtrackQualityReportingEnabled"] = library.SoundtrackQualityReportingEnabled, ["soundtrackQualityGateEnabled"] = library.SoundtrackQualityGateEnabled,
                     ["maximumSoundtrackQualityDistance"] = library.MaximumSoundtrackQualityDistance, ["autoReplace"] = library.AutoReplace,
                     ["imageQualityGateEnabled"] = library.ImageQualityGateEnabled, ["minimumImageSsim"] = library.MinimumImageSsim,
-                    ["imageMetadataGateEnabled"] = library.ImageMetadataGateEnabled
+                    ["imageMetadataGateEnabled"] = library.ImageMetadataGateEnabled,
+                    ["imagePerceptualReportingEnabled"] = library.ImagePerceptualReportingEnabled,
+                    ["imagePerceptualGateEnabled"] = library.ImagePerceptualGateEnabled,
+                    ["minimumImagePerceptualScore"] = library.MinimumImagePerceptualScore
                 }
             }, Json)
         }, nowUtc, cancellationToken);

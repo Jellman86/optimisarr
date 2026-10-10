@@ -695,6 +695,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("ImageMetadataGateEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ImagePerceptualGateEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ImagePerceptualReportingEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("ImageQuality")
                         .HasColumnType("INTEGER");
 
@@ -754,6 +760,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<double?>("MinVmafMin")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MinimumImagePerceptualScore")
                         .HasColumnType("REAL");
 
                     b.Property<double>("MinimumImageSsim")

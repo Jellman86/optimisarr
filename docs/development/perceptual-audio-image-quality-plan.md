@@ -1,7 +1,7 @@
 # Perceptual quality for audio and still images
 
-Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans. Delivery status reconciled **4 October 2026**.
-Status: **opt-in standalone audio and video soundtrack reports, separate operator-selected gates and strict worker measurement implemented in dev; adaptive audio quality selection and surround support remain planned**.
+Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans. Delivery status reconciled **10 October 2026**.
+Status: **opt-in standalone audio and video soundtrack reports, separate operator-selected gates and strict worker measurement implemented in dev; experimental server-local SDR still-image reports and explicit SSIMULACRA2 gates implemented in the current development slice; adaptive audio quality selection, broader image coverage and surround support remain planned**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
 [personal blind comparisons](../usage/personal-quality-check.md).
@@ -492,3 +492,18 @@ Every configured gate must pass before replacement. A failure leaves the origina
 a successful replacement records rollback and quarantines the original before installing the
 verified output. Quarantine is not a backup, and purge removes rollback. Dry-run permits
 assessment while blocking replacement and purge.
+
+## Experimental image integration, 10 October 2026
+
+The native wrapper pins libjxl v0.12.0 at `a7a9c787341cf703dede03c2009fa460cae5e5df`
+and WebP v1.6.0 at `b7e29b9d75bd31422b00c2a446d49d7af06c328d`. Exact selected
+submodule revisions and licences ship alongside the helper and in sidecar source archives.
+See [build and qualification](../../tools/image-quality-native/README.md) and
+[operator coverage](../setup/configuration.md#perceptual-image-quality-reports-and-gates-development).
+
+This is a bounded first slice, without a calibrated default or a claim that its scores prove
+visually lossless output. Synthetic fixtures test identity, damage, JPEG/WebP decoding,
+embedded sRGB, alpha backgrounds and independent alpha comparison, malformed/incomplete ICC,
+orientation, unsupported depth/animation and mismatched dimensions. Server integration keeps
+existing gates, records file/tool hashes, serializes full-resolution measurement and fails
+closed. Image sidecar placement is not implemented by this work.

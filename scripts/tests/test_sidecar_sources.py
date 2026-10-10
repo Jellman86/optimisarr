@@ -23,6 +23,18 @@ class SidecarSourceTests(unittest.TestCase):
             self.assertIn(repository, cmake)
             self.assertIn('GIT_TAG ' + revision, cmake)
 
+    def test_image_sources_cover_the_native_build_and_all_selected_submodules(self):
+        cmake = (source.ROOT / 'tools/image-quality-native/CMakeLists.txt').read_text()
+        for name in ['image-libjxl', 'image-webp']:
+            repository, revision = source.IMAGE_SOURCES[name]
+            self.assertIn(repository, cmake)
+            self.assertIn('GIT_TAG ' + revision, cmake)
+        dependencies = ['highway', 'brotli', 'lcms', 'libpng', 'zlib', 'libjpeg-turbo']
+        self.assertEqual(set(source.IMAGE_SOURCES), {'image-libjxl', 'image-webp'} | {'image-' + d for d in dependencies})
+        for dependency in dependencies:
+            self.assertIn('third_party/' + dependency, cmake)
+            self.assertRegex(source.IMAGE_SOURCES['image-' + dependency][1], r'^[0-9a-f]{40}$')
+
     def test_missing_dependency_cannot_certify_mac_sources(self):
         info = self.root / 'BUILD-INFO.txt'
         info.write_text('x264 stable ' + 'a' * 40 + '\n')

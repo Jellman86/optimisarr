@@ -44,6 +44,20 @@ try {
     $audioLicences = Join-Path $payload 'licenses\audio-quality'
     New-Item -ItemType Directory -Force $audioLicences | Out-Null
     Copy-Item (Join-Path $audioInstall 'share\optimisarr-audio-quality\*') $audioLicences
+    $imageBuild = Join-Path $work 'image-quality-build'
+    $imageInstall = Join-Path $work 'image-quality-install'
+    cmake -S (Join-Path $repo 'tools\image-quality-native') -B $imageBuild -A x64
+    Assert-Exit 'Native image configuration'
+    cmake --build $imageBuild --config Release --target optimisarr-image-quality --parallel 2
+    Assert-Exit 'Native image build'
+    ctest --test-dir $imageBuild -C Release -R '^native_image_quality$' --output-on-failure
+    Assert-Exit 'Native image qualification'
+    cmake --install $imageBuild --config Release --component ImageQuality --prefix $imageInstall
+    Assert-Exit 'Native image install'
+    Copy-Item (Join-Path $imageInstall 'bin\optimisarr-image-quality.exe') $payload
+    $imageLicences = Join-Path $payload 'licenses\image-quality'
+    New-Item -ItemType Directory -Force $imageLicences | Out-Null
+    Copy-Item (Join-Path $imageInstall 'share\optimisarr-image-quality\*') $imageLicences -Recurse
     $zip = Join-Path $work 'runtime.zip'
     $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest $runtimeUrl -OutFile $zip -TimeoutSec 600
@@ -62,6 +76,8 @@ try {
 Optimisarr Sidecar ${Version}: GPL-3.0. Source: https://github.com/Jellman86/optimisarr
 Zimtohrli and Highway: Apache-2.0. Licences are in licenses/audio-quality.
 Pinned source and wrapper build: https://github.com/Jellman86/optimisarr/tree/main/tools/audio-quality-native
+libjxl, WebP and their pinned dependencies: licences are in licenses/image-quality.
+Pinned source and wrapper build: https://github.com/Jellman86/optimisarr/tree/main/tools/image-quality-native
 FFmpeg: GPL build pinned in BUILD-INFO.txt. Copyright the FFmpeg contributors.
 Build scripts and corresponding upstream build-source release:
 https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-30-13-08

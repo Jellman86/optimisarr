@@ -22,13 +22,16 @@ the replacement workflow is trustworthy.
 ## Current hardening follow-up, reviewed 2026-10-09
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
-trial and pairing records with current implementation. Priorities are Windows signing,
-retained real-source playback evidence and broader quality coverage.
+trial and pairing records with current implementation. Priorities are retained real-source playback evidence and broader quality coverage.
+Windows installer signing is deferred indefinitely: a certificate is outside the operator's
+budget and the SignPath application was declined. Unsigned preview distribution continues;
+signing is not a release blocker.
 Correlated opt-in diagnostic capture, local exports and playback artwork shipped in 0.2.23;
 see the [release acceptance](engineering/hardware-validation/2026-10-09-release-0.2.23.md),
 which distinguishes installed fleet checks from disposable media tests and records the
 pending Mac upgrade. Audio reports and explicit gates are implemented in
-development; image perceptual assessment and broader audio/dedupe coverage remain planned.
+development. Experimental SDR still-image reports and explicit SSIMULACRA2 gates are
+implemented in this development slice; broader image/audio qualification and dedupe remain planned.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
 
@@ -1100,7 +1103,11 @@ or VMAF v0 policy as current behavior.
     records the sources, tradeoffs and platform qualification still needed.
     Track delivery in [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 
-    - **Image direction:** prefer SSIMULACRA2 for SDR compression checks; compare against the
+    - **Image status:** experimental server-local SSIMULACRA2 reports and separate explicit gates
+      are implemented for bounded same-size 8-bit sRGB PNG/JPEG/WebP stills. Animation, other
+      profiles/depths and orientation transforms fail closed. Native tools are packaged across
+      platforms, but image worker placement remains future work. Broader photographs, colour
+      and human-viewing calibration remain planned. Compare against the
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
       HDR or transparent-image fidelity from one perceptual score.

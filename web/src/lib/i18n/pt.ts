@@ -1,6 +1,19 @@
 import type { Messages } from './en'
 
 export const pt: Messages = {
+  image_quality: {
+      "title": "Relatório de qualidade de imagem",
+      "report_hint": "Medir SSIMULACRA2 após a codificação. Opcional e desativado por predefinição.",
+      "gate_label": "Exigir qualidade percetual da imagem",
+      "gate_hint": "Bloquear a substituição se a pontuação for insuficiente, a transparência mudar ou faltarem medições.",
+      "minimum": "Pontuação SSIMULACRA2 mínima",
+      "validation": "Escolha uma pontuação mínima explícita entre 0 e 100.",
+      "limits": "Experimental. Imagens fixas PNG, JPEG e WebP sRGB de 8 bits, com dimensões iguais e até 16 megapíxeis. Outros perfis, orientação, redução e animação não são suportados. Sem limiar de qualidade calibrado.",
+      "report_only": "Apenas relatório. As verificações existentes continuam a decidir a substituição.",
+      "gate_note": "Todas as verificações configuradas têm de passar antes da substituição. A falta de medições bloqueia esta verificação.",
+      "coverage": "{width} × {height} · imagem fixa completa",
+      "alpha": "Diferença máxima de transparência: {difference}"
+  },
   autoAccept: {
     offByDefault: "Desativado por predefinição",
     warning: "Definições incorretas podem danificar ficheiros, reduzir a qualidade ou remover faixas e metadados. As verificações aprovadas refletem apenas as que ativou. Teste alguns ficheiros e mantenha uma cópia de segurança separada.",

@@ -1488,7 +1488,10 @@ public sealed class QueueDispatcher(
                 library?.MaximumAudioQualityDistance,
                 library?.SoundtrackQualityReportingEnabled,
                 library?.SoundtrackQualityGateEnabled,
-                library?.MaximumSoundtrackQualityDistance));
+                library?.MaximumSoundtrackQualityDistance,
+                ImagePerceptualReportingEnabled: library?.ImagePerceptualReportingEnabled,
+                ImagePerceptualGateEnabled: library?.ImagePerceptualGateEnabled,
+                MinimumImagePerceptualScore: library?.MinimumImagePerceptualScore));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it

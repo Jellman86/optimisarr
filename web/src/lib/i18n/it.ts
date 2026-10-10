@@ -1,6 +1,19 @@
 import type { Messages } from './en'
 
 export const it: Messages = {
+  image_quality: {
+      "title": "Rapporto qualità immagine",
+      "report_hint": "Misura SSIMULACRA2 dopo la codifica. Facoltativo e disattivato per impostazione predefinita.",
+      "gate_label": "Richiedi qualità percettiva dell’immagine",
+      "gate_hint": "Blocca la sostituzione se il punteggio è insufficiente, cambia la trasparenza o mancano misurazioni.",
+      "minimum": "Punteggio SSIMULACRA2 minimo",
+      "validation": "Scegli un punteggio minimo esplicito tra 0 e 100.",
+      "limits": "Sperimentale. Immagini fisse PNG, JPEG e WebP sRGB a 8 bit, di uguali dimensioni, fino a 16 megapixel. Altri profili, orientamento, ridimensionamento e animazione non sono supportati. Nessuna soglia di qualità calibrata.",
+      "report_only": "Solo rapporto. I controlli esistenti continuano a decidere la sostituzione.",
+      "gate_note": "Tutti i controlli configurati devono riuscire prima della sostituzione. Le misurazioni mancanti bloccano questo controllo.",
+      "coverage": "{width} × {height} · immagine fissa completa",
+      "alpha": "Differenza massima di trasparenza: {difference}"
+  },
   autoAccept: {
     offByDefault: "Disattivato per impostazione predefinita",
     warning: "Impostazioni errate possono danneggiare i file, ridurre la qualità o rimuovere tracce e metadati. I controlli superati riguardano solo quelli attivati. Prova alcuni file e conserva una copia di sicurezza separata.",

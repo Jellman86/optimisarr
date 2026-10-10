@@ -145,6 +145,9 @@ try {
  await page.route('**/api/jobs?*',route=>json(route,[f.audioJob]));await page.route('**/api/jobs',route=>json(route,[f.audioJob]));
  await page.setViewportSize({width:1440,height:1000});await go('/queue');await page.locator('tbody tr').first().getByRole('button').first().click();
  await expect(page.getByRole('region',{name:'Audio quality report',exact:true})).toBeVisible();await shot('audio-report','[aria-label="Audio quality report"]');await page.keyboard.press('Escape')
+ await go('/libraries/4/configure/verify/advanced');await expect(page.getByRole('spinbutton',{name:'Minimum SSIMULACRA2 score',exact:true})).toHaveValue('80');await shot('image-quality-settings','fieldset:not([data-library-workflow]):has(#lib-image-perceptual-score)')
+ await page.route('**/api/jobs?*',route=>json(route,[f.imageQualityJob]));await page.route('**/api/jobs',route=>json(route,[f.imageQualityJob]));
+ await go('/queue');await page.getByRole('button',{name:'View job',exact:true}).click();await expect(page.getByRole('region',{name:'Image quality report',exact:true})).toBeVisible();await shot('image-quality-report','[aria-label="Image quality report"]');await page.keyboard.press('Escape')
  await go('/libraries/3/configure/encode/audio');await expect(page.locator('[data-audio-encoding-preset]')).toBeVisible();await shot('audio-encoding-presets','[data-config-section]:has([data-audio-encoding-preset])')
  await go('/libraries/3/configure/verify/advanced');await expect(page.getByRole('spinbutton',{name:'Maximum audio difference',exact:true})).toHaveValue('0.005');await shot('audio-quality-settings','fieldset:not([data-library-workflow]):has(#lib-audio-quality-limit)')
  await page.route('**/api/jobs?*',route=>json(route,[f.audioGatedJob]));await page.route('**/api/jobs',route=>json(route,[f.audioGatedJob]));

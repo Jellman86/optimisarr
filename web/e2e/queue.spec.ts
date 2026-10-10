@@ -637,6 +637,35 @@ test('a missing working poster stays settled through refreshes and recovers for 
 
 for (const width of [375, 1440]) {
   for (const theme of ['dark', 'light']) {
+    for (const available of [true, false]) {
+      test(`image quality ${available ? 'measured' : 'unavailable'} report at ${width}px in ${theme}`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)
+        const image = { measurement: available ? { width: 96, height: 64, alpha: true, maximumAlphaError: 0, score: 82.125,
+          backgroundScores: [82.125, 84] } : null, error: available ? null : 'Animated images are unsupported.',
+          gateEnabled: true, minimumScore: 80, gatePassed: available }
+        await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), relativePath: 'Synthetic.webp',
+          verificationReportJson: JSON.stringify({ checks: [], imagePerceptualQuality: image }) }] })
+        await page.goto('/#/queue')
+        await page.getByRole('button', { name: 'View job', exact: true }).click()
+        const panel = page.getByRole('region', { name: 'Image quality report', exact: true })
+        if (available) {
+          await expect(panel).toContainText('82.125')
+          await expect(panel).toContainText('96 × 64')
+        } else {
+          await expect(panel).toContainText('Animated images are unsupported.')
+          await expect(panel).not.toContainText('82.125')
+        }
+        await expect(panel).toContainText('Every configured check must pass')
+        expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+        await panel.screenshot({ path: testInfo.outputPath('image-report.png') })
+      })
+    }
+  }
+}
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
     test(`audio report fits the job dialog at ${width}px in ${theme}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 })
       await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)

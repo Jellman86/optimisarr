@@ -11,6 +11,39 @@ public sealed class MigrationTests : IDisposable
         "optimisarr-tests",
         $"{Guid.NewGuid():N}.db");
 
+    [Fact]
+    public async Task Image_perceptual_migration_defaults_off_preserves_ssim_and_remigrates_without_resetting_opt_in()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261002144723_AddSoundtrackQuality");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, MinimumImageSsim, CreatedAt, UpdatedAt)
+            VALUES ('Photos', '/data/photos', 'Photo', 'ConservativeHevc', 1, 0.97,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        var library = await db.Libraries.SingleAsync();
+        Assert.False(library.ImagePerceptualReportingEnabled);
+        Assert.False(library.ImagePerceptualGateEnabled);
+        Assert.Null(library.MinimumImagePerceptualScore);
+        Assert.Equal(0.97, library.MinimumImageSsim);
+        library.ImagePerceptualReportingEnabled = true;
+        library.ImagePerceptualGateEnabled = true;
+        library.MinimumImagePerceptualScore = 80;
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        var restored = await db.Libraries.SingleAsync();
+        Assert.True(restored.ImagePerceptualReportingEnabled);
+        Assert.True(restored.ImagePerceptualGateEnabled);
+        Assert.Equal(80, restored.MinimumImagePerceptualScore);
+        Assert.Equal(0.97, restored.MinimumImageSsim);
+        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+    }
+
 
     [Fact]
     public async Task Existing_watchers_keep_showing_who_is_watching_and_a_hidden_choice_survives_remigration()

@@ -26,6 +26,7 @@ AUDIO_SOURCES = {
     'zimtohrli': ('https://github.com/google/zimtohrli.git', 'f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3'),
     'highway': ('https://github.com/google/highway.git', '7fff3c667fb62475cdfb2b6c441452c8223c1a67'),
 }
+IMAGE_SOURCES = json.loads((ROOT / 'tools/image-quality-native/sources.json').read_text())
 MAC_ARCHIVES = {
     'lame': ('https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz',
              'ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e'),
@@ -96,7 +97,7 @@ def copy_licenses(archive, destination):
     with tarfile.open(archive) as source:
         for item in source:
             base = PurePosixPath(item.name).name.upper()
-            if not item.isfile() or not (base.startswith(('LICENSE', 'COPYING', 'NOTICE'))):
+            if not item.isfile() or not (base.startswith(('LICENSE', 'COPYING', 'NOTICE')) or base == 'README.IJG'):
                 continue
             path = PurePosixPath(item.name)
             if path.is_absolute() or '..' in path.parts or item.size > 5_000_000:
@@ -238,7 +239,7 @@ def main():
                 copy_licenses(archive, args.output / 'licenses')
                 files.append(archive)
                 records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive)})
-        for name, (url, revision) in AUDIO_SOURCES.items():
+        for name, (url, revision) in (AUDIO_SOURCES | IMAGE_SOURCES).items():
             archive, resolved = git_source(name, url, revision, stage)
             copy_licenses(archive, args.output / 'licenses')
             files.append(archive)
@@ -253,7 +254,7 @@ def main():
         manifest.write_text(json.dumps({'platform': args.platform, 'version': version, 'sources': records}, indent=2) + '\n')
         notices = args.output / 'THIRD-PARTY-NOTICES.txt'
         notices.write_text(
-        'Optimisarr bundles FFmpeg, codec libraries, Zimtohrli and Highway. Their exact source archives, build scripts,\n'
+        'Optimisarr bundles FFmpeg, codec libraries, Zimtohrli, SSIMULACRA2 and their pinned dependencies. Their exact source archives, build scripts,\n'
         'revision manifest and SHA-256 checksums are supplied with this release. Source archives retain\n'
         'their upstream licences. Additional licence copies are provided in the licenses directory.\n'
         'See source-manifest.json for the exact source revisions and download provenance.\n')
