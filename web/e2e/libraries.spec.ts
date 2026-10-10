@@ -613,7 +613,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const width = (await workflow.boundingBox())!.width
       if (!referenceWidth) referenceWidth = width
       expect(width, room).toBe(referenceWidth)
-      expect(width).toBe(1152)
+      const availableWidth = await page.locator('main').evaluate(main => {
+        const style = getComputedStyle(main)
+        return main.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+      })
+      expect(width).toBe(availableWidth)
       const card = workflow.locator('.card-interactive, [data-config-section]').first()
       await page.mouse.move(0, 0)
       const surface = await card.evaluate(element => ({

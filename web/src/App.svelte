@@ -21,7 +21,6 @@
   import Setup from './lib/pages/Setup.svelte'
   import DiagnosticCaptureBanner from './lib/components/DiagnosticCaptureBanner.svelte'
   import StatusStrip from './lib/components/StatusStrip.svelte'
-  import { pageWidth } from './lib/layout'
 
   // Map the active route to its page component.
   let page = $derived.by(() => {
@@ -190,7 +189,7 @@
       class="min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
-      <div class="page-frame" class:page-frame-reading={pageWidth(router.path) === 'reading'}>
+      <div class="page-frame">
         <StatusStrip />
         <DiagnosticCaptureBanner />
         {#key pageKey}

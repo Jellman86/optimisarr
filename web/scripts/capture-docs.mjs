@@ -120,10 +120,12 @@ try {
  async function aliases(source,names){for(const name of names){await copyFile(resolve(output,`optimisarr-${source}-dark.png`),resolve(output,`optimisarr-${name}-dark.png`));captured.push(name)}}
  await go('/');await expect(page.getByRole('heading',{name:'Dashboard',exact:true})).toBeVisible();await shot('dashboard',null);await shot('dashboard-main');await aliases('dashboard-main',['dashboard-savings'])
  await go('/libraries');await expect(page.locator('[data-library-card="1"]')).toBeVisible();await shot('libraries',null);await shot('libraries-main')
+ await page.setViewportSize({width:2048,height:1167})
  await go('/libraries/1/configure');await expect(page.getByRole('button',{name:/Choose files/}).first()).toBeVisible();await shot('library-configure')
  for(const [route,name]of[['source','library-choose-files'],['source/advanced','library-advanced-eligibility'],['encode','library-encode'],['encode/video/advanced','library-advanced-encoding'],['verify/advanced','library-advanced-verification'],['automate','library-automation']]){await go('/libraries/1/configure/'+route);await shot(name)}
  await page.getByRole('checkbox',{name:'Auto-accept passed jobs',exact:true}).click();await expect(page.getByRole('dialog',{name:'Do you really, really mean it?'})).toBeVisible();await shot('auto-accept-confirmation','dialog');await page.keyboard.press('Escape')
  await go('/libraries/1/configure');await page.getByRole('button',{name:/^Candidates/}).click();await shot('library-candidates');await page.getByRole('button',{name:/^Excluded/}).click();await shot('library-excluded')
+ await page.setViewportSize({width:1440,height:1000})
  await go('/inventory');await expect(page.getByRole('button',{name:/Lumen Coast.mkv/})).toBeVisible();await shot('inventory',null);await shot('inventory-main');await page.getByRole('button',{name:/Lumen Coast.mkv/}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('inventory-detail','dialog')
  await page.setViewportSize({width:1440,height:1400});await go('/inventory/duplicates');await page.getByLabel('Library',{exact:true}).selectOption('1');await expect(page.getByText('Archive/Lumen Coast copy.mkv',{exact:true})).toBeVisible();await shot('exact-copies','.duplicate-view');await page.setViewportSize({width:1440,height:1000})
  await go('/queue');await expect(page.getByRole('region',{name:'Working now'})).toBeVisible();await shot('queue',null);await shot('queue-main');await shot('queue-working-job','[aria-label="Working now"]');await page.getByRole('region',{name:'Working now'}).getByRole('button',{name:'View job',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('queue-detail','dialog');await page.keyboard.press('Escape')
@@ -177,7 +179,7 @@ try {
   command:'cd web && node scripts/capture-docs.mjs',applicationVersion:f.applicationVersion,capturedOn:new Date().toISOString().slice(0,10),
   uiRevision:execFileSync('git',['rev-parse','HEAD'],{cwd:web,encoding:'utf8'}).trim(),
   uiWorkingTreeModified:execFileSync('git',['status','--porcelain','--','web/src','web/scripts'],{cwd:resolve(web,'..'),encoding:'utf8'}).trim().length>0,
-  viewport:{width:1440,height:1000},mobileViewport:{width:390,height:1000},diagnosticMobileViewport:{width:390,height:1800},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
+  viewport:{width:1440,height:1000},libraryViewport:{width:2048,height:1167},mobileViewport:{width:390,height:1000},diagnosticMobileViewport:{width:390,height:1800},reviewViewport:{width:1440,height:1500},qualityViewport:{width:1440,height:1250},
   images:captured.map(name=>`optimisarr-${name}-dark.png`),
   sha256:Object.fromEntries(await Promise.all(captured.map(async name=>{const file=`optimisarr-${name}-dark.png`;return [file,createHash('sha256').update(await readFile(resolve(output,file))).digest('hex')]}))),
  },null,2)+'\n')

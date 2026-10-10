@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- Library configuration, creation, Candidates and Excluded views use the full available page width, matching the rest of the interface while retaining readable form controls. Documentation captures now show configuration on a wide desktop.
+
 - Diagnostic concurrency tests tolerate a scheduled outer writer on busy Windows runners while retaining bounded deadlock checks and exact capture-limit assertions.
 
 ## 0.2.23 - 2026-10-09
