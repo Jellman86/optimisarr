@@ -104,7 +104,7 @@ export const titles = ['Lumen Coast', 'The Glass Observatory', 'Amber Transit', 
 export const libraries = [library,
   { ...library, id: 2, name: 'Nature series', path: '/data/series', mediaType: 'Tv', fileCount: 126, autoEnqueueEnabled: true, autoEnqueueWindowStart: '01:00', autoEnqueueWindowEnd: '06:00' },
   { ...library, id: 3, name: 'Field recordings', path: '/data/audio', mediaType: 'Music', fileCount: 64, audioTargetCodec: 'opus', audioBitrateKbps: 128, audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.005 },
-  { ...library, id: 4, name: 'Landscape studies', path: '/data/photos', mediaType: 'Photo', fileCount: 240, targetImageFormat: 'webp', imageQuality: 82 },
+  { ...library, id: 4, name: 'Landscape studies', path: '/data/photos', mediaType: 'Photo', fileCount: 240, targetImageFormat: 'webp', imageQuality: 82, imagePerceptualReportingEnabled: true, imagePerceptualGateEnabled: true, minimumImagePerceptualScore: 80 },
 ]
 export const options = {
   mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
@@ -208,3 +208,8 @@ export const soundtrackJob = { ...jobs[1], id: 41, mediaFileId: 41, status: "Ver
     }
   }))
 } }) }
+
+export const imageQualityJob = { ...jobs[1], id: 42, mediaFileId: 42, status: 'Verifying', relativePath: 'Lumen landscape.webp',
+ verificationReportJson: JSON.stringify({ checks: [{name:'Decode health',outcome:'Passed',detail:'Decoded cleanly.'}],
+ imagePerceptualQuality: {measurement:{width:1920,height:1080,alpha:true,maximumAlphaError:0,score:86.412,backgroundScores:[86.412,87.008]},
+ error:null,gateEnabled:true,minimumScore:80,gatePassed:true,measurementLocation:'Server'} }) }

@@ -75,6 +75,14 @@ builder.Services.AddSingleton(services => new VmafShadowService(
         .MeasureAsync(source, candidate, context, token)));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
+builder.Services.AddSingleton(_ =>
+{
+    var metric = Environment.GetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY")
+        ?? Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows()
+            ? "optimisarr-image-quality.exe" : "optimisarr-image-quality");
+    var service = File.Exists(metric) ? new ImagePerceptualQualityService(metric) : null;
+    return new ImagePerceptualObservationService(service is null ? null : service.MeasureAsync);
+});
 builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpeg));
 // The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
 // -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
@@ -466,7 +474,10 @@ internal sealed record SaveLibraryRequest(
     double? MaximumAudioQualityDistance = null,
     bool? SoundtrackQualityReportingEnabled = null,
     bool? SoundtrackQualityGateEnabled = null,
-    double? MaximumSoundtrackQualityDistance = null);
+    double? MaximumSoundtrackQualityDistance = null,
+    bool? ImagePerceptualReportingEnabled = null,
+    bool? ImagePerceptualGateEnabled = null,
+    double? MinimumImagePerceptualScore = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -557,7 +568,10 @@ internal sealed record LibraryDto(
     bool AutoReplace,
     int FileCount,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    bool ImagePerceptualReportingEnabled,
+    bool ImagePerceptualGateEnabled,
+    double? MinimumImagePerceptualScore)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -637,7 +651,10 @@ internal sealed record LibraryDto(
         library.AutoReplace,
         fileCount,
         library.CreatedAt,
-        library.UpdatedAt);
+        library.UpdatedAt,
+        library.ImagePerceptualReportingEnabled,
+        library.ImagePerceptualGateEnabled,
+        library.MinimumImagePerceptualScore);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

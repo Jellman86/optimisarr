@@ -21,6 +21,7 @@
   import VerificationChecks from '../components/VerificationChecks.svelte'
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
+  import ImagePerceptualReport from '../components/ImagePerceptualReport.svelte'
   import FailuresPanel from '../components/FailuresPanel.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import PlaybackHolds from '../components/PlaybackHolds.svelte'
@@ -732,6 +733,7 @@
           {#if checks}<VerificationChecks {checks} />{/if}
           <AudioQualityReport report={fullReport(selectedJob)?.audioQuality ?? null} />
           <SoundtrackQualityReport report={fullReport(selectedJob)?.soundtrackQuality ?? null} />
+          <ImagePerceptualReport report={fullReport(selectedJob)?.imagePerceptualQuality ?? null} />
         </div>
       {/if}
       {#if earlierAttempts.length > 0}

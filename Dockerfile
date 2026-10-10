@@ -56,6 +56,14 @@ COPY tools/audio-quality-native/ tools/audio-quality-native/
 COPY scripts/build_audio_quality.sh scripts/build_audio_quality.sh
 RUN bash scripts/build_audio_quality.sh /audio-build /audio-install
 
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS image-quality-build
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY tools/image-quality-native/ tools/image-quality-native/
+COPY scripts/build_image_quality.sh scripts/build_image_quality.sh
+RUN bash scripts/build_image_quality.sh /image-build /image-install
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS media-runtime
 WORKDIR /app
 
@@ -86,6 +94,8 @@ RUN apt-get update \
 
 COPY --from=audio-quality-build /audio-install/bin/optimisarr-audio-quality /app/optimisarr-audio-quality
 COPY --from=audio-quality-build /audio-install/share/optimisarr-audio-quality/ /app/licenses/audio-quality/
+COPY --from=image-quality-build /image-install/bin/optimisarr-image-quality /app/optimisarr-image-quality
+COPY --from=image-quality-build /image-install/share/optimisarr-image-quality/ /app/licenses/image-quality/
 COPY --from=vmaf-ffmpeg /ffmpeg /usr/local/lib/optimisarr/ffmpeg-vmaf
 RUN /usr/local/lib/optimisarr/ffmpeg-vmaf -hide_banner -filters 2>&1 \
     | grep -Eq '^[[:space:]].*[[:space:]]libvmaf[[:space:]]'
@@ -98,6 +108,7 @@ ENV OPTIMISARR_CONFIG_DIR=/config \
     OPTIMISARR_SIDECAR_WORK=/work \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
+    OPTIMISARR_IMAGE_QUALITY=/app/optimisarr-image-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
     PUID=1000 PGID=1000 UMASK=077 \
     OPTIMISARR_WEB_ENABLED=true ASPNETCORE_URLS=http://0.0.0.0:8788
@@ -118,6 +129,7 @@ ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     OPTIMISARR_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe \
     OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
+    OPTIMISARR_IMAGE_QUALITY=/app/optimisarr-image-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
     PUID=1000 \
     PGID=1000 \

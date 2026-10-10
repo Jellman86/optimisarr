@@ -497,6 +497,45 @@ class Harness:
         return {"ssim": float(match[1]), "restoredOriginal": True,
                 "scope": "Opaque BMP to JPEG; metadata-free generated source"}
 
+    def image_perceptual(self, target="jpeg", *, reject=False, reporting=True, gate=True, unsupported=False):
+        self.select_worker(None)
+        name = f"image-perceptual-{target}-{'unsupported' if unsupported else 'reject' if reject else 'gate' if gate else 'report' if reporting else 'off'}"
+        fixture = self.root / "fixtures" / (name + (".bmp" if unsupported else ".png"))
+        self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=512x512:rate=1:duration=1",
+            "-vf", "noise=alls=40:allf=t", "-pix_fmt", "bgr24" if unsupported else "rgb24", "-frames:v", "1", self.tools.path(fixture)])
+        case = self.create_job(name, fixture, overrides={"mediaType": "Photo", "targetImageFormat": target,
+            "imageQuality": 10 if reject else 95, "reencodeLossyImages": True, "vmafQualityGateEnabled": False,
+            "imageQualityGateEnabled": True, "minimumImageSsim": 0, "imageMetadataGateEnabled": True,
+            "requireSizeReduction": False, "imagePerceptualReportingEnabled": reporting,
+            "imagePerceptualGateEnabled": gate, "minimumImagePerceptualScore": 100 if reject else 0 if gate else None})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        require(sha256(case["source"]) == case["sourceSha256"], "Image assessment changed the source")
+        failed = reject or unsupported
+        require(job["status"] == ("Failed" if failed else "ReadyToReplace"), f"Unexpected image verdict: {job['errorMessage']}")
+        require(job.get("verificationReportJson"), "Image verification did not produce a report")
+        report = json.loads(job["verificationReportJson"])
+        image = report.get("imagePerceptualQuality")
+        if reporting or gate:
+            require(image is not None and image["measurementLocation"] == "Server", "Missing server image evidence")
+            if unsupported:
+                require(image["measurement"] is None and image["error"], "Unsupported image received a score")
+            else:
+                measurement = image["measurement"]
+                require(measurement and measurement["width"] == 512 and measurement["height"] == 512, "Incomplete image coverage")
+                require(image["revision"] == "a7a9c787341cf703dede03c2009fa460cae5e5df", "Wrong metric revision")
+                require(image["sourceSha256"].lower() == case["sourceSha256"].lower(), "Evidence source hash differs")
+                require(image["candidateSha256"].lower() == sha256(self.output(case)).lower(), "Evidence candidate hash differs")
+            require(image["gateEnabled"] == gate and (not gate or image["gatePassed"] == (not failed)), "Incorrect image gate attribution")
+        else:
+            require(image is None, "Disabled image reporting still ran")
+        if failed:
+            require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Rejected image acquired replacement history")
+        else:
+            self.replace_restore(case, self.output(case))
+        return {"originalUnchanged": True, "gateBlocked": failed, "restoredOriginal": not failed,
+                "report": image, "scope": "Synthetic stills; CPU image encoding and server-local assessment"}
+
     def calibration(self):
         self.select_worker(None)
         fixture = self.root / "fixtures" / "calibration.mkv"
@@ -704,6 +743,14 @@ class Harness:
         self.configure(workerVerificationRequired=strict_worker_verification)
         self.report.environment["strictWorkerVerification"] = strict_worker_verification
         try:
+            if regression == "image-quality":
+                self.report.case("image-perceptual-jpeg", lambda: self.image_perceptual("jpeg"))
+                self.report.case("image-perceptual-webp", lambda: self.image_perceptual("webp"))
+                self.report.case("image-perceptual-reject", lambda: self.image_perceptual(reject=True))
+                self.report.case("image-perceptual-report", lambda: self.image_perceptual(gate=False))
+                self.report.case("image-perceptual-off", lambda: self.image_perceptual(reporting=False, gate=False))
+                self.report.case("image-perceptual-unsupported", lambda: self.image_perceptual(unsupported=True))
+                return self.report.exit_code
             fixture_dir = self.root / "fixtures"
             variants = variants or (["sdr"] if tier == "smoke" else ["sdr", "vfr", "offset", "ten-bit"])
             if regression == "fractional-timing" and "fractional" not in variants:

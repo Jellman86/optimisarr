@@ -332,6 +332,11 @@
         || Number(form.maximumSoundtrackQualityDistance) < 0 || Number(form.maximumSoundtrackQualityDistance) > 1)) {
       return i18n.m.soundtrack_quality.validation
     }
+    if (showImageOptions && form.imagePerceptualGateEnabled
+      && (form.minimumImagePerceptualScore == null || !Number.isFinite(Number(form.minimumImagePerceptualScore))
+        || Number(form.minimumImagePerceptualScore) < 0 || Number(form.minimumImagePerceptualScore) > 100)) {
+      return i18n.m.image_quality.validation
+    }
     if (showAudioOptions && form.audioQualityGateEnabled
       && (form.maximumAudioQualityDistance == null || !Number.isFinite(Number(form.maximumAudioQualityDistance))
         || Number(form.maximumAudioQualityDistance) < 0 || Number(form.maximumAudioQualityDistance) > 1)) {
@@ -1091,6 +1096,9 @@
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
+      imagePerceptualReportingEnabled: library.imagePerceptualReportingEnabled ?? false,
+      imagePerceptualGateEnabled: library.imagePerceptualGateEnabled ?? false,
+      minimumImagePerceptualScore: library.minimumImagePerceptualScore ?? null,
       soundtrackQualityReportingEnabled: library.soundtrackQualityReportingEnabled ?? false,
       soundtrackQualityGateEnabled: library.soundtrackQualityGateEnabled ?? false,
       maximumSoundtrackQualityDistance: library.maximumSoundtrackQualityDistance ?? null,
@@ -1184,6 +1192,9 @@
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
+      imagePerceptualReportingEnabled: showImageOptions && form.imagePerceptualReportingEnabled,
+      imagePerceptualGateEnabled: showImageOptions && form.imagePerceptualGateEnabled,
+      minimumImagePerceptualScore: toNullableNumber(form.minimumImagePerceptualScore ?? null),
       soundtrackQualityReportingEnabled: showVideoOptions && form.soundtrackQualityReportingEnabled,
       soundtrackQualityGateEnabled: showVideoOptions && form.soundtrackQualityGateEnabled,
       maximumSoundtrackQualityDistance: soundtrackLimitForSave(),
@@ -2038,6 +2049,26 @@
             {i18n.m.libraries.images}
           </legend>
 
+          <div class="mb-5 border-b border-line pb-5">
+            <Toggle bind:checked={form.imagePerceptualReportingEnabled}
+              label={i18n.m.image_quality.title} hint={i18n.m.image_quality.report_hint} />
+            <div class="mt-4">
+              <Toggle bind:checked={form.imagePerceptualGateEnabled}
+                label={i18n.m.image_quality.gate_label} hint={i18n.m.image_quality.gate_hint} />
+            </div>
+            {#if form.imagePerceptualGateEnabled}
+              <div class="mt-4 max-w-sm">
+                <label class="label" for="lib-image-perceptual-score">{i18n.m.image_quality.minimum}</label>
+                <input class="input w-full" id="lib-image-perceptual-score" type="number" min="0" max="100" step="0.1"
+                  bind:value={form.minimumImagePerceptualScore} aria-describedby="lib-image-perceptual-limits lib-verification-error"
+                  aria-invalid={verificationError === i18n.m.image_quality.validation} />
+              </div>
+            {/if}
+            {#if form.imagePerceptualReportingEnabled || form.imagePerceptualGateEnabled}
+              <p id="lib-image-perceptual-limits" class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.image_quality.limits}</p>
+              {#if !form.imagePerceptualGateEnabled}<p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.image_quality.report_only}</p>{/if}
+            {/if}
+          </div>
           <Toggle
             bind:checked={form.imageQualityGateEnabled}
             label={i18n.m.settings.ssim_label}

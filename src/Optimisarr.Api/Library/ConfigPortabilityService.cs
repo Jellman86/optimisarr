@@ -238,6 +238,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.MaximumSoundtrackQualityDistance = snapshot.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance;
             library.MaxTruePeakDbtp = snapshot.MaxTruePeakDbtp
                 ?? legacyVerificationPolicy.MaxTruePeakDbtp;
+            var imageSupported = library.MediaType is MediaType.Photo or MediaType.Other;
+            library.ImagePerceptualReportingEnabled = imageSupported && (snapshot.ImagePerceptualReportingEnabled ?? library.ImagePerceptualReportingEnabled);
+            library.ImagePerceptualGateEnabled = imageSupported && (snapshot.ImagePerceptualGateEnabled ?? library.ImagePerceptualGateEnabled);
+            library.MinimumImagePerceptualScore = snapshot.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore;
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
                 ?? legacyVerificationPolicy.ImageQualityGateEnabled;
             library.MinimumImageSsim = snapshot.MinimumImageSsim
@@ -567,7 +571,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MaximumAudioQualityDistance,
         library.SoundtrackQualityReportingEnabled,
         library.SoundtrackQualityGateEnabled,
-        library.MaximumSoundtrackQualityDistance);
+        library.MaximumSoundtrackQualityDistance,
+        library.ImagePerceptualReportingEnabled,
+        library.ImagePerceptualGateEnabled,
+        library.MinimumImagePerceptualScore);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

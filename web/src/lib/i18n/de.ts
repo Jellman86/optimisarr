@@ -3,6 +3,19 @@ import type { Messages } from './en'
 // German. Typed as `Messages`, so it must define exactly the English key set —
 // omitting or misnaming a key fails `npm run check`.
 export const de: Messages = {
+  image_quality: {
+      "title": "Bildqualitätsbericht",
+      "report_hint": "SSIMULACRA2 nach dem Kodieren messen. Optional und standardmäßig aus.",
+      "gate_label": "Wahrnehmungsqualität des Bildes verlangen",
+      "gate_hint": "Ersetzung blockieren, wenn der Mindestwert unterschritten wird, sich Alpha ändert oder Messwerte fehlen.",
+      "minimum": "SSIMULACRA2-Mindestwert",
+      "validation": "Einen ausdrücklichen Mindestwert zwischen 0 und 100 wählen.",
+      "limits": "Experimentell. Gleich große sRGB-Standbilder mit 8 Bit als PNG, JPEG oder WebP bis 16 Megapixel. Andere Farbprofile, Orientierung, Verkleinerung und Animation werden nicht unterstützt. Kein kalibrierter Qualitätsgrenzwert.",
+      "report_only": "Nur Bericht. Bestehende Sicherheitsprüfungen entscheiden weiterhin über die Ersetzung.",
+      "gate_note": "Vor der Ersetzung müssen alle konfigurierten Prüfungen bestehen. Fehlende Messwerte blockieren diese Prüfung.",
+      "coverage": "{width} × {height} · vollständiges Standbild",
+      "alpha": "Größter Transparenzunterschied: {difference}"
+  },
   autoAccept: {
     offByDefault: "Standardmäßig aus",
     warning: "Falsche Einstellungen können Dateien beschädigen, die Qualität mindern oder Spuren und Metadaten entfernen. Bestandene Prüfungen gelten nur für aktivierte Prüfungen. Testen Sie einige Dateien und behalten Sie eine separate Sicherung.",

@@ -177,6 +177,7 @@ the selected media type:
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | On, 0.95 |
 | Image metadata | Images | On |
+| SSIMULACRA2 perceptual image quality | Supported still images | Off, no preset score |
 
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
@@ -374,6 +375,45 @@ apply. A failed soundtrack gate leaves the original unchanged and adds no automa
 search or retry. Replacement still quarantines the original before installing the verified
 candidate; quarantine is not a backup, and approval or retention purge removes rollback ability.
 Dry-run blocks replacement and purge while allowing encoding and verification.
+
+## Perceptual image quality reports and gates (development)
+
+In a photo or mixed library, open **Verify**, then **Advanced verification**. Enable
+**Image quality report** for optional SSIMULACRA2 evidence. Reporting alone does not block
+replacement. Enable the separate perceptual image gate and enter a minimum score from 0 to
+100 to require it before replacement. There is no default or calibrated universal threshold;
+the score of 80 in the screenshots illustrates a saved operator policy.
+
+![Image quality settings with separate reporting and gate controls and an explicit score](../images/optimisarr-image-quality-settings-dark.png)
+
+Scores can be negative, and 100 represents identical decoded pixels. The gate compares the
+lowest score across the two backgrounds used for transparency and separately requires an
+unchanged alpha channel. Every other configured decode, SSIM, metadata and size check must
+also pass. Missing or unsupported evidence blocks an enabled gate, leaves the source intact
+and never selects a substitute metric. Existing SSIM floors are preserved without conversion.
+
+![Image report with the measured score, selected minimum, dimensions and alpha difference](../images/optimisarr-image-quality-report-dark.png)
+
+This first experimental slice supports same-size, straight-alpha, 8-bit SDR sRGB still PNG,
+JPEG and WebP images. Each file must be at most 128 MiB. PNG profile/text/EXIF metadata
+shares a combined 4 MiB budget, including container bytes and expanded payloads; JPEG/WebP
+profiles are limited to 4 MiB each. Dimensions must be at least 8 by 8 and at
+most 16 megapixels. Animation, resizing, non-identity EXIF orientation, other colour profiles,
+HDR, higher bit depths and malformed or ambiguous metadata are unavailable. An untagged RGB
+image uses the decoder's sRGB interpretation. A declared profile must be recognised as sRGB;
+it cannot silently fall back after a parse failure. Image metadata preservation remains a
+separate check.
+
+Image jobs and measurements currently run on the server. Sidecars package the same helper
+for platform qualification but do not advertise image work. The server runs one image metric
+at a time with a 90-second process deadline and cancellation. A 16-megapixel synthetic
+comparison used about 2.3 GiB of resident memory on both the development Mac and Quark,
+with a Mac peak memory footprint of 2.8 GiB. Allow adequate memory alongside encoding.
+See [hardware qualification and its limits](../engineering/hardware-validation/2026-10-10-image-perceptual-quality.md). No measurement reads or runtime downloads occur when both
+controls are off. Successful evidence records source, candidate and metric SHA-256 hashes
+before and after measurement. Configuration backups use format 4, and older backups preserve
+saved image choices where applicable. From-source servers can set `OPTIMISARR_IMAGE_QUALITY`
+to the qualified helper; a missing tool is shown as unavailable.
 
 ## Rule profiles (presets)
 

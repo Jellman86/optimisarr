@@ -78,7 +78,10 @@ internal readonly record struct ParsedLibrary(
     bool AutoEnqueueEnabled,
     TimeOnly AutoEnqueueWindowStart,
     TimeOnly AutoEnqueueWindowEnd,
-    bool AutoReplace);
+    bool AutoReplace,
+    bool ImagePerceptualReportingEnabled = false,
+    bool ImagePerceptualGateEnabled = false,
+    double? MinimumImagePerceptualScore = null);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -119,6 +122,15 @@ internal static class LibraryRequestParser
         if (!Enum.TryParse<RuleProfile>(request.RuleProfile, ignoreCase: true, out var ruleProfile))
         {
             error = $"Unknown rule profile: {request.RuleProfile}. Expected one of {string.Join(", ", Enum.GetNames<RuleProfile>())}.";
+            return false;
+        }
+
+        if (((request.ImagePerceptualReportingEnabled == true || request.ImagePerceptualGateEnabled == true)
+                && mediaType is not (MediaType.Photo or MediaType.Other))
+            || (request.MinimumImagePerceptualScore is not null && !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore))
+            || (request.ImagePerceptualGateEnabled == true && !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore)))
+        {
+            error = "Perceptual image quality requires a photo or mixed library and an explicit gate score between 0 and 100.";
             return false;
         }
 
@@ -581,7 +593,10 @@ internal static class LibraryRequestParser
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,
-            request.AutoReplace ?? false);
+            request.AutoReplace ?? false,
+            request.ImagePerceptualReportingEnabled ?? false,
+            request.ImagePerceptualGateEnabled ?? false,
+            request.MinimumImagePerceptualScore);
         error = null;
         return true;
     }

@@ -100,6 +100,23 @@ public sealed class LibraryRequestParserTests
     }
 
     [Fact]
+    public void Image_perceptual_controls_require_supported_libraries_and_an_explicit_valid_gate_limit()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = "Photo",
+            ImagePerceptualReportingEnabled = true }, out var reporting, out _));
+        Assert.True(reporting.ImagePerceptualReportingEnabled);
+        Assert.False(reporting.ImagePerceptualGateEnabled);
+        foreach (var value in new double?[] { null, -1, 101, double.NaN })
+            Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Photo",
+                ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = value }, out _, out _));
+        Assert.True(LibraryRequestParser.TryParse(Request() with { MediaType = "Other",
+            ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 80 }, out var required, out _));
+        Assert.Equal(80, required.MinimumImagePerceptualScore);
+        Assert.False(LibraryRequestParser.TryParse(Request() with { MediaType = "Music",
+            ImagePerceptualReportingEnabled = true }, out _, out _));
+    }
+
+    [Fact]
     public void Audio_gate_preserves_zero_and_supports_music_and_mixed_libraries()
     {
         Assert.False(LibraryRequestParser.TryParse(Request() with {

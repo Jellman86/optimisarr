@@ -10,7 +10,8 @@ public sealed record DiagnosticVerificationSnapshot(bool Passed, IReadOnlyList<D
     int? FrameCount, string Location, int OmittedCheckCount = 0,
     double? MinimumVmafHarmonicMean = null, double? MinimumVmafFifthPercentile = null, double? MinimumVmafCatastrophicMin = null,
     double? AudioWorstDistance = null, double? MaximumAudioDistance = null,
-    double? SoundtrackWorstDistance = null, double? MaximumSoundtrackDistance = null)
+    double? SoundtrackWorstDistance = null, double? MaximumSoundtrackDistance = null,
+    double? ImagePerceptualScore = null, double? MinimumImagePerceptualScore = null, double? MaximumImageAlphaError = null)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter() } };
@@ -28,7 +29,9 @@ public sealed record DiagnosticVerificationSnapshot(bool Passed, IReadOnlyList<D
                 Finite(report.Context?.MinimumVmafHarmonicMean), Finite(report.Context?.MinimumVmafFifthPercentile), Finite(report.Context?.MinimumVmafCatastrophicMin),
                 Finite(report.AudioQuality?.Evidence?.Assessment?.WorstChannelDistance), Finite(report.AudioQuality?.MaximumDistance),
                 Finite(report.SoundtrackQuality?.Tracks?.Where(t => t?.Report?.Evidence?.Assessment is not null)
-                    .Select(t => t.Report.Evidence!.Assessment.WorstChannelDistance).Max()), Finite(report.SoundtrackQuality?.MaximumDistance));
+                    .Select(t => t.Report.Evidence!.Assessment.WorstChannelDistance).Max()), Finite(report.SoundtrackQuality?.MaximumDistance),
+                Finite(report.ImagePerceptualQuality?.Measurement?.Score), Finite(report.ImagePerceptualQuality?.MinimumScore),
+                Finite(report.ImagePerceptualQuality?.Measurement?.MaximumAlphaError));
         }
         catch (JsonException) { return null; }
     }
@@ -40,12 +43,14 @@ public sealed record DiagnosticVerificationSnapshot(bool Passed, IReadOnlyList<D
         OmittedCheckCount = Math.Max(value.OmittedCheckCount, Math.Max(0, (value.Checks?.Count ?? 0) - 32)),
         MinimumVmafHarmonicMean = Finite(value.MinimumVmafHarmonicMean), MinimumVmafFifthPercentile = Finite(value.MinimumVmafFifthPercentile), MinimumVmafCatastrophicMin = Finite(value.MinimumVmafCatastrophicMin),
         AudioWorstDistance = Finite(value.AudioWorstDistance), MaximumAudioDistance = Finite(value.MaximumAudioDistance),
-        SoundtrackWorstDistance = Finite(value.SoundtrackWorstDistance), MaximumSoundtrackDistance = Finite(value.MaximumSoundtrackDistance)
+        SoundtrackWorstDistance = Finite(value.SoundtrackWorstDistance), MaximumSoundtrackDistance = Finite(value.MaximumSoundtrackDistance),
+        ImagePerceptualScore = Finite(value.ImagePerceptualScore), MinimumImagePerceptualScore = Finite(value.MinimumImagePerceptualScore),
+        MaximumImageAlphaError = Finite(value.MaximumImageAlphaError)
     };
     private static double? Finite(double? value) => value is { } number && double.IsFinite(number) ? number : null;
     private static string SafeName(string? name) => name is "A/V sync" or "Audio clipping (true peak)" or "Audio codecs unchanged" or "Audio fidelity"
         or "Audio languages" or "Audio loudness (EBU R128)" or "Audio metadata and artwork" or "Audio tracks" or "Colour metadata" or "Container unchanged"
         or "Decode health" or "Dimensions" or "Duration" or "File identity" or "HDR signal" or "Image metadata (EXIF/ICC)" or "Image quality (SSIM)"
-        or "Output readable" or "Perceptual quality (VMAF)" or "Picture" or "Size saving" or "Compression ceiling" or "Source video timeline"
+        or "Output readable" or "Perceptual quality (VMAF)" or "Perceptual image quality (SSIMULACRA2)" or "Picture" or "Size saving" or "Compression ceiling" or "Source video timeline"
         or "Subtitle languages" or "Subtitle tracks" or "Tail integrity" or "Timestamp integrity" or "Video stream" or "Video structure" ? name : "Other verification check";
 }

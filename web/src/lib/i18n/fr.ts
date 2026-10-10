@@ -1,6 +1,19 @@
 import type { Messages } from './en'
 
 export const fr: Messages = {
+  image_quality: {
+      "title": "Rapport de qualité d’image",
+      "report_hint": "Mesurer SSIMULACRA2 après l’encodage. Facultatif et désactivé par défaut.",
+      "gate_label": "Exiger la qualité perceptuelle de l’image",
+      "gate_hint": "Bloquer le remplacement si le score est insuffisant, si la transparence change ou si les mesures sont indisponibles.",
+      "minimum": "Score SSIMULACRA2 minimal",
+      "validation": "Choisissez un score minimal explicite entre 0 et 100.",
+      "limits": "Expérimental. Images fixes PNG, JPEG et WebP sRGB 8 bits de mêmes dimensions, jusqu’à 16 mégapixels. Autres profils, rotations, redimensionnement et animation non pris en charge. Aucun seuil de qualité étalonné.",
+      "report_only": "Rapport uniquement. Les contrôles existants décident toujours du remplacement.",
+      "gate_note": "Tous les contrôles configurés doivent réussir avant le remplacement. Des mesures manquantes bloquent ce contrôle.",
+      "coverage": "{width} × {height} · image fixe complète",
+      "alpha": "Différence maximale de transparence : {difference}"
+  },
   autoAccept: {
     offByDefault: "Désactivé par défaut",
     warning: "Des réglages incorrects peuvent endommager les fichiers, réduire la qualité ou supprimer des pistes et métadonnées. Les vérifications réussies ne concernent que celles que vous avez activées. Testez quelques fichiers et gardez une sauvegarde séparée.",

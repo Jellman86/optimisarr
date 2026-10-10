@@ -1,6 +1,19 @@
 import type { Messages } from './en'
 
 export const zh: Messages = {
+  image_quality: {
+      "title": "图像质量报告",
+      "report_hint": "编码后测量 SSIMULACRA2。可选，默认关闭。",
+      "gate_label": "要求图像感知质量",
+      "gate_hint": "分数不足、透明度变化或缺少测量结果时阻止替换。",
+      "minimum": "SSIMULACRA2 最低分数",
+      "validation": "请明确选择 0 到 100 之间的最低分数。",
+      "limits": "实验性功能。支持尺寸相同的 8 位 sRGB PNG、JPEG 和 WebP 静态图像，最多 1600 万像素。暂不支持其他色彩配置、方向变换、缩小和动画。没有经过校准的质量阈值。",
+      "report_only": "仅报告。是否替换仍由现有安全检查决定。",
+      "gate_note": "替换前必须通过所有已配置的检查。缺少测量结果会阻止通过此检查。",
+      "coverage": "{width} × {height} · 完整静态图像",
+      "alpha": "最大透明度差异：{difference}"
+  },
   autoAccept: {
     offByDefault: "默认关闭",
     warning: "配置错误可能导致文件损坏、画质或音质下降，或丢失轨道和元数据。检查通过仅反映已启用的检查。请先测试少量文件，并保留独立备份。",
