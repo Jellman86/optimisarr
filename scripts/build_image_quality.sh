@@ -8,3 +8,7 @@ cmake -S "$repo/tools/image-quality-native" -B "$build" -DCMAKE_BUILD_TYPE=Relea
 cmake --build "$build" --config Release --target optimisarr-image-quality --parallel 2
 ctest --test-dir "$build" -C Release -R '^native_image_quality$' --output-on-failure
 cmake --install "$build" --config Release --component ImageQuality --prefix "$prefix"
+
+if [[ "$(uname -s)" == Darwin ]]; then
+  python3 "$(dirname "$0")/check_macos_minimum.py" --minimum 14.0 --system-libraries-only "$prefix/bin/optimisarr-image-quality"
+fi

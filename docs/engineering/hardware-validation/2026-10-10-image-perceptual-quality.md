@@ -8,9 +8,13 @@ photographic calibration. Broader colour/format coverage and image worker placem
 
 ## Source and selected matrix
 
-The qualified implementation is `22ac0a750254373fe2b362e2720a015168b10f8c`.
-Subsequent documentation and harness error-message clarification do not change the metric
-or application behavior. The native tool uses libjxl revision
+The initial qualified implementation is `22ac0a750254373fe2b362e2720a015168b10f8c`.
+Downloading a later Mac CI artifact exposed an undeclared Homebrew `giflib` dependency:
+its runner tests passed, but the binary could not start on this Mac. The build now disables
+optional GIF/OpenEXR codecs and tcmalloc. CI, the Mac build script and relocated-package
+verification reject non-system Mac dynamic libraries and deployment targets newer than 14.0.
+This changes packaging, not the qualified metric or pixel preparation. Final artifact reruns
+are recorded in the PR qualification; the baseline hashes below identify the original runs. The native tool uses libjxl revision
 `a7a9c787341cf703dede03c2009fa460cae5e5df`, preparation
 `sdr-srgb-native-still-v1`, and the exact dependencies in the
 [source manifest](../../../tools/image-quality-native/sources.json).
@@ -98,7 +102,7 @@ and desktop in both themes. The controls preserve drafts, associate errors with 
 explicit score field and keep reporting separate from enforcement. Documentation captures
 use fabricated data and original artwork; the illustrated floor of 80 is not calibration.
 
-All 102 Python tests and documentation, OpenAPI, release metadata and Unraid validation
+All 105 Python tests and documentation, OpenAPI, release metadata and Unraid validation
 pass. The final-container image workflow is a mandatory CI gate alongside existing media
 acceptance. Raw reports, process evidence and generated fixtures are retained privately.
 Windows signing remains deferred by the operator and is not a release blocker.

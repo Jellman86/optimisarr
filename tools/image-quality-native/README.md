@@ -14,7 +14,9 @@ On Windows, configure with CMake, build target `optimisarr-image-quality` in Rel
 run `ctest -C Release -R '^native_image_quality$' --output-on-failure`, then install
 component `ImageQuality`. This component excludes upstream tools and test executables.
 libpng uses its pinned prebuilt configuration to avoid an upstream include-path issue
-on hosts without system zlib headers. All codec libraries are linked statically.
+on hosts without system zlib headers. Optional GIF/OpenEXR decoders and tcmalloc are disabled
+to prevent runner-installed libraries entering the payload. All codec libraries are linked
+statically. Mac builds and relocated packages reject non-system dynamic dependencies.
 
 Exact dependencies are recorded in `sources.json`. Selected libjxl submodules are
 fixed by its Git tree. The payload includes their licences and this source manifest;

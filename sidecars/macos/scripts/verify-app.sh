@@ -13,6 +13,8 @@ trap 'rm -rf "${SMOKE_ROOT}"' EXIT
 /usr/bin/codesign --verify --deep --strict "${SMOKE_ROOT}/OptimisarrSidecar.app"
 # Every bundled binary must run on the macOS the app declares, or it installs where its tools cannot.
 python3 "$(dirname "$0")/../../../scripts/check_macos_minimum.py" --bundle "${SMOKE_ROOT}/OptimisarrSidecar.app"
+python3 "$(dirname "$0")/../../../scripts/check_macos_minimum.py" --minimum 14.0 --system-libraries-only \
+  "${SMOKE_ROOT}/OptimisarrSidecar.app/Contents/Resources/optimisarr-image-quality"
 python3 - "${SMOKE_ROOT}" "${EXPECTED_VERSION}" <<'PY'
 import os
 from pathlib import Path

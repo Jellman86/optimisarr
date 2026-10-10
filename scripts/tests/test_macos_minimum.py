@@ -58,6 +58,21 @@ class MacosMinimumTests(unittest.TestCase):
             problems = minimum.check_bundle(app, lambda path: 'Load command 1\n      cmd LC_SEGMENT_64\n')
         self.assertIn('no minimum macOS', problems[0])
 
+    def test_system_only_tool_rejects_a_homebrew_library(self):
+        output = BUILD_VERSION.format(minos='14.0') + "\ncmd LC_LOAD_DYLIB\nname /opt/homebrew/opt/giflib/lib/libgif.dylib (offset 24)\n"
+        problems = minimum.check_binaries([Path('metric')], '14.0', lambda _: output, system_libraries_only=True)
+        self.assertIn('/opt/homebrew/opt/giflib/lib/libgif.dylib', problems[0])
+
+    def test_system_only_tool_rejects_relative_and_reexported_libraries(self):
+        for command in ['LC_LOAD_DYLIB', 'LC_LOAD_WEAK_DYLIB', 'LC_REEXPORT_DYLIB', 'LC_LOAD_UPWARD_DYLIB', 'LC_LAZY_LOAD_DYLIB']:
+            output = BUILD_VERSION.format(minos='14.0') + f"\ncmd {command}\nname @rpath/libcodec.dylib (offset 24)\n"
+            self.assertTrue(minimum.check_binaries([Path('metric')], '14.0', lambda _: output, system_libraries_only=True))
+
+    def test_system_only_tool_accepts_system_libraries_without_changing_ordinary_bundle_checks(self):
+        output = BUILD_VERSION.format(minos='14.0') + "\ncmd LC_LOAD_DYLIB\nname /usr/lib/libSystem.B.dylib (offset 24)\ncmd LC_LOAD_WEAK_DYLIB\nname /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (offset 24)\n"
+        self.assertEqual([], minimum.check_binaries([Path('metric')], '14.0', lambda _: output, system_libraries_only=True))
+        self.assertEqual([], minimum.check_binaries([Path('app')], '14.0', lambda _: output + "\ncmd LC_LOAD_DYLIB\nname @rpath/libswiftCore.dylib (offset 24)\n"))
+
     def bundle(self, root, tools):
         app = root / 'Test.app'
         (app / 'Contents/MacOS').mkdir(parents=True)

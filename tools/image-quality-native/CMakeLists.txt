@@ -32,6 +32,11 @@ set(JPEG_LIBRARY_DEBUG jpeg-static CACHE STRING "" FORCE)
 set(JPEG_INCLUDE_DIR "${libjxl_SOURCE_DIR}/third_party/libjpeg-turbo" CACHE PATH "" FORCE)
 
 set(JPEGXL_STATIC ON CACHE BOOL "" FORCE)
+# Only the pinned PNG/JPEG/WebP decoders are part of the qualified payload.
+# Runner-installed optional codecs must not become undeclared runtime dependencies.
+set(CMAKE_DISABLE_FIND_PACKAGE_GIF ON CACHE BOOL "" FORCE)
+set(JPEGXL_ENABLE_OPENEXR OFF CACHE BOOL "" FORCE)
+set(JPEGXL_ENABLE_TCMALLOC OFF CACHE BOOL "" FORCE)
 set(JPEGXL_ENABLE_SKCMS OFF CACHE BOOL "" FORCE)
 set(JPEGXL_ENABLE_DEVTOOLS OFF CACHE BOOL "" FORCE)
 set(JPEGXL_ENABLE_TOOLS ON CACHE BOOL "" FORCE)

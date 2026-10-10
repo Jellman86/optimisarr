@@ -34,6 +34,9 @@ jobs:
       - run: cmake --build image-build --config Release --target optimisarr-image-quality --parallel 2
       - run: ctest --test-dir image-build -C Release -R "^native_image_quality$" --output-on-failure
       - run: cmake --install image-build --config Release --component ImageQuality --prefix image-install
+      - name: Reject unbundled Mac dependencies and newer deployment targets
+        if: runner.os == 'macOS'
+        run: python3 scripts/check_macos_minimum.py --minimum 14.0 --system-libraries-only image-install/bin/optimisarr-image-quality
       - uses: actions/upload-artifact@v7
         with:
           name: image-quality-${{ matrix.os }}
