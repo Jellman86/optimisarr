@@ -27,6 +27,8 @@ set(WITH_TESTS OFF CACHE BOOL "" FORCE)
 set(WITH_SIMD OFF CACHE BOOL "Portable baseline without an assembler dependency" FORCE)
 add_subdirectory("${libjxl_SOURCE_DIR}/third_party/libjpeg-turbo" jpeg EXCLUDE_FROM_ALL)
 set(JPEG_LIBRARY jpeg-static CACHE STRING "Pinned static JPEG decoder" FORCE)
+set(JPEG_LIBRARY_RELEASE jpeg-static CACHE STRING "" FORCE)
+set(JPEG_LIBRARY_DEBUG jpeg-static CACHE STRING "" FORCE)
 set(JPEG_INCLUDE_DIR "${libjxl_SOURCE_DIR}/third_party/libjpeg-turbo" CACHE PATH "" FORCE)
 
 set(JPEGXL_STATIC ON CACHE BOOL "" FORCE)
@@ -46,7 +48,8 @@ set(JPEGXL_BUNDLE_LIBPNG ON CACHE BOOL "" FORCE)
 # libjxl release points at a placeholder zlib include directory on clean hosts.
 set(AWK OFF CACHE FILEPATH "Use the pinned prebuilt libpng configuration" FORCE)
 add_subdirectory("${libjxl_SOURCE_DIR}" jxl EXCLUDE_FROM_ALL)
-target_include_directories(jxl_extras_core-obj PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/jpeg")
+target_include_directories(jxl_extras_core-obj BEFORE PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/jpeg"
+    "${libjxl_SOURCE_DIR}/third_party/libjpeg-turbo")
 
 set(WEBP_BUILD_ANIM_UTILS OFF CACHE BOOL "" FORCE)
 set(WEBP_BUILD_CWEBP OFF CACHE BOOL "" FORCE)
@@ -67,6 +70,9 @@ target_include_directories(image_metric SYSTEM PUBLIC "${libjxl_SOURCE_DIR}")
 target_link_libraries(image_metric PUBLIC jxl_extras-internal jxl_gauss_blur jxl_tool)
 add_executable(optimisarr-image-quality main.cpp)
 target_link_libraries(optimisarr-image-quality PRIVATE image_metric webpdemux)
+# libpng already links the pinned zlib; expose its headers for bounded metadata inflation.
+target_include_directories(optimisarr-image-quality SYSTEM PRIVATE "${libjxl_SOURCE_DIR}/third_party/zlib"
+    "${CMAKE_CURRENT_BINARY_DIR}/jxl/third_party/zlib")
 if(MSVC)
     target_compile_options(optimisarr-image-quality PRIVATE /W4 /WX)
 else()

@@ -70,7 +70,7 @@ public sealed class ImagePerceptualQualityTests
         var service = new ImagePerceptualQualityService("/metric",
             (_, args, _, timeout) => {
                 calls++;
-                Assert.Equal(new[] { "/source '[ ü.png", "/candidate.webp" }, args);
+                Assert.Equal(new[] { Path.GetFullPath("/source '[ ü.png"), Path.GetFullPath("/candidate.webp") }, args);
                 Assert.Equal(TimeSpan.FromSeconds(90), timeout);
                 return Task.FromResult(new ToolProcessResult(0, Native, null));
             }, (_, _) => Task.FromResult(new string(++hashes > 3 ? 'b' : 'a', 64)));

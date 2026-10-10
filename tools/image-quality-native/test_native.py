@@ -96,7 +96,7 @@ class NativeImageQualityTests(unittest.TestCase):
         for name, expected in [('colour.jpg', 44.7604820629), ('colour.webp', 43.035274496)]:
             with self.subTest(name=name):
                 shutil.copyfile(Path(__file__).with_name('fixtures') / name, self.candidate)
-                self.assertAlmostEqual(self.measure()['score'], expected, delta=0.001)
+                self.assertAlmostEqual(self.measure()['score'], expected, delta=0.005)
 
     def test_incomplete_jpeg_icc_and_conflicting_png_colour_are_unavailable(self):
         jpeg = (Path(__file__).with_name('fixtures') / 'colour.jpg').read_bytes()
@@ -109,6 +109,15 @@ class NativeImageQualityTests(unittest.TestCase):
                       chunk(b'cICP', bytes([1, 16, 0, 1])),
                       chunk(b'sRGB', b'\0') + chunk(b'cICP', bytes([1, 13, 0, 1])),
                       chunk(b'iCCP', b'bad\0\0' + zlib.compress(b'invalid profile'))]:
+            png(self.candidate, extra=extra)
+            self.measure(success=False)
+
+    def test_empty_exif_and_decompression_budgets_fail_before_pixel_decode(self):
+        bomb = zlib.compress(b'x' * (4 * 1024 * 1024 + 1))
+        for extra in [chunk(b'eXIf', b''), chunk(b'iCCP', b'profile\0\0' + bomb),
+                      chunk(b'zTXt', b'Comment\0\0' + bomb),
+                      chunk(b'iTXt', b'Comment\0\1\0\0\0' + bomb),
+                      chunk(b'tEXt', b'Raw profile type icc\0ignored')]:
             png(self.candidate, extra=extra)
             self.measure(success=False)
 

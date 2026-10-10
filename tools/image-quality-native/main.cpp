@@ -19,10 +19,12 @@
 #include "tools/no_memory_manager.h"
 #include "webp/decode.h"
 #include "webp/demux.h"
+#include "zlib.h"
 
 namespace {
 constexpr uint64_t kMaximumPixels = 16000000;
 constexpr uint64_t kMaximumFileBytes = 128 * 1024 * 1024;
+constexpr size_t kMaximumMetadataBytes = 4 * 1024 * 1024;
 void Require(bool condition, const char* reason) {
     if (!condition) throw std::runtime_error(reason);
 }
@@ -56,6 +58,13 @@ void CheckExif(const std::vector<uint8_t>& exif) {
     }
 }
 
+void CheckCompressedMetadata(const uint8_t* data, size_t size) {
+    std::vector<uint8_t> output(kMaximumMetadataBytes + 1);
+    uLongf length = static_cast<uLongf>(output.size());
+    Require(uncompress(output.data(), &length, data, static_cast<uLong>(size)) == Z_OK && length <= kMaximumMetadataBytes,
+            "Compressed PNG metadata is invalid or exceeds 4 MiB.");
+}
+
 // Decoders may ignore malformed or lower-priority colour metadata. A score must
 // never certify pixels after silently discarding a declared profile or orientation.
 void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras::PackedPixelFile* ppf) {
@@ -69,6 +78,25 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
             const auto* kind = bytes.data() + pos + 4;
             const auto* data = kind + 4;
             auto is = [&](const char* name) { return std::equal(kind, kind + 4, name); };
+            if (is("iCCP") || is("zTXt") || is("iTXt") || is("tEXt")) {
+                const auto* end = std::find(data, data + size, 0);
+                const size_t keyword = static_cast<size_t>(end - data);
+                Require(keyword > 0 && keyword <= 79 && keyword < size, "Malformed PNG metadata keyword.");
+                constexpr char legacy[] = "Raw profile type ";
+                Require(keyword < sizeof(legacy) - 1 || !std::equal(data, data + sizeof(legacy) - 1, legacy), "Legacy PNG raw profiles are unsupported.");
+                if (is("iCCP") || is("zTXt")) {
+                    Require(keyword + 2 < size && data[keyword + 1] == 0, "Malformed PNG metadata compression.");
+                    CheckCompressedMetadata(data + keyword + 2, size - keyword - 2);
+                } else if (is("iTXt")) {
+                    Require(keyword + 3 < size && data[keyword + 1] <= 1 && data[keyword + 2] == 0, "Malformed PNG international text.");
+                    const auto* language = std::find(data + keyword + 3, data + size, 0);
+                    Require(language < data + size, "Truncated PNG language tag.");
+                    const auto* translated = std::find(language + 1, data + size, 0);
+                    Require(translated < data + size, "Truncated PNG translated keyword.");
+                    if (data[keyword + 1]) CheckCompressedMetadata(translated + 1, static_cast<size_t>(data + size - translated - 1));
+                    else Require(size <= kMaximumMetadataBytes, "PNG metadata exceeds 4 MiB.");
+                } else Require(size <= kMaximumMetadataBytes, "PNG metadata exceeds 4 MiB.");
+            }
             if (is("iCCP")) { Require(!icc && !cicp && !srgb && (!ppf || !ppf->icc.empty()), "Ambiguous or discarded PNG ICC profile."); icc = true; }
             if (is("cICP")) {
                 Require(!cicp && !icc && !srgb && size == 4 && data[0] == 1 && data[1] == 13 && data[2] == 0 && data[3] == 1,
@@ -82,7 +110,7 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
                 for (size_t i = 0; i < 8; ++i) Require(LoadBE32(data + 4 * i) == expected[i], "Non-sRGB PNG chromaticities are unsupported.");
             }
             if (is("eXIf")) {
-                Require(!exif && (!ppf || std::vector<uint8_t>(data, data + size) == ppf->metadata.exif), "Ambiguous or discarded PNG EXIF."); exif = true;
+                Require(size > 0 && size <= kMaximumMetadataBytes && !exif && (!ppf || std::vector<uint8_t>(data, data + size) == ppf->metadata.exif), "Ambiguous, oversized or discarded PNG EXIF."); exif = true;
             }
             if (is("acTL")) Require(false, "Animated PNG is unsupported.");
             pos += size + 12;
@@ -114,7 +142,7 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
                 count = data[13]; fragments.emplace(data[12], std::vector<uint8_t>(data + 14, data + length));
             }
             if (marker == 0xe1 && length >= 6 && std::equal(data, data + 6, "Exif\0\0")) {
-                Require(!exif && (!ppf || std::vector<uint8_t>(data + 6, data + length) == ppf->metadata.exif), "Ambiguous or discarded JPEG EXIF."); exif = true;
+                Require(length > 6 && !exif && (!ppf || std::vector<uint8_t>(data + 6, data + length) == ppf->metadata.exif), "Ambiguous or discarded JPEG EXIF."); exif = true;
             }
             pos += size;
         }
@@ -122,7 +150,10 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
         if (count) {
             Require(fragments.size() == count, "Incomplete JPEG ICC profile.");
             std::vector<uint8_t> profile;
-            for (unsigned i = 1; i <= count; ++i) profile.insert(profile.end(), fragments.at(i).begin(), fragments.at(i).end());
+            for (unsigned i = 1; i <= count; ++i) {
+                Require(profile.size() + fragments.at(i).size() <= kMaximumMetadataBytes, "JPEG ICC exceeds 4 MiB.");
+                profile.insert(profile.end(), fragments.at(i).begin(), fragments.at(i).end());
+            }
             Require(!profile.empty() && (!ppf || profile == ppf->icc), "Discarded JPEG ICC profile.");
         }
     }
@@ -162,11 +193,11 @@ jxl::extras::PackedPixelFile Decode(const std::vector<uint8_t>& bytes) {
         for (const char* name : {"ICCP", "EXIF"}) {
             WebPChunkIterator chunk;
             if (WebPDemuxGetChunk(demux.get(), name, 1, &chunk)) {
-                const bool valid = chunk.num_chunks == 1 && chunk.chunk.size > 0;
+                const bool valid = chunk.num_chunks == 1 && chunk.chunk.size > 0 && chunk.chunk.size <= kMaximumMetadataBytes;
+                if (!valid) { WebPDemuxReleaseChunkIterator(&chunk); Require(false, "Ambiguous, oversized or empty WebP metadata."); }
                 auto& destination = name[0] == 'I' ? ppf.icc : ppf.metadata.exif;
                 destination.assign(chunk.chunk.bytes, chunk.chunk.bytes + chunk.chunk.size);
                 WebPDemuxReleaseChunkIterator(&chunk);
-                Require(valid, "Ambiguous or empty WebP metadata.");
             }
         }
         const auto flags = WebPDemuxGetI(demux.get(), WEBP_FF_FORMAT_FLAGS);

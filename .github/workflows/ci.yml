@@ -30,7 +30,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - run: cmake -S tools/image-quality-native -B image-build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake -S tools/image-quality-native -B image-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       - run: cmake --build image-build --config Release --target optimisarr-image-quality --parallel 2
       - run: ctest --test-dir image-build -C Release -R "^native_image_quality$" --output-on-failure
       - run: cmake --install image-build --config Release --component ImageQuality --prefix image-install
@@ -38,6 +38,16 @@ jobs:
         with:
           name: image-quality-${{ matrix.os }}
           path: image-install/
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: image-quality-diagnostics-${{ matrix.os }}
+          path: |
+            image-build/CMakeCache.txt
+            image-build/compile_commands.json
+            image-build/jpeg/jconfig.h
+            image-build/optimisarr-image-quality
+            image-build/Release/optimisarr-image-quality.exe
 
   backend:
     name: Backend build & test
