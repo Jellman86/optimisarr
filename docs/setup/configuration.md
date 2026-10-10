@@ -395,7 +395,9 @@ and never selects a substitute metric. Existing SSIM floors are preserved withou
 ![Image report with the measured score, selected minimum, dimensions and alpha difference](../images/optimisarr-image-quality-report-dark.png)
 
 This first experimental slice supports same-size, straight-alpha, 8-bit SDR sRGB still PNG,
-JPEG and WebP images. Each file must be at most 128 MiB, metadata payloads at most 4 MiB after decompression, dimensions at least 8 by 8 and at
+JPEG and WebP images. Each file must be at most 128 MiB. PNG profile/text/EXIF metadata
+shares a combined 4 MiB budget, including container bytes and expanded payloads; JPEG/WebP
+profiles are limited to 4 MiB each. Dimensions must be at least 8 by 8 and at
 most 16 megapixels. Animation, resizing, non-identity EXIF orientation, other colour profiles,
 HDR, higher bit depths and malformed or ambiguous metadata are unavailable. An untagged RGB
 image uses the decoder's sRGB interpretation. A declared profile must be recognised as sRGB;

@@ -23,7 +23,8 @@ sidecar source archives retain every selected dependency separately.
 Supported inputs are same-size, straight-alpha 8-bit SDR sRGB PNG/JPEG/WebP stills,
 at least 8 by 8, at most 16 megapixels and 128 MiB per file. Declared ICC, cICP,
 gamma, chromaticities and EXIF must be valid and unambiguous. Untagged RGB uses sRGB.
-Metadata is limited to 4 MiB per profile/text payload, including decompression; legacy
+PNG profile/text/EXIF metadata shares a combined 4 MiB budget, counting container bytes
+and expanded compressed payloads. JPEG/WebP profiles are limited to 4 MiB each; legacy
 PNG raw profiles are unavailable. Other profiles, non-identity orientation, animation, resizing, HDR and higher depths
 are unavailable. Container metadata is checked before decode as well as after it;
 discarded ICC/EXIF must never turn into a passing score.

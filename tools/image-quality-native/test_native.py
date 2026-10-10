@@ -112,6 +112,14 @@ class NativeImageQualityTests(unittest.TestCase):
             png(self.candidate, extra=extra)
             self.measure(success=False)
 
+    def test_png_metadata_budget_is_shared_across_chunks(self):
+        payload = zlib.compress(b'x' * (3 * 1024 * 1024))
+        png(self.candidate, extra=chunk(b'zTXt', b'First\0\0' + payload))
+        self.assertAlmostEqual(self.measure()['score'], 100, places=6)
+        png(self.candidate, extra=chunk(b'zTXt', b'First\0\0' + payload)
+            + chunk(b'zTXt', b'Second\0\0' + payload))
+        self.measure(success=False)
+
     def test_empty_exif_and_decompression_budgets_fail_before_pixel_decode(self):
         bomb = zlib.compress(b'x' * (4 * 1024 * 1024 + 1))
         for extra in [chunk(b'eXIf', b''), chunk(b'iCCP', b'profile\0\0' + bomb),

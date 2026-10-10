@@ -58,11 +58,12 @@ void CheckExif(const std::vector<uint8_t>& exif) {
     }
 }
 
-void CheckCompressedMetadata(const uint8_t* data, size_t size) {
-    std::vector<uint8_t> output(kMaximumMetadataBytes + 1);
+size_t CheckCompressedMetadata(const uint8_t* data, size_t size, size_t budget) {
+    std::vector<uint8_t> output(budget + 1);
     uLongf length = static_cast<uLongf>(output.size());
-    Require(uncompress(output.data(), &length, data, static_cast<uLong>(size)) == Z_OK && length <= kMaximumMetadataBytes,
-            "Compressed PNG metadata is invalid or exceeds 4 MiB.");
+    Require(uncompress(output.data(), &length, data, static_cast<uLong>(size)) == Z_OK && length <= budget,
+            "Compressed PNG metadata is invalid or exceeds the combined 4 MiB budget.");
+    return static_cast<size_t>(length);
 }
 
 // Decoders may ignore malformed or lower-priority colour metadata. A score must
@@ -71,6 +72,11 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
     if (bytes[0] == 0x89 && bytes[1] == 'P') {
         bool icc = false, cicp = false, exif = false, srgb = false;
         bool ended = false;
+        size_t metadata_bytes = 0;
+        auto account_metadata = [&](size_t size) {
+            Require(size <= kMaximumMetadataBytes - metadata_bytes, "PNG metadata exceeds the combined 4 MiB budget.");
+            metadata_bytes += size;
+        };
         for (size_t pos = 8; pos < bytes.size();) {
             Require(bytes.size() - pos >= 12, "Truncated PNG chunk.");
             const size_t size = LoadBE32(bytes.data() + pos);
@@ -79,6 +85,7 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
             const auto* data = kind + 4;
             auto is = [&](const char* name) { return std::equal(kind, kind + 4, name); };
             if (is("iCCP") || is("zTXt") || is("iTXt") || is("tEXt")) {
+                account_metadata(size + 12);
                 const auto* end = std::find(data, data + size, 0);
                 const size_t keyword = static_cast<size_t>(end - data);
                 Require(keyword > 0 && keyword <= 79 && keyword < size, "Malformed PNG metadata keyword.");
@@ -86,14 +93,14 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
                 Require(keyword < sizeof(legacy) - 1 || !std::equal(data, data + sizeof(legacy) - 1, legacy), "Legacy PNG raw profiles are unsupported.");
                 if (is("iCCP") || is("zTXt")) {
                     Require(keyword + 2 < size && data[keyword + 1] == 0, "Malformed PNG metadata compression.");
-                    CheckCompressedMetadata(data + keyword + 2, size - keyword - 2);
+                    account_metadata(CheckCompressedMetadata(data + keyword + 2, size - keyword - 2, kMaximumMetadataBytes - metadata_bytes));
                 } else if (is("iTXt")) {
                     Require(keyword + 3 < size && data[keyword + 1] <= 1 && data[keyword + 2] == 0, "Malformed PNG international text.");
                     const auto* language = std::find(data + keyword + 3, data + size, 0);
                     Require(language < data + size, "Truncated PNG language tag.");
                     const auto* translated = std::find(language + 1, data + size, 0);
                     Require(translated < data + size, "Truncated PNG translated keyword.");
-                    if (data[keyword + 1]) CheckCompressedMetadata(translated + 1, static_cast<size_t>(data + size - translated - 1));
+                    if (data[keyword + 1]) account_metadata(CheckCompressedMetadata(translated + 1, static_cast<size_t>(data + size - translated - 1), kMaximumMetadataBytes - metadata_bytes));
                     else Require(size <= kMaximumMetadataBytes, "PNG metadata exceeds 4 MiB.");
                 } else Require(size <= kMaximumMetadataBytes, "PNG metadata exceeds 4 MiB.");
             }
@@ -110,6 +117,7 @@ void CheckContainerMetadata(const std::vector<uint8_t>& bytes, const jxl::extras
                 for (size_t i = 0; i < 8; ++i) Require(LoadBE32(data + 4 * i) == expected[i], "Non-sRGB PNG chromaticities are unsupported.");
             }
             if (is("eXIf")) {
+                account_metadata(size + 12);
                 Require(size > 0 && size <= kMaximumMetadataBytes && !exif && (!ppf || std::vector<uint8_t>(data, data + size) == ppf->metadata.exif), "Ambiguous, oversized or discarded PNG EXIF."); exif = true;
             }
             if (is("acTL")) Require(false, "Animated PNG is unsupported.");
