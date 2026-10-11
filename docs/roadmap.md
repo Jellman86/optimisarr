@@ -1151,7 +1151,10 @@ or VMAF v0 policy as current behavior.
     provide a direct review entry, explicit cross-library scope, physical-reference deduplication
     and generation-bound keeper/ignore preferences. Manual, keep-all and preferred-library
     choices are available; quality/size strategies await non-identical matching. Safe cleanup
-    remains future work. The staged research and
+    remains future work. D3a adds a separate durable intent journal, retained reservations and
+    shared replacement/rollback claims; it enables no file action. The
+    [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
+    separate this groundwork from qualified quarantine and restore. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make

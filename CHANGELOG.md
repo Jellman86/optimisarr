@@ -4,6 +4,8 @@
 
 ### Added
 
+- Add the first exact-copy cleanup safety foundation: durable rollback intent, independent retention and reservations that survive restart. File actions remain unavailable while D3 concurrency and recovery qualification continues.
+
 - Libraries offer **Find duplicates**, with explicit cross-library scope and artwork-rich physical-copy review. Keeper choices can be selected manually, kept in full or chosen by preferred library, then saved; ignored groups and choices survive unchanged rescans. Changed evidence invalidates choices. Overlapping roots and hard-link aliases do not inflate copy counts. These are review preferences only; no media files are changed.
 
 - Exact copies reviews retain their latest results across server restarts, reuse unchanged complete SHA-256 reads and offer a full-content refresh. Reports show original content-read dates, reused counts, changed-inventory warnings and paginated groups. Interrupted scans retain completed checkpoints for the next explicit scan. Detection remains read-only.
@@ -16,6 +18,8 @@
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
 
 ### Fixed
+
+- Replacement, rollback and interrupted replacement recovery share physical-file and path claims, so aliases with different inventory IDs cannot run overlapping operations. Unresolved dedupe reservations defer replacement without changing files.
 
 - Exact-copy review headings, controls and status labels wrap within the page at enlarged text sizes; narrow copy cards stack artwork and details.
 
