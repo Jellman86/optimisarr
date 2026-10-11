@@ -111,7 +111,7 @@
     "optimisarr-inventory-dark.png": "15922d973b784abc44b7b9da2be3de99f4b366a22d30a184269d66a9d7e7ec53",
     "optimisarr-inventory-main-dark.png": "c43020735c2f7b08ee256dc999c8b098d7919f3937d77c1ccfbd20175128b938",
     "optimisarr-inventory-detail-dark.png": "643fc02ee78bad71033ec8f7d9ac5431c0812486313e6c65ff45dcbb50f0d8eb",
-    "optimisarr-exact-copies-dark.png": "97aac35cdc95d47ffdbdbf7f1d7bd70fce52b077902d7f274f30e59dfb95aaf8",
+    "optimisarr-exact-copies-dark.png": "9de2f1676a47d4dab390986713b12de7b3083d0d9ec0c3f666090fa108259670",
     "optimisarr-queue-dark.png": "63c94f18a18b113465189a21247768080b90a3c87b3e4f2fc4d7d5a388677601",
     "optimisarr-queue-main-dark.png": "635303342913c2021b1636123af360aeede894614c974ab62e2574ff7b208bb0",
     "optimisarr-queue-working-job-dark.png": "dd4ad76351cef2df1aaf7cce1e813d4e4fd44d140ab15c17dc61c1af4adde3a5",
@@ -154,5 +154,13 @@
     "optimisarr-settings-viewer-privacy-dark.png": "819bc06e41bcd6e6438cc58211599fe3bc8c5730598a3e22f860dd117ee8790e",
     "optimisarr-settings-viewers-hidden-dark.png": "ccf26c5d8dd92d1ef99f8d354856e9d18056a7ad88ed859b966d5945e21ac962",
     "optimisarr-queue-playback-private-dark.png": "544024fdaee5e03622e17179e34a8c8dd622266bfa77878538f673c0d2da0c1e"
+  },
+  "refreshedImages": {
+    "capturedOn": "2026-10-11",
+    "uiRevision": "230a29856e87fd56b295b5517670d60e5d0a71da",
+    "uiWorkingTreeModified": true,
+    "images": [
+      "optimisarr-exact-copies-dark.png"
+    ]
   }
 }

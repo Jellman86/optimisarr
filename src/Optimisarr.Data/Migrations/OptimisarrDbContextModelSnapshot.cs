@@ -270,6 +270,160 @@ namespace Optimisarr.Data.Migrations
                     b.ToTable("DiagnosticWorkerReceipts");
                 });
 
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateObservation", b =>
+                {
+                    b.Property<long>("ScanId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("HardLinkCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ModifiedUtcTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Reused")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ScanId", "MediaFileId");
+
+                    b.HasIndex("ScanId", "SizeBytes", "Sha256");
+
+                    b.ToTable("ExactDuplicateObservations");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScan", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ActiveSlot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("BytesRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Checked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ForceRefresh")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Reused")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScopeSignature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActiveSlot")
+                        .IsUnique();
+
+                    b.HasIndex("LibraryId")
+                        .IsUnique();
+
+                    b.ToTable("ExactDuplicateScans");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactFileFingerprint", b =>
+                {
+                    b.Property<int>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Contract")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Identity")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ModifiedUtcTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("MediaFileId");
+
+                    b.ToTable("ExactFileFingerprints");
+                });
+
             modelBuilder.Entity("Optimisarr.Data.Exclusion", b =>
                 {
                     b.Property<int>("Id")
@@ -1236,6 +1390,33 @@ namespace Optimisarr.Data.Migrations
                     b.HasOne("Optimisarr.Data.DiagnosticCaptureSession", null)
                         .WithMany()
                         .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateObservation", b =>
+                {
+                    b.HasOne("Optimisarr.Data.ExactDuplicateScan", null)
+                        .WithMany()
+                        .HasForeignKey("ScanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScan", b =>
+                {
+                    b.HasOne("Optimisarr.Data.Library", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactFileFingerprint", b =>
+                {
+                    b.HasOne("Optimisarr.Data.MediaFile", null)
+                        .WithMany()
+                        .HasForeignKey("MediaFileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
