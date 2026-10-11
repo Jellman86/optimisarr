@@ -26,6 +26,7 @@
   let page = $derived.by(() => {
     const path = router.path
     if (/^\/libraries\/\d+\/quality-check$/.test(path)) return QualityLab
+    if (/^\/libraries\/\d+\/duplicates$/.test(path)) return ExactDuplicates
     if (path.startsWith('/libraries')) return Libraries
     // Inventory absorbed the Candidates view; the old /candidates route still lands there.
     if (path === '/inventory/duplicates') return ExactDuplicates

@@ -1223,6 +1223,16 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+export interface ExactDuplicateCopy {
+  id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string; reused?: boolean
+  libraryId?: number; libraryName?: string; libraryType?: string
+  aliases?: { id: number; libraryId: number; libraryName: string; relativePath: string }[]
+}
+export interface ExactDuplicateGroup {
+  sha256: string; sizeBytes: number; extraCopyBytes: number | null; totalCopies?: number
+  copies: ExactDuplicateCopy[]; reviewKey?: string | null; canDecide?: boolean
+  decision?: { choice: 'Keep' | 'Ignore'; keepIds: number[]; savedAt: string } | null
+}
 export interface ExactDuplicateStatus {
   libraryId: number
   status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed' | 'Interrupted'
@@ -1231,14 +1241,21 @@ export interface ExactDuplicateStatus {
   progress: { checked: number; skipped: number; total: number; bytesRead: number; reused?: number }
   error: string | null
   isStale?: boolean
+  libraries?: { id: number; name: string; root: string; mediaType: string }[]
   result: null | { reused?: number; totalGroups?: number; page?: number; hasMore?: boolean; checked: number; skipped: number; total: number; bytesRead: number; truncated: boolean;
-    groups: { sha256: string; sizeBytes: number; extraCopyBytes: number | null; totalCopies?: number;
-      copies: { id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string; reused?: boolean }[] }[] }
+    groups: ExactDuplicateGroup[] }
 }
 
 export const api = {
   exactDuplicates: (id: number, page = 0) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates${page ? `?page=${page}` : ''}`),
-  scanExactDuplicates: (id: number, forceRefresh = false) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates${forceRefresh ? '?forceRefresh=true' : ''}`, { method: 'POST' }),
+  scanExactDuplicates: (id: number, forceRefresh = false, libraryIds: number[] = []) => {
+    const query = new URLSearchParams()
+    if (forceRefresh) query.set('forceRefresh', 'true')
+    if (libraryIds.length > 1) for (const value of libraryIds) query.append('libraryIds', String(value))
+    return request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates${query.size ? '?' + query : ''}`, { method: 'POST' })
+  },
+  saveExactDuplicateReview: (id: number, reviewKey: string, choice: 'Keep' | 'Ignore' | 'Review', keepIds: number[] = []) =>
+    request<void>(`/api/libraries/${id}/duplicates/review`, { method: 'PUT', body: JSON.stringify({ reviewKey, choice, keepIds }) }),
   cancelExactDuplicates: (id: number) => request<void>(`/api/libraries/${id}/duplicates`, { method: 'DELETE' }),
   diagnosticParticipants: (id: string) => request<{ workerId: number; state: string }[]>(`/api/diagnostics/capture/${encodeURIComponent(id)}/participants`),
   diagnosticCaptures: (jobId?: number) => request<DiagnosticCapture[]>(`/api/diagnostics/captures${jobId == null ? '' : `?jobId=${jobId}`}`),

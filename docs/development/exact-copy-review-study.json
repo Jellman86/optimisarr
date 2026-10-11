@@ -1,0 +1,157 @@
+{
+  "recordedOn": "2026-10-11",
+  "baseRevision": "52a011d6ddbdfc3698969855fa75e8d6aec95e1a",
+  "workingTreeModified": true,
+  "sourceSha256": {
+    "src/Optimisarr.Api/Library/ExactDuplicateStore.cs": "fb11d5a0ee0a3c79ca7d2f10fd720a7a68b474017b61b9165dd143280bfd1dde",
+    "src/Optimisarr.Api/Library/ExactDuplicateCoordinator.cs": "5fce31c5dbda934d8e2c3ba19e13bebac280b1858409168f625d2ab59446845c",
+    "src/Optimisarr.Api/Library/ExactDuplicateScanner.cs": "0720df2bb635b3c5eb09b793793f09007165255de64403431d0102157879263c",
+    "src/Optimisarr.Api/Library/ExactDuplicateInputs.cs": "229e6a06f4edbd875d25b40a75aabffdc78c4ff94ad4928c55d7007ff042a8ff",
+    "src/Optimisarr.Api/Library/ExactFileIdentity.cs": "8e986ed589950628383bb01023d469f3f30b1dd33deb3cc537d3f60fce82e0db",
+    "src/Optimisarr.Core/Library/ExactDuplicateGrouping.cs": "d7cfa5f3f8cecb0fe1fdff4923f89057d7ee14238f61fa9217d42c576da722bc",
+    "src/Optimisarr.Core/Library/ExactDuplicateReview.cs": "6a9fab70c25c23a9c0bd7f08d0237c736424930759c38a5b39ac76b8f8101282",
+    "src/Optimisarr.Core/Library/ExactDuplicateCache.cs": "54216a362a0d1ce42af2ec169fa979e3c257ae93806dc6895adf1a9f2f1c2397",
+    "src/Optimisarr.Data/ExactDuplicateScan.cs": "7dd84e112e3a24f33d8fd46964fc0b900ce79e0746e0494eb3b68d5f0175fdbc",
+    "src/Optimisarr.Data/Migrations/20261011172833_AddExactCopyReviewScope.cs": "69c2471dec273efbd82a12ae63e6856ddc6dc58c6495a79acd96a7b476c42dcc",
+    "tests/Optimisarr.Tests/CrossLibraryExactDuplicateTests.cs": "cf01c0cc5bb3e0ae4edb17b04408d5487d6c799e623cdc08571fc2176c6df383",
+    "tests/Optimisarr.Tests/ExactDuplicateReviewTests.cs": "c65b80a1b4593b0555657bf4559ff021314a721aa0b074b4c8e1c257f6b5b7ac",
+    "tools/Optimisarr.ExactCopyStudy/Program.cs": "8b2cb692f639ca9f29069dd7e87f346f072822ea9568d7f20ed8d8acec8a632b"
+  },
+  "runs": {
+    "Mac": {
+      "os": "macOS 27.0.1",
+      "architecture": "Arm64",
+      "runtime": "10.0.10",
+      "inventoryEntries": 100016,
+      "candidateFiles": 16,
+      "baselineDatabaseBytes": 50937856,
+      "catalogBuildMs": 19264.92,
+      "candidateSelectionMs": 787.4547,
+      "measurements": [
+        {
+          "phase": "first-content-read",
+          "elapsedMs": 4085.9277,
+          "cpuMs": 2003.088,
+          "BytesRead": 16777216,
+          "Reused": 0,
+          "TotalGroups": 8,
+          "managedMemoryBytes": 22224816,
+          "residentBytes": 126713856,
+          "databaseBytes": 50954240
+        },
+        {
+          "phase": "unchanged-rescan",
+          "elapsedMs": 213.2248,
+          "cpuMs": 192.634,
+          "BytesRead": 0,
+          "Reused": 16,
+          "TotalGroups": 8,
+          "managedMemoryBytes": 24192976,
+          "residentBytes": 125370368,
+          "databaseBytes": 50954240
+        },
+        {
+          "phase": "one-file-change",
+          "elapsedMs": 339.9625,
+          "cpuMs": 277.923,
+          "BytesRead": 1048576,
+          "Reused": 15,
+          "TotalGroups": 7,
+          "managedMemoryBytes": 27651048,
+          "residentBytes": 125616128,
+          "databaseBytes": 50954240
+        }
+      ]
+    },
+    "Quark": {
+      "os": "Fedora Linux 44 (Server Edition)",
+      "architecture": "X64",
+      "runtime": "10.0.8",
+      "inventoryEntries": 100016,
+      "candidateFiles": 16,
+      "baselineDatabaseBytes": 41738240,
+      "catalogBuildMs": 12293.2663,
+      "candidateSelectionMs": 351.787,
+      "measurements": [
+        {
+          "phase": "first-content-read",
+          "elapsedMs": 2482.7196,
+          "cpuMs": 1095.914,
+          "BytesRead": 16777216,
+          "Reused": 0,
+          "TotalGroups": 8,
+          "managedMemoryBytes": 23423432,
+          "residentBytes": 188391424,
+          "databaseBytes": 41754624
+        },
+        {
+          "phase": "unchanged-rescan",
+          "elapsedMs": 134.1501,
+          "cpuMs": 126.917,
+          "BytesRead": 0,
+          "Reused": 16,
+          "TotalGroups": 8,
+          "managedMemoryBytes": 25370216,
+          "residentBytes": 190484480,
+          "databaseBytes": 41754624
+        },
+        {
+          "phase": "one-file-change",
+          "elapsedMs": 252.2892,
+          "cpuMs": 260.9,
+          "BytesRead": 1048576,
+          "Reused": 15,
+          "TotalGroups": 7,
+          "managedMemoryBytes": 18643464,
+          "residentBytes": 181866496,
+          "databaseBytes": 41754624
+        }
+      ]
+    },
+    "Picard": {
+      "os": "Microsoft Windows 10.0.26300",
+      "architecture": "X64",
+      "runtime": "10.0.12",
+      "inventoryEntries": 100016,
+      "candidateFiles": 16,
+      "baselineDatabaseBytes": 47366144,
+      "catalogBuildMs": 11093.7767,
+      "candidateSelectionMs": 302.5892,
+      "measurements": [
+        {
+          "phase": "first-content-read",
+          "elapsedMs": 3694.301,
+          "cpuMs": 984.375,
+          "BytesRead": 16777216,
+          "Reused": 0,
+          "TotalGroups": 8,
+          "managedMemoryBytes": 16024744,
+          "residentBytes": 152436736,
+          "databaseBytes": 47382528
+        },
+        {
+          "phase": "unchanged-rescan",
+          "elapsedMs": 150.8568,
+          "cpuMs": 125,
+          "BytesRead": 0,
+          "Reused": 16,
+          "TotalGroups": 8,
+          "managedMemoryBytes": 17919432,
+          "residentBytes": 152150016,
+          "databaseBytes": 47382528
+        },
+        {
+          "phase": "one-file-change",
+          "elapsedMs": 404.5707,
+          "cpuMs": 312.5,
+          "BytesRead": 1048576,
+          "Reused": 15,
+          "TotalGroups": 7,
+          "managedMemoryBytes": 12644640,
+          "residentBytes": 149102592,
+          "databaseBytes": 47382528
+        }
+      ]
+    }
+  }
+}

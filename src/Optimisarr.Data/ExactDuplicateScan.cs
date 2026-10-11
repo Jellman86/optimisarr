@@ -48,4 +48,28 @@ public sealed class ExactDuplicateObservation
     public int? HardLinkCount { get; set; }
     public DateTimeOffset CheckedAt { get; set; }
     public bool Reused { get; set; }
+    public int LibraryId { get; set; }
+    public string Root { get; set; } = string.Empty;
+    public string? Identity { get; set; }
+}
+
+public sealed class ExactDuplicateScanLibrary
+{
+    public long ScanId { get; set; }
+    public int LibraryId { get; set; }
+    public string Root { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string MediaType { get; set; } = string.Empty;
+}
+
+public sealed class ExactDuplicateReviewDecision
+{
+    public int LibraryId { get; set; }
+    public string ScopeKey { get; set; } = string.Empty;
+    public string Sha256 { get; set; } = string.Empty;
+    public long SizeBytes { get; set; }
+    public string ReviewKey { get; set; } = string.Empty;
+    public string Choice { get; set; } = string.Empty;
+    public string KeepIds { get; set; } = "[]";
+    public DateTimeOffset SavedAt { get; set; }
 }

@@ -67,6 +67,27 @@ function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
+test('library cards and overview open exact-copy review with that library selected', async ({ page }) => {
+  await mockLibraries(page)
+  const scanPosts: string[] = []
+  await page.route('**/api/libraries/1/duplicates', route => {
+    if (route.request().method() === 'POST') scanPosts.push(route.request().method())
+    return json(route, { libraryId: 1, status: 'NotStarted', result: null, error: null,
+      progress: { checked: 0, skipped: 0, total: 0, bytesRead: 0 } })
+  })
+  await page.goto('/#/libraries')
+  await page.locator('[data-library-card="1"]').getByRole('link', { name: 'Find duplicates', exact: true }).click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/duplicates$/)
+  await expect(page.getByLabel('Library', { exact: true })).toHaveValue('1')
+  await page.getByRole('link', { name: 'Films', exact: true }).click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/configure$/)
+  await page.getByRole('button', { name: 'Find duplicates', exact: true }).click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/duplicates$/)
+  await page.reload()
+  await expect(page.getByLabel('Library', { exact: true })).toHaveValue('1')
+  expect(scanPosts).toEqual([])
+})
+
 for (const mediaType of ['Film', 'TV', 'Music', 'Photo', 'Other']) {
   test(`${mediaType} auto-accept needs risk acknowledgement and confirmation before saving`, async ({ page }) => {
     await mockLibraries(page, { ...library, mediaType })

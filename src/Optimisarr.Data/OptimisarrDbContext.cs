@@ -88,6 +88,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
     public DbSet<ExactDuplicateScan> ExactDuplicateScans => Set<ExactDuplicateScan>();
     public DbSet<ExactFileFingerprint> ExactFileFingerprints => Set<ExactFileFingerprint>();
     public DbSet<ExactDuplicateObservation> ExactDuplicateObservations => Set<ExactDuplicateObservation>();
+    public DbSet<ExactDuplicateScanLibrary> ExactDuplicateScanLibraries => Set<ExactDuplicateScanLibrary>();
+    public DbSet<ExactDuplicateReviewDecision> ExactDuplicateReviewDecisions => Set<ExactDuplicateReviewDecision>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -119,7 +121,29 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.RelativePath).IsRequired().HasMaxLength(4096);
             entity.Property(file => file.Sha256).IsRequired().HasMaxLength(64);
             entity.HasOne<ExactDuplicateScan>().WithMany().HasForeignKey(file => file.ScanId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(file => file.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Identity).HasMaxLength(160);
             entity.HasIndex(file => new { file.ScanId, file.SizeBytes, file.Sha256 });
+        });
+        modelBuilder.Entity<ExactDuplicateScanLibrary>(entity =>
+        {
+            entity.HasKey(s => new { s.ScanId, s.LibraryId });
+            entity.Property(s => s.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(s => s.Name).IsRequired().HasMaxLength(512);
+            entity.Property(s => s.MediaType).IsRequired().HasMaxLength(24);
+            // Retain the selected-root snapshot if a secondary library is deleted. Its report
+            // becomes stale instead of silently shrinking the reviewed scope.
+            entity.HasOne<ExactDuplicateScan>().WithMany().HasForeignKey(s => s.ScanId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ExactDuplicateReviewDecision>(entity =>
+        {
+            entity.HasKey(d => new { d.LibraryId, d.ScopeKey, d.Sha256, d.SizeBytes });
+            entity.Property(d => d.ScopeKey).IsRequired().HasMaxLength(64);
+            entity.Property(d => d.Sha256).IsRequired().HasMaxLength(64);
+            entity.Property(d => d.ReviewKey).IsRequired().HasMaxLength(64);
+            entity.Property(d => d.Choice).IsRequired().HasMaxLength(12);
+            entity.Property(d => d.KeepIds).IsRequired().HasMaxLength(4096);
+            entity.HasOne<Library>().WithMany().HasForeignKey(d => d.LibraryId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<AppSetting>(entity =>
         {

@@ -4,7 +4,9 @@
 
 ### Added
 
-- Exact copies reviews retain their latest results across server restarts, reuse unchanged complete SHA-256 reads and offer a full-content refresh. Reports show original content-read dates, reused counts, changed-inventory warnings and paginated groups. Interrupted scans retain completed checkpoints for the next explicit scan. Detection remains single-library and read-only.
+- Libraries offer **Find duplicates**, with explicit cross-library scope and artwork-rich physical-copy review. Keeper choices can be selected manually, kept in full or chosen by preferred library, then saved; ignored groups and choices survive unchanged rescans. Changed evidence invalidates choices. Overlapping roots and hard-link aliases do not inflate copy counts. These are review preferences only; no media files are changed.
+
+- Exact copies reviews retain their latest results across server restarts, reuse unchanged complete SHA-256 reads and offer a full-content refresh. Reports show original content-read dates, reused counts, changed-inventory warnings and paginated groups. Interrupted scans retain completed checkpoints for the next explicit scan. Detection remains read-only.
 
 - Experimental image quality reports use pinned SSIMULACRA2 for supported SDR PNG, JPEG and WebP stills. Photo and mixed libraries can separately enable a replacement gate with an explicit minimum score. Reports show complete dimensions and independent transparency checks; unavailable evidence blocks an enabled gate. Existing SSIM and metadata settings remain unchanged, and both new controls start off.
 

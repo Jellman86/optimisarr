@@ -863,8 +863,78 @@
         ],
         "type": "object"
       },
+      "ExactDuplicateAlias": {
+        "properties": {
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "libraryName": {
+            "type": "string"
+          },
+          "relativePath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "libraryId",
+          "libraryName",
+          "relativePath"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateDecision": {
+        "properties": {
+          "choice": {
+            "type": "string"
+          },
+          "keepIds": {
+            "items": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": "array"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "choice",
+          "keepIds",
+          "savedAt"
+        ],
+        "type": "object"
+      },
       "ExactDuplicateFile": {
         "properties": {
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/ExactDuplicateAlias"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "checkedAt": {
             "format": "date-time",
             "type": "string"
@@ -885,6 +955,23 @@
               "integer",
               "string"
             ]
+          },
+          "libraryId": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "libraryName": {
+            "default": "",
+            "type": "string"
+          },
+          "libraryType": {
+            "default": "",
+            "type": "string"
           },
           "relativePath": {
             "type": "string"
@@ -917,11 +1004,25 @@
       },
       "ExactDuplicateGroup": {
         "properties": {
+          "canDecide": {
+            "default": false,
+            "type": "boolean"
+          },
           "copies": {
             "items": {
               "$ref": "#/components/schemas/ExactDuplicateFile"
             },
             "type": "array"
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExactDuplicateDecision"
+              }
+            ]
           },
           "extraCopyBytes": {
             "format": "int64",
@@ -929,6 +1030,12 @@
             "type": [
               "null",
               "integer",
+              "string"
+            ]
+          },
+          "reviewKey": {
+            "type": [
+              "null",
               "string"
             ]
           },
@@ -958,6 +1065,34 @@
           "sizeBytes",
           "copies",
           "extraCopyBytes"
+        ],
+        "type": "object"
+      },
+      "ExactDuplicateLibrary": {
+        "properties": {
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "root": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "root",
+          "mediaType"
         ],
         "type": "object"
       },
@@ -1116,6 +1251,15 @@
           "isStale": {
             "default": false,
             "type": "boolean"
+          },
+          "libraries": {
+            "items": {
+              "$ref": "#/components/schemas/ExactDuplicateLibrary"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           },
           "libraryId": {
             "format": "int32",
@@ -2932,6 +3076,33 @@
           "jobId",
           "bytes",
           "candidateSha256"
+        ],
+        "type": "object"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "choice": {
+            "type": "string"
+          },
+          "keepIds": {
+            "items": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": "array"
+          },
+          "reviewKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reviewKey",
+          "choice",
+          "keepIds"
         ],
         "type": "object"
       },
@@ -6588,6 +6759,21 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "libraryIds",
+            "schema": {
+              "items": {
+                "format": "int32",
+                "pattern": "^-?(?:0|[1-9]\\d*)$",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "type": "array"
+            }
           }
         ],
         "responses": {
@@ -6601,11 +6787,58 @@
             },
             "description": "Accepted"
           },
+          "400": {
+            "description": "Bad Request"
+          },
           "401": {
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/libraries/{id}/duplicates/review": {
+      "put": {
+        "operationId": "SaveExactDuplicateReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           },
           "409": {
             "description": "Conflict"

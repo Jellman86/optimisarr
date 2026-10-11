@@ -284,6 +284,13 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("HardLinkCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Identity")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("ModifiedUtcTicks")
                         .HasColumnType("INTEGER");
 
@@ -300,6 +307,11 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("Reused")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -313,6 +325,45 @@ namespace Optimisarr.Data.Migrations
                     b.HasIndex("ScanId", "SizeBytes", "Sha256");
 
                     b.ToTable("ExactDuplicateObservations");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateReviewDecision", b =>
+                {
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ScopeKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Choice")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeepIds")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("SavedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("LibraryId", "ScopeKey", "Sha256", "SizeBytes");
+
+                    b.ToTable("ExactDuplicateReviewDecisions");
                 });
 
             modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScan", b =>
@@ -379,6 +430,34 @@ namespace Optimisarr.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ExactDuplicateScans");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScanLibrary", b =>
+                {
+                    b.Property<long>("ScanId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ScanId", "LibraryId");
+
+                    b.ToTable("ExactDuplicateScanLibraries");
                 });
 
             modelBuilder.Entity("Optimisarr.Data.ExactFileFingerprint", b =>
@@ -1403,11 +1482,29 @@ namespace Optimisarr.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateReviewDecision", b =>
+                {
+                    b.HasOne("Optimisarr.Data.Library", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScan", b =>
                 {
                     b.HasOne("Optimisarr.Data.Library", null)
                         .WithMany()
                         .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScanLibrary", b =>
+                {
+                    b.HasOne("Optimisarr.Data.ExactDuplicateScan", null)
+                        .WithMany()
+                        .HasForeignKey("ScanId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

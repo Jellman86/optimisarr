@@ -347,9 +347,10 @@ versions `1` and `2` preserve existing controls when omitted. See
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
 | `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts. |
-| `GET` | `/api/libraries/{id}/duplicates` | Latest durable exact-copy scan status and snapshot for this library (development). Optional zero-based `page`, 20 groups per page; includes reused counts, content-read dates, `totalGroups`, `hasMore` and inventory-scope staleness. |
-| `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Optional `forceRefresh=true` rereads every candidate; otherwise valid complete hashes may be reused. Returns `202`, or `409` if busy or over the 50,000-candidate preview limit. |
+| `GET` | `/api/libraries/{id}/duplicates` | Latest durable exact-copy report owned by this starting library (development). Optional zero-based `page`, 20 groups per page. Includes selected `libraries`, physical copies with aliases, review keys/preferences, original read dates, pagination and staleness. Only complete, current groups have `canDecide=true`. |
+| `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Optional repeated `libraryIds=1&libraryIds=2` selects 1–16 unique existing libraries, including `{id}`; omission uses `{id}` only. Optional `forceRefresh=true` rereads every candidate. Returns `202`, `400` for invalid scope, or `409` if busy or over 50,000 total candidates. |
 | `DELETE` | `/api/libraries/{id}/duplicates` | Cancel this library's running scan. Does not delete files or results. Returns `202`, or `409` if the scan has stopped. |
+| `PUT` | `/api/libraries/{id}/duplicates/review` | Save a preference for a complete current group. Body: `reviewKey` (64 characters), `choice` (`Keep`, `Ignore`, `Review`), `keepIds` (distinct physical-copy representative IDs, at most 100). `Keep` requires at least one; `Ignore` and `Review` require an empty array. `Review` clears the preference. Returns `204`; invalid, stale, shortened or mismatched evidence returns `409`, null fields `400`. Never changes media files. |
 
 Create and update library bodies use the same shape. Common fields:
 

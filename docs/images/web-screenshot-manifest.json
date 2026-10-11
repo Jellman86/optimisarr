@@ -96,9 +96,9 @@
     "optimisarr-dashboard-dark.png": "b2ac6732a56530f5bbe05cb364ac522dc20b8963694ea8facf945c3efae642b6",
     "optimisarr-dashboard-main-dark.png": "e0e1cd1275605ca7bd38987ad0a04e1a8966fc9e3bc454fbc28f775505844fb0",
     "optimisarr-dashboard-savings-dark.png": "e0e1cd1275605ca7bd38987ad0a04e1a8966fc9e3bc454fbc28f775505844fb0",
-    "optimisarr-libraries-dark.png": "68e5ff4cdad278c641f8f2068181206c342553c0a721f53128b5127698961a2e",
-    "optimisarr-libraries-main-dark.png": "4a197fea1839b696c95a26d9e6d01df14d1244569910c78b9b8b9e661685362f",
-    "optimisarr-library-configure-dark.png": "c59bda0d7a37d95d004b38afdc7c97d2b4c9871e1a5a1d66211e10ef6559b0ac",
+    "optimisarr-libraries-dark.png": "b090ff79b43e1245451de31f5605bdf653f3ce700749b204e79acb8655697c24",
+    "optimisarr-libraries-main-dark.png": "f76b8e5f33bec0c8fb9a654cc6a10fc207856c50923825e677af929bbf89c2d4",
+    "optimisarr-library-configure-dark.png": "5afdd324c3259b1fe4fd388c731c7f3603b3a8d9a2a6518490a0c79fa322c224",
     "optimisarr-library-choose-files-dark.png": "66ff03480156fbaa7c0607a09a437dd8e48b013e34499080ab1115752b7cd577",
     "optimisarr-library-advanced-eligibility-dark.png": "090f3ce38677ab4ca34295ad172e25bd2a36464e5b6dd0677fbbd7adb2758d33",
     "optimisarr-library-encode-dark.png": "3c30d3af92926836137f6682f2b103d9fe5e7f3c5d7581d665f23e58ca90f14d",
@@ -111,7 +111,7 @@
     "optimisarr-inventory-dark.png": "15922d973b784abc44b7b9da2be3de99f4b366a22d30a184269d66a9d7e7ec53",
     "optimisarr-inventory-main-dark.png": "c43020735c2f7b08ee256dc999c8b098d7919f3937d77c1ccfbd20175128b938",
     "optimisarr-inventory-detail-dark.png": "643fc02ee78bad71033ec8f7d9ac5431c0812486313e6c65ff45dcbb50f0d8eb",
-    "optimisarr-exact-copies-dark.png": "9de2f1676a47d4dab390986713b12de7b3083d0d9ec0c3f666090fa108259670",
+    "optimisarr-exact-copies-dark.png": "b3d4e0728d69a5e22a2e58b12b6fa0e02aa91653fa31e731c509850b013813de",
     "optimisarr-queue-dark.png": "63c94f18a18b113465189a21247768080b90a3c87b3e4f2fc4d7d5a388677601",
     "optimisarr-queue-main-dark.png": "635303342913c2021b1636123af360aeede894614c974ab62e2574ff7b208bb0",
     "optimisarr-queue-working-job-dark.png": "dd4ad76351cef2df1aaf7cce1e813d4e4fd44d140ab15c17dc61c1af4adde3a5",
@@ -157,10 +157,25 @@
   },
   "refreshedImages": {
     "capturedOn": "2026-10-11",
-    "uiRevision": "230a29856e87fd56b295b5517670d60e5d0a71da",
+    "uiRevision": "52a011d6ddbdfc3698969855fa75e8d6aec95e1a",
     "uiWorkingTreeModified": true,
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "libraryViewport": {
+      "width": 2048,
+      "height": 1167
+    },
+    "exactCopiesViewport": {
+      "width": 1440,
+      "height": 3200
+    },
     "images": [
-      "optimisarr-exact-copies-dark.png"
+      "optimisarr-exact-copies-dark.png",
+      "optimisarr-libraries-dark.png",
+      "optimisarr-libraries-main-dark.png",
+      "optimisarr-library-configure-dark.png"
     ]
   }
 }

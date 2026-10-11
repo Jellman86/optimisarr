@@ -13,7 +13,8 @@ public static class ExactDuplicateCache
         && cached.Sha256.Length == 64 && cached.Sha256.All(Uri.IsHexDigit);
 }
 
-public sealed record ExactFileScopeEntry(int Id, string Path, string RelativePath, long SizeBytes, long ModifiedUtcTicks);
+public sealed record ExactFileScopeEntry(int Id, string Path, string RelativePath, long SizeBytes, long ModifiedUtcTicks,
+    int LibraryId = 0, string? Root = null);
 
 public static class ExactDuplicateScope
 {
