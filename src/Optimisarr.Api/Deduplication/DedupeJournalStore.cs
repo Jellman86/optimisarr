@@ -43,6 +43,25 @@ public sealed class DedupeJournalStore(IServiceScopeFactory scopes, FileOperatio
             (ids.Contains(j.MediaFileId) || paths.Contains(j.MediaFile!.Path))
             && j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled && j.Status != JobStatus.Failed, token))
             return DedupePreparationResult.Conflict;
+        // A different inventory ID can still read the same inode, or write a reserved
+        // destination. Check live source/output keys under the same authoritative writer.
+        var activeJobs = await db.Jobs.AsNoTracking().Where(j => j.Status != JobStatus.Completed
+            && j.Status != JobStatus.Cancelled && j.Status != JobStatus.Failed)
+            .Select(j => new { j.MediaFileId, Path = j.MediaFile!.Path, j.WorkOutputPath }).ToListAsync(token);
+        if (activeJobs.Any(j => FileOperationClaims.Keys(j.MediaFileId,
+            new[] { j.Path, j.WorkOutputPath }.OfType<string>().ToArray()).Intersect(keys).Any()))
+            return DedupePreparationResult.Conflict;
+        var heldJobs = await db.JobLeases.AsNoTracking().Where(l => l.State == Optimisarr.Core.Workers.LeaseState.Held)
+            .Select(l => new { l.Job!.MediaFileId, l.Job.MediaFile!.Path, l.Job.WorkOutputPath }).ToListAsync(token);
+        if (heldJobs.Any(j => FileOperationClaims.Keys(j.MediaFileId,
+            new[] { j.Path, j.WorkOutputPath }.OfType<string>().ToArray()).Intersect(keys).Any()))
+            return DedupePreparationResult.Conflict;
+        var protectedReplacements = await db.Replacements.AsNoTracking().Where(r =>
+            r.Status != ReplacementStatus.RolledBack && r.Status != ReplacementStatus.Purged)
+            .Select(r => new { r.MediaFileId, r.OriginalPath, r.QuarantinePath, r.FinalPath }).ToListAsync(token);
+        if (protectedReplacements.Any(r => FileOperationClaims.Keys(r.MediaFileId,
+            r.OriginalPath, r.QuarantinePath, r.FinalPath).Intersect(keys).Any()))
+            return DedupePreparationResult.Conflict;
         var destinations = plan.Files.Where(f => f.QuarantinePath is not null).Select(f => f.QuarantinePath!).ToArray();
         if (await db.DedupeActionFiles.AsNoTracking().AnyAsync(f => f.QuarantinePath != null && destinations.Contains(f.QuarantinePath), token))
             return DedupePreparationResult.Conflict;

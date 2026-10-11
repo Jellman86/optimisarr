@@ -51,6 +51,7 @@ public sealed class PreviewService(
     /// <summary>Queues a fresh preview for a file, replacing any earlier preview of it.</summary>
     public async Task<int?> CreateAsync(int mediaFileId, CancellationToken cancellationToken)
     {
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
         var media = await db.MediaFiles
             .Include(file => file.Library)
             .FirstOrDefaultAsync(file => file.Id == mediaFileId, cancellationToken);
@@ -58,6 +59,8 @@ public sealed class PreviewService(
         {
             return null;
         }
+        if (await db.IsFileReservedAsync(mediaFileId, [media.Path], cancellationToken))
+            throw new DedupeReservationConflictException();
 
         var existing = await db.Jobs
             .Where(job => job.Type == JobType.Preview && job.MediaFileId == mediaFileId)
@@ -80,6 +83,7 @@ public sealed class PreviewService(
         };
         db.Jobs.Add(job);
         await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
 
         dispatcher.Wake();
         return job.Id;

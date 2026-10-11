@@ -521,6 +521,11 @@ internal static class WorkerLeaseEndpoints
                             await db.SaveChangesAsync(cancellationToken);
                             await transaction.CommitAsync(cancellationToken);
                         }
+                        catch (DedupeReservationConflictException)
+                        {
+                            db.ChangeTracker.Clear();
+                            return new ClaimAttempt(null);
+                        }
                         catch (DbUpdateException)
                         {
                             // Another worker claimed it in the gap. The unique index on held leases is what

@@ -688,6 +688,7 @@ public sealed class QueueDispatcher(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
             if (job is null || job.Status != JobStatus.Queued)
             {
@@ -696,7 +697,12 @@ public sealed class QueueDispatcher(
 
             PrepareForAttempt(job, DateTimeOffset.UtcNow);
             await db.SaveChangesAsync(cancellationToken);
+            await write.CommitAsync(cancellationToken);
             return true;
+        }
+        catch (DedupeReservationConflictException)
+        {
+            return false;
         }
         finally
         {
@@ -756,6 +762,7 @@ public sealed class QueueDispatcher(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
             if (job is null || job.Status != JobStatus.AwaitingVerification)
             {
@@ -770,7 +777,12 @@ public sealed class QueueDispatcher(
             job.ErrorMessage = null;
             job.FailureCategory = null;
             await db.SaveChangesAsync(cancellationToken);
+            await write.CommitAsync(cancellationToken);
             return true;
+        }
+        catch (DedupeReservationConflictException)
+        {
+            return false;
         }
         finally
         {

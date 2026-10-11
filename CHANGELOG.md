@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Job admission, retries, local claims and worker leases respect durable duplicate reservations in the same database write transaction. Previews and calibration are covered too; held candidates explain the reservation, and preparation refuses active outputs and retained replacement paths.
+
 - Replacement, rollback and interrupted replacement recovery share physical-file and path claims, so aliases with different inventory IDs cannot run overlapping operations. Unresolved dedupe reservations defer replacement without changing files.
 
 - Exact-copy review headings, controls and status labels wrap within the page at enlarged text sizes; narrow copy cards stack artwork and details.

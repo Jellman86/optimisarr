@@ -2,14 +2,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Optimisarr.Data;
 
-public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options) : DbContext(options)
+public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options, IFileReservationKeys? fileKeys = null) : DbContext(options)
 {
+
+    public Task<bool> IsFileReservedAsync(int mediaFileId, string[] paths, CancellationToken token = default)
+    {
+        var keys = ResolveFileReservationKeys(mediaFileId, paths);
+        return DedupeFileClaims.AsNoTracking().AnyAsync(c => keys.Contains(c.Key), token);
+    }
+
+    internal IReadOnlyList<string> ResolveFileReservationKeys(int mediaFileId, string[] paths) =>
+        fileKeys?.Resolve(mediaFileId, paths) ?? DedupeJobReservations.LexicalKeys(mediaFileId, paths);
 
     public override async Task<int> SaveChangesAsync(
         bool acceptAllChangesOnSuccess,
         CancellationToken cancellationToken = default)
     {
         ChangeTracker.DetectChanges();
+        var admissionJobs = DedupeJobReservations.PendingJobs(this);
+        var checkAdmission = admissionJobs.Length != 0 || DedupeJobReservations.HasPendingLease(this);
         foreach (var entry in ChangeTracker.Entries<JobLease>().Where(e => e.State == EntityState.Added && e.Entity.ExecutionAttempt == 0))
         {
             var job = ChangeTracker.Entries<Job>().FirstOrDefault(j => j.Entity.Id == entry.Entity.JobId)?.Entity;
@@ -32,7 +43,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         var replacements = ChangeTracker.Entries<Replacement>()
             .Where(entry => entry.State == EntityState.Added || entry.State == EntityState.Modified && entry.Property(r => r.Status).IsModified)
             .Select(entry => entry.Entity).ToArray();
-        if (transitions.Length == 0 && archives.Length == 0 && leases.Length == 0 && replacements.Length == 0)
+        if (!checkAdmission && transitions.Length == 0 && archives.Length == 0 && leases.Length == 0 && replacements.Length == 0)
         {
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
@@ -40,6 +51,9 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         // Reserve SQLite's write transaction before reading capture counters. Reuse an outer
         // operational transaction so its events and cap reservations commit together.
         await using var write = await BeginDiagnosticWriteAsync(cancellationToken);
+        // The same SQLite write reservation serializes job/lease admission with dedupe preparation.
+        // Keep this at the persistence boundary so retries and disposable jobs cannot bypass it.
+        if (checkAdmission) await DedupeJobReservations.ValidateAsync(this, admissionJobs, cancellationToken);
         var nowUtc = DateTimeOffset.UtcNow;
         foreach (var (job, previous) in archives)
             await DiagnosticEventCapture.AppendArchivedAttemptsAsync(this, job, previous, nowUtc, cancellationToken);
