@@ -1,14 +1,14 @@
 // Fabricated documentation fixtures. No production endpoints, credentials, media or artwork.
 export const duplicateReport = {
   libraryId: 1, status: 'Completed', startedAt: '2026-09-17T11:30:00Z', finishedAt: '2026-09-17T11:47:00Z',
-  progress: { checked: 12, skipped: 1, total: 13, bytesRead: 8_400_000_000 }, error: null,
-  result: { checked: 12, skipped: 1, total: 13, bytesRead: 8_400_000_000, truncated: false, groups: [
+  progress: { checked: 12, skipped: 1, total: 13, bytesRead: 4_200_000_000, reused: 6 }, error: null,
+  result: { checked: 12, skipped: 1, total: 13, bytesRead: 4_200_000_000, reused: 6, truncated: false, totalGroups: 2, page: 0, hasMore: false, groups: [
     { sha256: 'a'.repeat(64), sizeBytes: 2_100_000_000, extraCopyBytes: 2_100_000_000, copies: [
-      { id: 1, relativePath: 'Lumen Coast/Lumen Coast.mkv', hardLinkCount: 1 },
-      { id: 3, relativePath: 'Archive/Lumen Coast copy.mkv', hardLinkCount: 1 }] },
+      { id: 1, relativePath: 'Lumen Coast/Lumen Coast.mkv', hardLinkCount: 1, checkedAt: '2026-09-17T11:42:00Z', reused: false },
+      { id: 3, relativePath: 'Archive/Lumen Coast copy.mkv', hardLinkCount: 1, checkedAt: '2026-09-17T11:42:00Z', reused: false }] },
     { sha256: 'b'.repeat(64), sizeBytes: 780_000_000, extraCopyBytes: null, copies: [
-      { id: 2, relativePath: 'Night Survey/Night Survey.mkv', hardLinkCount: 2 },
-      { id: 4, relativePath: 'Shared/Night Survey.mkv', hardLinkCount: 2 }] }
+      { id: 2, relativePath: 'Night Survey/Night Survey.mkv', hardLinkCount: 2, checkedAt: '2026-09-16T10:00:00Z', reused: true },
+      { id: 4, relativePath: 'Shared/Night Survey.mkv', hardLinkCount: 2, checkedAt: '2026-09-16T10:00:00Z', reused: true }] }
   ] }
 }
 import { readFileSync } from 'node:fs'

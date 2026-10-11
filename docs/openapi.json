@@ -889,6 +889,10 @@
           "relativePath": {
             "type": "string"
           },
+          "reused": {
+            "default": false,
+            "type": "boolean"
+          },
           "sha256": {
             "type": "string"
           },
@@ -975,6 +979,15 @@
               "string"
             ]
           },
+          "reused": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
           "skipped": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1024,6 +1037,28 @@
             },
             "type": "array"
           },
+          "hasMore": {
+            "default": false,
+            "type": "boolean"
+          },
+          "page": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "reused": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
           "skipped": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1033,6 +1068,15 @@
             ]
           },
           "total": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "totalGroups": {
+            "default": 0,
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
@@ -1068,6 +1112,10 @@
               "null",
               "string"
             ]
+          },
+          "isStale": {
+            "default": false,
+            "type": "boolean"
           },
           "libraryId": {
             "format": "int32",
@@ -6485,6 +6533,18 @@
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
           }
         ],
         "responses": {
@@ -6520,6 +6580,13 @@
               "format": "int32",
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "forceRefresh",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],

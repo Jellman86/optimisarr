@@ -1142,12 +1142,14 @@ or VMAF v0 policy as current behavior.
       Thresholds are explicit policies, not a conversion from VMAF or SSIM's numeric scale.
       No listening-panel programme or promised release date is required.
 
-15. **Duplicate detection and safe dedupe for every library type: first read-only slice
-    implemented, broader matching and cleanup planned, 2026-10-02.** The manual
+15. **Duplicate detection and safe dedupe for every library type: durable exact-copy
+    review in development, broader matching and cleanup planned, 2026-10-11.** The manual
     [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within one
-    selected library. Scans are cancellable, rate limited and bounded; reports remain until
-    restart or eviction after ten libraries. It makes no changes to media. Persistent caching,
-    incremental indexing, cross-library scope and safe cleanup remain future work.
+    selected library. Development adds durable results, versioned incremental hashes, completed-file
+    checkpoints, explicit full-content refresh, original read dates and result pagination. Scans
+    remain cancellable, rate limited and bounded, and make no changes to media. Cross-library
+    review, persistent decisions and safe cleanup remain future work. The staged research and
+    implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.
@@ -1158,8 +1160,8 @@ or VMAF v0 policy as current behavior.
       incremental indexing and cancellable background work. Keep exact copies, matching
       content and related versions clearly labelled. Recheck identities before acting.
     - **Images:** qualify PDQ perceptual hashes with one consistent image-decoding path.
-      Evaluate optional local SigLIP 2 image features for harder candidate searches, then
-      verify visual correspondence. Protect bursts, crops, edits, RAW/JPEG pairs, Live Photos,
+      Evaluate optional copy-specific SSCD/RDCD features for harder candidate searches, then
+      verify visual correspondence. Semantic embeddings are not the default duplicate verifier. Protect bursts, crops, edits, RAW/JPEG pairs, Live Photos,
       animation, colour profiles and metadata. A similar scene is a suggestion to review.
     - **Audio:** qualify local Chromaprint matching for near-identical recordings, backed by
       duration, channel/track and metadata checks. Protect remasters, live performances,

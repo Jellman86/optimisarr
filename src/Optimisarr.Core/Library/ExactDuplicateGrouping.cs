@@ -1,7 +1,7 @@
 namespace Optimisarr.Core.Library;
 
 public sealed record ExactDuplicateFile(int Id, string RelativePath, long SizeBytes, string Sha256,
-    int? HardLinkCount, DateTimeOffset CheckedAt);
+    int? HardLinkCount, DateTimeOffset CheckedAt, bool Reused = false);
 public sealed record ExactDuplicateGroup(string Sha256, long SizeBytes,
     IReadOnlyList<ExactDuplicateFile> Copies, long? ExtraCopyBytes, int TotalCopies = 0);
 public sealed record ExactDuplicateDisplay(IReadOnlyList<ExactDuplicateGroup> Groups, bool Truncated);

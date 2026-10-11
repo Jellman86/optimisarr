@@ -108,6 +108,7 @@ builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<SidecarDiagnosticStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
+builder.Services.AddSingleton<ExactDuplicateStore>();
 builder.Services.AddSingleton<ExactDuplicateScanner>();
 builder.Services.AddSingleton<ExactDuplicateCoordinator>();
 builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordinator>());

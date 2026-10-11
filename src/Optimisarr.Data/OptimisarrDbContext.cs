@@ -85,8 +85,42 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<DiagnosticEvent> DiagnosticEvents => Set<DiagnosticEvent>();
 
+    public DbSet<ExactDuplicateScan> ExactDuplicateScans => Set<ExactDuplicateScan>();
+    public DbSet<ExactFileFingerprint> ExactFileFingerprints => Set<ExactFileFingerprint>();
+    public DbSet<ExactDuplicateObservation> ExactDuplicateObservations => Set<ExactDuplicateObservation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ExactDuplicateScan>(entity =>
+        {
+            entity.HasKey(scan => scan.Id);
+            entity.Property(scan => scan.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(scan => scan.ScopeSignature).IsRequired().HasMaxLength(64);
+            entity.Property(scan => scan.State).HasConversion<string>().HasMaxLength(24);
+            entity.Property(scan => scan.Error).HasMaxLength(512);
+            entity.HasIndex(scan => scan.ActiveSlot).IsUnique();
+            entity.HasIndex(scan => scan.LibraryId).IsUnique();
+            entity.HasOne<Library>().WithMany().HasForeignKey(scan => scan.LibraryId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ExactFileFingerprint>(entity =>
+        {
+            entity.HasKey(file => file.MediaFileId);
+            entity.Property(file => file.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Path).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Identity).HasMaxLength(160);
+            entity.Property(file => file.Contract).IsRequired().HasMaxLength(80);
+            entity.Property(file => file.Sha256).IsRequired().HasMaxLength(64);
+            entity.HasOne<MediaFile>().WithMany().HasForeignKey(file => file.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ExactDuplicateObservation>(entity =>
+        {
+            entity.HasKey(file => new { file.ScanId, file.MediaFileId });
+            entity.Property(file => file.Path).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.RelativePath).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Sha256).IsRequired().HasMaxLength(64);
+            entity.HasOne<ExactDuplicateScan>().WithMany().HasForeignKey(file => file.ScanId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(file => new { file.ScanId, file.SizeBytes, file.Sha256 });
+        });
         modelBuilder.Entity<AppSetting>(entity =>
         {
             entity.HasKey(setting => setting.Key);

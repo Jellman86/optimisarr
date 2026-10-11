@@ -1225,19 +1225,20 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export interface ExactDuplicateStatus {
   libraryId: number
-  status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed'
+  status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed' | 'Interrupted'
   startedAt: string | null
   finishedAt: string | null
-  progress: { checked: number; skipped: number; total: number; bytesRead: number }
+  progress: { checked: number; skipped: number; total: number; bytesRead: number; reused?: number }
   error: string | null
-  result: null | { checked: number; skipped: number; total: number; bytesRead: number; truncated: boolean;
+  isStale?: boolean
+  result: null | { reused?: number; totalGroups?: number; page?: number; hasMore?: boolean; checked: number; skipped: number; total: number; bytesRead: number; truncated: boolean;
     groups: { sha256: string; sizeBytes: number; extraCopyBytes: number | null; totalCopies?: number;
-      copies: { id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string }[] }[] }
+      copies: { id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string; reused?: boolean }[] }[] }
 }
 
 export const api = {
-  exactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`),
-  scanExactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`, { method: 'POST' }),
+  exactDuplicates: (id: number, page = 0) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates${page ? `?page=${page}` : ''}`),
+  scanExactDuplicates: (id: number, forceRefresh = false) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates${forceRefresh ? '?forceRefresh=true' : ''}`, { method: 'POST' }),
   cancelExactDuplicates: (id: number) => request<void>(`/api/libraries/${id}/duplicates`, { method: 'DELETE' }),
   diagnosticParticipants: (id: string) => request<{ workerId: number; state: string }[]>(`/api/diagnostics/capture/${encodeURIComponent(id)}/participants`),
   diagnosticCaptures: (jobId?: number) => request<DiagnosticCapture[]>(`/api/diagnostics/captures${jobId == null ? '' : `?jobId=${jobId}`}`),

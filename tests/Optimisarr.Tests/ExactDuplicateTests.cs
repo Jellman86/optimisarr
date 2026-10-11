@@ -124,6 +124,33 @@ public sealed class ExactDuplicateTests : IDisposable
         Assert.Null(Assert.Single(result.Groups).ExtraCopyBytes);
     }
 
+    [Fact]
+    public async Task Open_handle_identity_matches_its_file_and_survives_path_replacement()
+    {
+        var a = await File(1, "identity", [1, 2, 3]);
+        using var handle = System.IO.File.OpenHandle(a.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var original = ExactFileIdentity.Read(a.Path);
+        Assert.NotNull(original);
+        Assert.Equal(original, ExactFileIdentity.Read(handle));
+        var replacement = Path.Combine(_root, "replacement");
+        await System.IO.File.WriteAllBytesAsync(replacement, [3, 2, 1]);
+        if (OperatingSystem.IsWindows())
+        {
+            var blocked = Record.Exception(() => System.IO.File.Move(replacement, a.Path, true));
+            Assert.True(blocked is IOException or UnauthorizedAccessException);
+            Assert.Equal(original, ExactFileIdentity.Read(handle));
+            handle.Dispose();
+            System.IO.File.Move(replacement, a.Path, true);
+            Assert.NotEqual(original, ExactFileIdentity.Read(a.Path));
+        }
+        else
+        {
+            System.IO.File.Move(replacement, a.Path, true);
+            Assert.NotEqual(original, ExactFileIdentity.Read(a.Path));
+            Assert.Equal(original, ExactFileIdentity.Read(handle));
+        }
+    }
+
     [DllImport("libc", EntryPoint = "link", SetLastError = true)] private static extern int Link(string source, string target);
     [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CreateHardLink(string target, string source, IntPtr reserved);
