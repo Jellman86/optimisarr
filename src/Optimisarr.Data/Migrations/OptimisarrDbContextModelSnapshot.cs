@@ -119,6 +119,135 @@ namespace Optimisarr.Data.Migrations
                     b.ToTable("ArrConnections");
                 });
 
+            modelBuilder.Entity("Optimisarr.Data.DedupeAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AttentionReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Contract")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PlanHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Retention")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LibraryId", "State");
+
+                    b.ToTable("DedupeActions");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeActionFile", b =>
+                {
+                    b.Property<Guid>("ActionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Identity")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsKeeper")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ModifiedUtcTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QuarantinePath")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ActionId", "MediaFileId");
+
+                    b.HasIndex("MediaFileId");
+
+                    b.HasIndex("QuarantinePath")
+                        .IsUnique();
+
+                    b.ToTable("DedupeActionFiles", t =>
+                        {
+                            t.HasCheckConstraint("CK_DedupeActionFiles_RollbackPath", "(IsKeeper = 1 AND QuarantinePath IS NULL) OR (IsKeeper = 0 AND QuarantinePath IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeFileClaim", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ActionId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ActionId");
+
+                    b.ToTable("DedupeFileClaims");
+                });
+
             modelBuilder.Entity("Optimisarr.Data.DiagnosticCaptureSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1453,6 +1582,24 @@ namespace Optimisarr.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Workers");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeActionFile", b =>
+                {
+                    b.HasOne("Optimisarr.Data.DedupeAction", null)
+                        .WithMany()
+                        .HasForeignKey("ActionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeFileClaim", b =>
+                {
+                    b.HasOne("Optimisarr.Data.DedupeAction", null)
+                        .WithMany()
+                        .HasForeignKey("ActionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Optimisarr.Data.DiagnosticEvent", b =>

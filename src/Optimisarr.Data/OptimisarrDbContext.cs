@@ -91,8 +91,44 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
     public DbSet<ExactDuplicateScanLibrary> ExactDuplicateScanLibraries => Set<ExactDuplicateScanLibrary>();
     public DbSet<ExactDuplicateReviewDecision> ExactDuplicateReviewDecisions => Set<ExactDuplicateReviewDecision>();
 
+    public DbSet<DedupeAction> DedupeActions => Set<DedupeAction>();
+    public DbSet<DedupeActionFile> DedupeActionFiles => Set<DedupeActionFile>();
+    public DbSet<DedupeFileClaim> DedupeFileClaims => Set<DedupeFileClaim>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<DedupeAction>(entity =>
+        {
+            entity.HasKey(action => action.Id);
+            entity.Property(action => action.Contract).IsRequired().HasMaxLength(80);
+            entity.Property(action => action.Retention).IsRequired().HasMaxLength(24);
+            entity.Property(action => action.ReviewKey).IsRequired().HasMaxLength(64);
+            entity.Property(action => action.ScopeKey).IsRequired().HasMaxLength(64);
+            entity.Property(action => action.PlanHash).IsRequired().HasMaxLength(64);
+            entity.Property(action => action.State).HasConversion<string>().HasMaxLength(24);
+            entity.Property(action => action.AttentionReason).HasMaxLength(512);
+            entity.HasIndex(action => new { action.LibraryId, action.State });
+        });
+        modelBuilder.Entity<DedupeActionFile>(entity =>
+        {
+            entity.HasKey(file => new { file.ActionId, file.MediaFileId });
+            entity.Property(file => file.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Path).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.QuarantinePath).HasMaxLength(4096);
+            entity.Property(file => file.Identity).IsRequired().HasMaxLength(160);
+            entity.Property(file => file.Sha256).IsRequired().HasMaxLength(64);
+            entity.HasIndex(file => file.MediaFileId);
+            entity.HasIndex(file => file.QuarantinePath).IsUnique();
+            entity.HasOne<DedupeAction>().WithMany().HasForeignKey(file => file.ActionId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable(table => table.HasCheckConstraint("CK_DedupeActionFiles_RollbackPath",
+                "(IsKeeper = 1 AND QuarantinePath IS NULL) OR (IsKeeper = 0 AND QuarantinePath IS NOT NULL)"));
+        });
+        modelBuilder.Entity<DedupeFileClaim>(entity =>
+        {
+            entity.HasKey(claim => claim.Key);
+            entity.Property(claim => claim.Key).HasMaxLength(80);
+            entity.HasOne<DedupeAction>().WithMany().HasForeignKey(claim => claim.ActionId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<ExactDuplicateScan>(entity =>
         {
             entity.HasKey(scan => scan.Id);

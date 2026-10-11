@@ -4,6 +4,7 @@ using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.IO;
@@ -197,13 +198,16 @@ public sealed class ReplacementService
         // manual replace can all target it at once; overlapping runs corrupt each other's moves and
         // destroy the verified output (the original is still safely restored). The loser of the claim
         // backs off and lets the winner finish.
-        var mediaFileId = await _db.Jobs.AsNoTracking().Where(job => job.Id == jobId)
-            .Select(job => (int?)job.MediaFileId).FirstOrDefaultAsync(cancellationToken);
-        if (mediaFileId is null)
+        var source = await _db.Jobs.AsNoTracking().Where(job => job.Id == jobId)
+            .Select(job => new { job.MediaFileId, job.MediaFile!.Path, job.WorkOutputPath }).FirstOrDefaultAsync(cancellationToken);
+        if (source is null)
         {
             return ReplacementActionResult.NotFound($"No job with id {jobId}.");
         }
-        if (!await _coordinator.TryBeginAsync(jobId, mediaFileId.Value, cancellationToken))
+        var fileKeys = FileOperationClaims.Keys(source.MediaFileId, source.Path,
+            source.WorkOutputPath ?? source.Path,
+            source.WorkOutputPath is { } output ? Path.ChangeExtension(source.Path, Path.GetExtension(output)) : source.Path);
+        if (!await _coordinator.TryBeginAsync(jobId, source.MediaFileId, cancellationToken, fileKeys))
         {
             return ReplacementActionResult.Invalid(
                 $"A replacement or rollback for job {jobId} or its source is already in progress.");
@@ -211,6 +215,8 @@ public sealed class ReplacementService
 
         try
         {
+            if (await DedupeJournalStore.IsReservedAsync(_db, fileKeys, cancellationToken))
+                return ReplacementActionResult.Deferred("An unresolved exact-copy action reserves this source or destination. Resolve its journal before replacement.");
             return await ReplaceCoreAsync(jobId, automatic, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -219,7 +225,7 @@ public sealed class ReplacementService
         }
         finally
         {
-            _coordinator.End(jobId, mediaFileId.Value);
+            _coordinator.End(jobId, source.MediaFileId);
         }
     }
 
@@ -557,14 +563,17 @@ public sealed class ReplacementService
 
         foreach (var replacement in pending)
         {
-            if (replacement.Status == ReplacementStatus.RollbackPending)
+            var keys = FileOperationClaims.Keys(replacement.MediaFileId, replacement.OriginalPath,
+                replacement.QuarantinePath, replacement.FinalPath);
+            if (!await _coordinator.TryBeginAsync(replacement.JobId, replacement.MediaFileId, cancellationToken, keys)) continue;
+            try
             {
-                recovered += await RecoverPendingRollbackAsync(replacement, cancellationToken) ? 1 : 0;
+                if (await DedupeJournalStore.IsReservedAsync(_db, keys, cancellationToken)) continue;
+                recovered += replacement.Status == ReplacementStatus.RollbackPending
+                    ? await RecoverPendingRollbackAsync(replacement, cancellationToken) ? 1 : 0
+                    : await RecoverPendingReplacementAsync(replacement, cancellationToken) ? 1 : 0;
             }
-            else
-            {
-                recovered += await RecoverPendingReplacementAsync(replacement, cancellationToken) ? 1 : 0;
-            }
+            finally { _coordinator.End(replacement.JobId, replacement.MediaFileId); }
         }
 
         return recovered;
@@ -580,7 +589,9 @@ public sealed class ReplacementService
             return ReplacementActionResult.NotFound($"No replacement with id {replacementId}.");
         }
 
-        if (!await _coordinator.TryBeginAsync(replacement.JobId, replacement.MediaFileId, cancellationToken))
+        var fileKeys = FileOperationClaims.Keys(replacement.MediaFileId, replacement.OriginalPath,
+            replacement.QuarantinePath, replacement.FinalPath);
+        if (!await _coordinator.TryBeginAsync(replacement.JobId, replacement.MediaFileId, cancellationToken, fileKeys))
         {
             return ReplacementActionResult.Invalid(
                 $"A replacement or rollback for job {replacement.JobId} is already in progress.");
@@ -588,6 +599,8 @@ public sealed class ReplacementService
 
         try
         {
+            if (await DedupeJournalStore.IsReservedAsync(_db, fileKeys, cancellationToken))
+                return ReplacementActionResult.Deferred("An unresolved exact-copy action reserves this source or destination. Resolve its journal before rollback.");
             return await RollbackCoreAsync(replacement, cancellationToken);
         }
         finally
