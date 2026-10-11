@@ -6,7 +6,8 @@ namespace Optimisarr.Api.Library;
 
 public sealed record ExactDuplicateCheckpoint(ExactDuplicateInput Input, ExactFileFingerprint? Fingerprint,
     int? HardLinkCount, bool Reused, ExactDuplicateProgress Progress);
-public sealed record ExactDuplicateInput(int Id, string Path, string RelativePath, long SizeBytes, DateTimeOffset ModifiedAt);
+public sealed record ExactDuplicateInput(int Id, string Path, string RelativePath, long SizeBytes, DateTimeOffset ModifiedAt,
+    int LibraryId = 0, string? Root = null);
 public sealed record ExactDuplicateProgress(int Checked, int Skipped, int Total, long BytesRead, int Reused = 0);
 public sealed record ExactDuplicateResult(int Checked, int Skipped, int Total, long BytesRead,
     IReadOnlyList<ExactDuplicateGroup> Groups, bool Truncated, int Reused = 0, int TotalGroups = 0, int Page = 0, bool HasMore = false);
@@ -35,20 +36,22 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
             ExactFileFingerprint? fingerprint = null; int? links = null; var wasReused = false;
             try
             {
-                if (!SafePath(root, input.Path) || !Matches(input)) { skipped++; continue; }
-                var generation = new ExactFileGeneration(Path.GetFullPath(root), Path.GetFullPath(input.Path),
+                var inputRoot = input.Root ?? root;
+                if (!SafePath(inputRoot, input.Path) || !Matches(input)) { skipped++; continue; }
+                var generation = new ExactFileGeneration(Path.GetFullPath(inputRoot), Path.GetFullPath(input.Path),
                     input.SizeBytes, input.ModifiedAt.UtcTicks, ExactFileIdentity.Read(input.Path));
                 var previous = cache?.GetValueOrDefault(input.Id);
                 if (ExactDuplicateCache.CanReuse(generation, previous, forceRefresh))
                 {
                     using var access = File.OpenHandle(input.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
                     if (ExactFileIdentity.Read(access) != generation.Identity) { skipped++; continue; }
-                    if (!SafePath(root, input.Path) || !Matches(input) || ExactFileIdentity.Read(input.Path) != generation.Identity)
+                    if (!SafePath(inputRoot, input.Path) || !Matches(input) || ExactFileIdentity.Read(input.Path) != generation.Identity)
                     { skipped++; continue; }
                     fingerprint = previous;
                     links = HardLinkProbe.CountLinks(input.Path);
                     wasReused = true; reused++; checkedCount++;
-                    observed.Add(new(input.Id, input.RelativePath, input.SizeBytes, previous!.Sha256, links, previous.CheckedAt, true));
+                    observed.Add(new(input.Id, input.RelativePath, input.SizeBytes, previous!.Sha256, links, previous.CheckedAt, true,
+                        LibraryId: input.LibraryId, PhysicalKey: generation.Identity, AbsolutePath: generation.Path));
                     continue;
                 }
                 await using var stream = new FileStream(input.Path, FileMode.Open, FileAccess.Read,
@@ -64,12 +67,13 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
                     if (_pause > TimeSpan.Zero) await Task.Delay(_pause, token);
                     if (length > input.SizeBytes) break;
                 }
-                if (length != input.SizeBytes || !SafePath(root, input.Path) || !Matches(input)
+                if (length != input.SizeBytes || !SafePath(inputRoot, input.Path) || !Matches(input)
                     || ExactFileIdentity.Read(input.Path) != generation.Identity) { skipped++; continue; }
                 fingerprint = new(generation, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant(),
                     DateTimeOffset.UtcNow, ExactDuplicateCache.Contract);
                 links = HardLinkProbe.CountLinks(input.Path);
-                observed.Add(new(input.Id, input.RelativePath, length, fingerprint.Sha256, links, fingerprint.CheckedAt));
+                observed.Add(new(input.Id, input.RelativePath, length, fingerprint.Sha256, links, fingerprint.CheckedAt,
+                    LibraryId: input.LibraryId, PhysicalKey: generation.Identity, AbsolutePath: generation.Path));
                 checkedCount++;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; }

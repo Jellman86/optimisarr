@@ -4,7 +4,9 @@ using Optimisarr.Data;
 namespace Optimisarr.Api.Library;
 
 public sealed record ExactDuplicateStatus(int LibraryId, string Status, DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt, ExactDuplicateProgress Progress, ExactDuplicateResult? Result, string? Error, bool IsStale = false);
+    DateTimeOffset? FinishedAt, ExactDuplicateProgress Progress, ExactDuplicateResult? Result, string? Error, bool IsStale = false,
+    IReadOnlyList<ExactDuplicateLibrary>? Libraries = null);
+public sealed record ExactDuplicateLibrary(int Id, string Name, string Root, string MediaType);
 
 /// <summary>One server scan at a time; completed file reads and snapshots survive restart.</summary>
 public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, ExactDuplicateStore store,
@@ -32,16 +34,16 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
     }
 
     public async Task<bool> TryStartAsync(int libraryId, string root, IReadOnlyList<ExactDuplicateInput> inputs,
-        bool forceRefresh, CancellationToken token)
+        bool forceRefresh, CancellationToken token, IReadOnlyList<ExactDuplicateLibrary>? libraries = null)
     {
         await _start.WaitAsync(token);
         try
         {
             lock (_lock) if (_active is not null) return false;
-            var scanId = await store.TryCreateAsync(libraryId, root, inputs.Count, forceRefresh, token, inputs);
+            var scanId = await store.TryCreateAsync(libraryId, root, inputs.Count, forceRefresh, token, inputs, libraries);
             if (scanId is null) return false;
             var queued = new ExactDuplicateStatus(libraryId, "Queued", DateTimeOffset.UtcNow, null,
-                new(0, 0, inputs.Count, 0), null, null);
+                new(0, 0, inputs.Count, 0), null, null, Libraries: libraries);
             lock (_lock)
             {
                 _active = new(scanId.Value, libraryId, root, inputs, forceRefresh, new());

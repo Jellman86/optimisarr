@@ -139,11 +139,20 @@ public sealed class AdminTokenAuthEndpointTests
         {
             using var client = _api.CreateClient(); client.DefaultRequestHeaders.Authorization = new("Bearer", TokenedApi.Token);
             Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/libraries/2147483647/duplicates", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/api/libraries/{libraryId}/duplicates?libraryIds=2147483647", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/api/libraries/{libraryId}/duplicates?libraryIds={libraryId}&libraryIds=2147483647", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/api/libraries/{libraryId}/duplicates?libraryIds={libraryId}&libraryIds={libraryId}", null)).StatusCode);
             var response = await client.PostAsync($"/api/libraries/{libraryId}/duplicates", null); Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
             ExactDuplicateStatus? status = null;
             for (var i = 0; i < 100; i++) { status = await client.GetFromJsonAsync<ExactDuplicateStatus>($"/api/libraries/{libraryId}/duplicates"); if (status?.Status == "Completed") break; await Task.Delay(20); }
             Assert.Equal("Completed", status!.Status);
             Assert.Equal(2, status.Result!.Checked); Assert.Equal(2, Assert.Single(status.Result.Groups).Copies.Count);
+            var group = Assert.Single(status.Result.Groups);
+            Assert.True(group.CanDecide);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync($"/api/libraries/{libraryId}/duplicates/review",
+                new { reviewKey = group.ReviewKey, choice = "Keep", keepIds = new[] { group.Copies[0].Id } })).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/libraries/{libraryId}/duplicates/review",
+                new { reviewKey = group.ReviewKey, choice = "Keep", keepIds = new[] { 2147483647 } })).StatusCode);
             for (var i = 0; i < 3; i++) Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(root, i + ".wav")));
         }
         finally

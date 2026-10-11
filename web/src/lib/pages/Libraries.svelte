@@ -2771,6 +2771,12 @@
           </button>
         {/each}
       </div>
+      {#if !embedded && editingId !== null && editingId > 0}
+        <section class="card flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+          <div class="min-w-0 flex-1"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
+          <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="search" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+        </section>
+      {/if}
     {:else if room === 'source'}
       {@render sourceFields()}
       {@render selectionFields()}
@@ -2891,8 +2897,8 @@
 {:else if libraries.length > 0}
   <!-- One card per library, as many to a row as fit at a readable width. Each leads with the number that matters (how many
        files) and a plain-words status; preset, schedule and path follow as a short list. Scan is
-       the only button — enqueue, configure and delete sit in the menu so the destructive action
-       never competes with the primary one. -->
+       the primary button. Exact-copy review is a secondary entry; enqueue, configure and
+       delete sit in the menu. -->
   <div class="grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,34rem),1fr))]">
     {#each libraries as library (library.id)}
       {@const summary = summaries[library.id]}
@@ -2957,11 +2963,12 @@
           </div>
         {/if}
 
-        <div class="flex items-center justify-between gap-3 border-t border-line-soft pt-3 border-line">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-3 border-line">
           <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
+          <a class="btn btn-ghost min-h-11" href={`#/libraries/${library.id}/duplicates`}><Icon name="search" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
           {#if library.lastAutoEnqueueAt}
             <span class="text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
           {/if}

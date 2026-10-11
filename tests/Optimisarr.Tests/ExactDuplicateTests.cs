@@ -121,7 +121,13 @@ public sealed class ExactDuplicateTests : IDisposable
         Assert.True(OperatingSystem.IsWindows() ? CreateHardLink(path, a.Path, IntPtr.Zero) : Link(a.Path, path) == 0);
         var b = a with { Id = 2, Path = path, RelativePath = "b.wav" };
         var result = await new ExactDuplicateScanner(TimeSpan.Zero).ScanAsync(_root, [a, b], _ => { }, default);
-        Assert.Null(Assert.Single(result.Groups).ExtraCopyBytes);
+        Assert.Empty(result.Groups);
+        var c = await File(3, "independent.wav", [1, 2, 3]);
+        result = await new ExactDuplicateScanner(TimeSpan.Zero).ScanAsync(_root, [a, b, c], _ => { }, default);
+        var group = Assert.Single(result.Groups);
+        Assert.Equal(2, group.TotalCopies);
+        Assert.Single(group.Copies[0].Aliases!);
+        Assert.Null(group.ExtraCopyBytes);
     }
 
     [Fact]

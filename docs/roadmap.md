@@ -1144,11 +1144,14 @@ or VMAF v0 policy as current behavior.
 
 15. **Duplicate detection and safe dedupe for every library type: durable exact-copy
     review in development, broader matching and cleanup planned, 2026-10-11.** The manual
-    [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within one
-    selected library. Development adds durable results, versioned incremental hashes, completed-file
+    [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within explicitly
+    selected libraries. Development adds durable results, versioned incremental hashes, completed-file
     checkpoints, explicit full-content refresh, original read dates and result pagination. Scans
-    remain cancellable, rate limited and bounded, and make no changes to media. Cross-library
-    review, persistent decisions and safe cleanup remain future work. The staged research and
+    remain cancellable, rate limited and bounded, and make no changes to media. Libraries now
+    provide a direct review entry, explicit cross-library scope, physical-reference deduplication
+    and generation-bound keeper/ignore preferences. Manual, keep-all and preferred-library
+    choices are available; quality/size strategies await non-identical matching. Safe cleanup
+    remains future work. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
