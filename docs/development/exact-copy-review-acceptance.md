@@ -43,19 +43,23 @@ fixtures, not the user's media library or a USB/SMR qualification.
 Riker's migration backup is active. Its storage and production services were left alone.
 Picard's installed worker and application-control configuration were not changed.
 
-The final Chromium suite passes all 325 tests. Safari/WebKit passes all 36 audit tests.
+The final Chromium suite passes all 325 tests on the Mac, Quark and native Picard.
+Safari/WebKit passes all 36 audit tests on the Mac.
 Frontend type checks are clean with zero warnings; nine locale catalogs and 95 unit tests pass.
 The production frontend build succeeds. Python checks pass all 105 tests; generated OpenAPI,
 Unraid metadata, documentation links and screenshot-manifest hashes are current.
 
 Browser checks use fabricated API responses. Coverage includes 375, 812, 1440 and 2048 pixel
 widths in both themes, WCAG AA checks, keyboard selection, broken artwork, failed saves, reload,
-explicit scope, ignored groups and 200% text. Native integration tests exercise the actual
-API, SQLite and filesystem. Documentation images use only fabricated media and artwork.
+explicit scope, ignored groups and 200% text with normal and expanded letter spacing. Native
+integration tests exercise the actual API, SQLite and filesystem. Documentation images use only fabricated media and artwork.
 
 The completed final Chromium run uses two workers because this Mac was under heavy ambient
-load. Earlier parallel runs hit existing dashboard timing checks and found the now-fixed
-200% text overflow. The final complete suite passes without weakening its assertions.
+load. Earlier parallel runs hit existing dashboard timing checks. The first Ubuntu CI run
+found an enlarged-text overflow in status labels, headings and scan controls. Those elements
+now shrink and wrap; narrow copy cards stack their artwork and details. The original 200%
+overflow assertion remains and also checks expanded letter spacing. Narrow scope controls
+reduce nested padding and stack when text enlargement leaves little room. The final complete suite passes without weakening its assertions.
 
 ## Limits of this evidence
 

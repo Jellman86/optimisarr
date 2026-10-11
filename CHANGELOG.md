@@ -17,6 +17,8 @@
 
 ### Fixed
 
+- Exact-copy review headings, controls and status labels wrap within the page at enlarged text sizes; narrow copy cards stack artwork and details.
+
 - Library configuration, creation, Candidates and Excluded views use the full available page width, matching the rest of the interface while retaining readable form controls. Documentation captures now show configuration on a wide desktop.
 
 - Diagnostic concurrency tests tolerate a scheduled outer writer on busy Windows runners while retaining bounded deadlock checks and exact capture-limit assertions.

@@ -83,7 +83,7 @@
     <ul class="copy-grid">
       {#each group.copies as copy (copy.id)}
         <li class="copy-card" class:copy-kept={keepIds.includes(copy.id)}>
-          <div class="flex min-w-0 items-start gap-4">
+          <div class="copy-heading flex min-w-0 items-start gap-4">
             <Thumbnail mediaFileId={copy.id} shape={['Film','Tv'].includes(copy.libraryType ?? '') ? 'portrait' : 'square'} size="lg" />
             <div class="min-w-0 flex-1">
               {#if copy.libraryName}<span class="badge mb-2">{copy.libraryName}</span>{/if}
@@ -127,14 +127,15 @@
 
 <style>
   .copy-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr)); gap:1rem; list-style:none; padding:0; }
-  .copy-card { display:flex; flex-direction:column; min-width:0; padding:1rem; border:1px solid var(--line); border-radius:var(--radius-md,12px); background:var(--raised); }
+  .copy-card { display:flex; flex-direction:column; min-width:0; container-type:inline-size; padding:1rem; border:1px solid var(--line); border-radius:var(--radius-md,12px); background:var(--raised); }
   .keep-control { margin-top:auto; padding-top:1rem; }
   .copy-kept { border-color:var(--accent-line); background:var(--accent-soft); }
   .badge { color:var(--ink-2); background:var(--panel); }
   .badge-ok { color:var(--accent-strong); background:var(--accent-soft); }
   .copy-card h3 { overflow-wrap:anywhere; }
+  @container (max-width:14rem) { .copy-heading { flex-direction:column; } }
   .keep-control:has(input:disabled) { cursor:default; }
-  button { min-height:2.75rem; }
+  button { min-width:0; max-width:100%; min-height:2.75rem; overflow-wrap:anywhere; }
   summary { cursor:pointer; list-style:none; }
   summary::-webkit-details-marker { display:none; }
   details[open] summary > :global(svg:last-child) { transform:rotate(180deg); }

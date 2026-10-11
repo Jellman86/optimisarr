@@ -69,6 +69,13 @@ for (const width of [375, 812, 1440, 2048]) for (const theme of ['light', 'dark'
     await group.scrollIntoViewIfNeeded()
     await group.screenshot({ path: testInfo.outputPath(`cross-library-${width}-${theme}.png`) })
     await page.setViewportSize({ width, height: 1000 })
+    if (width === 375) {
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+      const overflow = await page.locator('main').evaluate(main => [...main.querySelectorAll('*')].filter(el =>
+        el.getBoundingClientRect().right > main.getBoundingClientRect().right + 1).map(el => ({ element: `${el.tagName}.${el.className}`, text: el.textContent?.slice(0, 100) })))
+      expect(await page.locator('main').evaluate(el => el.scrollWidth <= el.clientWidth), JSON.stringify(overflow)).toBe(true)
+      await page.evaluate(() => { document.documentElement.style.fontSize = '' })
+    }
     await group.getByRole('button', { name: 'Ignore this group', exact: true }).click()
     await expect(group.getByText('Ignored', { exact: true })).toBeVisible()
     await group.locator('summary').click()
@@ -122,10 +129,19 @@ test('a deleted comparison library stays explicit until removed and rescanned', 
   await expect(page.getByText('Libraries in this report', { exact: true })).toBeVisible()
   await removed.uncheck(); await expect(removed).toBeDisabled()
   await expect(page.getByText(/Your library selection differs/)).toBeVisible()
-  await page.evaluate(() => document.documentElement.style.fontSize = '200%')
-  const overflow = await page.locator('main').evaluate(main => [...main.querySelectorAll('*')].filter(el =>
-    el.getBoundingClientRect().right > main.getBoundingClientRect().right + 1).map(el => `${el.tagName}.${el.className}`))
-  expect(await page.locator('main').evaluate(el => el.scrollWidth <= el.clientWidth), JSON.stringify(overflow)).toBe(true)
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+  for (const letterSpacing of ['normal', '0.12em']) {
+    await page.evaluate(value => { document.documentElement.style.letterSpacing = value }, letterSpacing)
+    const overflow = await page.locator('main').evaluate(main => [...main.querySelectorAll('*')].filter(el =>
+      el.getBoundingClientRect().right > main.getBoundingClientRect().right + 1).map(el => ({
+        element: `${el.tagName}.${el.className}`, text: el.textContent?.slice(0, 100), width: el.getBoundingClientRect().width,
+        mainWidth: main.clientWidth, font: getComputedStyle(el).fontFamily
+      })))
+    const metrics = await page.locator('main').evaluate(main => ({ clientWidth: main.clientWidth, scrollWidth: main.scrollWidth,
+      children: [...main.querySelectorAll('*')].filter(el => el.scrollWidth > el.clientWidth).map(el => ({ element: `${el.tagName}.${el.className}`,
+        clientWidth: el.clientWidth, scrollWidth: el.scrollWidth, text: el.textContent?.slice(0, 100) })) }))
+    expect(metrics.scrollWidth <= metrics.clientWidth, JSON.stringify({ letterSpacing, overflow, metrics })).toBe(true)
+  }
   await page.getByRole('button', { name: 'Find exact copies', exact: true }).click()
   expect(starts).toEqual([[]])
 })

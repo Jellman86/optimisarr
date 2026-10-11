@@ -62,7 +62,7 @@
       <span class="h-2 w-2 flex-none rounded-full bg-ink-5" aria-hidden="true"></span>
     {/if}
     <span class="label mb-0">{i18n.m.dashboard.state}</span>
-    <span class="text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
+    <span class="status-strip-label text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
     {#if detail}
       {#if holds.length > 0}
         {#if holds[0]?.artworkUrl}<Thumbnail src={holds[0].artworkUrl} size="sm" shape={holds[0].kind === 'Track' ? 'square' : 'portrait'} />{/if}
@@ -125,6 +125,7 @@
   }
   .status-strip-state {
     display: flex;
+    flex-wrap: wrap;
     min-width: 0;
     flex: 1 1 16rem;
     align-items: center;
@@ -138,6 +139,7 @@
     font-size: 0.8125rem;
     color: var(--ink-2);
   }
+  .status-strip-label { min-width:0; overflow-wrap:anywhere; }
   .status-strip-playback {
     text-decoration: underline;
     text-underline-offset: 0.2em;
@@ -147,15 +149,23 @@
   }
   .status-strip-fact {
     display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
     align-items: center;
     gap: 0.6rem;
   }
   .status-strip-action {
     display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
     align-items: center;
     gap: 0.75rem;
     margin-left: auto;
   }
+  .status-strip-action button { min-width:0; max-width:100%; overflow-wrap:anywhere; }
   @media (max-width: 40rem) {
     .status-strip-optional { display: none; }
   }

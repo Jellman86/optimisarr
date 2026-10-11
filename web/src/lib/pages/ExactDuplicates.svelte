@@ -106,7 +106,7 @@
       {:else}<button class="btn btn-primary" disabled={libraryId === null || loading || acting} onclick={() => act()}>{i18n.m.duplicates.scan}</button>{/if}
     </div>
     {#if libraryId !== null && scopeLibraries.length > 1}
-      <details class="mt-4 rounded-xl border border-line p-4" bind:open={scopeExpanded}>
+      <details class="scope-picker mt-4 rounded-xl border border-line p-4" bind:open={scopeExpanded}>
         <summary class="focus-ring cursor-pointer text-sm font-semibold text-ink">{i18n.m.duplicates.compareLibraries}{compareIds.length ? ` (${compareIds.length})` : ''}</summary>
         <p class="mt-3 text-sm leading-relaxed text-ink-3" id="duplicate-scope-hint">{i18n.m.duplicates.scopeHint}</p>
         <fieldset class="scope-grid mt-3" aria-describedby="duplicate-scope-hint" disabled={running || acting || loading}>
@@ -158,12 +158,19 @@
 </div>
 
 <style>
-  .duplicate-view { display:grid; gap:1.25rem; width:100%; min-width:0; }
+  .duplicate-view { display:grid; gap:1.25rem; width:100%; min-width:0; container-type:inline-size; overflow-wrap:anywhere; }
+  .duplicate-view h2 { min-width:0; overflow-wrap:anywhere; }
   .duplicate-controls { display:flex; align-items:end; flex-wrap:wrap; gap:1rem; }
   .duplicate-controls > div { flex-basis:18rem; }
-  .duplicate-controls button, .duplicate-pagination button { min-height:2.75rem; }
+  .duplicate-controls button, .duplicate-pagination button { min-width:0; max-width:100%; min-height:2.75rem; overflow-wrap:anywhere; }
   .scope-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr)); gap:.5rem; }
   .scope-library { display:flex; align-items:center; gap:.75rem; min-height:2.75rem; padding:.5rem .75rem; border:1px solid var(--line); border-radius:8px; cursor:pointer; }
   .scope-library:has(input:checked) { background:var(--accent-soft); border-color:var(--accent-line); }
+  .duplicate-view .badge { min-width:0; max-width:100%; }
+  @container (max-width:20rem) {
+    .duplicate-view > section, .scope-picker { padding:.5rem; }
+    .scope-library { flex-direction:column; align-items:start; gap:.25rem; padding:.5rem; }
+    .scope-library > span { width:100%; }
+  }
   @media (max-width:639px) { .duplicate-controls button { width:100%; } }
 </style>
