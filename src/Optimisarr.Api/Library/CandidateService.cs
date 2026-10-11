@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
@@ -31,6 +32,7 @@ public sealed record Candidate(
 /// </summary>
 public sealed class CandidateService(OptimisarrDbContext db)
 {
+    private const string ReservedReason = "Reserved by an unresolved duplicate action; resolve or cancel that action before optimising.";
     public async Task<IReadOnlyList<Candidate>> EvaluateAsync(int? libraryId, CancellationToken cancellationToken)
     {
         var librariesById = await db.Libraries
@@ -65,6 +67,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
             .AsNoTracking()
             .Select(exclusion => exclusion.Path)
             .ToHashSetAsync(cancellationToken);
+        var reservedKeys = await db.DedupeFileClaims.AsNoTracking().Select(c => c.Key).ToHashSetAsync(cancellationToken);
 
         var candidates = new List<Candidate>(files.Count);
         foreach (var file in files)
@@ -96,6 +99,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             {
                 decision = CandidateDecision.Skipped("Excluded — won't be optimised");
             }
+            if (reservedKeys.Count != 0 && FileOperationClaims.Keys(file.Id, file.Path).Any(reservedKeys.Contains))
+                decision = CandidateDecision.Skipped(ReservedReason);
 
             candidates.Add(new Candidate(
                 file.Id,
@@ -129,6 +134,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
     {
         var file = await db.MediaFiles.AsNoTracking()
             .FirstOrDefaultAsync(f => f.Id == mediaFileId, cancellationToken);
+        if (await db.IsFileReservedAsync(mediaFileId, file is null ? [] : [file.Path], cancellationToken))
+            return CandidateDecision.Skipped(ReservedReason);
         if (file is not null && await db.Exclusions.AsNoTracking().AnyAsync(e => e.Path == file.Path, cancellationToken))
         {
             return CandidateDecision.Skipped("Excluded — won't be optimised");

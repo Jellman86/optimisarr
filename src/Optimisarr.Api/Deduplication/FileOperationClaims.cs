@@ -1,12 +1,13 @@
-using System.Security.Cryptography;
-using System.Text;
 using Optimisarr.Api.Library;
+using Optimisarr.Core.Deduplication;
+using Optimisarr.Data;
 
 namespace Optimisarr.Api.Deduplication;
 
 /// <summary>All-or-nothing, process-wide claims. Keys include inventory IDs, paths and physical identities.</summary>
-public sealed class FileOperationClaims
+public sealed class FileOperationClaims : IFileReservationKeys
 {
+    IReadOnlyList<string> IFileReservationKeys.Resolve(int mediaFileId, params string[] paths) => Keys(mediaFileId, paths);
     private readonly object _sync = new();
     private readonly HashSet<string> _held = new(StringComparer.Ordinal);
 
@@ -36,14 +37,11 @@ public sealed class FileOperationClaims
     public static IReadOnlyList<string> SnapshotKeys(int mediaFileId, string path, string? identity)
     {
         var canonical = Path.GetFullPath(path);
-        // Case folding is conservative on potentially case-insensitive filesystems.
-        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()) canonical = canonical.ToUpperInvariant();
+        var key = FileClaimKeys.Path(canonical, OperatingSystem.IsWindows() || OperatingSystem.IsMacOS());
         return identity is null
-            ? [$"media:{mediaFileId}", "path:" + Digest(canonical)]
-            : [$"media:{mediaFileId}", "path:" + Digest(canonical), "identity:" + Digest(identity)];
+            ? [FileClaimKeys.Media(mediaFileId), key]
+            : [FileClaimKeys.Media(mediaFileId), key, FileClaimKeys.Identity(identity)];
     }
-
-    private static string Digest(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     private sealed class Claim(FileOperationClaims owner, string[] keys) : IDisposable
     {

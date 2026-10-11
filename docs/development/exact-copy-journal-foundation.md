@@ -90,10 +90,55 @@ These are SSD-backed synthetic fixtures. They do not qualify USB/SMR storage, at
 counts, fresh action hashes, external-manager reconciliation or a destructive action workflow.
 The UI and documentation screenshots are unchanged in D3a.
 
+## D3b first step: transactional job admission
+
+The next concurrency slice checks reservations at the asynchronous persistence boundary for new
+active jobs, active status/source/output changes and newly held worker leases. This includes normal,
+preview and calibration jobs, retries, local starts and delivered-candidate verification. It opens
+SQLite's write transaction before reading reservations and retains it through the job/lease commit.
+Preparation uses the same writer. A stale context cannot rely on an old navigation or job source:
+the guard checks both pending and current persisted references. Terminal diagnostic updates remain
+possible. Reservation and inventory queries are batched rather than repeated for each queued job.
+
+The application injects the live file-identity adapter into its database contexts. Isolated data
+consumers without that adapter protect inventory IDs and canonical paths only. The key format is
+shared pure Core logic; existing claim digests and the journal contract do not change. Existing
+hard-link aliases are covered when their identities are available. This is an application write
+guard, not an exclusion mechanism for external writers or arbitrary SQL. New operational paths
+must use the guarded asynchronous context and must not bulk-update admission fields.
+
+Enqueue holds the writer across its candidate decision and commit, after fetching network import
+activity. Local and delivered-candidate claims hold it across their status check and commit.
+Worker claims reuse their existing transaction and skip a reserved candidate. Preview checks
+before replacing an earlier preview; calibration checks before source probing and again at job
+commit. Candidates show a reservation reason. Interactive admission conflicts return an API conflict
+with a fallback explanation; calibration retains its existing unavailable-response contract.
+
+Preparation also checks active job source/output identities, independently held leases and all
+paths of pending, rollback-pending or still-retained replacements, including another inventory ID.
+This prevents admission against known rollback history; it does not complete cleanup coordination.
+
+New tests use separate contexts sharing a real migrated SQLite database. They race preparation
+against new normal/preview/calibration jobs and local/worker/verification claims, check stale
+references and worker leases with tracked and untracked jobs, and exercise both commit orders for
+real hard links. HTTP tests cover preview, retry, calibration and enqueue refusals. They never
+change library content. This slice has no schema, frontend, sidecar or file-action changes.
+
+The final native Release builds have zero warnings: Mac and Quark each pass 3,006 backend tests;
+Picard passes 2,998 with the same eight existing Windows platform skips. All 760 backend
+source/fixture hashes agree on both remote hosts and the local source. This adds 25 backend cases,
+including the pending-inventory and temporary-ID regressions found during review. The Mac final
+backend suite uses four managed processors. Browser qualification is recorded separately. No
+thresholds or platform skips were changed. Quark passes the complete 325-test Chromium suite,
+95 frontend units and zero-warning Svelte checks; all 188 web source/fixture hashes match the
+tested archive. Its missing browser libraries were extracted from Fedora RPMs into the disposable
+test root using the earlier D2 recipe, without installing system packages.
+
 ## Remaining D3 work, in dependency order
 
-1. Integrate durable reservations with local and remote job claims, enqueue/preview/calibration,
-   inventory reconciliation and import/manager ownership. Capture every physical alias and all
+1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
+   transactional job admission. Manual/timed quarantine purge and failed-output cleanup still need
+   explicit guards and races. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
    affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
 2. Add an action preflight using current scope/generations, permissions, supported independent

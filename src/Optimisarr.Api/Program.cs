@@ -109,6 +109,7 @@ builder.Services.AddScoped<SidecarDiagnosticStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.FileOperationClaims>();
+builder.Services.AddSingleton<IFileReservationKeys>(sp => sp.GetRequiredService<Optimisarr.Api.Deduplication.FileOperationClaims>());
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeJournalStore>();
 builder.Services.AddHostedService<Optimisarr.Api.Deduplication.DedupeJournalRecovery>();
 builder.Services.AddSingleton<ExactDuplicateStore>();
@@ -264,6 +265,14 @@ app.Use(async (context, next) =>
 });
 
 app.UseDiagnosticTransferCapture();
+app.Use(async (context, next) =>
+{
+    try { await next(); }
+    catch (DedupeReservationConflictException exception) when (!context.Response.HasStarted)
+    {
+        await ApiErrors.Conflict("dedupe.reserved", exception.Message).ExecuteAsync(context);
+    }
+});
 app.MapHealthEndpoints(adminToken, configDirectory);
 
 app.MapSystemEndpoints();

@@ -204,6 +204,8 @@ internal sealed class BlindCalibrationService(
         {
             throw new KeyNotFoundException("The calibration source or library no longer exists.");
         }
+        if (await db.IsFileReservedAsync(media.Id, [media.Path], cancellationToken))
+            throw new DedupeReservationConflictException();
         if (media.Status != MediaFileStatus.Probed
             || media.MediaKind is not (MediaKind.Video or MediaKind.Audio or MediaKind.Image))
         {

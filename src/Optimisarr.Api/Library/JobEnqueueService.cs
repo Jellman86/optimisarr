@@ -30,6 +30,10 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
 
     public async Task<EnqueueResult> EnqueueEligibleAsync(Data.Library library, CancellationToken cancellationToken)
     {
+        // Fetch network activity before reserving SQLite's writer. The inventory/reservation
+        // decision and the enqueue commit must share the subsequent transaction.
+        var activeImports = await arrActivity.GetActiveImportsAsync(cancellationToken);
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
         var evaluated = await candidates.EvaluateAsync(library.Id, cancellationToken);
         var eligible = evaluated.Where(candidate => candidate.Eligible).ToList();
         var ineligible = evaluated.Count - eligible.Count;
@@ -48,7 +52,6 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
                 .ToListAsync(cancellationToken))
             .ToHashSet();
 
-        var activeImports = await arrActivity.GetActiveImportsAsync(cancellationToken);
         var paths = await db.MediaFiles
             .Where(file => eligibleIds.Contains(file.Id))
             .Select(file => new { file.Id, file.Path })
@@ -85,6 +88,7 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
         return new EnqueueResult(enqueued, eligible.Count - enqueued - importing, ineligible, importing);
     }
 
