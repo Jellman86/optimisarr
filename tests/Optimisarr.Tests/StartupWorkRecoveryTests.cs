@@ -290,8 +290,10 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
             await InDb(async db => { (await db.MediaFiles.SingleAsync(f => f.Id == 2)).Path = job.WorkOutputPath!; await db.SaveChangesAsync(); });
         await WriteOutput(job.WorkOutputPath!);
         var busy = reason == "busy";
+        var busyDirectory = Path.GetFullPath(Path.GetDirectoryName(job.WorkOutputPath)!);
         _recovery = new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance,
-            p => busy && p == Path.GetDirectoryName(job.WorkOutputPath));
+            p => busy && string.Equals(Path.GetFullPath(p), busyDirectory,
+                OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase));
         Assert.False((await _recovery.RunAsync(default)).Complete);
         Assert.True(File.Exists(job.WorkOutputPath));
         Assert.Equal(job.WorkOutputPath, (await ReadJob(job.Id)).WorkOutputPath);
