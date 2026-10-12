@@ -128,6 +128,100 @@ public sealed class DedupeCleanupConcurrencyTests : IAsyncLifetime
         return await service.PurgeExpiredAsync(default);
     }
 
+    [Theory]
+    [InlineData(DedupeActionState.Prepared, false, false)]
+    [InlineData((DedupeActionState)999, false, false)]
+    [InlineData(DedupeActionState.Cancelled, true, false)]
+    [InlineData(DedupeActionState.Cancelled, false, true)]
+    [InlineData(DedupeActionState.Restored, false, true)]
+    public async Task Recursive_cleanup_refuses_incomplete_unresolved_intents_and_leftover_claims(
+        DedupeActionState state, bool addClaim, bool allowed)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var claims = new FileOperationClaims();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, default));
+        var action = new DedupeAction { Id = Guid.NewGuid(), State = state, ReviewKey = new('a', 64), ScopeKey = new('b', 64), PlanHash = new('c', 64) };
+        db.DedupeActions.Add(action);
+        if (addClaim) db.DedupeFileClaims.Add(new() { ActionId = action.Id, Key = FileClaimKeys.Media(999) });
+        await db.SaveChangesAsync();
+        await using var write = await db.BeginDiagnosticWriteAsync();
+        using (var guard = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, default))
+            Assert.Equal(allowed, guard is not null);
+        using var retry = claims.TryAcquire(["after guard"]);
+        Assert.NotNull(retry);
+    }
+
+    [Fact]
+    public async Task Recursive_cleanup_observes_a_separate_writers_reservation_before_deleting_any_descendant()
+    {
+        await using var writer = new OptimisarrDbContext(_options);
+        await using var transaction = await writer.BeginDiagnosticWriteAsync();
+        var action = new DedupeAction { Id = Guid.NewGuid(), ReviewKey = new('a', 64), ScopeKey = new('b', 64), PlanHash = new('c', 64) };
+        writer.DedupeActions.Add(action);
+        writer.DedupeFileClaims.Add(new() { ActionId = action.Id, Key = FileClaimKeys.Path(CopyPath, false) });
+        await writer.SaveChangesAsync();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanup = Task.Run(async () => { started.SetResult(); return await CleanRecursiveAsync(); });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try { await Task.Delay(100); Assert.False(cleanup.IsCompleted); }
+        finally { await transaction.CommitAsync(); }
+        Assert.False(await cleanup.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("retained candidate", await File.ReadAllTextAsync(CopyPath));
+        await using var verify = new OptimisarrDbContext(_options);
+        Assert.Equal(CopyPath, (await verify.Jobs.AsNoTracking().SingleAsync()).WorkOutputPath);
+    }
+
+    [Fact]
+    public async Task Independent_preparation_waits_until_recursive_cleanup_commits_its_files_and_rows()
+    {
+        _pause.Enabled = true;
+        var cleanup = CleanRecursiveAsync();
+        await _pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var preparation = Task.Run(async () =>
+        {
+            started.SetResult();
+            return await _services.GetRequiredService<DedupeJournalStore>().TryPrepareAsync(Plan, default);
+        });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try { await Task.Delay(100); Assert.False(preparation.IsCompleted); Assert.True(File.Exists(CopyPath)); }
+        finally { _pause.Release.SetResult(); }
+        Assert.True(await cleanup.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(DedupePreparationResult.Created, await preparation.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.False(File.Exists(CopyPath));
+        await using var verify = new OptimisarrDbContext(_options);
+        Assert.Null((await verify.Jobs.AsNoTracking().SingleAsync()).WorkOutputPath);
+        // Mechanical preparation may persist cached evidence; fresh D3c preflight is still required.
+    }
+
+    private async Task<bool> CleanRecursiveAsync()
+    {
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>(_options).AddInterceptors(_pause).Options;
+        await using var db = new OptimisarrDbContext(options);
+        await using var write = await db.BeginDiagnosticWriteAsync();
+        using var guard = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, new FileOperationClaims(), default);
+        if (guard is null) return false;
+        Directory.Delete(Path.GetDirectoryName(CopyPath)!, recursive: true);
+        (await db.Jobs.SingleAsync()).WorkOutputPath = null;
+        await db.SaveChangesAsync();
+        await write.CommitAsync();
+        return true;
+    }
+
+    [Fact]
+    public async Task Cancellation_during_recursive_reservation_reads_releases_the_exclusive_claim()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        await using var write = await db.BeginDiagnosticWriteAsync();
+        var claims = new FileOperationClaims();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellation.Token));
+        using var retry = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, default);
+        Assert.NotNull(retry);
+    }
+
     public async Task DisposeAsync()
     {
         await _services.DisposeAsync();
@@ -143,7 +237,8 @@ public sealed class DedupeCleanupConcurrencyTests : IAsyncLifetime
             DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
             CancellationToken cancellationToken = default)
         {
-            if (Enabled && command.CommandText.Contains("EXISTS") && command.CommandText.Contains("DedupeFileClaims"))
+            if (Enabled && command.CommandText.Contains("EXISTS")
+                && (command.CommandText.Contains("DedupeFileClaims") || command.CommandText.Contains("DedupeActions")))
             {
                 Entered.TrySetResult();
                 await Release.Task.WaitAsync(cancellationToken);

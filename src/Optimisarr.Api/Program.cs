@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api;
 using Optimisarr.Api.Diagnostics;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Endpoints;
 using Optimisarr.Api.Library;
@@ -271,6 +272,10 @@ app.Use(async (context, next) =>
     catch (DedupeReservationConflictException exception) when (!context.Response.HasStarted)
     {
         await ApiErrors.Conflict("dedupe.reserved", exception.Message).ExecuteAsync(context);
+    }
+    catch (FileCleanupDeferredException exception) when (!context.Response.HasStarted)
+    {
+        await ApiErrors.Conflict("work.cleanupDeferred", exception.Message).ExecuteAsync(context);
     }
 });
 app.MapHealthEndpoints(adminToken, configDirectory);

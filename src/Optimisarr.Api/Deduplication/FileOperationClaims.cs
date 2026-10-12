@@ -10,6 +10,7 @@ public sealed class FileOperationClaims : IFileReservationKeys
     IReadOnlyList<string> IFileReservationKeys.Resolve(int mediaFileId, params string[] paths) => Keys(mediaFileId, paths);
     private readonly object _sync = new();
     private readonly HashSet<string> _held = new(StringComparer.Ordinal);
+    private bool _recursiveCleanup;
 
     public IDisposable? TryAcquire(IEnumerable<string> keys)
     {
@@ -18,9 +19,19 @@ public sealed class FileOperationClaims : IFileReservationKeys
             throw new ArgumentException("A file claim must have nonempty keys.", nameof(keys));
         lock (_sync)
         {
-            if (ordered.Any(_held.Contains)) return null;
+            if (_recursiveCleanup || ordered.Any(_held.Contains)) return null;
             foreach (var key in ordered) _held.Add(key);
             return new Claim(this, ordered);
+        }
+    }
+
+    internal IDisposable? TryAcquireRecursiveCleanup()
+    {
+        lock (_sync)
+        {
+            if (_recursiveCleanup || _held.Count != 0) return null;
+            _recursiveCleanup = true;
+            return new RecursiveCleanupClaim(this);
         }
     }
 
@@ -50,6 +61,16 @@ public sealed class FileOperationClaims : IFileReservationKeys
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             lock (owner._sync) foreach (var key in keys) owner._held.Remove(key);
+        }
+    }
+
+    private sealed class RecursiveCleanupClaim(FileOperationClaims owner) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            lock (owner._sync) owner._recursiveCleanup = false;
         }
     }
 }

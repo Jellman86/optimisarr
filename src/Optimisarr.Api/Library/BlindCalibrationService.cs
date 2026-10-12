@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
@@ -132,7 +133,8 @@ internal sealed class BlindCalibrationService(
     TimeProvider timeProvider,
     ICalibrationRandomizer randomizer,
     IMediaProbeService mediaProbe,
-    LoudnessService loudness) : BackgroundService
+    LoudnessService loudness,
+    FileOperationClaims claims) : BackgroundService
 {
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(2);
     private readonly ConcurrentDictionary<Guid, Session> _sessions = new();
@@ -650,13 +652,18 @@ internal sealed class BlindCalibrationService(
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        if (!_sessions.TryRemove(id, out _))
+        if (!_sessions.ContainsKey(id))
         {
             return false;
         }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
+        // Another deletion may have completed while this request waited for the writer.
+        if (!_sessions.ContainsKey(id)) return false;
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+            ?? throw new FileCleanupDeferredException();
         var jobs = await db.Jobs
             .Where(job => job.CalibrationSessionId == id)
             .ToListAsync(cancellationToken);
@@ -695,6 +702,8 @@ internal sealed class BlindCalibrationService(
         }
         db.Jobs.RemoveRange(jobs.Except(retainedFailures));
         await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
+        _sessions.TryRemove(id, out _);
         return true;
     }
 
@@ -713,7 +722,14 @@ internal sealed class BlindCalibrationService(
             .ToList();
         foreach (var id in expired)
         {
-            await DeleteAsync(id, cancellationToken);
+            try
+            {
+                await DeleteAsync(id, cancellationToken);
+            }
+            catch (FileCleanupDeferredException)
+            {
+                // Keep the expired session and its evidence for the next expiration sweep.
+            }
         }
     }
 
