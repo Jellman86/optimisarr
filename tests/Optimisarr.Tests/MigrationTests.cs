@@ -12,6 +12,39 @@ public sealed class MigrationTests : IDisposable
         $"{Guid.NewGuid():N}.db");
 
     [Fact]
+    public async Task Upload_seal_migration_preserves_existing_leases_and_is_idempotent()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261011194526_AddDedupeActionJournal");
+        db.Libraries.Add(new() { Id = 1, Name = "Legacy uploads", Path = "legacy" });
+        db.MediaFiles.Add(new() { Id = 1, LibraryId = 1, Path = "legacy/source.mkv", RelativePath = "source.mkv" });
+        db.Workers.Add(new() { Id = 1, Name = "Legacy worker" });
+        db.Jobs.Add(new() { Id = 1, MediaFileId = 1, LibraryId = 1, Status = JobStatus.Leased });
+        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO JobLeases (Id, JobId, WorkerId, ExecutionAttempt, AcquiredAt, ExpiresAt, State)
+            VALUES ('11111111-1111-1111-1111-111111111111', 1, 1, 0,
+                '2026-10-12T00:00:00+00:00', '2026-10-13T00:00:00+00:00', 'Held');
+            """);
+        await migrator.MigrateAsync();
+        var lease = await db.JobLeases.SingleAsync();
+        Assert.Equal(Optimisarr.Core.Workers.LeaseState.Held, lease.State);
+        Assert.Null(lease.ResultUploadGeneration); Assert.Null(lease.ResultUploadBinding);
+        Assert.Null(lease.ResultUploadPath); Assert.Null(lease.ResultUploadSealedBytes);
+        lease.ResultUploadGeneration = Guid.NewGuid(); lease.ResultUploadBinding = new('a', 64);
+        lease.ResultUploadPath = "staging.partial"; lease.ResultUploadSealedBytes = 7;
+        await db.SaveChangesAsync(); await migrator.MigrateAsync(); db.ChangeTracker.Clear();
+        var restored = await db.JobLeases.SingleAsync();
+        Assert.Equal(lease.ResultUploadGeneration, restored.ResultUploadGeneration);
+        Assert.Equal(7, restored.ResultUploadSealedBytes);
+        restored.ResultUploadSealedBytes = -1;
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task Image_perceptual_migration_defaults_off_preserves_ssim_and_remigrates_without_resetting_opt_in()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);

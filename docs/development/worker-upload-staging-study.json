@@ -1,0 +1,321 @@
+{
+  "date": "2026-10-12",
+  "hosts": {
+    "Mac": {
+      "os": "macOS 27.0.1",
+      "architecture": "Arm64",
+      "runtime": "10.0.10",
+      "limitation": "Synthetic SSD/page-cache fixture; no fsync, network, SMR/USB or production concurrency qualification. Durable owner is an optimistic prototype, not a safe shipping implementation.",
+      "measurements": [
+        {
+          "mode": "bounded-128KiB",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 2.3281576,
+          "mebibytesPerSecond": 109.95819183374871,
+          "competingWriterSamples": 110,
+          "competingWriterP95Ms": 0.4483,
+          "competingWriterMaxMs": 1824.502
+        },
+        {
+          "mode": "bounded-128KiB",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 1.5687821,
+          "mebibytesPerSecond": 163.18391190210548,
+          "competingWriterSamples": 165,
+          "competingWriterP95Ms": 0.3675,
+          "competingWriterMaxMs": 607.9678
+        },
+        {
+          "mode": "bounded-128KiB",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 1.2507772,
+          "mebibytesPerSecond": 204.6727426755141,
+          "competingWriterSamples": 55,
+          "competingWriterP95Ms": 0.4041,
+          "competingWriterMaxMs": 760.5465
+        },
+        {
+          "mode": "bounded-1MiB",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 0.4045209,
+          "mebibytesPerSecond": 632.8474004680598,
+          "competingWriterSamples": 51,
+          "competingWriterP95Ms": 1.3095,
+          "competingWriterMaxMs": 304.6047
+        },
+        {
+          "mode": "bounded-1MiB",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 0.1480232,
+          "mebibytesPerSecond": 1729.4586254046665,
+          "competingWriterSamples": 1,
+          "competingWriterP95Ms": 152.6785,
+          "competingWriterMaxMs": 152.6785
+        },
+        {
+          "mode": "bounded-1MiB",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 0.1462235,
+          "mebibytesPerSecond": 1750.7445793596787,
+          "competingWriterSamples": 1,
+          "competingWriterP95Ms": 152.6737,
+          "competingWriterMaxMs": 152.6737
+        },
+        {
+          "mode": "bounded-1MiB-yield1ms",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 1.0803134,
+          "mebibytesPerSecond": 236.96827235504065,
+          "competingWriterSamples": 163,
+          "competingWriterP95Ms": 1.3032,
+          "competingWriterMaxMs": 153.0358
+        },
+        {
+          "mode": "bounded-1MiB-yield1ms",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 0.6275324,
+          "mebibytesPerSecond": 407.9470637691377,
+          "competingWriterSamples": 11,
+          "competingWriterP95Ms": 153.0357,
+          "competingWriterMaxMs": 303.8487
+        },
+        {
+          "mode": "bounded-1MiB-yield1ms",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 1.1357198,
+          "mebibytesPerSecond": 225.40771059904037,
+          "competingWriterSamples": 144,
+          "competingWriterP95Ms": 1.4547,
+          "competingWriterMaxMs": 155.3057
+        },
+        {
+          "mode": "bounded-1MiB-yield5ms",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 2.756625,
+          "mebibytesPerSecond": 92.86718360313789,
+          "competingWriterSamples": 154,
+          "competingWriterP95Ms": 153.2283,
+          "competingWriterMaxMs": 454.9874
+        },
+        {
+          "mode": "bounded-1MiB-yield5ms",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 3.7730866,
+          "mebibytesPerSecond": 67.84895952295396,
+          "competingWriterSamples": 439,
+          "competingWriterP95Ms": 2.3856,
+          "competingWriterMaxMs": 304.7925
+        },
+        {
+          "mode": "bounded-1MiB-yield5ms",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 3.0855503,
+          "mebibytesPerSecond": 82.96737214104077,
+          "competingWriterSamples": 248,
+          "competingWriterP95Ms": 1.5993,
+          "competingWriterMaxMs": 306.7377
+        },
+        {
+          "mode": "durable-owner-ideal-prototype",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 0.0477007,
+          "mebibytesPerSecond": 5366.797552237179,
+          "competingWriterSamples": 12,
+          "competingWriterP95Ms": 2.9845,
+          "competingWriterMaxMs": 3.1232
+        },
+        {
+          "mode": "durable-owner-ideal-prototype",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 0.0214667,
+          "mebibytesPerSecond": 11925.447320733974,
+          "competingWriterSamples": 7,
+          "competingWriterP95Ms": 0.9289,
+          "competingWriterMaxMs": 0.9386
+        },
+        {
+          "mode": "durable-owner-ideal-prototype",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 0.0330014,
+          "mebibytesPerSecond": 7757.246662262813,
+          "competingWriterSamples": 11,
+          "competingWriterP95Ms": 1.48,
+          "competingWriterMaxMs": 1.7868
+        }
+      ]
+    },
+    "Quark": {
+      "os": "Fedora Linux 44 (Server Edition)",
+      "architecture": "X64",
+      "runtime": "10.0.8",
+      "limitation": "Synthetic SSD/page-cache fixture; no fsync, network, SMR/USB or production concurrency qualification. Durable owner is an optimistic prototype, not a safe shipping implementation.",
+      "measurements": [
+        {
+          "mode": "bounded-128KiB",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 7.3132994,
+          "mebibytesPerSecond": 35.004720304490746,
+          "competingWriterSamples": 301,
+          "competingWriterP95Ms": 1.2151,
+          "competingWriterMaxMs": 2649.1177
+        },
+        {
+          "mode": "bounded-128KiB",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 4.5885577,
+          "mebibytesPerSecond": 55.79095147915433,
+          "competingWriterSamples": 311,
+          "competingWriterP95Ms": 0.9703,
+          "competingWriterMaxMs": 1952.6342
+        },
+        {
+          "mode": "bounded-128KiB",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 4.1839034,
+          "mebibytesPerSecond": 61.18688113114657,
+          "competingWriterSamples": 103,
+          "competingWriterP95Ms": 0.963,
+          "competingWriterMaxMs": 3003.1227
+        },
+        {
+          "mode": "bounded-1MiB",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 0.4970325,
+          "mebibytesPerSecond": 515.0568624788118,
+          "competingWriterSamples": 1,
+          "competingWriterP95Ms": 601.7024,
+          "competingWriterMaxMs": 601.7024
+        },
+        {
+          "mode": "bounded-1MiB",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 0.5862472,
+          "mebibytesPerSecond": 436.6758596032527,
+          "competingWriterSamples": 1,
+          "competingWriterP95Ms": 601.9752,
+          "competingWriterMaxMs": 601.9752
+        },
+        {
+          "mode": "bounded-1MiB",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 1.1306333,
+          "mebibytesPerSecond": 226.42177618508143,
+          "competingWriterSamples": 152,
+          "competingWriterP95Ms": 1.0295,
+          "competingWriterMaxMs": 315.6904
+        },
+        {
+          "mode": "bounded-1MiB-yield1ms",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 1.1624649,
+          "mebibytesPerSecond": 220.2217030380874,
+          "competingWriterSamples": 51,
+          "competingWriterP95Ms": 1.0095,
+          "competingWriterMaxMs": 902.0707
+        },
+        {
+          "mode": "bounded-1MiB-yield1ms",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 1.0007046,
+          "mebibytesPerSecond": 255.81974940456956,
+          "competingWriterSamples": 2,
+          "competingWriterP95Ms": 451.8496,
+          "competingWriterMaxMs": 601.5864
+        },
+        {
+          "mode": "bounded-1MiB-yield1ms",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 1.433009,
+          "mebibytesPerSecond": 178.6450748041359,
+          "competingWriterSamples": 155,
+          "competingWriterP95Ms": 1.0765,
+          "competingWriterMaxMs": 451.3703
+        },
+        {
+          "mode": "bounded-1MiB-yield5ms",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 2.5474616,
+          "mebibytesPerSecond": 100.49219191370734,
+          "competingWriterSamples": 170,
+          "competingWriterP95Ms": 151.0775,
+          "competingWriterMaxMs": 451.3278
+        },
+        {
+          "mode": "bounded-1MiB-yield5ms",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 2.4137774,
+          "mebibytesPerSecond": 106.05783283910108,
+          "competingWriterSamples": 112,
+          "competingWriterP95Ms": 151.3249,
+          "competingWriterMaxMs": 451.4021
+        },
+        {
+          "mode": "bounded-1MiB-yield5ms",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 2.3985075,
+          "mebibytesPerSecond": 106.73304127671062,
+          "competingWriterSamples": 109,
+          "competingWriterP95Ms": 151.4166,
+          "competingWriterMaxMs": 301.5433
+        },
+        {
+          "mode": "durable-owner-ideal-prototype",
+          "iteration": 0,
+          "bytes": 268435456,
+          "seconds": 0.0768004,
+          "mebibytesPerSecond": 3333.315972312644,
+          "competingWriterSamples": 26,
+          "competingWriterP95Ms": 1.2585,
+          "competingWriterMaxMs": 1.3659
+        },
+        {
+          "mode": "durable-owner-ideal-prototype",
+          "iteration": 1,
+          "bytes": 268435456,
+          "seconds": 0.0928047,
+          "mebibytesPerSecond": 2758.480982105432,
+          "competingWriterSamples": 29,
+          "competingWriterP95Ms": 1.5617,
+          "competingWriterMaxMs": 2.8289
+        },
+        {
+          "mode": "durable-owner-ideal-prototype",
+          "iteration": 2,
+          "bytes": 268435456,
+          "seconds": 0.079628,
+          "mebibytesPerSecond": 3214.949515245893,
+          "competingWriterSamples": 27,
+          "competingWriterP95Ms": 1.316,
+          "competingWriterMaxMs": 1.7399
+        }
+      ]
+    }
+  }
+}

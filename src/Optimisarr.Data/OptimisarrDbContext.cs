@@ -395,6 +395,13 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(lease => lease.Id);
             entity.Property(lease => lease.State).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
+            entity.Property(lease => lease.ResultUploadPath).HasMaxLength(4096);
+            entity.Property(lease => lease.ResultUploadBinding).HasMaxLength(64);
+            entity.ToTable(t => t.HasCheckConstraint("CK_JobLeases_ResultUpload", """
+                ("ResultUploadGeneration" IS NULL AND "ResultUploadPath" IS NULL AND "ResultUploadBinding" IS NULL AND "ResultUploadSealedBytes" IS NULL)
+                OR ("ResultUploadGeneration" IS NOT NULL AND "ResultUploadPath" IS NOT NULL AND "ResultUploadBinding" IS NOT NULL
+                    AND ("ResultUploadSealedBytes" IS NULL OR "ResultUploadSealedBytes" >= 0))
+                """));
             entity.Property(lease => lease.Stage).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.EndReason).HasConversion<string>().HasMaxLength(32);
             entity.Property<long>("AcquiredUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("AcquiredAt"));

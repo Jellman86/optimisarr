@@ -17,7 +17,7 @@ internal sealed record ResultAcceptedDto(int JobId, long Bytes, string Candidate
 /// <summary>How many bytes of a resumable upload the server holds for a lease.</summary>
 internal sealed record UploadOffsetDto(long Bytes);
 
-internal static class WorkerResultEndpoints
+internal static partial class WorkerResultEndpoints
 {
     private const string SourceHashHeader = "X-Optimisarr-Source-Sha256";
     private const string CandidateHashHeader = "X-Optimisarr-Candidate-Sha256";
@@ -107,29 +107,30 @@ internal static class WorkerResultEndpoints
                     "That lease records no output container, so its candidate cannot be named safely.");
             }
 
-            var finalPath = FinalPathFor(environment, job, lease);
-            var stagingPath = finalPath + $".{Guid.NewGuid():N}.partial";
-
-            // Written under a temporary name and hashed on the way in, so a transfer that dies
-            // part-way never leaves something that looks like a finished candidate.
-            long written;
-            string actualHash;
+            var snapshot = UploadSnapshot.Capture(environment, job, lease);
+            var start = await StartUploadAsync(db, claims, snapshot, http, settings, singleShot: true, 0, cancellationToken);
+            if (start.Refusal is { } startRefusal) return startRefusal;
+            var upload = start.Upload!;
             try
             {
-                (written, actualHash) = await StreamToFileAsync(http.Body, stagingPath, cancellationToken);
+                var streamed = await StreamUploadAsync(db, claims, snapshot, upload, http, settings, cancellationToken);
+                if (streamed.Refusal is { } streamRefusal) return streamRefusal;
+                var sealedUpload = await SealUploadAsync(db, claims, snapshot, http, settings, upload, streamed.Bytes, cancellationToken);
+                if (sealedUpload.Refusal is { } sealRefusal) return sealRefusal;
+                return await AcceptAsync(db, claims, worker, lease, job, upload.Path, snapshot.FinalPath,
+                    streamed.Bytes, streamed.Hash!, claimedCandidate, http, settings, cancellationToken, upload.Generation, snapshot.Binding);
             }
-            catch (Exception)
+            catch
             {
-                TryDelete(stagingPath);
+                await CleanupInterruptedUploadAsync(db, claims, snapshot, upload);
                 throw;
             }
 
-            return await AcceptAsync(db, claims, worker, lease, job, stagingPath, finalPath, written, actualHash, claimedCandidate, http, settings, cancellationToken);
         })
         .WithName("DeliverResult")
         // A candidate is a whole film. Kestrel's default 30 MB body cap exists for form posts, and
         // the first real delivery from a Mac hit it; the body streams to disk in bounded chunks
-        // above, so lifting the cap here costs no memory. Found by the live work-loop test.
+        // above, so lifting the cap here keeps memory bounded. Found by the live work-loop test.
         .WithMetadata(new DisableRequestSizeLimitAttribute())
         .Produces<ResultAcceptedDto>(StatusCodes.Status202Accepted)
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
@@ -154,7 +155,16 @@ internal static class WorkerResultEndpoints
                 return refusal;
             }
 
-            return Results.Ok(new UploadOffsetDto(StagedBytes(StagingPathFor(environment, resolved.Job!, resolved.Lease!))));
+            var snapshot = UploadSnapshot.Capture(environment, resolved.Job!, resolved.Lease!);
+            var path = resolved.Lease!.ResultUploadPath ?? snapshot.StagingPath;
+            if (!snapshot.Owns(path) || resolved.Lease.ResultUploadGeneration is not null
+                && resolved.Lease.ResultUploadBinding != snapshot.Binding) return UploadChanged();
+            var readable = File.Exists(path) ? path : resolved.Lease.ResultUploadSealedBytes is not null
+                && File.Exists(snapshot.FinalPath) ? snapshot.FinalPath : null;
+            var bytes = readable is null ? 0 : StagedBytes(readable);
+            if (resolved.Lease.ResultUploadSealedBytes is { } sealedBytes && (readable is null || bytes != sealedBytes))
+                return UploadChanged();
+            return Results.Ok(new UploadOffsetDto(bytes));
         })
         .WithName("ResultUploadOffset")
         .Produces<UploadOffsetDto>()
@@ -166,6 +176,7 @@ internal static class WorkerResultEndpoints
             HttpRequest http,
             SettingsStore settings,
             OptimisarrDbContext db,
+            FileOperationClaims claims,
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
@@ -182,33 +193,12 @@ internal static class WorkerResultEndpoints
                     $"A chunk must say where it starts, in the {OffsetHeader} header.");
             }
 
-            var stagingPath = StagingPathFor(environment, resolved.Job!, resolved.Lease!);
-            var staged = StagedBytes(stagingPath);
-            if (offset.Value != staged)
-            {
-                // The worker's idea of where it got to and the file's disagree: a chunk was lost
-                // in flight, or repeated. Naming the real offset is what lets it resume correctly.
-                return Results.Json(
-                    new ApiError("worker.result.offsetMismatch",
-                        $"The staged upload holds {staged} bytes, not {offset.Value}; resume from {staged}.",
-                        new { bytes = staged }),
-                    statusCode: StatusCodes.Status409Conflict);
-            }
+            var snapshot = UploadSnapshot.Capture(environment, resolved.Job!, resolved.Lease!);
+            var start = await StartUploadAsync(db, claims, snapshot, http, settings, singleShot: false, offset.Value, cancellationToken);
+            if (start.Refusal is { } startRefusal) return startRefusal;
+            var streamed = await StreamUploadAsync(db, claims, snapshot, start.Upload!, http, settings, cancellationToken);
+            return streamed.Refusal ?? Results.Ok(new UploadOffsetDto(streamed.Bytes));
 
-            Directory.CreateDirectory(Path.GetDirectoryName(stagingPath)!);
-            long appended;
-            try
-            {
-                appended = await AppendToFileAsync(http.Body, stagingPath, cancellationToken);
-            }
-            catch (Exception)
-            {
-                // Whatever landed stays: the next offset query says how much, and the worker
-                // resumes from there. That is the whole point of this route.
-                throw;
-            }
-
-            return Results.Ok(new UploadOffsetDto(staged + appended));
         })
         .WithName("AppendResultChunk")
         .WithMetadata(new DisableRequestSizeLimitAttribute())
@@ -246,15 +236,15 @@ internal static class WorkerResultEndpoints
                     "That lease records no output container, so its candidate cannot be named safely.");
             }
 
-            var stagingPath = StagingPathFor(environment, job, lease);
-            if (!File.Exists(stagingPath))
-            {
-                return ApiErrors.Conflict("worker.result.nothingStaged",
-                    "No chunks have been uploaded for this lease, so there is nothing to complete.");
-            }
+            var snapshot = UploadSnapshot.Capture(environment, job, lease);
+            var seal = await SealUploadAsync(db, claims, snapshot, http, settings, null, null, cancellationToken);
+            if (seal.Refusal is { } sealRefusal) return sealRefusal;
+            var upload = seal.Upload!;
+            var hashPath = File.Exists(upload.Path) ? upload.Path : snapshot.FinalPath;
+            var (written, actualHash) = await HashFileAsync(hashPath, cancellationToken);
+            return await AcceptAsync(db, claims, worker, lease, job, upload.Path, snapshot.FinalPath,
+                written, actualHash, claimedCandidate, http, settings, cancellationToken, upload.Generation, snapshot.Binding);
 
-            var (written, actualHash) = await HashFileAsync(stagingPath, cancellationToken);
-            return await AcceptAsync(db, claims, worker, lease, job, stagingPath, FinalPathFor(environment, job, lease), written, actualHash, claimedCandidate, http, settings, cancellationToken);
         })
         .WithName("CompleteResultUpload")
         .Produces<ResultAcceptedDto>(StatusCodes.Status202Accepted)
@@ -275,14 +265,14 @@ internal static class WorkerResultEndpoints
         HttpRequest http,
         SettingsStore settings,
         OptimisarrDbContext db,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool recordSeen = true)
     {
         if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
         {
             return new ResolvedLease(refused, null, null, null);
         }
 
-        var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
+        var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken, recordSeen);
         if (worker is null)
         {
             return new ResolvedLease(WorkerGate.Unauthenticated(), null, null, null);
@@ -324,6 +314,10 @@ internal static class WorkerResultEndpoints
             return new ResolvedLease(ApiErrors.Conflict("worker.result.jobNotLeased",
                 $"That job is {job.Status}, not leased, so a result cannot be delivered for it."), null, null, null);
         }
+
+        if (lease.ExecutionAttempt != job.ExecutionAttempt)
+            return new ResolvedLease(ApiErrors.Conflict("worker.result.attemptEnded",
+                "This lease belongs to an earlier execution attempt."), null, null, null);
 
         return new ResolvedLease(null, worker, lease, job);
     }
@@ -374,15 +368,15 @@ internal static class WorkerResultEndpoints
         string claimedCandidate,
         HttpRequest http,
         SettingsStore settings,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid generation, string binding)
     {
         // A crash can leave a promoted file with an uncommitted lease. Hash that file before
-        // reserving the writer as well; transfers for this lease are serialized above.
+        // reserving the writer as well. The persisted generation/seal excludes appends across coordinators.
         var existingMatches = false;
         if (File.Exists(finalPath))
         {
-            var (_, existingHash) = await HashFileAsync(finalPath, cancellationToken);
-            existingMatches = string.Equals(existingHash, actualHash, StringComparison.OrdinalIgnoreCase);
+            var (existingBytes, existingHash) = await HashFileAsync(finalPath, cancellationToken);
+            existingMatches = existingBytes == written && string.Equals(existingHash, actualHash, StringComparison.OrdinalIgnoreCase);
         }
 
         // SQLite's non-deferred transaction reserves the writer before re-reading. Cancellation,
@@ -402,19 +396,26 @@ internal static class WorkerResultEndpoints
         var current = await ResolveHeldLeaseAsync(lease.Id, http, settings, db, cancellationToken);
         if (current.Refusal is { } refusal)
         {
-            TryDelete(stagingPath);
             return refusal;
         }
         var currentLease = current.Lease!;
         var currentJob = current.Job!;
+        if (currentLease.ResultUploadGeneration != generation || currentLease.ResultUploadPath != stagingPath
+            || currentLease.ResultUploadBinding != binding
+            || currentLease.ResultUploadSealedBytes != written
+            || (File.Exists(stagingPath) ? new FileInfo(stagingPath).Length : File.Exists(finalPath) ? new FileInfo(finalPath).Length : -1) != written)
+            return UploadChanged();
         var completedAt = DateTimeOffset.UtcNow;
         var completion = currentLease.ToDomain().Complete(worker.Id, completedAt);
         if (completion.Outcome != LeaseOutcome.Completed
             || currentJob.MediaFileId != job.MediaFileId
             || currentJob.ExecutionAttempt != job.ExecutionAttempt
+            || currentLease.ExecutionAttempt != lease.ExecutionAttempt
+            || currentJob.MediaFile!.Path != job.MediaFile!.Path
+            || currentJob.WorkOutputPath != job.WorkOutputPath
+            || currentLease.OutputExtension != lease.OutputExtension
             || !string.Equals(currentJob.SourceSha256, job.SourceSha256, StringComparison.OrdinalIgnoreCase))
         {
-            TryDelete(stagingPath);
             return ApiErrors.Conflict("worker.result.attemptEnded", "This assignment ended during delivery; the candidate was not accepted.");
         }
 
@@ -422,52 +423,39 @@ internal static class WorkerResultEndpoints
         {
             // Truncated, corrupted, or misdescribed. Any of those verified as a real candidate
             // could end up replacing an original with a broken file.
-            TryDelete(stagingPath);
+            var removed = TryDelete(stagingPath);
             WorkerProblems.Record(current.Worker!,
                 $"Its candidate for {job.MediaFile!.RelativePath} did not match the hash it declared and was refused.",
                 DateTimeOffset.UtcNow);
+            if (removed) ClearUpload(currentLease);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return ApiErrors.Conflict("worker.result.hashMismatch",
                 "The uploaded candidate does not match the hash the worker declared.");
         }
 
-        var promoted = false;
-        try
+        if (File.Exists(finalPath))
         {
-            if (File.Exists(finalPath))
-            {
-                // Recover a crash between promotion and database commit, without overwriting any
-                // other bytes. Final names belong to a lease, not a job reused by future attempts.
-                if (!existingMatches)
-                    return ApiErrors.Conflict("worker.result.candidateExists", "A different candidate already occupies this assignment's path.");
-                TryDelete(stagingPath);
-            }
-            else
-            {
-                File.Move(stagingPath, finalPath);
-                promoted = true;
-            }
-            currentJob.WorkOutputPath = finalPath;
-            currentJob.Status = JobStatus.AwaitingVerification;
-            currentLease.DeliveredSha256 = actualHash;
-            currentLease.Apply(completion.Lease, completedAt);
-            await db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            if (!existingMatches)
+                return ApiErrors.Conflict("worker.result.candidateExists", "A different candidate already occupies this assignment's path.");
+            TryDelete(stagingPath);
         }
-        catch
-        {
-            if (promoted) TryDelete(finalPath);
-            throw;
-        }
+        else File.Move(stagingPath, finalPath);
+        // The persisted seal survives promotion. If commit fails or the process exits here, retry
+        // hashes the final file and finishes this same generation without overwriting anything.
+        currentJob.WorkOutputPath = finalPath;
+        currentJob.Status = JobStatus.AwaitingVerification;
+        currentLease.DeliveredSha256 = actualHash;
+        currentLease.Apply(completion.Lease, completedAt);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return Results.Accepted(value: new ResultAcceptedDto(currentJob.Id, written, actualHash));
     }
 
     private static string FinalPathFor(IHostEnvironment environment, Job job, JobLease lease)
     {
         var outputRoot = WorkOutputRoot.ForMediaFile(WorkPaths.Resolve(environment), job.MediaFileId);
-        Directory.CreateDirectory(outputRoot);
-        return RemoteCandidate.PathFor(outputRoot, job.Id, $".{lease.Id:N}." + lease.OutputExtension!.TrimStart('.'));
+        return RemoteCandidate.PathFor(outputRoot, job.Id, $".{lease.Id:N}." + (lease.OutputExtension ?? "candidate").TrimStart('.'));
     }
 
     /// <summary>Named by lease, so a resumed upload can only continue its own transfer.</summary>
@@ -479,70 +467,32 @@ internal static class WorkerResultEndpoints
     private static long StagedBytes(string stagingPath) =>
         File.Exists(stagingPath) ? new FileInfo(stagingPath).Length : 0;
 
-    private static async Task<long> AppendToFileAsync(Stream body, string path, CancellationToken cancellationToken)
-    {
-        var buffer = new byte[128 * 1024];
-        long total = 0;
-        await using var file = new FileStream(
-            path, FileMode.Append, FileAccess.Write, FileShare.None, buffer.Length, useAsync: true);
-        int read;
-        while ((read = await body.ReadAsync(buffer, cancellationToken)) > 0)
-        {
-            await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-            total += read;
-        }
-
-        return total;
-    }
-
     private static async Task<(long Bytes, string Sha256)> HashFileAsync(string path, CancellationToken cancellationToken)
     {
         await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, useAsync: true);
-        var hash = await SHA256.HashDataAsync(file, cancellationToken);
-        return (file.Length, Convert.ToHexString(hash).ToLowerInvariant());
-    }
-
-    /// <summary>
-    /// Streams the body to disk while hashing it, so a multi-gigabyte candidate is never held in
-    /// memory and the hash costs no extra pass over the data.
-    /// </summary>
-    private static async Task<(long Bytes, string Sha256)> StreamToFileAsync(
-        Stream body,
-        string path,
-        CancellationToken cancellationToken)
-    {
-        using var sha = SHA256.Create();
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var buffer = new byte[128 * 1024];
-        long total = 0;
-
-        await using (var file = new FileStream(
-            path, FileMode.Create, FileAccess.Write, FileShare.None, buffer.Length, useAsync: true))
+        long bytes = 0;
+        int read;
+        while ((read = await file.ReadAsync(buffer, cancellationToken)) > 0)
         {
-            int read;
-            while ((read = await body.ReadAsync(buffer, cancellationToken)) > 0)
-            {
-                sha.TransformBlock(buffer, 0, read, null, 0);
-                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                total += read;
-            }
-            sha.TransformFinalBlock([], 0, 0);
+            hash.AppendData(buffer.AsSpan(0, read));
+            bytes += read;
         }
-
-        return (total, Convert.ToHexString(sha.Hash!).ToLowerInvariant());
+        return (bytes, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant());
     }
 
-    private static void TryDelete(string path)
+    private static bool TryDelete(string path)
     {
         try
         {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            File.Delete(path);
+            return true;
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // A leftover staging file is untidy, not dangerous — it is never treated as a candidate.
+            // Keep its seal when removal fails, so later appends cannot reuse unverified bytes.
+            return false;
         }
     }
 }
