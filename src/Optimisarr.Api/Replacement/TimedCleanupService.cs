@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Replacement;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Replacement;
@@ -43,6 +45,7 @@ public sealed class TimedCleanupService
 {
     private readonly OptimisarrDbContext _db;
     private readonly SettingsStore _settings;
+    private readonly FileOperationClaims _claims;
     private readonly string _workRoot;
     private readonly ILogger<TimedCleanupService> _logger;
 
@@ -50,8 +53,9 @@ public sealed class TimedCleanupService
         OptimisarrDbContext db,
         SettingsStore settings,
         IHostEnvironment environment,
-        ILogger<TimedCleanupService> logger)
-        : this(db, settings, WorkPaths.Resolve(environment), logger)
+        ILogger<TimedCleanupService> logger,
+        FileOperationClaims claims)
+        : this(db, settings, WorkPaths.Resolve(environment), logger, claims)
     {
     }
 
@@ -59,9 +63,11 @@ public sealed class TimedCleanupService
         OptimisarrDbContext db,
         SettingsStore settings,
         string workRoot,
-        ILogger<TimedCleanupService> logger)
+        ILogger<TimedCleanupService> logger,
+        FileOperationClaims? claims = null)
     {
         _db = db;
+        _claims = claims ?? new FileOperationClaims();
         _settings = settings;
         _workRoot = workRoot;
         _logger = logger;
@@ -170,6 +176,7 @@ public sealed class TimedCleanupService
                 && job.Status == JobStatus.Failed
                 && job.WorkOutputPath != null
                 && job.FinishedAt != null
+                && !_db.JobLeases.Any(lease => lease.JobId == job.Id && lease.State == LeaseState.Held)
                 && !_db.Replacements.Any(r => r.JobId == job.Id
                     && JobClearing.LiveReplacementStatuses.Contains(r.Status)))
             .ToListAsync(cancellationToken);
@@ -179,13 +186,9 @@ public sealed class TimedCleanupService
         // path that any concurrently active or ready job happens to reference.
         var protectedPaths = (await _db.Jobs
                 .Where(job => job.WorkOutputPath != null
-                    && (job.Status == JobStatus.Queued
-                        || job.Status == JobStatus.Probing
-                        || job.Status == JobStatus.Transcoding
-                        || job.Status == JobStatus.Verifying
-                        || job.Status == JobStatus.AwaitingVerification
-                        || job.Status == JobStatus.AwaitingSizeReview
-                        || job.Status == JobStatus.ReadyToReplace))
+                    && (job.Status != JobStatus.Completed
+                        && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled
+                        || _db.JobLeases.Any(lease => lease.JobId == job.Id && lease.State == LeaseState.Held)))
                 .Select(job => job.WorkOutputPath!)
                 .ToListAsync(cancellationToken))
             .ToHashSet(PathComparer);
@@ -209,6 +212,18 @@ public sealed class TimedCleanupService
             }
 
             failedOutputs.Add(job);
+        }
+
+        var reserved = await _db.DedupeFileClaims.AsNoTracking().Select(c => c.Key).ToHashSetAsync(cancellationToken);
+        if (reserved.Count > 0)
+        {
+            quarantinedOriginals.RemoveAll(r => FileOperationClaims.Keys(r.MediaFileId,
+                r.OriginalPath, r.QuarantinePath, r.FinalPath).Any(reserved.Contains));
+            var mediaIds = failedOutputs.Select(j => j.MediaFileId).ToArray();
+            var sourcePaths = await _db.MediaFiles.AsNoTracking().Where(f => mediaIds.Contains(f.Id))
+                .ToDictionaryAsync(f => f.Id, f => f.Path, cancellationToken);
+            failedOutputs.RemoveAll(j => FileOperationClaims.Keys(j.MediaFileId,
+                new[] { j.WorkOutputPath, sourcePaths.GetValueOrDefault(j.MediaFileId) }.OfType<string>().ToArray()).Any(reserved.Contains));
         }
 
         var failedFiles = failedOutputs
@@ -246,17 +261,25 @@ public sealed class TimedCleanupService
         foreach (var replacement in expired)
         {
             var path = replacement.QuarantinePath;
+            await using var write = await _db.BeginDiagnosticWriteAsync(cancellationToken);
             await _db.Entry(replacement).ReloadAsync(cancellationToken);
-            if (replacement.Status != ReplacementStatus.Replaced
+            if (_db.Entry(replacement).State == EntityState.Detached || replacement.Status != ReplacementStatus.Replaced
                 || replacement.ReplacedAt > cutoff
                 || !string.Equals(replacement.QuarantinePath, path, PathComparison))
             {
                 continue;
             }
 
-            reclaimedBytes += DeleteQuarantinedOriginal(path);
+            using var held = await FileMutationGuard.TryAcquireAsync(_db, _claims, replacement.MediaFileId,
+                [replacement.OriginalPath, path, replacement.FinalPath], cancellationToken);
+            if (held is null) continue;
+
+            var bytes = DeleteQuarantinedOriginal(path);
             replacement.Status = ReplacementStatus.Purged;
             replacement.PurgedAt = now;
+            await _db.SaveChangesAsync(cancellationToken);
+            await write.CommitAsync(cancellationToken);
+            reclaimedBytes += bytes;
             removed++;
         }
 
@@ -265,7 +288,6 @@ public sealed class TimedCleanupService
             return CleanupResult.Empty;
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
         _logger.LogInformation(
             "Purged {Count} quarantined original(s) past the {RetentionDays}-day cleanup window",
             removed, retentionDays);
@@ -288,18 +310,27 @@ public sealed class TimedCleanupService
             // Retry is an operator action and may race a slow sweep. Refresh this tracked row just
             // before touching disk, and also refuse a file written inside the retention window.
             // Together those checks protect both the database transition and a newly recreated path.
+            await using var write = await _db.BeginDiagnosticWriteAsync(cancellationToken);
             await _db.Entry(job).ReloadAsync(cancellationToken);
-            if (job.Status != JobStatus.Failed
+            if (_db.Entry(job).State == EntityState.Detached || job.Status != JobStatus.Failed
                 || !string.Equals(job.WorkOutputPath, path, PathComparison)
                 || job.FinishedAt is null
                 || job.FinishedAt > cutoff
                 || WasWrittenAfter(path, cutoff.UtcDateTime)
                 || await IsPathProtectedAsync(path, job.Id, cancellationToken)
+                || await _db.JobLeases.AsNoTracking().AnyAsync(lease => lease.JobId == job.Id
+                    && lease.State == LeaseState.Held, cancellationToken)
                 || await _db.Replacements.AnyAsync(r => r.JobId == job.Id
                     && JobClearing.LiveReplacementStatuses.Contains(r.Status), cancellationToken))
             {
                 continue;
             }
+
+            var sourcePath = await _db.MediaFiles.AsNoTracking().Where(f => f.Id == job.MediaFileId)
+                .Select(f => f.Path).SingleOrDefaultAsync(cancellationToken);
+            using var held = await FileMutationGuard.TryAcquireAsync(_db, _claims, job.MediaFileId,
+                new[] { path, sourcePath }.OfType<string>().ToArray(), cancellationToken);
+            if (held is null) continue;
 
             var fileBytes = TryGetFileLength(path);
             if (!TryDeleteFailedOutput(path))
@@ -311,6 +342,8 @@ public sealed class TimedCleanupService
             // expires, so failure summaries remain useful after the cleanup window.
             job.WorkOutputPath = null;
             job.UpdatedAt = now;
+            await _db.SaveChangesAsync(cancellationToken);
+            await write.CommitAsync(cancellationToken);
             removed++;
             reclaimedBytes += fileBytes;
         }
@@ -320,7 +353,6 @@ public sealed class TimedCleanupService
             return CleanupResult.Empty;
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
         _logger.LogInformation(
             "Removed {Count} failed work output(s) past the {RetentionDays}-day cleanup window; diagnostics retained",
             removed, retentionDays);
@@ -342,6 +374,7 @@ public sealed class TimedCleanupService
                 "Dry-run mode is enabled, so Optimisarr will keep quarantined originals and preserve rollback.");
         }
 
+        await using var write = await _db.BeginDiagnosticWriteAsync(cancellationToken);
         var replacement = await _db.Replacements
             .FirstOrDefaultAsync(r => r.Id == replacementId, cancellationToken);
 
@@ -350,16 +383,25 @@ public sealed class TimedCleanupService
             return ReplacementActionResult.NotFound($"No replacement with id {replacementId}.");
         }
 
+        await _db.Entry(replacement).ReloadAsync(cancellationToken);
+        if (_db.Entry(replacement).State == EntityState.Detached)
+            return ReplacementActionResult.NotFound($"No replacement with id {replacementId}.");
         if (replacement.Status != ReplacementStatus.Replaced)
         {
             return ReplacementActionResult.Invalid(
                 $"Replacement {replacementId} is {replacement.Status}; only a quarantined (Replaced) original can be purged.");
         }
 
+        using var held = await FileMutationGuard.TryAcquireAsync(_db, _claims, replacement.MediaFileId,
+            [replacement.OriginalPath, replacement.QuarantinePath, replacement.FinalPath], cancellationToken);
+        if (held is null)
+            return ReplacementActionResult.Deferred("This file is reserved by another operation. Resolve or finish that operation before purging it.");
+
         DeleteQuarantinedOriginal(replacement.QuarantinePath);
         replacement.Status = ReplacementStatus.Purged;
         replacement.PurgedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
 
         _logger.LogInformation(
             "Purged quarantined original for replacement {ReplacementId} on operator approval", replacementId);
@@ -396,13 +438,9 @@ public sealed class TimedCleanupService
         CancellationToken cancellationToken) =>
         _db.Jobs.AnyAsync(job => job.Id != currentJobId
             && job.WorkOutputPath == path
-            && (job.Status == JobStatus.Queued
-                || job.Status == JobStatus.Probing
-                || job.Status == JobStatus.Transcoding
-                || job.Status == JobStatus.Verifying
-                || job.Status == JobStatus.AwaitingVerification
-                || job.Status == JobStatus.AwaitingSizeReview
-                || job.Status == JobStatus.ReadyToReplace),
+            && (job.Status != JobStatus.Completed
+                && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled
+                || _db.JobLeases.Any(lease => lease.JobId == job.Id && lease.State == LeaseState.Held)),
             cancellationToken);
 
     private long TryGetFileLength(string path)

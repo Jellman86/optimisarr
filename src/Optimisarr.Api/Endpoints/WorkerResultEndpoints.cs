@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Queue;
@@ -82,6 +83,7 @@ internal static class WorkerResultEndpoints
             HttpRequest http,
             SettingsStore settings,
             OptimisarrDbContext db,
+            FileOperationClaims claims,
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
@@ -122,7 +124,7 @@ internal static class WorkerResultEndpoints
                 throw;
             }
 
-            return await AcceptAsync(db, worker, lease, job, stagingPath, finalPath, written, actualHash, claimedCandidate, http, settings, cancellationToken);
+            return await AcceptAsync(db, claims, worker, lease, job, stagingPath, finalPath, written, actualHash, claimedCandidate, http, settings, cancellationToken);
         })
         .WithName("DeliverResult")
         // A candidate is a whole film. Kestrel's default 30 MB body cap exists for form posts, and
@@ -220,6 +222,7 @@ internal static class WorkerResultEndpoints
             HttpRequest http,
             SettingsStore settings,
             OptimisarrDbContext db,
+            FileOperationClaims claims,
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
@@ -251,7 +254,7 @@ internal static class WorkerResultEndpoints
             }
 
             var (written, actualHash) = await HashFileAsync(stagingPath, cancellationToken);
-            return await AcceptAsync(db, worker, lease, job, stagingPath, FinalPathFor(environment, job, lease), written, actualHash, claimedCandidate, http, settings, cancellationToken);
+            return await AcceptAsync(db, claims, worker, lease, job, stagingPath, FinalPathFor(environment, job, lease), written, actualHash, claimedCandidate, http, settings, cancellationToken);
         })
         .WithName("CompleteResultUpload")
         .Produces<ResultAcceptedDto>(StatusCodes.Status202Accepted)
@@ -360,6 +363,7 @@ internal static class WorkerResultEndpoints
     /// </summary>
     private static async Task<IResult> AcceptAsync(
         OptimisarrDbContext db,
+        FileOperationClaims claims,
         Worker worker,
         JobLease lease,
         Job job,
@@ -372,19 +376,6 @@ internal static class WorkerResultEndpoints
         SettingsStore settings,
         CancellationToken cancellationToken)
     {
-        if (!string.Equals(actualHash, claimedCandidate, StringComparison.OrdinalIgnoreCase))
-        {
-            // Truncated, corrupted, or misdescribed. Any of those verified as a real candidate
-            // could end up replacing an original with a broken file.
-            TryDelete(stagingPath);
-            WorkerProblems.Record(worker,
-                $"Its candidate for {job.MediaFile!.RelativePath} did not match the hash it declared and was refused.",
-                DateTimeOffset.UtcNow);
-            await db.SaveChangesAsync(cancellationToken);
-            return ApiErrors.Conflict("worker.result.hashMismatch",
-                "The uploaded candidate does not match the hash the worker declared.");
-        }
-
         // A crash can leave a promoted file with an uncommitted lease. Hash that file before
         // reserving the writer as well; transfers for this lease are serialized above.
         var existingMatches = false;
@@ -399,6 +390,15 @@ internal static class WorkerResultEndpoints
         // no database lock is held while streaming or hashing the upload.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.ChangeTracker.Clear();
+        var persisted = await db.Jobs.AsNoTracking().Where(j => j.Id == job.Id)
+            .Select(j => new { Path = j.MediaFile!.Path, j.WorkOutputPath }).SingleOrDefaultAsync(cancellationToken);
+        using var held = await FileMutationGuard.TryAcquireAsync(db, claims, job.MediaFileId,
+            new[] { stagingPath, finalPath, job.MediaFile!.Path, job.WorkOutputPath, persisted?.Path, persisted?.WorkOutputPath }
+                .OfType<string>().ToArray(), cancellationToken);
+        if (held is null)
+            return ApiErrors.Conflict("dedupe.reserved",
+                "This file is reserved by another operation. Resolve or finish that operation before delivering it.");
+
         var current = await ResolveHeldLeaseAsync(lease.Id, http, settings, db, cancellationToken);
         if (current.Refusal is { } refusal)
         {
@@ -410,11 +410,26 @@ internal static class WorkerResultEndpoints
         var completedAt = DateTimeOffset.UtcNow;
         var completion = currentLease.ToDomain().Complete(worker.Id, completedAt);
         if (completion.Outcome != LeaseOutcome.Completed
+            || currentJob.MediaFileId != job.MediaFileId
             || currentJob.ExecutionAttempt != job.ExecutionAttempt
             || !string.Equals(currentJob.SourceSha256, job.SourceSha256, StringComparison.OrdinalIgnoreCase))
         {
             TryDelete(stagingPath);
             return ApiErrors.Conflict("worker.result.attemptEnded", "This assignment ended during delivery; the candidate was not accepted.");
+        }
+
+        if (!string.Equals(actualHash, claimedCandidate, StringComparison.OrdinalIgnoreCase))
+        {
+            // Truncated, corrupted, or misdescribed. Any of those verified as a real candidate
+            // could end up replacing an original with a broken file.
+            TryDelete(stagingPath);
+            WorkerProblems.Record(current.Worker!,
+                $"Its candidate for {job.MediaFile!.RelativePath} did not match the hash it declared and was refused.",
+                DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ApiErrors.Conflict("worker.result.hashMismatch",
+                "The uploaded candidate does not match the hash the worker declared.");
         }
 
         var promoted = false;

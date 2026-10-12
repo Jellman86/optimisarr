@@ -9,9 +9,11 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
@@ -87,6 +89,137 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         using var read = _api.Services.CreateScope();
         var row = await read.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.Include(x => x.Job).SingleAsync(x => x.Id == Guid.Parse(leaseId));
         Assert.Equal(mode == 0 ? JobStatus.Cancelled : mode == 3 ? JobStatus.AwaitingVerification : JobStatus.Leased, row.Job!.Status);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task Reserved_delivery_paths_refuse_promotion_and_cleanup_without_changing_bytes(
+        bool resumable, bool reserveStaging, bool wrongHash)
+    {
+        await EnableRemoteWorkers();
+        using var worker = await PairWorker("Reserved delivery");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        var (final, staging) = await DeliveryPathsAsync(leaseId);
+        if (resumable)
+        {
+            using var chunk = Chunk(leaseId, CandidateBytes, 0);
+            (await worker.SendAsync(chunk)).EnsureSuccessStatusCode();
+        }
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var action = new DedupeAction { Id = Guid.NewGuid(), ReviewKey = new('a', 64),
+            ScopeKey = new('b', 64), PlanHash = new('c', 64) };
+        db.DedupeActions.Add(action);
+        // A retained destination can overlap a delivery even when it belongs to another inventory ID.
+        var key = Assert.Single(FileOperationClaims.Keys(int.MaxValue, reserveStaging ? staging : final),
+            key => key.StartsWith("path:"));
+        db.DedupeFileClaims.Add(new() { ActionId = action.Id, Key = key });
+        await db.SaveChangesAsync();
+        try
+        {
+            using var request = resumable
+                ? Complete(leaseId, sourceHash, wrongHash ? new('f', 64) : Sha256(CandidateBytes))
+                : Upload(leaseId, CandidateBytes, sourceHash);
+            using var response = await worker.SendAsync(request);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("dedupe.reserved", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+            Assert.False(File.Exists(final));
+            var retained = resumable ? staging : Assert.Single(Directory.GetFiles(Path.GetDirectoryName(final)!, Path.GetFileName(final) + ".*.partial"));
+            Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(retained));
+            var lease = await db.JobLeases.AsNoTracking().Include(l => l.Job).SingleAsync(l => l.Id == Guid.Parse(leaseId));
+            Assert.Equal(LeaseState.Held, lease.State);
+            Assert.Equal(JobStatus.Leased, lease.Job!.Status);
+            Assert.Null(lease.Job.WorkOutputPath);
+        }
+        finally
+        {
+            await db.DedupeFileClaims.Where(c => c.ActionId == action.Id).ExecuteDeleteAsync();
+            await db.DedupeActions.Where(a => a.Id == action.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Another_operation_claiming_the_destination_defers_delivery_until_it_finishes()
+    {
+        await EnableRemoteWorkers();
+        using var worker = await PairWorker("Claimed delivery");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        var (final, staging) = await DeliveryPathsAsync(leaseId);
+        using var chunk = Chunk(leaseId, CandidateBytes, 0);
+        (await worker.SendAsync(chunk)).EnsureSuccessStatusCode();
+        var claims = _api.Services.GetRequiredService<FileOperationClaims>();
+        using (claims.TryAcquire(FileOperationClaims.Keys(int.MaxValue, final)))
+        {
+            using var request = Complete(leaseId, sourceHash, Sha256(CandidateBytes));
+            Assert.Equal(HttpStatusCode.Conflict, (await worker.SendAsync(request)).StatusCode);
+            Assert.False(File.Exists(final));
+            Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(staging));
+        }
+        using var retry = Complete(leaseId, sourceHash, Sha256(CandidateBytes));
+        Assert.Equal(HttpStatusCode.Accepted, (await worker.SendAsync(retry)).StatusCode);
+        Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(final));
+    }
+
+    [Fact]
+    public async Task A_reservation_committed_while_streaming_is_observed_before_promotion()
+    {
+        await EnableRemoteWorkers();
+        using var worker = await PairWorker("Reservation during transfer");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        var (final, _) = await DeliveryPathsAsync(leaseId);
+        var actionId = Guid.NewGuid();
+        var endpoint = Assert.Single(_api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
+            e => e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "DeliverResult");
+        using var scope = _api.Services.CreateScope();
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        context.RequestServices = scope.ServiceProvider;
+        context.Request.Method = "POST";
+        context.Request.RouteValues["leaseId"] = leaseId;
+        context.Request.Headers.Authorization = worker.DefaultRequestHeaders.Authorization!.ToString();
+        context.Request.Headers["X-Optimisarr-Source-Sha256"] = sourceHash;
+        context.Request.Headers["X-Optimisarr-Candidate-Sha256"] = Sha256(CandidateBytes);
+        context.Request.Body = new ReviewCallbackStream(CandidateBytes, async () =>
+        {
+            using var change = _api.Services.CreateScope();
+            var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.DedupeActions.Add(new() { Id = actionId, ReviewKey = new('a', 64), ScopeKey = new('b', 64), PlanHash = new('c', 64) });
+            db.DedupeFileClaims.Add(new() { ActionId = actionId,
+                Key = Assert.Single(FileOperationClaims.Keys(int.MaxValue, final), key => key.StartsWith("path:")) });
+            await db.SaveChangesAsync();
+        });
+        context.Response.Body = new MemoryStream();
+        try
+        {
+            await endpoint.RequestDelegate!(context);
+            Assert.Equal(409, context.Response.StatusCode);
+            Assert.False(File.Exists(final));
+            var staged = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(final)!, Path.GetFileName(final) + ".*.partial"));
+            Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(staged));
+        }
+        finally
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await db.DedupeFileClaims.Where(c => c.ActionId == actionId).ExecuteDeleteAsync();
+            await db.DedupeActions.Where(a => a.Id == actionId).ExecuteDeleteAsync();
+        }
+    }
+
+    private async Task<(string Final, string Staging)> DeliveryPathsAsync(string leaseId)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = await db.JobLeases.AsNoTracking().Include(l => l.Job).SingleAsync(l => l.Id == Guid.Parse(leaseId));
+        var root = WorkOutputRoot.ForMediaFile(WorkPaths.Resolve(_api.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>()), lease.Job!.MediaFileId);
+        var paths = (Final: Path.Combine(root, $"remote-{lease.JobId}.{lease.Id:N}." + lease.OutputExtension!.TrimStart('.')),
+            Staging: Path.Combine(root, $"remote-{lease.JobId}.{lease.Id:N}.partial"));
+        _deliveryPaths.Add(paths);
+        return paths;
     }
 
     [Fact]
@@ -185,6 +318,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
 
     private readonly AdminTokenAuthEndpointTests.TokenedApi _api;
     private readonly List<int> _createdLibraries = [];
+    private readonly List<(string Final, string Staging)> _deliveryPaths = [];
 
     private static readonly byte[] SourceBytes =
         Enumerable.Range(0, 4096).Select(i => (byte)(i % 251)).ToArray();
@@ -198,6 +332,14 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        foreach (var (final, staging) in _deliveryPaths)
+        {
+            var directory = Path.GetDirectoryName(final)!;
+            if (Directory.Exists(directory))
+                foreach (var partial in Directory.GetFiles(directory, Path.GetFileName(final) + ".*.partial")) File.Delete(partial);
+            File.Delete(final);
+            File.Delete(staging);
+        }
         if (_createdLibraries.Count == 0) return;
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();

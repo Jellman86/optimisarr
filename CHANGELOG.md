@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Retention cleanup and worker candidate promotion check duplicate reservations before deleting or moving files. Reserved files and failed-job diagnostics remain intact; leased and unknown active jobs also protect retained outputs.
+
 - Job admission, retries, local claims and worker leases respect durable duplicate reservations in the same database write transaction. Previews and calibration are covered too; held candidates explain the reservation, and preparation refuses active outputs and retained replacement paths.
 
 - Replacement, rollback and interrupted replacement recovery share physical-file and path claims, so aliases with different inventory IDs cannot run overlapping operations. Unresolved dedupe reservations defer replacement without changing files.

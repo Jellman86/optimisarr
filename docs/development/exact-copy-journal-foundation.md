@@ -134,11 +134,48 @@ thresholds or platform skips were changed. Quark passes the complete 325-test Ch
 tested archive. Its missing browser libraries were extracted from Fedora RPMs into the disposable
 test root using the earlier D2 recipe, without installing system packages.
 
+## D3b second step: retention and delivery finalization
+
+Manual quarantine approval, timed quarantine purge and failed-output retention cleanup now
+reserve the SQLite writer, reload current records and acquire shared file claims before the
+bounded filesystem mutation. Durable reservations are checked inside that same writer, which
+remains held through the record commit. A reserved or busy file is preserved; manual approval
+returns its existing unavailable response and timed cleanup skips it. Cleanup previews exclude durable reservations,
+so a reservation added after a browser preview invalidates that confirmation. Retained failed
+jobs keep their output reference and diagnostics. Leased jobs, unknown active states and
+independently held leases protect failed output paths too.
+
+Worker delivery finalization checks the staging file, final destination and current/snapshot
+source references before promotion or acceptance cleanup. It retains staging bytes on a conflict,
+including a hash-mismatched upload, and leaves the job and lease unchanged. Existing cancellation,
+revocation, expiry, assignment and candidate-hash checks still apply. Network transfer and full
+candidate hashing happen before the short writer transaction. This is a finalization fence;
+it does not yet fence chunk append, initial staging creation or interrupted-transfer cleanup.
+Those paths require their own durable coordination before D3 actions can be enabled.
+
+Tests exercise durable ID/path/physical-identity conflicts, shared process claims, stale tracked
+replacement state, changed confirmations and retained diagnostics. Separate SQLite contexts and
+independent coordinators prove both writer orderings: a committed reservation prevents deletion,
+and preparation cannot enter while cleanup holds the writer for its mutation and commit. The
+mechanical preparation can record cached evidence after a file vanished; this is deliberately
+not fresh action preflight and never performs a move. Delivery tests cover single-shot and
+resumable refusals, hash mismatch, retry after a process claim ends and a reservation committed
+during streaming without holding a database writer over the network.
+
+The 12 October Release builds have zero warnings on Mac (SDK 10.0.302) and Quark
+(SDK 10.0.300), with 3,028 backend tests passing on each. All 762 backend source/fixture
+hashes agree between the tested Mac source and Quark. This adds 22 backend cases over D3b1.
+Mac passes all 325 Chromium tests, 95 frontend units and zero-warning Svelte checks. Picard
+is unreachable over both LAN and Tailscale during this qualification, so this record makes no
+new native Windows hardware claim. The required Windows CI remains a separate gate. No UI,
+sidecar, schema, installed worker or production-media change is included.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
-   transactional job admission. Manual/timed quarantine purge and failed-output cleanup still need
-   explicit guards and races. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
+   transactional job admission and bounded retention/delivery finalization. Fence initial and
+   resumable upload staging, interrupted-transfer cleanup and recursive preview/calibration
+   cleanup before their filesystem I/O. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
    affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
 2. Add an action preflight using current scope/generations, permissions, supported independent
