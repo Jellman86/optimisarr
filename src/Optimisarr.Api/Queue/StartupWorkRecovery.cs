@@ -31,7 +31,8 @@ internal sealed class StartupWorkRecovery(
         await using var write = await db.BeginDiagnosticWriteAsync(token);
         var jobs = await db.Jobs.AsNoTracking().ToListAsync(token);
         var sources = await db.MediaFiles.AsNoTracking().ToDictionaryAsync(f => f.Id, f => f.Path, token);
-        var leased = (await db.JobLeases.AsNoTracking().Where(l => l.State == LeaseState.Held)
+        var leased = (await db.JobLeases.AsNoTracking().Where(l => l.State != LeaseState.Released
+            && l.State != LeaseState.Expired && l.State != LeaseState.Completed)
             .Select(l => l.JobId).ToListAsync(token)).ToHashSet();
         _pending ??= jobs.Where(IsStartupTarget).ToDictionary(j => j.Id, j => Capture(j, sources));
         // Work owned at capture cannot become an orphan target just because a newer operation
@@ -58,6 +59,14 @@ internal sealed class StartupWorkRecovery(
                 continue;
             }
             if (leased.Contains(id)) continue;
+            // Successful calibration cleanup detaches retained diagnostics from the session.
+            // A later restart has no tree to infer or remove from this audit-only row.
+            if (job.Type == JobType.Calibration && job.CalibrationSessionId is null
+                && job.WorkOutputPath is null && DiagnosticJobRetention.ShouldRetain(job.Type, job.Status))
+            {
+                handled.Add(id);
+                continue;
+            }
             var disposable = job.Type is JobType.Preview or JobType.Calibration;
             var tree = job.Type == JobType.Preview ? WorkOutputRoot.ForPreview(workRoot, id)
                 : job.CalibrationSessionId is { } session
@@ -135,6 +144,7 @@ internal sealed class StartupWorkRecovery(
             || j.Status == JobStatus.Cancelled && j.WorkOutputPath != null);
 
     private static bool OwnsScratch(Job job, HashSet<int> leased) => job.WorkOutputPath is not null
+        || job.Type is not (JobType.Normal or JobType.Preview or JobType.Calibration)
         || job.Status is not (JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled)
         || leased.Contains(job.Id);
 

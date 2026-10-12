@@ -205,8 +205,9 @@ Production services, installed workers and the Riker migration backup are unchan
 
 ## D3b fourth step: deferred startup recovery
 
-Startup cleanup captures a fixed set of disposable, interrupted and cancelled jobs, plus numeric
-ownerless scratch directories already older than seven days. Every retry acquires the SQLite writer and
+Startup cleanup captures a fixed set of disposable, interrupted and cancelled jobs, plus
+ownerless numeric scratch directories already older than seven days. Every retry acquires the
+SQLite writer and
 exclusive recursive cleanup claim before checking durable reservations, current job/source
 snapshots, independent held leases and references. Unresolved intents and leftover claims defer
 this pass globally, including unrelated reservations. The writer and claim remain held through
@@ -218,14 +219,17 @@ whole calibration session is swept, so comparisons created during deferral survi
 new candidates in the same session. A changed or removed captured job is retired from the plan
 without changing its files. Captured jobs remain excluded from local dispatch while pending;
 other new work can continue. Failed disposable rows retain diagnostics and lose their output
-references only after successful scratch removal. Interrupted local work is requeued or failed
+references only after successful scratch removal. Retained calibration diagnostics with no
+session or output are retired from later startup plans without inferring a missing tree.
+Repeated startup remains a no-op for those rows. Interrupted local work is requeued or failed
 at the existing retry limit only after its output is removed; delivered remote candidates return
 to awaiting verification with their bytes intact. Cancelled work keeps its reference until
 cleanup succeeds. The queue logs deferral once and completion after retry.
 
 Fresh job outputs, media sources, library roots and replacement paths protect overlapping
 cleanup targets. Numeric orphan cleanup also preserves queued/active/unknown jobs without
-output references and independent held leases. Changed directory timestamps retire captured
+output references and independent held leases. Unknown job types and lease states also
+preserve numeric scratch ownership. Changed directory timestamps retire captured
 orphans rather than applying an old cleanup plan to newer work. Outside-root paths, unexpected
 file/directory types, symlink/reparse trees and locally reserved scratch directories refuse
 cleanup. These checks strengthen this bounded startup pass; they do not qualify arbitrary
@@ -234,13 +238,12 @@ Unowned preview/calibration trees without a captured job are retained. Other run
 helpers and streaming upload ownership remain separate gates.
 
 The startup regressions reproduce 17 unsafe cases against the former algorithm, then pass
-25 cases covering preserved bytes and rows, retry, diagnostics, fresh same-session candidates,
+29 cases covering preserved bytes and rows, retry, diagnostics, fresh same-session candidates,
 changed jobs/sources, superseded work excluded from orphan capture, independent lease state,
-failed removal, delivered candidates and both
-SQLite writer orderings. This slice changes no schema, UI, sidecar or file-action eligibility.
+failed removal, delivered candidates, repeated restart and both SQLite writer orderings. This slice changes no schema, UI, sidecar or file-action eligibility.
 
 The 12 October native Release builds have zero warnings on Mac (SDK 10.0.302) and Quark
-(SDK 10.0.300), with all 3,075 backend tests passing on each, including 25 new startup cases.
+(SDK 10.0.300), with all 3,079 backend tests passing on each, including 29 new startup cases.
 All 766 backend and 188 web source/fixture hashes agree. Both hosts pass all 325 Chromium
 tests, 95 frontend units and zero-warning Svelte checks. Mac uses one browser worker and
 Quark uses four, with Fedora browser libraries extracted only into the task directory.
@@ -253,8 +256,8 @@ and excluded as requested. Production, installed workers and the Riker backup ar
    transactional job admission and bounded retention/delivery finalization. Fence initial and
    resumable upload staging, interrupted-transfer cleanup and remaining runtime scratch
    helpers before their filesystem I/O. Bounded startup recovery is guarded as described above;
-   cleanup of unowned disposable trees still needs qualified ownership. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
-   affected references without silently widening the selected scope. Add races between each
+   cleanup of unowned disposable trees still needs qualified ownership. Cover aliases of parent
+   directories for absent destinations. Capture every physical alias and all affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
 2. Add an action preflight using current scope/generations, permissions, supported independent
    assets, qualified writable storage and fresh full reads of all selected keepers and copies.

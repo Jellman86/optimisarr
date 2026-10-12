@@ -79,6 +79,23 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
         Assert.Equal("unchanged source", await File.ReadAllTextAsync(Path.Combine(_root, "library", "source-1.mkv")));
     }
 
+    [Theory]
+    [InlineData("preview")]
+    [InlineData("calibration")]
+    public async Task Retained_diagnostics_do_not_defer_cleanup_on_the_next_restart(string kind)
+    {
+        var job = await AddJob(kind); await WriteOutput(job.WorkOutputPath!);
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+        _recovery = NewRecovery();
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+        var retained = await ReadJob(job.Id);
+        Assert.Equal(JobStatus.Failed, retained.Status);
+        Assert.Equal("diagnostic evidence", retained.ErrorMessage);
+        Assert.Null(retained.WorkOutputPath);
+        Assert.Null(retained.CalibrationSessionId);
+        Assert.False(_recovery.BlocksDispatch(job.Id));
+    }
+
     [Fact]
     public async Task Deferred_startup_does_not_delete_new_preview_or_calibration_sessions()
     {
@@ -176,6 +193,8 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
     [InlineData("output")]
     [InlineData("replacement")]
     [InlineData("unknown")]
+    [InlineData("unknownType")]
+    [InlineData("unknownLease")]
     [InlineData("lease")]
     public async Task Current_references_protect_old_numeric_directories(string reference)
     {
@@ -187,12 +206,17 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
             if (reference == "source") (await db.MediaFiles.SingleAsync(f => f.Id == 2)).Path = output;
             else
             {
-                var job = new Job { MediaFileId = reference is "unknown" or "lease" ? 2 : 1, LibraryId = 1,
+                var job = new Job { MediaFileId = reference is "unknown" or "unknownType" or "unknownLease" or "lease" ? 2 : 1, LibraryId = 1,
+                    Type = reference == "unknownType" ? (JobType)999 : JobType.Normal,
                     Status = reference == "unknown" ? (JobStatus)999 : JobStatus.Completed,
                     WorkOutputPath = reference == "output" ? output : null };
                 db.Jobs.Add(job); await db.SaveChangesAsync();
                 if (reference == "replacement") db.Replacements.Add(new() { JobId = job.Id, MediaFileId = 1, QuarantinePath = output });
-                if (reference == "lease") await AddHeldLease(db, job.Id);
+                if (reference is "lease" or "unknownLease")
+                {
+                    await AddHeldLease(db, job.Id);
+                    if (reference == "unknownLease") db.ChangeTracker.Entries<JobLease>().Single().Entity.State = (LeaseState)999;
+                }
             }
             await db.SaveChangesAsync();
         });
