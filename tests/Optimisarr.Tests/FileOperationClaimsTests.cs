@@ -6,6 +6,45 @@ namespace Optimisarr.Tests;
 public sealed class FileOperationClaimsTests
 {
     [Fact]
+    public void Recursive_cleanup_excludes_every_process_claim_and_duplicate_disposal_is_safe()
+    {
+        var claims = new FileOperationClaims();
+        using (var file = claims.TryAcquire(["a"])) Assert.Null(claims.TryAcquireRecursiveCleanup());
+        var first = claims.TryAcquireRecursiveCleanup();
+        Assert.NotNull(first);
+        Assert.Null(claims.TryAcquire(["unrelated"]));
+        Assert.Null(claims.TryAcquireRecursiveCleanup());
+        first.Dispose();
+        using var second = claims.TryAcquireRecursiveCleanup();
+        Assert.NotNull(second);
+        first.Dispose();
+        Assert.Null(claims.TryAcquire(["a"]));
+        second.Dispose();
+        using var retry = claims.TryAcquire(["a"]);
+        Assert.NotNull(retry);
+    }
+
+    [Fact]
+    public async Task Concurrent_recursive_cleanup_and_file_operations_cannot_both_win()
+    {
+        var claims = new FileOperationClaims();
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        IDisposable? cleanup = null, file = null;
+        var tasks = new[]
+        {
+            Task.Run(async () => { await start.Task; cleanup = claims.TryAcquireRecursiveCleanup(); }),
+            Task.Run(async () => { await start.Task; file = claims.TryAcquire(["a"]); })
+        };
+        start.SetResult();
+        await Task.WhenAll(tasks);
+        Assert.True((cleanup is null) != (file is null));
+        cleanup?.Dispose();
+        file?.Dispose();
+        using var retry = claims.TryAcquireRecursiveCleanup();
+        Assert.NotNull(retry);
+    }
+
+    [Fact]
     public void A_multi_file_claim_is_atomic_and_a_losing_claim_leaks_nothing()
     {
         var claims = new FileOperationClaims();

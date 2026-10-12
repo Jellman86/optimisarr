@@ -135,6 +135,9 @@ internal static class CalibrationEndpoints
             await calibration.DeleteAsync(id, cancellationToken)
                 ? Results.NoContent()
                 : Results.NotFound())
+        .Produces<ApiError>(StatusCodes.Status409Conflict)
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status404NotFound)
         .WithName("DeleteCalibration");
     }
 }

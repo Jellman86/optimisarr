@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
@@ -44,7 +45,8 @@ public sealed class PreviewService(
     OptimisarrDbContext db,
     MediaProbeService probe,
     QueueDispatcher dispatcher,
-    IHostEnvironment environment)
+    IHostEnvironment environment,
+    FileOperationClaims claims)
 {
     private readonly string _workRoot = WorkPaths.Resolve(environment);
 
@@ -149,12 +151,18 @@ public sealed class PreviewService(
     /// </summary>
     public async Task<bool> DeleteAsync(int jobId, CancellationToken cancellationToken)
     {
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
         var job = await db.Jobs.FirstOrDefaultAsync(
             j => j.Id == jobId && j.Type == JobType.Preview, cancellationToken);
         if (job is null)
         {
             return false;
         }
+
+        await db.Entry(job).ReloadAsync(cancellationToken);
+        if (db.Entry(job).State == EntityState.Detached || job.Type != JobType.Preview) return false;
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+            ?? throw new FileCleanupDeferredException();
 
         dispatcher.RequestCancel(jobId);
 
@@ -185,6 +193,7 @@ public sealed class PreviewService(
             db.Jobs.Remove(job);
         }
         await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
 
         return true;
     }

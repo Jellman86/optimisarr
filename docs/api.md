@@ -436,7 +436,7 @@ version-one configuration backups materialise their former global values into ea
 |---|---|---|
 | `POST` | `/api/media/{id}/preview` | Start a throwaway preview encode for one media file. |
 | `GET` | `/api/preview/{jobId}` | Read preview status, comparison stats, and verification report. |
-| `DELETE` | `/api/preview/{jobId}` | Remove preview output. |
+| `DELETE` | `/api/preview/{jobId}` | Remove preview output. Returns `409 work.cleanupDeferred` when cleanup must retain files and diagnostics for retry. |
 | `GET` | `/api/media/{id}/content` | Stream original media content for comparison. |
 | `GET` | `/api/preview/{jobId}/content` | Stream preview output for comparison. |
 
@@ -460,7 +460,14 @@ free space, a manual pause, or active-media protection.
 | `POST` | `/api/calibration/{id}/classifications` | Classify every anonymous candidate and reveal its settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
 | `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended video preset or media quality to the library, if its relevant settings have not changed. |
 | `GET` | `/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content` | Stream one scene or excerpt for `ORIGINAL` or anonymous candidate `A`–`E`. |
-| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its scratch media and non-failed disposable jobs. A failed job keeps only its diagnostic row until **Clear errored** removes it. |
+| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its scratch media and non-failed disposable jobs. A failed job keeps its diagnostic row until **Clear errored** removes it. Returns `409 work.cleanupDeferred` without cancelling jobs, removing the session or deleting files when cleanup is blocked. |
+
+Recursive preview and calibration cleanup conservatively defers while any shared file operation,
+unresolved duplicate intent or durable file reservation exists, including one in another library.
+Opaque reservation keys cannot yet establish that an entire scratch tree has no aliased or absent
+reserved descendant. Resolve the operation or reservation and retry. Starting a new preview can
+return the same conflict when an earlier preview cannot be removed. Expired calibration sessions
+remain listed with their files and diagnostic references; expiration retries on later sweeps.
 
 Video calibration creates three 12-second scenes for the four shuffled library-slider presets plus one marked original reference.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the

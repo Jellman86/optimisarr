@@ -170,12 +170,45 @@ is unreachable over both LAN and Tailscale during this qualification, so this re
 new native Windows hardware claim. The required Windows CI remains a separate gate. No UI,
 sidecar, schema, installed worker or production-media change is included.
 
+## D3b third step: interactive disposable cleanup
+
+Preview deletion and blind-calibration deletion now acquire the SQLite writer and an exclusive
+process cleanup claim before cancellation, recursive deletion or record/session changes. The
+writer and claim remain held through the diagnostic record commit. Existing shared file claims
+exclude cleanup, and cleanup excludes new claims. Because opaque reservation keys do not prove
+that an entire subtree is independent of an absent destination or aliased parent, any unresolved
+duplicate intent or durable claim conservatively defers these recursive operations globally.
+Unknown action states, incomplete intents and leftover claims also defer cleanup. This does not
+qualify selective subtree cleanup or complete physical-reference capture.
+
+Refused interactive cleanup returns `409 work.cleanupDeferred`, preserving files, job state,
+output references and calibration sessions. Preview recreation keeps the previous preview when
+its cleanup is deferred. Calibration expiration retains blocked sessions and retries on later
+sweeps without stopping the background service. Failed diagnostic rows remain after successful
+cleanup, with their output references cleared only when scratch removal succeeds. Missing
+previews and sessions still return not found.
+
+Tests cover actual HTTP refusals and retries, nested and absent paths, physical-identity-only and
+unrelated claims, failed diagnostics, expiration, exclusive-claim contention and cancellation.
+Independent SQLite coordinators prove both reservation/recursive-cleanup writer orderings.
+This backend slice changes no schema, sidecar or file-action eligibility. Startup disposable
+purge, recovery/cancelled outputs, orphan directories and other queue scratch operations are
+separate remaining gates; a delayed whole-root purge must never remove newly created work.
+
+The 12 October native Release builds have zero warnings on Mac (SDK 10.0.302) and Quark
+(SDK 10.0.300), with all 3,050 backend tests passing on each, including 22 new cases.
+All 764 backend and 188 web source/fixture hashes agree. Both hosts pass all 325 Chromium
+tests, 95 frontend units and zero-warning Svelte checks. The Mac browser run uses one worker
+while unrelated Xcode work is active; Quark uses four workers and task-local Fedora browser
+libraries without system package changes. Picard is unavailable and excluded as requested.
+Production services, installed workers and the Riker migration backup are unchanged.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
    transactional job admission and bounded retention/delivery finalization. Fence initial and
-   resumable upload staging, interrupted-transfer cleanup and recursive preview/calibration
-   cleanup before their filesystem I/O. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
+   resumable upload staging, interrupted-transfer cleanup and startup/recovery/cancelled/orphan
+   scratch cleanup before their filesystem I/O. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
    affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
 2. Add an action preflight using current scope/generations, permissions, supported independent

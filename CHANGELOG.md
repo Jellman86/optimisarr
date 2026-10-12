@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Preview and personal quality-check cleanup defer while a file operation or unresolved duplicate reservation is active, preserving scratch files, sessions and failed-job diagnostics for retry. Expiration retries deferred sessions automatically.
+
 - Retention cleanup and worker candidate promotion check duplicate reservations before deleting or moving files. Reserved files and failed-job diagnostics remain intact; leased and unknown active jobs also protect retained outputs.
 
 - Job admission, retries, local claims and worker leases respect durable duplicate reservations in the same database write transaction. Previews and calibration are covered too; held candidates explain the reservation, and preparation refuses active outputs and retained replacement paths.

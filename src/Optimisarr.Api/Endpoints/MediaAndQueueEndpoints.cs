@@ -186,6 +186,9 @@ internal static class MediaAndQueueEndpoints
                 ? ApiErrors.NotFound("media.previewUnavailable", $"No media file with id {id} (or it has no library).", new { id })
                 : Results.Ok(new { jobId });
         })
+        .Produces<ApiError>(StatusCodes.Status409Conflict)
+        .Produces(StatusCodes.Status200OK)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
         .WithName("CreatePreview");
 
         app.MapGet("/api/preview/{jobId:int}", async (
@@ -206,6 +209,9 @@ internal static class MediaAndQueueEndpoints
             var deleted = await preview.DeleteAsync(jobId, cancellationToken);
             return deleted ? Results.NoContent() : Results.NotFound();
         })
+        .Produces<ApiError>(StatusCodes.Status409Conflict)
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status404NotFound)
         .WithName("DeletePreview");
 
         // Streams the original media file for side-by-side comparison (range-enabled so the browser
