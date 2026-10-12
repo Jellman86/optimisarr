@@ -158,9 +158,10 @@ public sealed partial class WorkerResultUploadTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Interrupted_single_shot_cleanup_is_fenced_and_preserves_reserved_staging(bool reserve)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Interrupted_single_shot_cleanup_is_fenced_and_preserves_reserved_staging(bool reserve, bool failCleanup)
     {
         await EnableRemoteWorkers();
         using var worker = await PairWorker("Interrupted cleanup");
@@ -168,6 +169,7 @@ public sealed partial class WorkerResultUploadTests
         var (leaseId, sourceHash) = await ClaimAndFetch(worker);
         var (final, _) = await DeliveryPathsAsync(leaseId);
         var actionId = Guid.NewGuid();
+        string? blockedPath = null;
         using var scope = _api.Services.CreateScope();
         var context = UploadContext(scope.ServiceProvider, worker, leaseId, sourceHash, false,
             new ReviewCallbackStream(CandidateBytes, async () =>
@@ -178,6 +180,13 @@ public sealed partial class WorkerResultUploadTests
                     var db = update.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
                     await ReserveUpload(db, actionId, final);
                 }
+                if (failCleanup)
+                {
+                    using var update = _api.Services.CreateScope();
+                    var db = update.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+                    blockedPath = (await db.JobLeases.AsNoTracking().SingleAsync(l => l.Id == Guid.Parse(leaseId))).ResultUploadPath!;
+                    File.Delete(blockedPath); Directory.CreateDirectory(blockedPath);
+                }
                 throw new IOException("interrupted network body");
             }));
         try
@@ -185,12 +194,17 @@ public sealed partial class WorkerResultUploadTests
             await Assert.ThrowsAsync<IOException>(() => UploadEndpoint(false).RequestDelegate!(context));
             using var check = _api.Services.CreateScope();
             var lease = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.AsNoTracking().SingleAsync(l => l.Id == Guid.Parse(leaseId));
-            Assert.Equal(reserve, lease.ResultUploadGeneration is not null);
+            Assert.Equal(reserve || failCleanup, lease.ResultUploadGeneration is not null);
+            if (failCleanup) Assert.True(Directory.Exists(lease.ResultUploadPath));
             if (reserve) Assert.Empty(await File.ReadAllBytesAsync(lease.ResultUploadPath!));
             Assert.Null(lease.ResultUploadSealedBytes);
             Assert.False(File.Exists(final));
         }
-        finally { await ReleaseUploadReservation(actionId); }
+        finally
+        {
+            if (blockedPath is not null) { Directory.Delete(blockedPath); await File.WriteAllBytesAsync(blockedPath, []); }
+            await ReleaseUploadReservation(actionId);
+        }
     }
 
     [Theory]

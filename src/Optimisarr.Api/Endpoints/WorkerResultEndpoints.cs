@@ -486,10 +486,7 @@ internal static partial class WorkerResultEndpoints
     {
         try
         {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            File.Delete(path);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

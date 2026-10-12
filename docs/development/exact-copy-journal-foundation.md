@@ -293,7 +293,7 @@ reservation integration, owner fencing or crash reconciliation and cannot be shi
 | --- | ---: | ---: | --- |
 | Guarded 128 KiB | 110-205 | 35-61 | Repeated transactions dominate and control writers can wait over a second. |
 | Guarded 1 MiB, no pause | 633-1,751 | 226-515 | Some passes complete before the other writer gets a turn. |
-| Guarded 1 MiB, 1 ms pause | 225-408 | 179-256 | Selected: competing writers make progress during every pass. |
+| Guarded 1 MiB, 1 ms pause | 225-408 | 179-256 | Selected: more writer opportunities without a hard latency guarantee. |
 | Guarded 1 MiB, 5 ms pause | 68-93 | 100-107 | Extra delay costs throughput without consistently improving maximum wait. |
 | Ideal durable owner | 5,367-11,925 | 2,758-3,333 | Faster upper bound with substantially more ownership/recovery work still required. |
 
@@ -308,7 +308,7 @@ File buffering must be flushed/closed within that authority; see
 [.NET stream I/O](https://learn.microsoft.com/en-us/dotnet/standard/io/).
 
 The final native Release builds on 12 October have zero warnings. Mac and Quark each pass
-3,109 backend tests, including 30 new cases covering reservation/body-read races, independent
+3,110 backend tests, including 31 new cases covering reservation/body-read races, independent
 coordinator offsets and both writer orderings, cancellation/revocation/reassignment/expiry,
 persistent source/holder binding, older attempts, interrupted cleanup/resume, completion seals,
 changed lengths, no-overwrite final paths, promotion-before-commit retry and migration
