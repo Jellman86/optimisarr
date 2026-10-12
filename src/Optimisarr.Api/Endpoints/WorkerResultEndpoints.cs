@@ -157,8 +157,14 @@ internal static partial class WorkerResultEndpoints
 
             var snapshot = UploadSnapshot.Capture(environment, resolved.Job!, resolved.Lease!);
             var path = resolved.Lease!.ResultUploadPath ?? snapshot.StagingPath;
-            if (!snapshot.Owns(path)) return UploadChanged();
-            return Results.Ok(new UploadOffsetDto(StagedBytes(path)));
+            if (!snapshot.Owns(path) || resolved.Lease.ResultUploadGeneration is not null
+                && resolved.Lease.ResultUploadBinding != snapshot.Binding) return UploadChanged();
+            var readable = File.Exists(path) ? path : resolved.Lease.ResultUploadSealedBytes is not null
+                && File.Exists(snapshot.FinalPath) ? snapshot.FinalPath : null;
+            var bytes = readable is null ? 0 : StagedBytes(readable);
+            if (resolved.Lease.ResultUploadSealedBytes is { } sealedBytes && (readable is null || bytes != sealedBytes))
+                return UploadChanged();
+            return Results.Ok(new UploadOffsetDto(bytes));
         })
         .WithName("ResultUploadOffset")
         .Produces<UploadOffsetDto>()

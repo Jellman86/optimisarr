@@ -275,7 +275,8 @@ actually read; acceptance checks the same generation/binding, sealed length, cur
 reservations and physical length before promotion. A competing completion cannot mutate a
 newer generation or overwrite a different final file. If promotion succeeds but commit fails,
 the seal and final bytes remain, and retry hashes that final candidate to finish the same
-assignment. A hash mismatch clears ownership only after staging removal succeeds. This contract
+assignment. Offset queries report the sealed final bytes after promotion, so the real resumable
+worker reaches completion instead of trying to append at zero. A hash mismatch clears ownership only after staging removal succeeds. This contract
 coordinates application upload operations; it is not exclusion against an external file editor,
 unknown parent aliases, arbitrary SQL or every remaining runtime scratch helper.
 

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Worker uploads now fence staging creation, bounded appends and interrupted cleanup against duplicate reservations and changed assignments. Persistent completion seals prevent another coordinator changing staged bytes during hashing, and retries preserve promoted candidates after an interrupted commit.
+- Worker uploads now fence staging creation, bounded appends and interrupted cleanup against duplicate reservations and changed assignments. Persistent completion seals prevent another coordinator changing staged bytes during hashing, and resumable retries preserve and finish promoted candidates after an interrupted commit.
 
 ### Added
 

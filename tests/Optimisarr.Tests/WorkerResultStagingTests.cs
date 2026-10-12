@@ -98,6 +98,8 @@ public sealed partial class WorkerResultUploadTests
             Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(staging));
         }
         if (promotedBeforeCrash) File.Move(staging, final);
+        using var offset = await worker.GetAsync($"/api/workers/leases/{leaseId}/result/offset");
+        Assert.Equal(CandidateBytes.Length, (await offset.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("bytes").GetInt64());
         using var completed = await worker.SendAsync(Complete(leaseId, sourceHash, Sha256(CandidateBytes)));
         Assert.Equal(System.Net.HttpStatusCode.Accepted, completed.StatusCode);
         Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(final));
