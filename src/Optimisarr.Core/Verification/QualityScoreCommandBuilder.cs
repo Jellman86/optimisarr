@@ -86,7 +86,7 @@ public sealed record QualityMeasurementContext(
     string? ModelVersion = null,
     // True when both files hold the same number of frames, so each sampled window compares frame
     // k with frame k instead of rounding timestamps onto a cadence grid. See FramePairing. Full
-    // files compare all pictures; sampled windows retain their existing selection. Cut clips keep
+    // files compare all pictures; windows select absolute decoded indices. Cut clips keep
     // their own pairing.
     bool PairFramesByNumber = false,
     // CAMBI needs the encode's format before measurement rescaling or conversion to 10-bit.
@@ -166,6 +166,15 @@ public static class QualityScoreCommandBuilder
         System.Text.RegularExpressions.Regex.IsMatch(model, "^vmaf_[a-z0-9._]+$") && !model.Contains("..", StringComparison.Ordinal)
             ? model
             : throw new ArgumentException($"'{model}' is not a VMAF model name.", nameof(model));
+
+    public static bool UsesAbsoluteFramePairing(QualityMeasurementContext context) =>
+        context.PairFramesByNumber && !context.DistortedIsCutClip && context.ReferenceDecimation is null
+        && context.ReferenceFrameRate is > 0 && double.IsFinite(context.ReferenceFrameRate.Value)
+        && (context.ReferenceStartSeconds is null or 0 && context.DistortedStartSeconds is null or 0
+            && context.MeasureDurationSeconds is null
+            || context.ReferenceStartSeconds is not null && context.DistortedStartSeconds is not null
+                && context.MeasureDurationSeconds is > 0);
+
     private const int SampleSeekPrerollSeconds = 5;
     private const string DefaultRenderDevice = "/dev/dri/renderD128";
 
@@ -241,16 +250,11 @@ public static class QualityScoreCommandBuilder
             && context.ReferenceStartSeconds is null or 0
             && context.DistortedStartSeconds is null or 0
             && context.MeasureDurationSeconds is null;
-        var pairFrames = completeFramePairing || context.PairFramesByNumber
-            && !context.DistortedIsCutClip
-            && context.ReferenceFrameRate is not null
-            && context.ReferenceStartSeconds is not null
-            && context.DistortedStartSeconds is not null
-            && context.MeasureDurationSeconds is > 0;
-        // VC-1 in Matroska can seek to different pictures despite equal timestamps/counts.
-        // For complete equal-frame encodes, absolute decoded indices preserve correspondence.
-        var sequential = pairFrames && !completeFramePairing
-            && string.Equals(context.ReferenceVideoCodec, "vc1", StringComparison.OrdinalIgnoreCase);
+        var pairFrames = UsesAbsoluteFramePairing(context);
+        // Independent seeks can retain different first pictures even with equal counts and
+        // matching initial PTS. Absolute indices preserve correspondence without optimising
+        // away a genuinely duplicated or missing picture (#406).
+        var sequential = pairFrames && !completeFramePairing;
         var preprocessing = DescribePreprocessing(
             colourPreprocessing,
             acceleration,
@@ -277,14 +281,6 @@ public static class QualityScoreCommandBuilder
             ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
             : sequential
             ? SequentialFrameTimeline(context.DistortedStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
-            : pairFrames
-            ? FramePairedTimeline(
-                context.DistortedStartSeconds!.Value,
-                distortedInputStart,
-                context.MeasureDurationSeconds!.Value,
-                context.ReferenceFrameRate!.Value,
-                ContainerLeadShift(context),
-                context.DistortedShiftToken is { Length: > 0 } token ? token : null)
             : TimelinePreparation(
                 context.DistortedStartSeconds,
                 distortedInputStart,
@@ -296,14 +292,6 @@ public static class QualityScoreCommandBuilder
             ? CompleteFrameTimeline(context.ReferenceFrameRate!.Value)
             : sequential
             ? SequentialFrameTimeline(context.ReferenceStartSeconds!.Value, context.MeasureDurationSeconds!.Value, context.ReferenceFrameRate!.Value)
-            : pairFrames
-            ? FramePairedTimeline(
-                context.ReferenceStartSeconds!.Value,
-                referenceInputStart,
-                context.MeasureDurationSeconds!.Value,
-                context.ReferenceFrameRate!.Value,
-                containerShift: null,
-                frameShift: null)
             : TimelinePreparation(
                 context.ReferenceStartSeconds,
                 referenceInputStart,
@@ -557,48 +545,6 @@ public static class QualityScoreCommandBuilder
 
     private static string CompleteFrameTimeline(double frameRate) =>
         $"settb=AVTB,setpts=N*{(long)Math.Round(1_000_000 / frameRate)}";
-
-    // Frames either side of the window kept for the candidate's offset to move into.
-    private const int FramePairingMargin = 2;
-
-    private static string FramePairedTimeline(
-        int windowStartSeconds,
-        double? inputStartSeconds,
-        int windowDurationSeconds,
-        double frameRate,
-        string? containerShift,
-        string? frameShift)
-    {
-        // Cut the window by time, with a margin, exactly as the timestamp path would pick it.
-        var frameSeconds = 1 / frameRate;
-        var margin = FramePairingMargin * frameSeconds;
-        var inputTimeline = inputStartSeconds is > 0 ? "settb=AVTB" : "settb=AVTB,setpts=PTS-STARTPTS";
-        var lead = containerShift is not null && inputStartSeconds is > 0
-            ? $"setpts=PTS-{containerShift}*1000000,"
-            : string.Empty;
-        var start = windowStartSeconds - (inputStartSeconds ?? 0) - margin;
-        var window = $"trim=start={FormatSeconds(start)}:duration={FormatSeconds(windowDurationSeconds + 2 * margin)}";
-
-        // Then number the frames on a whole-microsecond step. A step of 41708.33 µs rounds
-        // differently on each side once one of them has moved, and libvmaf pairs a frame with the
-        // other stream's latest frame at or before it, so a microsecond short met a third of the
-        // frames with their predecessors. An integer step keeps equal numbers on equal timestamps.
-        var step = (long)Math.Round(1_000_000 / frameRate);
-        var rate = frameRate.ToString("G17", CultureInfo.InvariantCulture);
-        // The measured offset is whole frames, and it is applied to the numbers rather than to the
-        // time. Where a candidate's timestamps skip a slot, moving it by a frame's worth of time
-        // selects the same first picture as not moving it, so the probe could never pick the
-        // offset it needed.
-        var numbering = frameShift is null
-            ? $"setpts=N*{step}"
-            : $"setpts=(N-round({frameShift}*{rate}))*{step}";
-
-        // Finally keep the same frame numbers on both sides, half a step clear of any frame.
-        var frames = (long)Math.Round(windowDurationSeconds * frameRate);
-        var keep = $"trim=start={FormatSeconds((FramePairingMargin - 0.5) * step / 1_000_000d)}"
-            + $":duration={FormatSeconds(frames * step / 1_000_000d)}";
-        return $"{inputTimeline},{lead}{window},settb=AVTB,setpts=PTS-STARTPTS,{numbering},{keep},setpts=PTS-STARTPTS";
-    }
 
     private static string DescribePreprocessing(
         string colourPreprocessing,

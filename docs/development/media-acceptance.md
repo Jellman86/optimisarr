@@ -137,8 +137,12 @@ Production full-file VMAF also uses sequential picture comparison when source an
 decoded counts are equal and the encode keeps the source frame rate. Workers receive this
 alternative and select it only after measuring both counts. Missing or unequal counts retain
 the previous comparison, and the picture-retention gate still fails. Previews and intentional
-frame-rate conversions retain their own preparation. Sampled windows keep their existing
-selection. Timing and quality are separate checks; equal counts alone do not prove identity.
+frame-rate conversions retain their own preparation. Sampled windows also select absolute decoded
+picture indices on both inputs, for every codec.
+They decode from the beginning and do not choose an offset by maximising a visual score. This
+prevents independent seek boundaries from changing the first picture and preserves evidence of
+actual duplicated/replaced pictures even when total counts match. Timing and quality remain
+separate checks; equal counts alone do not prove identity.
 
 Hardware checks on 3 October 2026 retained all 400 generated pictures using Mac VideoToolbox,
 Windows NVIDIA NVENC, Intel QSV in the server container and libx265 in the Linux worker.
@@ -427,9 +431,22 @@ python3 scripts/diagnose_frame_pairing.py \
 
 VC-1 Matroska regression: a retained equal-frame candidate scored 9.49 in a sought 10-second
 window and 94.25 when decoded sequentially. Three absolute-frame windows scored 94–95.
-The shared production command therefore avoids input seeking for complete, equal-frame VC-1
-comparisons. Other sources and disposable cut clips keep their existing policies. Sequential
-comparison costs more decoding time, especially for late windows.
+The shared production command now avoids input seeking for all complete, equal-frame
+comparisons (#406), including H.264 and 50 fps sources. Sequential comparison costs more decoding
+time, especially for late windows; VMAF still assesses only the selected window, and no alignment
+probes are run for this deterministic path. Disposable cut clips retain their own policy.
+
+When frame counts are unequal or unavailable, timestamp comparison retains a bounded ±1-frame
+alignment search. Its sparse probes cover the window (up to 40 seconds), rather than only its
+first five seconds. Five-second blocks must support one consistent correction; conflicting blocks,
+incomplete coverage and mismatched sampled frame identities keep the baseline. Final measurement
+uses the original model and sampling settings, with no per-scene offset splicing or threshold
+changes. Missing baseline evidence cannot authorise a correction. Hardware-to-software fallback
+reassesses alignment using the actual software decoder.
+
+The [12 October acceptance record](../engineering/hardware-validation/2026-10-12-vmaf-window-alignment.md)
+contains the timestamp-step reproduction, negative controls, retained-media scores and native
+Windows NVENC results, with the sequential-decoding cost and unqualified cases made explicit.
 
 A separate Mac candidate had 32,283 packets but only 32,282 decoded frames. Packet equality must
 not select frame-number pairing. That candidate remained below the quality gate after a diagnostic

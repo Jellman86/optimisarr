@@ -21,6 +21,8 @@
 
 ### Fixed
 
+- Compare equal-frame video samples by absolute decoded picture number across all codecs, preventing seek-boundary mismatches such as 50 fps VMAF false rejections. Timestamp-based alignment checks the bounded window and refuses conflicting scene offsets; final quality and timing gates are unchanged.
+
 - Startup cleanup preserves reserved and leased work for retry, recovers only the jobs captured at startup and leaves new comparisons intact. Failed cleanup keeps output references and diagnostics; current jobs, sources and rollback paths protect old scratch directories.
 
 - Preview and personal quality-check cleanup defer while a file operation or unresolved duplicate reservation is active, preserving scratch files, sessions and failed-job diagnostics for retry. Expiration retries deferred sessions automatically.

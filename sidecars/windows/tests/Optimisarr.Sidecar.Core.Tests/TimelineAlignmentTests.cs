@@ -1,4 +1,5 @@
 using Optimisarr.Sidecar.Core.Session;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Sidecar.Core.Tests;
 
@@ -15,8 +16,8 @@ public sealed class TimelineAlignmentTests
 {
     private static string Log(params double[] scores) =>
         "{\"frames\":["
-        + string.Join(",", scores.Select(s =>
-            "{\"metrics\":{\"vmaf\":" + s.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}}"))
+        + string.Join(",", scores.Select((s, index) =>
+            "{\"frameNum\":" + index + ",\"metrics\":{\"vmaf\":" + s.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}}"))
         + "]}";
 
     [Fact]
@@ -37,7 +38,7 @@ public sealed class TimelineAlignmentTests
     public void A_probe_that_scored_nothing_is_not_a_score_of_zero(string json)
     {
         // It must not win by being the lowest number. An unscoreable offset is no evidence at all.
-        Assert.Null(TimelineAlignment.MeanScore(json));
+        Assert.Null(TimelineAlignmentProbe.ReadScores(json));
     }
 
     [Fact]
@@ -79,11 +80,11 @@ public sealed class TimelineAlignmentTests
     [Fact]
     public void A_clearly_better_offset_wins_and_a_near_tie_keeps_the_unshifted_timeline()
     {
-        Assert.Equal(0, TimelineAlignment.Choose([(0, 96.2), (1, 19.7), (-1, 20.1)]));
-        Assert.Equal(1, TimelineAlignment.Choose([(0, 0.2), (1, 92.3), (-1, 0.3)]));
+        Assert.Equal(0, Choose([(0, 96.2), (1, 19.7), (-1, 20.1)]));
+        Assert.Equal(1, Choose([(0, 0.2), (1, 92.3), (-1, 0.3)]));
         // A static shot scores alike at every shift; noise must not move the whole window.
-        Assert.Equal(0, TimelineAlignment.Choose([(0, 95.1), (1, 96.4), (-1, 94.8)]));
-        Assert.Null(TimelineAlignment.Choose([]));
+        Assert.Equal(0, Choose([(0, 95.1), (1, 96.4), (-1, 94.8)]));
+        Assert.Null(Choose([]));
     }
 
     [Fact]
@@ -95,5 +96,9 @@ public sealed class TimelineAlignmentTests
         Assert.Equal(2, TimelineAlignment.ChoiceMarginPoints);
     }
 
-    private static double VmafMean(string json) => TimelineAlignment.MeanScore(json)!.Value;
+    private static double VmafMean(string json) => TimelineAlignmentProbe.ReadScores(json)!.Average(score => score.Score);
+    private static int? Choose(IReadOnlyList<(int Frames, double Mean)> scored) =>
+        TimelineAlignmentProbe.ChooseWindow(scored.Select(entry => (entry.Frames,
+            (IReadOnlyList<AlignmentScore>)Enumerable.Range(0, 25)
+                .Select(index => new AlignmentScore(index * 5, entry.Mean)).ToArray())).ToArray(), 25, 5);
 }

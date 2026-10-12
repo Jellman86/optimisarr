@@ -80,11 +80,10 @@ public sealed class RemoteQualityPlannerTests
         var paired = contract.FramePairedCommands[0];
         var filter = paired[paired.ToList().IndexOf("-lavfi") + 1];
         Assert.DoesNotContain("fps=fps", filter);
-        Assert.Contains($"setpts=(N-round({RemoteQualityContract.DistortedShiftPlaceholder}*", filter);
-        // The same window: only the pairing differs.
-        Assert.Equal(
-            contract.Commands[0][contract.Commands[0].ToList().IndexOf("-ss") + 1],
-            paired[paired.ToList().IndexOf("-ss") + 1]);
+        Assert.Contains("trim=start_frame=2829:end_frame=3788", filter);
+        Assert.Contains("setpts=N*41708", filter);
+        Assert.DoesNotContain(RemoteQualityContract.DistortedShiftPlaceholder, filter);
+        Assert.DoesNotContain("-ss", paired);
     }
 
     [Fact]
