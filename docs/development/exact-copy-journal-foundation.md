@@ -250,12 +250,79 @@ Quark uses four, with Fedora browser libraries extracted only into the task dire
 Python (105), OpenAPI, release metadata and Unraid checks pass. Picard remains unavailable
 and excluded as requested. Production, installed workers and the Riker backup are unchanged.
 
+## D3b fifth step: bounded staging and completion seals
+
+Worker single-shot and resumable delivery now acquire the SQLite writer, reload current
+credentials/lease/job/source and check shared process/durable file reservations immediately
+before creating a directory/file or appending a bounded buffer. Each write is at most 1 MiB;
+flush and handle close complete inside the fence. Network reads take place outside it. Offsets
+are checked again inside the writer, so independent coordinators cannot replay an append.
+Source paths/hashes, media ID, worker holder, job and lease attempts, output container and output reference
+must still match. A generation fences a superseded request, including its interrupted cleanup.
+Reserved staging and diagnostics are preserved. Interrupted resumable writes report the real
+file length on the next offset query, including bytes flushed before an interrupted commit.
+
+An additive migration records each lease's upload generation, source/attempt binding, staging
+path and optional sealed byte count. The schema rejects partial ownership records and negative
+sealed lengths. Existing leases default to no upload record; legacy partials can be adopted
+without truncation. A new single-shot generation replaces only unsealed staging under the same
+fence. Interrupted single-shot cleanup uses a separate bounded cancellation token, fresh writer
+and generation check; failed or reserved cleanup retains its ownership and bytes for retry.
+
+Completion persists a seal before full-file hashing outside the writer. Every append or
+single-shot retry observes that seal across coordinators and restarts. Full hashing counts bytes
+actually read; acceptance checks the same generation/binding, sealed length, current assignment,
+reservations and physical length before promotion. A competing completion cannot mutate a
+newer generation or overwrite a different final file. If promotion succeeds but commit fails,
+the seal and final bytes remain, and retry hashes that final candidate to finish the same
+assignment. A hash mismatch clears ownership only after staging removal succeeds. This contract
+coordinates application upload operations; it is not exclusion against an external file editor,
+unknown parent aliases, arbitrary SQL or every remaining runtime scratch helper.
+
+### Measured design choice
+
+The disposable [study](../../tools/Optimisarr.UploadStudy/Program.cs) compares the actual append
+fence with an optimistic durable-owner prototype, using 256 MiB synthetic transfers, three
+passes per variant and a concurrent independent SQLite control writer on each host. The
+prototype assumes an owner already excludes every other file writer; it does not implement
+reservation integration, owner fencing or crash reconciliation and cannot be shipped as measured.
+[Raw results](worker-upload-staging-study.json) include every pass and writer latency/sample count.
+
+| Strategy | Mac MiB/s range | Quark MiB/s range | Observation |
+| --- | ---: | ---: | --- |
+| Guarded 128 KiB | 110-205 | 35-61 | Repeated transactions dominate and control writers can wait over a second. |
+| Guarded 1 MiB, no pause | 633-1,751 | 226-515 | Some passes complete before the other writer gets a turn. |
+| Guarded 1 MiB, 1 ms pause | 225-408 | 179-256 | Selected: competing writers make progress during every pass. |
+| Guarded 1 MiB, 5 ms pause | 68-93 | 100-107 | Extra delay costs throughput without consistently improving maximum wait. |
+| Ideal durable owner | 5,367-11,925 | 2,758-3,333 | Faster upper bound with substantially more ownership/recovery work still required. |
+
+The selected pause runs outside transactions/claims and keeps bounded memory and I/O while
+avoiding exclusive ownership over a network wait. It is a measured implementation choice,
+not a hard fairness or latency guarantee: maximum competing-writer waits were about 304 ms
+on Mac and 902 ms on Quark. These are SSD/page-cache fixtures without fsync or real network
+traffic. They do not qualify USB/SMR storage, production latency or external-writer exclusion.
+SQLite serializes writers across connections, which is the authority used by both preparation
+and staging; see [SQLite transactions](https://www.sqlite.org/lang_transaction.html).
+File buffering must be flushed/closed within that authority; see
+[.NET stream I/O](https://learn.microsoft.com/en-us/dotnet/standard/io/).
+
+The final native Release builds on 12 October have zero warnings. Mac and Quark each pass
+3,109 backend tests, including 30 new cases covering reservation/body-read races, independent
+coordinator offsets and both writer orderings, cancellation/revocation/reassignment/expiry,
+persistent source/holder binding, older attempts, interrupted cleanup/resume, completion seals,
+changed lengths, no-overwrite final paths, promotion-before-commit retry and migration
+preservation/idempotency/schema constraints. Both hosts pass all 325 Chromium tests, 95 frontend
+units and zero-warning Svelte checks. All 770 backend plus two study-tool source/fixture hashes
+and 188 web hashes agree. Python (105), OpenAPI, release, documentation and Unraid checks pass.
+Picard remains unavailable and excluded as requested. No UI or installed sidecar changed;
+production services and the Riker backup are untouched. Required exact-head CI is recorded in
+the delivery PR before merge. D3 file actions remain disabled.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
-   transactional job admission and bounded retention/delivery finalization. Fence initial and
-   resumable upload staging, interrupted-transfer cleanup and remaining runtime scratch
-   helpers before their filesystem I/O. Bounded startup recovery is guarded as described above;
+   transactional job admission and bounded retention/delivery finalization. Fence remaining runtime scratch helpers before their filesystem I/O. Upload staging and
+   interrupted-transfer cleanup are fenced as described above. Bounded startup recovery is guarded as described above;
    cleanup of unowned disposable trees still needs qualified ownership. Cover aliases of parent
    directories for absent destinations. Capture every physical alias and all affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.

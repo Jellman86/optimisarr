@@ -20,6 +20,12 @@ public sealed class JobLease
     public string? VerificationContractJson { get; set; }
     public string? VerificationEvidenceJson { get; set; }
 
+    /// <summary>Fences upload retries and seals stable bytes before hashing outside the writer.</summary>
+    public Guid? ResultUploadGeneration { get; set; }
+    public string? ResultUploadBinding { get; set; }
+    public string? ResultUploadPath { get; set; }
+    public long? ResultUploadSealedBytes { get; set; }
+
     public Guid Id { get; set; }
 
     public int JobId { get; set; }

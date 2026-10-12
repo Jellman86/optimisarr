@@ -29,7 +29,7 @@ namespace Optimisarr.Tests;
 /// a local transcode's output does, and goes no further until verification has run.
 /// </summary>
 [Collection(TokenedApiCollection.Name)]
-public sealed class WorkerResultUploadTests : IAsyncLifetime
+public sealed partial class WorkerResultUploadTests : IAsyncLifetime
 {
 
     [Theory]
@@ -128,8 +128,9 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
             Assert.Equal("dedupe.reserved", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
             Assert.False(File.Exists(final));
-            var retained = resumable ? staging : Assert.Single(Directory.GetFiles(Path.GetDirectoryName(final)!, Path.GetFileName(final) + ".*.partial"));
-            Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(retained));
+            if (resumable) Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(staging));
+            else if (Directory.Exists(Path.GetDirectoryName(final)))
+                Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(final)!, Path.GetFileName(final) + ".*.partial"));
             var lease = await db.JobLeases.AsNoTracking().Include(l => l.Job).SingleAsync(l => l.Id == Guid.Parse(leaseId));
             Assert.Equal(LeaseState.Held, lease.State);
             Assert.Equal(JobStatus.Leased, lease.Job!.Status);
@@ -200,7 +201,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             Assert.Equal(409, context.Response.StatusCode);
             Assert.False(File.Exists(final));
             var staged = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(final)!, Path.GetFileName(final) + ".*.partial"));
-            Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(staged));
+            Assert.Empty(await File.ReadAllBytesAsync(staged));
         }
         finally
         {
@@ -208,6 +209,101 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             await db.DedupeFileClaims.Where(c => c.ActionId == actionId).ExecuteDeleteAsync();
             await db.DedupeActions.Where(a => a.Id == actionId).ExecuteDeleteAsync();
         }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task A_reservation_during_a_body_read_prevents_the_next_staging_write(bool resumable, bool alreadyStaged)
+    {
+        await EnableRemoteWorkers();
+        using var worker = await PairWorker("Guarded body read");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        var (final, staging) = await DeliveryPathsAsync(leaseId);
+        var prefix = alreadyStaged ? CandidateBytes[..5] : [];
+        if (alreadyStaged && resumable)
+            (await worker.SendAsync(Chunk(leaseId, prefix, 0))).EnsureSuccessStatusCode();
+        var actionId = Guid.NewGuid();
+        using var scope = _api.Services.CreateScope();
+        var context = UploadContext(scope.ServiceProvider, worker, leaseId, sourceHash, resumable,
+            new ReviewCallbackStream(CandidateBytes, async () =>
+            {
+                using var change = _api.Services.CreateScope();
+                var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+                db.DedupeActions.Add(new() { Id = actionId, ReviewKey = new('a', 64), ScopeKey = new('b', 64), PlanHash = new('c', 64) });
+                db.DedupeFileClaims.Add(new() { ActionId = actionId,
+                    Key = Assert.Single(FileOperationClaims.Keys(int.MaxValue, final), k => k.StartsWith("path:")) });
+                await db.SaveChangesAsync();
+            }), resumable ? prefix.Length : 0);
+        try
+        {
+            await UploadEndpoint(resumable).RequestDelegate!(context);
+            Assert.Equal(409, context.Response.StatusCode);
+            Assert.False(File.Exists(final));
+            var files = Directory.Exists(Path.GetDirectoryName(final))
+                ? Directory.GetFiles(Path.GetDirectoryName(final)!, $"remote-*.{Guid.Parse(leaseId):N}*.partial") : [];
+            Assert.All(files, path => Assert.Equal(resumable ? prefix : [], File.ReadAllBytes(path)));
+            using var check = _api.Services.CreateScope();
+            var lease = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().JobLeases.AsNoTracking()
+                .Include(l => l.Job).SingleAsync(l => l.Id == Guid.Parse(leaseId));
+            Assert.Equal(LeaseState.Held, lease.State);
+            Assert.Null(lease.Job!.WorkOutputPath);
+        }
+        finally
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await db.DedupeFileClaims.Where(c => c.ActionId == actionId).ExecuteDeleteAsync();
+            await db.DedupeActions.Where(a => a.Id == actionId).ExecuteDeleteAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancellation_during_a_body_read_preserves_already_staged_bytes(bool resumable)
+    {
+        await EnableRemoteWorkers();
+        using var worker = await PairWorker("Cancelled body read");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        var (final, staging) = await DeliveryPathsAsync(leaseId);
+        if (resumable) (await worker.SendAsync(Chunk(leaseId, CandidateBytes[..5], 0))).EnsureSuccessStatusCode();
+        using var scope = _api.Services.CreateScope();
+        var context = UploadContext(scope.ServiceProvider, worker, leaseId, sourceHash, resumable,
+            new ReviewCallbackStream(CandidateBytes, async () =>
+            {
+                using var change = _api.Services.CreateScope();
+                var db = change.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+                var lease = await db.JobLeases.Include(l => l.Job).SingleAsync(l => l.Id == Guid.Parse(leaseId));
+                lease.Job!.Status = JobStatus.Cancelled;
+                await db.SaveChangesAsync();
+            }), resumable ? 5 : 0);
+        await UploadEndpoint(resumable).RequestDelegate!(context);
+        Assert.Equal(409, context.Response.StatusCode);
+        Assert.False(File.Exists(final));
+        if (resumable) Assert.Equal(CandidateBytes[..5], await File.ReadAllBytesAsync(staging));
+    }
+
+    private Microsoft.AspNetCore.Http.Endpoint UploadEndpoint(bool resumable) => Assert.Single(
+        _api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
+        e => e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == (resumable ? "AppendResultChunk" : "DeliverResult"));
+
+    private static Microsoft.AspNetCore.Http.DefaultHttpContext UploadContext(
+        IServiceProvider services, HttpClient worker, string leaseId, string sourceHash, bool resumable, Stream body, long offset = 0)
+    {
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        context.RequestServices = services;
+        context.Request.Method = resumable ? "PATCH" : "POST";
+        context.Request.RouteValues["leaseId"] = leaseId;
+        context.Request.Headers.Authorization = worker.DefaultRequestHeaders.Authorization!.ToString();
+        context.Request.Headers["X-Optimisarr-Source-Sha256"] = sourceHash;
+        context.Request.Headers["X-Optimisarr-Candidate-Sha256"] = Sha256(CandidateBytes);
+        context.Request.Headers["X-Optimisarr-Offset"] = offset.ToString();
+        context.Request.Body = body;
+        context.Response.Body = new MemoryStream();
+        return context;
     }
 
     private async Task<(string Final, string Staging)> DeliveryPathsAsync(string leaseId)
@@ -337,8 +433,8 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             var directory = Path.GetDirectoryName(final)!;
             if (Directory.Exists(directory))
                 foreach (var partial in Directory.GetFiles(directory, Path.GetFileName(final) + ".*.partial")) File.Delete(partial);
-            File.Delete(final);
-            File.Delete(staging);
+            if (File.Exists(final)) File.Delete(final);
+            if (File.Exists(staging)) File.Delete(staging);
         }
         if (_createdLibraries.Count == 0) return;
         using var scope = _api.Services.CreateScope();

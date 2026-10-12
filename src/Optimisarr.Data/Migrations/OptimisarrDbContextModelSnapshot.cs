@@ -931,6 +931,20 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ResultUploadBinding")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ResultUploadGeneration")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResultUploadPath")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ResultUploadSealedBytes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("SizeBudgetExceededAtBytes")
                         .HasColumnType("INTEGER");
 
@@ -968,7 +982,10 @@ namespace Optimisarr.Data.Migrations
 
                     b.HasIndex("JobId", "AcquiredUtcTicks", "Id");
 
-                    b.ToTable("JobLeases");
+                    b.ToTable("JobLeases", t =>
+                        {
+                            t.HasCheckConstraint("CK_JobLeases_ResultUpload", "(\"ResultUploadGeneration\" IS NULL AND \"ResultUploadPath\" IS NULL AND \"ResultUploadBinding\" IS NULL AND \"ResultUploadSealedBytes\" IS NULL)\nOR (\"ResultUploadGeneration\" IS NOT NULL AND \"ResultUploadPath\" IS NOT NULL AND \"ResultUploadBinding\" IS NOT NULL\n    AND (\"ResultUploadSealedBytes\" IS NULL OR \"ResultUploadSealedBytes\" >= 0))");
+                        });
                 });
 
             modelBuilder.Entity("Optimisarr.Data.Library", b =>

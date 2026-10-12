@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Worker uploads now fence staging creation, bounded appends and interrupted cleanup against duplicate reservations and changed assignments. Persistent completion seals prevent another coordinator changing staged bytes during hashing, and retries preserve promoted candidates after an interrupted commit.
+
 ### Added
 
 - Add the first exact-copy cleanup safety foundation: durable rollback intent, independent retention and reservations that survive restart. File actions remain unavailable while D3 concurrency and recovery qualification continues.
