@@ -203,12 +203,57 @@ while unrelated Xcode work is active; Quark uses four workers and task-local Fed
 libraries without system package changes. Picard is unavailable and excluded as requested.
 Production services, installed workers and the Riker migration backup are unchanged.
 
+## D3b fourth step: deferred startup recovery
+
+Startup cleanup captures a fixed set of disposable, interrupted and cancelled jobs, plus numeric
+ownerless scratch directories already older than seven days. Every retry acquires the SQLite writer and
+exclusive recursive cleanup claim before checking durable reservations, current job/source
+snapshots, independent held leases and references. Unresolved intents and leftover claims defer
+this pass globally, including unrelated reservations. The writer and claim remain held through
+filesystem cleanup and the job/diagnostic commit. Database contention or cleanup failure retries
+from the queue loop instead of ending the hosted service.
+
+Only captured preview and calibration job trees are removed. Neither disposable root nor a
+whole calibration session is swept, so comparisons created during deferral survive, including
+new candidates in the same session. A changed or removed captured job is retired from the plan
+without changing its files. Captured jobs remain excluded from local dispatch while pending;
+other new work can continue. Failed disposable rows retain diagnostics and lose their output
+references only after successful scratch removal. Interrupted local work is requeued or failed
+at the existing retry limit only after its output is removed; delivered remote candidates return
+to awaiting verification with their bytes intact. Cancelled work keeps its reference until
+cleanup succeeds. The queue logs deferral once and completion after retry.
+
+Fresh job outputs, media sources, library roots and replacement paths protect overlapping
+cleanup targets. Numeric orphan cleanup also preserves queued/active/unknown jobs without
+output references and independent held leases. Changed directory timestamps retire captured
+orphans rather than applying an old cleanup plan to newer work. Outside-root paths, unexpected
+file/directory types, symlink/reparse trees and locally reserved scratch directories refuse
+cleanup. These checks strengthen this bounded startup pass; they do not qualify arbitrary
+parent aliases, external filesystem writers, bind mounts or the full D3 reference model.
+Unowned preview/calibration trees without a captured job are retained. Other runtime scratch
+helpers and streaming upload ownership remain separate gates.
+
+The startup regressions reproduce 17 unsafe cases against the former algorithm, then pass
+25 cases covering preserved bytes and rows, retry, diagnostics, fresh same-session candidates,
+changed jobs/sources, superseded work excluded from orphan capture, independent lease state,
+failed removal, delivered candidates and both
+SQLite writer orderings. This slice changes no schema, UI, sidecar or file-action eligibility.
+
+The 12 October native Release builds have zero warnings on Mac (SDK 10.0.302) and Quark
+(SDK 10.0.300), with all 3,075 backend tests passing on each, including 25 new startup cases.
+All 766 backend and 188 web source/fixture hashes agree. Both hosts pass all 325 Chromium
+tests, 95 frontend units and zero-warning Svelte checks. Mac uses one browser worker and
+Quark uses four, with Fedora browser libraries extracted only into the task directory.
+Python (105), OpenAPI, release metadata and Unraid checks pass. Picard remains unavailable
+and excluded as requested. Production, installed workers and the Riker backup are unchanged.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
    transactional job admission and bounded retention/delivery finalization. Fence initial and
-   resumable upload staging, interrupted-transfer cleanup and startup/recovery/cancelled/orphan
-   scratch cleanup before their filesystem I/O. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
+   resumable upload staging, interrupted-transfer cleanup and remaining runtime scratch
+   helpers before their filesystem I/O. Bounded startup recovery is guarded as described above;
+   cleanup of unowned disposable trees still needs qualified ownership. Cover aliases of parent directories for absent destinations. Capture every physical alias and all
    affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
 2. Add an action preflight using current scope/generations, permissions, supported independent
