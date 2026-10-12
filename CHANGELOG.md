@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Startup cleanup preserves reserved and leased work for retry, recovers only the jobs captured at startup and leaves new comparisons intact. Failed cleanup keeps output references and diagnostics; current jobs, sources and rollback paths protect old scratch directories.
+
 - Preview and personal quality-check cleanup defer while a file operation or unresolved duplicate reservation is active, preserving scratch files, sessions and failed-job diagnostics for retry. Expiration retries deferred sessions automatically.
 
 - Retention cleanup and worker candidate promotion check duplicate reservations before deleting or moving files. Reserved files and failed-job diagnostics remain intact; leased and unknown active jobs also protect retained outputs.

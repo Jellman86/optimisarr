@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Diagnostics;
 using Optimisarr.Core.Diagnostics;
 using Optimisarr.Api.Realtime;
@@ -40,11 +41,11 @@ public sealed class QueueDispatcher(
     ImageComparisonReferenceService imageReference,
     TranscodeOptions transcodeOptions,
     ActiveEncodeRegistry encodes,
+    FileOperationClaims claims,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private readonly DiagnosticSchedulingCapture _diagnosticScheduling = new();
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan OrphanWorkGracePeriod = TimeSpan.FromDays(7);
     private const int MaxAttempts = 3;
 
     // Stamped into every output's container metadata so the file proves it was optimised
@@ -59,6 +60,10 @@ public sealed class QueueDispatcher(
     };
 
     private readonly string _workRoot = WorkPaths.Resolve(environment);
+    private StartupWorkRecovery? _startupRecovery;
+    private bool _startupCleanupDeferred;
+    private StartupWorkRecovery StartupRecovery => _startupRecovery ??=
+        new(scopeFactory, _workRoot, claims, logger, IsWorkDirectoryReserved);
     private sealed record ActiveWork(CancellationTokenSource Cancellation, WorkloadLane Lane);
     private readonly ConcurrentDictionary<int, ActiveWork> _running = new();
     private int? _lastStartedLibraryId;
@@ -152,15 +157,19 @@ public sealed class QueueDispatcher(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await pauseManager.RestoreAsync(stoppingToken);
-        await PurgeDisposableJobsAsync(stoppingToken);
         await FailLegacySizeReviewsAsync(stoppingToken);
-        await RecoverInterruptedJobsAsync(stoppingToken);
-        await PurgeAbandonedWorkAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                var recovery = await StartupRecovery.RunAsync(stoppingToken);
+                if (!recovery.Complete && !_startupCleanupDeferred)
+                    logger.LogWarning("Startup scratch cleanup is deferred. Existing work is retained and will be retried.");
+                else if (recovery.Complete && _startupCleanupDeferred)
+                    logger.LogInformation("Deferred startup scratch cleanup is complete.");
+                _startupCleanupDeferred = !recovery.Complete;
+                if (recovery.Changed) await NotifyAsync();
                 await DispatchAsync(stoppingToken);
                 // Apply "Replace automatically" retrospectively: jobs already in ReadyToReplace when
                 // the toggle was turned on (or left there by a transient replace failure) are picked
@@ -185,93 +194,6 @@ public sealed class QueueDispatcher(
         }
     }
 
-    // Interactive media is throwaway and must not survive a restart. Failed comparison rows are a
-    // small diagnostic audit, however, so retain those while removing every scratch tree.
-    private async Task PurgeDisposableJobsAsync(CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-
-        var disposable = await db.Jobs
-            .Where(job => job.Type != JobType.Normal)
-            .ToListAsync(cancellationToken);
-        var discard = disposable
-            .Where(job => !DiagnosticJobRetention.ShouldRetain(job.Type, job.Status))
-            .ToList();
-        if (discard.Count > 0)
-        {
-            db.Jobs.RemoveRange(discard);
-            await db.SaveChangesAsync(cancellationToken);
-        }
-
-        foreach (var subtree in new[] { "preview", "calibration" })
-        {
-            var root = $"{_workRoot.TrimEnd('/', '\\')}/{subtree}";
-            try
-            {
-                if (Directory.Exists(root))
-                {
-                    Directory.Delete(root, recursive: true);
-                }
-            }
-            catch (IOException ex)
-            {
-                logger.LogWarning(ex, "Could not purge disposable work directory {Path}", root);
-            }
-        }
-    }
-
-    // After a restart no worker is alive, so any job left mid-flight is reset to
-    // Queued (or failed after too many attempts). Stale outputs are cleaned up.
-    private async Task RecoverInterruptedJobsAsync(CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-
-        var interrupted = await db.Jobs
-            .Where(job => job.Status == JobStatus.Probing
-                || job.Status == JobStatus.Transcoding
-                || job.Status == JobStatus.Verifying)
-            .ToListAsync(cancellationToken);
-
-        if (interrupted.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var job in interrupted)
-        {
-            job.Progress = 0;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
-
-            switch (RecoveryActionFor(job.Status, job.WorkOutputPath, job.Attempt))
-            {
-                case RecoveryAction.KeepDelivered:
-                    // The interrupted work was this machine's verification of a candidate a remote
-                    // worker delivered. The candidate is finished work, not a half-written encode;
-                    // it goes back to waiting and verification simply runs again.
-                    job.Status = JobStatus.AwaitingVerification;
-                    break;
-                case RecoveryAction.Fail:
-                    DeleteWorkOutput(job.WorkOutputPath);
-                    job.WorkOutputPath = null;
-                    job.Status = JobStatus.Failed;
-                    job.ErrorMessage = "Interrupted too many times (worker restarted while running).";
-                    job.FinishedAt = DateTimeOffset.UtcNow;
-                    break;
-                default:
-                    DeleteWorkOutput(job.WorkOutputPath);
-                    job.WorkOutputPath = null;
-                    job.Status = JobStatus.Queued;
-                    break;
-            }
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Recovered {Count} interrupted job(s) after restart", interrupted.Count);
-        await NotifyAsync();
-    }
-
     internal enum RecoveryAction { Requeue, Fail, KeepDelivered }
 
     /// <summary>
@@ -288,54 +210,6 @@ public sealed class QueueDispatcher(
         }
 
         return attempt >= MaxAttempts ? RecoveryAction.Fail : RecoveryAction.Requeue;
-    }
-
-    // Scratch output is deliberately retained while a failed job exists so the operator can inspect
-    // it. Once a row has been removed, however, an old numeric work directory has no owner and would
-    // otherwise consume disk forever. Cancelled jobs never need an output, so tidy those immediately;
-    // orphan directories receive a seven-day grace period to avoid racing any external inspection.
-    private async Task PurgeAbandonedWorkAsync(CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-
-        var cancelled = await db.Jobs
-            .Where(job => job.Status == JobStatus.Cancelled && job.WorkOutputPath != null)
-            .ToListAsync(cancellationToken);
-        foreach (var job in cancelled)
-        {
-            if (TryDiscardWorkOutput(job.WorkOutputPath))
-            {
-                job.WorkOutputPath = null;
-                job.OutputSizeBytes = null;
-                job.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-        }
-        if (cancelled.Count > 0)
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-
-        var referencedMediaFileIds = (await db.Jobs
-                .Where(job => job.WorkOutputPath != null)
-                .Select(job => job.MediaFileId)
-                .Distinct()
-                .ToListAsync(cancellationToken))
-            .ToHashSet();
-        var cutoff = DateTime.UtcNow - OrphanWorkGracePeriod;
-        foreach (var directory in WorkPaths.FindStaleOrphanDirectories(
-                     _workRoot, referencedMediaFileIds, cutoff))
-        {
-            try
-            {
-                Directory.Delete(directory, recursive: true);
-                logger.LogInformation("Removed stale orphan work directory {Directory}", directory);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                logger.LogWarning(exception, "Could not remove orphan work directory {Directory}", directory);
-            }
-        }
     }
 
     // Cap per cycle so a large backlog of ready jobs is replaced gradually rather than in one burst.
@@ -506,6 +380,7 @@ public sealed class QueueDispatcher(
                     HonoursPlacement = job.Type == JobType.Normal,
                 })
                 .ToListAsync(stoppingToken))
+                .Where(job => !StartupRecovery.BlocksDispatch(job.Id))
                 .Select(job => new QueuedJob(
                     job.Id,
                     job.LibraryId,
