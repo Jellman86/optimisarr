@@ -11,7 +11,7 @@ internal static class QueueOutputCleanup
 {
     public static async Task<bool> TryDiscardAsync(
         OptimisarrDbContext db, FileOperationClaims claims, Job job, string workRoot,
-        Func<string, bool> isDirectoryReserved, CancellationToken token)
+        Func<string, bool> isDirectoryReserved, CancellationToken token, bool owningProcessStopped = false)
     {
         // The caller must retain the writer through its job transition and commit. This also
         // fences independent coordinators, which do not share the in-memory claims registry.
@@ -38,7 +38,9 @@ internal static class QueueOutputCleanup
         var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
             ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var canonical = Path.GetFullPath(path);
-        if (isDirectoryReserved(Path.GetDirectoryName(canonical)!)) return false;
+        // Runtime callers have awaited process exit (or cancellation/reaping). Their directory
+        // reservation remains held until the enclosing job finishes, and still protects pruning.
+        if (!owningProcessStopped && isDirectoryReserved(Path.GetDirectoryName(canonical)!)) return false;
         if (protectedPaths.Any(p => string.Equals(Path.GetFullPath(p), canonical, comparison))
             || libraryRoots.Any(root => string.Equals(Path.GetFullPath(root), canonical, comparison)
                 || WorkPaths.IsUnderRoot(root, canonical))) return false;

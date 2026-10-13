@@ -172,6 +172,181 @@ public sealed class QueueOutputCleanupTests : IAsyncLifetime
         await AssertRetainedAsync();
     }
 
+    [Fact]
+    public async Task Automatic_retry_waits_for_a_separate_writer_then_keeps_its_committed_reservation()
+    {
+        await PrepareRuntimeAsync();
+        await using var writer = new OptimisarrDbContext(_options);
+        await using var write = await writer.BeginDiagnosticWriteAsync();
+        Reserve(writer);
+        await writer.SaveChangesAsync();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retry = Task.Run(async () => { started.SetResult(); return await RetryAsync(); });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try { await Task.Delay(100); Assert.False(retry.IsCompleted); }
+        finally { await write.CommitAsync(); }
+        Assert.Equal(RuntimeCleanupResult.Deferred, await retry.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("candidate evidence", await File.ReadAllTextAsync(Output));
+        await using var verify = new OptimisarrDbContext(_options);
+        var job = await verify.Jobs.AsNoTracking().SingleAsync();
+        Assert.Equal(Output, job.WorkOutputPath);
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.Equal(0, job.QualityRetryCount);
+        Assert.Equal("diagnostic report", job.VerificationReportJson);
+        Assert.Equal(0, (await verify.MediaFiles.AsNoTracking().SingleAsync()).FailureCount);
+    }
+
+    [Fact]
+    public async Task A_separate_coordinator_waits_until_automatic_retry_commits_its_deletion_and_transition()
+    {
+        await PrepareRuntimeAsync();
+        _pause.Enabled = true;
+        var retry = RetryAsync();
+        await _pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reservation = Task.Run(async () =>
+        {
+            await using var db = new OptimisarrDbContext(_options);
+            started.SetResult();
+            await using var write = await db.BeginDiagnosticWriteAsync();
+            Reserve(db);
+            await db.SaveChangesAsync();
+            await write.CommitAsync();
+        });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try { await Task.Delay(100); Assert.False(reservation.IsCompleted); Assert.True(File.Exists(Output)); }
+        finally { _pause.Release.SetResult(); }
+        Assert.Equal(RuntimeCleanupResult.Discarded, await retry.WaitAsync(TimeSpan.FromSeconds(10)));
+        await reservation.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(File.Exists(Output));
+        await using var verify = new OptimisarrDbContext(_options);
+        var job = await verify.Jobs.AsNoTracking().SingleAsync();
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Null(job.WorkOutputPath);
+        Assert.Equal(1, job.QualityRetryCount);
+    }
+
+    [Fact]
+    public async Task Cancelled_automatic_retry_keeps_the_candidate_and_verdict_and_releases_its_claim()
+    {
+        await PrepareRuntimeAsync();
+        _pause.Enabled = true;
+        using var cancellation = new CancellationTokenSource();
+        var retry = RetryAsync(cancellation.Token);
+        await _pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => retry);
+        Assert.True(File.Exists(Output));
+        await using var verify = new OptimisarrDbContext(_options);
+        var job = await verify.Jobs.AsNoTracking().SingleAsync();
+        Assert.Equal(JobStatus.Verifying, job.Status);
+        Assert.Equal(Output, job.WorkOutputPath);
+        Assert.Equal("diagnostic report", job.VerificationReportJson);
+        Assert.Equal(0, job.QualityRetryCount);
+        using var held = _claims.TryAcquire(["after retry cancellation"]);
+        Assert.NotNull(held);
+    }
+
+    [Fact]
+    public async Task A_stopped_process_may_discard_its_own_output_while_its_directory_reservation_prevents_pruning()
+    {
+        await PrepareRuntimeAsync();
+        Assert.Equal(RuntimeCleanupResult.Discarded, await RetryAsync(directoryReserved: true));
+        Assert.False(File.Exists(Output));
+        Assert.True(Directory.Exists(Path.GetDirectoryName(Output)));
+    }
+
+    [Theory]
+    [InlineData("decoder")]
+    [InlineData("worker")]
+    public async Task Blocked_decoder_retry_keeps_the_verdict_and_any_rejected_process_evidence(string retryKind)
+    {
+        await PrepareRuntimeAsync();
+        await using var db = new OptimisarrDbContext(_options);
+        Reserve(db);
+        await db.SaveChangesAsync();
+        await using var write = await db.BeginDiagnosticWriteAsync();
+        var called = false;
+        var result = await RuntimeOutputCleanup.TryRetryAsync(db, _claims, 1, 2, Output, WorkRoot, _ => false,
+            job =>
+            {
+                called = true;
+                if (retryKind == "decoder") QueueDispatcher.ResetForSoftwareDecode(job, DateTimeOffset.UtcNow);
+                else JobAttemptHistory.RequeueAfterRejectedCandidate(job, "Fixture worker", "cuda", DateTimeOffset.UtcNow);
+            }, default, rejectedProcessLog: "hardware setup log", rejectedError: "hardware setup failure");
+        await write.CommitAsync();
+        Assert.Equal(RuntimeCleanupResult.Deferred, result);
+        Assert.False(called);
+        var job = await db.Jobs.AsNoTracking().SingleAsync();
+        Assert.Equal("hardware setup log", job.ProcessLog);
+        Assert.Contains("hardware setup failure", job.ErrorMessage);
+        Assert.Equal("diagnostic report", job.VerificationReportJson);
+        Assert.Null(job.AttemptHistoryJson);
+        Assert.Equal(2, job.ExecutionAttempt);
+        Assert.True(File.Exists(Output));
+    }
+
+    [Theory]
+    [InlineData("decoder")]
+    [InlineData("worker")]
+    public async Task Successful_decoder_retries_clear_verified_hashes_and_require_a_fresh_verdict(string retryKind)
+    {
+        await PrepareRuntimeAsync();
+        await using var db = new OptimisarrDbContext(_options);
+        var before = await db.Jobs.SingleAsync();
+        before.SourceSha256 = new('a', 64);
+        before.VerifiedSourceSha256 = new('a', 64);
+        before.VerifiedOutputSha256 = new('b', 64);
+        before.VerificationPassed = false;
+        before.VerifiedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        await using var write = await db.BeginDiagnosticWriteAsync();
+        var result = await RuntimeOutputCleanup.TryRetryAsync(db, _claims, 1, 2, Output, WorkRoot, _ => false,
+            job =>
+            {
+                if (retryKind == "decoder") QueueDispatcher.ResetForSoftwareDecode(job, DateTimeOffset.UtcNow);
+                else JobAttemptHistory.RequeueAfterRejectedCandidate(job, "Fixture worker", "cuda", DateTimeOffset.UtcNow);
+            }, default);
+        await write.CommitAsync();
+        Assert.Equal(RuntimeCleanupResult.Discarded, result);
+        Assert.False(File.Exists(Output));
+        var after = await db.Jobs.AsNoTracking().SingleAsync();
+        Assert.Equal(retryKind == "decoder" ? JobStatus.Transcoding : JobStatus.Queued, after.Status);
+        Assert.Null(after.WorkOutputPath);
+        Assert.Null(after.VerificationPassed);
+        Assert.Null(after.VerifiedSourceSha256);
+        Assert.Null(after.VerifiedOutputSha256);
+        Assert.Null(after.VerifiedAt);
+        if (retryKind == "decoder") Assert.Equal(new('a', 64), after.SourceSha256);
+        else
+        {
+            Assert.True(after.PreferSoftwareDecode);
+            Assert.Equal("diagnostic report", Assert.Single(JobAttemptHistory.Read(after.AttemptHistoryJson)).VerificationReportJson);
+        }
+    }
+
+    private async Task PrepareRuntimeAsync()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var job = await db.Jobs.SingleAsync();
+        job.Status = JobStatus.Verifying;
+        job.ExecutionAttempt = 2;
+        job.VerificationReportJson = "diagnostic report";
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<RuntimeCleanupResult> RetryAsync(CancellationToken token = default, bool directoryReserved = false)
+    {
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>(_options).AddInterceptors(_pause).Options;
+        await using var db = new OptimisarrDbContext(options);
+        await using var write = await db.BeginDiagnosticWriteAsync(token);
+        var result = await RuntimeOutputCleanup.TryRetryAsync(db, _claims, 1, 2, Output, WorkRoot,
+            _ => directoryReserved, job => { job.Status = JobStatus.Queued; job.QualityRetryCount++; }, token);
+        await write.CommitAsync(token);
+        return result;
+    }
+
     private async Task<bool> CleanAsync(CancellationToken token = default)
     {
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>(_options).AddInterceptors(_pause).Options;

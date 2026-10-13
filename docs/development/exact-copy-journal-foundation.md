@@ -351,13 +351,53 @@ cleanup, missing parent directories, directory-valued paths and linked-source de
 the fixes. Picard is unreachable, so this delivery does not qualify Windows symlink behavior.
 Installed services and user media were untouched.
 
-This is a bounded operator-cleanup delivery, **not completion of D3b6 or D3**. Automatic
-software/quality retries, failure/cancellation scratch cleanup, adaptive samples, verification
+This is a bounded operator-cleanup delivery, **not completion of D3b6 or D3**. The next
+part below extends it to stopped-process candidate cleanup. Adaptive samples, verification
 references and move-on-completion still require coordination. Cross-disk completion moves
 need durable destination/staging/rollback ownership and crash recovery; a long copy must not
 simply hold the database writer for its entire duration. Exhaustive physical aliases,
 external writers and import/manager coordination remain unqualified. Dedupe file actions
 remain disabled, and quality-based keeper recommendations are not introduced here.
+
+## D3b sixth step, part two: stopped-process candidate cleanup
+
+The local queue claim and delivered-candidate claim now return their execution-attempt
+number in the transaction that claims the job. Local hardware setup fallback, local and
+worker decoder-corruption retry, higher-quality retry, failure cleanup and cancellation
+carry that number to their cleanup transaction. Retry also requires the expected output
+path and an active transcode/verification state; changed attempts, paths and terminal
+states are left alone. A late encoder failure cannot replace an explicit cancellation.
+
+After FFmpeg has exited or been reaped, runtime cleanup uses the same reservation,
+source, sharing and recovery guards as operator cleanup. Its enclosing encode-directory
+reservation may remain held, but still protects pruning. The filesystem deletion, retry
+archive/reset and job transition stay within one SQLite writer. The old unconditional
+`DeleteWorkOutput` helper has been removed. No process starts from a deferred retry.
+
+A blocked automatic retry retains the candidate, verdict, hashes, process evidence and
+retry budget, and records an actionable failed job for manual retry after the conflict is
+resolved. It does not increment the media failure tally or trigger auto-exclusion. An
+actual encoder failure still records its real error/log and counts once, even if its
+partial output must be retained. Cancellation retains reserved evidence without counting
+a media failure. Successful retries still invalidate verified hashes and require every
+configured gate to pass again. Duplicate callbacks cannot archive or spend the budget twice.
+
+Native macOS and Quark Linux builds pass with zero warnings and all 3,191 backend tests,
+including 19 additional runtime cases. All six changed code/test files agree across hosts.
+The tests cover both independent writer orderings, cancellation/claim release, blocked
+local/worker decoder and quality retries, source/hash evidence, exactly-once retry budgets,
+genuine failure tracking, retained terminal outputs and superseded/cancelled callbacks.
+A concurrent Mac validation run hit an existing timing-sensitive VMAF process assertion;
+the complete backend suite passes when rerun separately without changing the assertion.
+All 325 Chromium tests pass on a separate local port with two workers. The earlier
+concurrent browser run had eight UI timing failures; no assertion or timeout was relaxed.
+Quark's installed server and sidecar remained healthy with zero restarts; only owned
+native test sources/builds were removed after evidence capture.
+
+These are cleanup-boundary guards, not a durable execution lease for every progress/write
+callback. Adaptive sample/reference ownership, cross-process encode lifetime, import/manager
+coordination, exhaustive aliases and recorded completion moves/recovery remain unqualified.
+D3 file actions remain disabled; quality-based keeper recommendations remain planned.
 
 ## Remaining D3 work, in dependency order
 

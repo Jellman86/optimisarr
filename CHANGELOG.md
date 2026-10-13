@@ -21,6 +21,8 @@
 
 ### Fixed
 
+- Automatic decoder and higher-quality retries stop if candidate cleanup is blocked, retaining files, evidence and the retry budget. Failure and cancellation cleanup use the same reservation guard. Stale cleanup callbacks preserve newer outputs, and cleanup conflicts do not auto-exclude media.
+
 - Queue Remove, Retry, Clear finished and Clear pending retain reserved or shared outputs and their diagnostics. Cleanup also protects live worker files, recovery paths and linked sources; deferred jobs can be retried after the conflict is resolved.
 
 - Final VMAF sample verification recognises advancing decoding before a late sample begins, avoiding false five-minute stall failures. Stalled decoding and scoring still time out; cancellation reaps FFmpeg, and missing quality evidence still blocks replacement.
