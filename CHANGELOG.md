@@ -21,6 +21,8 @@
 
 ### Fixed
 
+- Queue Remove, Retry, Clear finished and Clear pending retain reserved or shared outputs and their diagnostics. Cleanup also protects live worker files, recovery paths and linked sources; deferred jobs can be retried after the conflict is resolved.
+
 - Final VMAF sample verification recognises advancing decoding before a late sample begins, avoiding false five-minute stall failures. Stalled decoding and scoring still time out; cancellation reaps FFmpeg, and missing quality evidence still blocks replacement.
 
 - Compare equal-frame video samples by absolute decoded picture number across all codecs, preventing seek-boundary mismatches such as 50 fps VMAF false rejections. Timestamp-based alignment checks the bounded window and refuses conflicting scene offsets; final quality and timing gates are unchanged.

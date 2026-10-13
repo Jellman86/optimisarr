@@ -164,6 +164,105 @@ public sealed class DedupeDisposableCleanupTests(AdminTokenAuthEndpointTests.Tok
         Assert.Equal(HttpStatusCode.NotFound, calibration.StatusCode);
     }
 
+    [Theory]
+    [InlineData("remove", false)]
+    [InlineData("retry", false)]
+    [InlineData("clear", false)]
+    [InlineData("pending", false)]
+    [InlineData("remove", true)]
+    [InlineData("retry", true)]
+    [InlineData("clear", true)]
+    [InlineData("pending", true)]
+    public async Task Queue_cleanup_retains_reserved_outputs_and_diagnostics_and_succeeds_after_release(string action, bool busy)
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var status = action == "pending" ? JobStatus.ReadyToReplace : JobStatus.Failed;
+        var jobId = await fixture.AddPreviewAsync(status, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "candidate.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "candidate evidence");
+        await fixture.SetOutputAsync(jobId, output);
+        using var held = busy ? api.Services.GetRequiredService<FileOperationClaims>().TryAcquire(["concurrent operation"]) : null;
+        // An unrelated intent still fences ancestor pruning, including absent destinations.
+        if (!busy) await fixture.ReserveAsync(FileClaimKeys.Media(int.MaxValue), unknown: true);
+        using (var blocked = await SendAsync())
+        {
+            if (action is "remove" or "retry") Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+            else blocked.EnsureSuccessStatusCode();
+        }
+        Assert.Equal("candidate evidence", await File.ReadAllTextAsync(output));
+        await fixture.AssertJobAsync(jobId, status, output);
+        held?.Dispose();
+        await fixture.ReleaseAsync();
+        using var retry = await SendAsync();
+        retry.EnsureSuccessStatusCode();
+        Assert.False(File.Exists(output));
+        using var scope = api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId);
+        if (action == "retry")
+        {
+            Assert.NotNull(job);
+            Assert.Equal(JobStatus.Queued, job.Status);
+            Assert.Null(job.WorkOutputPath);
+        }
+        else Assert.Null(job);
+
+        Task<HttpResponseMessage> SendAsync() => action switch
+        {
+            "remove" => fixture.Client.DeleteAsync($"/api/jobs/{jobId}"),
+            "retry" => fixture.Client.PostAsync($"/api/jobs/{jobId}/retry", null),
+            "clear" => fixture.Client.PostAsync("/api/jobs/clear?scope=errored", null),
+            _ => fixture.Client.PostAsync("/api/jobs/clear-pending", null)
+        };
+    }
+
+    [Fact]
+    public async Task Removing_a_job_keeps_an_output_shared_with_another_job_until_its_reference_is_released()
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var first = await fixture.AddPreviewAsync(JobStatus.Failed, JobType.Normal);
+        var second = await fixture.AddPreviewAsync(JobStatus.Failed, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "shared.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "shared evidence");
+        await fixture.SetOutputAsync(first, output);
+        // Canonical aliases must be protected even for terminal jobs.
+        await fixture.SetOutputAsync(second, Path.Combine(Path.GetDirectoryName(output)!, ".", "shared.mkv"));
+        using var blocked = await fixture.Client.DeleteAsync($"/api/jobs/{first}");
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        Assert.Equal("shared evidence", await File.ReadAllTextAsync(output));
+        await fixture.AssertJobAsync(first, JobStatus.Failed, output);
+        await fixture.SetOutputAsync(second, null);
+        using var retry = await fixture.Client.DeleteAsync($"/api/jobs/{first}");
+        Assert.Equal(HttpStatusCode.NoContent, retry.StatusCode);
+        Assert.False(File.Exists(output));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Removing_a_job_preserves_completed_external_outputs_and_rejects_redirected_work_paths(bool redirect)
+    {
+        if (redirect && OperatingSystem.IsWindows()) return; // Symlink creation needs a separately qualified Windows privilege.
+        await using var fixture = await Fixture.CreateAsync(api);
+        var jobId = await fixture.AddPreviewAsync(JobStatus.Failed, JobType.Normal);
+        var external = Path.Combine(fixture.Root, "retained.mkv");
+        await File.WriteAllTextAsync(external, "retained evidence");
+        var output = external;
+        if (redirect)
+        {
+            var root = WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId);
+            Directory.CreateDirectory(root);
+            Directory.CreateSymbolicLink(Path.Combine(root, "redirect"), fixture.Root);
+            output = Path.Combine(root, "redirect", "retained.mkv");
+        }
+        await fixture.SetOutputAsync(jobId, output);
+        using var response = await fixture.Client.DeleteAsync($"/api/jobs/{jobId}");
+        Assert.Equal(redirect ? HttpStatusCode.Conflict : HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("retained evidence", await File.ReadAllTextAsync(external));
+        if (redirect) await fixture.AssertJobAsync(jobId, JobStatus.Failed, output);
+    }
+
     private static async Task AssertDeferredAsync(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -217,17 +316,17 @@ public sealed class DedupeDisposableCleanupTests(AdminTokenAuthEndpointTests.Tok
             await File.WriteAllTextAsync(media.Path, "unchanged original");
             return new(api, root, library.Id, media.Id);
         }
-        public async Task<int> AddPreviewAsync(JobStatus status)
+        public async Task<int> AddPreviewAsync(JobStatus status, JobType type = JobType.Preview)
         {
             using var scope = api.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-            var job = new Job { MediaFileId = MediaId, LibraryId = LibraryId, Type = JobType.Preview, Status = status, ErrorMessage = "diagnostic evidence" };
+            var job = new Job { MediaFileId = MediaId, LibraryId = LibraryId, Type = type, Status = status, ErrorMessage = "diagnostic evidence" };
             db.Jobs.Add(job);
             await db.SaveChangesAsync();
-            _scratch.Add(WorkOutputRoot.ForPreview(WorkRoot, job.Id));
+            _scratch.Add(type == JobType.Normal ? WorkOutputRoot.ForMediaFile(WorkRoot, MediaId) : WorkOutputRoot.ForPreview(WorkRoot, job.Id));
             return job.Id;
         }
-        public async Task SetOutputAsync(int jobId, string output)
+        public async Task SetOutputAsync(int jobId, string? output)
         {
             using var scope = api.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();

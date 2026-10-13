@@ -319,6 +319,46 @@ Picard remains unavailable and excluded as requested. No UI or installed sidecar
 production services and the Riker backup are untouched. Required exact-head CI is recorded in
 the delivery PR before merge. D3 file actions remain disabled.
 
+## D3b sixth step, part one: operator queue cleanup
+
+Remove, manual Retry, Clear finished and Clear pending now acquire the same conservative
+cleanup fence as preview and calibration cleanup before touching scratch files. The caller
+owns the SQLite writer from its fresh job/status read through filesystem deletion and the
+job transition/commit. A reservation committed by an independent coordinator is observed;
+a coordinator arriving during cleanup must wait until that transition commits. In-memory
+claims also defer cleanup while another local file operation is active. Unknown intents,
+intents without complete claims and leftover claims all fail closed, including unrelated
+and absent destinations whose opaque keys cannot establish ancestor safety.
+
+Deferred cleanup retains the job, output path, verification evidence and diagnostics. Bulk
+operations remove only successfully cleaned jobs and return the actual cleared count.
+Clear pending refreshes jobs in batches of 64 rather than holding the writer for the whole
+queue. Manual retry preserves the existing `dedupe.reserved` response for a directly
+reserved file, checking it before deleting any candidate.
+
+Cleanup refuses live worker leases and active local encode directories, other jobs' outputs
+(including terminal jobs and canonical aliases), held upload staging paths, live replacement
+paths, configured library trees and indexed source names. The current source's physical
+identity also protects a source reached through a different symlink or hard-link name.
+Redirects inside the work root, directory-valued output paths and failed deletions retain
+the job. Missing files or missing child directories are safe to retry; outputs outside the
+work root are retained when queue history is removed.
+
+Validation on 13 October: 3,172 backend tests and zero-warning builds pass on macOS and
+native Quark Linux, including 25 new cases; all five changed code/test files agree across
+both hosts. All 325 Chromium tests pass locally. Regression runs reproduced reserved/busy
+cleanup, missing parent directories, directory-valued paths and linked-source deletion before
+the fixes. Picard is unreachable, so this delivery does not qualify Windows symlink behavior.
+Installed services and user media were untouched.
+
+This is a bounded operator-cleanup delivery, **not completion of D3b6 or D3**. Automatic
+software/quality retries, failure/cancellation scratch cleanup, adaptive samples, verification
+references and move-on-completion still require coordination. Cross-disk completion moves
+need durable destination/staging/rollback ownership and crash recovery; a long copy must not
+simply hold the database writer for its entire duration. Exhaustive physical aliases,
+external writers and import/manager coordination remain unqualified. Dedupe file actions
+remain disabled, and quality-based keeper recommendations are not introduced here.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after

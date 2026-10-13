@@ -3817,32 +3817,33 @@ public sealed class QueueDispatcher(
             RequestCancel(jobId);
         }
 
-        // A delivered candidate that has not been verified is pending work too: clearing the queue
-        // discards it along with the rest, since nothing has been earned by it yet.
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var pending = await db.Jobs
-            .Where(job => job.Type == JobType.Normal
-                && !db.Replacements.Any(r => r.JobId == job.Id && JobClearing.LiveReplacementStatuses.Contains(r.Status))
-                && (job.Status == JobStatus.Queued
-                    || job.Status == JobStatus.AwaitingVerification
-                    || job.Status == JobStatus.AwaitingSizeReview
-                    || job.Status == JobStatus.ReadyToReplace))
-            .ToListAsync(cancellationToken);
-        if (pending.Count == 0)
+        // Snapshot IDs only, then refresh each bounded batch while holding the writer. A large
+        // queue must not keep other control-plane writes waiting for the entire cleanup.
+        var statuses = new[] { JobStatus.Queued, JobStatus.AwaitingVerification,
+            JobStatus.AwaitingSizeReview, JobStatus.ReadyToReplace };
+        var ids = await db.Jobs.AsNoTracking().Where(job => job.Type == JobType.Normal
+            && statuses.Contains(job.Status)).Select(job => job.Id).ToListAsync(cancellationToken);
+        var cleared = 0;
+        foreach (var batch in ids.Chunk(64))
         {
-            return 0;
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            var pending = await db.Jobs.Where(job => batch.Contains(job.Id)
+                && job.Type == JobType.Normal && statuses.Contains(job.Status)
+                && !db.Replacements.Any(r => r.JobId == job.Id && JobClearing.LiveReplacementStatuses.Contains(r.Status)))
+                .ToListAsync(cancellationToken);
+            var clearable = new List<Job>();
+            foreach (var job in pending)
+            {
+                if (await TryDiscardWorkOutputAsync(db, job, cancellationToken)) clearable.Add(job);
+            }
+            db.Jobs.RemoveRange(clearable);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            cleared += clearable.Count;
         }
-
-        foreach (var job in pending)
-        {
-            DeleteWorkOutput(job.WorkOutputPath);
-        }
-
-        db.Jobs.RemoveRange(pending);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         await NotifyAsync();
-        return pending.Count;
+        return cleared;
     }
 
     /// <summary>
@@ -3965,9 +3966,12 @@ public sealed class QueueDispatcher(
     /// <summary>
     /// Deletes a persisted scratch output before its job row is retried or removed. Paths outside
     /// the owned work root (for example a completed move-to-folder output) are deliberately ignored.
-    /// A false result means the row must be retained so the output never becomes an untracked orphan.
+    /// The caller must own the database writer through its fresh job read and final commit.
+    /// A false result means the row and diagnostics must be retained for retry.
     /// </summary>
-    public bool TryDiscardWorkOutput(string? path) => DeleteWorkOutput(path);
+    public Task<bool> TryDiscardWorkOutputAsync(OptimisarrDbContext db, Job job, CancellationToken token) =>
+        _running.ContainsKey(job.Id) ? Task.FromResult(false)
+            : QueueOutputCleanup.TryDiscardAsync(db, claims, job, _workRoot, IsWorkDirectoryReserved, token);
 
     // Held for as long as FFmpeg is writing into the directory. Reference counted, because two
     // concurrent jobs on the same media file legitimately share one.
