@@ -242,7 +242,7 @@ public sealed class SoundtrackQualityTests
         var seek = args.IndexOf("-ss");
         Assert.True(seek >= 0 && seek < args.IndexOf("-i"));
         Assert.Equal(expected, args[seek + 1]);
-        Assert.Single(args.Where(arg => arg == "-ss"));
+        Assert.Single(args, arg => arg == "-ss");
         Assert.Contains("aresample=48000,atrim=end_sample=144000", args);
     }
 
