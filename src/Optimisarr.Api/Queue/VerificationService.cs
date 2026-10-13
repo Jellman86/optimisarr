@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Optimisarr.Api.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
@@ -71,6 +72,9 @@ public sealed record VerificationClip(
         : Seconds;
 }
 
+/// <summary>The caller proves ownership before requesting cleanup of a disposable reference.</summary>
+public sealed record VerificationScratchCallbacks(Action<string> Capture, Func<string, Task<bool>> DeleteAsync);
+
 internal static class VerificationClipLifecycle
 {
     public static bool DeleteReferenceAfterVerification(VerificationClip clip) =>
@@ -107,7 +111,8 @@ public sealed class VerificationService(
         IProgress<double>? qualityProgress = null,
         VmafAcceleration vmafAcceleration = VmafAcceleration.None,
         RemoteQuality? remoteQuality = null,
-        RemoteVerificationEvidence? remoteEvidence = null)
+        RemoteVerificationEvidence? remoteEvidence = null,
+        VerificationScratchCallbacks? scratch = null)
     {
         if (remoteEvidence is not null)
         {
@@ -124,9 +129,10 @@ public sealed class VerificationService(
             throw new InvalidOperationException("Sidecar-only verification does not accept disposable reference clips.");
         if (remoteEvidence is not null && policy.RequiresVmaf(original.Kind, original.VideoReencoded) && remoteQuality is null)
             throw new InvalidOperationException("Sidecar-only verification requires complete worker VMAF evidence; server fallback is disabled.");
+        if (clip is not null) ValidateReferenceDestination(original.Path, outputPath, clip.ReferencePath);
         var preparedReference = clip is null
             ? new PreparedReference(original, 0)
-            : await CreateReferenceClipAsync(original, clip, cancellationToken);
+            : await CreateReferenceClipAsync(original, clip, cancellationToken, scratch?.Capture);
         var reference = preparedReference.Snapshot;
 
         try
@@ -503,9 +509,9 @@ public sealed class VerificationService(
         }
         finally
         {
-            if (clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip))
+            if (clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip) && scratch is not null)
             {
-                TryDelete(reference.Path);
+                await scratch.DeleteAsync(reference.Path);
             }
         }
     }
@@ -645,10 +651,22 @@ public sealed class VerificationService(
             target.Report(Math.Clamp((index + value) / count, 0, 0.999));
     }
 
+    private static void ValidateReferenceDestination(string original, string candidate, string reference)
+    {
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var target = Path.GetFullPath(reference);
+        if (new[] { original, candidate }.Any(input => string.Equals(Path.GetFullPath(input), target, comparison)))
+            throw new InvalidOperationException("A verification reference cannot overwrite either verification input.");
+        if (ExactFileIdentity.Read(reference) is { } identity
+            && new[] { original, candidate }.Any(input => ExactFileIdentity.Read(input) == identity))
+            throw new InvalidOperationException("A verification reference aliases an input file; the original and candidate were retained.");
+    }
+
     private async Task<PreparedReference> CreateReferenceClipAsync(
         OriginalSnapshot original,
         VerificationClip clip,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string>? capture)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(clip.ReferencePath)!);
         var args = original.Kind == MediaKind.Audio
@@ -657,7 +675,9 @@ public sealed class VerificationService(
             : PreviewReferenceClipCommandBuilder.Build(
                 original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds, clip.VideoOnly);
 
-        var run = await RunReferenceClipAsync(args, cancellationToken);
+        (int ExitCode, string? Error) run;
+        try { run = await RunReferenceClipAsync(args, cancellationToken); }
+        finally { capture?.Invoke(clip.ReferencePath); }
         if (run.ExitCode != 0)
         {
             throw new InvalidOperationException(
@@ -697,7 +717,7 @@ public sealed class VerificationService(
         OriginalSnapshot Snapshot,
         double PresentationOffsetSeconds);
 
-    private async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
+    internal async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
@@ -723,9 +743,13 @@ public sealed class VerificationService(
         {
             await process.WaitForExitAsync(cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
             TryKill(process);
+            try { await process.WaitForExitAsync(CancellationToken.None); }
+            catch (InvalidOperationException) { }
+            try { await Task.WhenAll(stdoutTask, stderrTask); }
+            catch (Exception ex) when (ex is OperationCanceledException or IOException) { }
             throw;
         }
 
@@ -768,21 +792,6 @@ public sealed class VerificationService(
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .TakeLast(maxLines);
         return string.Join('\n', lines);
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (IOException)
-        {
-            // Best-effort cleanup; preview scratch is purged on startup and when the panel closes.
-        }
     }
 
     private static void TryKill(Process process)
