@@ -109,15 +109,20 @@ public struct AudioQualityAssessment: Sendable {
                                 audioIndex: Int, lead: Double, soundtrack: Bool) -> [String] {
         let seek = window.startSeconds + lead
         let inputSeek = max(0, seek - 10), outputSeek = seek - inputSeek
-        let inputArgs = inputSeek == 0 ? [] : ["-ss", secondsText(inputSeek)]
-        let outputArgs = outputSeek == 0 ? [] : ["-ss", secondsText(outputSeek)]
-        let filterArgs = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(Int((window.durationSeconds * 48000).rounded()))"] : []
+        let inputArgs: [String] = inputSeek == 0 ? [] : ["-ss", secondsText(inputSeek)]
+        let outputArgs: [String] = outputSeek == 0 ? [] : ["-ss", secondsText(outputSeek)]
+        let frames = Int((window.durationSeconds * 48000).rounded())
+        let filterArgs: [String] = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(frames)"] : []
+        let duration = secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0))
         // Decode context before trimming so AAC priming and fractional seeks retain every sample.
-        return ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n"]
-            + inputArgs + ["-i", input.path] + outputArgs
-            + ["-map", "0:a:\(audioIndex)", "-t", secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0)),
-               "-vn", "-sn", "-dn", "-ar", "48000"] + filterArgs
-            + ["-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output.path]
+        var arguments = ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n"]
+        arguments.append(contentsOf: inputArgs)
+        arguments.append(contentsOf: ["-i", input.path])
+        arguments.append(contentsOf: outputArgs)
+        arguments.append(contentsOf: ["-map", "0:a:\(audioIndex)", "-t", duration, "-vn", "-sn", "-dn", "-ar", "48000"])
+        arguments.append(contentsOf: filterArgs)
+        arguments.append(contentsOf: ["-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output.path])
+        return arguments
     }
 
     static func profile(_ json: String, audioIndex: Int? = nil) -> AudioQualityProfile? {
