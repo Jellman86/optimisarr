@@ -436,6 +436,15 @@ comparisons (#406), including H.264 and 50 fps sources. Sequential comparison co
 time, especially for late windows; VMAF still assesses only the selected window, and no alignment
 probes are run for this deterministic path. Disposable cut clips retain their own policy.
 
+The local server's five-minute idle watchdog counts advancing decoded-frame counters while
+each input approaches a sequential sample. Counters stop at the sample boundary, where actual
+VMAF output must advance. Repeated counters, repeated output time and ordinary process activity
+cannot extend the deadline. Decoding does not advance the displayed scoring percentage or
+substitute for a valid score. Timeout diagnostics identify the window and last observed counters;
+cancellation and timeout terminate and reap FFmpeg before scratch cleanup. Worker commands and
+their existing contracts are unchanged. See the
+[13 October watchdog acceptance record](../engineering/hardware-validation/2026-10-13-vmaf-decode-watchdog.md).
+
 When frame counts are unequal or unavailable, timestamp comparison retains a bounded ±1-frame
 alignment search. Its sparse probes cover the window (up to 40 seconds), rather than only its
 first five seconds. Five-second blocks must support one consistent correction; conflicting blocks,
