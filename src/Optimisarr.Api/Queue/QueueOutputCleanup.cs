@@ -9,9 +9,22 @@ namespace Optimisarr.Api.Queue;
 /// <summary>Discards queue-owned scratch without detaching reserved files from their diagnostics.</summary>
 internal static class QueueOutputCleanup
 {
-    public static async Task<bool> TryDiscardAsync(
+    public static Task<bool> TryDiscardAsync(
         OptimisarrDbContext db, FileOperationClaims claims, Job job, string workRoot,
-        Func<string, bool> isDirectoryReserved, CancellationToken token, bool owningProcessStopped = false)
+        Func<string, bool> isDirectoryReserved, CancellationToken token, bool owningProcessStopped = false) =>
+        TryDiscardPathAsync(db, claims, job, job.WorkOutputPath, workRoot, isDirectoryReserved, token,
+            owningProcessStopped, prune: true, isOwned: null);
+
+    internal static Task<bool> TryDiscardScratchAsync(
+        OptimisarrDbContext db, FileOperationClaims claims, Job job, string path, string workRoot,
+        Func<bool> isOwned, CancellationToken token) =>
+        TryDiscardPathAsync(db, claims, job, path, workRoot, _ => false, token,
+            owningProcessStopped: true, prune: false, isOwned);
+
+    private static async Task<bool> TryDiscardPathAsync(
+        OptimisarrDbContext db, FileOperationClaims claims, Job job, string? path, string workRoot,
+        Func<string, bool> isDirectoryReserved, CancellationToken token, bool owningProcessStopped,
+        bool prune, Func<bool>? isOwned)
     {
         // The caller must retain the writer through its job transition and commit. This also
         // fences independent coordinators, which do not share the in-memory claims registry.
@@ -21,7 +34,6 @@ internal static class QueueOutputCleanup
             || await db.Replacements.AsNoTracking().AnyAsync(r => r.JobId == job.Id
                 && JobClearing.LiveReplacementStatuses.Contains(r.Status), token)) return false;
 
-        var path = job.WorkOutputPath;
         // Completed move-to-folder outputs are retained when their queue history is cleared.
         if (string.IsNullOrEmpty(path) || !WorkPaths.IsUnderRoot(workRoot, path)) return true;
 
@@ -72,8 +84,9 @@ internal static class QueueOutputCleanup
                 existing = Path.GetDirectoryName(existing) ?? throw new IOException("No work ancestor exists.");
             }
             if (!ExactDuplicateScanner.SafePath(workRoot, existing) || Directory.Exists(canonical)) return false;
+            if (isOwned?.Invoke() == false) return false;
             if (File.Exists(canonical)) File.Delete(canonical);
-            WorkPaths.PruneEmptyAncestors(workRoot, canonical, directory =>
+            if (prune) WorkPaths.PruneEmptyAncestors(workRoot, canonical, directory =>
                 isDirectoryReserved(directory) || protectedPaths.Any(p => WorkPaths.IsUnderRoot(directory, p)));
             return true;
         }

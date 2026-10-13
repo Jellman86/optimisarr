@@ -21,6 +21,8 @@
 
 ### Fixed
 
+- Adaptive samples and disposable preview references use owned workspaces. Cleanup retains reserved, changed or shared files and unknown folder contents. Reference encoding rejects input-path collisions and waits for cancellation to finish before cleanup; retained calibration references keep their existing lifecycle.
+
 - Automatic decoder and higher-quality retries stop if candidate cleanup is blocked, retaining files, evidence and the retry budget. Failure and cancellation cleanup use the same reservation guard. Stale cleanup callbacks preserve newer outputs, and cleanup conflicts do not auto-exclude media.
 
 - Queue Remove, Retry, Clear finished and Clear pending retain reserved or shared outputs and their diagnostics. Cleanup also protects live worker files, recovery paths and linked sources; deferred jobs can be retried after the conflict is resolved.
