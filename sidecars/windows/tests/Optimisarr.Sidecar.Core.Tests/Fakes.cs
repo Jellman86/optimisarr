@@ -175,7 +175,7 @@ internal sealed class FakeMeasuringTranscoder(
             File.WriteAllText(
                 log,
                 """
-                {"frames":[{"metrics":{"vmaf":95.0}},{"metrics":{"vmaf":95.0}}],
+                {"frames":[{"frameNum":0,"metrics":{"vmaf":95.0}},{"frameNum":5,"metrics":{"vmaf":95.0}}],
                  "pooled_metrics":{"vmaf":{"harmonic_mean":95.0}}}
                 """);
             return Task.FromResult(new TranscodeResult(0, ""));

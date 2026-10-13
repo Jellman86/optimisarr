@@ -114,6 +114,14 @@ public sealed class QualityScoreService(
             // rerun the canonical software graph so a hardware limitation cannot fail verification.
             DeleteQuietly(logPath);
             var fallbackContext = context with { Acceleration = VmafAcceleration.None };
+            if (fallbackContext.DistortedShiftToken is null or { Length: 0 })
+            {
+                fallbackContext = fallbackContext with
+                {
+                    DistortedShiftToken = await ChooseAlignmentAsync(_ffmpeg, referencePath, distortedPath,
+                        fallbackContext, threads, cancellationToken)
+                };
+            }
             var fallbackCommand = BuildCommand(
                 distortedPath,
                 referencePath,
@@ -239,9 +247,8 @@ public sealed class QualityScoreService(
     }
 
     /// <summary>
-    /// Runs the measurement itself, cut short, at each offset and returns the one that matched
-    /// best, or null when none could be scored — in which case the builder falls back to what the
-    /// containers claim, which is what it always did.
+    /// Runs the bounded measurement window at each offset and returns a correction only when
+    /// the evidence is consistent across its scenes. Missing baseline evidence returns null.
     /// </summary>
     private static async Task<string?> ChooseAlignmentAsync(
         string executable,
@@ -251,12 +258,19 @@ public sealed class QualityScoreService(
         int threads,
         CancellationToken cancellationToken)
     {
+        if (QualityScoreCommandBuilder.UsesAbsoluteFramePairing(context))
+        {
+            // Absolute decoded indices already determine correspondence. A visual-score search
+            // would hide a real content shift, and decoding three probes would add no evidence.
+            return "0";
+        }
         if (TimelineAlignmentProbe.FrameSeconds(context.ReferenceFrameRate) is not { } frameSeconds)
         {
             return null;
         }
 
-        var scored = new List<(int Frames, double Mean)>(TimelineAlignmentProbe.FramesToTry.Count);
+        var scored = new List<(int Frames, IReadOnlyList<AlignmentScore> Scores)>();
+        double duration = TimelineAlignmentProbe.ProbeSeconds;
         foreach (var frames in TimelineAlignmentProbe.FramesToTry)
         {
             var log = Path.Combine(Path.GetTempPath(), $"optimisarr-align-{Guid.NewGuid():N}.json");
@@ -272,7 +286,8 @@ public sealed class QualityScoreService(
                 probeTimeout.CancelAfter(AlignmentProbeTimeout);
                 using var process = CreateProcess(
                     executable,
-                    TimelineAlignmentProbe.Truncate(measurement.Arguments, TimelineAlignmentProbe.ProbeSeconds));
+                    TimelineAlignmentProbe.Prepare(measurement.Arguments));
+                duration = TimelineAlignmentProbe.Duration(measurement.Arguments);
                 process.Start();
                 var stderr = process.StandardError.ReadToEndAsync(probeTimeout.Token);
                 try
@@ -295,9 +310,9 @@ public sealed class QualityScoreService(
                     continue;
                 }
 
-                if (TimelineAlignmentProbe.MeanScore(await File.ReadAllTextAsync(log, cancellationToken)) is { } mean)
+                if (TimelineAlignmentProbe.ReadScores(await File.ReadAllTextAsync(log, cancellationToken)) is { } scores)
                 {
-                    scored.Add((frames, mean));
+                    scored.Add((frames, scores));
                 }
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
@@ -311,7 +326,7 @@ public sealed class QualityScoreService(
             }
         }
 
-        return TimelineAlignmentProbe.Choose(scored) is { } chosen
+        return TimelineAlignmentProbe.ChooseWindow(scored, context.ReferenceFrameRate!.Value, duration) is { } chosen
             ? TimelineAlignmentProbe.Format(chosen * frameSeconds)
             : null;
     }

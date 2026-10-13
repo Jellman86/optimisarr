@@ -14,8 +14,8 @@ public sealed class TimelineAlignmentProbeTests
 {
     private static string Log(params double[] scores) =>
         "{\"frames\":["
-        + string.Join(",", scores.Select(s =>
-            "{\"metrics\":{\"vmaf\":" + s.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}}"))
+        + string.Join(",", scores.Select((s, index) =>
+            "{\"frameNum\":" + index + ",\"metrics\":{\"vmaf\":" + s.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}}"))
         + "]}";
 
     [Fact]
@@ -24,8 +24,8 @@ public sealed class TimelineAlignmentProbeTests
         // The mean, not the harmonic mean: this chooses between alignments rather than judging
         // quality, and a harmonic mean collapses to near zero for every offset once any of them
         // contains a zero — which tells them apart far less clearly.
-        Assert.Equal(50, TimelineAlignmentProbe.MeanScore(Log(0, 100))!.Value);
-        Assert.Equal(90, TimelineAlignmentProbe.MeanScore(Log(88, 90, 92))!.Value);
+        Assert.Equal(50, TimelineAlignmentProbe.ReadScores(Log(0, 100))!.Average(score => score.Score));
+        Assert.Equal(90, TimelineAlignmentProbe.ReadScores(Log(88, 90, 92))!.Average(score => score.Score));
     }
 
     [Theory]
@@ -36,7 +36,7 @@ public sealed class TimelineAlignmentProbeTests
     public void A_probe_that_scored_nothing_is_not_a_score_of_zero(string json)
     {
         // It must not win by being the lowest number. An unscoreable offset is no evidence at all.
-        Assert.Null(TimelineAlignmentProbe.MeanScore(json));
+        Assert.Null(TimelineAlignmentProbe.ReadScores(json));
     }
 
     [Fact]
@@ -71,9 +71,9 @@ public sealed class TimelineAlignmentProbeTests
     public void A_clearly_better_shift_wins()
     {
         // A frame off in the real graph costs tens of points on any motion or cut.
-        Assert.Equal(0, TimelineAlignmentProbe.Choose([(0, 96.2), (1, 19.7), (-1, 20.1)]));
-        Assert.Equal(1, TimelineAlignmentProbe.Choose([(0, 0.2), (1, 92.3), (-1, 0.3)]));
-        Assert.Equal(-1, TimelineAlignmentProbe.Choose([(1, 40), (-1, 91)]));
+        Assert.Equal(0, Choose([(0, 96.2), (1, 19.7), (-1, 20.1)]));
+        Assert.Equal(1, Choose([(0, 0.2), (1, 92.3), (-1, 0.3)]));
+        Assert.Null(Choose([(1, 40), (-1, 91)]));
     }
 
     [Fact]
@@ -81,13 +81,13 @@ public sealed class TimelineAlignmentProbeTests
     {
         // A static shot scores the same at every shift. Moving the whole window on noise from a
         // few seconds of dialogue is how a good encode gets failed.
-        Assert.Equal(0, TimelineAlignmentProbe.Choose([(0, 95.1), (1, 96.4), (-1, 94.8)]));
+        Assert.Equal(0, Choose([(0, 95.1), (1, 96.4), (-1, 94.8)]));
     }
 
     [Fact]
     public void Nothing_scored_chooses_nothing()
     {
-        Assert.Null(TimelineAlignmentProbe.Choose([]));
+        Assert.Null(Choose([]));
     }
 
     [Fact]
@@ -115,4 +115,8 @@ public sealed class TimelineAlignmentProbeTests
         // same pair of files.
         Assert.Equal([0, 1, -1], TimelineAlignmentProbe.FramesToTry);
     }
+    private static int? Choose(IReadOnlyList<(int Frames, double Mean)> scored) =>
+        TimelineAlignmentProbe.ChooseWindow(scored.Select(entry => (entry.Frames,
+            (IReadOnlyList<AlignmentScore>)Enumerable.Range(0, 25)
+                .Select(index => new AlignmentScore(index * 5, entry.Mean)).ToArray())).ToArray(), 25, 5);
 }
