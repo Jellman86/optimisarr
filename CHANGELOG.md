@@ -6,6 +6,9 @@
 
 ### Added
 
+- Experimental local image and standalone audio quality-first searches test up to four compression settings against explicit perceptual targets before the final encode. Search evidence remains separate from final verification; existing libraries keep fixed settings. Worker search and soundtrack selection remain under implementation.
+- Completed quality probes are retained during a search and after cancellation. A sole final perceptual-quality failure can trigger one higher-fidelity retry, preserving the rejected attempt and every independent safety check.
+
 - Add the first exact-copy cleanup safety foundation: durable rollback intent, independent retention and reservations that survive restart. File actions remain unavailable while D3 concurrency and recovery qualification continues.
 
 - Libraries offer **Find duplicates**, with explicit cross-library scope and artwork-rich physical-copy review. Keeper choices can be selected manually, kept in full or chosen by preferred library, then saved; ignored groups and choices survive unchanged rescans. Changed evidence invalidates choices. Overlapping roots and hard-link aliases do not inflate copy counts. These are review preferences only; no media files are changed.
@@ -20,6 +23,9 @@
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
 
 ### Fixed
+
+- Audio quality checks preserve decoder priming and exact window samples at zero and fractional seeks. Loudness checks use the finished measurement summary and distinguish measured silence from missing true-peak evidence.
+- Owned preparation refusals retain files and diagnostics without spending the source's failure/exclusion budget or a quality retry.
 
 - Adaptive samples and disposable preview references use owned workspaces. Cleanup retains reserved, changed or shared files and unknown folder contents. Reference encoding rejects input-path collisions and waits for cancellation to finish before cleanup; retained calibration references keep their existing lifecycle.
 

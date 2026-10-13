@@ -102,8 +102,8 @@ public static class RemoteVerificationEvidenceValidator
     }
 
     private static bool LoudnessValid(LoudnessResult? value) =>
-        value is { Measured: true, Error: null, IntegratedLufs: { } lufs, TruePeakDbtp: { } peak }
-        && double.IsFinite(lufs) && double.IsFinite(peak);
+        value is { Measured: true, Error: null, IntegratedLufs: { } lufs, HasTruePeak: true }
+        && double.IsFinite(lufs);
 
     private static bool ProbeValid(string? json, MediaKind kind, out bool hasAudio)
     {

@@ -495,7 +495,9 @@ internal sealed record SaveLibraryRequest(
     double? MaximumSoundtrackQualityDistance = null,
     bool? ImagePerceptualReportingEnabled = null,
     bool? ImagePerceptualGateEnabled = null,
-    double? MinimumImagePerceptualScore = null);
+    double? MinimumImagePerceptualScore = null,
+    bool? AdaptiveAudioQuality = null,
+    bool? AdaptiveImageQuality = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -589,7 +591,9 @@ internal sealed record LibraryDto(
     DateTimeOffset UpdatedAt,
     bool ImagePerceptualReportingEnabled,
     bool ImagePerceptualGateEnabled,
-    double? MinimumImagePerceptualScore)
+    double? MinimumImagePerceptualScore,
+    bool AdaptiveAudioQuality,
+    bool AdaptiveImageQuality)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -672,7 +676,9 @@ internal sealed record LibraryDto(
         library.UpdatedAt,
         library.ImagePerceptualReportingEnabled,
         library.ImagePerceptualGateEnabled,
-        library.MinimumImagePerceptualScore);
+        library.MinimumImagePerceptualScore,
+        library.AdaptiveAudioQuality,
+        library.AdaptiveImageQuality);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

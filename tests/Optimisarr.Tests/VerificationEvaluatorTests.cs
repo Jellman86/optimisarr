@@ -1877,6 +1877,25 @@ public sealed class VerificationEvaluatorTests
     private const string ClippingCheck = "Audio clipping (true peak)";
 
     [Fact]
+    public void Known_silence_is_distinct_from_missing_true_peak_evidence()
+    {
+        var input = Healthy() with { TruePeakMeasured = true, OriginalTruePeakIsSilent = true,
+            OutputTruePeakIsSilent = true };
+        Assert.True(VerificationEvaluator.Evaluate(input, ClippingGate).Passed);
+        var introduced = input with { OutputTruePeakIsSilent = false, OutputTruePeakDbtp = 0.5 };
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(introduced, ClippingGate), ClippingCheck));
+        var malformed = input with { OriginalTruePeakDbtp = -1 };
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(malformed, ClippingGate), ClippingCheck));
+    }
+
+    [Fact]
+    public void Non_finite_true_peak_values_cannot_pass_the_clipping_gate()
+    {
+        var input = Healthy() with { TruePeakMeasured = true, OriginalTruePeakDbtp = double.NaN, OutputTruePeakDbtp = 0.5 };
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(input, ClippingGate), ClippingCheck));
+    }
+
+    [Fact]
     public void Clipping_gate_is_absent_unless_enabled()
     {
         var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);

@@ -110,11 +110,17 @@ public static class AudioQualityCommandBuilder
         ArgumentOutOfRangeException.ThrowIfNegative(audioIndex);
         if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
         var seek = window.StartSeconds + containerLeadSeconds;
+        var inputSeek = Math.Max(0, seek - 10);
+        var outputSeek = seek - inputSeek;
         var frames = (long)Math.Round(window.DurationSeconds * 48000);
         return [
         "-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-        .. soundtrack && seek == 0 ? Array.Empty<string>() : ["-ss", seek.ToString("0.########", CultureInfo.InvariantCulture)],
-        "-i", source, "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
+        // Decode context before output trimming: direct demuxer seeks can lose AAC samples,
+        // including at zero. Ten seconds bounds the extra decode for distant windows.
+        .. inputSeek == 0 ? Array.Empty<string>() : ["-ss", inputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
+        "-i", source,
+        .. outputSeek == 0 ? Array.Empty<string>() : ["-ss", outputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
+        "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
         "-vn", "-sn", "-dn", "-ar", "48000",
         .. soundtrack ? new[] { "-af", $"aresample=48000,atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [], "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
         ];

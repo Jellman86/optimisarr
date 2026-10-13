@@ -1,7 +1,23 @@
 import type { Messages } from './en'
 
 export const it: Messages = {
+  quality_first: {
+    searching: 'Ricerca di un’impostazione',
+    interrupted: 'Ricerca interrotta prima della selezione',
+    retry: "Nuovo tentativo con qualità superiore",
+    loudness_drift: "Variazione di sonorità",
+    local_hint: "La ricerca della qualità viene eseguita su questo server. Le librerie limitate ai worker attendono.",
+    image_no_resize: "La priorità alla qualità delle immagini richiede dimensioni invariate.",
+    audio_no_downmix: "La priorità alla qualità audio richiede canali invariati; disattiva il downmix.",
+
+    title: "Ricerca della qualità",
+    selected: "Impostazione selezionata",
+    candidate: "Candidato",
+    note: "I campioni aiutano a scegliere le impostazioni. La verifica finale decide la sostituzione.",
+  },
   image_quality: {
+    adaptive_label: "Priorità alla qualità delle immagini (sperimentale)",
+    adaptive_hint: "Cerca la compressione in base all’obiettivo prima della codifica finale. Confronta intere immagini supportate; restano tutti i controlli finali. Con WebP, consente risultati con perdita da originali senza perdita.",
       "title": "Rapporto qualità immagine",
       "report_hint": "Misura SSIMULACRA2 dopo la codifica. Facoltativo e disattivato per impostazione predefinita.",
       "gate_label": "Richiedi qualità percettiva dell’immagine",
@@ -114,6 +130,8 @@ export const it: Messages = {
     custom_note: "Imposta il tuo bitrate nelle opzioni audio avanzate. Il controllo qualità non cambia.",
   },
   audio_quality: {
+    adaptive_label: "Priorità alla qualità audio (sperimentale)",
+    adaptive_hint: "Cerca il bitrate usando campioni iniziali, centrali e finali. Solo mono/stereo; restano tutti i controlli finali.",
     gate_label: "Richiedi qualità audio",
     gate_hint: "Blocca la sostituzione se un canale o campione supera il limite o la qualità non può essere misurata. Sperimentale, per audio autonomo mono e stereo. I worker misurano localmente.",
     maximum: "Differenza audio massima",

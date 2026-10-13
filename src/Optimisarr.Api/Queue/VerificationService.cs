@@ -321,8 +321,8 @@ public sealed class VerificationService(
             var loudnessError = originalLoudness?.Error ?? outputLoudness?.Error;
 
             var truePeakMeasured = loudnessMeasured
-                && originalLoudness?.TruePeakDbtp is not null
-                && outputLoudness?.TruePeakDbtp is not null;
+                && originalLoudness?.HasTruePeak == true
+                && outputLoudness?.HasTruePeak == true;
             var truePeakError = loudnessMeasured
                 ? "ebur128 produced no true-peak reading."
                 : loudnessError;
@@ -369,6 +369,8 @@ public sealed class VerificationService(
                 TruePeakError: truePeakError,
                 OriginalTruePeakDbtp: originalLoudness?.TruePeakDbtp,
                 OutputTruePeakDbtp: outputLoudness?.TruePeakDbtp,
+                OriginalTruePeakIsSilent: originalLoudness?.TruePeakIsSilent ?? false,
+                OutputTruePeakIsSilent: outputLoudness?.TruePeakIsSilent ?? false,
                 OriginalColorPrimaries: originalProbe.ColorPrimaries,
                 OutputColorPrimaries: outputProbe.ColorPrimaries,
                 OriginalColorTransfer: originalProbe.ColorTransfer,

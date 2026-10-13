@@ -1652,6 +1652,18 @@
       },
       "LibrarySnapshot": {
         "properties": {
+          "adaptiveAudioQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "adaptiveImageQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioBitrateKbps": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2187,6 +2199,10 @@
               "number",
               "string"
             ]
+          },
+          "truePeakIsSilent": {
+            "default": false,
+            "type": "boolean"
           }
         },
         "required": [
@@ -3204,6 +3220,18 @@
       },
       "SaveLibraryRequest": {
         "properties": {
+          "adaptiveAudioQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "adaptiveImageQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioBitrateKbps": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",

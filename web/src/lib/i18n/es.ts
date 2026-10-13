@@ -1,7 +1,23 @@
 import type { Messages } from './en'
 
 export const es: Messages = {
+  quality_first: {
+    searching: 'Buscando un ajuste',
+    interrupted: 'Búsqueda detenida antes de la selección',
+    retry: "Reintento con mayor calidad",
+    loudness_drift: "Variación de sonoridad",
+    local_hint: "La búsqueda por calidad se ejecuta actualmente en este servidor. Las bibliotecas restringidas a trabajadores esperarán.",
+    image_no_resize: "La calidad de imagen primero requiere no redimensionar.",
+    audio_no_downmix: "La calidad de audio primero requiere canales sin cambios; desactiva la mezcla a estéreo.",
+
+    title: "Búsqueda por calidad",
+    selected: "Ajuste seleccionado",
+    candidate: "Candidato",
+    note: "Las muestras ayudan a elegir ajustes. La verificación final decide la sustitución.",
+  },
   image_quality: {
+    adaptive_label: "Calidad de imagen primero (experimental)",
+    adaptive_hint: "Buscar la compresión según el objetivo antes de la codificación final. Se comparan imágenes completas compatibles; se mantienen las comprobaciones finales. Con WebP, permite resultados con pérdida a partir de originales sin pérdida.",
       "title": "Informe de calidad de imagen",
       "report_hint": "Medir SSIMULACRA2 después de codificar. Opcional y desactivado por defecto.",
       "gate_label": "Exigir calidad perceptual de imagen",
@@ -114,6 +130,8 @@ export const es: Messages = {
     custom_note: "Configura tu propia tasa de bits en las opciones avanzadas de audio. El requisito de calidad no cambia.",
   },
   audio_quality: {
+    adaptive_label: "Calidad de audio primero (experimental)",
+    adaptive_hint: "Buscar tasas de bits con muestras del inicio, centro y final. Solo mono/estéreo; se mantienen las comprobaciones finales.",
     gate_label: "Exigir calidad de audio",
     gate_hint: "Bloquea el reemplazo si un canal o muestra supera el límite, o si no se puede medir la calidad. Experimental, para audio independiente mono y estéreo. Los workers miden localmente.",
     maximum: "Diferencia máxima de audio",

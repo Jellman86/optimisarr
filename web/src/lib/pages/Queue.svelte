@@ -7,7 +7,7 @@
   import PosterGlow from '../components/PosterGlow.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
-  import { api, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize, savedPercent } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
@@ -22,6 +22,7 @@
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import ImagePerceptualReport from '../components/ImagePerceptualReport.svelte'
+  import PerceptualSearchReport from '../components/PerceptualSearchReport.svelte'
   import FailuresPanel from '../components/FailuresPanel.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import PlaybackHolds from '../components/PlaybackHolds.svelte'
@@ -467,6 +468,15 @@
     return fullReport(job)?.checks ?? null
   }
 
+  function searchReport(job: Job): PerceptualSearchSummary | null {
+    const final = fullReport(job)?.perceptualSearch
+    if (final) return final
+    try {
+      const partial = JSON.parse(job.perceptualSearchJson ?? 'null') as PerceptualSearchSummary | null
+      return partial?.result?.decision ? partial : null
+    } catch { return null }
+  }
+
   function attemptHistory(job: Job): JobAttemptSnapshot[] {
     if (!job.attemptHistoryJson) return []
     try {
@@ -736,6 +746,7 @@
           <ImagePerceptualReport report={fullReport(selectedJob)?.imagePerceptualQuality ?? null} />
         </div>
       {/if}
+      <PerceptualSearchReport report={searchReport(selectedJob)} active={selectedJob.status === 'Probing' || selectedJob.status === 'Leased'} />
       {#if earlierAttempts.length > 0}
         <section class="attempt-timeline" aria-label={i18n.m.queue.attempts}>
           <h3>{i18n.m.queue.attempts}</h3>

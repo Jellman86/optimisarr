@@ -5,6 +5,20 @@ import Testing
 @Suite("Audio quality reporting")
 struct AudioQualityTests {
 
+    @Test func audioWindowSeeksPreserveDecoderContextAndTrimExactSamples() {
+        for start in [0.0, 1.25, 22.5, 86370] {
+            let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/source.m4a"),
+                output: URL(fileURLWithPath: "/decoded.raw"), window: .init(startSeconds: start, durationSeconds: 3),
+                audioIndex: 0, lead: 0, soundtrack: false)
+            let input = args.firstIndex(of: "-i")!
+            let seeks = args.indices.filter { args[$0] == "-ss" }
+            #expect(seeks.count == (start == 0 ? 0 : start > 10 ? 2 : 1))
+            if start > 10 { #expect(seeks[0] < input); #expect(args[seeks[0] + 1] == AudioQualityAssessment.secondsText(start - 10)) }
+            if start > 0 { #expect(seeks.last! > input); #expect(args[seeks.last! + 1] == AudioQualityAssessment.secondsText(min(start, 10))) }
+            #expect(!args.contains("apad"))
+        }
+    }
+
     @Test("Matroska duration tags use the track end and tiny seeks stay in fixed point")
     func trackEndsAndSeeks() {
         let probe = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"-0.021","channels":2,"sample_rate":"48000","tags":{"DURATION":"00:00:11.520000000"}}],"format":{"duration":"12","start_time":"-0.021"}}"#

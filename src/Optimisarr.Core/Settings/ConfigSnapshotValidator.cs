@@ -74,6 +74,13 @@ public static class ConfigSnapshotValidator
                     errors.Add($"{where} adaptive VMAF quality applies only to video re-encode libraries.");
                 }
             }
+            if (library.AdaptiveAudioQuality == true && (mediaType is not (MediaType.Music or MediaType.Other)
+                || library.AudioQualityGateEnabled != true || !AudioQualityGate.ValidLimit(library.MaximumAudioQualityDistance) || library.DownmixToStereo == true))
+                errors.Add($"{where} adaptive audio requires an explicit enabled audio target in a music or mixed library.");
+            if (library.AdaptiveImageQuality == true && (mediaType is not (MediaType.Photo or MediaType.Other)
+                || library.ImagePerceptualGateEnabled != true || !ImagePerceptualQualityGate.ValidLimit(library.MinimumImagePerceptualScore)
+                || (!string.IsNullOrWhiteSpace(library.ImageDownscaleMode) && !string.Equals(library.ImageDownscaleMode, "None", StringComparison.OrdinalIgnoreCase))))
+                errors.Add($"{where} adaptive images require an explicit enabled image target and no resizing in a photo or mixed library.");
             if (library.HdrHandling is not null)
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);

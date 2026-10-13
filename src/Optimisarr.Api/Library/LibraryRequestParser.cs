@@ -81,7 +81,9 @@ internal readonly record struct ParsedLibrary(
     bool AutoReplace,
     bool ImagePerceptualReportingEnabled = false,
     bool ImagePerceptualGateEnabled = false,
-    double? MinimumImagePerceptualScore = null);
+    double? MinimumImagePerceptualScore = null,
+    bool AdaptiveAudioQuality = false,
+    bool AdaptiveImageQuality = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -131,6 +133,20 @@ internal static class LibraryRequestParser
             || (request.ImagePerceptualGateEnabled == true && !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore)))
         {
             error = "Perceptual image quality requires a photo or mixed library and an explicit gate score between 0 and 100.";
+            return false;
+        }
+
+        if (request.AdaptiveAudioQuality == true && (mediaType is not (MediaType.Music or MediaType.Other)
+            || request.AudioQualityGateEnabled != true || !AudioQualityGate.ValidLimit(request.MaximumAudioQualityDistance) || request.DownmixToStereo == true))
+        {
+            error = "Adaptive audio requires a music or mixed library and an enabled explicit audio quality target.";
+            return false;
+        }
+        if (request.AdaptiveImageQuality == true && (mediaType is not (MediaType.Photo or MediaType.Other)
+            || request.ImagePerceptualGateEnabled != true || !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore)
+            || (!string.IsNullOrWhiteSpace(request.ImageDownscaleMode) && !string.Equals(request.ImageDownscaleMode, "None", StringComparison.OrdinalIgnoreCase))))
+        {
+            error = "Adaptive images require a photo or mixed library, no resizing, and an enabled explicit image quality target.";
             return false;
         }
 
@@ -596,7 +612,9 @@ internal static class LibraryRequestParser
             request.AutoReplace ?? false,
             request.ImagePerceptualReportingEnabled ?? false,
             request.ImagePerceptualGateEnabled ?? false,
-            request.MinimumImagePerceptualScore);
+            request.MinimumImagePerceptualScore,
+            request.AdaptiveAudioQuality ?? false,
+            request.AdaptiveImageQuality ?? false);
         error = null;
         return true;
     }

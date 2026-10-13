@@ -4,6 +4,26 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("the final loudness summary cannot borrow an earlier graph's values")
+    func incompleteFinalLoudness() {
+        let log = "Summary:\n I: -23.0 LUFS\n True peak:\n Peak: -1.0 dBFS\nSummary:\n I: -inf LUFS\n True peak:\n Peak: invalid dBFS"
+        let result = FullVerification.parseLoudness(log, exitCode: 0)
+        #expect(!result.measured)
+        #expect(result.integratedLufs == nil)
+        #expect(result.truePeakDbtp == nil)
+    }
+
+    @Test("true peak is distinct from sample peak and measured silence is explicit")
+    func truePeakAndSilence() {
+        let log = "Summary:\n I: -23.0 LUFS\n Sample peak:\n Peak: -3.0 dBFS\n True peak:\n Peak: -inf dBFS"
+        let result = FullVerification.parseLoudness(log, exitCode: 0)
+        #expect(result.measured)
+        #expect(result.truePeakDbtp == nil)
+        #expect(result.truePeakIsSilent == true)
+        let numeric = FullVerification.parseLoudness(log.replacingOccurrences(of: "-inf", with: "0.2"), exitCode: 0)
+        #expect(numeric.truePeakDbtp == 0.2)
+        #expect(numeric.truePeakIsSilent != true)
+    }
     @Test("video contracts return decoded counts and fail closed if a count cannot be read")
     func requiredPictureEvidence() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

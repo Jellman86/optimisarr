@@ -105,6 +105,21 @@ public struct AudioQualityAssessment: Sendable {
             durationSeconds: Double(length + (index < remainder ? 1 : 0)) / 48000) }
     }
 
+    static func decodeArguments(input: URL, output: URL, window: AudioQualitySample,
+                                audioIndex: Int, lead: Double, soundtrack: Bool) -> [String] {
+        let seek = window.startSeconds + lead
+        let inputSeek = max(0, seek - 10), outputSeek = seek - inputSeek
+        let inputArgs = inputSeek == 0 ? [] : ["-ss", secondsText(inputSeek)]
+        let outputArgs = outputSeek == 0 ? [] : ["-ss", secondsText(outputSeek)]
+        let filterArgs = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(Int((window.durationSeconds * 48000).rounded()))"] : []
+        // Decode context before trimming so AAC priming and fractional seeks retain every sample.
+        return ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n"]
+            + inputArgs + ["-i", input.path] + outputArgs
+            + ["-map", "0:a:\(audioIndex)", "-t", secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0)),
+               "-vn", "-sn", "-dn", "-ar", "48000"] + filterArgs
+            + ["-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output.path]
+    }
+
     static func profile(_ json: String, audioIndex: Int? = nil) -> AudioQualityProfile? {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -189,13 +204,9 @@ public struct AudioQualityAssessment: Sendable {
             for window in Self.plan(min(reference.durationSeconds, output.durationSeconds), soundtrack: sourceAudioIndex != nil) {
                 let a = owned.appendingPathComponent("reference.raw"), b = owned.appendingPathComponent("candidate.raw")
                 for (input, pcm, audioIndex, lead) in [(source, a, sourceAudioIndex ?? 0, reference.containerLeadSeconds), (candidate, b, candidateAudioIndex ?? 0, output.containerLeadSeconds)] {
-                    let seek = window.startSeconds + lead
                     let soundtrack = sourceAudioIndex != nil
-                    let seekArgs = soundtrack && seek == 0 ? [] : ["-ss", Self.secondsText(seek)]
-                    let filterArgs = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(Int((window.durationSeconds * 48000).rounded()))"] : []
-                    let decoded = try await run(ffmpeg, ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-                        ] + seekArgs + ["-i", input.path, "-map", "0:a:\(audioIndex)", "-t", Self.secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0)),
-                        "-vn", "-sn", "-dn", "-ar", "48000"] + filterArgs + ["-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", pcm.path])
+                    let decoded = try await run(ffmpeg, Self.decodeArguments(input: input, output: pcm, window: window,
+                        audioIndex: audioIndex, lead: lead, soundtrack: soundtrack))
                     guard decoded.exitCode == 0 else { throw Failure("Audio preparation failed: \(decoded.stderr)") }
                     let bytes = try size(pcm), stride = Int64(reference.channels * 4)
                     guard bytes >= 192000, bytes <= 11520000, bytes % stride == 0,

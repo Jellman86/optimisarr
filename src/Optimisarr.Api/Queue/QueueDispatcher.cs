@@ -29,7 +29,7 @@ namespace Optimisarr.Api.Queue;
 /// and running ffmpeg out-of-process. A job only ever writes to the work directory;
 /// it never deletes or overwrites the original — safe replacement is a later phase.
 /// </summary>
-public sealed class QueueDispatcher(
+public sealed partial class QueueDispatcher(
     IServiceScopeFactory scopeFactory,
     IHubContext<JobsHub> hub,
     IHostEnvironment environment,
@@ -827,6 +827,11 @@ public sealed class QueueDispatcher(
         {
             await HandleCancelledAsync(jobId, executionAttempt);
         }
+        catch (Exception ex) when (OwnedPreparationFailure.IsDeferral(ex))
+        {
+            logger.LogWarning("Job {JobId}: owned preparation deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
+            await FinishOwnedPreparationDeferredAsync(jobId, executionAttempt, ex.Message);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed while verifying a delivered candidate", jobId);
@@ -1068,6 +1073,14 @@ public sealed class QueueDispatcher(
                 // to a different encoder would discard the proof the search just gathered.
             }
 
+            if (!preparedWork.IsDisposable && (preparedWork.Spec.Kind == MediaKind.Audio && preparedWork.AdaptiveAudioQuality
+                || preparedWork.Spec.Kind == MediaKind.Image && preparedWork.AdaptiveImageQuality))
+            {
+                var selection = await SelectPerceptualQualityAsync(jobId, executionAttempt, preparedWork, cancellationToken);
+                if (selection is null) return;
+                preparedWork = selection.Value;
+            }
+
             var (spec, arguments) = preparedWork;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
             var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
@@ -1267,6 +1280,11 @@ public sealed class QueueDispatcher(
         {
             await HandleCancelledAsync(jobId, executionAttempt);
         }
+        catch (Exception ex) when (OwnedPreparationFailure.IsDeferral(ex))
+        {
+            logger.LogWarning("Job {JobId}: owned preparation deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
+            await FinishOwnedPreparationDeferredAsync(jobId, executionAttempt, ex.Message);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed", jobId);
@@ -1335,7 +1353,11 @@ public sealed class QueueDispatcher(
         // Why this work is a second encode of the same job, when it is one; carried into the
         // verification report's context so the record explains itself.
         string? SoftwareDecodeRetryReason = null,
-        bool BypassSizePreflight = false)
+        bool BypassSizePreflight = false,
+        bool AdaptiveAudioQuality = false,
+        bool AdaptiveImageQuality = false,
+        PerceptualSearchSummary? PerceptualSearch = null,
+        int PerceptualRetryCount = 0)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1406,6 +1428,10 @@ public sealed class QueueDispatcher(
         {
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
         }
+
+        if (work.Spec.Kind == MediaKind.Audio && work.AdaptiveAudioQuality
+            || work.Spec.Kind == MediaKind.Image && work.AdaptiveImageQuality)
+            return RemoteWorkPlan.Refused("Audio/image quality-first requires the new perceptual-search worker contract; this worker cannot run it yet.");
 
         if (vmafModel is not null)
             work = work with { Original = work.Original with { VmafModel = vmafModel } };
@@ -1710,7 +1736,8 @@ public sealed class QueueDispatcher(
             detectedCrop: detectedCrop,
             sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
-            sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null);
+            sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null,
+            adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true);
 
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
         {
@@ -2082,7 +2109,11 @@ public sealed class QueueDispatcher(
                 ? new PictureSize(media.Width.Value, media.Height.Value)
                 : null,
             SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null,
-            BypassSizePreflight: job.BypassSizePreflight);
+            BypassSizePreflight: job.BypassSizePreflight,
+            AdaptiveAudioQuality: library?.AdaptiveAudioQuality ?? false,
+            AdaptiveImageQuality: library?.AdaptiveImageQuality ?? false,
+            PerceptualSearch: ReadPerceptualRetry(job),
+            PerceptualRetryCount: job.QualityRetryCount);
     }
 
     /// <summary>
@@ -3142,6 +3173,9 @@ public sealed class QueueDispatcher(
         job.Status = JobStatus.Transcoding;
         job.Attempt += 1;
         job.ExecutionAttempt += 1;
+        job.AdaptiveAudioBitrateKbps = null;
+        job.AdaptiveImageQuality = null;
+        if (job.RetryReason != "HigherPerceptualQualityRetry") job.PerceptualSearchJson = null;
         job.StartedAt = nowUtc;
         job.UpdatedAt = nowUtc;
         job.ErrorMessage = null;
@@ -3347,12 +3381,13 @@ public sealed class QueueDispatcher(
         {
             Report = outcome.Report with
             {
+                PerceptualSearch = work.PerceptualSearch,
                 Context = new VerificationContext(
                     work.VideoEncoder,
                     work.VideoQuality?.Requested,
                     work.VideoQuality?.Effective,
                     work.VideoQuality?.Mode,
-                    work.VideoQuality?.RetryCount ?? 0,
+                    work.VideoQuality?.RetryCount ?? work.PerceptualRetryCount,
                     outcome.VmafSampling,
                     policy.MinimumVmafHarmonicMean,
                     policy.MinimumVmafMin,
@@ -3380,6 +3415,20 @@ public sealed class QueueDispatcher(
 
         if (!outcome.Report.Passed)
         {
+            if (!work.IsDisposable && work.PerceptualSearch is { Result.Decision.FellBack: false } search
+                && (work.Spec.Kind == MediaKind.Image && work.AdaptiveImageQuality || work.Spec.Kind == MediaKind.Audio && work.AdaptiveAudioQuality))
+            {
+                var baseline = search.Result.Probes.First().Value;
+                var plan = work.Spec.Kind == MediaKind.Image ? PerceptualQualityPlan.Image(search.Encoder, baseline)
+                    : PerceptualQualityPlan.Audio(search.Encoder, baseline);
+                var value = work.Spec.Kind == MediaKind.Image ? work.Spec.ImageQuality : work.Spec.AudioBitrateKbps;
+                if (value is { } current && PerceptualQualityRetryPolicy.Next(work.Spec.Kind, plan, current,
+                    work.PerceptualRetryCount, outcome.Report, policy) is { } next)
+                {
+                    await QueuePerceptualRetryAsync(jobId, executionAttempt, outputPath, search with { RetryValue = next });
+                    return VerificationDisposition.Finished;
+                }
+            }
             var sourceFailure = HardwareDecodeFallback.SourceFailureBlockingRetry(outcome.Report);
             if (sourceFailure is not null)
             {

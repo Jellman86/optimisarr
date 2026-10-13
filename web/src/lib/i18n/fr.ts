@@ -1,7 +1,23 @@
 import type { Messages } from './en'
 
 export const fr: Messages = {
+  quality_first: {
+    searching: 'Recherche d’un réglage',
+    interrupted: 'Recherche arrêtée avant la sélection',
+    retry: "Nouvel essai avec une qualité supérieure",
+    loudness_drift: "Écart de sonie",
+    local_hint: "La recherche de qualité fonctionne actuellement sur ce serveur. Les bibliothèques limitées aux workers attendent.",
+    image_no_resize: "La priorité à la qualité des images exige de conserver les dimensions.",
+    audio_no_downmix: "La priorité à la qualité audio exige des canaux inchangés ; désactivez le mixage descendant.",
+
+    title: "Recherche de qualité",
+    selected: "Réglage sélectionné",
+    candidate: "Candidat",
+    note: "Les extraits aident à choisir les réglages. La vérification finale décide du remplacement.",
+  },
   image_quality: {
+    adaptive_label: "Priorité à la qualité des images (expérimental)",
+    adaptive_hint: "Rechercher la compression selon votre cible avant l’encodage final. Les images compatibles sont comparées en entier ; les contrôles finaux restent applicables. Avec WebP, cela autorise une sortie avec pertes à partir d’originaux sans perte.",
       "title": "Rapport de qualité d’image",
       "report_hint": "Mesurer SSIMULACRA2 après l’encodage. Facultatif et désactivé par défaut.",
       "gate_label": "Exiger la qualité perceptuelle de l’image",
@@ -114,6 +130,8 @@ export const fr: Messages = {
     custom_note: "Définissez votre débit dans les options audio avancées. Le contrôle qualité reste inchangé.",
   },
   audio_quality: {
+    adaptive_label: "Priorité à la qualité audio (expérimental)",
+    adaptive_hint: "Rechercher le débit avec des extraits du début, du milieu et de la fin. Mono/stéréo uniquement ; les contrôles finaux restent applicables.",
     gate_label: "Exiger la qualité audio",
     gate_hint: "Bloque le remplacement si un canal ou extrait dépasse votre limite, ou si la qualité ne peut pas être mesurée. Expérimental, pour les fichiers audio mono et stéréo. Les workers mesurent localement.",
     maximum: "Différence audio maximale",

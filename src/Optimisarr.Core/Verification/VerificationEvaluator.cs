@@ -280,22 +280,23 @@ public static class VerificationEvaluator
     private static VerificationCheck NoClippingIntroduced(VerificationInput input, VerificationPolicy policy)
     {
         // Fail closed: an enabled gate that could not measure the true peak blocks replacement.
-        if (!input.TruePeakMeasured || input.OriginalTruePeakDbtp is not { } original || input.OutputTruePeakDbtp is not { } output)
+        if (!input.TruePeakMeasured || !TruePeakSafety.Known(input.OriginalTruePeakDbtp, input.OriginalTruePeakIsSilent)
+            || !TruePeakSafety.Known(input.OutputTruePeakDbtp, input.OutputTruePeakIsSilent) || !double.IsFinite(policy.MaxTruePeakDbtp))
         {
             return Fail("Audio clipping (true peak)", $"True peak could not be measured: {Describe(input.TruePeakError)}");
         }
 
         var detail = string.Format(
             CultureInfo.InvariantCulture,
-            "Original {0:0.#} dBTP, output {1:0.#} dBTP (ceiling {2:0.#} dBTP).",
-            original, output, policy.MaxTruePeakDbtp);
+            "Original {0}, output {1} (ceiling {2:0.#} dBTP).",
+            input.OriginalTruePeakIsSilent ? "silence" : input.OriginalTruePeakDbtp!.Value.ToString("0.#", CultureInfo.InvariantCulture) + " dBTP",
+            input.OutputTruePeakIsSilent ? "silence" : input.OutputTruePeakDbtp!.Value.ToString("0.#", CultureInfo.InvariantCulture) + " dBTP", policy.MaxTruePeakDbtp);
 
         // Clipping is only "introduced" when the output rises above the ceiling while the
         // original stayed at or below it — an already-hot source isn't the re-encode's fault.
         // A small margin absorbs measurement noise so an unchanged level never trips the gate.
-        const double measurementMarginDb = 0.1;
-        var introducedClipping = output > policy.MaxTruePeakDbtp
-            && output > original + measurementMarginDb;
+        var introducedClipping = TruePeakSafety.Introduced(input.OriginalTruePeakDbtp, input.OriginalTruePeakIsSilent,
+            input.OutputTruePeakDbtp, input.OutputTruePeakIsSilent, policy.MaxTruePeakDbtp);
 
         return introducedClipping
             ? Fail("Audio clipping (true peak)", $"{detail} The re-encode pushed the true peak above the ceiling.")

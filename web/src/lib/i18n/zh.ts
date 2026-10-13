@@ -1,7 +1,23 @@
 import type { Messages } from './en'
 
 export const zh: Messages = {
+  quality_first: {
+    searching: '正在搜索设置',
+    interrupted: '搜索在选择设置前停止',
+    retry: "以更高质量重试",
+    loudness_drift: "响度偏差",
+    local_hint: "质量优先搜索目前在此服务器上运行。仅限工作节点的媒体库将等待。",
+    image_no_resize: "图像质量优先要求不调整尺寸。",
+    audio_no_downmix: "音频质量优先要求保持声道不变，请关闭混音。",
+
+    title: "质量优先搜索",
+    selected: "已选设置",
+    candidate: "候选",
+    note: "样本帮助选择设置。最终验证决定是否替换。",
+  },
   image_quality: {
+    adaptive_label: "图像质量优先（实验性）",
+    adaptive_hint: "最终编码前，根据目标搜索压缩设置。比较完整的受支持静态图像，并保留所有最终安全检查。 使用 WebP 时，此选项允许将无损原图转换为有损输出。",
       "title": "图像质量报告",
       "report_hint": "编码后测量 SSIMULACRA2。可选，默认关闭。",
       "gate_label": "要求图像感知质量",
@@ -114,6 +130,8 @@ export const zh: Messages = {
     custom_note: "在高级音频设置中指定自己的比特率。质量门槛保持不变。",
   },
   audio_quality: {
+    adaptive_label: "音频质量优先（实验性）",
+    adaptive_hint: "使用开头、中间和结尾片段搜索比特率。仅支持单声道和立体声，并保留所有最终安全检查。",
     gate_label: "要求音频质量",
     gate_hint: "如果任何测量声道或片段超过上限，或无法测量质量，则阻止替换。这是用于独立单声道和立体声音频的实验功能。工作节点在本机测量。",
     maximum: "最大音频差异",

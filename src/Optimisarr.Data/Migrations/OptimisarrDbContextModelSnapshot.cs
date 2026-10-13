@@ -678,6 +678,12 @@ namespace Optimisarr.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("AdaptiveAudioBitrateKbps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("AdaptiveImageQuality")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("AdaptiveVideoQuality")
                         .HasColumnType("INTEGER");
 
@@ -742,6 +748,10 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<long?>("OutputSizeBytes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("PerceptualSearchJson")
+                        .HasMaxLength(262144)
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("PreferSoftwareDecode")
                         .HasColumnType("INTEGER");
@@ -854,7 +864,10 @@ namespace Optimisarr.Data.Migrations
                     b.HasIndex("Type", "Priority", "QueueEnqueuedUtcTicks", "Id")
                         .IsDescending(false, true, false, false);
 
-                    b.ToTable("Jobs");
+                    b.ToTable("Jobs", t =>
+                        {
+                            t.HasCheckConstraint("CK_Jobs_PerceptualSearch", "(AdaptiveAudioBitrateKbps IS NULL OR AdaptiveAudioBitrateKbps BETWEEN 8 AND 512)\nAND (AdaptiveImageQuality IS NULL OR AdaptiveImageQuality BETWEEN 0 AND 100)\nAND (PerceptualSearchJson IS NULL OR length(PerceptualSearchJson) <= 262144)");
+                        });
                 });
 
             modelBuilder.Entity("Optimisarr.Data.JobLease", b =>
@@ -992,6 +1005,12 @@ namespace Optimisarr.Data.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AdaptiveAudioQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AdaptiveImageQuality")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("AudioBitrateKbps")

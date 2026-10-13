@@ -3,7 +3,23 @@
 // keys — a missing or misspelled key fails `npm run check` (the CI completeness gate).
 // Use `{token}` placeholders for interpolation; resolve them with `t(...)`.
 export const en = {
+  quality_first: {
+    searching: 'Searching for a setting',
+    interrupted: 'Search stopped before selection',
+    retry: "Higher-quality retry",
+    loudness_drift: "Loudness drift",
+    local_hint: "Quality-first currently runs on this server. Libraries restricted to workers will wait.",
+    image_no_resize: "Image quality first requires no resizing.",
+    audio_no_downmix: "Audio quality first requires unchanged channels; turn off downmixing.",
+
+    title: "Quality-first search",
+    selected: "Selected setting",
+    candidate: "Candidate",
+    note: "Search samples help choose settings. Final verification decides replacement.",
+  },
   image_quality: {
+    adaptive_label: "Image quality first (experimental)",
+    adaptive_hint: "Search compression settings against your target before the final encode. Whole supported stills are compared; final safety checks still apply. With WebP, this permits lossy output from lossless originals.",
       "title": "Image quality report",
       "report_hint": "Measure SSIMULACRA2 after encoding. Optional and off by default.",
       "gate_label": "Require perceptual image quality",
@@ -116,6 +132,8 @@ export const en = {
     custom_note: "Set your own bitrate in Advanced audio. This does not change the quality gate.",
   },
   audio_quality: {
+    adaptive_label: "Audio quality first (experimental)",
+    adaptive_hint: "Search codec bitrates using beginning, middle and end samples before the full encode. Mono/stereo only; final safety checks still apply.",
     gate_label: "Require audio quality",
     gate_hint: "Blocks replacement if any assessed channel or sample exceeds your limit, or quality cannot be measured. Experimental, for standalone mono and stereo audio. Worker measurements stay on the worker.",
     maximum: "Maximum audio difference",

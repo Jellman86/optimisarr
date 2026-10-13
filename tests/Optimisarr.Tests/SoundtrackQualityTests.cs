@@ -230,7 +230,7 @@ public sealed class SoundtrackQualityTests
         Assert.DoesNotContain("-ss", args);
         Assert.Equal("3.1", args[args.ToList().IndexOf("-t") + 1]);
         Assert.Contains("aresample=48000,atrim=end_sample=144000", args);
-        Assert.Contains("-ss", AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3)));
+        Assert.DoesNotContain("-ss", AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3)));
     }
 
     [Fact]

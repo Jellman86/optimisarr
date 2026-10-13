@@ -53,6 +53,9 @@ public sealed record TranscodeSpec(
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
     FrameRateDecimation? FrameRate = null)
 {
+    /// <summary>Disposable audio quality probes exclude artwork and timed lyrics from their size and encode cost.</summary>
+    public bool AudioSampleOnly { get; init; }
+
     /// <summary>Source subtitle codecs in subtitle-relative stream order, from a fresh probe.</summary>
     public IReadOnlyList<string?>? SourceSubtitleCodecs { get; init; }
 
@@ -244,14 +247,13 @@ public static class FfmpegCommandBuilder
             return new ClipSeek(null, null);
         }
 
-        if (spec.Kind != MediaKind.Video)
+        if (spec.Kind != MediaKind.Video && !spec.AudioSampleOnly)
         {
             return new ClipSeek(start, null);
         }
 
-        // Input seeking alone is accurate for the re-encoded picture but preserves keyframe
-        // pre-roll for copied audio/subtitles. Decode at most a short lead-in, then apply an
-        // output-side exact seek so every mapped stream starts on the same requested timeline.
+        // Decode a short lead-in before the exact cut. Video copied streams need keyframe
+        // pre-roll removed; audio probes need decoder priming preserved at the cut.
         var inputStart = Math.Max(0, start - ExactClipSeekDecodeSeconds);
         return new ClipSeek(
             inputStart > 0 ? inputStart : null,
@@ -551,7 +553,7 @@ public static class FfmpegCommandBuilder
         // AAC and Opus candidates with attached pictures are rejected before dispatch because
         // their muxers cannot safely translate inherited FLAC/MP3 picture streams in this build.
         // Map MP3's picture before the audio and target its output stream explicitly.
-        if (Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
+        if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
         {
             args.Add("-map");
             args.Add("0:v?");
@@ -578,7 +580,7 @@ public static class FfmpegCommandBuilder
 
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
         // containers cannot, and their candidates are rejected when such a stream exists.
-        if (Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
         {
             args.Add("-map");
             args.Add("0:s?");
@@ -635,11 +637,13 @@ public static class FfmpegCommandBuilder
             // libwebp takes 0–100 directly (higher is better).
             "libwebp" => new[] { "-quality", q.ToString() },
             // mjpeg uses -q:v 2 (best) … 31 (worst); invert and scale our 0–100 onto that range.
-            "mjpeg" => new[] { "-q:v", MapToRange(q, bestAt100: 2, worstAt0: 31).ToString() },
+            "mjpeg" => new[] { "-q:v", JpegQuantizer(q).ToString() },
             _ => throw new NotSupportedException(
                 $"Image encoding for encoder '{encoder}' is not implemented yet.")
         };
     }
+
+    internal static int JpegQuantizer(int quality) => MapToRange(quality, bestAt100: 2, worstAt0: 31);
 
     // Linearly map a 0–100 quality (higher = better) onto an encoder scale where a lower number is
     // better: quality 100 → bestAt100, quality 0 → worstAt0.

@@ -3,6 +3,9 @@
 Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans. Delivery status reconciled **10 October 2026**.
 Status: **opt-in standalone audio and video soundtrack reports, separate operator-selected gates and strict worker measurement implemented in dev; experimental server-local SDR still-image reports and explicit SSIMULACRA2 gates implemented in the current development slice; adaptive audio quality selection, broader image coverage and surround support remain planned**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
+The operator prioritised [full quality-first parity](adaptive-audio-image-parity.md) on
+13 October. Its implementation/qualification matrix is the current work plan; a local
+search alone does not complete that scope.
 This complements [VMAF v1](vmaf-v1-and-nvidia-plan.md) and the existing
 [personal blind comparisons](../usage/personal-quality-check.md).
 
