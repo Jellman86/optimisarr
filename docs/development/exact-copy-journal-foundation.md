@@ -399,6 +399,56 @@ callback. Adaptive sample/reference ownership, cross-process encode lifetime, im
 coordination, exhaustive aliases and recorded completion moves/recovery remain unqualified.
 D3 file actions remain disabled; quality-based keeper recommendations remain planned.
 
+## D3b sixth step, part three: adaptive and disposable reference workspaces
+
+Adaptive output samples and non-retained preview references now use separate, unique
+workspaces under their job's expected work root. Creation reserves the SQLite writer and
+cleanup guard before creating the folder and an exclusive random ownership marker. It
+refuses changed attempts, wrong job roots, configured library trees and redirects inside
+the work root. Calibration references intentionally retained for blind comparison keep
+their existing paths and panel-owned retention lifecycle.
+
+After each producing process exits or is reaped, the workspace captures each explicit
+leaf file's physical identity, length and modification generation. Capture cannot adopt
+replacement bytes from a repeated callback, including a name already cleaned once.
+Deletion reacquires the writer and the existing reservation/reference guard, checks the
+marker and file generation, and rechecks execution attempt, media, library, job type and
+calibration ownership. It leaves the main candidate path and diagnostic fields unchanged.
+Sample deletion preserves the workspace for the next window. Disposal stops at the first
+deferred file rather than multiplying unavailable-writer waits across the search.
+
+There is no recursive runtime workspace deletion. Only captured files may be removed;
+unknown files, nested directories, changed markers, new references or changed owners
+retain the workspace and produce a diagnostic warning. An empty workspace loses its
+marker and is removed non-recursively while the caller still owns the database writer.
+Unavailable cleanup services defer best-effort cleanup instead of invalidating a completed
+quality measurement. No database schema or migration is introduced.
+
+Verification delegates disposable reference cleanup to an explicit caller owner. Calls
+without ownership retain the reference for the caller; they do not use an unsafe fallback.
+Partial-reference creation failures are captured before they escape to the enclosing
+workspace. Reference paths equal to either input, or resolving to an input's physical
+identity, are rejected before FFmpeg starts. Reference cancellation waits for process exit
+and drains its captured pipes before returning to cleanup. All existing verification gates
+and retained-calibration behavior remain unchanged.
+
+Validation on 13 October: zero-warning builds and all 3,219 backend tests pass on macOS
+and native Quark Linux. Twenty-nine ownership/process cases replace the old direct-deletion
+helper test, including both independent writer orderings, changed media/type ownership,
+foreign content, duplicate callbacks, unavailable cleanup services, partial creation,
+reference cancellation and direct/physical input collisions. All six changed code/test files
+agree across hosts. Chromium passed 324 cases initially; the single duplicate-review reload
+timeout passed its unchanged isolated rerun, completing all 325 cases. No timeout or assertion
+was relaxed. Windows workspace/process behavior remains unqualified by this delivery.
+
+These markers and captured metadata are bounded runtime cleanup evidence, **not** a
+complete durable action/recovery journal or proof against unmanaged external writers.
+Restart does not adopt a leftover marker as fresh action authority. Later startup and
+panel cleanup still use their own existing reservation/reference fences. Remaining metric
+and source-window helpers, retained-tree ownership, exhaustive aliases, import/manager
+coordination, persistent execution lifetime and recorded completion moves still require
+qualification. D3 file actions remain disabled; quality-based keeper ranking remains planned.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
