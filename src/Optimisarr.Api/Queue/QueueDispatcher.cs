@@ -428,7 +428,7 @@ public sealed class QueueDispatcher(
             if (Volatile.Read(ref _draining) != 0
                 || running.For(lane) >= limits.For(lane)
                 || _running.ContainsKey(jobId)
-                || !await TryClaimDeliveredAsync(jobId, stoppingToken))
+                || await TryClaimDeliveredAsync(jobId, stoppingToken) is not { } executionAttempt)
             {
                 continue;
             }
@@ -436,7 +436,7 @@ public sealed class QueueDispatcher(
             var cts = new CancellationTokenSource();
             _running[jobId] = new ActiveWork(cts, lane);
             running = running.WithStarted(lane);
-            _ = Task.Run(() => VerifyDeliveredAsync(jobId, cts.Token), CancellationToken.None);
+            _ = Task.Run(() => VerifyDeliveredAsync(jobId, executionAttempt, cts.Token), CancellationToken.None);
         }
 
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
@@ -520,7 +520,7 @@ public sealed class QueueDispatcher(
         {
             if (Volatile.Read(ref _draining) != 0
                 || _running.ContainsKey(jobId)
-                || !await TryClaimAsync(jobId, stoppingToken))
+                || await TryClaimAsync(jobId, stoppingToken) is not { } executionAttempt)
             {
                 continue;
             }
@@ -530,7 +530,7 @@ public sealed class QueueDispatcher(
             _lastStartedLibraryId = queued.First(job => job.Id == jobId).LibraryId;
             if (lane == WorkloadLane.Video)
                 _lastStartedVideoClass = JobScheduler.LaneFor(queued.First(job => job.Id == jobId).Kind);
-            _ = Task.Run(() => RunJobAsync(jobId, cts.Token), CancellationToken.None);
+            _ = Task.Run(() => RunJobAsync(jobId, executionAttempt, cts.Token), CancellationToken.None);
         }
     }
 
@@ -556,7 +556,7 @@ public sealed class QueueDispatcher(
     }
 
     // Single-writer claim: only transition if still Queued, so a job can never start twice.
-    private async Task<bool> TryClaimAsync(int jobId, CancellationToken cancellationToken)
+    private async Task<int?> TryClaimAsync(int jobId, CancellationToken cancellationToken)
     {
         await _dbLock.WaitAsync(cancellationToken);
         try
@@ -567,17 +567,17 @@ public sealed class QueueDispatcher(
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
             if (job is null || job.Status != JobStatus.Queued)
             {
-                return false;
+                return null;
             }
 
             PrepareForAttempt(job, DateTimeOffset.UtcNow);
             await db.SaveChangesAsync(cancellationToken);
             await write.CommitAsync(cancellationToken);
-            return true;
+            return job.ExecutionAttempt;
         }
         catch (DedupeReservationConflictException)
         {
-            return false;
+            return null;
         }
         finally
         {
@@ -630,7 +630,7 @@ public sealed class QueueDispatcher(
 
     // Single-writer claim for a delivered candidate: only transition if still waiting, so two
     // dispatch cycles can never verify the same candidate at once.
-    private async Task<bool> TryClaimDeliveredAsync(int jobId, CancellationToken cancellationToken)
+    private async Task<int?> TryClaimDeliveredAsync(int jobId, CancellationToken cancellationToken)
     {
         await _dbLock.WaitAsync(cancellationToken);
         try
@@ -641,7 +641,7 @@ public sealed class QueueDispatcher(
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
             if (job is null || job.Status != JobStatus.AwaitingVerification)
             {
-                return false;
+                return null;
             }
 
             var now = DateTimeOffset.UtcNow;
@@ -653,11 +653,11 @@ public sealed class QueueDispatcher(
             job.FailureCategory = null;
             await db.SaveChangesAsync(cancellationToken);
             await write.CommitAsync(cancellationToken);
-            return true;
+            return job.ExecutionAttempt;
         }
         catch (DedupeReservationConflictException)
         {
-            return false;
+            return null;
         }
         finally
         {
@@ -670,7 +670,7 @@ public sealed class QueueDispatcher(
     /// bound evidence without repeating media checks; older leases run the full server verification
     /// path. Neither route can replace a source until every required gate passes.
     /// </summary>
-    private async Task VerifyDeliveredAsync(int jobId, CancellationToken cancellationToken)
+    private async Task VerifyDeliveredAsync(int jobId, int executionAttempt, CancellationToken cancellationToken)
     {
         try
         {
@@ -795,7 +795,7 @@ public sealed class QueueDispatcher(
             if (!await FileContentIdentity.MatchesAsync(candidatePath, deliveredLease.DeliveredSha256, cancellationToken))
                 throw new InvalidOperationException("The delivered candidate changed after upload; verification cannot trust different bytes.");
             var disposition = await VerifyAndFinishAsync(
-                jobId, candidatePath, work.Value, cancellationToken,
+                jobId, executionAttempt, candidatePath, work.Value, cancellationToken,
                 // A worker's hardware decode can corrupt frames as a local one can; the retry
                 // cannot happen on the worker, so it is a requeue with software decode required.
                 softwareDecodeRetryAvailable: deliveredLease!.HardwareDecoder is not null,
@@ -803,12 +803,9 @@ public sealed class QueueDispatcher(
                 remoteEvidence: fullEvidence);
             if (disposition == VerificationDisposition.RetryWithSoftwareDecode)
             {
-                DeleteWorkOutput(candidatePath);
-                await WithJobAsync(jobId, job =>
-                {
+                if (!await RetryAfterCleanupAsync(jobId, executionAttempt, candidatePath, job =>
                     JobAttemptHistory.RequeueAfterRejectedCandidate(
-                        job, deliveredBy.Name, deliveredLease.HardwareDecoder, DateTimeOffset.UtcNow);
-                }, cancellationToken);
+                        job, deliveredBy.Name, deliveredLease.HardwareDecoder, DateTimeOffset.UtcNow), cancellationToken)) return;
                 logger.LogWarning(
                     "Job {JobId}: the candidate {Worker} decoded with {Decoder} showed decoder corruption; requeued to be encoded with software decode",
                     jobId, deliveredBy.Name, deliveredLease.HardwareDecoder);
@@ -828,13 +825,13 @@ public sealed class QueueDispatcher(
         }
         catch (OperationCanceledException)
         {
-            await HandleCancelledAsync(jobId);
+            await HandleCancelledAsync(jobId, executionAttempt);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed while verifying a delivered candidate", jobId);
-            await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message);
-            await NotifyJobFailedAsync(jobId, ex.Message);
+            if (await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message, executionAttempt: executionAttempt))
+                await NotifyJobFailedAsync(jobId, ex.Message);
         }
         finally
         {
@@ -990,7 +987,7 @@ public sealed class QueueDispatcher(
             : null;
     }
 
-    private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
+    private async Task RunJobAsync(int jobId, int executionAttempt, CancellationToken cancellationToken)
     {
         try
         {
@@ -1133,7 +1130,8 @@ public sealed class QueueDispatcher(
                 logger.LogWarning(
                     "Job {JobId}: hardware decode or tone mapping failed; retrying with the software path. ffmpeg: {Error}",
                     jobId, run.Error);
-                DeleteWorkOutput(spec.OutputPath);
+                if (!await RetryAfterCleanupAsync(jobId, executionAttempt, spec.OutputPath, _ => { }, cancellationToken,
+                    rejectedProcessLog: run.Log, rejectedError: FfmpegErrorInterpreter.Explain(run.Error) ?? run.Error)) return;
                 arguments = softwareArguments;
                 await BeginTranscodeAsync(
                     jobId,
@@ -1206,6 +1204,7 @@ public sealed class QueueDispatcher(
 
                 var disposition = await VerifyAndFinishAsync(
                     jobId,
+                    executionAttempt,
                     spec.OutputPath,
                     preparedWork,
                     cancellationToken,
@@ -1215,7 +1214,8 @@ public sealed class QueueDispatcher(
                 {
                     // One more encode, with the universal software decoder feeding the same encoder.
                     // The retried work cannot fall back again, so this cannot loop.
-                    DeleteWorkOutput(spec.OutputPath);
+                    if (!await RetryAfterCleanupAsync(jobId, executionAttempt, spec.OutputPath,
+                        job => ResetForSoftwareDecode(job, DateTimeOffset.UtcNow), cancellationToken)) return;
                     arguments = preparedWork.SoftwareFallbackArguments!;
                     var retriedWork = preparedWork with
                     {
@@ -1225,7 +1225,6 @@ public sealed class QueueDispatcher(
                         UsedHardwareToneMap = false,
                         SoftwareDecodeRetryReason = HardwareDecodeFallback.SoftwareDecodeRetryReason
                     };
-                    await WithJobAsync(jobId, job => ResetForSoftwareDecode(job, DateTimeOffset.UtcNow), cancellationToken);
                     await BeginTranscodeAsync(
                         jobId,
                         spec.OutputPath,
@@ -1246,17 +1245,17 @@ public sealed class QueueDispatcher(
                         minCandidateBytes: minCandidateBytes);
                     if (run.ExitCode == 0)
                     {
-                        await VerifyAndFinishAsync(jobId, spec.OutputPath, retriedWork, cancellationToken);
+                        await VerifyAndFinishAsync(jobId, executionAttempt, spec.OutputPath, retriedWork, cancellationToken);
                     }
                     else
                     {
-                        await FailFromFfmpegRunAsync(jobId, spec.OutputPath, run);
+                        await FailFromFfmpegRunAsync(jobId, executionAttempt, spec.OutputPath, run);
                     }
                 }
             }
             else
             {
-                await FailFromFfmpegRunAsync(jobId, spec.OutputPath, run);
+                await FailFromFfmpegRunAsync(jobId, executionAttempt, spec.OutputPath, run);
             }
         }
         catch (JobNoLongerEligibleException ex)
@@ -1266,13 +1265,13 @@ public sealed class QueueDispatcher(
         }
         catch (OperationCanceledException)
         {
-            await HandleCancelledAsync(jobId);
+            await HandleCancelledAsync(jobId, executionAttempt);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed", jobId);
-            await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message);
-            await NotifyJobFailedAsync(jobId, ex.Message);
+            if (await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message, executionAttempt: executionAttempt))
+                await NotifyJobFailedAsync(jobId, ex.Message);
         }
         finally
         {
@@ -3019,19 +3018,21 @@ public sealed class QueueDispatcher(
     }
 
     // Translate known ffmpeg failures into a clear, actionable reason; fall back to the raw
-    // stderr tail for anything unrecognised. The partial output is never left behind.
-    private async Task FailFromFfmpegRunAsync(int jobId, string outputPath, FfmpegRun run)
+    // stderr tail for anything unrecognised. Reserved partial outputs retain their diagnostic row.
+    private async Task FailFromFfmpegRunAsync(int jobId, int executionAttempt, string outputPath, FfmpegRun run)
     {
-        DeleteWorkOutput(outputPath);
         var error = FfmpegErrorInterpreter.Explain(run.Error)
             ?? run.Error
             ?? $"ffmpeg exited with code {run.ExitCode}";
-        await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log,
-            immediateAutoExclusion: run.SizeGateFailed
-                ? ImmediateAutoExclusionReason.SizeSaving
-                : ImmediateAutoExclusionReason.None);
-        await NotifyJobFailedAsync(jobId, error);
+        if (await FailStoppedOutputAsync(jobId, executionAttempt, outputPath, error, run.Log, run.SizeGateFailed))
+            await NotifyJobFailedAsync(jobId, error);
     }
+
+    internal Task<bool> FailStoppedOutputAsync(int jobId, int executionAttempt, string outputPath,
+        string error, string? processLog, bool sizeGateFailed) =>
+        CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: processLog,
+            immediateAutoExclusion: sizeGateFailed ? ImmediateAutoExclusionReason.SizeSaving : ImmediateAutoExclusionReason.None,
+            executionAttempt: executionAttempt, discardStoppedOutput: true, expectedOutputPath: outputPath);
 
     private async Task BeginTranscodeAsync(
         int jobId,
@@ -3066,25 +3067,35 @@ public sealed class QueueDispatcher(
     /// </summary>
     private const int AutoExcludeFailureThreshold = AutoExclusionPolicy.DefaultFailureThreshold;
 
-    private async Task CompleteAsync(
+    private async Task<bool> CompleteAsync(
         int jobId,
         JobStatus status,
         double? progress = null,
         string? error = null,
         string? processLog = null,
-        ImmediateAutoExclusionReason immediateAutoExclusion = ImmediateAutoExclusionReason.None)
+        ImmediateAutoExclusionReason immediateAutoExclusion = ImmediateAutoExclusionReason.None,
+        int? executionAttempt = null,
+        bool discardStoppedOutput = false,
+        string? expectedOutputPath = null)
     {
         await _dbLock.WaitAsync(CancellationToken.None);
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId);
-            if (job is null)
+            await using var write = await db.BeginDiagnosticWriteAsync();
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, CancellationToken.None);
+            if (job is null || executionAttempt is { } expected && (job.ExecutionAttempt != expected
+                    || job.Status is not (JobStatus.Probing or JobStatus.Transcoding or JobStatus.Verifying or JobStatus.Cancelled))
+                || job.Status == JobStatus.Cancelled && status != JobStatus.Cancelled
+                || expectedOutputPath is not null && job.WorkOutputPath != expectedOutputPath)
             {
-                return;
+                return false;
             }
 
+            if (discardStoppedOutput && executionAttempt is { } owner)
+                await RuntimeOutputCleanup.TryDiscardAsync(db, claims, job, owner, _workRoot,
+                    IsWorkDirectoryReserved, CancellationToken.None);
             job.Status = status;
             if (progress is { } value)
             {
@@ -3104,11 +3115,14 @@ public sealed class QueueDispatcher(
             {
                 job.FailureCategory = FailureClassifier.Classify(job.ErrorMessage);
             }
-            job.FinishedAt = DateTimeOffset.UtcNow;
+            if (status == JobStatus.Cancelled) job.FinishedAt ??= DateTimeOffset.UtcNow;
+            else job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
 
             await ApplyFailureTrackingAsync(db, job, status, immediateAutoExclusion);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(CancellationToken.None);
+            await write.CommitAsync();
+            return true;
         }
         finally
         {
@@ -3239,6 +3253,7 @@ public sealed class QueueDispatcher(
 
     private async Task<VerificationDisposition> VerifyAndFinishAsync(
         int jobId,
+        int executionAttempt,
         string outputPath,
         JobWork work,
         CancellationToken cancellationToken,
@@ -3398,7 +3413,7 @@ public sealed class QueueDispatcher(
                     work.VideoQuality?.RetryCount ?? 0,
                     work.VideoQuality?.Effective))
             {
-                await QueueHigherQualityRetryAsync(jobId, outputPath);
+                await QueueHigherQualityRetryAsync(jobId, executionAttempt, outputPath);
                 return VerificationDisposition.Finished;
             }
 
@@ -3459,10 +3474,9 @@ public sealed class QueueDispatcher(
                 VideoOnly: isCalibration && kind == MediaKind.Video)
             : null;
 
-    private async Task QueueHigherQualityRetryAsync(int jobId, string outputPath)
+    internal async Task QueueHigherQualityRetryAsync(int jobId, int executionAttempt, string outputPath)
     {
-        DeleteWorkOutput(outputPath);
-        await WithJobAsync(jobId, job =>
+        if (!await RetryAfterCleanupAsync(jobId, executionAttempt, outputPath, job =>
         {
             JobAttemptHistory.Archive(job, "HigherQualityRetry", DateTimeOffset.UtcNow);
             job.Status = JobStatus.Queued;
@@ -3481,7 +3495,7 @@ public sealed class QueueDispatcher(
             job.VerifiedAt = null;
             job.FinishedAt = null;
             job.UpdatedAt = DateTimeOffset.UtcNow;
-        }, CancellationToken.None);
+        }, CancellationToken.None)) return;
         logger.LogInformation(
             "Job {JobId}: VMAF was the only failed gate; queued one deterministic higher-quality retry.",
             jobId);
@@ -3592,22 +3606,33 @@ public sealed class QueueDispatcher(
         }
     }
 
-    // The cancel endpoint already set the status to Cancelled; just tidy the output.
-    private async Task HandleCancelledAsync(int jobId)
-    {
-        string? outputPath = null;
-        await WithJobAsync(jobId, job =>
-        {
-            outputPath = job.WorkOutputPath;
-            if (job.Status != JobStatus.Cancelled)
-            {
-                job.Status = JobStatus.Cancelled;
-            }
-            job.FinishedAt ??= DateTimeOffset.UtcNow;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
-        }, CancellationToken.None);
+    // RunFfmpegAsync has reaped its process before cancellation reaches this handler.
+    internal Task HandleCancelledAsync(int jobId, int executionAttempt) =>
+        CompleteAsync(jobId, JobStatus.Cancelled, executionAttempt: executionAttempt, discardStoppedOutput: true);
 
-        DeleteWorkOutput(outputPath);
+    private async Task<bool> RetryAfterCleanupAsync(int jobId, int executionAttempt, string outputPath,
+        Action<Job> prepareRetry, CancellationToken token,
+        string? rejectedProcessLog = null, string? rejectedError = null)
+    {
+        await _dbLock.WaitAsync(token);
+        RuntimeCleanupResult result;
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await using var write = await db.BeginDiagnosticWriteAsync(token);
+            result = await RuntimeOutputCleanup.TryRetryAsync(db, claims, jobId, executionAttempt,
+                outputPath, _workRoot, IsWorkDirectoryReserved, prepareRetry, token, rejectedProcessLog, rejectedError);
+            await write.CommitAsync(token);
+        }
+        finally { _dbLock.Release(); }
+        if (result != RuntimeCleanupResult.Discarded)
+        {
+            logger.LogWarning("Job {JobId} attempt {Attempt}: automatic retry cleanup {Result}; no new encode started",
+                jobId, executionAttempt, result);
+            await NotifyAsync();
+        }
+        return result == RuntimeCleanupResult.Discarded;
     }
 
     private async Task WithJobAsync(int jobId, Action<Job> mutate, CancellationToken cancellationToken)
@@ -3817,32 +3842,33 @@ public sealed class QueueDispatcher(
             RequestCancel(jobId);
         }
 
-        // A delivered candidate that has not been verified is pending work too: clearing the queue
-        // discards it along with the rest, since nothing has been earned by it yet.
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var pending = await db.Jobs
-            .Where(job => job.Type == JobType.Normal
-                && !db.Replacements.Any(r => r.JobId == job.Id && JobClearing.LiveReplacementStatuses.Contains(r.Status))
-                && (job.Status == JobStatus.Queued
-                    || job.Status == JobStatus.AwaitingVerification
-                    || job.Status == JobStatus.AwaitingSizeReview
-                    || job.Status == JobStatus.ReadyToReplace))
-            .ToListAsync(cancellationToken);
-        if (pending.Count == 0)
+        // Snapshot IDs only, then refresh each bounded batch while holding the writer. A large
+        // queue must not keep other control-plane writes waiting for the entire cleanup.
+        var statuses = new[] { JobStatus.Queued, JobStatus.AwaitingVerification,
+            JobStatus.AwaitingSizeReview, JobStatus.ReadyToReplace };
+        var ids = await db.Jobs.AsNoTracking().Where(job => job.Type == JobType.Normal
+            && statuses.Contains(job.Status)).Select(job => job.Id).ToListAsync(cancellationToken);
+        var cleared = 0;
+        foreach (var batch in ids.Chunk(64))
         {
-            return 0;
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            var pending = await db.Jobs.Where(job => batch.Contains(job.Id)
+                && job.Type == JobType.Normal && statuses.Contains(job.Status)
+                && !db.Replacements.Any(r => r.JobId == job.Id && JobClearing.LiveReplacementStatuses.Contains(r.Status)))
+                .ToListAsync(cancellationToken);
+            var clearable = new List<Job>();
+            foreach (var job in pending)
+            {
+                if (await TryDiscardWorkOutputAsync(db, job, cancellationToken)) clearable.Add(job);
+            }
+            db.Jobs.RemoveRange(clearable);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            cleared += clearable.Count;
         }
-
-        foreach (var job in pending)
-        {
-            DeleteWorkOutput(job.WorkOutputPath);
-        }
-
-        db.Jobs.RemoveRange(pending);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         await NotifyAsync();
-        return pending.Count;
+        return cleared;
     }
 
     /// <summary>
@@ -3965,9 +3991,12 @@ public sealed class QueueDispatcher(
     /// <summary>
     /// Deletes a persisted scratch output before its job row is retried or removed. Paths outside
     /// the owned work root (for example a completed move-to-folder output) are deliberately ignored.
-    /// A false result means the row must be retained so the output never becomes an untracked orphan.
+    /// The caller must own the database writer through its fresh job read and final commit.
+    /// A false result means the row and diagnostics must be retained for retry.
     /// </summary>
-    public bool TryDiscardWorkOutput(string? path) => DeleteWorkOutput(path);
+    public Task<bool> TryDiscardWorkOutputAsync(OptimisarrDbContext db, Job job, CancellationToken token) =>
+        _running.ContainsKey(job.Id) ? Task.FromResult(false)
+            : QueueOutputCleanup.TryDiscardAsync(db, claims, job, _workRoot, IsWorkDirectoryReserved, token);
 
     // Held for as long as FFmpeg is writing into the directory. Reference counted, because two
     // concurrent jobs on the same media file legitimately share one.
@@ -4078,37 +4107,6 @@ public sealed class QueueDispatcher(
                 }
             }
         }
-    }
-
-    private bool DeleteWorkOutput(string? path)
-    {
-        if (string.IsNullOrEmpty(path))
-        {
-            return true;
-        }
-
-        if (!WorkPaths.IsUnderRoot(_workRoot, path))
-        {
-            return true;
-        }
-
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            logger.LogWarning(ex, "Could not delete work output {Path}", path);
-            return false;
-        }
-
-        // Tidy the per-media-file scratch directory this output lived in so /work does not
-        // accumulate an empty tree for every file ever processed.
-        WorkPaths.PruneEmptyAncestors(_workRoot, path, IsWorkDirectoryReserved);
-        return true;
     }
 
     private void KillQuietly(Process process)

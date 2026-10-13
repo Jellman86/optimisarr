@@ -164,6 +164,263 @@ public sealed class DedupeDisposableCleanupTests(AdminTokenAuthEndpointTests.Tok
         Assert.Equal(HttpStatusCode.NotFound, calibration.StatusCode);
     }
 
+    [Theory]
+    [InlineData("remove", false)]
+    [InlineData("retry", false)]
+    [InlineData("clear", false)]
+    [InlineData("pending", false)]
+    [InlineData("remove", true)]
+    [InlineData("retry", true)]
+    [InlineData("clear", true)]
+    [InlineData("pending", true)]
+    public async Task Queue_cleanup_retains_reserved_outputs_and_diagnostics_and_succeeds_after_release(string action, bool busy)
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var status = action == "pending" ? JobStatus.ReadyToReplace : JobStatus.Failed;
+        var jobId = await fixture.AddPreviewAsync(status, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "candidate.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "candidate evidence");
+        await fixture.SetOutputAsync(jobId, output);
+        using var held = busy ? api.Services.GetRequiredService<FileOperationClaims>().TryAcquire(["concurrent operation"]) : null;
+        // An unrelated intent still fences ancestor pruning, including absent destinations.
+        if (!busy) await fixture.ReserveAsync(FileClaimKeys.Media(int.MaxValue), unknown: true);
+        using (var blocked = await SendAsync())
+        {
+            if (action is "remove" or "retry") Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+            else blocked.EnsureSuccessStatusCode();
+        }
+        Assert.Equal("candidate evidence", await File.ReadAllTextAsync(output));
+        await fixture.AssertJobAsync(jobId, status, output);
+        held?.Dispose();
+        await fixture.ReleaseAsync();
+        using var retry = await SendAsync();
+        retry.EnsureSuccessStatusCode();
+        Assert.False(File.Exists(output));
+        using var scope = api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId);
+        if (action == "retry")
+        {
+            Assert.NotNull(job);
+            Assert.Equal(JobStatus.Queued, job.Status);
+            Assert.Null(job.WorkOutputPath);
+        }
+        else Assert.Null(job);
+
+        Task<HttpResponseMessage> SendAsync() => action switch
+        {
+            "remove" => fixture.Client.DeleteAsync($"/api/jobs/{jobId}"),
+            "retry" => fixture.Client.PostAsync($"/api/jobs/{jobId}/retry", null),
+            "clear" => fixture.Client.PostAsync("/api/jobs/clear?scope=errored", null),
+            _ => fixture.Client.PostAsync("/api/jobs/clear-pending", null)
+        };
+    }
+
+    [Fact]
+    public async Task Removing_a_job_keeps_an_output_shared_with_another_job_until_its_reference_is_released()
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var first = await fixture.AddPreviewAsync(JobStatus.Failed, JobType.Normal);
+        var second = await fixture.AddPreviewAsync(JobStatus.Failed, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "shared.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "shared evidence");
+        await fixture.SetOutputAsync(first, output);
+        // Canonical aliases must be protected even for terminal jobs.
+        await fixture.SetOutputAsync(second, Path.Combine(Path.GetDirectoryName(output)!, ".", "shared.mkv"));
+        using var blocked = await fixture.Client.DeleteAsync($"/api/jobs/{first}");
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        Assert.Equal("shared evidence", await File.ReadAllTextAsync(output));
+        await fixture.AssertJobAsync(first, JobStatus.Failed, output);
+        await fixture.SetOutputAsync(second, null);
+        using var retry = await fixture.Client.DeleteAsync($"/api/jobs/{first}");
+        Assert.Equal(HttpStatusCode.NoContent, retry.StatusCode);
+        Assert.False(File.Exists(output));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Removing_a_job_preserves_completed_external_outputs_and_rejects_redirected_work_paths(bool redirect)
+    {
+        if (redirect && OperatingSystem.IsWindows()) return; // Symlink creation needs a separately qualified Windows privilege.
+        await using var fixture = await Fixture.CreateAsync(api);
+        var jobId = await fixture.AddPreviewAsync(JobStatus.Failed, JobType.Normal);
+        var external = Path.Combine(fixture.Root, "retained.mkv");
+        await File.WriteAllTextAsync(external, "retained evidence");
+        var output = external;
+        if (redirect)
+        {
+            var root = WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId);
+            Directory.CreateDirectory(root);
+            Directory.CreateSymbolicLink(Path.Combine(root, "redirect"), fixture.Root);
+            output = Path.Combine(root, "redirect", "retained.mkv");
+        }
+        await fixture.SetOutputAsync(jobId, output);
+        using var response = await fixture.Client.DeleteAsync($"/api/jobs/{jobId}");
+        Assert.Equal(redirect ? HttpStatusCode.Conflict : HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("retained evidence", await File.ReadAllTextAsync(external));
+        if (redirect) await fixture.AssertJobAsync(jobId, JobStatus.Failed, output);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Automatic_quality_retry_keeps_a_blocked_candidate_and_does_not_count_another_media_failure(bool busy)
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var jobId = await fixture.AddPreviewAsync(JobStatus.Verifying, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "rejected.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "rejected evidence");
+        await fixture.SetOutputAsync(jobId, output);
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.VerificationReportJson = "retained verification report";
+            job.ProcessLog = "retained process log";
+            job.ExecutionAttempt = 2;
+            await db.SaveChangesAsync();
+        }
+        using var held = busy ? api.Services.GetRequiredService<FileOperationClaims>().TryAcquire(["concurrent operation"]) : null;
+        if (!busy) await fixture.ReserveAsync(FileClaimKeys.Media(int.MaxValue), unknown: true);
+        await api.Services.GetRequiredService<QueueDispatcher>().QueueHigherQualityRetryAsync(jobId, 2, output);
+        Assert.Equal("rejected evidence", await File.ReadAllTextAsync(output));
+        using var verifyScope = api.Services.CreateScope();
+        var verify = verifyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var retained = await verify.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Failed, retained.Status);
+        Assert.Equal(output, retained.WorkOutputPath);
+        Assert.Equal("retained verification report", retained.VerificationReportJson);
+        Assert.Equal("retained process log", retained.ProcessLog);
+        Assert.Equal(0, retained.QualityRetryCount);
+        Assert.Equal(2, retained.ExecutionAttempt);
+        Assert.Null(retained.AttemptHistoryJson);
+        Assert.Contains("retry", retained.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, (await verify.MediaFiles.AsNoTracking().SingleAsync(f => f.Id == fixture.MediaId)).FailureCount);
+        Assert.False(await verify.Exclusions.AnyAsync(e => e.LibraryId == fixture.LibraryId));
+    }
+
+    [Theory]
+    [InlineData("cancel", false)]
+    [InlineData("cancel", true)]
+    [InlineData("failure", false)]
+    [InlineData("failure", true)]
+    public async Task Stopped_process_cleanup_keeps_reserved_files_and_records_the_actual_terminal_outcome(string action, bool reserved)
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var jobId = await fixture.AddPreviewAsync(action == "cancel" ? JobStatus.Cancelled : JobStatus.Transcoding, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "partial.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "partial evidence");
+        await fixture.SetOutputAsync(jobId, output);
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.ExecutionAttempt = 2;
+            job.VerificationReportJson = "retained report";
+            job.ProcessLog = "retained log";
+            await db.SaveChangesAsync();
+        }
+        if (reserved) await fixture.ReserveAsync(FileClaimKeys.Media(int.MaxValue), unknown: true);
+        var dispatcher = api.Services.GetRequiredService<QueueDispatcher>();
+        if (action == "cancel") await dispatcher.HandleCancelledAsync(jobId, 2);
+        else await dispatcher.FailStoppedOutputAsync(jobId, 2, output, "actual encoder failure", "actual encoder log", false);
+        Assert.Equal(reserved, File.Exists(output));
+        using var verifyScope = api.Services.CreateScope();
+        var verify = verifyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var jobAfter = await verify.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(action == "cancel" ? JobStatus.Cancelled : JobStatus.Failed, jobAfter.Status);
+        Assert.Equal(reserved ? output : null, jobAfter.WorkOutputPath);
+        Assert.Equal("retained report", jobAfter.VerificationReportJson);
+        Assert.Equal(action == "cancel" ? "retained log" : "actual encoder log", jobAfter.ProcessLog);
+        Assert.Equal(action == "cancel" ? "diagnostic evidence" : "actual encoder failure", jobAfter.ErrorMessage);
+        Assert.NotNull(jobAfter.FinishedAt);
+        Assert.Equal(action == "cancel" ? 0 : 1,
+            (await verify.MediaFiles.AsNoTracking().SingleAsync(f => f.Id == fixture.MediaId)).FailureCount);
+        Assert.False(await verify.Exclusions.AnyAsync(e => e.LibraryId == fixture.LibraryId));
+        Assert.Equal("unchanged original", await File.ReadAllTextAsync(Path.Combine(fixture.Root, "source.mkv")));
+    }
+
+    [Fact]
+    public async Task A_successful_automatic_quality_retry_archives_the_verdict_and_deletes_the_old_candidate_once()
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var jobId = await fixture.AddPreviewAsync(JobStatus.Verifying, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "rejected.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "old evidence");
+        await fixture.SetOutputAsync(jobId, output);
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.ExecutionAttempt = 2;
+            job.VerificationReportJson = "old verdict";
+            job.ProcessLog = "old process log";
+            job.VerificationPassed = false;
+            await db.SaveChangesAsync();
+        }
+        var dispatcher = api.Services.GetRequiredService<QueueDispatcher>();
+        await dispatcher.QueueHigherQualityRetryAsync(jobId, 2, output);
+        // A duplicated completion callback cannot spend the retry budget or archive twice.
+        await dispatcher.QueueHigherQualityRetryAsync(jobId, 2, output);
+        Assert.False(File.Exists(output));
+        using var verifyScope = api.Services.CreateScope();
+        var jobAfter = await verifyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Queued, jobAfter.Status);
+        Assert.Equal(1, jobAfter.QualityRetryCount);
+        Assert.Null(jobAfter.WorkOutputPath);
+        Assert.Null(jobAfter.VerificationReportJson);
+        var history = Assert.Single(JobAttemptHistory.Read(jobAfter.AttemptHistoryJson));
+        Assert.Equal("old verdict", history.VerificationReportJson);
+        Assert.Equal("old process log", history.ProcessLog);
+    }
+
+    [Theory]
+    [InlineData("attempt")]
+    [InlineData("path")]
+    [InlineData("cancel")]
+    [InlineData("completed")]
+    public async Task Old_runtime_callbacks_do_not_delete_or_update_changed_work(string change)
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var jobId = await fixture.AddPreviewAsync(JobStatus.Verifying, JobType.Normal);
+        var output = Path.Combine(WorkOutputRoot.ForMediaFile(fixture.WorkRoot, fixture.MediaId), "old.mkv");
+        var next = Path.Combine(Path.GetDirectoryName(output)!, "new.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "old candidate");
+        await File.WriteAllTextAsync(next, "new candidate");
+        await fixture.SetOutputAsync(jobId, change == "path" ? next : output);
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.ExecutionAttempt = change == "attempt" ? 3 : 2;
+            if (change == "cancel") job.Status = JobStatus.Cancelled;
+            if (change == "completed") job.Status = JobStatus.Completed;
+            await db.SaveChangesAsync();
+        }
+        var dispatcher = api.Services.GetRequiredService<QueueDispatcher>();
+        await dispatcher.QueueHigherQualityRetryAsync(jobId, 2, output);
+        if (change is "attempt" or "completed")
+        {
+            await dispatcher.HandleCancelledAsync(jobId, 2);
+            Assert.False(await dispatcher.FailStoppedOutputAsync(jobId, 2, output, "old failure", "old log", false));
+        }
+        if (change is "path" or "cancel") Assert.False(await dispatcher.FailStoppedOutputAsync(jobId, 2, output, "old failure", "old log", false));
+        Assert.Equal("old candidate", await File.ReadAllTextAsync(output));
+        Assert.Equal("new candidate", await File.ReadAllTextAsync(next));
+        using var verifyScope = api.Services.CreateScope();
+        var jobAfter = await verifyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(change switch { "cancel" => JobStatus.Cancelled, "completed" => JobStatus.Completed, _ => JobStatus.Verifying }, jobAfter.Status);
+        Assert.Equal("diagnostic evidence", jobAfter.ErrorMessage);
+        Assert.Equal(0, jobAfter.QualityRetryCount);
+        Assert.Null(jobAfter.AttemptHistoryJson);
+    }
+
     private static async Task AssertDeferredAsync(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -217,17 +474,17 @@ public sealed class DedupeDisposableCleanupTests(AdminTokenAuthEndpointTests.Tok
             await File.WriteAllTextAsync(media.Path, "unchanged original");
             return new(api, root, library.Id, media.Id);
         }
-        public async Task<int> AddPreviewAsync(JobStatus status)
+        public async Task<int> AddPreviewAsync(JobStatus status, JobType type = JobType.Preview)
         {
             using var scope = api.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-            var job = new Job { MediaFileId = MediaId, LibraryId = LibraryId, Type = JobType.Preview, Status = status, ErrorMessage = "diagnostic evidence" };
+            var job = new Job { MediaFileId = MediaId, LibraryId = LibraryId, Type = type, Status = status, ErrorMessage = "diagnostic evidence" };
             db.Jobs.Add(job);
             await db.SaveChangesAsync();
-            _scratch.Add(WorkOutputRoot.ForPreview(WorkRoot, job.Id));
+            _scratch.Add(type == JobType.Normal ? WorkOutputRoot.ForMediaFile(WorkRoot, MediaId) : WorkOutputRoot.ForPreview(WorkRoot, job.Id));
             return job.Id;
         }
-        public async Task SetOutputAsync(int jobId, string output)
+        public async Task SetOutputAsync(int jobId, string? output)
         {
             using var scope = api.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();

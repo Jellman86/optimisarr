@@ -319,6 +319,86 @@ Picard remains unavailable and excluded as requested. No UI or installed sidecar
 production services and the Riker backup are untouched. Required exact-head CI is recorded in
 the delivery PR before merge. D3 file actions remain disabled.
 
+## D3b sixth step, part one: operator queue cleanup
+
+Remove, manual Retry, Clear finished and Clear pending now acquire the same conservative
+cleanup fence as preview and calibration cleanup before touching scratch files. The caller
+owns the SQLite writer from its fresh job/status read through filesystem deletion and the
+job transition/commit. A reservation committed by an independent coordinator is observed;
+a coordinator arriving during cleanup must wait until that transition commits. In-memory
+claims also defer cleanup while another local file operation is active. Unknown intents,
+intents without complete claims and leftover claims all fail closed, including unrelated
+and absent destinations whose opaque keys cannot establish ancestor safety.
+
+Deferred cleanup retains the job, output path, verification evidence and diagnostics. Bulk
+operations remove only successfully cleaned jobs and return the actual cleared count.
+Clear pending refreshes jobs in batches of 64 rather than holding the writer for the whole
+queue. Manual retry preserves the existing `dedupe.reserved` response for a directly
+reserved file, checking it before deleting any candidate.
+
+Cleanup refuses live worker leases and active local encode directories, other jobs' outputs
+(including terminal jobs and canonical aliases), held upload staging paths, live replacement
+paths, configured library trees and indexed source names. The current source's physical
+identity also protects a source reached through a different symlink or hard-link name.
+Redirects inside the work root, directory-valued output paths and failed deletions retain
+the job. Missing files or missing child directories are safe to retry; outputs outside the
+work root are retained when queue history is removed.
+
+Validation on 13 October: 3,172 backend tests and zero-warning builds pass on macOS and
+native Quark Linux, including 25 new cases; all five changed code/test files agree across
+both hosts. All 325 Chromium tests pass locally. Regression runs reproduced reserved/busy
+cleanup, missing parent directories, directory-valued paths and linked-source deletion before
+the fixes. Picard is unreachable, so this delivery does not qualify Windows symlink behavior.
+Installed services and user media were untouched.
+
+This is a bounded operator-cleanup delivery, **not completion of D3b6 or D3**. The next
+part below extends it to stopped-process candidate cleanup. Adaptive samples, verification
+references and move-on-completion still require coordination. Cross-disk completion moves
+need durable destination/staging/rollback ownership and crash recovery; a long copy must not
+simply hold the database writer for its entire duration. Exhaustive physical aliases,
+external writers and import/manager coordination remain unqualified. Dedupe file actions
+remain disabled, and quality-based keeper recommendations are not introduced here.
+
+## D3b sixth step, part two: stopped-process candidate cleanup
+
+The local queue claim and delivered-candidate claim now return their execution-attempt
+number in the transaction that claims the job. Local hardware setup fallback, local and
+worker decoder-corruption retry, higher-quality retry, failure cleanup and cancellation
+carry that number to their cleanup transaction. Retry also requires the expected output
+path and an active transcode/verification state; changed attempts, paths and terminal
+states are left alone. A late encoder failure cannot replace an explicit cancellation.
+
+After FFmpeg has exited or been reaped, runtime cleanup uses the same reservation,
+source, sharing and recovery guards as operator cleanup. Its enclosing encode-directory
+reservation may remain held, but still protects pruning. The filesystem deletion, retry
+archive/reset and job transition stay within one SQLite writer. The old unconditional
+`DeleteWorkOutput` helper has been removed. No process starts from a deferred retry.
+
+A blocked automatic retry retains the candidate, verdict, hashes, process evidence and
+retry budget, and records an actionable failed job for manual retry after the conflict is
+resolved. It does not increment the media failure tally or trigger auto-exclusion. An
+actual encoder failure still records its real error/log and counts once, even if its
+partial output must be retained. Cancellation retains reserved evidence without counting
+a media failure. Successful retries still invalidate verified hashes and require every
+configured gate to pass again. Duplicate callbacks cannot archive or spend the budget twice.
+
+Native macOS and Quark Linux builds pass with zero warnings and all 3,191 backend tests,
+including 19 additional runtime cases. All six changed code/test files agree across hosts.
+The tests cover both independent writer orderings, cancellation/claim release, blocked
+local/worker decoder and quality retries, source/hash evidence, exactly-once retry budgets,
+genuine failure tracking, retained terminal outputs and superseded/cancelled callbacks.
+A concurrent Mac validation run hit an existing timing-sensitive VMAF process assertion;
+the complete backend suite passes when rerun separately without changing the assertion.
+All 325 Chromium tests pass on a separate local port with two workers. The earlier
+concurrent browser run had eight UI timing failures; no assertion or timeout was relaxed.
+Quark's installed server and sidecar remained healthy with zero restarts; only owned
+native test sources/builds were removed after evidence capture.
+
+These are cleanup-boundary guards, not a durable execution lease for every progress/write
+callback. Adaptive sample/reference ownership, cross-process encode lifetime, import/manager
+coordination, exhaustive aliases and recorded completion moves/recovery remain unqualified.
+D3 file actions remain disabled; quality-based keeper recommendations remain planned.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
