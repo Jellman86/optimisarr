@@ -110,13 +110,13 @@ public static class AudioQualityCommandBuilder
         ArgumentOutOfRangeException.ThrowIfNegative(audioIndex);
         if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
         var seek = window.StartSeconds + containerLeadSeconds;
-        var inputSeek = Math.Max(0, seek - 10);
-        var outputSeek = seek - inputSeek;
+        var inputSeek = soundtrack ? seek : Math.Max(0, seek - 10);
+        var outputSeek = soundtrack ? 0 : seek - inputSeek;
         var frames = (long)Math.Round(window.DurationSeconds * 48000);
         return [
         "-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-        // Decode context before output trimming: direct demuxer seeks can lose AAC samples,
-        // including at zero. Ten seconds bounds the extra decode for distant windows.
+        // Standalone audio needs decoder context before exact trimming. Soundtracks keep
+        // their demuxer-relative picture origin; output seeking applies a different origin.
         .. inputSeek == 0 ? Array.Empty<string>() : ["-ss", inputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
         "-i", source,
         .. outputSeek == 0 ? Array.Empty<string>() : ["-ss", outputSeek.ToString("0.########", CultureInfo.InvariantCulture)],

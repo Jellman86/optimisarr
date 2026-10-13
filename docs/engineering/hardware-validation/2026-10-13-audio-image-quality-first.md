@@ -47,8 +47,10 @@ clipping, and restores the exact source bytes. Sources are checksum-locked copie
 earlier audio qualification; converting their decoded PCM to float WAV for admission does
 not make them lossless recording masters. Raw provenance and reports remain private.
 
-Native testing exposed AAC sample loss at zero and fractional demuxer seeks. The server and
-Mac worker now decode a bounded lead-in before trimming the exact window. Tests retain the
+Native testing exposed AAC sample loss at zero and fractional demuxer seeks. Standalone audio
+on the server and Mac worker now decodes a bounded lead-in before trimming the exact window.
+Container CI also caught the different demuxer-relative origin of video soundtracks; those
+retain their existing picture-origin seek rather than adopting the standalone rule. Tests retain the
 64-frame rounding bound; no short input is padded. Loudness selection also exposed an old
 parser reading the first progress line rather than the final summary. The corrected parser
 uses final integrated loudness and true peak, with measured silence distinct from missing data.

@@ -24,7 +24,7 @@
 
 ### Fixed
 
-- Audio quality checks preserve decoder priming and exact window samples at zero and fractional seeks. Loudness checks use the finished measurement summary and distinguish measured silence from missing true-peak evidence.
+- Standalone audio quality checks preserve decoder priming and exact window samples at zero and fractional seeks; video soundtracks retain their demuxer-relative picture origin. Loudness checks use the finished measurement summary and distinguish measured silence from missing true-peak evidence.
 - Owned preparation refusals retain files and diagnostics without spending the source's failure/exclusion budget or a quality retry.
 
 - Adaptive samples and disposable preview references use owned workspaces. Cleanup retains reserved, changed or shared files and unknown folder contents. Reference encoding rejects input-path collisions and waits for cancellation to finish before cleanup; retained calibration references keep their existing lifecycle.

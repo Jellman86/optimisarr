@@ -108,13 +108,14 @@ public struct AudioQualityAssessment: Sendable {
     static func decodeArguments(input: URL, output: URL, window: AudioQualitySample,
                                 audioIndex: Int, lead: Double, soundtrack: Bool) -> [String] {
         let seek = window.startSeconds + lead
-        let inputSeek = max(0, seek - 10), outputSeek = seek - inputSeek
+        let inputSeek = soundtrack ? seek : max(0, seek - 10)
+        let outputSeek = soundtrack ? 0 : seek - inputSeek
         let inputArgs: [String] = inputSeek == 0 ? [] : ["-ss", secondsText(inputSeek)]
         let outputArgs: [String] = outputSeek == 0 ? [] : ["-ss", secondsText(outputSeek)]
         let frames = Int((window.durationSeconds * 48000).rounded())
         let filterArgs: [String] = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(frames)"] : []
         let duration = secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0))
-        // Decode context before trimming so AAC priming and fractional seeks retain every sample.
+        // Standalone samples need decoder context; soundtracks keep the demuxer's picture origin.
         var arguments = ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n"]
         arguments.append(contentsOf: inputArgs)
         arguments.append(contentsOf: ["-i", input.path])
