@@ -95,6 +95,32 @@ public sealed class NativeHostProtocolTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    public async Task Native_memory_requirements_are_resolved_without_credentials_network_or_media_tools(bool image)
+    {
+        var request = Run(image) with { Mode = "requirements", Pairing = null, GrantedMemoryBytes = null,
+            FfmpegPath = Path.GetFullPath("missing-native-tool"), ScratchRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")) };
+        var parsed = NativeHostProtocol.Parse(Serialize(request));
+        var first = await NativeHostExecutor.RunAsync(parsed, _ => Assert.Fail("No progress or media work is allowed"), default);
+        var again = await NativeHostExecutor.RunAsync(parsed, _ => Assert.Fail("No progress or media work is allowed"), default);
+        Assert.Equal(first, again);
+        Assert.Equal("requirements", first.Type);
+        Assert.Equal(request.Assignment!.Value.GetProperty("jobId").GetInt32(), first.JobId);
+        Assert.Equal(image ? PerceptualJobRuntime.ImageMemoryBytes : PerceptualJobRuntime.AudioMemoryBytes, first.NativeMemoryBytes);
+        Assert.Equal(request.Assignment.Value.GetProperty("requiredScratchBytes").GetInt64(), first.RequiredScratchBytes);
+        Assert.False(Directory.Exists(request.ScratchRoot));
+    }
+
+    [Fact]
+    public void Requirements_resolution_cannot_accept_a_pairing_secret_or_an_existing_grant()
+    {
+        Assert.Throws<InvalidDataException>(() => NativeHostProtocol.Parse(Serialize(Run() with { Mode = "requirements", GrantedMemoryBytes = null })));
+        Assert.Throws<InvalidDataException>(() => NativeHostProtocol.Parse(Serialize(Run() with { Mode = "requirements", Pairing = null })));
+        Assert.Throws<InvalidDataException>(() => NativeHostProtocol.Parse(Serialize(Capability() with { Mode = "requirements" })));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
     public void The_shared_native_audio_and_image_assignments_round_trip_without_a_second_contract_model(bool image)
     {
         var request = Run(image);

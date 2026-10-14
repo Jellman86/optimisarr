@@ -354,3 +354,10 @@ The implementation follows Apple's [VM counter definitions](https://github.com/a
 and [kernel counter collection](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/host.c).
 A live healthy Mac provider and real RAM-volume creation, encode success/failure/cancellation,
 ejection and stray-volume cleanup pass separately from deterministic capacity/refusal tests.
+
+The bridge can also obtain a validated assignment's native peak and required scratch budget
+from the helper without credentials, media tools, filesystem writes or network traffic.
+This keeps the budget policy in the shared engine. The reply is not a live capacity reading
+or a grant: the parent still has to atomically account for native peak plus full RAM-volume
+allocation before starting work. CI exposed a Swift compiler difference in synthesized
+initializer access; the frame parser now declares its initializer explicitly.

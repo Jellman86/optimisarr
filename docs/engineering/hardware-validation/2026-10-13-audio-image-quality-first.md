@@ -471,3 +471,13 @@ bundled FFmpeg. The complete Swift suite passes 310 tests; the release build suc
 SDK-27 compile retains the pre-existing legacy-Keychain deprecation warnings; no Keychain
 behaviour was changed. The 118 Python tests pass. Native app claims, resource advertisement,
 packaging/signing, Intel and physical Windows acceptance remain separate outstanding work.
+
+The subsequent requirements handshake passes both directly through the self-contained helper
+and through the actual Swift release bridge, using real frozen JPEG/AAC assignments with
+missing tool paths and no credentials. It reports the shared 3.5 GiB/512 MiB native peaks and
+matching scratch budgets without creating scratch. This does not grant memory or claim work.
+Local solution/worker validation remains warning-free with 3,515 backend, 462 shared worker
+(three Windows-only skips), 31 Linux and 311 Swift tests passing. Swift release builds succeed.
+CI for the preceding bridge commit exposed an initializer-access difference in its Swift
+compiler; the frame parser now declares an explicit initializer. That correction still requires
+its own exact-head CI acceptance before merge.

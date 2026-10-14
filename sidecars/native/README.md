@@ -20,6 +20,14 @@ host-memory reading. The parent must retain the native/RAM workspace reservation
 host exits and every owned working volume is cleaned up. The shared runner independently
 checks the assignment and available disk space before fetching its size/hash-bound source.
 
+`requirements` accepts the same complete native assignment but forbids both pairing credentials
+and a memory grant. It validates the frozen contract and returns the shared engine's native
+peak and required scratch bytes for that job, without starting tools, touching scratch or
+contacting a server. This is a budget, not current capacity or permission to encode. The parent
+must add the full allocation of any RAM volume, atomically reserve that total against live
+memory and its RAM-storage preference, and only then send a separate `run` request with its
+credential and held grant. A requirements reply is successful only together with exit code 0.
+
 Stdout contains versioned JSON events, one per line. Status/progress are bounded and may be
 coalesced under backpressure; completion is final and is never displaced by later progress.
 Details are bounded and the pairing secret is redacted. A broken output pipe cancels work.

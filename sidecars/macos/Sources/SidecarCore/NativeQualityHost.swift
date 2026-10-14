@@ -20,6 +20,15 @@ public struct NativeQualityReply: Sendable {
     public let delivered: Bool
     public let capacityBlocked: Bool
     public let capabilities: Data?
+    public let nativeMemoryBytes: Int64?
+    public let requiredScratchBytes: Int64?
+
+    init(type: String, jobId: Int?, delivered: Bool, capacityBlocked: Bool, capabilities: Data?,
+         nativeMemoryBytes: Int64? = nil, requiredScratchBytes: Int64? = nil) {
+        self.type = type; self.jobId = jobId; self.delivered = delivered
+        self.capacityBlocked = capacityBlocked; self.capabilities = capabilities
+        self.nativeMemoryBytes = nativeMemoryBytes; self.requiredScratchBytes = requiredScratchBytes
+    }
 }
 
 /// The wire assignment stays intact; the shared engine owns its validation and execution.
@@ -170,10 +179,14 @@ struct NativeQualityFrames {
         let encodedSeconds: Double?
         let detail: String?
         let outcome: WireOutcome?
+        let nativeMemoryBytes: Int64?
+        let requiredScratchBytes: Int64?
     }
     let expectedJobId: Int?
     private var pending = Data()
     private(set) var terminal: NativeQualityReply?
+
+    init(expectedJobId: Int?) { self.expectedJobId = expectedJobId }
 
     mutating func append(_ data: Data) throws -> [NativeQualityEvent] {
         guard terminal == nil || data.isEmpty else { throw NativeQualityHostError() }
@@ -198,6 +211,12 @@ struct NativeQualityFrames {
                       !outcome.delivered || outcome.capacityBlocked != true else { throw NativeQualityHostError() }
                 terminal = NativeQualityReply(type: value.type, jobId: jobId, delivered: outcome.delivered,
                     capacityBlocked: outcome.capacityBlocked ?? false, capabilities: nil)
+            case "requirements":
+                guard jobId == expectedJobId, expectedJobId != nil, value.outcome == nil,
+                      let memory = value.nativeMemoryBytes, memory > 0,
+                      let scratch = value.requiredScratchBytes, scratch > 0 else { throw NativeQualityHostError() }
+                terminal = NativeQualityReply(type: value.type, jobId: jobId, delivered: false,
+                    capacityBlocked: false, capabilities: nil, nativeMemoryBytes: memory, requiredScratchBytes: scratch)
             case "capabilities":
                 guard expectedJobId == nil, jobId == nil, let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                       let proof = raw["capabilities"] as? [String: Any] else { throw NativeQualityHostError() }
@@ -216,7 +235,7 @@ struct NativeQualityFrames {
 
     func finish(exitCode: Int32) throws -> NativeQualityReply {
         guard pending.isEmpty, let terminal else { throw NativeQualityHostError() }
-        let expectedExit = terminal.type == "capabilities" || terminal.delivered ? exitCode == 0
+        let expectedExit = ["capabilities", "requirements"].contains(terminal.type) || terminal.delivered ? exitCode == 0
             : terminal.type == "refused" ? [1, 2].contains(exitCode) : exitCode == 1
         guard expectedExit else { throw NativeQualityHostError() }
         return terminal

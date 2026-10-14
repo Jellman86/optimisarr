@@ -45,7 +45,7 @@ internal static class NativeHostProtocol
             using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
             if (!UniqueProperties(document.RootElement)) throw new InvalidDataException(invalid);
             var request = document.RootElement.Deserialize<NativeHostRequest>(Json);
-            if (request is null || request.Version != 1 || request.Mode is not ("capabilities" or "run")
+            if (request is null || request.Version != 1 || request.Mode is not ("capabilities" or "requirements" or "run")
                 || !Absolute(request.FfmpegPath) || !Absolute(request.ScratchRoot)
                 || request.ImageMetric is not null && !Absolute(request.ImageMetric)
                 || request.AudioMetric is not null && !Absolute(request.AudioMetric)
@@ -57,12 +57,17 @@ internal static class NativeHostProtocol
             }
             else
             {
-                if (request.Pairing is not { WorkerId: > 0 } pairing || pairing.Credential is not { Length: >= 32 and <= 512 }
+                if (request.Mode == "requirements")
+                {
+                    if (request.Pairing is not null || request.GrantedMemoryBytes is not null) throw new InvalidDataException(invalid);
+                }
+                else if (request.Pairing is not { WorkerId: > 0 } pairing || pairing.Credential is not { Length: >= 32 and <= 512 }
                     || pairing.Credential.Any(character => character <= 32 || character >= 127)
                     || !Uri.TryCreate(pairing.ServerAddress, UriKind.Absolute, out var server)
                     || server.Scheme is not ("http" or "https") || server.UserInfo.Length != 0 || server.Query.Length != 0 || server.Fragment.Length != 0
-                    || request.GrantedMemoryBytes is not > 0 || request.Assignment is not { ValueKind: JsonValueKind.Object } raw)
+                    || request.GrantedMemoryBytes is not > 0)
                     throw new InvalidDataException(invalid);
+                if (request.Assignment is not { ValueKind: JsonValueKind.Object } raw) throw new InvalidDataException(invalid);
                 var assignment = raw.Deserialize<Assignment>(Json);
                 if (assignment is null || assignment.JobId <= 0 || assignment.LeaseId == Guid.Empty || assignment.SourceBytes <= 0
                     || assignment.Kind is not (MediaKind.Image or MediaKind.Audio) || assignment.PerceptualSearch is null

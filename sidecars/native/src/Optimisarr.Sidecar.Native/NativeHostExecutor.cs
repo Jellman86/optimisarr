@@ -8,6 +8,14 @@ internal static class NativeHostExecutor
 {
     public static async Task<NativeHostEvent> RunAsync(NativeHostRequest request, Action<NativeHostEvent> report, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+        if (request.Mode == "requirements")
+        {
+            var planned = request.Assignment!.Value.Deserialize<Assignment>(NativeHostProtocol.Json)!;
+            return new("requirements", planned.JobId,
+                NativeMemoryBytes: Optimisarr.Core.Workers.PerceptualResourceBudget.MemoryBytes(planned.Kind, planned.RequiredScratchBytes!.Value, false),
+                RequiredScratchBytes: planned.RequiredScratchBytes);
+        }
         Environment.SetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY", request.ImageMetric);
         Environment.SetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY", request.AudioMetric);
         Environment.SetEnvironmentVariable("OPTIMISARR_EXIFTOOL", request.MetadataTool);

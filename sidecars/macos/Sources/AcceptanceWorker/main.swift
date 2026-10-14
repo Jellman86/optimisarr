@@ -46,9 +46,13 @@ struct AcceptanceWorker {
             if let proof = reply.capabilities { terminal["capabilities"] = try JSONSerialization.jsonObject(with: proof) }
             if let jobId = reply.jobId {
                 terminal["jobId"] = jobId
-                terminal["outcome"] = ["jobId": jobId, "delivered": reply.delivered,
-                                       "capacityBlocked": reply.capacityBlocked, "detail": "Check the server for its recorded outcome."]
+                if reply.type == "completed" {
+                    terminal["outcome"] = ["jobId": jobId, "delivered": reply.delivered,
+                                           "capacityBlocked": reply.capacityBlocked, "detail": "Check the server for its recorded outcome."]
+                }
             }
+            if let memory = reply.nativeMemoryBytes { terminal["nativeMemoryBytes"] = memory }
+            if let scratch = reply.requiredScratchBytes { terminal["requiredScratchBytes"] = scratch }
             try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: terminal) + Data([10]))
             return
         }

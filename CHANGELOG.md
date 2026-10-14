@@ -15,6 +15,8 @@
 
 ### Added
 
+- Native clients can ask the shared helper for a validated job's memory/workspace requirements without sending credentials or starting media tools. Swift consumes this bounded reply, keeping resource policy in the shared engine. Its frame parser now has an explicit initializer compatible with the CI Swift compiler.
+
 - Add the Swift bridge for the shared native quality helper, with private bounded requests, matching terminal/exit checks and cancellable pipes. A shared RAM/native ledger and live Mac memory estimate prevent double allocation; existing RAM jobs use disk when live capacity is unavailable. Automatic claims and signed native bundles remain gated.
 
 - Add a self-contained native-client helper that reuses the shared audio/image search and verification engine through bounded private pipes. Parent exit, stop signals and blocked console pipes cancel owned work and clean scratch. Swift integration and signed bundle qualification remain in progress; protocol 11 stays disabled.

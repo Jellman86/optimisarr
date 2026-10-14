@@ -4,6 +4,17 @@ import Testing
 
 @Suite("Native quality host bridge")
 struct NativeQualityHostTests {
+    @Test("requirements carry the shared engine's peak and scratch budget for the matching job")
+    func requirements() throws {
+        var frames = NativeQualityFrames(expectedJobId: 12)
+        _ = try frames.append(Data("{\"version\":1,\"type\":\"requirements\",\"jobId\":12,\"nativeMemoryBytes\":536870912,\"requiredScratchBytes\":12345}\n".utf8))
+        let result = try frames.finish(exitCode: 0)
+        #expect(result.nativeMemoryBytes == 536870912)
+        #expect(result.requiredScratchBytes == 12345)
+        #expect(!result.delivered)
+        #expect(throws: NativeQualityHostError.self) { try frames.finish(exitCode: 1) }
+    }
+
     @Test("fragmented progress and final events retain their identity")
     func frames() throws {
         var frames = NativeQualityFrames(expectedJobId: 12)
@@ -33,6 +44,8 @@ struct NativeQualityHostTests {
             "", "{}", "{}\n", "{\"version\":2,\"type\":\"refused\"}\n",
             "{\"version\":1,\"type\":\"progress\",\"jobId\":99}\n",
             "{\"version\":true,\"type\":\"refused\"}\n",
+            "{\"version\":1,\"type\":\"requirements\",\"jobId\":12,\"nativeMemoryBytes\":0,\"requiredScratchBytes\":12345}\n",
+            "{\"version\":1,\"type\":\"requirements\",\"jobId\":12,\"nativeMemoryBytes\":536870912}\n",
             String(repeating: "x", count: 16 * 1024 + 1),
             Self.completed + Self.completed,
             Self.completed + "trailing",
