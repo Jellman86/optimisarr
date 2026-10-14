@@ -83,6 +83,16 @@ public sealed record AdaptiveSearchDirection(
     public bool IsComplete => NextStep is null;
 }
 
+/// <summary>A server-owned audio/image search directive; a source refusal never authorises an encode.</summary>
+public sealed record PerceptualSearchDirection(Optimisarr.Core.Workers.RemotePerceptualSearchStep? NextStep,
+    int? SelectedValue, IReadOnlyList<string>? Arguments, bool SourceBlocked, string? Reason)
+{
+    public bool Valid => SourceBlocked
+        ? NextStep is null && SelectedValue is null && Arguments is null
+        : NextStep is not null ? SelectedValue is null && Arguments is null
+        : SelectedValue is not null && Arguments is { Count: > 0 };
+}
+
 /// <summary>
 /// What the worker's VMAF evidence would be held to.
 ///

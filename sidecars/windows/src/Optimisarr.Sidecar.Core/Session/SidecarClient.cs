@@ -371,6 +371,51 @@ public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnostic
     /// library's policy and the pooling rules, and both live on the control plane. This machine
     /// encodes, scores, and says what it saw.</para>
     /// </summary>
+    public async Task<PerceptualSearchDirection> ReportPerceptualProbeAsync(StoredPairing pairing, Guid leaseId,
+        Optimisarr.Core.Workers.RemotePerceptualProbeReport report, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var body = JsonSerializer.SerializeToUtf8Bytes(report, Json);
+        if (report is null || body.Length > 48 * 1024)
+            throw new SidecarException("The perceptual measurement exceeds its report budget or is missing.", recoverable: false);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/perceptual-probe"))
+            { Content = new ByteArrayContent(body) };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+        try
+        {
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            if (response.StatusCode != HttpStatusCode.OK)
+                throw new SidecarException($"Reporting a perceptual measurement failed (HTTP {(int)response.StatusCode}).",
+                    recoverable: (int)response.StatusCode >= 500 || response.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests);
+            const int maximum = 64 * 1024;
+            if (response.Content.Headers.ContentLength > maximum)
+                throw new SidecarException("The perceptual search response exceeds its read budget.", recoverable: false);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            using var buffer = new MemoryStream(); var block = new byte[4096]; int read;
+            while ((read = await stream.ReadAsync(block, deadline.Token)) > 0)
+            {
+                if (buffer.Length + read > maximum)
+                    throw new SidecarException("The perceptual search response exceeds its read budget.", recoverable: false);
+                buffer.Write(block, 0, read);
+            }
+            var direction = JsonSerializer.Deserialize<PerceptualSearchDirection>(buffer.ToArray(), Json);
+            return direction is { Valid: true } ? direction
+                : throw new SidecarException("The server returned an incomplete or ambiguous perceptual search direction.", recoverable: false);
+        }
+        catch (JsonException)
+        { throw new SidecarException("The server's perceptual search response could not be read.", recoverable: false); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        { throw new SidecarException("The perceptual report timed out; the same evidence can be replayed.", recoverable: true); }
+        catch (HttpRequestException)
+        { throw new SidecarException("The perceptual report could not reach the server; the same evidence can be replayed.", recoverable: true); }
+        catch (IOException)
+        { throw new SidecarException("The perceptual response was interrupted; the same evidence can be replayed.", recoverable: true); }
+    }
+
     public async Task<AdaptiveSearchDirection> ReportAdaptiveProbeAsync(
         StoredPairing pairing,
         Guid leaseId,

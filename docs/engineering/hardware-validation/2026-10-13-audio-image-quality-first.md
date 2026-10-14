@@ -149,3 +149,35 @@ The Mac rebuild has **zero warnings** and all **3,414 backend tests pass**. Fron
 all **95 unit tests** and all **333 browser tests pass**. Protocol 11 remains disabled while
 native execution and resource admission are implemented. These results qualify the server
 exchange; they do not claim end-to-end native worker parity.
+
+Quark independently passes the same **3,414 tests** and all **nine quality-first workflows**
+on an immutable snapshot with **910 matching C# hashes**. All checks for the pushed server
+stage are tracked separately from subsequent native-executor changes.
+
+## Native probe executor qualification
+
+The executor adds **15 backend tests**, bringing the warning-free Mac and Quark backend
+runs to **3,429 passing tests**. Tests cover canonical-command refusal, image source and
+metadata qualification before FFmpeg, raw audio windows and auxiliary gates, partial failure,
+changed retry sources/native tools, unavailable workspace, oversize output and cancellation
+cleanup. The shared .NET transport has **345 passing tests on the Mac**, with three explicit
+Windows-only skips. Its request/response budgets count UTF-8 bytes, malformed/ambiguous
+directions are terminal, and interrupted response bodies permit replaying the same evidence.
+
+Isolated native execution passes **JPEG, AAC, Opus and MP3 on the Mac**, and **JPEG, WebP,
+AAC, Opus and MP3 on Quark**. Each case performs four probes, runs a fresh final encode,
+collects full native verification and evaluates it with the server's media tools deliberately
+unavailable. Source and final candidate hashes remain unchanged during verification; probe
+scratch is empty afterward. These runs do not replace their fixtures. The image cases include
+ICC/EXIF metadata. Permissive thresholds in this harness are test inputs, not recommendations.
+An additional licensed mono speech source at **44.1 kHz** passes on Quark: two disjoint
+30-second reference windows are measured, and fresh final verification covers its fractional
+tail. Independent container parsing confirms all **3,144 ICC bytes** survive JPEG on the Mac
+and both JPEG/WebP on Quark, with the same profile SHA-256 recorded above.
+Quark's immutable executor snapshot has **912 matching C# hashes**; later .NET transport
+additions are unit-tested separately and await their own package CI. Private raw evidence is
+retained under `native-probe-01` and `quark-native-probe-01-evidence`.
+
+This qualifies probe execution and independent verification in isolation. Actual worker-loop
+renewal/reconnect, capability proof, memory admission, Swift support, package dependencies,
+soundtrack selection and preview/calibration parity remain outstanding. Protocol 11 is still off.

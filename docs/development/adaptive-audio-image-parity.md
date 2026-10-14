@@ -29,8 +29,8 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; strict image evidence and shared .NET native verification tested in isolation | Worker image encoding, capability collection, Swift verification and packaging |
-| Standalone audio | Up to three disjoint windows, at most 90 seconds; original-source encoding and lossless 48 kHz references without downmix/gain matching | Native worker search and placement parity, longer-track and difficult-passage qualification |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; strict image evidence, shared native probe execution and .NET verification qualified in isolation | Worker-loop integration, capability collection, Swift verification and packaging |
+| Standalone audio | Up to three disjoint windows, at most 90 seconds; local and shared native probes encode original-source windows with lossless 48 kHz references without downmix/gain matching | Native worker-loop and placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
@@ -136,3 +136,13 @@ metadata rewrites. The required workspace is sent with the assignment for native
 native available-memory checks and reservations still need implementation. The global worker
 protocol remains **10**: declaring protocol-11 server contracts does not activate native work.
 Native capability discovery, execution and exact-package acceptance remain required.
+
+The shared native probe executor now validates every supplied command against the canonical
+original-source plan before starting tools. It qualifies the source, prepares references,
+copies image metadata, retains per-window native/SSIM/loudness evidence and removes its owned
+scratch after child processes stop. Changed retry sources, changed tools and unavailable
+workspace preparation block encoding. Unsupported bounded candidate evidence cannot fall
+through to ordinary SSIM decoding. Probe errors retain completed evidence and cannot become
+a partial quality pass. The .NET report transport has byte/deadline limits, rejects ambiguous
+directions and marks interrupted responses as replayable; consuming that replay in the actual
+worker loop still needs implementation. These components do not activate protocol 11.

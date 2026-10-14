@@ -136,7 +136,7 @@ public static class RemotePerceptualProbeValidator
         return PerceptualAuxiliaryTargets.Audio(measurement, sample.SourceLoudness, sample.CandidateLoudness, contract.Policy);
     }
 
-    private static string? SourceError(RemotePerceptualSearchContract contract, string sourceHash, RemotePerceptualSourceEvidence? source)
+    internal static string? SourceError(RemotePerceptualSearchContract contract, string sourceHash, RemotePerceptualSourceEvidence? source)
     {
         if (source is null || source.Error is not null) return string.IsNullOrWhiteSpace(source?.Error) ? "Required source assessment is missing." : source.Error;
         if (contract.Kind == MediaKind.Image)
