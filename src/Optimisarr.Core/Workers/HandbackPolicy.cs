@@ -26,7 +26,8 @@ public static class HandbackPolicy
 
     /// <summary>
     /// How many <em>different</em> workers may refuse a job before none are offered it. Three
-    /// separate machines refusing is no longer bad luck; three refusals from one machine is that
+    /// separate machines refusing is no longer bad luck; temporary capacity returns are excluded
+    /// from this count and retain only their per-worker pause. Three refusals from one machine is that
     /// machine's problem and says nothing about the job.
     ///
     /// <para>Counted per worker rather than per refusal because the difference is not academic. A

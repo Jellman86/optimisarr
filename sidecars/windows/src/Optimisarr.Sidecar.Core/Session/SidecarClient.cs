@@ -504,11 +504,17 @@ public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnostic
     }
 
     /// <summary>Gives a job back, so it returns to the queue at once rather than waiting to lapse.</summary>
-    public async Task ReleaseAsync(
-        StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default)
+    public Task ReleaseAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
+        ReleaseCoreAsync(pairing, leaseId, false, cancellationToken);
+
+    public Task ReleaseForCapacityAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
+        ReleaseCoreAsync(pairing, leaseId, true, cancellationToken);
+
+    private async Task ReleaseCoreAsync(StoredPairing pairing, Guid leaseId, bool capacityUnavailable, CancellationToken cancellationToken)
     {
+        var action = capacityUnavailable ? "capacity-unavailable" : "release";
         using var request = new HttpRequestMessage(
-            HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/release"));
+            HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/{action}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
         using var response = await http.SendAsync(request, cancellationToken);
         // A shutdown request must distinguish an acknowledged hand-back from a lease that may

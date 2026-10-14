@@ -179,7 +179,10 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         var assignment = PerceptualJobFixture.Assignment(); using var server = new Server(assignment);
         var tools = new NativeTools(Tool); var encoder = new FakeMeasuringTranscoder();
         var outcome = await Runner(server, tools, encoder, disk: disk, memory: memory).RunAsync(new("https://server.example", "secret", 1), assignment, default);
-        Assert.False(outcome.Delivered); Assert.Equal(0, tools.Probes); Assert.Empty(encoder.AllRuns);
+        Assert.False(outcome.Delivered); Assert.True(outcome.CapacityBlocked);
+        Assert.Equal(0, tools.Probes); Assert.Empty(encoder.AllRuns);
+        Assert.Contains(server.Transfer.Calls, call => call.EndsWith("/capacity-unavailable", StringComparison.Ordinal));
+        Assert.DoesNotContain(server.Transfer.Calls, call => call.EndsWith("/release", StringComparison.Ordinal));
         Assert.DoesNotContain(server.Transfer.Calls, call => call.EndsWith("/source", StringComparison.Ordinal));
     }
 

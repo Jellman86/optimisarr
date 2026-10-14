@@ -58,7 +58,7 @@ struct NativeQualityJobRunnerTests {
                 scratchRoot: root, memoryBudget: budget, availableMemory: { memory }, workspace: { _ in disk.map { NativeDiskCapacity(volume: "fixture", availableBytes: $0) } })
             let outcome = await runner.execute(try #require(Assignment.decode(NativeQualityAssignmentTests.wire())), pairing: pairing) { _ in }
             guard case .capacityBlocked = outcome else { Issue.record("Expected acknowledged capacity refusal"); continue }
-            #expect(transport.lastRequest?.url?.path.hasSuffix("/release") == true)
+            #expect(transport.lastRequest?.url?.path.hasSuffix("/capacity-unavailable") == true)
             #expect(helper.requests == ["requirements"])
             #expect(budget.reservedBytes == 0)
         }

@@ -545,9 +545,10 @@ public struct SidecarClient: Sendable {
     }
 
     /// Hands the job back so the server can reassign it. Tolerant of a lease already gone.
-    public func release(serverAddress: String, credential: String, leaseId: String) async throws {
+    public func release(serverAddress: String, credential: String, leaseId: String, capacityUnavailable: Bool = false) async throws {
+        let action = capacityUnavailable ? "capacity-unavailable" : "release"
         let request = try authorised(
-            serverAddress, "/api/workers/leases/\(leaseId)/release", credential: credential, method: "POST")
+            serverAddress, "/api/workers/leases/\(leaseId)/\(action)", credential: credential, method: "POST")
         let (data, response) = try await perform(request)
         await diagnostics.record(leaseId: leaseId, reason: (200..<300).contains(response.statusCode) ? "Worker.LeaseReleased" : "Worker.RequestFailed", httpStatus: response.statusCode)
         try Self.checkLease(response.statusCode, data)

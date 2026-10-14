@@ -48,6 +48,8 @@
 
 ### Fixed
 
+- Temporary worker capacity returns now retain their retry pause without counting as permanent file-refusal opinions. Three low-memory workers can no longer bar a job from every worker. Capacity returns are replay-safe, preserve cancellation and retry intent, and keep the original release API intact.
+
 - The Mac worker now refuses unreadable or unsupported quality-search instructions as a whole. It confirms the hand-back before treating that claim as finished; an unconfirmed claim drains new work and blocks automatic shutdown while check-ins continue. In-flight claims are also handed back when another job becomes unconfirmed.
 
 - Native Windows quality work now waits when process-job ancestry prevents proving available memory. Physical nested-job tests caught an inner limit hiding a stricter outer limit; unresolved capacity no longer borrows the host estimate.

@@ -599,6 +599,38 @@ visually checked; unknown delivery size and stage-only progress do not invent co
 
 No installed app, service, personal media or protection was changed. Automatic tool-proof
 advertisement, positive live image acceptance, native scratch restart recovery and exact-package
-qualification remain outstanding. A separate review must distinguish temporary capacity returns
-from durable worker refusal opinions before automatic placement is enabled. This record does
+qualification remain outstanding. Temporary capacity returns now have the distinct classification qualified below. This record does
 not claim complete parity or change the protocol maximum.
+
+## Neutral capacity returns, 14 October
+
+Review found a second-order problem: ordinary releases from three different resource-starved
+workers were counted as durable refusal opinions, permanently barring worker placement even
+after capacity recovered. A failing API regression reproduced the missing distinction while
+its genuine-refusal control passed. Capacity-unavailable now has a separate authenticated lease
+operation, with the same ownership/expiry state machine. It persists a distinct end reason,
+preserves cancellation/retry intent and acknowledges repeated reports without requeuing a
+successor's lease. Capacity returns retain the existing ten-minute per-job/worker pause; only
+ordinary refusals count toward the three-worker threshold. Both native clients report the new
+operation. The existing .NET release method signature and legacy operation remain intact.
+
+Warning-free solution/Linux builds pass **3,520 backend**, **463 shared worker** (three
+Windows-only skips) and **31 Linux** tests. Swift passes **341 core and 9 UI tests** and the
+release build. The five API cases cover capacity versus genuine refusal, immediate pause,
+authentication/ownership, replay after reassignment, expired leases, cancellation and retained
+retry intent. Shared runner tests assert the exact neutral operation before any source fetch.
+No schema change is needed: the new reason fits the existing nullable enum-string field.
+
+The real isolated Mac server then pairs three distinct Swift worker processes with deliberately
+stale fixture capacity and fixture-only protocol 11. Each uses the ordinary claim/JobRunner
+path and live memory, refuses the same image before downloading, records the neutral reason,
+and remains paused on an immediate retry. A fourth paired worker receives that same job and
+returns it without media work. All four durable reasons are `CapacityUnavailable`; there are
+zero held leases, source GETs, probe posts, media failures or exclusions, and the original hash
+is unchanged. Evidence is `mac-app-native-capacity-fleet-01/report.json`. This does not qualify
+a positive image encode, automatic capability advertisement or an installed package.
+
+The preceding Mac execution's final source/binary manifests and six cases are retained under
+`swift-native-app-final-matrix-progress.json`: AAC/Opus/MP3, live image capacity hold, confirmed
+RAM use/ejection and authoritative duplicate-contract refusal. Both themes' image-card captures
+are under `ui-native-app-01`. No installed services, personal media or protections were changed.

@@ -65,7 +65,7 @@ public sealed class JobRunner(
                 reservation = native.Reserve(assignment, scratchRoot);
                 if (reservation is null)
                 {
-                    await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                    await client.ReleaseForCapacityAsync(pairing, assignment.LeaseId, CancellationToken.None);
                     return new(assignment.JobId, false, "The worker cannot confirm enough free memory and working space for this quality-first job.", CapacityBlocked: true);
                 }
                 if (Directory.Exists(scratch) || File.Exists(scratch))

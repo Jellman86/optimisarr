@@ -1716,6 +1716,98 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, secondClaim.StatusCode);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Temporary_capacity_returns_keep_the_pause_without_becoming_permanent_refusal_opinions(bool capacity)
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        var route = capacity ? "capacity-unavailable" : "release";
+        for (var index = 0; index < 3; index++)
+        {
+            using var worker = await PairCapableWorker($"Return policy {capacity} {index} {Guid.NewGuid():N}");
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+            var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+            using var returned = await worker.PostAsync($"/api/workers/leases/{leaseId}/{route}", null);
+            Assert.Equal(HttpStatusCode.NoContent, returned.StatusCode);
+            using var immediate = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, immediate.StatusCode);
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var lease = await db.JobLeases.SingleAsync(l => l.Id == leaseId);
+            Assert.Equal(capacity ? "CapacityUnavailable" : null, lease.EndReason?.ToString());
+        }
+        using var next = await PairCapableWorker($"After three returns {capacity} {Guid.NewGuid():N}");
+        using var offered = await next.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(capacity ? HttpStatusCode.OK : HttpStatusCode.NoContent, offered.StatusCode);
+        using var finalScope = _api.Services.CreateScope();
+        var context = finalScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await context.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        Assert.Equal(0, job.MediaFile!.FailureCount);
+        Assert.False(await context.Exclusions.AnyAsync(e => e.Path == job.MediaFile.Path));
+        Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile.Path));
+    }
+
+    [Fact]
+    public async Task A_capacity_return_is_replay_safe_and_cannot_requeue_another_workers_new_lease()
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob();
+        using var first = await PairCapableWorker($"Capacity replay {Guid.NewGuid():N}");
+        using var second = await PairCapableWorker($"Capacity successor {Guid.NewGuid():N}");
+        using var claim = await first.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+        var path = $"/api/workers/leases/{leaseId}/capacity-unavailable";
+        using var stolen = await second.PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+        using var anonymous = await _api.CreateClient().PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        using var returned = await first.PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.NoContent, returned.StatusCode);
+        using var taken = await second.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
+        using var repeated = await first.PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(jobId));
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Single(await db.JobLeases.Where(l => l.JobId == jobId && l.State == LeaseState.Held).ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Capacity_return_preserves_cancellation_and_retry_intent_and_refuses_expired_leases(bool expired)
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob();
+        using var worker = await PairCapableWorker($"Capacity lifetime {expired} {Guid.NewGuid():N}");
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Cancelled;
+            job.QualityRetryCount = 1;
+            job.RetryReason = "HigherPerceptualQualityRetry";
+            if (expired) (await db.JobLeases.SingleAsync(l => l.Id == leaseId)).ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsync($"/api/workers/leases/{leaseId}/capacity-unavailable", null);
+        Assert.Equal(expired ? HttpStatusCode.Conflict : HttpStatusCode.NoContent, response.StatusCode);
+        using var finalScope = _api.Services.CreateScope();
+        var context = finalScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var saved = await context.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Cancelled, saved.Status);
+        Assert.Equal(1, saved.QualityRetryCount);
+        Assert.Equal("HigherPerceptualQualityRetry", saved.RetryReason);
+        Assert.Equal(0, saved.MediaFile!.FailureCount);
+        Assert.Equal(expired ? LeaseState.Held : LeaseState.Released, (await context.JobLeases.SingleAsync(l => l.Id == leaseId)).State);
+    }
+
     [Fact]
     public async Task Releasing_a_claim_puts_the_job_back_in_the_queue()
     {

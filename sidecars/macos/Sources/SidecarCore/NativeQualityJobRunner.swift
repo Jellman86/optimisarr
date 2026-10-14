@@ -128,7 +128,7 @@ public struct NativeQualityJobRunner: WorkExecutor {
 
     private func release(_ assignment: Assignment, _ pairing: StoredPairing, _ reason: String, capacity: Bool = false) async -> JobOutcome {
         do {
-            try await client.release(serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId)
+            try await client.release(serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId, capacityUnavailable: capacity)
             return capacity ? .capacityBlocked(jobId: assignment.jobId, reason: reason) : .released(jobId: assignment.jobId, reason: reason)
         } catch let error as SidecarError where error.endsTheLease {
             return .leaseLost(jobId: assignment.jobId, reason: reason)

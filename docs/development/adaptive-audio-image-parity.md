@@ -399,6 +399,13 @@ idempotent replacement and exact rollback with live memory admission. RAM storag
 and custom RAM aliases are qualified separately. A live image claim holds below its 3.5 GiB
 budget before any source download. This is conditional execution support, not automatic placement:
 Swift tool-proof advertisement, positive live image acceptance, owned native scratch restart
-recovery, resource hand-back classification and complete packages remain required before
+recovery and complete packages remain required before
 protocol 11 is enabled. The soundtrack, preview/calibration and broader coverage obligations
 in the matrix are unchanged.
+
+Capacity returns now have a separate, authenticated, replay-safe lease operation and durable
+end reason. They retain the same per-job/worker pause as ordinary hand-backs, but do not count
+toward the three-worker refusal threshold. Genuine refusals still do. Three actual Swift runtime
+capacity returns leave a fourth worker eligible, without downloads, media failures or exclusions.
+The original release operation and its .NET public method signature remain compatible. This
+adds no column or migration; the reason fits the existing nullable enum-string field.
