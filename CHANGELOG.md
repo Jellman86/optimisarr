@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Sources or candidates changed or removed during quality search, upload or final verification now stop the attempt without increasing media failures or spending another quality retry; saved diagnostics remain available.
+
+
 - Native Linux quality-first workers now resolve the actual memory-controller mount and respect legacy/hybrid hierarchies, visible parent limits and v2 pressure limits; unresolved capacity holds work.
 
 

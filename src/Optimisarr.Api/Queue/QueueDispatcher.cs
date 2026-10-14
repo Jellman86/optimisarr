@@ -694,9 +694,7 @@ public sealed partial class QueueDispatcher(
 
             if (candidatePath is null || !File.Exists(candidatePath))
             {
-                await CompleteAsync(jobId, JobStatus.Failed,
-                    error: "The delivered candidate is missing from the work directory, so it cannot be verified.");
-                return;
+                throw new AttemptContentChangedException("The delivered candidate is missing from the work directory, so it cannot be verified.");
             }
 
             if (deliveredBy is null)
@@ -742,11 +740,7 @@ public sealed partial class QueueDispatcher(
 
             if (!File.Exists(work.Value.Original.Path))
             {
-                await CompleteAsync(jobId, JobStatus.Failed, error:
-                    $"Source file no longer exists: {work.Value.Original.Path}. It was most likely moved or "
-                    + "upgraded by your media manager (Radarr/Sonarr). Re-scan the library and the stale entry "
-                    + "will be removed.");
-                return;
+                throw new AttemptContentChangedException("The source no longer exists. It may have been moved or upgraded by a media manager; re-scan the library.");
             }
 
             await WithJobAsync(jobId, job => job.VideoEncoder = work.Value.VideoEncoder, cancellationToken);
@@ -792,8 +786,8 @@ public sealed partial class QueueDispatcher(
                     "Job {JobId}: quality evidence from {Worker} accepted; VMAF will not be re-measured here",
                     jobId, deliveredBy.Name);
             }
-            if (!await FileContentIdentity.MatchesAsync(candidatePath, deliveredLease.DeliveredSha256, cancellationToken))
-                throw new InvalidOperationException("The delivered candidate changed after upload; verification cannot trust different bytes.");
+            await FileContentIdentity.RequireMatchAsync(candidatePath, deliveredLease.DeliveredSha256,
+                "The delivered candidate changed or became unavailable after upload.", cancellationToken);
             var disposition = await VerifyAndFinishAsync(
                 jobId, executionAttempt, candidatePath, work.Value, cancellationToken,
                 // A worker's hardware decode can corrupt frames as a local one can; the retry
@@ -829,7 +823,7 @@ public sealed partial class QueueDispatcher(
         }
         catch (Exception ex) when (OwnedPreparationFailure.IsDeferral(ex))
         {
-            logger.LogWarning("Job {JobId}: owned preparation deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
+            logger.LogWarning("Job {JobId}: attempt deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
             await FinishOwnedPreparationDeferredAsync(jobId, executionAttempt, ex.Message);
         }
         catch (Exception ex)
@@ -1009,11 +1003,7 @@ public sealed partial class QueueDispatcher(
             // library scan prunes the stale inventory row.
             if (!File.Exists(work.Value.Original.Path))
             {
-                await CompleteAsync(jobId, JobStatus.Failed, error:
-                    $"Source file no longer exists: {work.Value.Original.Path}. It was most likely moved or "
-                    + "upgraded by your media manager (Radarr/Sonarr). Re-scan the library and the stale entry "
-                    + "will be removed.");
-                return;
+                throw new AttemptContentChangedException("The source no longer exists. It may have been moved or upgraded by a media manager; re-scan the library.");
             }
 
             // Pre-flight eligibility re-check: a job can sit in a long backlog while the library's
@@ -1043,7 +1033,8 @@ public sealed partial class QueueDispatcher(
 
             if (!work.Value.IsDisposable)
             {
-                var sourceHash = await FileContentIdentity.HashAsync(work.Value.Original.Path, cancellationToken);
+                var sourceHash = await FileContentIdentity.HashAttemptAsync(work.Value.Original.Path,
+                    "The source is unavailable for this attempt.", cancellationToken);
                 await WithJobAsync(jobId, job =>
                 {
                     job.SourceSha256 = sourceHash;
@@ -1282,7 +1273,7 @@ public sealed partial class QueueDispatcher(
         }
         catch (Exception ex) when (OwnedPreparationFailure.IsDeferral(ex))
         {
-            logger.LogWarning("Job {JobId}: owned preparation deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
+            logger.LogWarning("Job {JobId}: attempt deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
             await FinishOwnedPreparationDeferredAsync(jobId, executionAttempt, ex.Message);
         }
         catch (Exception ex)
@@ -3324,21 +3315,20 @@ public sealed partial class QueueDispatcher(
         }, cancellationToken);
         await NotifyAsync();
 
-        await using var sourceGuard = work.IsDisposable ? null : FileContentIdentity.OpenGuard(work.Original.Path);
-        await using var outputGuard = work.IsDisposable ? null : FileContentIdentity.OpenGuard(outputPath);
+        await using var sourceGuard = work.IsDisposable ? null : FileContentIdentity.OpenAttemptGuard(work.Original.Path, "The source is unavailable for verification.");
+        await using var outputGuard = work.IsDisposable ? null : FileContentIdentity.OpenAttemptGuard(outputPath, "The candidate is unavailable for verification.");
         string? verifiedSource = null;
         string? verifiedOutput = null;
         if (!work.IsDisposable)
         {
             await using var identityScope = scopeFactory.CreateAsyncScope();
             var identityDb = identityScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-            var expected = await identityDb.Jobs.AsNoTracking().Where(job => job.Id == jobId)
-                .Select(job => job.SourceSha256).SingleAsync(cancellationToken);
-            verifiedSource = await FileContentIdentity.HashAsync(work.Original.Path, cancellationToken);
-            if (!FileContentIdentity.IsHash(expected)
-                || !string.Equals(expected, verifiedSource, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The source changed since this attempt began, or its identity is missing. The original was kept; create a fresh verified attempt.");
-            verifiedOutput = await FileContentIdentity.HashAsync(outputPath, cancellationToken);
+            var expected = await identityDb.Jobs.AsNoTracking().Where(job => job.Id == jobId && job.ExecutionAttempt == executionAttempt)
+                .Select(job => job.SourceSha256).SingleOrDefaultAsync(cancellationToken);
+            await FileContentIdentity.RequireMatchAsync(work.Original.Path, expected,
+                "The source changed since this attempt began, or its identity is missing.", cancellationToken);
+            verifiedSource = expected;
+            verifiedOutput = await FileContentIdentity.HashAttemptAsync(outputPath, "The candidate is unavailable for verification.", cancellationToken);
         }
 
         var settings = await GetQueueSettingsAsync(cancellationToken);
@@ -3401,10 +3391,13 @@ public sealed partial class QueueDispatcher(
                 remoteEvidence,
                 referenceScratch is null ? null : new VerificationScratchCallbacks(referenceScratch.Capture, referenceScratch.TryDeleteAsync));
         }
-        if (!work.IsDisposable
-            && (!await FileContentIdentity.MatchesAsync(work.Original.Path, verifiedSource, cancellationToken)
-                || !await FileContentIdentity.MatchesAsync(outputPath, verifiedOutput, cancellationToken)))
-            throw new InvalidOperationException("Source or candidate bytes changed during verification. The original was kept; create a fresh verified attempt.");
+        if (!work.IsDisposable)
+        {
+            await FileContentIdentity.RequireMatchAsync(work.Original.Path, verifiedSource,
+                "The source changed or became unavailable during verification.", cancellationToken);
+            await FileContentIdentity.RequireMatchAsync(outputPath, verifiedOutput,
+                "The candidate changed or became unavailable during verification.", cancellationToken);
+        }
 
         outcome = outcome with
         {

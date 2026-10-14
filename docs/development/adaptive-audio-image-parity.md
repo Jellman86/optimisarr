@@ -261,3 +261,17 @@ On Quark, the actual provider reports host capacity, less than 256 MiB inside a 
 scope, and less than 128 MiB when that scope also has a 128 MiB pressure limit. These processes
 end normally and do not modify an installed service. V1/hybrid proof is deterministic fixture
 coverage; Quark's live hierarchy is v2. Local-server memory reservation remains outstanding.
+
+## Interrupted file identity
+
+Changed, removed or unreadable source/candidate bytes are attempt interruptions rather than
+evidence of damaged media. Local search, initial source capture, delivered-file checks and
+independent final verification use this neutral path. Saved search/rejection evidence and
+owned candidates remain available; no automatic quality retry or media failure/exclusion
+count is spent. Cancellation remains cancellation, even when identity is missing. Expected
+source lookup is fenced to the execution attempt. Replacement still requires a fresh full
+verification of the exact bytes.
+
+Actual isolated Mac and Quark server runs change only their copied synthetic source after a sample
+encode. Each stops after one retained probe, removes sample scratch, creates no replacement,
+and leaves both failure/exclusion counts at zero and the prior retry count unchanged.

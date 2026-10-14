@@ -177,7 +177,8 @@ public sealed class NonFatalEventLogTests
             Parallel.For(0, 100, index => provider.CreateLogger($"category{index}")
                 .LogInformation(new EventId(1000 + index), "Synthetic logging probe {Index}; no job or pairing.", index));
             provider.CreateLogger("empty").LogInformation(new EventId(1100), "");
-            Assert.Equal(noticesBefore, notices.Count);
+            Assert.True(noticesBefore == notices.Count,
+                "Concurrent native writes changed sink availability: " + string.Join(", ", notices.Skip(noticesBefore)));
             var written = Array.Empty<int>();
             var publication = Stopwatch.StartNew();
             while (publication.Elapsed < TimeSpan.FromSeconds(30))

@@ -226,8 +226,8 @@ public sealed partial class QueueDispatcher
             result = new([], PerceptualQualitySearch.Unavailable(plan, ex.Message));
         }
         token.ThrowIfCancellationRequested();
-        if (!await FileContentIdentity.MatchesAsync(work.Original.Path, sourceHash, token))
-            throw new InvalidOperationException("The source changed during quality search. The original was kept; create a fresh attempt.");
+        await FileContentIdentity.RequireMatchAsync(work.Original.Path, sourceHash,
+            "The source changed or became unavailable during quality search.", token);
         var summary = new PerceptualSearchSummary(work.Spec.Kind, encoder, sourceHash,
             work.VerificationPolicy.MinimumImagePerceptualScore, work.VerificationPolicy.MaximumAudioQualityDistance, windows, result,
             SourceImageAssessment: sourceImage, MinimumValue: plan.MinimumValue);

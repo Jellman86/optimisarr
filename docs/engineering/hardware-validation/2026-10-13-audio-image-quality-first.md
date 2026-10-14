@@ -361,3 +361,27 @@ previous qualified stage. CI on `aabdbdbe` passed the backend, frontend and nati
 checks but the native Windows Event Log concurrent-write check failed after its registration
 probe (one unexpected safe availability notice). This is unresolved; CI is not wholly green
 and no merge is authorised by these results.
+
+## Neutral source/candidate interruption
+
+The regression suite first reproduces generic failures for changed/deleted bytes, absent
+identity and cancellation without a hash. Eleven new file-identity cases pass with the existing
+attempt fencing/deferral cases. Warning-free builds pass **3,499 backend** and **427 shared
+worker tests** (three Windows-only skips); Linux worker production sources are unchanged
+from their passing 31-test controller stage.
+
+The actual isolated Mac server runs JPEG retry selection against copied synthetic media.
+A harness wrapper appends bytes to that owned source after the sample encode. The attempt
+stops with one checkpointed probe, **zero media failures, exclusions and replacements**, its
+existing retry count **1**, and no sample scratch. The changed source remains exactly as
+modified by the test. Raw evidence is under `native-master-01/mac-source-change-01`.
+The native Windows logging assertion now includes safe availability/error-code state when
+concurrent writes fail; its no-failure and exact-event-ID assertions are unchanged.
+
+The same real-server source-change regression passes on Quark, with one retained probe,
+zero failures/exclusions/replacements, unchanged retry count and cleared sample scratch.
+Its immutable publication verifies all artifact hashes and records the working-tree C#
+hashes in `identity-master-linux-01-manifest.json`; evidence is under
+`identity-master-linux-01/quark-source-change-01`. All CI checks subsequently passed for
+`d2b71e8a`, including native Windows logging, final images and installer. This supersedes
+the preceding commit's unresolved logging result without claiming a demonstrated root cause.

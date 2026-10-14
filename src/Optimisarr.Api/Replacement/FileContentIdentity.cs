@@ -19,4 +19,26 @@ internal static class FileContentIdentity
 
     public static async Task<bool> MatchesAsync(string path, string? expected, CancellationToken token) =>
         IsHash(expected) && string.Equals(await HashAsync(path, token), expected, StringComparison.OrdinalIgnoreCase);
+
+    public static FileStream OpenAttemptGuard(string path, string detail)
+    {
+        try { return OpenGuard(path); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { throw new AttemptContentChangedException(detail); }
+    }
+
+    public static async Task<string> HashAttemptAsync(string path, string detail, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        try { return await HashAsync(path, token); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { throw new AttemptContentChangedException(detail); }
+    }
+
+    public static async Task RequireMatchAsync(string path, string? expected, string detail, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!IsHash(expected) || !string.Equals(await HashAttemptAsync(path, detail, token), expected, StringComparison.OrdinalIgnoreCase))
+            throw new AttemptContentChangedException(detail);
+    }
 }
