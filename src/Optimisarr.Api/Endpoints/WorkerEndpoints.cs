@@ -94,7 +94,8 @@ internal sealed record PairRequest(
     /// The sidecar's own build. Optional, so a sidecar written against the earlier contract still
     /// pairs; it is recorded and displayed, never used to decide what a worker may be offered.
     /// </summary>
-    string? SidecarVersion = null);
+    string? SidecarVersion = null,
+    WorkerPerceptualCapabilities? Perceptual = null);
 
 /// <summary>The credential, returned exactly once. Optimisarr keeps only its fingerprint.</summary>
 internal sealed record PairResponse(int WorkerId, string Credential, int ProtocolVersion);
@@ -133,7 +134,9 @@ internal sealed record HeartbeatRequest(
     /// </summary>
     string? SidecarVersion = null,
     int? ProtocolMinimum = null,
-    int? ProtocolMaximum = null);
+    int? ProtocolMaximum = null,
+    /// <summary>Fresh native-tool proof. Omission clears earlier proof after an upgrade or downgrade.</summary>
+    WorkerPerceptualCapabilities? Perceptual = null);
 
 /// <summary>
 /// The acknowledgement. Carries the interval so a sidecar paces itself from the control plane
@@ -240,6 +243,9 @@ internal static class WorkerEndpoints
                     new { value = request.Vmaf });
             }
 
+            if (request.Perceptual is not null && !request.Perceptual.Valid())
+                return ApiErrors.BadRequest("worker.perceptual.invalid", "Native quality capabilities are malformed or exceed their bounds.");
+
             var name = string.IsNullOrWhiteSpace(request.Name) ? "Unnamed worker" : request.Name.Trim();
             var credential = WorkerCredential.Issue();
 
@@ -253,6 +259,7 @@ internal static class WorkerEndpoints
                 VideoEncoders = Join(request.VideoEncoders),
                 AudioEncoders = Join(request.AudioEncoders),
                 HardwareDecoders = Join(request.HardwareDecoders),
+                PerceptualCapabilitiesJson = WorkerCapabilityMapping.WritePerceptual(request.Perceptual),
                 Vmaf = vmaf,
                 FreeScratchBytes = Math.Max(0, request.FreeScratchBytes),
                 MaxConcurrency = Math.Max(0, request.MaxConcurrency),
@@ -310,7 +317,12 @@ internal static class WorkerEndpoints
             var negotiation = WorkerProtocol.Negotiate(request.ProtocolMinimum ?? 1, request.ProtocolMaximum ?? 1);
             if (!negotiation.Compatible)
                 return ApiErrors.Conflict("worker.protocol.incompatible", negotiation.Reason!);
+            if (request.Perceptual is not null && !request.Perceptual.Valid())
+                return ApiErrors.BadRequest("worker.perceptual.invalid", "Native quality capabilities are malformed or exceed their bounds.");
             worker.ProtocolVersion = negotiation.AgreedVersion;
+            // New native proof must be sent afresh. An old client or a failed launch probe must
+            // not inherit tools or encoders that the previous installation once proved.
+            worker.PerceptualCapabilitiesJson = WorkerCapabilityMapping.WritePerceptual(request.Perceptual);
 
             // Stamped from the server's clock, never from the request, so a sidecar with a wrong
             // or dishonest clock cannot claim to have been alive.

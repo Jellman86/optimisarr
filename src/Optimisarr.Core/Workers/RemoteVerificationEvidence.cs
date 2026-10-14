@@ -7,10 +7,10 @@ namespace Optimisarr.Core.Workers;
 
 /// <summary>Lease-specific measurement request. Thresholds remain authoritative on the server.</summary>
 public sealed record RemoteVerificationContract(int Version, Guid Id, bool MeasureAudio, bool MeasureAudioQuality = false,
-    SoundtrackQualityRequest? SoundtrackQuality = null, bool CountVideoFrames = false)
+    SoundtrackQualityRequest? SoundtrackQuality = null, bool CountVideoFrames = false, RemoteImageVerificationRequest? Image = null)
 {
     // Version 1 remains the video contract; version 2 adds standalone audio.
-    public MediaKind Kind => Version == 2 ? MediaKind.Audio : MediaKind.Video;
+    public MediaKind Kind => Version == 4 ? MediaKind.Image : Version == 2 ? MediaKind.Audio : MediaKind.Video;
 }
 
 /// <summary>Measurements, never a worker-supplied pass verdict. Bound to both transferred files.</summary>
@@ -30,7 +30,7 @@ public sealed record RemoteVerificationEvidence(
     TimestampCheckResult? CandidateAudio = null,
     RemoteAudioQualityEvidence? AudioQuality = null,
     SoundtrackQualityReport? SoundtrackQuality = null,
-    int? SourceDecodedFrameCount = null, int? CandidateDecodedFrameCount = null);
+    int? SourceDecodedFrameCount = null, int? CandidateDecodedFrameCount = null, RemoteImageVerificationEvidence? Image = null);
 
 public static class RemoteVerificationEvidenceValidator
 {
@@ -42,16 +42,19 @@ public static class RemoteVerificationEvidenceValidator
     {
         if (evidence is null) return ["The sidecar returned no full verification evidence."];
         var reasons = new List<string>();
-        if (contract.Version is not (1 or 2 or 3) || contract.Id != evidence.ContractId
-            || (contract.Version == 3 && contract.SoundtrackQuality is null))
+        if (contract.Version is not (1 or 2 or 3 or 4) || contract.Id != evidence.ContractId
+            || (contract.Version == 3 && contract.SoundtrackQuality is null)
+            || (contract.Version == 4 && (contract.Image is null || contract.MeasureAudio || contract.MeasureAudioQuality
+                || contract.SoundtrackQuality is not null || contract.CountVideoFrames))
+            || (contract.Version != 4 && contract.Image is not null))
             reasons.Add("Verification evidence belongs to a different or unsupported contract.");
         if (!Matches(sourceSha256, evidence.SourceSha256) || !Matches(candidateSha256, evidence.CandidateSha256))
             reasons.Add("Verification evidence does not match the source and delivered candidate hashes.");
-        reasons.AddRange(ValidateMeasurements(evidence, contract.MeasureAudio, contract.Kind, contract.CountVideoFrames));
+        reasons.AddRange(ValidateMeasurements(evidence, contract.MeasureAudio, contract.Kind, contract.CountVideoFrames, contract.Image));
         return reasons;
     }
 
-    public static IReadOnlyList<string> ValidateMeasurements(RemoteVerificationEvidence evidence, bool measureAudio, MediaKind kind = MediaKind.Video, bool countVideoFrames = false)
+    public static IReadOnlyList<string> ValidateMeasurements(RemoteVerificationEvidence evidence, bool measureAudio, MediaKind kind = MediaKind.Video, bool countVideoFrames = false, RemoteImageVerificationRequest? image = null)
     {
         var reasons = new List<string>();
         if (!string.IsNullOrWhiteSpace(evidence.Error)) reasons.Add(evidence.Error);
@@ -60,6 +63,11 @@ public static class RemoteVerificationEvidenceValidator
         if (evidence.Decode is null || evidence.Decode.ErrorCount < 0
             || (evidence.Decode.Healthy && (evidence.Decode.ErrorCount != 0 || evidence.Decode.Error is not null)))
             reasons.Add("A complete decode-health measurement is required.");
+        if (kind == MediaKind.Image)
+        {
+            reasons.AddRange(RemoteImageVerificationEvidenceValidator.Validate(evidence, image));
+            return reasons;
+        }
         foreach (var (name, scan) in kind == MediaKind.Audio
             ? new[] { ("source-audio", evidence.SourceAudio), ("candidate-audio", evidence.CandidateAudio) }
             : new[] { ("source-video", evidence.SourceVideo), ("candidate-video", evidence.CandidateVideo) })
@@ -122,7 +130,8 @@ public static class RemoteVerificationEvidenceValidator
                     && string.IsNullOrWhiteSpace(probe.VideoCodec)
                     && document.RootElement.TryGetProperty("format", out var audioFormat)
                     && audioFormat.ValueKind == JsonValueKind.Object;
-            if (kind != MediaKind.Video) return false;
+            if (kind is not (MediaKind.Video or MediaKind.Image)) return false;
+            if (kind == MediaKind.Image && (hasAudio || probe.SubtitleTrackCount != 0)) return false;
             if (!probe.Success || probe.Width is not > 0 || probe.Height is not > 0
                 || string.IsNullOrWhiteSpace(probe.PixelFormat)) return false;
             return document.RootElement.TryGetProperty("format", out var format)

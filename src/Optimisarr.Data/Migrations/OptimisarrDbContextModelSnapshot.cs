@@ -930,6 +930,10 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PerceptualSearchStateJson")
+                        .HasMaxLength(262144)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("QualityCandidateSha256")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
@@ -997,6 +1001,8 @@ namespace Optimisarr.Data.Migrations
 
                     b.ToTable("JobLeases", t =>
                         {
+                            t.HasCheckConstraint("CK_JobLeases_PerceptualSearch", "\"PerceptualSearchStateJson\" IS NULL OR\n(length(\"PerceptualSearchStateJson\") <= 262144 AND json_valid(\"PerceptualSearchStateJson\"))");
+
                             t.HasCheckConstraint("CK_JobLeases_ResultUpload", "(\"ResultUploadGeneration\" IS NULL AND \"ResultUploadPath\" IS NULL AND \"ResultUploadBinding\" IS NULL AND \"ResultUploadSealedBytes\" IS NULL)\nOR (\"ResultUploadGeneration\" IS NOT NULL AND \"ResultUploadPath\" IS NOT NULL AND \"ResultUploadBinding\" IS NOT NULL\n    AND (\"ResultUploadSealedBytes\" IS NULL OR \"ResultUploadSealedBytes\" >= 0))");
                         });
                 });
@@ -1592,6 +1598,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset>("PairedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PerceptualCapabilitiesJson")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("ProtocolVersion")
                         .HasColumnType("INTEGER");
 
@@ -1617,7 +1627,10 @@ namespace Optimisarr.Data.Migrations
                     b.HasIndex("CredentialFingerprint")
                         .IsUnique();
 
-                    b.ToTable("Workers");
+                    b.ToTable("Workers", t =>
+                        {
+                            t.HasCheckConstraint("CK_Workers_PerceptualCapabilities", "\"PerceptualCapabilitiesJson\" IS NULL OR\n(length(\"PerceptualCapabilitiesJson\") <= 4096 AND json_valid(\"PerceptualCapabilitiesJson\"))");
+                        });
                 });
 
             modelBuilder.Entity("Optimisarr.Data.DedupeActionFile", b =>

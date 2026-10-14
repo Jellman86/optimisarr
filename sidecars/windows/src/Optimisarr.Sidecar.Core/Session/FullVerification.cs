@@ -13,6 +13,15 @@ public static class FullVerification
         string ffmpeg, string source, string candidate, RemoteVerificationContract contract,
         string sourceHash, string candidateHash, CancellationToken cancellationToken, string? measurementFfmpeg = null)
     {
+        if (contract.Version == 4)
+        {
+            var root = Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!;
+            string Native(string name) => Path.Combine(root, name + (OperatingSystem.IsWindows() ? ".exe" : ""));
+            return await new RemoteImageVerificationService(ffmpeg, Native("ffprobe"),
+                Environment.GetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY") ?? Native("optimisarr-image-quality"),
+                Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL") ?? Native("exiftool"))
+                .MeasureAsync(source, candidate, contract, sourceHash, candidateHash, cancellationToken);
+        }
         var evidence = new RemoteVerificationEvidence(contract.Id, sourceHash, candidateHash);
         try
         {

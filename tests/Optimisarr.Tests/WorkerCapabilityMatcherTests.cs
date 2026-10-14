@@ -9,6 +9,35 @@ namespace Optimisarr.Tests;
 /// </summary>
 public class WorkerCapabilityMatcherTests
 {
+    [Fact]
+    public void Audio_search_requires_the_new_contract_and_proved_pinned_native_metric()
+    {
+        var requirement = new JobRequirements(null, "aac", null, VmafCapability.None, 1024,
+            Optimisarr.Core.Domain.MediaKind.Audio, PerceptualSearch: true);
+        var worker = Capable() with { ProtocolVersion = 11, Perceptual = new(
+            AudioMetricRevision: Optimisarr.Core.Verification.AudioQualityResultParser.Revision) };
+        Assert.True(WorkerCapabilityMatcher.Match(worker, requirement).Accepted);
+        Assert.False(WorkerCapabilityMatcher.Match(worker with { ProtocolVersion = 10 }, requirement).Accepted);
+        Assert.False(WorkerCapabilityMatcher.Match(worker with { Perceptual = null }, requirement).Accepted);
+        Assert.False(WorkerCapabilityMatcher.Match(worker with { Perceptual = new(AudioMetricRevision: new string('a', 40)) }, requirement).Accepted);
+    }
+
+    [Fact]
+    public void Images_require_their_own_proved_encoder_and_metadata_tools_without_video_or_vmaf_capabilities()
+    {
+        var requirement = new JobRequirements(null, null, null, VmafCapability.None, 1024,
+            Optimisarr.Core.Domain.MediaKind.Image, ImageEncoder: "libwebp", PerceptualSearch: true);
+        var proof = new WorkerPerceptualCapabilities(["libwebp", "mjpeg"], true,
+            ImageMetricRevision: Optimisarr.Core.Verification.ImagePerceptualResultParser.Revision);
+        var worker = Capable() with { VideoEncoders = [], Vmaf = VmafCapability.None, ProtocolVersion = 11, Perceptual = proof };
+        Assert.True(WorkerCapabilityMatcher.Match(worker, requirement).Accepted);
+        foreach (var refused in new[] { worker with { ProtocolVersion = 10 }, worker with { Perceptual = null },
+            worker with { Perceptual = proof with { ImageEncoders = [] } },
+            worker with { Perceptual = proof with { ImageMetadataSupported = false } },
+            worker with { Perceptual = proof with { ImageMetricRevision = null } } })
+            Assert.False(WorkerCapabilityMatcher.Match(refused, requirement).Accepted);
+    }
+
     private static WorkerCapabilities Capable() => new(
         OperatingSystem: "linux",
         Architecture: "x64",

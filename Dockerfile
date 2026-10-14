@@ -81,8 +81,10 @@ RUN apt-get update \
         gnupg \
         gosu \
         libimage-exiftool-perl \
+        libio-compress-perl \
         passwd \
         tzdata \
+    && perl -MCompress::Zlib -e 'exit 0' \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
         | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg \

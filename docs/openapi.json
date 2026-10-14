@@ -1481,6 +1481,16 @@
               "string"
             ]
           },
+          "perceptual": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkerPerceptualCapabilities"
+              }
+            ]
+          },
           "protocolMaximum": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1595,6 +1605,222 @@
           "serverTimeUtc",
           "heartbeatIntervalSeconds",
           "draining"
+        ],
+        "type": "object"
+      },
+      "ImageMetadata": {
+        "properties": {
+          "hasExif": {
+            "type": "boolean"
+          },
+          "hasIccProfile": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ImageMetadataResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ImageMetadata"
+          }
+        },
+        "required": [
+          "measured",
+          "metadata",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ImagePerceptualMeasurement": {
+        "properties": {
+          "alpha": {
+            "type": "boolean"
+          },
+          "backgroundScores": {
+            "items": {
+              "format": "double",
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "type": "array"
+          },
+          "height": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "maximumAlphaError": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "score": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "width": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "alpha",
+          "maximumAlphaError",
+          "score",
+          "backgroundScores"
+        ],
+        "type": "object"
+      },
+      "ImagePerceptualReport": {
+        "properties": {
+          "candidateSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "elapsedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "gateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "gatePassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "measurement": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImagePerceptualMeasurement"
+              }
+            ]
+          },
+          "measurementLocation": {
+            "default": "Server",
+            "type": "string"
+          },
+          "metric": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "metricSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "minimumScore": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "preparation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measurement",
+          "error",
+          "sourceSha256",
+          "candidateSha256",
+          "metricSha256",
+          "elapsedSeconds"
+        ],
+        "type": "object"
+      },
+      "ImageQualityResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "ssim": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "ssim",
+          "error"
         ],
         "type": "object"
       },
@@ -2313,6 +2539,16 @@
               "string"
             ]
           },
+          "perceptual": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkerPerceptualCapabilities"
+              }
+            ]
+          },
           "protocolMaximum": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2836,6 +3072,124 @@
         ],
         "type": "object"
       },
+      "RemoteImagePerceptualEvidence": {
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/ImagePerceptualReport"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "preparation": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "revision",
+          "preparation",
+          "assessment"
+        ],
+        "type": "object"
+      },
+      "RemoteImageVerificationEvidence": {
+        "properties": {
+          "candidateMetadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageMetadataResult"
+              }
+            ]
+          },
+          "encoderSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "metadataToolSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "perceptual": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "probeSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "sourceMetadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageMetadataResult"
+              }
+            ]
+          },
+          "ssim": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageQualityResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
+      "RemoteImageVerificationRequest": {
+        "properties": {
+          "measureMetadata": {
+            "type": "boolean"
+          },
+          "measurePerceptual": {
+            "type": "boolean"
+          },
+          "measureSsim": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "measureSsim",
+          "measureMetadata",
+          "measurePerceptual"
+        ],
+        "type": "object"
+      },
       "RemoteVerificationContract": {
         "properties": {
           "countVideoFrames": {
@@ -2845,6 +3199,16 @@
           "id": {
             "format": "uuid",
             "type": "string"
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImageVerificationRequest"
+              }
+            ]
           },
           "kind": {
             "$ref": "#/components/schemas/MediaKind"
@@ -2960,6 +3324,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImageVerificationEvidence"
+              }
             ]
           },
           "soundtrackQuality": {
@@ -4917,6 +5291,36 @@
           "audioCodecs",
           "pixelFormat"
         ],
+        "type": "object"
+      },
+      "WorkerPerceptualCapabilities": {
+        "properties": {
+          "audioMetricRevision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "imageMetadataSupported": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imageMetricRevision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
         "type": "object"
       },
       "WorkerUpdateDto": {

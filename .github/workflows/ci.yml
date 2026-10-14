@@ -286,12 +286,26 @@ jobs:
           python3 scripts/media_acceptance.py --image "$first_tag" \
             --root "$RUNNER_TEMP/optimisarr-image-quality-acceptance" --regression image-quality
 
+      - name: Verify quality-first audio, images and colour profiles in the final container
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-quality-first-acceptance" --regression quality-first
+          python3 scripts/media_acceptance.py --image "$first_tag" \
+            --root "$RUNNER_TEMP/optimisarr-quality-first-webp-acceptance" --regression quality-first-webp
+
       - name: Retain media acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: media-acceptance
           path: |
+            ${{ runner.temp }}/optimisarr-quality-first-acceptance/report/
+            ${{ runner.temp }}/optimisarr-quality-first-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-quality-first-acceptance/image.json
+            ${{ runner.temp }}/optimisarr-quality-first-webp-acceptance/report/
+            ${{ runner.temp }}/optimisarr-quality-first-webp-acceptance/server.log
+            ${{ runner.temp }}/optimisarr-quality-first-webp-acceptance/image.json
             ${{ runner.temp }}/optimisarr-image-quality-acceptance/report/
             ${{ runner.temp }}/optimisarr-image-quality-acceptance/server.log
             ${{ runner.temp }}/optimisarr-image-quality-acceptance/image.json

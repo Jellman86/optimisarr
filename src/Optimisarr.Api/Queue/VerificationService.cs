@@ -118,13 +118,15 @@ public sealed class VerificationService(
         {
             var objections = RemoteVerificationEvidenceValidator.ValidateMeasurements(remoteEvidence,
                 policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled, original.Kind,
-                original.Kind == MediaKind.Video && original.FrameRate is null);
+                original.Kind == MediaKind.Video && original.FrameRate is null,
+                original.Kind == MediaKind.Image ? new(policy.ImageQualityGateEnabled, policy.ImageMetadataGateEnabled,
+                    policy.RequiresImagePerceptualQuality(original.Kind)) : null);
             if (objections.Count > 0)
                 throw new InvalidOperationException("Sidecar-only verification evidence is incomplete; server fallback is disabled. "
                     + string.Join(" ", objections));
         }
-        if (remoteEvidence is not null && original.Kind is not (MediaKind.Video or MediaKind.Audio))
-            throw new InvalidOperationException("This sidecar verification contract supports video and audio assignments only.");
+        if (remoteEvidence is not null && original.Kind is not (MediaKind.Video or MediaKind.Audio or MediaKind.Image))
+            throw new InvalidOperationException("This sidecar verification contract does not support this media kind.");
         if (remoteEvidence is not null && clip is not null)
             throw new InvalidOperationException("Sidecar-only verification does not accept disposable reference clips.");
         if (remoteEvidence is not null && policy.RequiresVmaf(original.Kind, original.VideoReencoded) && remoteQuality is null)
@@ -143,7 +145,7 @@ public sealed class VerificationService(
             // read both large files repeatedly after an AV1 parser error on the server.
             var inspectFullFile = decodeResult.Healthy || remoteEvidence is not null;
             // Strict audio evidence has its own packet scan; legacy local audio keeps its existing path.
-            var timestampResult = (reference.Kind == MediaKind.Audio ? remoteEvidence?.CandidateAudio : remoteEvidence?.CandidateVideo) ?? (!inspectFullFile || reference.Kind == MediaKind.Audio
+            var timestampResult = (reference.Kind == MediaKind.Audio ? remoteEvidence?.CandidateAudio : remoteEvidence?.CandidateVideo) ?? (!inspectFullFile || reference.Kind != MediaKind.Video
                 ? TimestampCheckResult.NotMeasured
                 : await timestamps.CheckAsync(outputPath, cancellationToken));
             var outputProbe = remoteEvidence is null
@@ -285,7 +287,7 @@ public sealed class VerificationService(
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
             // image job when enabled (the safe default), since it runs an extra ffmpeg pass.
             var imageQualityResult = policy.ImageQualityGateEnabled && reference.Kind == MediaKind.Image
-                ? await imageQuality.MeasureAsync(
+                ? remoteEvidence is not null ? remoteEvidence.Image!.Ssim : await imageQuality.MeasureAsync(
                     reference.Path,
                     outputPath,
                     new ImageQualityMeasurementContext(
@@ -301,8 +303,10 @@ public sealed class VerificationService(
             ImageMetadataResult? outputMetadata = null;
             if (policy.ImageMetadataGateEnabled && reference.Kind == MediaKind.Image)
             {
-                originalMetadata = await imageMetadata.ReadAsync(reference.Path, cancellationToken);
-                outputMetadata = await imageMetadata.ReadAsync(outputPath, cancellationToken);
+                originalMetadata = remoteEvidence is not null ? remoteEvidence.Image!.SourceMetadata
+                    : await imageMetadata.ReadAsync(reference.Path, cancellationToken);
+                outputMetadata = remoteEvidence is not null ? remoteEvidence.Image!.CandidateMetadata
+                    : await imageMetadata.ReadAsync(outputPath, cancellationToken);
             }
 
             var imageMetadataMeasured = originalMetadata is { Measured: true } && outputMetadata is { Measured: true };
@@ -311,7 +315,7 @@ public sealed class VerificationService(
             // measurement runs when either is enabled; both are opt-in for the extra passes.
             LoudnessResult? originalLoudness = null;
             LoudnessResult? outputLoudness = null;
-            if (inspectFullFile && (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled))
+            if (inspectFullFile && reference.Kind != MediaKind.Image && (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled))
             {
                 originalLoudness = remoteEvidence?.SourceLoudness ?? await loudness.MeasureAsync(reference.Path, cancellationToken);
                 outputLoudness = remoteEvidence?.CandidateLoudness ?? await loudness.MeasureAsync(outputPath, cancellationToken);
@@ -488,7 +492,9 @@ public sealed class VerificationService(
                 policy.RequiresAudioQuality(reference.Kind), reference.Kind, decodeResult.Healthy, clip is not null,
                 reference.Path, outputPath, remoteEvidence, cancellationToken) };
             report = AudioQualityGate.Apply(report, reference.Kind, policy, preview: clip is not null);
-            report = report with { ImagePerceptualQuality = await (imagePerceptualQuality ?? new ImagePerceptualObservationService(null)).ObserveAsync(
+            report = report with { ImagePerceptualQuality = remoteEvidence is not null && reference.Kind == MediaKind.Image
+                ? policy.RequiresImagePerceptualQuality(reference.Kind) ? remoteEvidence.Image!.Perceptual!.Assessment with { MeasurementLocation = "Worker" } : null
+                : await (imagePerceptualQuality ?? new ImagePerceptualObservationService(null)).ObserveAsync(
                 policy.RequiresImagePerceptualQuality(reference.Kind), reference.Kind, decodeResult.Healthy, clip is not null,
                 remoteEvidence is not null, reference.Path, outputPath, cancellationToken) };
             report = ImagePerceptualQualityGate.Apply(report, reference.Kind, policy, clip is not null);

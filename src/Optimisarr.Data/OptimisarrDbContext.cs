@@ -386,6 +386,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(worker => worker.OperatingSystem).HasMaxLength(32);
             entity.Property(worker => worker.Architecture).HasMaxLength(32);
             entity.Property(worker => worker.VideoEncoders).HasMaxLength(1024);
+            entity.Property(worker => worker.PerceptualCapabilitiesJson).HasMaxLength(4096);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Workers_PerceptualCapabilities", """
+                "PerceptualCapabilitiesJson" IS NULL OR
+                (length("PerceptualCapabilitiesJson") <= 4096 AND json_valid("PerceptualCapabilitiesJson"))
+                """));
             entity.Property(worker => worker.HardwareDecoders).HasMaxLength(1024);
             entity.Property(worker => worker.Vmaf).HasConversion<string>().HasMaxLength(32);
             // A SHA-256 hex fingerprint is always 64 characters; the credential itself is never stored.
@@ -403,6 +408,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
             entity.Property(lease => lease.ResultUploadPath).HasMaxLength(4096);
             entity.Property(lease => lease.ResultUploadBinding).HasMaxLength(64);
+            entity.Property(lease => lease.PerceptualSearchStateJson).HasMaxLength(262144);
+            entity.ToTable(t => t.HasCheckConstraint("CK_JobLeases_PerceptualSearch", """
+                "PerceptualSearchStateJson" IS NULL OR
+                (length("PerceptualSearchStateJson") <= 262144 AND json_valid("PerceptualSearchStateJson"))
+                """));
             entity.ToTable(t => t.HasCheckConstraint("CK_JobLeases_ResultUpload", """
                 ("ResultUploadGeneration" IS NULL AND "ResultUploadPath" IS NULL AND "ResultUploadBinding" IS NULL AND "ResultUploadSealedBytes" IS NULL)
                 OR ("ResultUploadGeneration" IS NOT NULL AND "ResultUploadPath" IS NOT NULL AND "ResultUploadBinding" IS NOT NULL

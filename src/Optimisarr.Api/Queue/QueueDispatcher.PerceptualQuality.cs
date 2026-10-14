@@ -92,6 +92,16 @@ public sealed partial class QueueDispatcher
                     sourceImage?.Error ?? "The original image cannot be assessed under the required policy.", sourceImage, token);
                 return null;
             }
+            if (work.VerificationPolicy.ImageMetadataGateEnabled)
+            {
+                var metadata = await scope.ServiceProvider.GetRequiredService<ImageMetadataService>().ReadAsync(work.Original.Path, token);
+                if (!metadata.Measured)
+                {
+                    await RejectPerceptualSourceAsync(jobId, attempt, work, encoder, baseline, sourceHash,
+                        metadata.Error ?? "Required source image metadata could not be fully inspected.", sourceImage, token);
+                    return null;
+                }
+            }
         }
         else
         {

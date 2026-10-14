@@ -100,7 +100,7 @@ public sealed class ImagePerceptualQualityTests
     }
 
     [Fact]
-    public async Task One_server_lane_bounds_concurrent_metrics_and_waiting_cancellation_does_not_start_a_tool()
+    public async Task One_process_lane_bounds_separate_metric_instances_and_waiting_cancellation_does_not_start_a_tool()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -114,11 +114,16 @@ public sealed class ImagePerceptualQualityTests
         var first = service.MeasureAsync("/source.png", "/candidate.webp", CancellationToken.None);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         using var cancel = new CancellationTokenSource();
-        var second = service.MeasureAsync("/source.png", "/candidate.webp", cancel.Token);
+        var another = new ImagePerceptualQualityService("/metric", async (_, _, token, _) => {
+            Interlocked.Increment(ref calls);
+            await finish.Task.WaitAsync(token);
+            return new ToolProcessResult(0, Native, null);
+        }, (_, _) => Task.FromResult(new string('a', 64)));
+        var second = another.MeasureAsync("/source.png", "/candidate.webp", cancel.Token);
         cancel.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second);
-        Assert.Equal(1, calls);
-        finish.SetResult();
+        try { Assert.Equal(1, calls); }
+        finally { finish.SetResult(); await first; }
         Assert.NotNull((await first).Measurement);
     }
 

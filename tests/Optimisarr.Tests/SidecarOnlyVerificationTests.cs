@@ -25,6 +25,45 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
         SourceDecodedFrameCount: 96, CandidateDecodedFrameCount: 96);
 
 
+    [Theory]
+    [InlineData("pass", true)]
+    [InlineData("perceptual", false)]
+    [InlineData("ssim", false)]
+    [InlineData("metadata", false)]
+    public async Task Image_worker_evidence_is_judged_without_any_server_media_tools(string variation, bool passes)
+    {
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.webp");
+        await File.WriteAllTextAsync(output, "candidate");
+        var source = new string('a', 64); var candidate = new string('b', 64); var tool = new string('c', 64);
+        const string imageProbe = """{"streams":[{"codec_type":"video","codec_name":"webp","width":32,"height":32,"pix_fmt":"rgb24"}],"format":{}}""";
+        RemoteImagePerceptualEvidence Metric(string hash, double score) => RemoteImagePerceptualEvidence.From(
+            new(new(32, 32, false, 0, score, [score]), null, source, hash, tool, 1, MeasurementLocation: "Worker"));
+        var evidence = new RemoteVerificationEvidence(Guid.NewGuid(), source, candidate, imageProbe, imageProbe, DecodeHealthResult.Ok,
+            Image: new(Metric(source, 100), Metric(candidate, variation == "perceptual" ? 10 : 90),
+                ImageQualityResult.Ok(variation == "ssim" ? 0.2 : 0.95), ImageMetadataResult.Ok(new(true, true)),
+                ImageMetadataResult.Ok(new(variation != "metadata", true)), tool, tool, tool));
+        var original = new OriginalSnapshot("unread-original.webp", 1000, null, 0, 0, false, false,
+            Kind: MediaKind.Image, VideoReencoded: false);
+        var policy = VerificationPolicy.Default with { ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 85,
+            ImageQualityGateEnabled = true, MinimumImageSsim = 0.9, ImageMetadataGateEnabled = true };
+        var result = await Service().VerifyAsync(original, output, policy, default, remoteEvidence: evidence);
+        Assert.Equal(passes, result.Report.Passed);
+        Assert.Equal("Worker", result.Report.ImagePerceptualQuality!.MeasurementLocation);
+        if (!passes) Assert.Contains(result.Report.Checks, c => c.Outcome == CheckOutcome.Failed
+            && c.Name == (variation == "perceptual" ? ImagePerceptualQualityGate.CheckName
+                : variation == "ssim" ? "Image quality (SSIM)" : "Image metadata (EXIF/ICC)"));
+    }
+
+    [Fact]
+    public async Task Missing_required_image_worker_evidence_refuses_without_local_fallback()
+    {
+        var original = new OriginalSnapshot("unread", 1000, null, 0, 0, false, false, Kind: MediaKind.Image, VideoReencoded: false);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Service().VerifyAsync(original, "unread",
+            VerificationPolicy.Default, default, remoteEvidence: Evidence() with { Image = null }));
+        Assert.Contains("fallback is disabled", error.Message);
+    }
+
     [Fact]
     public async Task Missing_picture_evidence_refuses_strict_verification_without_server_fallback()
     {

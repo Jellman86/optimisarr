@@ -80,3 +80,57 @@ passes 333 tests. The updated Mac worker also measures the licensed 44.1 kHz mus
 and the generated fractional-tail fixture with its real pinned tools, cleaning owned scratch.
 Exact CI/package results remain required before this slice is merged or deployed.
 Quark also passes all 31 native Linux worker tests with a warning-free Release build.
+
+
+## 14 October worker foundation and colour-profile follow-up
+
+The local workflow remains distinct from unfinished worker parity. Protocol 11 is reserved;
+advertised protocol 10 is unchanged and production workers still refuse the new search.
+The branch adds bounded, additive worker-capability and lease-search storage, a frozen
+four-probe state machine with replay/source/tool fencing, and strict version-4 image evidence.
+The reporting endpoint, native search loops, Swift image verification, soundtrack selection,
+preview/calibration integration and exact-package qualification remain outstanding.
+
+The complete backend suite passes **3,374 tests** on both the Mac and native Quark snapshot
+`source-05`. Its **901 C# file hashes** match the Mac tree. Warning-as-error rebuild passes
+without warnings. The Mac also passes **329 shared .NET worker tests** (three Windows-only
+skips), **31 Linux worker tests**, **95 frontend unit tests**, the locale/type checks,
+**333 browser tests** and **115 Python tests**. Swift's previously recorded 293 tests apply
+to the unchanged Swift implementation; they do not establish new image-worker functionality.
+
+Direct invocation of the shared .NET native image verifier passes on the Mac and Quark.
+A deliberately poor JPEG returns a complete negative score and low SSIM as measurements;
+the server's separate tests prove rejection without any installed server media tools. A
+Mac generated gradient JPEG returns SSIMULACRA2 **89.428720304** and SSIM **0.922160**.
+Those numbers describe that fixture, not a general target recommendation.
+
+A real ICC/EXIF fixture exposed the pre-existing copy bug: `ICC_Profile:all` selects
+individual read-only fields and can exit successfully without writing the binary profile.
+The corrected `ICC_Profile` command preserves the exact complete profile bytes, plus the
+EXIF Artist, while keeping orientation/previews/dimension exclusions. See the
+[official copy example](https://exiftool.org/exiftool_pod2.html).
+The Mac and Quark metadata fixtures then pass local quality-first selection, every enabled
+final check, replacement and exact rollback. Quark passes all **nine quality-first cases**
+and **four WebP/artwork cases**, with preflight/settings restoration separate. The harness
+independently compares ICC bytes and reads the generated EXIF Artist. These cases are now
+included in final-container CI. Private red/green evidence is retained under `worker-image-01`,
+`mac-metadata-02`, Quark `probe-image-03`, `native-07` and `native-webp-04`.
+
+Quark's isolated ExifTool copy lacked Compress::Zlib, which could hide a compressed profile
+from field-only inspection; its installed app already has the module. Grouped JSON now reads
+the binary profile tag, prevents tag-value spoofing and rejects warning/incomplete results.
+A missing-module run stops before sample/full encoding, retains the original, spends **zero
+media failure counts** and starts no quality retry. The source warning is retained for diagnosis.
+The same immutable source passes after signed Fedora modules are extracted into the isolated
+test directory and added only to that process's Perl search path. No host packages were installed.
+The complete-tool verifier preserves all **3,144 ICC bytes** (SHA-256
+`2b3aa1645779a9e634744faf9b01e9102b0c9b88fd6deced7934df86b949af7e`) and EXIF.
+The container build now declares the compression dependency and asserts it can load.
+
+ExifTool processes now have bounded capture, deadlines, UTF-8 standard input where needed,
+and reap children before returning cancellation. Separate native image scorer instances
+share one process-wide lane. These lifetime changes have process and concurrency tests.
+
+Picard remains unreachable through both its Tailscale SSH address and the Quark LAN jump;
+no new physical Windows qualification is claimed. No installed service or personal media
+was modified by these runs.

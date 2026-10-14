@@ -29,12 +29,12 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target | Worker image encoding, tool capability proof, full worker image verification and packaging |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; strict image evidence and shared .NET native verification tested in isolation | Worker image encoding, capability collection, Swift verification and packaging |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; original-source encoding and lossless 48 kHz references without downmix/gain matching | Native worker search and placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
-| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed probes checkpointed and shown before final verification; final report retains search separately | Remote lease-bound evidence, duplicate/reconnect handling, interrupted-attempt history and export qualification |
+| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound search model rejects replay conflicts and source/tool changes | Remote endpoint and native search integration, reconnect acceptance, interrupted-attempt history and export qualification |
 | Lifetime | Owned local scratch, stopped-process cleanup, cancellation propagation, source revalidation, attempt-fenced result persistence | All native worker implementations, resource exhaustion and restart/reconnect acceptance |
 | Final verification | Existing full verification runs on a fresh final encode; one higher-fidelity retry only for a sole measured perceptual failure, with rejected attempt history | Same safety on worker delivery and native image retry qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
@@ -50,6 +50,42 @@ by final verification. Candidate paths are unique owned scratch leaves and refus
 Unavailable evidence falls back to the saved setting; the required final metric still blocks
 replacement when it cannot be obtained. Current workers refuse the new search contract until
 implemented, preserving strict worker placement rather than silently bypassing selection.
+
+## Worker foundation in progress
+
+The next contract is reserved as protocol 11; the advertised protocol remains 10. Current
+workers still refuse quality-first audio/image jobs. The persisted worker capabilities and
+lease search state are additive, bounded JSON fields with idempotent migration coverage.
+Pairing and check-in can record fresh optional native-tool proof; omission clears earlier
+proof so a downgraded or failed installation cannot inherit it. Capability collection on the
+native clients is still required before any new placement is enabled.
+
+The shared search coordinator freezes the source and encoder/metric binaries, validates
+raw measurements against the frozen policy, caps work at four candidates and handles repeated
+identical reports without spending another probe. Conflicting, stale, out-of-order or changed
+source/tool reports cannot advance it. Source refusal cannot authorize a baseline encode;
+an unavailable sample can select the saved baseline, which still requires final verification.
+These are tested domain rules; the reporting endpoint and native search loops are not wired yet.
+
+Strict image verification has a separate version-4 evidence contract. Source and candidate
+native assessment, SSIM, metadata, probes and decode are separate measurements. The server
+recomputes the final verdict without installing media tools, and rejects missing required
+evidence without local fallback. Shared .NET native verification qualifies both images with
+the bounded decoder before FFmpeg, rechecks file/tool hashes and shares the process-wide
+image metric lane. It is tested directly on the Mac and Quark; worker assignment, Swift support and
+exact-package qualification remain outstanding. ExifTool operations now have bounded capture,
+a deadline and child reaping before cancellation returns, including UTF-8 argument input. Source metadata is inspected before sample encoding when
+required. Grouped JSON and explicit binary-profile presence prevent tag-value spoofing and
+missing compression support being mistaken for an image with no profile. Incomplete source
+inspection holds the job without spending media failure counts; the runtime declares and
+checks its compression dependency.
+
+A real metadata fixture exposed an existing ICC-copy bug: the group-field copy could report
+success while dropping the profile. Copying the complete binary ICC tag follows the
+[ExifTool application documentation](https://exiftool.org/exiftool_pod2.html). The quality-first
+acceptance harness now independently compares complete ICC bytes and the generated EXIF Artist
+on JPEG and WebP outputs, then exercises replacement and exact rollback. The final-container
+CI matrix includes these workflows and the audio/image searches.
 
 ## Qualification matrix
 

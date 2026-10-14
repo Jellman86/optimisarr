@@ -7,6 +7,7 @@
 ### Added
 
 - Experimental local image and standalone audio quality-first searches test up to four compression settings against explicit perceptual targets before the final encode. Search evidence remains separate from final verification; existing libraries keep fixed settings. Worker search and soundtrack selection remain under implementation.
+- Add bounded worker capability and lease-search storage, replay-safe perceptual search rules and strict image verification evidence as a worker foundation. Native search placement remains disabled until all clients implement it.
 - Completed quality probes are retained during a search and after cancellation. A sole final perceptual-quality failure can trigger one higher-fidelity retry, preserving the rejected attempt and every independent safety check.
 
 - Add the first exact-copy cleanup safety foundation: durable rollback intent, independent retention and reservations that survive restart. File actions remain unavailable while D3 concurrency and recovery qualification continues.
@@ -23,6 +24,11 @@
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
 
 ### Fixed
+
+- Required image metadata inspection uses grouped JSON, rejects incomplete tool output and qualifies quality-first sources before encoding without spending media failure counts. Container builds explicitly include and check compressed-metadata support.
+- Image metadata copying preserves the complete binary ICC profile. Copying its individual read-only fields could report success while dropping the profile; colour-profile and EXIF retention now have independent real-media regression coverage.
+
+- Image metric instances share one memory lane per process. Image metadata reads and writes bound tool output and reap stopped children before returning from cancellation.
 
 - Standalone audio quality checks preserve decoder priming and exact window samples at zero and fractional seeks; video soundtracks retain their demuxer-relative picture origin. Loudness checks use the finished measurement summary and distinguish measured silence from missing true-peak evidence.
 - Owned preparation refusals retain files and diagnostics without spending the source's failure/exclusion budget or a quality retry.

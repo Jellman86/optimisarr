@@ -10,6 +10,7 @@ import time
 
 from .core import Blocked, inside, quality_failures, require, save, sha256
 from .quality_first import validate_search, validate_image_command
+from .image_metadata import add_synthetic_image_metadata, read_icc_profile
 from .media import compare_report, validate_shadow_report, validate_soundtrack_report
 
 TERMINAL = {"ReadyToReplace", "Completed", "Failed", "Cancelled"}
@@ -577,13 +578,16 @@ class Harness:
         return {"ssim": float(match[1]), "restoredOriginal": True,
                 "scope": "Opaque BMP to JPEG; metadata-free generated source"}
 
-    def image_perceptual(self, target="jpeg", *, reject=False, reporting=True, gate=True, unsupported=False, adaptive=False):
+    def image_perceptual(self, target="jpeg", *, reject=False, reporting=True, gate=True, unsupported=False, adaptive=False, metadata=False):
         self.select_worker(None)
         name = f"image-perceptual-{target}-{'unsupported' if unsupported else 'reject' if reject else 'gate' if gate else 'report' if reporting else 'off'}"
         if adaptive: name += "-quality-first"
+        if metadata: name += "-metadata"
         fixture = self.root / "fixtures" / (name + (".bmp" if unsupported else ".png"))
         self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=512x512:rate=1:duration=1",
             "-vf", "noise=alls=40:allf=t", "-pix_fmt", "bgr24" if unsupported else "rgb24", "-frames:v", "1", self.tools.path(fixture)])
+        if metadata:
+            add_synthetic_image_metadata(fixture, Path(__file__).resolve().parents[2] / "tools/image-quality-native/fixtures/icc.webp")
         case = self.create_job(name, fixture, overrides={"mediaType": "Photo", "targetImageFormat": target,
             "imageQuality": 10 if reject else 95, "reencodeLossyImages": True, "vmafQualityGateEnabled": False,
             "imageQualityGateEnabled": True, "minimumImageSsim": 0, "imageMetadataGateEnabled": True,
@@ -622,12 +626,24 @@ class Harness:
             require(image["gateEnabled"] == gate and (not gate or image["gatePassed"] == (not failed)), "Incorrect image gate attribution")
         else:
             require(image is None, "Disabled image reporting still ran")
+        icc_hash = None
+        if metadata:
+            candidate = self.output(case)
+            profile = read_icc_profile(case["source"])
+            require(profile is not None and profile == read_icc_profile(candidate), "Final image lost or changed the complete ICC profile")
+            import hashlib
+            icc_hash = hashlib.sha256(profile).hexdigest()
+            exiftool = "exiftool" if self.tools.container else os.environ.get("OPTIMISARR_EXIFTOOL", "exiftool")
+            artist = self.tools.run(exiftool, ["-s3", "-EXIF:Artist", self.tools.path(candidate)])
+            require(artist.strip() == "Optimisarr acceptance", "Final image lost the original EXIF artist")
+            require(any(c["name"] == "Image metadata (EXIF/ICC)" and c["outcome"] == "Passed" for c in report["checks"]), "Metadata gate did not independently pass")
         if failed:
             require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Rejected image acquired replacement history")
         else:
             self.replace_restore(case, self.output(case))
         return {"originalUnchanged": True, "gateBlocked": failed, "restoredOriginal": not failed,
-                "report": image, "scope": "Synthetic stills; CPU image encoding and server-local assessment"}
+                "report": image, "scope": "Synthetic stills; CPU image encoding and server-local assessment", "iccSha256": icc_hash,
+                "exifArtistPreserved": metadata}
 
     def calibration(self):
         self.select_worker(None)
@@ -839,9 +855,13 @@ class Harness:
             if regression == "quality-first-source":
                 self.report.case("image-quality-first-source", lambda: self.image_perceptual(unsupported=True, adaptive=True))
                 return self.report.exit_code
+            if regression == "quality-first-metadata":
+                self.report.case("image-quality-first-metadata", lambda: self.image_perceptual(adaptive=True, metadata=True))
+                return self.report.exit_code
             if regression == "quality-first-webp":
                 self.report.case("image-quality-first-webp", lambda: self.image_perceptual("webp", adaptive=True))
                 self.report.case("image-quality-first-webp-reject", lambda: self.image_perceptual("webp", adaptive=True, reject=True))
+                self.report.case("image-quality-first-webp-metadata", lambda: self.image_perceptual("webp", adaptive=True, metadata=True))
                 self.report.case("audio-quality-first-artwork", lambda: self.audio("mp3", adaptive=True, artwork=True))
                 return self.report.exit_code
             if regression == "quality-first-retry":
@@ -852,6 +872,7 @@ class Harness:
                 return self.report.exit_code
             if regression == "quality-first":
                 self.report.case("image-quality-first", lambda: self.image_perceptual(adaptive=True))
+                self.report.case("image-quality-first-metadata", lambda: self.image_perceptual(adaptive=True, metadata=True))
                 self.report.case("image-quality-first-reject", lambda: self.image_perceptual(adaptive=True, reject=True))
                 self.report.case("image-quality-first-source", lambda: self.image_perceptual(unsupported=True, adaptive=True))
                 self.report.case("audio-quality-first-aac", lambda: self.audio("aac", adaptive=True))
