@@ -15,6 +15,8 @@
 
 ### Added
 
+- Audio quality qualification and measurement now restrict FFmpeg/ffprobe to local media containers before opening originals or candidates. Playlist sources cannot use secondary files to pass a file-bound assessment; supported soundtrack containers and independent verification gates remain intact.
+
 - Mac workers collect image and audio tool proof through the shared native helper when bundled, refresh live memory and chosen-disk capacity at pairing and each check-in, and subtract active app reservations. Missing or ambiguous proof cannot advertise native tools. Unpairing, sleeping and quitting cancel pending native qualification; protocol 11 remains disabled pending package and workflow qualification.
 
 - The Mac job runner now routes native audio/image searches through the shared engine, preserving the frozen contract and checking its lease before media work. Live memory and shared disk/RAM reservations govern admission; failed RAM ejection retains its allocation. Capacity hand-backs pause claims while check-ins continue, and progress never invents missing byte counts. Automatic protocol-11 placement remains disabled pending capability, restart and package qualification.

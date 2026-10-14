@@ -8,6 +8,27 @@ public sealed class AudioQualityAssessmentTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void Audio_assessment_opens_only_self_contained_local_formats_before_probing_or_decoding(bool soundtrack)
+    {
+        var source = "source";
+        var commands = new[] { AudioQualityCommandBuilder.Probe(source, soundtrack),
+            AudioQualityCommandBuilder.Decode(source, "decoded.raw", new(0, 1), soundtrack: soundtrack) };
+        foreach (var command in commands)
+        {
+            var args = command.ToList();
+            Assert.Equal("file", args[args.IndexOf("-protocol_whitelist") + 1]);
+            var formats = args[args.IndexOf("-format_whitelist") + 1].Split(',');
+            Assert.All(new[] { "wav", "flac", "mp3", "aac", "ogg", "mov", "matroska", "asf", "aiff", "ape", "wv", "dsf", "iff" }, format => Assert.Contains(format, formats));
+            Assert.All(new[] { "hls", "dash", "concat", "sdp", "image2", "tty", "lavfi" }, format => Assert.DoesNotContain(format, formats));
+            var input = args.Contains("-i") ? args.IndexOf("-i") : args.Count - 1;
+            Assert.True(args.IndexOf("-protocol_whitelist") < input);
+            Assert.True(args.IndexOf("-format_whitelist") < input);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void Decoding_from_the_start_preserves_encoder_priming_without_a_demuxer_seek(bool soundtrack)
     {
         var args = AudioQualityCommandBuilder.Decode("source.m4a", "decoded.raw", new(0, 30), soundtrack: soundtrack);

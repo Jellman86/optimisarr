@@ -433,3 +433,20 @@ empty scratch. The observed memory remains below full-image admission, so this i
 transport evidence, not positive live image execution. Swift passes 352 core tests and 9 UI tests;
 the release build succeeds. Native-helper bundling, installed-package qualification and protocol-11
 activation remain outstanding, along with the other parity requirements above.
+
+## Audio assessment input boundaries
+
+Native original-audio qualification and shared audio quality measurements now admit only local
+media protocols and explicit audio containers. Soundtrack measurements additionally admit the
+supported video containers. The restrictions precede both ffprobe input opening and PCM decoding;
+DASH/HLS/concat and other indirect formats cannot qualify by reading secondary media whose bytes
+are absent from the transferred original's hash. Candidate/reference duration, channel, sample,
+quality and source/tool identity checks remain independent.
+
+A physical Windows DASH fixture without a filename extension previously passed an ordinary audio
+probe while reading segments outside its source folder. The same frozen shape now fails native
+original qualification before encoder preparation, sample creation or scratch allocation. Mac
+AAC/Opus/MP3 claim/search/replay/final verification/repeated replacement/exact rollback pass again;
+Windows WAV/AAC/Opus/MP3 measurements pass and clear scratch. This slice bounds audio qualification
+and assessment. Generic inventory probes and other full-encode/verification input paths still
+need their own format audit before protocol-11 activation; it is not a general process sandbox.

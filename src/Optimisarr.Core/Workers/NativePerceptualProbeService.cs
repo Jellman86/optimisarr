@@ -184,7 +184,7 @@ public sealed class NativePerceptualProbeService
         new ImageMetadataService(tools.ExifTool).ReadAsync,
         async (path, token) =>
         {
-            var probe = await BoundedToolProcess.RunAsync(tools.Ffprobe, ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path], token);
+            var probe = await BoundedToolProcess.RunAsync(tools.Ffprobe, AudioQualityCommandBuilder.Probe(path), token);
             return probe.ExitCode == 0 ? AudioQualityInput.Parse(probe.Output) : null;
         },
         async (args, _, _, token) =>

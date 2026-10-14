@@ -668,3 +668,49 @@ passes a zero-warning worker build and all **466 shared worker tests** from veri
 `770455c6`, recorded in `picard-neutral-evidence-manifest.json`. No installed service, personal
 media, protection, protocol maximum or deployment was changed. Native-helper packaging, restart
 recovery and the remaining parity matrix stay open.
+
+## Audio assessment input restrictions, 14 October
+
+Review of native source qualification found that hashing a local playlist cannot bind the
+secondary media a demuxer opens. The current Mac FFmpeg refuses the owned HLS/DASH probes used
+here. The Windows build supports DASH: a no-extension MPD with a relative BaseURL successfully
+probes an owned AAC segment outside the source directory, yielding an eligible one-second stereo
+shape. HTTP references were already refused by that build's nested protocol defaults; no network
+fetch was reproduced. This finding concerns secondary local inputs, not a demonstrated network
+exploit. FFmpeg documents [format restrictions](https://ffmpeg.org/ffmpeg-formats.html#Format-Options)
+and [input protocol restrictions](https://ffmpeg.org/ffmpeg-protocols.html#Protocol-Options).
+
+Shared audio probe/PCM commands now explicitly restrict protocols to local files and formats to
+supported audio containers; soundtrack mode adds the supported video containers. Native original
+qualification uses the same probe builder. DASH/HLS/concat and other indirect demuxers are excluded
+before they can open secondary media. Existing sample preparation, timelines, metric revisions,
+channel/duration checks and final gates are unchanged.
+
+The physical Windows direct baseline passes while the restricted command refuses the manifest.
+The actual native probe service then rejects the frozen original before encoder preparation,
+with zero samples, unchanged source hash and no created scratch. The final result is
+`audio-isolation-native-report-fresh.log`. An initial private harness resolved an old assembly;
+the final harness uses an isolated project, requires the exact worker assembly and proves the
+current public probe API and guarded command before exercising qualification. Earlier incomplete
+fixture/audit results are retained and do not count as successful qualification.
+
+The Windows DASH generator also wrote its two temporary segments beside the SSH shell. Their
+creation/write times match the fixture manifest. Both were moved into the owned fixture folder
+with size/time/link fences and SHA-256 verification; `owned-segment-relocation.json` records that
+the originals are absent. No pre-existing or installed files were moved. Subsequent generators
+run inside their private output directory.
+
+`swift-audio-isolation-matrix-progress.json` records three passing ordinary Mac worker flows:
+AAC, Opus and MP3, each with live admission, lost committed-response replay, strict final
+verification, repeated replacement and exact rollback. These retain the earlier fixture-only
+protocol elevation boundary. `swift-capability-pair-live-04/report.json` separately repeats actual
+proof collection/pairing/heartbeat at normal protocol 10 with the new self-contained helper.
+Windows WAV self-comparison and AAC/Opus/MP3 quality measurements pass with complete two-second
+coverage and empty assessment scratch; the tone distances are fixture results, not thresholds.
+
+Zero-warning main/Linux builds and self-contained helper publication pass **3,522 backend**,
+**463 shared worker plus three Windows-only skips**, and **31 Linux** tests. Native Windows passes
+its zero-warning worker build and all **466 shared tests** from the verified modified source
+snapshot. Swift is unchanged from its 352 core/9 UI-test qualification. Broader scanner/full-encode
+input isolation, packaging, restart recovery and the remaining parity matrix stay open. No
+installed service, personal media, protection or protocol maximum was changed.
