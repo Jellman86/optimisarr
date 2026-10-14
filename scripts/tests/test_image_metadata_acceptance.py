@@ -1,3 +1,4 @@
+import os
 import struct
 import sys
 import tempfile
@@ -32,6 +33,17 @@ class ImageMetadataAcceptanceTests(unittest.TestCase):
             self.assertIn(b"Optimisarr acceptance", path.read_bytes())
             with self.assertRaises(AssertionError):
                 add_synthetic_image_metadata(path, FIXTURES / "icc.webp")
+
+    @unittest.skipUnless(os.name == "posix", "Container fixture ownership is a POSIX boundary")
+    def test_container_owned_or_readonly_fixture_is_prepared_by_replacing_its_inode(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "source.png"; path.write_bytes(png())
+            original_inode = path.stat().st_ino
+            path.chmod(0o444)
+            add_synthetic_image_metadata(path, FIXTURES / "icc.webp")
+            self.assertNotEqual(original_inode, path.stat().st_ino)
+            self.assertEqual(0o644, path.stat().st_mode & 0o777)
+            self.assertIsNotNone(read_icc_profile(path))
 
     def test_incomplete_jpeg_profile_fragments_never_claim_retained_colour_metadata(self):
         with tempfile.TemporaryDirectory() as root:

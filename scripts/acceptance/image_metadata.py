@@ -1,4 +1,5 @@
 """Independent, bounded ICC extraction and public synthetic metadata fixtures."""
+import tempfile
 import struct
 import zlib
 from pathlib import Path
@@ -78,4 +79,15 @@ def add_synthetic_image_metadata(path, profile_fixture):
     artist = b"Optimisarr acceptance\0"
     # Little-endian TIFF with one ASCII Artist entry; no private camera data or orientation.
     exif = b"II\x2a\x00\x08\x00\x00\x00" + struct.pack("<HHHII", 1, 0x013b, 2, len(artist), 26) + b"\0" * 4 + artist
-    path.write_bytes(data[:33] + _chunk(b"iCCP", b"sRGB\0\0" + zlib.compress(profile)) + _chunk(b"eXIf", exif) + data[33:])
+    prepared = data[:33] + _chunk(b"iCCP", b"sRGB\0\0" + zlib.compress(profile)) + _chunk(b"eXIf", exif) + data[33:]
+    # Docker's encoder may own the original inode. The harness owns this fixture directory,
+    # so prepare a new public synthetic inode with shared read permissions.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".", suffix=".metadata", delete=False) as output:
+            temporary = Path(output.name)
+            output.write(prepared)
+        temporary.chmod(0o644)
+        temporary.replace(path)
+    finally:
+        if temporary is not None: temporary.unlink(missing_ok=True)

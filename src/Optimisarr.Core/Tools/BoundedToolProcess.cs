@@ -28,7 +28,9 @@ internal static class BoundedToolProcess
                 RedirectStandardInput = standardInput is not null,
                 StandardInputEncoding = standardInput is not null ? new UTF8Encoding(false) : null,
                 RedirectStandardOutput = true,
+                StandardOutputEncoding = new UTF8Encoding(false),
                 RedirectStandardError = true,
+                StandardErrorEncoding = new UTF8Encoding(false),
                 UseShellExecute = false,
                 CreateNoWindow = true
             }

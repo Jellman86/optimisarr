@@ -25,6 +25,8 @@
 
 ### Fixed
 
+- Native tool capture decodes UTF-8 explicitly on Windows. Metadata acceptance fixtures prepare an atomic replacement so container ownership cannot prevent qualification.
+
 - Required image metadata inspection uses grouped JSON, rejects incomplete tool output and qualifies quality-first sources before encoding without spending media failure counts. Container builds explicitly include and check compressed-metadata support.
 - Image metadata copying preserves the complete binary ICC profile. Copying its individual read-only fields could report success while dropping the profile; colour-profile and EXIF retention now have independent real-media regression coverage.
 
