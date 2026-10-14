@@ -29,6 +29,8 @@
 
 ### Fixed
 
+- Worker image-search reports consistently identify the worker as the measurement location, including original assessments and nested probe details. The receiver determines provenance rather than accepting a raw tool label.
+
 - The decoder-output stress test uses a separate bounded drain deadline, avoiding spurious watchdog failures under CI load while preserving dedicated stall checks.
 
 - Final image verification checks the frozen target format as well as readability, dimensions and quality; a different codec under the requested filename cannot pass.

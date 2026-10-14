@@ -19,6 +19,27 @@ public sealed class RemotePerceptualProbeTests
         [new(0, 1000, Source, Candidate, Image: Image(90, Candidate), Ssim: ImageQualityResult.Ok(0.95))], EncoderSha256: Tool);
 
     [Fact]
+    public void Worker_image_search_provenance_is_set_by_the_receiver_even_when_raw_labels_say_server()
+    {
+        var contract = ImageContract();
+        var source = Image(100, Source);
+        var candidate = Image(90, Candidate);
+        var report = ImageReport(contract) with
+        {
+            Source = new(Image: source with { Assessment = source.Assessment with { MeasurementLocation = "Server" } },
+                ImageMetadata: ImageMetadataResult.Ok(new(false, false))),
+            Samples = [new(0, 1000, Source, Candidate,
+                Image: candidate with { Assessment = candidate.Assessment with { MeasurementLocation = "Server" } }, Ssim: ImageQualityResult.Ok(0.95))]
+        };
+        var validated = RemotePerceptualProbeValidator.Validate(contract, 80, Source, report);
+        Assert.True(validated.Accepted);
+        Assert.Equal("Worker", validated.Probe!.Measurement.Image!.MeasurementLocation);
+        var state = RemotePerceptualSearchState.Start(contract) with { Source = report.Source, SourceSha256 = Source };
+        var summary = Optimisarr.Api.Workers.PerceptualWorkerWork.Summary(state);
+        Assert.Equal("Worker", summary.SourceImageAssessment!.MeasurementLocation);
+    }
+
+    [Fact]
     public void A_higher_quality_retry_cannot_adopt_a_changed_original()
     {
         var contract = ImageContract() with { RequiredSourceSha256 = Candidate };

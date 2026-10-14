@@ -52,7 +52,8 @@ public sealed class NativePerceptualProbeService
             // decoders never see an unqualified colour profile, animation or oversized raster.
             if (image)
             {
-                original = new(Image: RemoteImagePerceptualEvidence.From(await _operations.Image(source, source, token)));
+                original = new(Image: RemoteImagePerceptualEvidence.From(
+                    (await _operations.Image(source, source, token)) with { MeasurementLocation = "Worker" }));
                 if (RemotePerceptualProbeValidator.SourceError(contract with
                     { Policy = contract.Policy with { ImageMetadataGateEnabled = false } }, sourceHash, original) is { } reason)
                     return Report() with { Source = original with { Error = reason } };
@@ -100,7 +101,7 @@ public sealed class NativePerceptualProbeService
                 var candidateHash = await _operations.Hash(candidate, token);
                 if (image)
                 {
-                    var measured = await _operations.Image(source, candidate, token);
+                    var measured = (await _operations.Image(source, candidate, token)) with { MeasurementLocation = "Worker" };
                     // An unavailable bounded comparison must never fall through to the ordinary
                     // SSIM decoder, even though the eventual final gate remains mandatory.
                     var available = PerceptualSearchEvidence.Image(measured, sourceHash, candidateHash, 0).Available;

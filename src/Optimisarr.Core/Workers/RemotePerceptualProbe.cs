@@ -110,7 +110,7 @@ public static class RemotePerceptualProbeValidator
             return PerceptualSearchMeasurement.Unavailable("The image sample must compare the transferred original directly.");
         if (RemoteImagePerceptualEvidence.VersionError(sample.Image) is { } versionError)
             return PerceptualSearchMeasurement.Unavailable(versionError);
-        var measurement = PerceptualSearchEvidence.Image(sample.Image!.Assessment, sourceHash, sample.CandidateSha256,
+        var measurement = PerceptualSearchEvidence.Image(sample.Image!.Assessment with { MeasurementLocation = "Worker" }, sourceHash, sample.CandidateSha256,
             contract.Policy.MinimumImagePerceptualScore);
         if (!measurement.Available) return measurement;
         if (sample.Image!.Assessment.Measurement is not { } actual || actual.Width != original.Width || actual.Height != original.Height

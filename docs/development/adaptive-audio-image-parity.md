@@ -29,8 +29,8 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET runner performs native search and strict final verification | Real server lifecycle acceptance, capability collection, Swift verification and packaging |
-| Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner encodes original-source windows with lossless 48 kHz references without downmix/gain matching | Placement parity, real server lifecycle, longer-track and difficult-passage qualification |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET runner and isolated real server pass native search, upload, final verification, replacement and rollback | Capability collection, capacity-aware placement, Swift verification and packaging |
+| Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references | Placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
@@ -179,5 +179,17 @@ lane, and JPEG/WebP/AAC/Opus/MP3 on Quark using its live memory provider. They e
 runner, native processes, report transport, transfer and final server verdict, with an in-process
 simulated control plane. They do not yet prove a real server's persisted claim/upload/replacement
 lifecycle. A separate real 256 MiB cgroup trial refuses before fetch or encode and leaves no
-scratch. Full server acceptance, capacity-aware placement/backoff, capability collection, Swift
+scratch. Broader restart/fault acceptance, capacity-aware placement/backoff, capability collection, Swift
 support and complete package qualification remain required before advertising protocol 11.
+
+A subsequent isolated real-server harness passes the persisted claim, source download, native
+search, sealed upload, strict final verdict, replacement and exact-byte rollback for JPEG,
+AAC, Opus and MP3 on the Mac, plus WebP on Quark. Audio runs and all five Quark cases discard
+one successful probe response after the server commits it: replay recovers without a fifth
+measurement or changed selection. Repeating replacement creates one rollback record. These
+fixtures use manually seeded protocol-11 identities while automatic negotiation remains 10;
+they do not qualify capability discovery or shipped native packages. Server encoding/quality
+tools are absent; audio planning still uses the server's ffprobe to read source metadata.
+Recorded checks validate source hashes, smallest measured passing selection, actual full
+commands and empty worker scratch. Reviewing those records also exposed inconsistent nested
+image location labels; executor and receiver now identify those measurements as worker evidence.

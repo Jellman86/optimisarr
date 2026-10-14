@@ -71,6 +71,8 @@ public sealed class NativePerceptualProbeServiceTests : IDisposable
         var step = Step(encoder: encoder);
         var report = await Service().MeasureAsync(step, Source, SourceHash, _root, default);
         Assert.True(RemotePerceptualProbeValidator.Validate(step.Contract, 80, SourceHash, report).Accepted);
+        Assert.Equal("Worker", report.Source.Image!.Assessment.MeasurementLocation);
+        Assert.Equal("Worker", Assert.Single(report.Samples).Image!.Assessment.MeasurementLocation);
         Assert.Equal(["qualify-image", "metadata", "encode", "copy", "measure-image", "ssim"], _calls);
         Assert.Equal(1000, Assert.Single(report.Samples).EncodedBytes);
         Assert.Equal("original", File.ReadAllText(Source)); Assert.Empty(Directory.GetDirectories(_root));

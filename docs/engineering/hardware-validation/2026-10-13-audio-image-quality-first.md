@@ -232,3 +232,36 @@ Resource-aware placement/backoff, cgroup-v1 support, native capability proof, Sw
 soundtrack selection, preview/calibration parity and exact-package acceptance remain open.
 Protocol 11 remains disabled. Picard was unreachable during this stage, so Windows CI is
 separate from unresolved physical Windows acceptance.
+
+## Real server lifecycle and committed-response loss
+
+On runner commit `7c15ffc0a5cfded15b38d55812ee786f829a3507`, isolated ASP.NET processes with
+fresh migrated SQLite databases pass **JPEG/AAC/Opus/MP3 on the Mac** and
+**JPEG/WebP/AAC/Opus/MP3 on Quark**. The Linux publication verifies **41 artifact hashes**
+and records **921 C# source hashes**. These runs use the real authenticated claim, source,
+probe, verification, staged upload and completion routes, followed by the actual queue's
+final verdict and supported replacement/rollback controls. No simulated control plane is used.
+Original hashes match after exact rollback, repeated replace requests create one recorded
+replacement, and worker scratch is empty. Independent checks confirm four native measurements,
+smallest measured passing selection and the actual JPEG/WebP encoder control in the full command.
+
+AAC, Opus and MP3 on the Mac and all five Quark cases deliberately discard the first successful
+probe response after the real server commits it. The worker replays the report and completes
+without running a fifth probe. Image server encoding, probing and quality tools are absent.
+Audio retains server ffprobe for claim-time source metadata planning; server encoding and final
+quality tools remain absent. This is strict final-verification evidence, not a claim that the
+server performs no metadata reads. Memory admission on the Mac uses the explicit test lane.
+
+The fixture seeds protocol-11 worker identities through EF after startup while negotiated
+protocol remains 10. It does not prove automatic capability discovery or final packages.
+Early harness runs correctly stopped for minimum file size and missing lossy-conversion opt-in;
+another reached verified delivery before a harness report-URL error. Fresh complete runs use
+eligible fixtures with explicit conversion intent and finish replacement/rollback.
+
+Evidence review found nested image assessments still inherited a server label from the generic
+metric service. The executor now stamps worker provenance and the receiver normalises both
+source and sample reports independently of raw labels. Failing-then-passing regression tests
+cover this correction; safety thresholds and metric values are unchanged. Raw private results
+are retained under `native-master-01` and `native-master-quark-01-evidence`.
+The corrected branch rebuilds with zero warnings and passes **3,431 backend tests** and
+**413 shared .NET tests** on the Mac, with three Windows-only skips.

@@ -14,7 +14,8 @@ internal static class PerceptualWorkerWork
         state.SourceSha256 ?? "", state.Contract.Policy.MinimumImagePerceptualScore, state.Contract.Policy.MaximumAudioQualityDistance,
         state.Contract.AudioWindows, new(state.Probes, state.Decision ?? new(null, state.Contract.Plan.Baseline, true,
             state.SourceError ?? "Required source assessment is unavailable.")), MeasurementLocation: "Worker",
-        PreparationBlocked: state.SourceRejected, SourceImageAssessment: state.Source?.Image?.Assessment);
+        PreparationBlocked: state.SourceRejected, SourceImageAssessment: state.Source?.Image?.Assessment is { } source
+            ? source with { MeasurementLocation = "Worker" } : null);
 
     public static string Complete(string? snapshot, RemotePerceptualSearchState state, PerceptualSearchSummary summary)
     {
