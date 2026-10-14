@@ -1,5 +1,6 @@
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Workers;
 
 namespace Optimisarr.Sidecar.Core.Session;
 
@@ -27,19 +28,23 @@ public sealed class JobRunner(
     Func<bool>? wantsPreview = null,
     Action<int, byte[]>? publishPreview = null,
     IFramePreviewExtractor? previewExtractor = null,
-    string? measurementFfmpegPath = null, bool allowLinuxDevices = false)
+    string? measurementFfmpegPath = null, bool allowLinuxDevices = false,
+    PerceptualJobRuntime? perceptual = null)
 {
     public async Task<JobOutcome> RunAsync(
         StoredPairing pairing, Assignment assignment, CancellationToken cancellationToken)
     {
         // Its own directory, named for the job, so two jobs cannot tread on each other and a
         // leftover from a crash is obvious rather than mysterious.
-        var scratch = Path.Combine(scratchRoot, $"job-{assignment.JobId}");
-        Directory.CreateDirectory(scratch);
+        var nativeSearch = assignment.PerceptualSearch is not null;
+        var scratch = Path.Combine(scratchRoot, nativeSearch ? $"job-{assignment.JobId}-{assignment.LeaseId:N}-{Guid.NewGuid():N}" : $"job-{assignment.JobId}");
+        var ownsScratch = false;
+        IDisposable? reservation = null;
+        PerceptualJobRuntime? native = null;
+        string? measuredEncoderHash = null;
 
         var source = Path.Combine(scratch, "source");
         var candidatePrefix = Path.Combine(scratch, "candidate");
-        var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
         using var previewLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var previews = wantsPreview is not null && publishPreview is not null
             ? new JobPreviewSampler(ffmpegPath, previewExtractor ?? new FfmpegFramePreviewExtractor(assignment.Kind == MediaKind.Audio),
@@ -53,10 +58,28 @@ public sealed class JobRunner(
                 await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false, contractRefusal);
             }
+            var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
+            if (nativeSearch)
+            {
+                native = perceptual ?? PerceptualJobRuntime.Native(ffmpegPath, measurementFfmpegPath);
+                reservation = native.Reserve(assignment, scratchRoot);
+                if (reservation is null)
+                {
+                    await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                    return new(assignment.JobId, false, "The worker cannot confirm enough free memory and working space for this quality-first job.");
+                }
+                if (Directory.Exists(scratch) || File.Exists(scratch))
+                    throw new SidecarException("The native workspace is occupied; the source was not fetched.", false);
+            }
+            Directory.CreateDirectory(scratch); ownsScratch = true;
+            if (nativeSearch && !OperatingSystem.IsWindows()) File.SetUnixFileMode(scratch, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             report?.Invoke($"Job {assignment.JobId}: fetching {assignment.Title}");
             var declaredHash = await WhileRenewing(
                 pairing, assignment, RemoteStage.FetchingSource, null, cancellationToken,
-                token => transfer.FetchSourceAsync(pairing, assignment.LeaseId, source, null, token));
+                token => transfer.FetchSourceAsync(pairing, assignment.LeaseId, source, null, token,
+                    expectedBytes: nativeSearch ? assignment.SourceBytes : null));
+            if (nativeSearch && (declaredHash is not { Length: 64 } || !declaredHash.All(Uri.IsHexDigit)))
+                throw new SidecarException("Quality-first work requires the transferred original's SHA-256 identity.", false);
 
             // Verified before a single frame is encoded. A corrupted source would otherwise cost a
             // full encode before the server rejected the result for the wrong source hash.
@@ -71,13 +94,29 @@ public sealed class JobRunner(
                 }
             }
 
-            if (previews is not null) _ = previews.TrySampleAsync(source, 0, previewLifetime.Token);
+            if (!nativeSearch && previews is not null) _ = previews.TrySampleAsync(source, 0, previewLifetime.Token);
 
             // The per-title quality search, when the server sent one. It runs here, on the encoder
             // that will do the real encode, because a quality proven by measuring one encoder means
             // nothing on another. The server names every candidate; this machine measures them.
             var encodeArguments = assignment.Arguments;
-            if (assignment.Search is { } firstStep)
+            if (assignment.PerceptualSearch is { } firstNativeStep)
+            {
+                var selected = await WhileRenewing(pairing, assignment, RemoteStage.Measuring, null, cancellationToken,
+                    token => PerceptualSearchSession.RunAsync(firstNativeStep, assignment.Arguments, declaredHash!,
+                        async (step, probeToken) =>
+                        {
+                            report?.Invoke($"Job {assignment.JobId}: measuring {assignment.Encoder} setting {step.Value}");
+                            var raw = await native!.Tools.MeasureAsync(step, source, declaredHash!, scratch, probeToken);
+                            measuredEncoderHash = raw.EncoderSha256;
+                            return raw;
+                        }, (raw, reportToken) => client.ReportPerceptualProbeAsync(pairing, assignment.LeaseId, raw, reportToken), token));
+                if (selected.SourceBlocked)
+                    return new(assignment.JobId, false, selected.Reason ?? "Required original assessment is unavailable; full encoding was not started.");
+                encodeArguments = selected.Arguments ?? throw new SidecarException("The search returned no frozen encode command.", false);
+                await ConfirmNativeIdentityAsync(source, declaredHash!, measuredEncoderHash, cancellationToken);
+            }
+            else if (assignment.Search is { } firstStep)
             {
                 var settled = await SearchAsync(
                     pairing, assignment, firstStep, scratch, source, cancellationToken);
@@ -99,6 +138,8 @@ public sealed class JobRunner(
                 await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false, $"The encode command was refused. {refused.Reason}");
             }
+            // Only the successfully qualified native original may reach a preview decoder.
+            if (nativeSearch && previews is not null) _ = previews.TrySampleAsync(source, 0, previewLifetime.Token);
 
             report?.Invoke($"Job {assignment.JobId}: encoding with {assignment.Encoder}");
             var arguments = AssignmentPlaceholders.Resolve(encodeArguments, source, candidatePrefix);
@@ -136,6 +177,20 @@ public sealed class JobRunner(
                 await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false,
                     "FFmpeg reported success but produced no candidate file.");
+            }
+            if (nativeSearch) await ConfirmNativeIdentityAsync(source, declaredHash!, measuredEncoderHash, cancellationToken);
+            if (assignment.Kind == MediaKind.Image)
+            {
+                var markerPrefix = Optimisarr.Core.OptimisationMarker.MetadataKey + "=";
+                var markers = encodeArguments.Where((arg, index) => index > 0 && encodeArguments[index - 1] == "-metadata"
+                    && arg.StartsWith(markerPrefix, StringComparison.Ordinal)).ToArray();
+                if (markers.Length > 1) throw new SidecarException("The image encode carries conflicting optimisation markers.", false);
+                var marker = markers.Length == 1 ? markers[0][markerPrefix.Length..] : null;
+                var prepared = await WhileRenewing(pairing, assignment, RemoteStage.Measuring, null, cancellationToken,
+                    token => native!.Tools.PrepareImageAsync(source, candidate, marker, token));
+                if (!prepared.MetadataCopied && assignment.FullVerification!.Image!.MeasureMetadata)
+                    throw new SidecarException("Required image metadata could not be copied; the candidate was not delivered.", false);
+                if (!prepared.MarkerWritten) report?.Invoke($"Job {assignment.JobId}: the portable image optimisation marker could not be saved.");
             }
 
             // The last mux write may happen after the monitor's final poll. Reject before hashing,
@@ -192,8 +247,15 @@ public sealed class JobRunner(
                 report?.Invoke($"Job {assignment.JobId}: full verification on this worker");
                 candidateHash ??= await JobTransfer.HashAsync(candidate, cancellationToken);
                 var evidence = await WhileRenewing(pairing, assignment, RemoteStage.Measuring, null,
-                    cancellationToken, token => FullVerification.MeasureAsync(
-                        ffmpegPath, source, candidate, verification, declaredHash ?? string.Empty, candidateHash, token, measurementFfmpegPath));
+                    cancellationToken, token => native is not null
+                        ? native.Tools.VerifyAsync(source, candidate, verification, declaredHash!, candidateHash, token)
+                        : FullVerification.MeasureAsync(ffmpegPath, source, candidate, verification, declaredHash ?? string.Empty, candidateHash, token, measurementFfmpegPath));
+                if (nativeSearch)
+                {
+                    await ConfirmNativeIdentityAsync(source, declaredHash!, measuredEncoderHash, cancellationToken);
+                    if (!string.Equals(candidateHash, await JobTransfer.HashAsync(candidate, cancellationToken), StringComparison.OrdinalIgnoreCase))
+                        throw new SidecarException("The verified candidate changed before delivery.", false);
+                }
                 await client.ReportVerificationAsync(pairing, assignment.LeaseId, evidence, cancellationToken);
             }
 
@@ -219,14 +281,29 @@ public sealed class JobRunner(
             await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
             return new JobOutcome(assignment.JobId, false, exception.Message);
         }
+        catch (Exception error) when (nativeSearch && error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+            return new(assignment.JobId, false, "The native workspace or tools became unavailable; the original was kept.");
+        }
         finally
         {
             previewLifetime.Cancel();
             if (previews is not null) await previews.WaitForIdleAsync();
             // Never left behind. A worker that kept every source it was ever sent would fill a disk
             // in a weekend, and nothing here is of any use once the job has ended.
-            TryDelete(scratch);
+            if (ownsScratch) TryDelete(scratch);
+            reservation?.Dispose();
         }
+    }
+
+    private async Task ConfirmNativeIdentityAsync(string source, string sourceHash, string? encoderHash, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (encoderHash is not { Length: 64 } || !encoderHash.All(Uri.IsHexDigit)
+            || !string.Equals(encoderHash, await JobTransfer.HashAsync(ffmpegPath, token), StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(sourceHash, await JobTransfer.HashAsync(source, token), StringComparison.OrdinalIgnoreCase))
+            throw new SidecarException("The original or encoder changed after quality measurement; the candidate was not delivered.", false);
     }
 
     /// <summary>

@@ -29,8 +29,8 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; strict image evidence, shared native probe execution and .NET verification qualified in isolation | Worker-loop integration, capability collection, Swift verification and packaging |
-| Standalone audio | Up to three disjoint windows, at most 90 seconds; local and shared native probes encode original-source windows with lossless 48 kHz references without downmix/gain matching | Native worker-loop and placement parity, longer-track and difficult-passage qualification |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET runner performs native search and strict final verification | Real server lifecycle acceptance, capability collection, Swift verification and packaging |
+| Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner encodes original-source windows with lossless 48 kHz references without downmix/gain matching | Placement parity, real server lifecycle, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
@@ -65,14 +65,15 @@ raw measurements against the frozen policy, caps work at four candidates and han
 identical reports without spending another probe. Conflicting, stale, out-of-order or changed
 source/tool reports cannot advance it. Source refusal cannot authorize a baseline encode;
 an unavailable sample can select the saved baseline, which still requires final verification.
-These are tested domain rules; the reporting endpoint and native search loops are not wired yet.
+The reporting endpoint and shared .NET runner now use these rules. Automatic placement remains
+disabled until capabilities, resource admission on all clients and packages are qualified.
 
 Strict image verification has a separate version-4 evidence contract. Source and candidate
 native assessment, SSIM, metadata, probes and decode are separate measurements. The server
 recomputes the final verdict without installing media tools, and rejects missing required
 evidence without local fallback. Shared .NET native verification qualifies both images with
 the bounded decoder before FFmpeg, rechecks file/tool hashes and shares the process-wide
-image metric lane. It is tested directly on the Mac and Quark; worker assignment, Swift support and
+image metric lane. It is tested directly on the Mac and Quark; automatic worker assignment, Swift support and
 exact-package qualification remain outstanding. ExifTool operations now have bounded capture,
 a deadline and child reaping before cancellation returns, including UTF-8 argument input. Source metadata is inspected before sample encoding when
 required. Grouped JSON and explicit binary-profile presence prevent tag-value spoofing and
@@ -148,6 +149,35 @@ directions and marks interrupted responses as replayable. A shared native search
 replays the exact report after a lost committed response, checks source/raw evidence and the
 unchanged contract, and compares the selected final command with the claim while permitting
 only its measured quality-control change. Replays are bounded, cancellation propagates, and
-the server cannot override a required source refusal. Connecting the session to `JobRunner`,
-lease renewal, native capability proof and resource admission still needs implementation.
-These components do not activate protocol 11.
+the server cannot override a required source refusal. These components do not activate protocol 11.
+
+## Shared .NET runner (14 October)
+
+`JobRunner` now runs this session during its renewing measurement stage. Native claims require
+matching search/final contracts, an original SHA-256 and a peak scratch budget. Downloads are
+bounded to the assigned source size, including chunked and resumed transfers. Unique per-lease
+workspaces cannot adopt a previous attempt. A refused original never starts a full encode or
+preview decoder. Source and encoder identities are checked before full encoding, afterward and
+after independent final verification. Image metadata and the saved optimisation marker are
+prepared before final size checks, hashing, measurement and upload.
+
+Native work reserves peak disk and memory across concurrent native jobs until cleanup finishes.
+The conservative image lane requires 3.5 GiB because untrusted inventory dimensions cannot lower
+the source decoder's initial maximum; audio requires 512 MiB. RAM-backed scratch additionally
+reserves its byte budget in memory. Ancestor links are resolved before identifying the volume.
+Unavailable capacity stops before fetching and does not consume media failure counts.
+
+Linux admission uses current available memory and cgroup-v2 limits through visible ancestors;
+Windows uses live physical availability and conservative job-object bounds that include native
+children. These follow the [Linux controller documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html)
+and [Windows job limits](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_extended_limit_information).
+The .NET provider does not yet support cgroup-v1/hybrid Linux or macOS; unknown availability
+holds work. The shipped macOS client is Swift and needs its own implementation.
+
+Native runner tests pass JPEG/AAC/Opus/MP3 on the Mac with an explicitly provisioned test memory
+lane, and JPEG/WebP/AAC/Opus/MP3 on Quark using its live memory provider. They exercise the actual
+runner, native processes, report transport, transfer and final server verdict, with an in-process
+simulated control plane. They do not yet prove a real server's persisted claim/upload/replacement
+lifecycle. A separate real 256 MiB cgroup trial refuses before fetch or encode and leaves no
+scratch. Full server acceptance, capacity-aware placement/backoff, capability collection, Swift
+support and complete package qualification remain required before advertising protocol 11.

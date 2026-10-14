@@ -196,3 +196,39 @@ That drain case now has a separate 20-second cancellation bound and a 30-second 
 idle deadline. Dedicated stall tests retain two seconds. All seven process tests and the
 full **3,430-test Release suite** pass locally with a zero-warning rebuild; CI must requalify
 the revised fixture. Production watchdog deadlines are unchanged.
+
+## Shared .NET runner and resource admission
+
+The prior session/watchdog commit `04caa23aa91083194731c8f409d1bf40b3e2d3f1` passed all applicable
+CI checks; publication was skipped as intended for a pull request. Subsequent runner changes
+have **413 passing shared .NET tests on the Mac**, with three Windows-only skips and a
+zero-warning rebuild. Coverage includes lease-loss cancellation, source-refusal preview safety,
+image preparation before final hashing, changed source/tool identities, incomplete contracts,
+peak reservations, linked working folders and eight exact-length/resumable source-transfer cases.
+
+The actual `JobRunner`, native probe executor, report client, full encoder, metadata writer,
+independent final verification and upload pass **JPEG/AAC/Opus/MP3 on the Mac** and
+**JPEG/WebP/AAC/Opus/MP3 on Quark**. A second published Linux harness verifies all **38 artifact
+hashes**, records **921 C# source hashes**, and passes all five encoders with exact transfer
+bounds. This published snapshot precedes the final linked-volume/incomplete-claim refinements;
+those refinements have separate regression tests. Source hashes remain unchanged, delivered
+bytes match final evidence and scratch is empty. The Mac trial explicitly provisions a 4 GiB
+test lane; it does not qualify the unimplemented Swift admission path.
+
+The control plane in these runs is an in-process HTTP simulation using the real search
+coordinator; the final verdict uses the actual server evaluator with server media tools absent.
+These results do not yet prove the real ASP.NET persistent lease, staged upload, replacement
+and rollback lifecycle. Test policy thresholds remain fixture inputs, not calibrated defaults.
+Independent Mac extraction confirms the delivered JPEG retains all **3,144 ICC bytes** with
+the recorded profile hash and the frozen optimisation marker.
+
+A separate Quark run under a real transient **256 MiB cgroup memory limit** refuses before
+source fetch, probes or full encoding, despite ample host memory. The original remains unchanged
+and scratch is empty. The isolated scope exits with the helper; installed services and personal
+media are unchanged. The earlier immutable Quark source snapshot passes **402 shared tests**
+with three Windows-only skips; later byte-bound and linked-volume changes are distinct evidence.
+
+Resource-aware placement/backoff, cgroup-v1 support, native capability proof, Swift support,
+soundtrack selection, preview/calibration parity and exact-package acceptance remain open.
+Protocol 11 remains disabled. Picard was unreachable during this stage, so Windows CI is
+separate from unresolved physical Windows acceptance.
