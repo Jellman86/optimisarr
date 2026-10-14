@@ -167,12 +167,15 @@ the source decoder's initial maximum; audio requires 512 MiB. RAM-backed scratch
 reserves its byte budget in memory. Ancestor links are resolved before identifying the volume.
 Unavailable capacity stops before fetching and does not consume media failure counts.
 
-Linux admission uses current available memory and cgroup-v2 limits through visible ancestors;
+Linux admission uses current available memory and cgroup-v1/v2 limits through visible ancestors,
+including hybrid hosts and v2 pressure limits;
 Windows uses live physical availability and conservative job-object bounds that include native
 children. These follow the [Linux controller documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html)
 and [Windows job limits](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_extended_limit_information).
-The .NET provider does not yet support cgroup-v1/hybrid Linux or macOS; unknown availability
-holds work. The shipped macOS client is Swift and needs its own implementation.
+The .NET provider resolves controller membership through mountinfo, including mounted subtrees
+and namespace roots, and withholds capacity when the mapping or readings are unresolved. Legacy
+and hybrid layouts have deterministic parser coverage; live Quark proof is cgroup v2. macOS
+availability is still unknown in .NET and holds work. The shipped macOS client is Swift and needs its own implementation.
 
 Native runner tests pass JPEG/AAC/Opus/MP3 on the Mac with an explicitly provisioned test memory
 lane, and JPEG/WebP/AAC/Opus/MP3 on Quark using its live memory provider. They exercise the actual
@@ -242,3 +245,19 @@ remains available but image encoding is withheld. Real pairing/heartbeat and qua
 JPEG/WebP claim/search/upload/verification/replacement/rollback pass on an isolated server.
 Fixtures elevate only their stored protocol to 11 after normal negotiation at 10. This does
 not enable production assignment or complete package/Swift qualification.
+
+## Linux memory-controller admission
+
+The shared Core provider resolves the process's memory-controller membership against its actual
+mount table. A legacy memory controller takes priority on hybrid hosts; it cannot borrow an
+unrelated unified hierarchy's host-memory reading. All visible ancestors constrain admission.
+Mounted subtrees, namespace roots and escaped mount paths are covered. Missing or ambiguous
+mappings, incomplete limit pairs, malformed counters and overflow report unknown capacity.
+V2 `memory.high` also bounds admission so native work does not knowingly enter a configured
+pressure-throttled region. Swap is not counted as usable native RAM. The deprecated v1 soft
+limit is not used.
+
+On Quark, the actual provider reports host capacity, less than 256 MiB inside a real 256 MiB
+scope, and less than 128 MiB when that scope also has a 128 MiB pressure limit. These processes
+end normally and do not modify an installed service. V1/hybrid proof is deterministic fixture
+coverage; Quark's live hierarchy is v2. Local-server memory reservation remains outstanding.

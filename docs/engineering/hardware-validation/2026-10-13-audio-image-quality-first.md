@@ -341,3 +341,23 @@ reports approximately **13.8 GiB** available memory and disk-backed scratch, and
 protocol-10 negotiation. Its publication verifies **11 artifact hashes** and records **931 C#
 source hashes**. Private evidence is under `native-worker-discovery-linux-01`; this qualifies
 the discovery composition, not a new installed package.
+
+## Controller-aware Linux memory provider
+
+Twenty-five deterministic cases qualify actual mount resolution, legacy and hybrid membership,
+visible parent limits, mounted subtrees and namespace roots, escaped paths, malformed/ambiguous
+readings, missing controllers and v2 pressure limits. Regression tests first reproduced the
+unimplemented cases. Shared worker admission now calls this Core provider.
+
+A separate published Core executable on Quark reports **13,194,518,528 bytes** normally,
+**261,668,864 bytes** in a real **256 MiB** hard-limited transient scope, and **127,246,336 bytes**
+with an additional **128 MiB** pressure limit. The harness independently asserts both limits
+and verifies published file hashes; raw evidence is under `linux-memory-results-02`. All scopes
+end naturally. This is live cgroup-v2 proof; v1/hybrid coverage uses deterministic fixtures.
+
+The warning-free local builds pass **3,488 backend**, **427 shared worker** (three Windows-only
+skips), and **31 Linux worker** tests. Frontend and Python sources are unchanged from the
+previous qualified stage. CI on `aabdbdbe` passed the backend, frontend and native metric
+checks but the native Windows Event Log concurrent-write check failed after its registration
+probe (one unexpected safe availability notice). This is unresolved; CI is not wholly green
+and no merge is authorised by these results.

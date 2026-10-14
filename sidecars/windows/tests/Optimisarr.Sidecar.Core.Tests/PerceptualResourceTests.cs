@@ -37,11 +37,11 @@ public sealed class PerceptualResourceTests
     [InlineData("MemTotal: 1024 kB\n", "max", "0", null)]
     [InlineData("MemAvailable: -2 kB\n", "max", "0", null)]
     public void Linux_memory_admission_uses_current_available_bytes_and_the_remaining_cgroup_limit(string meminfo, string limit, string used, long? expected) =>
-        Assert.Equal(expected, NativeMemoryAvailability.ParseLinux(meminfo, [(limit, used)]));
+        Assert.Equal(expected, Optimisarr.Core.Tools.LinuxMemoryAvailability.ApplyLimits(meminfo, [(limit, used)]));
 
     [Fact]
     public void Parent_cgroup_limits_are_applied_even_when_the_current_group_is_unlimited() =>
-        Assert.Equal(100, NativeMemoryAvailability.ParseLinux("MemAvailable: 1024 kB\n", [("max", "0"), ("1000", "900")]));
+        Assert.Equal(100, Optimisarr.Core.Tools.LinuxMemoryAvailability.ApplyLimits("MemAvailable: 1024 kB\n", [("max", "0"), ("1000", "900")]));
 
     [Theory]
     [InlineData(0u, 0UL, 0UL, 0UL, 1000L)]
