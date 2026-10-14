@@ -762,6 +762,7 @@ export type Job = {
   remoteStage: string | null
   /** A queued job its library keeps off this server until a worker takes it. */
   waitingForWorker: boolean
+  waitingForResources?: boolean
   /** The current worker assignment completed the media checks; the container only validates evidence. */
   sidecarVerification?: boolean
   /** The verified output is currently being safely moved into place by the container. */

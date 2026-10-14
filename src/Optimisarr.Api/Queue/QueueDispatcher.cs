@@ -42,8 +42,11 @@ public sealed partial class QueueDispatcher(
     TranscodeOptions transcodeOptions,
     ActiveEncodeRegistry encodes,
     FileOperationClaims claims,
+    PerceptualResourceAdmission perceptualResources,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
+    private readonly LocalCapacityBackoff _nativeCapacityHolds = new(TimeProvider.System);
+    internal bool IsLocallyHeldForCapacity(int jobId, int attempt) => _nativeCapacityHolds.IsHeld(jobId, attempt);
     private readonly DiagnosticSchedulingCapture _diagnosticScheduling = new();
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private const int MaxAttempts = 3;
@@ -362,12 +365,14 @@ public sealed partial class QueueDispatcher(
                 .ToListAsync(stoppingToken);
             adaptiveLibraryIds = [.. adaptiveLibraries];
             delivered = await DeliveredWorkloadsAsync(db, stoppingToken);
+            _nativeCapacityHolds.PruneExpired();
             queued = (await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
                 .Select(job => new
                 {
                     job.Id,
+                    job.ExecutionAttempt,
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
@@ -380,7 +385,7 @@ public sealed partial class QueueDispatcher(
                     HonoursPlacement = job.Type == JobType.Normal,
                 })
                 .ToListAsync(stoppingToken))
-                .Where(job => !StartupRecovery.BlocksDispatch(job.Id))
+                .Where(job => !StartupRecovery.BlocksDispatch(job.Id) && !_nativeCapacityHolds.IsHeld(job.Id, job.ExecutionAttempt))
                 .Select(job => new QueuedJob(
                     job.Id,
                     job.LibraryId,
@@ -988,6 +993,7 @@ public sealed partial class QueueDispatcher(
 
     private async Task RunJobAsync(int jobId, int executionAttempt, CancellationToken cancellationToken)
     {
+        var nativeReservations = new List<IDisposable>();
         try
         {
             var work = await LoadWorkAsync(jobId, cancellationToken);
@@ -1067,7 +1073,7 @@ public sealed partial class QueueDispatcher(
             if (!preparedWork.IsDisposable && (preparedWork.Spec.Kind == MediaKind.Audio && preparedWork.AdaptiveAudioQuality
                 || preparedWork.Spec.Kind == MediaKind.Image && preparedWork.AdaptiveImageQuality))
             {
-                var selection = await SelectPerceptualQualityAsync(jobId, executionAttempt, preparedWork, cancellationToken);
+                var selection = await SelectPerceptualQualityAsync(jobId, executionAttempt, preparedWork, nativeReservations, cancellationToken);
                 if (selection is null) return;
                 preparedWork = selection.Value;
             }
@@ -1284,6 +1290,7 @@ public sealed partial class QueueDispatcher(
         }
         finally
         {
+            foreach (var reservation in nativeReservations.AsEnumerable().Reverse()) reservation.Dispose();
             if (_running.TryRemove(jobId, out var work))
             {
                 work.Cancellation.Dispose();

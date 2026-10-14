@@ -22,6 +22,7 @@ using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -154,6 +155,8 @@ builder.Services.AddSingleton<QueuePauseManager>();
 builder.Services.AddSingleton<ArtworkService>();
 builder.Services.AddSingleton<INotificationArtworkProvider>(
     services => services.GetRequiredService<ArtworkService>());
+builder.Services.AddSingleton(new PerceptualResourceAdmission(
+    root => NativeWorkingVolume.Read(root, LinuxMemoryAvailability.ReadCurrent), PerceptualJobResourcePool.Shared));
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BlindCalibrationService>());

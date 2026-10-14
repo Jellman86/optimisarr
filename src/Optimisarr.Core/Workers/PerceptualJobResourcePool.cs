@@ -1,6 +1,6 @@
-namespace Optimisarr.Sidecar.Core.Session;
+namespace Optimisarr.Core.Workers;
 
-/// <summary>Reserves peak native work across simultaneous jobs in this worker process.</summary>
+/// <summary>Reserves peak native work across simultaneous jobs in this process.</summary>
 public sealed class PerceptualJobResourcePool
 {
     public static PerceptualJobResourcePool Shared { get; } = new();
@@ -17,14 +17,15 @@ public sealed class PerceptualJobResourcePool
 
     public IDisposable? TryAcquire(string root, long disk, long memory, long? freeDisk, long? freeMemory)
     {
-        if (disk <= 0 || memory <= 0 || freeDisk is not { } availableDisk || freeMemory is not { } availableMemory) return null;
+        if (disk < 0 || memory < 0 || disk == 0 && memory == 0 || freeDisk is not { } availableDisk || freeMemory is not { } availableMemory) return null;
         root = Path.GetFullPath(root);
         lock (_gate)
         {
             var reservedDisk = _disk.GetValueOrDefault(root);
             if (availableDisk < reservedDisk || disk > availableDisk - reservedDisk
                 || availableMemory < _memory || memory > availableMemory - _memory) return null;
-            _disk[root] = reservedDisk + disk; _memory += memory;
+            if (disk > 0) _disk[root] = reservedDisk + disk;
+            _memory += memory;
             return new Reservation(this, root, disk, memory);
         }
     }
@@ -37,8 +38,11 @@ public sealed class PerceptualJobResourcePool
             if (Interlocked.Exchange(ref _released, 1) != 0) return;
             lock (owner._gate)
             {
-                var remaining = owner._disk[root] - disk;
-                if (remaining == 0) owner._disk.Remove(root); else owner._disk[root] = remaining;
+                if (disk > 0)
+                {
+                    var remaining = owner._disk[root] - disk;
+                    if (remaining == 0) owner._disk.Remove(root); else owner._disk[root] = remaining;
+                }
                 owner._memory -= memory;
             }
         }

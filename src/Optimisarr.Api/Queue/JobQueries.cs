@@ -50,7 +50,9 @@ public sealed record JobDto(
     /// <summary>Safe replacement is currently moving this job's verified output into place.</summary>
     bool Finalizing = false,
     /// <summary>Completed search probes while final verification has not produced its own report.</summary>
-    string? PerceptualSearchJson = null);
+    string? PerceptualSearchJson = null,
+    /// <summary>A temporary local memory/workspace hold; an eligible worker may still claim it.</summary>
+    bool WaitingForResources = false);
 
 public static class JobQueries
 {

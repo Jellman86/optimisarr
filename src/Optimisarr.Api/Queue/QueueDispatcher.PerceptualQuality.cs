@@ -6,6 +6,7 @@ using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Queue;
@@ -29,7 +30,7 @@ public sealed partial class QueueDispatcher
         finally { _dbLock.Release(); }
     }
 
-    private async Task<JobWork?> SelectPerceptualQualityAsync(int jobId, int attempt, JobWork work, CancellationToken token)
+    internal async Task<JobWork?> SelectPerceptualQualityAsync(int jobId, int attempt, JobWork work, ICollection<IDisposable> reservations, CancellationToken token)
     {
         var image = work.Spec.Kind == MediaKind.Image;
         var baseline = image ? work.Spec.ImageQuality ?? ImageTarget.DefaultQuality
@@ -48,6 +49,24 @@ public sealed partial class QueueDispatcher
             return null;
         }
         baseline = plan.Baseline;
+        if (image && (!work.VerificationPolicy.ImagePerceptualGateEnabled
+                || !ImagePerceptualQualityGate.ValidLimit(work.VerificationPolicy.MinimumImagePerceptualScore)
+                || work.Spec.ImageScaleFilter is not null || work.Spec.ImageLossless)
+            || !image && (!work.VerificationPolicy.AudioQualityGateEnabled
+                || !AudioQualityGate.ValidLimit(work.VerificationPolicy.MaximumAudioQualityDistance)
+                || work.Spec.DownmixToStereo))
+        {
+            await RejectPerceptualSourceAsync(jobId, attempt, work, encoder, baseline, sourceHash,
+                "Quality-first requires its explicit quality gate and a supported unchanged picture/channel contract.", null, token);
+            return null;
+        }
+        var peak = perceptualResources.ReservePeak(work.Spec.Kind, _workRoot);
+        if (peak is null)
+        {
+            await DeferNativeCapacityAsync(jobId, attempt, sourceHash, work.PerceptualSearch, token);
+            return null;
+        }
+        reservations.Add(peak);
         await UpdatePerceptualSearchAsync(jobId, attempt, sourceHash, job =>
         {
             job.Status = JobStatus.Probing;
@@ -60,17 +79,7 @@ public sealed partial class QueueDispatcher
         await using var scope = scopeFactory.CreateAsyncScope();
         IReadOnlyList<PerceptualAudioWindow> windows = [];
         ImagePerceptualReport? sourceImage = null;
-        if (image && (!work.VerificationPolicy.ImagePerceptualGateEnabled
-                || !ImagePerceptualQualityGate.ValidLimit(work.VerificationPolicy.MinimumImagePerceptualScore)
-                || work.Spec.ImageScaleFilter is not null || work.Spec.ImageLossless)
-            || !image && (!work.VerificationPolicy.AudioQualityGateEnabled
-                || !AudioQualityGate.ValidLimit(work.VerificationPolicy.MaximumAudioQualityDistance)
-                || work.Spec.DownmixToStereo))
-        {
-            await RejectPerceptualSourceAsync(jobId, attempt, work, encoder, baseline, sourceHash,
-                "Quality-first requires its explicit quality gate and a supported unchanged picture/channel contract.", null, token);
-            return null;
-        }
+        AudioQualityInput? sourceAudio = null;
         if (image)
         {
             // Qualify the original with the bounded native decoder before FFmpeg
@@ -99,15 +108,29 @@ public sealed partial class QueueDispatcher
         else
         {
             var probe = await scope.ServiceProvider.GetRequiredService<IMediaProbeService>().ProbeAsync(work.Original.Path, token);
-            var audio = probe.RawJson is { } json ? AudioQualityInput.Parse(json) : null;
-            if (audio is null)
+            sourceAudio = probe.RawJson is { } json ? AudioQualityInput.Parse(json) : null;
+            if (sourceAudio is null)
             {
                 await RejectPerceptualSourceAsync(jobId, attempt, work, encoder, baseline, sourceHash,
                     "Audio quality-first requires one known-duration mono/stereo track. Full encoding was not started.", null, token);
                 return null;
             }
-            windows = PerceptualSamplePlanner.AudioWindows(audio.DurationSeconds);
+            windows = PerceptualSamplePlanner.AudioWindows(sourceAudio.DurationSeconds);
         }
+        var picture = sourceImage?.Measurement is { } dimensions
+            ? new ImageQualityMeasurementContext(dimensions.Width, dimensions.Height, dimensions.Alpha) : null;
+        var contract = new RemotePerceptualSearchContract(Guid.NewGuid(), work.Spec.Kind, encoder, plan, work.VerificationPolicy,
+            windows, sourceAudio, picture, plan.MinimumValue is null ? null : sourceHash);
+        var maximum = SizeBudget.MaxCandidateBytes(work.Original.SizeBytes, work.VerificationPolicy.RequireSizeReduction, false);
+        var required = WorkerScratchBudget.RequiredBytes(work.Original.SizeBytes, maximum, contract);
+        // The local source stays in the library; the server does not download another copy.
+        var workspace = required is { } bytes ? perceptualResources.ReserveWorkspace(bytes - work.Original.SizeBytes, _workRoot) : null;
+        if (workspace is null)
+        {
+            await DeferNativeCapacityAsync(jobId, attempt, sourceHash, work.PerceptualSearch, token);
+            return null;
+        }
+        reservations.Add(workspace);
         PerceptualSearchResult result;
         try
         {
@@ -247,6 +270,21 @@ public sealed partial class QueueDispatcher
             : work.Spec with { AudioBitrateKbps = result.Decision.SelectedValue };
         return work with { Spec = selected, Arguments = FfmpegCommandBuilder.Build(selected, work.CpuThreadLimit,
             work.VideoEncoder, OptimisedMarkerValue), PerceptualSearch = summary };
+    }
+
+    private async Task DeferNativeCapacityAsync(int jobId, int attempt, string sourceHash, PerceptualSearchSummary? retainedIntent, CancellationToken token)
+    {
+        _nativeCapacityHolds.Hold(jobId, attempt);
+        await UpdatePerceptualSearchAsync(jobId, attempt, sourceHash, job =>
+        {
+            job.Status = JobStatus.Queued;
+            job.Attempt = Math.Max(0, job.Attempt - 1);
+            job.Progress = 0;
+            job.ErrorMessage = "Waiting for enough known memory and working space for quality-first assessment. Local capacity will be checked again shortly; an eligible worker can still claim this job.";
+            job.FinishedAt = null;
+            job.PerceptualSearchJson = retainedIntent is null ? null : JsonSerializer.Serialize(retainedIntent, ReportJsonOptions);
+        }, token);
+        await NotifyAsync();
     }
 
     private async Task<string> ReadPerceptualSourceHashAsync(int jobId, int attempt, CancellationToken token)

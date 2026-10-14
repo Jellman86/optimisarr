@@ -385,3 +385,44 @@ hashes in `identity-master-linux-01-manifest.json`; evidence is under
 `identity-master-linux-01/quark-source-change-01`. All CI checks subsequently passed for
 `d2b71e8a`, including native Windows logging, final images and installer. This supersedes
 the preceding commit's unresolved logging result without claiming a demonstrated root cause.
+
+## Local-server capacity and recovery
+
+The warning-free builds pass **3,515 backend**, **427 shared .NET worker** (three Windows-only
+skips), and **31 Linux worker** tests. Frontend checking includes **95 unit tests** and all
+**346 browser tests** pass. Four new capacity-wait cases cover phone/desktop and both themes;
+saved screenshots were visually inspected. Every locale explains the wait and preserved retry
+intent. The job-feed OpenAPI response now declares its DTO and resource-wait flag. No database
+schema changes are needed.
+
+Local source qualification reserves peak native RAM first. Its workspace is admitted separately
+and RAM-backed files are charged to memory. A refused job remains queued with a monotonic
+30-second local backoff; workers can still claim eligible work. Deterministic cases cover
+unknown/low memory, disk/RAM workspace pressure, stale callbacks and both reservation release
+orders. Real database tests preserve failure/exclusion counts and the existing quality-retry
+minimum. Resource refusal restores the crash-attempt budget while keeping its unique execution
+generation. The server's native memory provider is Linux; an unsupported .NET Mac server holds
+these jobs rather than guessing host capacity. Swift qualification remains separate.
+
+A real Quark server in a transient **512 MiB** scope queues an earlier-host JPEG retry without
+calling the native image assessor. Its displayed resource wait persists across multiple polls,
+original hash and retry minimum **91** are unchanged, and no crash attempt is spent. After
+stopping only that owned test scope and restarting the isolated server with normal capacity,
+it freshly measures at the retained minimum, independently verifies, releases the local slot,
+replaces idempotently and rolls back exactly. All installed services and personal media are
+unchanged. The published snapshot verifies **57 artifacts** and records **941 C# source hashes**.
+
+The first publication's longer audio trial exposed a cleanup defect: a memory-only reservation
+looked up a disk entry already removed by workspace cleanup. That stranded the local slot after
+queuing the quality retry. A deterministic test reproduced the exact exception before the
+ledger fix. The final `local-resource-runtime-linux-02` publication passes the JPEG recovery
+with an explicit idle-slot check and the full **95.5-second audio retry** regression. Audio
+freshly selects **128 kbps** at its retained **128 kbps** minimum, fails the unchanged final
+zero-distance gate, preserves the first rejection and original, and creates no third attempt.
+The original remains unchanged in the earlier interrupted test too.
+
+Raw evidence is under `local-resource-runtime-linux-02/quark-local-resource-recovery-02`,
+`local-resource-audio-quark-02` and `ui-resources-01`. The earlier failed test is retained for
+diagnosis. All CI checks passed for preceding commit `6891f599`; the new local-admission
+commit requires its own CI. Protocol negotiation remains 10 and this is not installed-package
+or physical Windows acceptance.

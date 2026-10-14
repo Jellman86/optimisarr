@@ -34,7 +34,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
-| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Native search integration, reconnect acceptance, interrupted-attempt history and export qualification |
+| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Swift native integration, broader reconnect acceptance, interrupted-attempt history and export qualification |
 | Lifetime | Owned local scratch, stopped-process cleanup, cancellation propagation, source revalidation, attempt-fenced result persistence | All native worker implementations, resource exhaustion and restart/reconnect acceptance |
 | Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Native worker retry/restart and exact-package qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
@@ -133,10 +133,10 @@ frozen codec too. A retry contract retains its source hash and searches only at 
 the required fidelity, including JPEG's one-setting maximum-quality case.
 
 Claim admission includes bounded samples, lossless references, native PCM scratch and
-metadata rewrites. The required workspace is sent with the assignment for native admission;
-native available-memory checks and reservations still need implementation. The global worker
+metadata rewrites. The required workspace is sent with the assignment for native admission.
+.NET worker and local-server native memory/workspace reservations are implemented; Swift admission still needs implementation. The global worker
 protocol remains **10**: declaring protocol-11 server contracts does not activate native work.
-Native capability discovery, execution and exact-package acceptance remain required.
+Swift capability discovery/execution and exact-package acceptance remain required.
 
 The shared native probe executor now validates every supplied command against the canonical
 original-source plan before starting tools. It qualifies the source, prepares references,
@@ -182,8 +182,7 @@ lane, and JPEG/WebP/AAC/Opus/MP3 on Quark using its live memory provider. They e
 runner, native processes, report transport, transfer and final server verdict, with an in-process
 simulated control plane. They do not yet prove a real server's persisted claim/upload/replacement
 lifecycle. A separate real 256 MiB cgroup trial refuses before fetch or encode and leaves no
-scratch. Broader restart/fault acceptance, capacity-aware placement/backoff, capability collection, Swift
-support and complete package qualification remain required before advertising protocol 11.
+scratch. Broader restart/fault acceptance, Swift support and complete package qualification remain required before advertising protocol 11.
 
 A subsequent isolated real-server harness passes the persisted claim, source download, native
 search, sealed upload, strict final verdict, replacement and exact-byte rollback for JPEG,
@@ -260,7 +259,7 @@ limit is not used.
 On Quark, the actual provider reports host capacity, less than 256 MiB inside a real 256 MiB
 scope, and less than 128 MiB when that scope also has a 128 MiB pressure limit. These processes
 end normally and do not modify an installed service. V1/hybrid proof is deterministic fixture
-coverage; Quark's live hierarchy is v2. Local-server memory reservation remains outstanding.
+coverage; Quark's live hierarchy is v2. Local-server memory/workspace admission is implemented below.
 
 ## Interrupted file identity
 
@@ -275,3 +274,30 @@ verification of the exact bytes.
 Actual isolated Mac and Quark server runs change only their copied synthetic source after a sample
 encode. Each stops after one retained probe, removes sample scratch, creates no replacement,
 and leaves both failure/exclusion counts at zero and the prior retry count unchanged.
+
+## Local-server memory and workspace admission
+
+Normal adaptive audio/image work reserves native peak memory before source assessment, then
+reserves its bounded workspace before creating references or samples. RAM-backed scratch is
+charged to memory too. The reservation ledger and physical-volume/link resolution are shared
+with the .NET worker. A local source stays in the library and is not charged as a downloaded
+copy. Reservations remain held through independent final verification and sample cleanup.
+
+Unavailable capacity re-queues the job without media failures, auto-exclusion, an additional
+quality retry or a spent crash attempt. Its execution generation remains unique. Saved retry
+intent is restored when workspace admission refuses, so a later attempt cannot lose its higher
+minimum. The same generation has a 30-second monotonic local backoff; eligible workers remain
+free to claim it. A restart re-evaluates live capacity. The live queue exposes an explicit
+resource-wait flag and readable phone/desktop details in nine locales. This is transient state
+and requires no database migration. The job-feed OpenAPI response now declares its DTO.
+
+The server provider is Linux. A .NET macOS server reports unknown memory and holds this work;
+the shipped Swift worker still needs its own provider and native implementation. No protocol
+version is activated by this change.
+
+The first longer audio acceptance run exposed a memory-only reservation cleanup error that
+stranded the local slot after queuing a final-quality retry. A deterministic reverse-release
+regression reproduces it. Memory-only reservations now stay separate from the disk ledger;
+release order cannot remove another reservation's memory accounting. Original bytes remained
+unchanged during that failed test. The final Quark publication passes an explicit idle-slot check, complete final-quality audio
+retry and JPEG low-memory/restart/replacement/rollback. This supersedes the interrupted trial.

@@ -1913,6 +1913,265 @@
         ],
         "type": "object"
       },
+      "JobDto": {
+        "properties": {
+          "attemptHistoryJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clearable": {
+            "type": "boolean"
+          },
+          "effectiveVideoQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "enqueueReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enqueuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "executionAttempt": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "failureCategory": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ffmpegArguments": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "finalizing": {
+            "default": false,
+            "type": "boolean"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "mediaFileId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "outputSizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "perceptualSearchJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "priority": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "progress": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "qualityRetryCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "remoteStage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestedVideoQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "retryReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sidecarVerification": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sourceSizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "verificationPassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "verificationReportJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "verifiedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoEncoder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoQualityMode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "waitingForResources": {
+            "default": false,
+            "type": "boolean"
+          },
+          "waitingForWorker": {
+            "default": false,
+            "type": "boolean"
+          },
+          "workerName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "mediaFileId",
+          "libraryId",
+          "relativePath",
+          "status",
+          "priority",
+          "progress",
+          "errorMessage",
+          "enqueueReason",
+          "failureCategory",
+          "ffmpegArguments",
+          "videoEncoder",
+          "requestedVideoQuality",
+          "effectiveVideoQuality",
+          "videoQualityMode",
+          "qualityRetryCount",
+          "sourceSizeBytes",
+          "outputSizeBytes",
+          "verificationPassed",
+          "verificationReportJson",
+          "verifiedAt",
+          "enqueuedAt",
+          "startedAt",
+          "finishedAt",
+          "clearable",
+          "executionAttempt",
+          "retryReason",
+          "attemptHistoryJson"
+        ],
+        "type": "object"
+      },
       "LeaseRenewedDto": {
         "properties": {
           "expiresUtc": {
@@ -7239,6 +7498,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "OK"
           },
           "401": {

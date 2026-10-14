@@ -972,3 +972,24 @@ for (const state of ['Probing', 'Cancelled']) {
     await panel.screenshot({ path: testInfo.outputPath('quality-first-partial-light.png') })
   })
 }
+
+for (const width of [375, 1440]) {
+  for (const theme of ['light', 'dark']) {
+    test(`resource wait preserves the queued state at ${width}px ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.emulateMedia({ colorScheme: theme as 'light' | 'dark', reducedMotion: 'reduce' })
+      await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), theme)
+      await mockWorkingQueue(page, { jobs: [{ ...job(46, 'Queued', null), relativePath: 'Image waiting safely', videoEncoder: null, requestedVideoQuality: null, effectiveVideoQuality: null, videoQualityMode: null, outputSizeBytes: null, waitingForResources: true }] })
+      await page.goto('/#/queue')
+      await expect(page.getByText('waiting for memory or space…')).toBeVisible()
+      await page.getByRole('button', { name: /^Image waiting safely/ }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByText('Waiting for memory or working space')).toBeVisible()
+      await expect(dialog.getByText(/Your original and retry settings are preserved/)).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0)
+      await expect(dialog.getByText('Queued', { exact: true })).toBeVisible()
+      expect(await page.locator('body').evaluate(el => el.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath('resource-wait.png'), fullPage: true })
+    })
+  }
+}

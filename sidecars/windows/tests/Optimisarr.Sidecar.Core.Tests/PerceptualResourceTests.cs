@@ -1,3 +1,4 @@
+using Optimisarr.Core.Workers;
 using Optimisarr.Sidecar.Core.Session;
 
 namespace Optimisarr.Sidecar.Core.Tests;

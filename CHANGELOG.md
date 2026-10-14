@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Local audio/image quality-first jobs now wait for available memory and working space, preserve retry minima and resume after capacity returns. Queue details explain the wait in every language.
+
+
 - Sources or candidates changed or removed during quality search, upload or final verification now stop the attempt without increasing media failures or spending another quality retry; saved diagnostics remain available.
 
 
