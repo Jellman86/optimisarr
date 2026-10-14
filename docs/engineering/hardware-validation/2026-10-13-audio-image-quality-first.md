@@ -265,3 +265,39 @@ cover this correction; safety thresholds and metric values are unchanged. Raw pr
 are retained under `native-master-01` and `native-master-quark-01-evidence`.
 The corrected branch rebuilds with zero warnings and passes **3,431 backend tests** and
 **413 shared .NET tests** on the Mac, with three Windows-only skips.
+
+## Fresh higher-fidelity retry qualification
+
+The local retry shortcut previously used the encoder name and retained selection without new
+measurement. Local and remote planning now use the same source/target-bound retry minimum;
+each execution searches again on its current encoder. Thirteen focused execution-plan cases
+cover changed measurement results, minimum-bounded fallback, missing/stale/exhausted intent,
+changed sources/codecs/targets and unrelated settings. The current Mac branch rebuilds without
+warnings and passes **3,444 backend tests**, **413 shared worker tests** (three Windows-only
+skips), **118 Python tests**, frontend checks and **342 browser tests**. OpenAPI is unchanged
+and verified. The nine new browser cases include phone/desktop and both themes; saved captures
+were visually inspected. The report distinguishes pending previous selection from the fresh
+selection and minimum in nine locales.
+
+The real 95.5-second audio fixture passes the dedicated retry regression on the Mac and Quark.
+Its first sampled selection is **112 kbps**; the fractional tail fails the enabled zero-distance
+final gate. The sole retry freshly measures **128 kbps**, retains **128 kbps** as its minimum
+and fails the same unchanged final gate. The source hash is unchanged, the first rejection is
+archived and no replacement or third attempt is created. Sampling the whole final file remains
+essential; a passing silence window is not a pass for its noise tail.
+
+Separate isolated local image runs seed earlier-host retry intent through EF, rather than claim
+an observed natural image disagreement. JPEG freshly measures at a minimum of **91** on both
+hosts; WebP on Quark measures **four new settings at or above 90** and selects **100** after
+all sample gates. Each finishes independent final verification, repeated replacement and exact
+rollback. Missing-intent cases on both hosts stop before native assessment/encoding with zero
+media failures/exclusions. The Linux runtime verifies **56 published file hashes** and records
+**923 C# source hashes** of the working tree. These are isolated native runtime tests, not
+installed-service or final-package acceptance. Private evidence is under `local-retry-mac-01`,
+`native-master-01/mac-local-*` and the corresponding Quark task-owned roots.
+
+The full browser run also reproduced an existing fixture error: it attempted to lose an
+already retired graphics context. The revised fixture deliberately includes one retired context,
+requires deliberate loss of a live renderer and retains fallback, theme/activity and unchanged
+creation-count assertions. Four repeated focused runs and the full 342-test suite pass;
+production rendering behavior is unchanged.

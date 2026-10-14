@@ -26,6 +26,19 @@ class QualityFirstEvidenceTests(unittest.TestCase):
     def test_valid_selection_is_bound_to_source_and_smallest_passing_candidate(self):
         self.assertEqual(96, validate_search(self.report(), "Audio", "a" * 64, 128)["selectedValue"])
 
+    def test_a_fresh_retry_cannot_measure_or_select_below_its_minimum(self):
+        report = self.report()
+        report["minimumValue"] = 112
+        with self.assertRaisesRegex(AssertionError, "minimum"):
+            validate_search(report, "Audio", "a" * 64, 128)
+
+    def test_a_retry_above_the_saved_baseline_starts_and_falls_back_at_the_higher_setting(self):
+        report = self.report()
+        report["minimumValue"] = 224
+        report["result"]["probes"] = [{"value": 224, "encodedBytes": 0, "measurement": {"available": False}}]
+        report["result"]["decision"].update(selectedValue=224, fellBack=True, reason="Current scorer unavailable")
+        validate_search(report, "Audio", "a" * 64, 128)
+
     def test_wrong_source_missing_probes_or_unmeasured_choice_is_refused(self):
         for change in (lambda r: r.update(sourceSha256="b" * 64),
                        lambda r: r["result"].update(probes=[]),

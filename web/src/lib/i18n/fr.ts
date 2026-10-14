@@ -2,6 +2,8 @@ import type { Messages } from './en'
 
 export const fr: Messages = {
   quality_first: {
+    previous_selected: "Réglage sélectionné précédemment",
+    retry_minimum: "Réglage minimal pour le nouvel essai : {value}",
     searching: 'Recherche d’un réglage',
     interrupted: 'Recherche arrêtée avant la sélection',
     retry: "Nouvel essai avec une qualité supérieure",

@@ -15,7 +15,7 @@ internal static class PerceptualWorkerWork
         state.Contract.AudioWindows, new(state.Probes, state.Decision ?? new(null, state.Contract.Plan.Baseline, true,
             state.SourceError ?? "Required source assessment is unavailable.")), MeasurementLocation: "Worker",
         PreparationBlocked: state.SourceRejected, SourceImageAssessment: state.Source?.Image?.Assessment is { } source
-            ? source with { MeasurementLocation = "Worker" } : null);
+            ? source with { MeasurementLocation = "Worker" } : null, MinimumValue: state.Contract.Plan.MinimumValue);
 
     public static string Complete(string? snapshot, RemotePerceptualSearchState state, PerceptualSearchSummary summary)
     {

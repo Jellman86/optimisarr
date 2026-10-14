@@ -29,6 +29,9 @@
 
 ### Fixed
 
+- Higher-quality audio/image retries now search again on the current encoder above their retained fidelity minimum. Changed sources or targets and missing retry intent hold safely; reports distinguish the minimum from the measured selection in every locale.
+- The browser graphics-loss fixture deliberately retains a retired context and injects failure only into live renderers, preserving its fallback and no-recreation checks.
+
 - Worker image-search reports consistently identify the worker as the measurement location, including original assessments and nested probe details. The receiver determines provenance rather than accepting a raw tool label.
 
 - The decoder-output stress test uses a separate bounded drain deadline, avoiding spurious watchdog failures under CI load while preserving dedicated stall checks.

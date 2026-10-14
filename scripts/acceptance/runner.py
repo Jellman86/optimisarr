@@ -478,15 +478,19 @@ class Harness:
         require(job["status"] == "Failed" and job["qualityRetryCount"] == 1, "Final disagreement did not exhaust exactly one quality retry")
         report = json.loads(job["verificationReportJson"])
         search = report["perceptualSearch"]
+        history = json.loads(job["attemptHistoryJson"])
+        require(len(history) == 1 and history[0]["reason"] == "HigherPerceptualQualityRetry", "Rejected attempt evidence was not retained")
+        earlier = json.loads(history[0]["verificationReportJson"])
+        first = validate_search(earlier["perceptualSearch"], "Audio", case["sourceSha256"], 128)
         decision = validate_search(search, "Audio", case["sourceSha256"], 128)
-        require(not decision["fellBack"] and search["retryValue"] > decision["selectedValue"], "Retry lost its sampled selection or did not increase fidelity")
+        require(not decision["fellBack"] and search["minimumValue"] > first["selectedValue"]
+                and decision["selectedValue"] >= search["minimumValue"] and search.get("retryValue") is None,
+                "Retry did not measure again above the rejected attempt's selection")
         require(report["audioQuality"]["gatePassed"] is False
                 and report["audioQuality"]["evidence"]["assessment"]["worstChannelDistance"] > 0,
                 "The final retry bypassed its required zero-distance gate")
-        require(f"-b:a {search['retryValue']}k " in job["ffmpegArguments"], "Retried encode ignored its frozen setting")
-        history = json.loads(job["attemptHistoryJson"])
-        require(len(history) == 1 and history[0]["reason"] == "HigherPerceptualQualityRetry", "Rejected attempt evidence was not retained")
-        require(json.loads(history[0]["verificationReportJson"])["audioQuality"]["gatePassed"] is False, "History lost the first final rejection")
+        require(f"-b:a {decision['selectedValue']}k " in job["ffmpegArguments"], "Retried encode ignored its newly measured setting")
+        require(earlier["audioQuality"]["gatePassed"] is False, "History lost the first final rejection")
         require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Rejected retry acquired replacement history")
         return {"originalUnchanged": True, "retryCount": 1, "search": search}
 

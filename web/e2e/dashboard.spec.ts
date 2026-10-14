@@ -731,6 +731,10 @@ test('a lost graphics context falls back once and still follows theme and activi
       if (context instanceof WebGLRenderingContext) target.brandContexts.push(context)
       return context
     } as typeof getContext
+    // A renderer retired during initial theme/brand setup stays in the capture list.
+    const retired = document.createElement('canvas')
+    retired.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext()
+    retired.width = retired.height = 1
   })
   await page.emulateMedia({ colorScheme: 'dark' })
   const fixture: Fixture = {}
@@ -741,9 +745,15 @@ test('a lost graphics context falls back once and still follows theme and activi
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   const contexts = await page.evaluate(() => {
     const contexts = (window as Window & { brandContexts: WebGLRenderingContext[] }).brandContexts
-    for (const context of contexts) context.getExtension('WEBGL_lose_context')!.loseContext()
-    return contexts.length
+    const active = contexts.filter(context => context.canvas.width > 1 && !context.isContextLost())
+    for (const context of active) {
+      const loss = context.getExtension('WEBGL_lose_context')
+      if (!loss) throw new Error('A live brand context must support deliberate context loss')
+      loss.loseContext()
+    }
+    return { created: contexts.length, deliberatelyLost: active.length }
   })
+  expect(contexts.deliberatelyLost).toBeGreaterThan(0)
   await expect(mark).toHaveAttribute('data-light-motion', 'still')
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
@@ -753,7 +763,7 @@ test('a lost graphics context falls back once and still follows theme and activi
   await page.getByRole('button', { name: 'Toggle theme', exact: true }).click()
   await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(before)
   await expect(mark).toHaveAttribute('data-light-motion', 'still')
-  expect(await page.evaluate(() => (window as Window & { brandContexts: WebGLRenderingContext[] }).brandContexts.length)).toBe(contexts)
+  expect(await page.evaluate(() => (window as Window & { brandContexts: WebGLRenderingContext[] }).brandContexts.length)).toBe(contexts.created)
 })
 
 

@@ -2,6 +2,8 @@ import type { Messages } from './en'
 
 export const ja: Messages = {
   quality_first: {
+    previous_selected: "前回選択した設定",
+    retry_minimum: "再試行の最低設定値: {value}",
     searching: '設定を検索中',
     interrupted: '設定の選択前に検索が停止しました',
     retry: "高品質で再試行",

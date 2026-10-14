@@ -497,6 +497,7 @@ export type PerceptualSearchSummary = {
   sourceSha256: string
   measurementLocation: string
   retryValue?: number | null
+  minimumValue?: number | null
   preparationBlocked?: boolean
   minimumImageScore: number | null
   maximumAudioDistance: number | null

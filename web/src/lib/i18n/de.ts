@@ -4,6 +4,8 @@ import type { Messages } from './en'
 // omitting or misnaming a key fails `npm run check`.
 export const de: Messages = {
   quality_first: {
+    previous_selected: "Zuvor gewählte Einstellung",
+    retry_minimum: "Mindesteinstellung für den erneuten Versuch: {value}",
     searching: 'Einstellung wird gesucht',
     interrupted: 'Suche vor der Auswahl angehalten',
     retry: "Wiederholung mit höherer Qualität",

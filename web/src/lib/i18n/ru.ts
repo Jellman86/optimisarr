@@ -2,6 +2,8 @@ import type { Messages } from './en'
 
 export const ru: Messages = {
   quality_first: {
+    previous_selected: "Ранее выбранная настройка",
+    retry_minimum: "Минимальная настройка для повторной попытки: {value}",
     searching: 'Поиск настройки',
     interrupted: 'Поиск остановлен до выбора настройки',
     retry: "Повтор с повышенным качеством",

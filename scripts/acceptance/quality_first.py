@@ -14,8 +14,14 @@ def validate_search(search, kind, source_hash, baseline):
     require(search.get("sourceSha256", "").lower() == source_hash.lower(), "Search belongs to another source")
     result = search.get("result") or {}
     probes, decision = result.get("probes", []), result.get("decision") or {}
+    minimum = search.get("minimumValue")
+    if minimum is not None:
+        require(type(minimum) is int and minimum >= 0, "Invalid retry minimum")
+        require(all(p["value"] >= minimum for p in probes)
+                and decision.get("selectedValue", -1) >= minimum, "Retry measured or selected below its minimum")
+        baseline = max(baseline, minimum)
     require(len(probes) <= 4 and len({p["value"] for p in probes}) == len(probes), "Search exceeded its budget or repeated a setting")
-    require(not probes or probes[0]["value"] == baseline, "Search did not measure the saved baseline first")
+    require(not probes or probes[0]["value"] == baseline, "Search did not measure its saved or higher retry setting first")
     require(all(p.get("encodedBytes", -1) > 0 or (p.get("encodedBytes") == 0
                 and p.get("measurement", {}).get("available") is False and decision.get("fellBack") is True)
                 for p in probes), "Search recorded no encoded bytes for an available measurement")

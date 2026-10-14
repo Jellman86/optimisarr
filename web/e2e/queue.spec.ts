@@ -636,6 +636,48 @@ test('a missing working poster stays settled through refreshes and recovers for 
 })
 
 for (const width of [375, 1440]) {
+  for (const theme of ['light', 'dark']) {
+    for (const kind of ['Audio', 'Image']) {
+      test(`fresh retry ${kind} distinguishes measured selection from its minimum at ${width}px ${theme}`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.emulateMedia({ colorScheme: theme as 'light' | 'dark', reducedMotion: 'reduce' })
+        await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), theme)
+        const minimum = kind === 'Audio' ? 112 : 70
+        const selected = kind === 'Audio' ? 128 : 85
+        const search = { kind, encoder: kind === 'Audio' ? 'aac' : 'libwebp', sourceSha256: 'a'.repeat(64),
+          measurementLocation: 'Worker', minimumValue: minimum, minimumImageScore: 85, maximumAudioDistance: 0.02,
+          audioWindows: [], result: { decision: { selectedValue: selected, nextValue: null, fellBack: false, reason: 'Measured again on the current encoding host.' },
+            probes: [{ value: selected, encodedBytes: 1000, measurement: { available: true, meetsTarget: true, score: kind === 'Audio' ? 0.01 : 90 } }] } }
+        await mockWorkingQueue(page, { jobs: [{ ...job(31, 'Failed', false), relativePath: 'Fresh retry fixture',
+          verificationReportJson: JSON.stringify({ checks: [], perceptualSearch: search }) }] })
+        await page.goto('/#/queue')
+        await page.getByRole('button', { name: /^Fresh retry fixture/ }).click()
+        const panel = page.getByRole('region', { name: 'Quality-first search', exact: true })
+        const suffix = kind === 'Audio' ? ' kbps' : ''
+        await expect(panel).toContainText(`Selected setting: ${selected}${suffix}`)
+        await expect(panel).toContainText(`Minimum setting for the retry: ${minimum}${suffix}`)
+        await expect(panel).toContainText('Higher-quality retry')
+        expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+        await panel.screenshot({ path: testInfo.outputPath('fresh-retry-report.png') })
+      })
+    }
+  }
+}
+
+test('a pending quality retry labels the earlier selection separately from the upcoming minimum', async ({ page }) => {
+  const search = { kind: 'Audio', encoder: 'aac', sourceSha256: 'a'.repeat(64), measurementLocation: 'Server',
+    retryValue: 112, minimumImageScore: null, maximumAudioDistance: 0.02, audioWindows: [],
+    result: { decision: { selectedValue: 96, nextValue: null, fellBack: false, reason: 'Previous attempt selected 96 kbps.' }, probes: [] } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(32, 'Queued', false), relativePath: 'Pending retry fixture', perceptualSearchJson: JSON.stringify(search) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: /^Pending retry fixture/ }).click()
+  const panel = page.getByRole('region', { name: 'Quality-first search', exact: true })
+  await expect(panel).toContainText('Previous selected setting: 96 kbps')
+  await expect(panel).toContainText('Minimum setting for the retry: 112 kbps')
+  await expect(panel).not.toContainText('Selected setting: 112 kbps')
+})
+
+for (const width of [375, 1440]) {
   for (const theme of ['dark', 'light']) {
     for (const available of [true, false]) {
       test(`image quality ${available ? 'measured' : 'unavailable'} report at ${width}px in ${theme}`, async ({ page }, testInfo) => {

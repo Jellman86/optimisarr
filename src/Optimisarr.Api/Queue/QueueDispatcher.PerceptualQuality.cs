@@ -37,24 +37,17 @@ public sealed partial class QueueDispatcher
         var encoder = image ? work.Spec.ImageEncoder ?? ImageTarget.Resolve(ImageTarget.DefaultFormat).Encoder
             : work.Spec.AudioEncoder ?? AudioTarget.Resolve(AudioTarget.DefaultCodec).Encoder;
         var sourceHash = await ReadPerceptualSourceHashAsync(jobId, attempt, token);
-        if (work.PerceptualSearch is { RetryValue: { } retry } previous
-            && previous.Encoder == encoder && previous.Kind == work.Spec.Kind
-            && previous.MinimumImageScore == work.VerificationPolicy.MinimumImagePerceptualScore
-            && previous.MaximumAudioDistance == work.VerificationPolicy.MaximumAudioQualityDistance
-            && (image ? work.VerificationPolicy.ImagePerceptualGateEnabled && work.Spec.ImageScaleFilter is null && !work.Spec.ImageLossless
-                : work.VerificationPolicy.AudioQualityGateEnabled && !work.Spec.DownmixToStereo))
+        PerceptualQualityPlan plan;
+        try
         {
-            if (!string.Equals(previous.SourceSha256, sourceHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The source changed before its higher-quality retry. The original was kept.");
-            await UpdatePerceptualSearchAsync(jobId, attempt, sourceHash, job =>
-            {
-                if (image) job.AdaptiveImageQuality = retry;
-                else job.AdaptiveAudioBitrateKbps = retry;
-            }, token);
-            var retried = image ? work.Spec with { ImageQuality = retry } : work.Spec with { AudioBitrateKbps = retry };
-            return work with { Spec = retried, Arguments = FfmpegCommandBuilder.Build(retried, work.CpuThreadLimit,
-                work.VideoEncoder, OptimisedMarkerValue) };
+            plan = PerceptualExecutionPlan.Create(work.Spec.Kind, encoder, baseline, work.VerificationPolicy, work.PerceptualSearch, sourceHash, work.PerceptualRetryCount);
         }
+        catch (ArgumentException error)
+        {
+            await RejectPerceptualSourceAsync(jobId, attempt, work, encoder, baseline, sourceHash, error.Message, null, token);
+            return null;
+        }
+        baseline = plan.Baseline;
         await UpdatePerceptualSearchAsync(jobId, attempt, sourceHash, job =>
         {
             job.Status = JobStatus.Probing;
@@ -118,7 +111,6 @@ public sealed partial class QueueDispatcher
         PerceptualSearchResult result;
         try
         {
-            var plan = image ? PerceptualQualityPlan.Image(encoder, baseline) : PerceptualQualityPlan.Audio(encoder, baseline);
             await using var scratch = await OwnedScratchWorkspace.CreateAsync(scopeFactory, claims, _workRoot,
                 jobId, attempt, Path.GetDirectoryName(work.Spec.OutputPath)!, "adaptive-quality", logger, token);
             var references = new List<string>();
@@ -223,7 +215,7 @@ public sealed partial class QueueDispatcher
             {
                 var retained = new PerceptualSearchSummary(work.Spec.Kind, encoder, sourceHash,
                     work.VerificationPolicy.MinimumImagePerceptualScore, work.VerificationPolicy.MaximumAudioQualityDistance,
-                    windows, snapshot, SourceImageAssessment: sourceImage);
+                    windows, snapshot, SourceImageAssessment: sourceImage, MinimumValue: plan.MinimumValue);
                 await UpdatePerceptualSearchAsync(jobId, attempt, sourceHash,
                     job => job.PerceptualSearchJson = JsonSerializer.Serialize(retained, ReportJsonOptions), cancellation);
                 await NotifyAsync();
@@ -231,14 +223,14 @@ public sealed partial class QueueDispatcher
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
         {
-            result = new([], new(null, baseline, true, $"Quality search unavailable: {ex.Message}. The library setting and final verification remain required."));
+            result = new([], PerceptualQualitySearch.Unavailable(plan, ex.Message));
         }
         token.ThrowIfCancellationRequested();
         if (!await FileContentIdentity.MatchesAsync(work.Original.Path, sourceHash, token))
             throw new InvalidOperationException("The source changed during quality search. The original was kept; create a fresh attempt.");
         var summary = new PerceptualSearchSummary(work.Spec.Kind, encoder, sourceHash,
             work.VerificationPolicy.MinimumImagePerceptualScore, work.VerificationPolicy.MaximumAudioQualityDistance, windows, result,
-            SourceImageAssessment: sourceImage);
+            SourceImageAssessment: sourceImage, MinimumValue: plan.MinimumValue);
         await UpdatePerceptualSearchAsync(jobId, attempt, sourceHash, job =>
         {
             job.Status = JobStatus.Transcoding;

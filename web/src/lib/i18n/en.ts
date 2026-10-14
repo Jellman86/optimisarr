@@ -4,6 +4,8 @@
 // Use `{token}` placeholders for interpolation; resolve them with `t(...)`.
 export const en = {
   quality_first: {
+    previous_selected: "Previous selected setting",
+    retry_minimum: "Minimum setting for the retry: {value}",
     searching: 'Searching for a setting',
     interrupted: 'Search stopped before selection',
     retry: "Higher-quality retry",

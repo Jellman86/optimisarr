@@ -58,4 +58,4 @@ public static class PerceptualSamplePlanner
 public sealed record PerceptualSearchSummary(MediaKind Kind, string Encoder, string SourceSha256,
     double? MinimumImageScore, double? MaximumAudioDistance, IReadOnlyList<PerceptualAudioWindow> AudioWindows,
     PerceptualSearchResult Result, string MeasurementLocation = "Server", int? RetryValue = null,
-    bool PreparationBlocked = false, ImagePerceptualReport? SourceImageAssessment = null);
+    bool PreparationBlocked = false, ImagePerceptualReport? SourceImageAssessment = null, int? MinimumValue = null);

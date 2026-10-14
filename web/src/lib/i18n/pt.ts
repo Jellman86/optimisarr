@@ -2,6 +2,8 @@ import type { Messages } from './en'
 
 export const pt: Messages = {
   quality_first: {
+    previous_selected: "Configuração selecionada anteriormente",
+    retry_minimum: "Configuração mínima para a nova tentativa: {value}",
     searching: 'A procurar uma definição',
     interrupted: 'Pesquisa interrompida antes da seleção',
     retry: "Nova tentativa com qualidade superior",

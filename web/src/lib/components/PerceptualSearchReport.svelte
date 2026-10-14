@@ -5,6 +5,7 @@
 
   let { report, active = false }: { report: PerceptualSearchSummary | null; active?: boolean } = $props()
   let decision = $derived(report?.result?.decision)
+  let retryMinimum = $derived(report?.minimumValue ?? report?.retryValue)
   function setting(value: number) { return report?.kind === 'Audio' ? `${value} kbps` : String(value) }
   function score(value: number | null) { return value != null && Number.isFinite(value) ? Number(value.toPrecision(6)).toString() : '—' }
 </script>
@@ -15,7 +16,7 @@
     {#if decision.nextValue != null}
     <p class="mt-3 text-sm font-medium text-ink-2" aria-live="polite">{active ? i18n.m.quality_first.searching : i18n.m.quality_first.interrupted}</p>
     {:else if !report.preparationBlocked}
-    <p class="mt-3 text-sm text-ink-2" aria-live="polite">{i18n.m.quality_first.selected}: <strong>{setting(report.retryValue ?? decision.selectedValue)}</strong> · {report.encoder}</p>
+    <p class="mt-3 text-sm text-ink-2" aria-live="polite">{report.retryValue != null ? i18n.m.quality_first.previous_selected : i18n.m.quality_first.selected}: <strong>{setting(decision.selectedValue)}</strong> · {report.encoder}</p>
     {/if}
     <p class="mt-2 break-words text-xs text-ink-3">{decision.reason}</p>
     {#if report.kind === 'Audio' && report.maximumAudioDistance != null}
@@ -26,7 +27,9 @@
     {:else if report.kind === 'Image' && report.minimumImageScore != null}
       <p class="mt-2 font-mono text-sm tabular-nums text-ink-2">SSIMULACRA2 ≥ {score(report.minimumImageScore)}</p>
     {/if}
-    {#if report.retryValue != null}<p class="mt-2 text-xs text-ink-3">{i18n.m.quality_first.retry}</p>{/if}
+    {#if retryMinimum != null}
+      <p class="mt-2 break-words text-xs text-ink-3">{i18n.m.quality_first.retry} · {t(i18n.m.quality_first.retry_minimum, { value: setting(retryMinimum) })}</p>
+    {/if}
     <ol class="mt-4 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
       {#each report.result?.probes ?? [] as probe}
         <li class="min-w-0 rounded-md border border-line-soft bg-sunken p-3">

@@ -16,11 +16,8 @@ public sealed partial class QueueDispatcher
         var image = work.Spec.Kind == MediaKind.Image;
         var encoder = image ? work.Spec.ImageEncoder! : work.Spec.AudioEncoder!;
         var saved = image ? work.Spec.ImageQuality ?? ImageTarget.DefaultQuality : work.Spec.AudioBitrateKbps ?? AudioTarget.DefaultBitrateKbps;
-        var retry = work.PerceptualRetryCount == 1 && work.PerceptualSearch is { RetryValue: { } floor } previous
-            && previous.Encoder == encoder && previous.Kind == work.Spec.Kind
-            && previous.MinimumImageScore == work.VerificationPolicy.MinimumImagePerceptualScore
-            && previous.MaximumAudioDistance == work.VerificationPolicy.MaximumAudioQualityDistance ? floor : (int?)null;
-        var plan = image ? PerceptualQualityPlan.Image(encoder, saved, retry) : PerceptualQualityPlan.Audio(encoder, saved, retry);
+        var plan = PerceptualExecutionPlan.Create(work.Spec.Kind, encoder, saved, work.VerificationPolicy,
+            work.PerceptualSearch, currentSourceSha256: null, work.PerceptualRetryCount);
         AudioQualityInput? audio = null; ImageQualityMeasurementContext? picture = null;
         if (image)
         {
@@ -37,7 +34,7 @@ public sealed partial class QueueDispatcher
         }
         var contract = new RemotePerceptualSearchContract(Guid.NewGuid(), work.Spec.Kind, encoder, plan, work.VerificationPolicy,
             audio is null ? [] : PerceptualSamplePlanner.AudioWindows(audio.DurationSeconds), audio, picture,
-            retry is null ? null : work.PerceptualSearch!.SourceSha256);
+            plan.MinimumValue is null ? null : work.PerceptualSearch!.SourceSha256);
         var encoding = FrozenPerceptualEncoding.Create(contract, work.Spec, work.Arguments);
         return (RemotePerceptualSearchPlanner.Plan(contract, plan.Baseline, 0, work.Spec), encoding);
     }

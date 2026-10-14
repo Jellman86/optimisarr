@@ -36,7 +36,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
 | Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Native search integration, reconnect acceptance, interrupted-attempt history and export qualification |
 | Lifetime | Owned local scratch, stopped-process cleanup, cancellation propagation, source revalidation, attempt-fenced result persistence | All native worker implementations, resource exhaustion and restart/reconnect acceptance |
-| Final verification | Existing full verification runs on a fresh final encode; one higher-fidelity retry only for a sole measured perceptual failure, with rejected attempt history | Same safety on worker delivery and native image retry qualification |
+| Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Native worker retry/restart and exact-package qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
 
 Audio probe cuts use whole seconds to match the transcode contract. Fractional tails are
@@ -193,3 +193,25 @@ tools are absent; audio planning still uses the server's ffprobe to read source 
 Recorded checks validate source hashes, smallest measured passing selection, actual full
 commands and empty worker scratch. Reviewing those records also exposed inconsistent nested
 image location labels; executor and receiver now identify those measurements as worker evidence.
+
+## Fresh retry selection
+
+A retained retry supplies a minimum fidelity, rather than a selection proven on a previous
+encoder or host. Local and remote planning share this rule. The current encoder measures new
+samples at or above that minimum; an unavailable search uses the higher retry baseline and
+still requires independent final verification. Missing, exhausted or conflicting retry intent,
+changed sources, codecs or relevant targets cannot restart an unconstrained search. Local
+preparation refusal does not spend media failure/exclusion counts. The rejected attempt remains
+in history and no third automatic attempt is permitted.
+
+Reports separately label a pending retry's previous selection, its minimum setting and the
+current attempt's measured selection. Completed retry evidence records `minimumValue`;
+`retryValue` continues to mean a pending retry. Phone/desktop reports in both themes and all
+nine locales retain the existing layout and independent final-verification message.
+
+Real local tests on the Mac and Quark exercise a naturally disagreeing 95.5-second audio
+fixture: sampled silence passes, its fractional noise tail fails final verification, and a
+fresh higher-quality retry also fails the unchanged zero-distance gate. The original and first
+rejection remain. Seeded earlier-host image intent separately exercises fresh JPEG selection
+on both hosts and WebP on Quark, followed by verification, replacement and exact rollback.
+Missing-intent fixtures stop before measurement with zero media failures or exclusions.

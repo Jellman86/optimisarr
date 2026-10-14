@@ -64,7 +64,7 @@ public static class PerceptualQualitySearch
 {
     public const int MaximumProbes = 4;
 
-    internal static PerceptualQualityDecision Unavailable(PerceptualQualityPlan plan, string? reason) =>
+    public static PerceptualQualityDecision Unavailable(PerceptualQualityPlan plan, string? reason) =>
         new(null, plan.Baseline, true, $"Quality measurement was unavailable: {reason ?? "incomplete evidence"}. Use {plan.FallbackSetting} and final verification.");
 
     public static PerceptualQualityDecision Decide(PerceptualQualityPlan plan, IReadOnlyList<PerceptualQualityProbe> probes)

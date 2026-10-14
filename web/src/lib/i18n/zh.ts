@@ -2,6 +2,8 @@ import type { Messages } from './en'
 
 export const zh: Messages = {
   quality_first: {
+    previous_selected: "上次选择的设置",
+    retry_minimum: "重试的最低设置：{value}",
     searching: '正在搜索设置',
     interrupted: '搜索在选择设置前停止',
     retry: "以更高质量重试",
