@@ -45,6 +45,21 @@ public static class RemotePerceptualSearchPlanner
         _ => throw new ArgumentException("Unsupported perceptual encoder.")
     };
 
+    public static void ValidateStep(RemotePerceptualSearchStep step)
+    {
+        if (step?.Contract is not { } contract) throw new ArgumentException("A probe needs a frozen search contract.");
+        var image = contract.Kind == MediaKind.Image;
+        var spec = new TranscodeSpec(WorkerProtocol.InputPlaceholder, WorkerProtocol.OutputPlaceholder + OutputExtension(contract.Encoder),
+            null, null, null, false, Kind: contract.Kind, AudioEncoder: image ? null : contract.Encoder,
+            AudioBitrateKbps: image ? null : step.Value, ImageEncoder: image ? contract.Encoder : null, ImageQuality: image ? step.Value : null);
+        var canonical = Plan(contract, step.Value, step.CandidateIndex, spec);
+        if (!CommandsEqual(canonical.SampleCommands, step.SampleCommands) || !CommandsEqual(canonical.ReferenceCommands, step.ReferenceCommands))
+            throw new ArgumentException("The sample commands are outside the frozen original-source contract.");
+    }
+
+    private static bool CommandsEqual(IReadOnlyList<IReadOnlyList<string>> expected, IReadOnlyList<IReadOnlyList<string>>? actual) =>
+        actual is not null && expected.Count == actual.Count && expected.Zip(actual).All(pair => pair.Second is not null && pair.First.SequenceEqual(pair.Second));
+
     private static IReadOnlyList<string> Bounded(IReadOnlyList<string> command, long maximumBytes)
     {
         var args = command.ToList();

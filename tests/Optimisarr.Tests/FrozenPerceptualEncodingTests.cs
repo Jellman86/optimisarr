@@ -86,6 +86,23 @@ public sealed class FrozenPerceptualEncodingTests
         Assert.Throws<ArgumentException>(() => FrozenPerceptualEncoding.Create(Contract(), spec, args));
     }
 
+    [Fact]
+    public void A_native_worker_can_independently_check_that_selection_changes_exactly_one_frozen_control()
+    {
+        var contract = Contract(); var args = FfmpegCommandBuilder.Build(Spec(), optimisedMarker: "frozen-release").ToArray();
+        var selected = FrozenPerceptualEncoding.SelectArguments(contract, args, 96);
+        var index = Array.IndexOf(args, "-b:a") + 1;
+        Assert.Equal("96k", selected[index]);
+        var restored = selected.ToArray(); restored[index] = "128k";
+        Assert.Equal(args, restored); Assert.Equal("128k", args[index]);
+        Assert.Throws<ArgumentException>(() => FrozenPerceptualEncoding.SelectArguments(contract, args, 17));
+        Assert.Throws<ArgumentException>(() => FrozenPerceptualEncoding.SelectArguments(contract, args.Concat(["-b:a", "96k"]).ToArray(), 96));
+        Assert.Throws<ArgumentException>(() => FrozenPerceptualEncoding.SelectArguments(contract,
+            args.Select(arg => arg == "aac" ? "libopus" : arg).ToArray(), 96));
+        Assert.Throws<ArgumentException>(() => FrozenPerceptualEncoding.SelectArguments(contract,
+            args.Select(arg => arg == WorkerProtocol.InputPlaceholder ? "/another/source" : arg).ToArray(), 96));
+    }
+
     [Theory]
     [InlineData("mjpeg", ".jpg")]
     [InlineData("libwebp", ".webp")]

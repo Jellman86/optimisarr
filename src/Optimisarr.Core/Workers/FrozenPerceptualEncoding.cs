@@ -17,12 +17,27 @@ public sealed record FrozenPerceptualEncoding(Guid ContractId, TranscodeSpec Spe
     {
         if (state is null || state.Contract?.Id != ContractId || !state.CanEncode)
             throw new InvalidOperationException("A final encode requires this contract's completed perceptual search.");
-        var index = Validate(state.Contract, Spec, Arguments);
+        Validate(state.Contract, Spec, Arguments);
         var value = state.Decision!.SelectedValue;
         var selected = Spec.Kind == MediaKind.Image ? Spec with { ImageQuality = value } : Spec with { AudioBitrateKbps = value };
-        var args = Arguments.ToArray();
-        args[index] = Setting(selected);
-        return new(ContractId, selected, Array.AsReadOnly(args));
+        return new(ContractId, selected, SelectArguments(state.Contract, Arguments, value));
+    }
+
+    /// <summary>Lets the native worker compare a returned command with its claim without trusting new settings.</summary>
+    public static IReadOnlyList<string> SelectArguments(RemotePerceptualSearchContract contract, IReadOnlyList<string> arguments, int value)
+    {
+        if (!RemotePerceptualProbeValidator.ValidContract(contract) || !contract.Plan.Values.Contains(value)
+            || arguments is null || arguments.Count < 2 || arguments.Any(arg => arg is null)
+            || arguments[^1] != WorkerProtocol.OutputPlaceholder + RemotePerceptualSearchPlanner.OutputExtension(contract.Encoder)
+            || arguments.Count(arg => arg == WorkerProtocol.InputPlaceholder) != 1)
+            throw new ArgumentException("Selection requires a planned setting and the claim's portable command.");
+        if (arguments[Unique(arguments, "-i")] != WorkerProtocol.InputPlaceholder
+            || arguments[Unique(arguments, contract.Kind == MediaKind.Image ? "-c:v" : "-c:a")] != contract.Encoder)
+            throw new ArgumentException("The command uses another input or encoder.");
+        var index = Unique(arguments, contract.Kind == MediaKind.Audio ? "-b:a" : contract.Encoder == "mjpeg" ? "-q:v" : "-quality");
+        var args = arguments.ToArray();
+        args[index] = EncodedSetting(contract.Kind, contract.Encoder, value);
+        return Array.AsReadOnly(args);
     }
 
     private static int Validate(RemotePerceptualSearchContract contract, TranscodeSpec spec, IReadOnlyList<string> args)
@@ -50,8 +65,10 @@ public sealed record FrozenPerceptualEncoding(Guid ContractId, TranscodeSpec Spe
         return indexes[0] + 1;
     }
 
-    private static string Setting(TranscodeSpec spec) => spec.Kind == MediaKind.Audio
-        ? (spec.AudioBitrateKbps ?? AudioTarget.DefaultBitrateKbps).ToString(CultureInfo.InvariantCulture) + "k"
-        : (spec.ImageEncoder == "mjpeg" ? FfmpegCommandBuilder.JpegQuantizer(spec.ImageQuality ?? ImageTarget.DefaultQuality)
-            : spec.ImageQuality ?? ImageTarget.DefaultQuality).ToString(CultureInfo.InvariantCulture);
+    private static string Setting(TranscodeSpec spec) => EncodedSetting(spec.Kind,
+        spec.Kind == MediaKind.Audio ? spec.AudioEncoder! : spec.ImageEncoder!,
+        spec.Kind == MediaKind.Audio ? spec.AudioBitrateKbps ?? AudioTarget.DefaultBitrateKbps : spec.ImageQuality ?? ImageTarget.DefaultQuality);
+    private static string EncodedSetting(MediaKind kind, string encoder, int value) => kind == MediaKind.Audio
+        ? value.ToString(CultureInfo.InvariantCulture) + "k"
+        : (encoder == "mjpeg" ? FfmpegCommandBuilder.JpegQuantizer(value) : value).ToString(CultureInfo.InvariantCulture);
 }

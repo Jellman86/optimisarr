@@ -181,3 +181,11 @@ retained under `native-probe-01` and `quark-native-probe-01-evidence`.
 This qualifies probe execution and independent verification in isolation. Actual worker-loop
 renewal/reconnect, capability proof, memory admission, Swift support, package dependencies,
 soundtrack selection and preview/calibration parity remain outstanding. Protocol 11 is still off.
+
+The subsequent native search-session stage passes **3,430 backend tests** and **359 shared
+.NET tests** on the Mac (three Windows-only skips), with zero-warning rebuilds. Its fourteen
+session cases cover a committed report whose response was lost, bounded persistent outages,
+cancellation during replay, frozen contract/sample questions, unsafe sample commands,
+premature selection, changed final commands and source-refusal overrides. The worker checks
+final arguments using the same one-control patch as the server. These are session tests;
+the session is not yet wired into automatic job execution or capability advertisement.

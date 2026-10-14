@@ -144,5 +144,10 @@ scratch after child processes stop. Changed retry sources, changed tools and una
 workspace preparation block encoding. Unsupported bounded candidate evidence cannot fall
 through to ordinary SSIM decoding. Probe errors retain completed evidence and cannot become
 a partial quality pass. The .NET report transport has byte/deadline limits, rejects ambiguous
-directions and marks interrupted responses as replayable; consuming that replay in the actual
-worker loop still needs implementation. These components do not activate protocol 11.
+directions and marks interrupted responses as replayable. A shared native search session now
+replays the exact report after a lost committed response, checks source/raw evidence and the
+unchanged contract, and compares the selected final command with the claim while permitting
+only its measured quality-control change. Replays are bounded, cancellation propagates, and
+the server cannot override a required source refusal. Connecting the session to `JobRunner`,
+lease renewal, native capability proof and resource admission still needs implementation.
+These components do not activate protocol 11.
