@@ -19,6 +19,16 @@ public sealed class RemotePerceptualProbeTests
         [new(0, 1000, Source, Candidate, Image: Image(90, Candidate), Ssim: ImageQualityResult.Ok(0.95))], EncoderSha256: Tool);
 
     [Fact]
+    public void A_higher_quality_retry_cannot_adopt_a_changed_original()
+    {
+        var contract = ImageContract() with { RequiredSourceSha256 = Candidate };
+        var report = ImageReport(contract);
+        var result = RemotePerceptualProbeValidator.Validate(contract, 80, Source, report);
+        Assert.True(result.SourceRejected);
+        Assert.Contains("changed", result.Error);
+    }
+
+    [Fact]
     public void A_required_source_metadata_read_failure_blocks_before_any_sample_or_baseline_encode()
     {
         var contract = ImageContract();

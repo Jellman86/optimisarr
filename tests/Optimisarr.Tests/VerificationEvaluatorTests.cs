@@ -95,6 +95,7 @@ public sealed class VerificationEvaluatorTests
     {
         Kind = MediaKind.Image,
         OutputVideoCodec = "webp",
+        ExpectedVideoCodec = "webp",
         OriginalDurationSeconds = null,
         OutputDurationSeconds = null,
         OriginalAudioTrackCount = 0,
@@ -133,6 +134,21 @@ public sealed class VerificationEvaluatorTests
 
         Assert.False(report.Passed);
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Picture"));
+    }
+
+    [Theory]
+    [InlineData("webp", "webp", true)]
+    [InlineData("WEBP", "webp", true)]
+    [InlineData("mjpeg", "mjpeg", true)]
+    [InlineData("webp", "png", false)]
+    [InlineData("mjpeg", "webp", false)]
+    [InlineData("webp", null, false)]
+    public void Image_format_is_verified_against_the_frozen_intent(string expected, string? actual, bool passes)
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyImage() with
+            { ExpectedVideoCodec = expected, OutputVideoCodec = actual }, VerificationPolicy.Default);
+        Assert.Equal(passes, report.Passed);
+        Assert.Equal(passes ? CheckOutcome.Passed : CheckOutcome.Failed, Outcome(report, "Image format"));
     }
 
     [Fact]

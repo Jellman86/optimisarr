@@ -1357,7 +1357,8 @@ public sealed partial class QueueDispatcher(
         bool AdaptiveAudioQuality = false,
         bool AdaptiveImageQuality = false,
         PerceptualSearchSummary? PerceptualSearch = null,
-        int PerceptualRetryCount = 0)
+        int PerceptualRetryCount = 0,
+        string? SourcePixelFormat = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1429,9 +1430,22 @@ public sealed partial class QueueDispatcher(
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
         }
 
-        if (work.Spec.Kind == MediaKind.Audio && work.AdaptiveAudioQuality
-            || work.Spec.Kind == MediaKind.Image && work.AdaptiveImageQuality)
+        var perceptual = work.Spec.Kind == MediaKind.Audio && work.AdaptiveAudioQuality
+            || work.Spec.Kind == MediaKind.Image && work.AdaptiveImageQuality;
+        if (perceptual && worker.ProtocolVersion < WorkerProtocol.PerceptualQualityVersion)
             return RemoteWorkPlan.Refused("Audio/image quality-first requires the new perceptual-search worker contract; this worker cannot run it yet.");
+        RemotePerceptualSearchStep? perceptualStep = null;
+        FrozenPerceptualEncoding? perceptualEncoding = null;
+        if (perceptual)
+        {
+            var required = new JobRequirements(null, work.Spec.Kind == MediaKind.Audio ? work.Spec.AudioEncoder : null,
+                null, VmafCapability.None, 0, work.Spec.Kind, work.Spec.ImageEncoder, PerceptualSearch: true);
+            var match = WorkerCapabilityMatcher.Match(worker, required);
+            if (!match.Accepted) return RemoteWorkPlan.Refused(string.Join(" ", match.Reasons));
+            try { (perceptualStep, perceptualEncoding) = await PlanRemotePerceptualAsync(work, cancellationToken); }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+            { return RemoteWorkPlan.Refused(error.Message); }
+        }
 
         if (vmafModel is not null)
             work = work with { Original = work.Original with { VmafModel = vmafModel } };
@@ -1441,12 +1455,12 @@ public sealed partial class QueueDispatcher(
             return RemoteWorkPlan.Refused("The library keeps its work on this server.");
         }
 
-        var strictVerification = forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
+        var strictVerification = perceptual || forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
         if (strictVerification && work.IsDisposable)
             return RemoteWorkPlan.Refused("Sidecar-only verification requires a full-file job.");
 
         // Video and audio share the transfer lifecycle; remux and image paths stay local.
-        if (work.Spec.Kind != MediaKind.Audio && (work.Spec.VideoCodec is null || work.VideoEncoder is null))
+        if (!(work.Spec.Kind == MediaKind.Image && perceptual) && work.Spec.Kind != MediaKind.Audio && (work.Spec.VideoCodec is null || work.VideoEncoder is null))
         {
             return RemoteWorkPlan.Refused("Only video and audio re-encodes are offered to remote workers.");
         }
@@ -1456,7 +1470,7 @@ public sealed partial class QueueDispatcher(
         // being done here first. The worker measures the candidates this machine chooses, on the
         // encoder that will do the real encode.
         AdaptiveSearchStep? search = null;
-        if (work.Spec.Kind != MediaKind.Audio && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
+        if (work.Spec.Kind == MediaKind.Video && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
             search = work.VideoQuality is { } baseline
                 ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken, work.Original.VmafModel)
@@ -1482,7 +1496,7 @@ public sealed partial class QueueDispatcher(
         double? referenceContainerLead = null;
         string? referenceVideoCodec = null;
         var referenceFrameRate = work.Spec.TargetFrameRate ?? work.VideoFrameRate;
-        if (work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
+        if (work.Spec.Kind == MediaKind.Video && work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var sourceProbe = await scope.ServiceProvider
@@ -1492,7 +1506,7 @@ public sealed partial class QueueDispatcher(
             referenceContainerLead = ContainerLeadSeconds(sourceProbe);
             referenceFrameRate ??= sourceProbe.VideoFrameRate;
         }
-        var quality = work.SourcePicture is { } source
+        var quality = work.Spec.Kind == MediaKind.Video && work.SourcePicture is { } source
             ? RemoteQualityPlanner.Plan(
                 work.VerificationPolicy,
                 source.Width,
@@ -1519,18 +1533,20 @@ public sealed partial class QueueDispatcher(
             work.UsedHardwareDecode && work.VideoEncoder is not null ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
             work.Spec.AudioEncoder,
             search,
-            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2
+            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Image ? 4 : work.Spec.Kind == MediaKind.Audio ? 2
                 : work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded) ? 3 : 1, Guid.NewGuid(),
-                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled,
+                work.Spec.Kind != MediaKind.Image && (work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled),
                 work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind),
                 work.Spec.Kind == MediaKind.Video && work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded)
                     ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null,
-                CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null) : null,
+                CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null,
+                Image: work.Spec.Kind == MediaKind.Image ? new(work.VerificationPolicy.ImageQualityGateEnabled,
+                    work.VerificationPolicy.ImageMetadataGateEnabled, work.VerificationPolicy.RequiresImagePerceptualQuality(work.Spec.Kind)) : null) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
             work.VideoQuality?.Mode,
-            work.Spec.Kind));
+            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder));
     }
 
     /// <summary>
@@ -1869,7 +1885,11 @@ public sealed partial class QueueDispatcher(
             // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
             // would add a full decode pass without providing another safety signal.
             VideoReencoded: spec.VideoCodec is not null,
-            ExpectedVideoCodec: spec.VideoCodec,
+            // ffprobe describes a still's encoded picture as a video stream too. Freeze its
+            // codec so a readable file under the requested suffix cannot bypass format checks.
+            ExpectedVideoCodec: spec.Kind == MediaKind.Image ? spec.ImageEncoder switch
+                { "mjpeg" => "mjpeg", "libwebp" => "webp", _ => throw new InvalidOperationException("Unsupported image encoder.") }
+                : spec.VideoCodec,
             // The size a downscale was told to produce. The gate holds the output to this rather
             // than to the source, and it is the same PictureSize the scale filter was built from.
             ExpectedWidth: spec.ExpectedSize?.Width,
@@ -2113,7 +2133,8 @@ public sealed partial class QueueDispatcher(
             AdaptiveAudioQuality: library?.AdaptiveAudioQuality ?? false,
             AdaptiveImageQuality: library?.AdaptiveImageQuality ?? false,
             PerceptualSearch: ReadPerceptualRetry(job),
-            PerceptualRetryCount: job.QualityRetryCount);
+            PerceptualRetryCount: job.QualityRetryCount,
+            SourcePixelFormat: media.PixelFormat);
     }
 
     /// <summary>

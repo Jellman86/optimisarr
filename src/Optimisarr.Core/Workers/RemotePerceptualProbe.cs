@@ -7,7 +7,7 @@ namespace Optimisarr.Core.Workers;
 /// <summary>Frozen server intent. Workers return measurements; only the server judges targets.</summary>
 public sealed record RemotePerceptualSearchContract(Guid Id, MediaKind Kind, string Encoder,
     PerceptualQualityPlan Plan, VerificationPolicy Policy, IReadOnlyList<PerceptualAudioWindow> AudioWindows,
-    AudioQualityInput? SourceAudio = null, ImageQualityMeasurementContext? SourceImage = null);
+    AudioQualityInput? SourceAudio = null, ImageQualityMeasurementContext? SourceImage = null, string? RequiredSourceSha256 = null);
 
 /// <summary>Assessment of the transferred original, before any sample encode starts.</summary>
 public sealed record RemotePerceptualSourceEvidence(AudioQualityInput? Audio = null,
@@ -39,6 +39,8 @@ public static class RemotePerceptualProbeValidator
             || contract.Encoder != report.Encoder || report.Value != asked || !contract.Plan.Values.Contains(asked)
             || !SameHash(sourceHash, report.SourceSha256))
             return Refuse("The perceptual report does not match its assigned contract, encoder, source or setting.");
+        if (contract.RequiredSourceSha256 is { } required && !SameHash(required, sourceHash))
+            return new(null, true, "The original changed before its higher-quality retry; start a fresh attempt.");
         var sourceError = SourceError(contract, sourceHash, report.Source);
         if (sourceError is not null) return new(null, true, sourceError);
         var expected = contract.Kind == MediaKind.Image ? 1 : contract.AudioWindows.Count;
@@ -160,12 +162,13 @@ public static class RemotePerceptualProbeValidator
 
     internal static bool ValidContract(RemotePerceptualSearchContract contract)
     {
-        if (contract is null || contract.Id == Guid.Empty || contract.Plan?.Values is not { Count: > 1 } || contract.Policy is null
+        if (contract is null || contract.Id == Guid.Empty || contract.Plan?.Values is not { Count: > 0 } || contract.Policy is null
+            || contract.RequiredSourceSha256 is not null && !Hash(contract.RequiredSourceSha256)
             || contract.AudioWindows is null || contract.Plan.BaselineIndex < 0 || contract.Plan.BaselineIndex >= contract.Plan.Values.Count) return false;
         try
         {
-            var canonical = contract.Kind == MediaKind.Image ? PerceptualQualityPlan.Image(contract.Encoder, contract.Plan.Baseline)
-                : PerceptualQualityPlan.Audio(contract.Encoder, contract.Plan.Baseline);
+            var canonical = contract.Kind == MediaKind.Image ? PerceptualQualityPlan.Image(contract.Encoder, contract.Plan.Baseline, contract.Plan.MinimumValue)
+                : PerceptualQualityPlan.Audio(contract.Encoder, contract.Plan.Baseline, contract.Plan.MinimumValue);
             if (!contract.Plan.Values.SequenceEqual(canonical.Values)) return false;
         }
         catch (ArgumentException) { return false; }

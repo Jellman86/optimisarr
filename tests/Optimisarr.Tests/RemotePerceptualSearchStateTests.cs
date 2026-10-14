@@ -28,6 +28,17 @@ public sealed class RemotePerceptualSearchStateTests
     }
 
     [Fact]
+    public void Original_metadata_evidence_cannot_change_between_settings_for_the_same_original_hash()
+    {
+        var state = RemotePerceptualSearchState.Start(Contract());
+        state = RemotePerceptualSearchCoordinator.Advance(state, Source, Report(state), new('d', 64)).State!;
+        var report = Report(state);
+        var changed = report with { Source = report.Source with { ImageMetadata = ImageMetadataResult.Ok(new(true, false)) } };
+        var result = RemotePerceptualSearchCoordinator.Advance(state, Source, changed, new('e', 64));
+        Assert.False(result.Accepted); Assert.Single(state.Probes);
+    }
+
+    [Fact]
     public void A_forged_settled_decision_cannot_authorise_an_encode_before_the_search_has_finished()
     {
         var state = RemotePerceptualSearchState.Start(Contract());

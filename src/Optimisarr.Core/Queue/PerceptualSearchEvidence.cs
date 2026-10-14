@@ -80,8 +80,7 @@ public static class PerceptualSearchRunner
             var settled = result.Measurement.Available
                 ? PerceptualQualitySearch.Decide(plan, probes.Select(p => new PerceptualQualityProbe(
                     p.Value, p.Measurement.MeetsTarget, p.EncodedBytes)).ToArray())
-                : new PerceptualQualityDecision(null, plan.Baseline, true,
-                    $"Quality measurement was unavailable: {result.Measurement.Error ?? "incomplete evidence"}. Use the library setting and final verification.");
+                : PerceptualQualitySearch.Unavailable(plan, result.Measurement.Error);
             var snapshot = new PerceptualSearchResult(probes.ToArray(), settled);
             if (checkpoint is not null) await checkpoint(snapshot, token);
             if (settled.Complete) return snapshot;

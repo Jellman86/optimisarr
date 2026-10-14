@@ -20,7 +20,10 @@ public enum LeaseEndReason
     HeldForSizeReview,
 
     /// <summary>The server rejected the full encode because samples predict a size-gate failure.</summary>
-    PredictedSizeFailure
+    PredictedSizeFailure,
+
+    /// <summary>Required source inspection is unavailable; no media encode or handback budget was spent.</summary>
+    SourceAssessmentUnavailable
 }
 
 /// <summary>Why a lease operation was accepted or refused.</summary>

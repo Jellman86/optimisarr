@@ -299,6 +299,8 @@ app.MapWorkerEndpoints();
 
 app.MapWorkerLeaseEndpoints();
 
+app.MapWorkerPerceptualSearchEndpoints();
+
 app.MapWorkerSourceEndpoints();
 
 app.MapWorkerResultEndpoints();

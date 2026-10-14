@@ -30,6 +30,8 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
     [InlineData("perceptual", false)]
     [InlineData("ssim", false)]
     [InlineData("metadata", false)]
+    [InlineData("format", false)]
+    [InlineData("irrelevant-audio-policy", true)]
     public async Task Image_worker_evidence_is_judged_without_any_server_media_tools(string variation, bool passes)
     {
         Directory.CreateDirectory(_root);
@@ -44,15 +46,17 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
                 ImageQualityResult.Ok(variation == "ssim" ? 0.2 : 0.95), ImageMetadataResult.Ok(new(true, true)),
                 ImageMetadataResult.Ok(new(variation != "metadata", true)), tool, tool, tool));
         var original = new OriginalSnapshot("unread-original.webp", 1000, null, 0, 0, false, false,
-            Kind: MediaKind.Image, VideoReencoded: false);
+            Kind: MediaKind.Image, VideoReencoded: false, ExpectedVideoCodec: "webp");
         var policy = VerificationPolicy.Default with { ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 85,
-            ImageQualityGateEnabled = true, MinimumImageSsim = 0.9, ImageMetadataGateEnabled = true };
+            ImageQualityGateEnabled = true, MinimumImageSsim = 0.9, ImageMetadataGateEnabled = true,
+            AudioLoudnessGateEnabled = variation == "irrelevant-audio-policy", AudioClippingGateEnabled = variation == "irrelevant-audio-policy" };
+        if (variation == "format") evidence = evidence with { CandidateProbe = imageProbe.Replace("webp", "png") };
         var result = await Service().VerifyAsync(original, output, policy, default, remoteEvidence: evidence);
         Assert.Equal(passes, result.Report.Passed);
         Assert.Equal("Worker", result.Report.ImagePerceptualQuality!.MeasurementLocation);
         if (!passes) Assert.Contains(result.Report.Checks, c => c.Outcome == CheckOutcome.Failed
             && c.Name == (variation == "perceptual" ? ImagePerceptualQualityGate.CheckName
-                : variation == "ssim" ? "Image quality (SSIM)" : "Image metadata (EXIF/ICC)"));
+                : variation == "ssim" ? "Image quality (SSIM)" : variation == "format" ? "Image format" : "Image metadata (EXIF/ICC)"));
     }
 
     [Fact]

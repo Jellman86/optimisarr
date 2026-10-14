@@ -83,6 +83,10 @@ public static class VerificationEvaluator
         if (isImage)
         {
             checks.Add(PicturePresent(input));
+            if (input.ExpectedVideoCodec is { } expectedImageCodec)
+                checks.Add(string.Equals(input.OutputVideoCodec, expectedImageCodec, StringComparison.OrdinalIgnoreCase)
+                    ? Pass("Image format", $"The output uses the requested {expectedImageCodec} format.")
+                    : Fail("Image format", $"Expected {expectedImageCodec}; the output reports {input.OutputVideoCodec ?? "no picture codec"}."));
             checks.Add(DimensionsRetained(input));
 
             // The structural-quality (SSIM) gate is the still-image counterpart of VMAF and

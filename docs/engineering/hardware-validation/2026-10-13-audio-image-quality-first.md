@@ -134,3 +134,18 @@ share one process-wide lane. These lifetime changes have process and concurrency
 Picard remains unreachable through both its Tailscale SSH address and the Quark LAN jump;
 no new physical Windows qualification is claimed. No installed service or personal media
 was modified by these runs.
+
+## 14 October: server search exchange
+
+The server exchange adds tests for claim-time image intent, measurement workspace refusal,
+frozen settings, concurrent and replayed probes, stale leases/attempts, source metadata changes,
+protocol downgrade, source rejection without failure counts and premature delivery. Frozen
+commands round-trip through persisted JSON for JPEG and WebP; additional inputs and mismatched
+or traversing output suffixes are refused. A wrong image codec fails the same final evaluator
+used for local and worker evidence. Image evidence remains usable when unrelated audio gates
+are enabled. Retry-floor tests cover custom audio rates and the highest JPEG quantizer.
+
+The Mac rebuild has **zero warnings** and all **3,414 backend tests pass**. Frontend checks,
+all **95 unit tests** and all **333 browser tests pass**. Protocol 11 remains disabled while
+native execution and resource admission are implemented. These results qualify the server
+exchange; they do not claim end-to-end native worker parity.

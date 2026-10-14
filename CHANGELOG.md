@@ -8,6 +8,7 @@
 
 - Experimental local image and standalone audio quality-first searches test up to four compression settings against explicit perceptual targets before the final encode. Search evidence remains separate from final verification; existing libraries keep fixed settings. Worker search and soundtrack selection remain under implementation.
 - Add bounded worker capability and lease-search storage, replay-safe perceptual search rules and strict image verification evidence as a worker foundation. Native search placement remains disabled until all clients implement it.
+- Add the server-side audio/image search exchange with frozen encoder commands, source and attempt fences, replay-safe progress, measurement workspace admission and delivery blocked until selection settles. Protocol 11 stays disabled pending native clients.
 - Completed quality probes are retained during a search and after cancellation. A sole final perceptual-quality failure can trigger one higher-fidelity retry, preserving the rejected attempt and every independent safety check.
 
 - Add the first exact-copy cleanup safety foundation: durable rollback intent, independent retention and reservations that survive restart. File actions remain unavailable while D3 concurrency and recovery qualification continues.
@@ -24,6 +25,8 @@
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
 
 ### Fixed
+
+- Final image verification checks the frozen target format as well as readability, dimensions and quality; a different codec under the requested filename cannot pass.
 
 - Native tool capture decodes UTF-8 explicitly on Windows. Metadata acceptance fixtures prepare an atomic replacement so container ownership cannot prevent qualification.
 

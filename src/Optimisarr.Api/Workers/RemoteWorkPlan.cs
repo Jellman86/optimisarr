@@ -32,7 +32,10 @@ public sealed record RemoteAssignment(
     int? RequestedVideoQuality = null,
     int? EffectiveVideoQuality = null,
     string? VideoQualityMode = null,
-    MediaKind Kind = MediaKind.Video);
+    MediaKind Kind = MediaKind.Video,
+    RemotePerceptualSearchStep? PerceptualSearch = null,
+    FrozenPerceptualEncoding? PerceptualEncoding = null,
+    string? ImageEncoder = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

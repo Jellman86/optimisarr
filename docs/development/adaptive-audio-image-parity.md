@@ -34,7 +34,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
-| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound search model rejects replay conflicts and source/tool changes | Remote endpoint and native search integration, reconnect acceptance, interrupted-attempt history and export qualification |
+| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Native search integration, reconnect acceptance, interrupted-attempt history and export qualification |
 | Lifetime | Owned local scratch, stopped-process cleanup, cancellation propagation, source revalidation, attempt-fenced result persistence | All native worker implementations, resource exhaustion and restart/reconnect acceptance |
 | Final verification | Existing full verification runs on a fresh final encode; one higher-fidelity retry only for a sole measured perceptual failure, with rejected attempt history | Same safety on worker delivery and native image retry qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
@@ -113,3 +113,26 @@ Before declaring parity, prove:
 Record exact commits, tool hashes, commands, wall time, memory and tested coverage. Keep raw
 private evidence outside Git. Update this table as each implementation and qualification lands;
 do not mark the larger #332 capability complete merely because the local path passes.
+
+## Server exchange (14 October)
+
+The server can now freeze an audio/image search when claiming a job for a protocol-11 worker.
+`POST /api/workers/leases/{leaseId}/perceptual-probe` accepts at most 48 KiB of canonical
+measurement evidence within a 64 KiB request limit. Only the current holder, live lease and
+execution attempt may advance it. Identical reports replay their response; conflicting,
+out-of-order, expired and downgraded-worker reports cannot advance. Source rejection ends
+the lease without a full encode, quality retry or media failure count. Original metadata,
+source hash and native tool identities cannot change between settings.
+
+The selected encode changes exactly one control in the saved command. It keeps artwork,
+metadata and marker intent and never reloads changed library settings. Output suffixes and
+input arguments are validated. Delivery and verification remain blocked while the search
+is incomplete or its encoding snapshot is corrupt. Image final verification checks the
+frozen codec too. A retry contract retains its source hash and searches only at or above
+the required fidelity, including JPEG's one-setting maximum-quality case.
+
+Claim admission includes bounded samples, lossless references, native PCM scratch and
+metadata rewrites. The required workspace is sent with the assignment for native admission;
+native available-memory checks and reservations still need implementation. The global worker
+protocol remains **10**: declaring protocol-11 server contracts does not activate native work.
+Native capability discovery, execution and exact-package acceptance remain required.

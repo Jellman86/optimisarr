@@ -242,6 +242,12 @@
               }
             ]
           },
+          "imageEncoder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "jobId": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -278,6 +284,16 @@
           "outputExtension": {
             "type": "string"
           },
+          "perceptualSearch": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemotePerceptualSearchStep"
+              }
+            ]
+          },
           "quality": {
             "$ref": "#/components/schemas/QualityRequirementDto"
           },
@@ -285,6 +301,15 @@
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "requiredScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
               "integer",
               "string"
             ]
@@ -1796,6 +1821,35 @@
         ],
         "type": "object"
       },
+      "ImageQualityMeasurementContext": {
+        "properties": {
+          "referenceHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "referenceMayHaveAlpha": {
+            "type": "boolean"
+          },
+          "referenceWidth": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "referenceWidth",
+          "referenceHeight",
+          "referenceMayHaveAlpha"
+        ],
+        "type": "object"
+      },
       "ImageQualityResult": {
         "properties": {
           "error": {
@@ -2657,6 +2711,122 @@
         ],
         "type": "object"
       },
+      "PerceptualAudioWindow": {
+        "properties": {
+          "durationSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "startSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "startSeconds",
+          "durationSeconds"
+        ],
+        "type": "object"
+      },
+      "PerceptualProbeDirectionDto": {
+        "properties": {
+          "arguments": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "nextStep": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemotePerceptualSearchStep"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "selectedValue": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "sourceBlocked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nextStep",
+          "selectedValue",
+          "arguments",
+          "sourceBlocked",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "PerceptualQualityPlan": {
+        "properties": {
+          "baseline": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "baselineIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "minimumValue": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "values": {
+            "items": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "values",
+          "baselineIndex"
+        ],
+        "type": "object"
+      },
       "PinDiagnosticRequest": {
         "properties": {
           "pinned": {
@@ -3188,6 +3358,298 @@
           "measureMetadata",
           "measurePerceptual"
         ],
+        "type": "object"
+      },
+      "RemotePerceptualProbeReport": {
+        "properties": {
+          "contractId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "encoder": {
+            "type": "string"
+          },
+          "encoderSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/RemotePerceptualSampleEvidence"
+            },
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RemotePerceptualSourceEvidence"
+          },
+          "sourceSha256": {
+            "type": "string"
+          },
+          "value": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "contractId",
+          "encoder",
+          "value",
+          "sourceSha256",
+          "source",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSampleEvidence": {
+        "properties": {
+          "audio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteAudioQualityEvidence"
+              }
+            ]
+          },
+          "candidateLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "candidateSha256": {
+            "type": "string"
+          },
+          "encodedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "index": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "referenceSha256": {
+            "type": "string"
+          },
+          "sourceLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "ssim": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageQualityResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "index",
+          "encodedBytes",
+          "referenceSha256",
+          "candidateSha256"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSearchContract": {
+        "properties": {
+          "audioWindows": {
+            "items": {
+              "$ref": "#/components/schemas/PerceptualAudioWindow"
+            },
+            "type": "array"
+          },
+          "encoder": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MediaKind"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PerceptualQualityPlan"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/VerificationPolicy"
+          },
+          "requiredSourceSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceAudio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "sourceImage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageQualityMeasurementContext"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "encoder",
+          "plan",
+          "policy",
+          "audioWindows"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSearchStep": {
+        "properties": {
+          "candidateIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "contract": {
+            "$ref": "#/components/schemas/RemotePerceptualSearchContract"
+          },
+          "referenceCommands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "sampleCommands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "value": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "contract",
+          "value",
+          "candidateIndex",
+          "sampleCommands",
+          "referenceCommands"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSourceEvidence": {
+        "properties": {
+          "audio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "imageMetadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageMetadataResult"
+              }
+            ]
+          }
+        },
         "type": "object"
       },
       "RemoteVerificationContract": {
@@ -5009,6 +5471,194 @@
         },
         "required": [
           "bytes"
+        ],
+        "type": "object"
+      },
+      "VerificationPolicy": {
+        "properties": {
+          "audioClippingGateEnabled": {
+            "type": "boolean"
+          },
+          "audioLoudnessGateEnabled": {
+            "type": "boolean"
+          },
+          "audioQualityGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "audioQualityReportingEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "clipVmafEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "durationTolerancePercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "imageMetadataGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imagePerceptualGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imagePerceptualReportingEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imageQualityGateEnabled": {
+            "type": "boolean"
+          },
+          "maxLoudnessDriftLufs": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "maxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "maximumAudioQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumSoundtrackQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measureVmaf": {
+            "default": false,
+            "type": "boolean"
+          },
+          "minimumImagePerceptualScore": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumImageSsim": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumVmafCatastrophicMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumVmafHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "qualityGateEnabled": {
+            "type": "boolean"
+          },
+          "requireAudioRetained": {
+            "type": "boolean"
+          },
+          "requireSizeReduction": {
+            "type": "boolean"
+          },
+          "requireSubtitlesRetained": {
+            "type": "boolean"
+          },
+          "soundtrackQualityGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "soundtrackQualityReportingEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "vmafFrameSubsample": {
+            "default": 1,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "durationTolerancePercent",
+          "requireAudioRetained",
+          "requireSubtitlesRetained",
+          "requireSizeReduction",
+          "qualityGateEnabled",
+          "minimumVmafHarmonicMean",
+          "minimumVmafMin",
+          "minimumVmafCatastrophicMin",
+          "audioLoudnessGateEnabled",
+          "maxLoudnessDriftLufs",
+          "audioClippingGateEnabled",
+          "maxTruePeakDbtp",
+          "imageQualityGateEnabled",
+          "minimumImageSsim"
         ],
         "type": "object"
       },
@@ -8700,6 +9350,97 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/perceptual-probe": {
+      "post": {
+        "operationId": "ReportPerceptualProbe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemotePerceptualProbeReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerceptualProbeDirectionDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "409": {
             "content": {

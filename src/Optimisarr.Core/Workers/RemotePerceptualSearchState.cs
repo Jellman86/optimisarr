@@ -16,7 +16,8 @@ public sealed record RemotePerceptualToolIdentity(string EncoderSha256, string? 
 public sealed record RemotePerceptualSearchState(RemotePerceptualSearchContract Contract,
     IReadOnlyList<PerceptualSearchProbe> Probes, int? AskedValue, PerceptualQualityDecision? Decision = null,
     int? LastReportValue = null, string? LastReportSha256 = null, bool SourceRejected = false, string? SourceError = null,
-    string? SourceSha256 = null, RemotePerceptualToolIdentity? Tools = null)
+    string? SourceSha256 = null, RemotePerceptualToolIdentity? Tools = null,
+    FrozenPerceptualEncoding? Encoding = null, RemotePerceptualSourceEvidence? Source = null)
 {
     public bool CanEncode
     {
@@ -42,10 +43,11 @@ public sealed record RemotePerceptualSearchState(RemotePerceptualSearchContract 
         }
     }
 
-    public static RemotePerceptualSearchState Start(RemotePerceptualSearchContract contract)
+    public static RemotePerceptualSearchState Start(RemotePerceptualSearchContract contract, FrozenPerceptualEncoding? encoding = null)
     {
         if (!RemotePerceptualProbeValidator.ValidContract(contract)) throw new ArgumentException("Invalid perceptual search contract.", nameof(contract));
-        return new(contract, [], contract.Plan.Baseline);
+        if (encoding is not null && encoding.ContractId != contract.Id) throw new ArgumentException("The frozen encode belongs to another search.", nameof(encoding));
+        return new(contract, [], contract.Plan.Baseline, Encoding: encoding is null ? null : FrozenPerceptualEncoding.Create(contract, encoding.Spec, encoding.Arguments));
     }
 }
 
@@ -86,8 +88,10 @@ public static class RemotePerceptualSearchCoordinator
         var validated = RemotePerceptualProbeValidator.Validate(state.Contract, asked, sourceHash, report);
         if (validated.SourceRejected)
             return new(state with { AskedValue = null, SourceRejected = true, SourceError = validated.Error,
-                LastReportValue = report.Value, LastReportSha256 = reportSha256, SourceSha256 = sourceHash }, false, null);
+                LastReportValue = report.Value, LastReportSha256 = reportSha256, SourceSha256 = sourceHash, Source = report.Source }, false, null);
         if (validated.Probe is not { } probe) return Refuse(validated.Error ?? "Incomplete perceptual sample evidence.");
+        if (state.Source is { } original && (original.Audio != report.Source.Audio || original.ImageMetadata != report.Source.ImageMetadata))
+            return Refuse("The original's audio or metadata evidence changed during this search; start a fresh contract before encoding.");
         var tools = RemotePerceptualProbeValidator.ToolIdentity(state.Contract, report);
         if (state.Tools is not null && !state.Tools.CompatibleWith(tools))
             return Refuse("The worker tools changed during this search; start a fresh contract before encoding.");
@@ -95,10 +99,9 @@ public static class RemotePerceptualSearchCoordinator
         var decision = probe.Measurement.Available
             ? PerceptualQualitySearch.Decide(state.Contract.Plan, probes.Select(p => new PerceptualQualityProbe(
                 p.Value, p.Measurement.MeetsTarget, p.EncodedBytes)).ToArray())
-            : new PerceptualQualityDecision(null, state.Contract.Plan.Baseline, true,
-                $"Quality measurement was unavailable: {probe.Measurement.Error ?? "incomplete evidence"}. Use the library setting and final verification.");
+            : PerceptualQualitySearch.Unavailable(state.Contract.Plan, probe.Measurement.Error);
         return new(state with { Probes = probes, AskedValue = decision.NextValue, Decision = decision,
-            LastReportValue = report.Value, LastReportSha256 = reportSha256, SourceSha256 = sourceHash, Tools = state.Tools?.Merge(tools) ?? tools }, false, null);
+            LastReportValue = report.Value, LastReportSha256 = reportSha256, SourceSha256 = sourceHash, Tools = state.Tools?.Merge(tools) ?? tools, Source = state.Source ?? report.Source }, false, null);
     }
 
     private static RemotePerceptualSearchAdvance Refuse(string reason) => new(null, false, reason);

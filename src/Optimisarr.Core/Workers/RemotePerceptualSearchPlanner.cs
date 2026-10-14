@@ -20,11 +20,7 @@ public static class RemotePerceptualSearchPlanner
             || source.ClipStartSeconds is not null || source.ClipSeconds is not null
             || (contract.Kind == MediaKind.Image ? source.ImageEncoder : source.AudioEncoder) != contract.Encoder)
             throw new ArgumentException("A sample step requires a supported frozen quality-first contract and its original encoder intent.");
-        var extension = contract.Encoder switch
-        {
-            "mjpeg" => ".jpg", "libwebp" => ".webp", "aac" => ".m4a", "libopus" => ".opus", "libmp3lame" => ".mp3",
-            _ => throw new ArgumentException("Unsupported perceptual encoder.")
-        };
+        var extension = OutputExtension(contract.Encoder);
         var portable = source with { InputPath = WorkerProtocol.InputPlaceholder, OutputPath = WorkerProtocol.OutputPlaceholder + extension };
         var samples = new List<IReadOnlyList<string>>();
         var references = new List<IReadOnlyList<string>>();
@@ -42,6 +38,12 @@ public static class RemotePerceptualSearchPlanner
         }
         return new(contract, value, candidateIndex, samples.ToArray(), references.ToArray());
     }
+
+    public static string OutputExtension(string encoder) => encoder switch
+    {
+        "mjpeg" => ".jpg", "libwebp" => ".webp", "aac" => ".m4a", "libopus" => ".opus", "libmp3lame" => ".mp3",
+        _ => throw new ArgumentException("Unsupported perceptual encoder.")
+    };
 
     private static IReadOnlyList<string> Bounded(IReadOnlyList<string> command, long maximumBytes)
     {
