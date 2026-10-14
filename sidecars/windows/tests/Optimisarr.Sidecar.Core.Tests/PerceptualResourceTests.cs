@@ -45,18 +45,20 @@ public sealed class PerceptualResourceTests
         Assert.Equal(100, Optimisarr.Core.Tools.LinuxMemoryAvailability.ApplyLimits("MemAvailable: 1024 kB\n", [("max", "0"), ("1000", "900")]));
 
     [Theory]
-    [InlineData(0u, 0UL, 0UL, 0UL, 1000L)]
-    [InlineData(0x200u, 0UL, 600UL, 450UL, 150L)]
-    [InlineData(0x200u, 0UL, 600UL, 800UL, 0L)]
-    [InlineData(0x100u, 200UL, 0UL, 0UL, 200L)]
-    public void Windows_job_and_child_process_limits_cannot_be_hidden_by_host_free_memory(uint flags, ulong process, ulong job, ulong peak, long expected) =>
-        Assert.Equal(expected, NativeMemoryAvailability.ApplyWindowsLimits(1000, flags, process, job, peak));
+    [InlineData(1000UL, false, 1000L)]
+    [InlineData(0UL, false, 0L)]
+    [InlineData(1000UL, true, null)]
+    [InlineData(1000UL, null, null)]
+    [InlineData(ulong.MaxValue, false, null)]
+    public void Unresolved_Windows_job_ancestry_cannot_be_hidden_by_host_or_inner_job_memory(ulong physical, bool? inJob, long? expected) =>
+        Assert.Equal(expected, NativeMemoryAvailability.WindowsCapacity(physical, inJob));
 
     [Fact]
     public void Supported_native_memory_providers_return_a_bounded_current_reading()
     {
         var available = NativeMemoryAvailability.Read();
-        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) Assert.True(available is >= 0);
+        if (OperatingSystem.IsWindows()) Assert.True(available is null or >= 0); // Job ancestry may not be observable.
+        else if (OperatingSystem.IsLinux()) Assert.True(available is >= 0);
         else Assert.Null(available);
     }
 

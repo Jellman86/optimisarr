@@ -361,3 +361,19 @@ This keeps the budget policy in the shared engine. The reply is not a live capac
 or a grant: the parent still has to atomically account for native peak plus full RAM-volume
 allocation before starting work. CI exposed a Swift compiler difference in synthesized
 initializer access; the frame parser now declares its initializer explicitly.
+
+## Physical Windows qualification, 14 October
+
+The shared .NET worker now passes real JPEG, WebP, AAC, Opus and MP3 searches on
+physical Windows, including lost committed-response replay, sealed upload, strict final
+verification, idempotent replacement and exact rollback. Image runs independently compare
+the complete ICC profile. This qualifies the shared runner and tools, rather than an installed
+service or release package. Automatic protocol-11 negotiation remains disabled.
+
+Actual nested Windows jobs exposed a capacity overestimate: current-job and app-memory
+queries missed a stricter outer limit. Native work now holds when the process belongs to
+any job, or membership cannot be established. It uses physical available memory only when
+explicitly outside jobs. This is deliberately conservative, including an apparently unbounded
+job; product code never escapes a job or changes its limits. The physical happy-path matrix
+was repeated in an independently verified standalone process after the guard. Full Swift app
+integration, exact packages and the other completion-matrix obligations remain outstanding.

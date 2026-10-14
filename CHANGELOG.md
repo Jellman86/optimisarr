@@ -46,6 +46,8 @@
 
 ### Fixed
 
+- Native Windows quality work now waits when process-job ancestry prevents proving available memory. Physical nested-job tests caught an inner limit hiding a stricter outer limit; unresolved capacity no longer borrows the host estimate.
+
 - Higher-quality audio/image retries now search again on the current encoder above their retained fidelity minimum. Changed sources or targets and missing retry intent hold safely; reports distinguish the minimum from the measured selection in every locale.
 - The browser graphics-loss fixture deliberately retains a retired context and injects failure only into live renderers, preserving its fallback and no-recreation checks.
 

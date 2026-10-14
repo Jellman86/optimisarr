@@ -481,3 +481,54 @@ Local solution/worker validation remains warning-free with 3,515 backend, 462 sh
 CI for the preceding bridge commit exposed an initializer-access difference in its Swift
 compiler; the frame parser now declares an explicit initializer. That correction still requires
 its own exact-head CI acceptance before merge.
+
+## Physical Windows native runner, 14 October
+
+Picard became available. The exact `c7c2d2fb` snapshot builds both the backend and Windows
+worker with zero warnings. Physical Windows passes 3,492 backend tests with 23 platform
+skips, and all 465 shared worker tests. All 19 exact-head CI checks passed, including the
+Swift compiler fix. The image metric is the exact-head CI artifact, with its SHA-256 verified
+against the artifact digest; its nine native tests pass. Installed media tools were read only.
+
+The native collector proves JPEG/WebP encoders, pinned image/audio metrics, compressed
+ICC/EXIF copying and marker readback, plus AAC/Opus/MP3 encoders. Five isolated real-server
+flows pass normal pairing and heartbeat, fixture-only protocol-11 elevation, native search,
+one lost committed-probe response and replay, sealed upload, fresh strict final verification,
+repeat-safe replacement and exact original-byte rollback. Both image flows independently
+compare all 588 ICC bytes. The server has no encoding or quality tools; audio planning
+retains ffprobe. Success limits are explicit fixtures, not calibrated recommendations.
+
+Real nested-job tests then exposed a Windows capacity bug. With an outer 256 MiB job and
+an inner 1 GiB or unlimited job, the old provider used the inner limit or physical host RAM.
+Neither available page-file memory nor app-memory commit queries observed the ancestor in
+these tests. Microsoft documents that a null-handle
+[job query uses the immediate job](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-queryinformationjobobject),
+while [nested-job commit limits](https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs)
+are enforced through the parent chain. The revised provider holds native work for any job membership or unknown
+membership. Outside jobs, measured available physical memory remains usable. It never
+escapes a job or changes process limits.
+
+OpenSSH itself places its child in an unbounded job that explicitly permits breakaway. A
+private test launcher used that documented permission to create a standalone owned child;
+an independent probe verified no job membership and positive available memory. This is
+test scaffolding, not product behaviour. All five media flows pass again against the patched
+source in that context. The patch passes all 466 shared tests on physical Windows, and
+3,515 backend, 463 shared (three Windows-only skips) and 31 Linux tests on the Mac, with
+warning-free builds. Private evidence includes `picard-matrix-fixed-progress.json`,
+`picard-limits-red-03.json`, `picard-limits-standalone-green-01.json` and
+`picard-native-proof-fixed-01.json`.
+
+No installed service, personal media, application protection or machine-wide policy was
+changed. These are source/tool acceptance results; signed packages, Swift application
+integration and full workflow parity remain outstanding.
+
+A stale-capacity AAC claim is also tested after moving its worker into owned outer 256 MiB
+and inner 1 GiB jobs. Runtime admission returns the claim before any source GET: zero
+transfers, zero media failures and unchanged source bytes, with the job queued. An immediate
+reclaim receives 204 under the unchanged ten-minute handback policy. Twenty-five normal
+protocol-10 heartbeats keep the isolated worker online during a real 605-second wait; only
+then does the fixture elevate its row to reserved protocol 11 again. The same job completes
+native selection, strict final verification, repeat-safe replacement and exact rollback in
+normal capacity, with scratch empty. No clock, cooldown or production policy is shortened.
+Evidence is `picard-resource-aac-02`; the earlier immediate-reclaim harness failure is retained
+separately and was caused by overlooking that existing pause.
