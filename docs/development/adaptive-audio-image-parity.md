@@ -4,6 +4,30 @@ Operator priority: **13 October 2026**. Finish quality-first workflows for audio
 images before continuing perceptual dedupe or activating exact-copy file actions.
 Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
+## Paused checkpoint, 14 October 2026
+
+Work is paused at the operator's request. [Draft PR #415](https://github.com/Jellman86/optimisarr/pull/415)
+contains the implementation through `662863bb`: bounded audio/image searches, independent final
+verification and retry evidence, shared native execution, conditional Swift capability collection,
+live resource admission, neutral capacity returns and restricted audio assessment inputs. None
+of this draft has been merged or deployed. Protocol 10 remains advertised; automatic protocol-11
+placement stays disabled. No quality target has been calibrated as a universal default.
+
+Latest source verification: 3,522 backend tests, 463 shared worker tests plus three Windows-only
+skips, 31 Linux tests, all 466 shared tests on native Windows, and 352 Swift core plus 9 UI tests.
+Mac AAC/Opus/MP3 workflows cover replay, strict final verification, repeated replacement and exact
+rollback. Windows additionally qualifies the secondary-file rejection and positive audio
+measurements. CI passed on `b1906114`; check the PR for `662863bb` and subsequent documentation-only
+commit results. Physical fixture acceptance and CI do not qualify an installed package.
+
+Resume with native helper/tool packaging and exact-package acceptance, then durable ownership
+fences for native scratch restart recovery. Continue with fixed-image worker coverage, adaptive
+selection for every retained re-encoded soundtrack, preview/calibration parity, broader source,
+reconnect/retry and input-format qualification. Positive full-image execution under live Mac
+admission is still unproved: observed available memory was below the 3.5 GiB budget, and the job
+returned safely before downloading. The matrix below remains the completion contract. Perceptual
+dedupe and exact-copy file actions remain behind this work in priority.
+
 ## Completion contract
 
 Parity means the workflow already offered by adaptive VMAF: an explicit quality target,
@@ -29,12 +53,12 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests | Live positive image acceptance, packaged Swift proof/placement and packaging |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests | Positive full-image execution under live Mac admission, packaged Swift proof/placement and packaging |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims now pass all three codecs under live memory admission | Automatic placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
-| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Swift automatic capability integration, broader reconnect acceptance, interrupted-attempt history and export qualification |
+| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Packaged Swift capability/placement qualification, broader reconnect acceptance, interrupted-attempt history and export qualification |
 | Lifetime | Owned local scratch, stopped-process cleanup, cancellation propagation, source revalidation, attempt-fenced result persistence | All native worker implementations, resource exhaustion and restart/reconnect acceptance |
 | Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Native worker retry/restart and exact-package qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
@@ -48,17 +72,18 @@ Local search results are regenerated for each fresh execution rather than reused
 changed source, encoder or policy. The source is hashed before/after the search and again
 by final verification. Candidate paths are unique owned scratch leaves and refuse overwrite.
 Unavailable evidence falls back to the saved setting; the required final metric still blocks
-replacement when it cannot be obtained. Current workers refuse the new search contract until
-implemented, preserving strict worker placement rather than silently bypassing selection.
+replacement when it cannot be obtained. Advertised protocol 10 prevents automatic placement of
+the new native search contract; unsupported clients refuse it rather than bypassing selection.
 
 ## Worker foundation in progress
 
 The next contract is reserved as protocol 11; the advertised protocol remains 10. Current
-workers still refuse quality-first audio/image jobs. The persisted worker capabilities and
+workers do not automatically claim quality-first audio/image jobs. The persisted worker capabilities and
 lease search state are additive, bounded JSON fields with idempotent migration coverage.
 Pairing and check-in can record fresh optional native-tool proof; omission clears earlier
 proof so a downgraded or failed installation cannot inherit it. Shared .NET collection now
-runs those probes; Swift and exact-package qualification remain required before placement is enabled.
+runs those probes; the ordinary Swift collector conditionally uses the bundled shared helper.
+Packaged capability/placement qualification remains required before placement is enabled.
 
 The shared search coordinator freezes the source and encoder/metric binaries, validates
 raw measurements against the frozen policy, caps work at four candidates and handles repeated
@@ -73,7 +98,8 @@ native assessment, SSIM, metadata, probes and decode are separate measurements. 
 recomputes the final verdict without installing media tools, and rejects missing required
 evidence without local fallback. Shared .NET native verification qualifies both images with
 the bounded decoder before FFmpeg, rechecks file/tool hashes and shares the process-wide
-image metric lane. It is tested directly on the Mac and Quark; automatic worker assignment, Swift support and
+image metric lane. It is tested directly on the Mac and Quark, with native Windows source/tool
+acceptance and conditional Swift routing also implemented; automatic worker assignment and
 exact-package qualification remain outstanding. ExifTool operations now have bounded capture,
 a deadline and child reaping before cancellation returns, including UTF-8 argument input. Source metadata is inspected before sample encoding when
 required. Grouped JSON and explicit binary-profile presence prevent tag-value spoofing and

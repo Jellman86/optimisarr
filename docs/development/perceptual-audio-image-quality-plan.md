@@ -1,7 +1,7 @@
 # Perceptual quality for audio and still images
 
-Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans. Delivery status reconciled **10 October 2026**.
-Status: **opt-in standalone audio and video soundtrack reports, separate operator-selected gates and strict worker measurement implemented in dev; experimental server-local SDR still-image reports and explicit SSIMULACRA2 gates implemented in the current development slice; adaptive audio quality selection, broader image coverage and surround support remain planned**.
+Researched **1 October 2026**, extended **2 October 2026** with pipeline, cost and dedupe plans. Delivery status reconciled **14 October 2026**.
+Status: **existing audio/soundtrack reports and explicit gates are implemented in development. Draft PR #415 adds bounded standalone audio/image selection, shared native execution and resource/input hardening. Full parity remains incomplete; work is paused at the operator's request, with no merge, deployment or protocol-11 activation. Adaptive retained soundtracks, package/restart qualification, broader coverage and calibrated defaults remain open**.
 Implementation tracking: [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 The operator prioritised [full quality-first parity](adaptive-audio-image-parity.md) on
 13 October. Its implementation/qualification matrix is the current work plan; a local
@@ -434,15 +434,19 @@ Design and remaining pipeline work:
    existing saved policies.
 
 The metric compares decoded audio, so AAC, Opus and MP3 can use the same assessment preparation;
-their settings and the bitrate needed to meet a target differ. A future sample search must
-measure actual candidates rather than assume a bitrate produces the same quality in each codec.
+their settings and the bitrate needed to meet a target differ. The standalone search in
+[draft #415](https://github.com/Jellman86/optimisarr/pull/415) measures actual candidates rather than
+assuming a bitrate produces the same quality in each codec. Adaptive retained soundtracks remain
+separate unfinished scope.
 
 The encoding control offers Space saver, Balanced, High and Very high, plus Default and Custom.
 The [configuration reference](../setup/configuration.md#audio-quality-reports-and-gates-development)
 records each codec's bitrate. These are explicit starting points, without cross-codec quality
 equivalence or a claimed listening grade. Existing saved bitrates and gate limits stay unchanged.
 An explicitly chosen tier follows codec changes during the current edit; after saving, the
-stored policy remains codec and bitrate. Automatic sample search is future work.
+stored policy remains codec and bitrate. Standalone sample search is implemented in the draft;
+automatic worker placement and full workflow parity remain gated by the
+[current completion matrix](adaptive-audio-image-parity.md).
 
 ### Video soundtrack reports and gate in development
 

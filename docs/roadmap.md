@@ -19,7 +19,7 @@ the replacement workflow is trustworthy.
   describing finished work as outstanding sends effort at an item that has none.
 - Status claims last verified against the repository: **2026-08-24**.
 
-## Current hardening follow-up, reviewed 2026-10-10
+## Current hardening follow-up, reviewed 2026-10-14
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
 trial and pairing records with current implementation. Priorities are retained real-source playback evidence and broader quality coverage.
@@ -32,7 +32,13 @@ which distinguishes installed fleet checks from disposable media tests and recor
 pending Mac upgrade. Audio reports and explicit gates are implemented in
 development. Experimental SDR still-image reports and explicit SSIMULACRA2 gates are
 implemented in this development slice; see [qualification and limits](engineering/hardware-validation/2026-10-10-image-perceptual-quality.md).
-Broader image/audio qualification and dedupe remain planned.
+Draft [PR #415](https://github.com/Jellman86/optimisarr/pull/415) adds bounded audio/image
+quality selection, shared native execution, conditional Swift proof, live admission, neutral
+capacity returns and audio assessment input restrictions. It remains unmerged and undeployed,
+with automatic protocol-11 placement disabled. Work is paused at the operator's request;
+the [parity checkpoint](development/adaptive-audio-image-parity.md#paused-checkpoint-14-october-2026)
+records verified coverage and the resume order. Complete native packaging, restart recovery and
+the remaining audio/image parity before returning to perceptual dedupe or exact-copy actions.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
 
@@ -1092,7 +1098,7 @@ or VMAF v0 policy as current behavior.
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: audio and video soundtrack reporting and explicit gates implemented in development; broader work planned, 2026-10-02.** Add
+14. **Perceptual quality for audio and still images: reports/gates in development, adaptive standalone audio/image workflows in draft #415; paused with parity incomplete, 2026-10-14.** Add
     understandable, optional quality evidence alongside the existing structural, timing,
     loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
     An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with
@@ -1121,8 +1127,10 @@ or VMAF v0 policy as current behavior.
     - **Encoding presets:** codec-aware bitrate starting points are implemented in development
       for standalone audio and explicitly re-encoded video soundtracks. They preserve existing
       settings and never choose a quality gate limit. A bounded sample search for a suitable
-      bitrate remains planned; include cancellation, cost reporting, source-bitrate and size
-      checks, and final verification before replacement.
+      bitrate is implemented for standalone audio in draft #415, with measured candidates,
+      bounded execution, source/size checks and independent final verification. Adaptive
+      retained soundtracks and the remaining [parity qualification](development/adaptive-audio-image-parity.md)
+      are still outstanding.
     - **Video soundtracks:** opt-in reporting and a separate explicit gate are implemented in
       development for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
       source tracks to output order, with language/title/commentary identity and timing checks.
@@ -1156,6 +1164,9 @@ or VMAF v0 policy as current behavior.
     [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
     separate this groundwork from qualified quarantine and restore. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
+    Further dedupe implementation is paused behind audio/image parity in #332/#415, following
+    the operator's 13 October priority and 14 October pause. Existing read-only review and
+    qualified ownership foundations remain available; no cleanup action is enabled by this work.
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.

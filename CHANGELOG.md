@@ -48,6 +48,8 @@
 
 ### Documentation
 
+- Reconcile audio/image parity and dedupe tracking with delivered draft work, current test evidence, remaining qualification and the paused handoff.
+
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
 
 ### Fixed
