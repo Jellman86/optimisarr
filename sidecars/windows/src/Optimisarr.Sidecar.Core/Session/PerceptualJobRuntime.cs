@@ -37,7 +37,8 @@ public sealed class PerceptualJobRuntime(IPerceptualJobTools tools, Func<string,
 
     internal static string PhysicalRoot(string root) => NativeWorkingVolume.PhysicalRoot(root);
 
-    public static PerceptualJobRuntime Native(string ffmpeg, string? measurementFfmpeg = null) => new(new NativeTools(ffmpeg, measurementFfmpeg));
+    public static PerceptualJobRuntime Native(string ffmpeg, string? measurementFfmpeg = null, Func<long?>? freeMemory = null) =>
+        new(new NativeTools(ffmpeg, measurementFfmpeg), freeMemory: freeMemory);
 
     private sealed class NativeTools(string ffmpeg, string? measurementFfmpeg) : IPerceptualJobTools
     {

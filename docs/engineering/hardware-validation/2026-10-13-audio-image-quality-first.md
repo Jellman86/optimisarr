@@ -426,3 +426,28 @@ Raw evidence is under `local-resource-runtime-linux-02/quark-local-resource-reco
 diagnosis. All CI checks passed for preceding commit `6891f599`; the new local-admission
 commit requires its own CI. Protocol negotiation remains 10 and this is not installed-package
 or physical Windows acceptance.
+
+## Native-client helper, 14 October
+
+A self-contained osx-arm64 publication of the shared native helper passes actual JPEG and AAC
+server claims through private stdin/stdout with PATH limited to system directories and no
+system .NET runtime lookup. The server has no encoding or quality tools (audio planning still
+uses ffprobe). Each case replays one committed probe whose HTTP response was deliberately
+lost, settles selection, performs a new final encode and strict verification, uploads with a
+completion seal, repeats replacement without a second record, and restores the exact original.
+The two fixture runs explicitly grant 8 GiB; they do not establish live Mac memory admission.
+The private publication manifest records 196 artifact hashes.
+
+The first full-flow proxy trials were invalid: the test proxy lacked chunked request bodies,
+then PATCH upload forwarding. Those harness errors were corrected; final JPEG/AAC case 03
+passes. Separately, a real SIGTERM regression caught the helper waiting indefinitely for Mac
+console input even after its native children stopped and owned scratch was removed. Three
+new deterministic blocked-pipe regressions fail before explicit cancellation-bounded waits
+and pass afterward. The final publication exits in under 0.1 seconds with stdin still open
+on SIGTERM, with its sleeping tool and grandchild gone; parent EOF does the same. A signal
+while waiting for the initial request also exits without requiring pipe closure.
+
+Warning-free solution and Linux builds pass with 3,515 backend, 459 shared worker and 31 Linux
+worker tests (three Windows-only shared skips). The 118 Python acceptance-script tests pass.
+Swift application integration, live memory reservation, signed packages, Intel qualification
+and Mac WebP remain outstanding; the shipped protocol maximum remains 10.

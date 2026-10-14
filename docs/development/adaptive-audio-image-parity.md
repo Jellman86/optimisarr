@@ -301,3 +301,27 @@ regression reproduces it. Memory-only reservations now stay separate from the di
 release order cannot remove another reservation's memory accounting. Original bytes remained
 unchanged during that failed test. The final Quark publication passes an explicit idle-slot check, complete final-quality audio
 retry and JPEG low-memory/restart/replacement/rollback. This supersedes the interrupted trial.
+
+## Native-client helper foundation
+
+The native macOS app will retain pairing, claims, live capacity and its UI while a bundled
+self-contained helper runs the shared .NET audio/image engine. This keeps command validation,
+source/tool binding, search replay, transfers and final gates in one implementation. Existing
+Swift video/VMAF execution is unchanged. The helper neither claims nor advertises capacity:
+its private request carries an allocation already held by its parent. Unknown live capacity
+must still prevent native claims. The Swift bridge, shared RAM/native allocation policy,
+runtime notices, architecture and hardened-runtime signing remain separate qualification work.
+
+Private IPC version 1 bounds requests, rejects duplicate/case-aliased fields, keeps credentials
+out of arguments/environment and bounds output. Only a final event together with process exit
+can confirm the helper outcome; the server verdict still authorises replacement. Parent EOF,
+SIGTERM and blocked output cancel owned work. A real Mac regression caught console reads
+ignoring cancellation after native children and scratch had stopped; explicit bounded waits
+now allow the helper to exit with the control pipe still open.
+
+The self-contained ARM64 executable runs with no system .NET on its search path. Actual JPEG
+and AAC claims pass search, lost committed-response replay, sealed upload, independent final
+verification, repeated replacement and exact rollback against an isolated server without
+encoding/quality tools. This fixture grants 8 GiB explicitly; it is not live Swift memory
+admission or signed-app acceptance. The installed Mac FFmpeg still lacks WebP. Protocol 10
+remains advertised and protocol 11 remains reserved.

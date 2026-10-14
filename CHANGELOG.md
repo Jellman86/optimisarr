@@ -15,6 +15,8 @@
 
 ### Added
 
+- Add a self-contained native-client helper that reuses the shared audio/image search and verification engine through bounded private pipes. Parent exit, stop signals and blocked console pipes cancel owned work and clean scratch. Swift integration and signed bundle qualification remain in progress; protocol 11 stays disabled.
+
 - Shared .NET workers qualify native image encoders, pinned audio/image metrics, compressed ICC/EXIF copying and marker readback on synthetic fixtures. Pairing and heartbeats report that proof plus current memory and working-space capacity. Native assignment accounts for RAM-backed scratch and waits when capacity is unknown or insufficient; a resource refusal briefly holds further claims while heartbeats continue. Automatic protocol-11 placement remains disabled pending the remaining clients and packages.
 
 - Experimental local image and standalone audio quality-first searches test up to four compression settings against explicit perceptual targets before the final encode. Search evidence remains separate from final verification; existing libraries keep fixed settings. Worker search and soundtrack selection remain under implementation.

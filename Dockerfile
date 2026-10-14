@@ -26,6 +26,8 @@ COPY tools/Optimisarr.VmafStudy/Optimisarr.VmafStudy.csproj tools/Optimisarr.Vma
 COPY tools/Optimisarr.AudioStudy/Optimisarr.AudioStudy.csproj tools/Optimisarr.AudioStudy/
 COPY tools/Optimisarr.ExactCopyStudy/Optimisarr.ExactCopyStudy.csproj tools/Optimisarr.ExactCopyStudy/
 COPY tools/Optimisarr.UploadStudy/Optimisarr.UploadStudy.csproj tools/Optimisarr.UploadStudy/
+COPY sidecars/windows/src/Optimisarr.Sidecar.Core/Optimisarr.Sidecar.Core.csproj sidecars/windows/src/Optimisarr.Sidecar.Core/
+COPY sidecars/native/src/Optimisarr.Sidecar.Native/Optimisarr.Sidecar.Native.csproj sidecars/native/src/Optimisarr.Sidecar.Native/
 RUN dotnet restore
 COPY . .
 COPY --from=web-build /src/src/Optimisarr.Api/wwwroot/ src/Optimisarr.Api/wwwroot/
