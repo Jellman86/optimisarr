@@ -46,6 +46,8 @@
 
 ### Fixed
 
+- The Mac worker now refuses unreadable or unsupported quality-search instructions as a whole. It confirms the hand-back before treating that claim as finished; an unconfirmed claim drains new work and blocks automatic shutdown while check-ins continue.
+
 - Native Windows quality work now waits when process-job ancestry prevents proving available memory. Physical nested-job tests caught an inner limit hiding a stricter outer limit; unresolved capacity no longer borrows the host estimate.
 
 - Higher-quality audio/image retries now search again on the current encoder above their retained fidelity minimum. Changed sources or targets and missing retry intent hold safely; reports distinguish the minimum from the measured selection in every locale.

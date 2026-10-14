@@ -24,6 +24,9 @@ public enum SidecarError: Error, Equatable, Sendable {
     /// The server answered, but not in a way this build understands.
     case unexpectedResponse(status: Int)
 
+    /// A claim was unreadable and its hand-back could not be confirmed.
+    case unconfirmedClaim
+
     /// The server could not be reached at all.
     case unreachable(description: String)
 
@@ -385,10 +388,9 @@ public struct SidecarClient: Sendable {
         let (data, response) = try await perform(request)
         switch response.statusCode {
         case 200:
-            guard
-                let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let assignment = Assignment(json: body)
-            else {
+            let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let body, let assignment = Assignment(json: body) else {
+                try await releaseUnreadableClaim(body, serverAddress: serverAddress, credential: credential)
                 throw SidecarError.unexpectedResponse(status: 200)
             }
             await diagnostics.assignment(leaseId: assignment.leaseId, jobId: assignment.jobId)
@@ -402,6 +404,16 @@ public struct SidecarClient: Sendable {
         case let status:
             throw SidecarError.unexpectedResponse(status: status)
         }
+    }
+
+    private func releaseUnreadableClaim(_ body: [String: Any]?, serverAddress: String, credential: String) async throws {
+        guard let text = body?["leaseId"] as? String, let leaseId = UUID(uuidString: text),
+              leaseId.uuidString != "00000000-0000-0000-0000-000000000000" else { throw SidecarError.unconfirmedClaim }
+        do {
+            try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId.uuidString)
+        } catch let error as SidecarError where error.endsTheLease {
+            // Expiry, revocation or an already-ended lease is also authoritative.
+        } catch { throw SidecarError.unconfirmedClaim }
     }
 
     /// Extends the claim. Throws `leaseLost` when the server no longer recognises it as ours,

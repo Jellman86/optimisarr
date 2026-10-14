@@ -532,3 +532,22 @@ native selection, strict final verification, repeat-safe replacement and exact r
 normal capacity, with scratch empty. No clock, cooldown or production policy is shortened.
 Evidence is `picard-resource-aac-02`; the earlier immediate-reclaim harness failure is retained
 separately and was caused by overlooking that existing pause.
+
+## Mac assignment boundary, 14 October
+
+Two regression cases reproduce the legacy decoder silently dropping native search intent or
+an unreadable VMAF search and accepting a fixed encode. Both now refuse the whole assignment.
+Absent/null search remains ordinary. Until the separate shared-engine route is integrated,
+a native search cannot enter the legacy runner. This does not activate image or native audio
+claims in the menu-bar app; protocol 10 remains advertised.
+
+A rejected claim is not automatically an ended lease. The client now attempts hand-back only
+with a valid nonzero lease UUID, and requires acknowledgement or an authoritative lease end.
+Unknown identity or a failed hand-back produces an explicit unconfirmed state. The session
+keeps heartbeats, reports zero new capacity, stops claiming and blocks automatic shutdown.
+Tests cover successful hand-back, unavailable server, invalid/path-like identity, authoritative
+lease loss/revocation and the full session/shutdown consequence. The seven new tests were
+red before the fixes. All 318 Swift tests and the release build pass. An initial full run caught
+a changed shutdown message for an existing known-job hand-back; its existing semantics were
+preserved separately from the unreadable-claim display. No media was downloaded or encoded
+by these refusal fixtures.

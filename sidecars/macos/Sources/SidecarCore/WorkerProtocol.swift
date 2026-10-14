@@ -220,6 +220,14 @@ public struct Assignment: Sendable, Equatable {
     }
 
     init?(json: [String: Any]) {
+        // Native search has a separate shared-engine contract. Until it is routed there,
+        // treating an unreadable search as absent would silently run a fixed encode.
+        guard json["perceptualSearch"] == nil || json["perceptualSearch"] is NSNull else { return nil }
+        var search: AdaptiveSearchStep?
+        if let raw = json["search"], !(raw is NSNull) {
+            guard let object = raw as? [String: Any], let parsed = AdaptiveSearchStep(json: object) else { return nil }
+            search = parsed
+        }
         guard
             let leaseId = json["leaseId"] as? String,
             let jobId = (json["jobId"] as? NSNumber)?.intValue,
@@ -265,24 +273,10 @@ public struct Assignment: Sendable, Equatable {
             // Absent from a server that predates the search, and from every job whose quality is
             // already settled — both mean "encode straight away", which is what this app did
             // before the field existed.
-            search: Assignment.search(from: json), fullVerification: fullVerification,
+            search: search, fullVerification: fullVerification,
             maxCandidateBytes: (json["maxCandidateBytes"] as? NSNumber)?.int64Value,
             minCandidateBytes: (json["minCandidateBytes"] as? NSNumber)?.int64Value,
             kind: kind, audioEncoder: json["audioEncoder"] as? String)
     }
 
-    /// Says so when a search arrives that cannot be read.
-    ///
-    /// Nil has two meanings here and only one of them is ordinary: no search was sent, or one was
-    /// sent and could not be understood. They looked identical, and the second is the one that
-    /// quietly encodes a whole title at the library's baseline.
-    private static func search(from json: [String: Any]) -> AdaptiveSearchStep? {
-        guard let searchJson = json["search"] as? [String: Any] else { return nil }
-        guard let step = AdaptiveSearchStep(json: searchJson) else {
-            SidecarLog.job.error(
-                "A quality search was offered but could not be read, so this job would encode at the library's quality. Keys: \(searchJson.keys.sorted().joined(separator: ", "), privacy: .public)")
-            return nil
-        }
-        return step
-    }
 }

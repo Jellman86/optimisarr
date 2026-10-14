@@ -96,6 +96,7 @@ public final class SidecarSession: ObservableObject {
     private var pausedBeforeShutdown = false
     private var lastDrainedHeartbeat: Date?
     private var unconfirmedResult = false
+    private var unconfirmedClaim = false
     private var shutdownTask: Task<Void, Never>?
     private let requestShutdown: @Sendable () async throws -> Void
 
@@ -465,7 +466,7 @@ public final class SidecarSession: ObservableObject {
             do {
                 capabilities.freeScratchBytes = max(0, scratchCapacity())
                 freeScratchBytes = capabilities.freeScratchBytes
-                let reportingDrain = shutdown.armed
+                let reportingDrain = shutdown.armed || unconfirmedResult
                 let beat = try await client.heartbeat(
                     serverAddress: pairing.serverAddress,
                     credential: pairing.credential,
@@ -480,7 +481,8 @@ public final class SidecarSession: ObservableObject {
                 availableUpdate = beat.update
                 if reportingDrain && shutdown.armed { lastDrainedHeartbeat = Date() }
                 if jobTasks.isEmpty {
-                    status = .connected(workerId: beat.workerId, lastCheckIn: Date())
+                    status = unconfirmedClaim ? Self.describe(.unconfirmedClaim)
+                        : .connected(workerId: beat.workerId, lastCheckIn: Date())
                 }
                 if !beat.draining && !isPaused && !shutdown.armed {
                     await claimUpToCapacity(pairing: pairing, workerId: beat.workerId)
@@ -515,13 +517,18 @@ public final class SidecarSession: ObservableObject {
     /// The server hands out one job per claim and holds the worker to the concurrency it
     /// reported, so this can never run more than the server believes it can.
     private func claimUpToCapacity(pairing: StoredPairing, workerId: Int) async {
-        guard let executor, capabilities.maxConcurrency > 0 else { return }
+        guard let executor, capabilities.maxConcurrency > 0, !unconfirmedResult else { return }
 
         while !isPaused && !shutdown.armed && jobTasks.count < capabilities.maxConcurrency {
             let assignment: Assignment?
             do {
                 assignment = try await client.claim(
                     serverAddress: pairing.serverAddress, credential: pairing.credential)
+            } catch SidecarError.unconfirmedClaim {
+                unconfirmedClaim = true
+                unconfirmedResult = true
+                status = Self.describe(.unconfirmedClaim)
+                return
             } catch {
                 // A failed claim is not a failed check-in. The next beat asks again; a credential
                 // problem surfaces through the heartbeat, which is the path that handles it.
@@ -730,6 +737,8 @@ public final class SidecarSession: ObservableObject {
             return .revoked
         case let .remoteWorkersDisabled(reason):
             return .disabledOnServer(reason: reason)
+        case .unconfirmedClaim:
+            return .unreachable(reason: "A claimed job could not be read or safely handed back. Check the server before shutting down.")
         case let .unexpectedResponse(status):
             return .pairingFailed(reason: "The server replied unexpectedly (HTTP \(status)).")
         case let .unreachable(description):
