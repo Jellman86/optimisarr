@@ -44,6 +44,9 @@ struct NativeQualityHostTests {
             "", "{}", "{}\n", "{\"version\":2,\"type\":\"refused\"}\n",
             "{\"version\":1,\"type\":\"progress\",\"jobId\":99}\n",
             "{\"version\":true,\"type\":\"refused\"}\n",
+            "{\"version\":1,\"type\":\"completed\",\"type\":\"refused\"}\n",
+            "{\"version\":1,\"type\":\"capabilities\",\"capabilities\":{\"imageEncoders\":[],\"ImageEncoders\":[\"mjpeg\"]}}\n",
+            "{\"version\":1,\"type\":\"capabilities\",\"capabilities\":{\"imageEncoders\":[],\"image\\u0045ncoders\":[\"mjpeg\"]}}\n",
             "{\"version\":1,\"type\":\"requirements\",\"jobId\":12,\"nativeMemoryBytes\":0,\"requiredScratchBytes\":12345}\n",
             "{\"version\":1,\"type\":\"requirements\",\"jobId\":12,\"nativeMemoryBytes\":536870912}\n",
             String(repeating: "x", count: 16 * 1024 + 1),
@@ -68,6 +71,17 @@ struct NativeQualityHostTests {
         #expect(throws: NativeQualityHostError.self) {
             var frames = NativeQualityFrames(expectedJobId: nil)
             _ = try frames.append(Data("{\"version\":1,\"type\":\"capabilities\",\"jobId\":12,\"capabilities\":{}}\n".utf8))
+        }
+    }
+
+    @Test("capability frames reject duplicate, case-alias and escaped-alias proof fields")
+    func ambiguousCapabilityProof() {
+        for key in ["imageEncoders", "ImageEncoders", "image\\u0045ncoders"] {
+            #expect(throws: NativeQualityHostError.self) {
+                var frames = NativeQualityFrames(expectedJobId: nil)
+                _ = try frames.append(Data("{\"version\":1,\"type\":\"capabilities\",\"capabilities\":{\"imageEncoders\":[],\"\(key)\":[\"mjpeg\"]}}\n".utf8))
+                _ = try frames.finish(exitCode: 0)
+            }
         }
     }
 

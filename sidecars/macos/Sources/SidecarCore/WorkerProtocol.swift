@@ -40,6 +40,7 @@ public struct SidecarCapabilities: Sendable, Equatable {
     public var vmaf: VmafCapability
     public var freeScratchBytes: Int64
     public var maxConcurrency: Int
+    public var perceptual: WorkerPerceptualCapabilities?
 
     public init(
         name: String,
@@ -50,7 +51,8 @@ public struct SidecarCapabilities: Sendable, Equatable {
         hardwareDecoders: [String] = [],
         vmaf: VmafCapability = .none,
         freeScratchBytes: Int64 = 0,
-        maxConcurrency: Int = 0
+        maxConcurrency: Int = 0,
+        perceptual: WorkerPerceptualCapabilities? = nil
     ) {
         self.name = name
         self.operatingSystem = operatingSystem
@@ -61,6 +63,7 @@ public struct SidecarCapabilities: Sendable, Equatable {
         self.vmaf = vmaf
         self.freeScratchBytes = freeScratchBytes
         self.maxConcurrency = maxConcurrency
+        self.perceptual = perceptual
     }
 
     /// Reported rather than guessed from the product name, so a Rosetta or Intel host is honest.

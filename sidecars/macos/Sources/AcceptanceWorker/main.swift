@@ -1,6 +1,11 @@
 import Foundation
 import SidecarCore
 
+private struct AcceptancePairingRequest: Decodable {
+    let serverAddress: String
+    let pin: String
+}
+
 /// A disposable process using the real sidecar implementation. Pairing stays in memory;
 /// neither the menu-bar application's Keychain nor its preferences are touched.
 @main
@@ -29,6 +34,44 @@ struct AcceptanceWorker {
             let data = try JSONSerialization.data(withJSONObject: ["volume": disk.map { $0.volume as Any } ?? NSNull(),
                 "availableDiskBytes": disk.map { $0.availableBytes as Any } ?? NSNull()])
             print(String(decoding: data, as: UTF8.self))
+            return
+        }
+        if CommandLine.arguments.contains("--native-capabilities") || CommandLine.arguments.contains("--native-capability-pair") {
+            let scratch = URL(fileURLWithPath: try required("OPTIMISARR_ACCEPTANCE_SCRATCH"))
+            guard !FileManager.default.fileExists(atPath: scratch.path) else { throw NativeQualityHostError() }
+            try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let tools = NativeQualityTools(host: URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_HOST")),
+                ffmpeg: URL(fileURLWithPath: try required("OPTIMISARR_FFMPEG")),
+                imageMetric: env["OPTIMISARR_IMAGE_QUALITY"].map { URL(fileURLWithPath: $0) },
+                audioMetric: env["OPTIMISARR_AUDIO_QUALITY"].map { URL(fileURLWithPath: $0) },
+                metadataTool: env["OPTIMISARR_EXIFTOOL"].map { URL(fileURLWithPath: $0) })
+            let native = NativeQualityCapabilityProber(tools: tools)
+            let proved = await CapabilityProber(ffmpeg: tools.ffmpeg, scratchDirectory: scratch, native: native).probe(name: "Isolated capability acceptance")
+            let fresh = NativeWorkerResources(scratchRoot: scratch).refresh(proved)
+            let proof: Any = try fresh.perceptual.map { try JSONSerialization.jsonObject(with: JSONEncoder().encode($0)) } ?? NSNull()
+            var output: [String: Any] = ["name": fresh.name, "operatingSystem": fresh.operatingSystem,
+                "architecture": fresh.architecture, "videoEncoders": fresh.videoEncoders, "audioEncoders": fresh.audioEncoders,
+                "hardwareDecoders": fresh.hardwareDecoders, "vmaf": fresh.vmaf.rawValue, "freeScratchBytes": fresh.freeScratchBytes,
+                "maxConcurrency": fresh.maxConcurrency, "perceptual": proof, "protocolMinimum": WorkerProtocol.minimum,
+                "protocolMaximum": WorkerProtocol.maximum]
+            if CommandLine.arguments.contains("--native-capability-pair") {
+                var data = Data()
+                while let chunk = try FileHandle.standardInput.read(upToCount: 4096), !chunk.isEmpty {
+                    data.append(chunk)
+                    guard data.count <= 4096 else { throw NativeQualityHostError() }
+                }
+                let request = try JSONDecoder().decode(AcceptancePairingRequest.self, from: data)
+                let client = SidecarClient()
+                let paired = try await client.pair(serverAddress: request.serverAddress, pin: request.pin, capabilities: fresh)
+                let current = NativeWorkerResources(scratchRoot: scratch).refresh(proved)
+                let beat = try await client.heartbeat(serverAddress: request.serverAddress, credential: paired.credential,
+                    freeScratchBytes: current.freeScratchBytes, maxConcurrency: current.maxConcurrency, capabilities: current)
+                output["workerId"] = paired.workerId
+                output["negotiatedProtocol"] = paired.protocolVersion
+                output["heartbeatProtocol"] = beat.protocolVersion
+                output["heartbeatPerceptual"] = try current.perceptual.map { try JSONSerialization.jsonObject(with: JSONEncoder().encode($0)) } ?? NSNull()
+            }
+            try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: output) + Data([10]))
             return
         }
         if CommandLine.arguments.contains("--native-claim") {

@@ -218,7 +218,7 @@ public struct SidecarClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             // Sent as typed by the operator. The server tolerates the grouping spaces people read
             // aloud, so there is no need to strip them here and risk mangling a valid code.
             "code": pin,
@@ -234,7 +234,9 @@ public struct SidecarClient: Sendable {
             "freeScratchBytes": capabilities.freeScratchBytes,
             "maxConcurrency": capabilities.maxConcurrency,
             "sidecarVersion": SidecarBuild.version,
-        ])
+        ]
+        if let proof = capabilities.perceptual { body["perceptual"] = proof.wire }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await perform(request)
 
@@ -299,6 +301,7 @@ public struct SidecarClient: Sendable {
             body["audioEncoders"] = capabilities.audioEncoders
             body["hardwareDecoders"] = capabilities.hardwareDecoders
             body["vmaf"] = capabilities.vmaf.rawValue
+            if let proof = capabilities.perceptual { body["perceptual"] = proof.wire }
         }
         // Only what was actually measured. A machine whose CPU ticks could not be read, or whose
         // first reading has nothing to compare against, sends nothing rather than a zero the

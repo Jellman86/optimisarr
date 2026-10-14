@@ -42,6 +42,11 @@ suite. Distribution must publish a self-contained runtime for the native client'
 include the runtime's required notices, and qualify the actual bundle, tool dependencies,
 parent-death/cancellation behavior and signing/runtime entitlements. The Swift client and ordinary job runner now route complete native assignments to this host when
 it is bundled; an installation missing it hands back the job. The AcceptanceWorker exercises the
-same claim, admission and execution path with live Mac resources. Automatic capability advertisement,
-restart recovery and exact bundle qualification remain in progress.
+same claim, admission and execution path with live Mac resources. The ordinary Swift capability
+collector now obtains bounded, typed tool proof through `capabilities` when the helper is bundled.
+Pairing and check-ins refresh live memory and the chosen physical disk fallback, subtracting app
+reservations. Unknown resources clear capacity; the helper cannot supply resource claims in its
+tool proof. Unpair, sleep and quit cancel pending qualification, and volume classification runs
+away from the menu's main actor. Packaged advertisement, restart recovery and exact bundle
+qualification remain in progress.
 Do not advertise protocol 11 on the strength of the host or bridge alone.

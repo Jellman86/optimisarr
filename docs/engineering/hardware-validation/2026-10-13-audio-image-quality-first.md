@@ -634,3 +634,37 @@ The preceding Mac execution's final source/binary manifests and six cases are re
 `swift-native-app-final-matrix-progress.json`: AAC/Opus/MP3, live image capacity hold, confirmed
 RAM use/ejection and authoritative duplicate-contract refusal. Both themes' image-card captures
 are under `ui-native-app-01`. No installed services, personal media or protections were changed.
+
+## Swift native capability collection, 14 October
+
+The ordinary Swift capability collector now uses the shared helper's real qualification and
+keeps its bounded typed tool proof separate from volatile resources. Pairing, ordinary check-ins
+and the final drained check-in refresh current memory and the selected physical disk fallback,
+subtracting app reservations. Failed or unknown samples clear capacity without inventing zero
+quality scores. The native helper's proof cannot contain a memory/storage claim. Duplicate,
+case-alias and escaped-alias helper fields are rejected before dictionary conversion.
+
+A cancellation regression first demonstrated a restored native probe surviving unpairing. The
+session now owns qualification tasks, cancels them on unpair, sleep and quit, and fences obsolete
+connection attempts. All seven restore/new-pair lifecycle variants pass, including caller cancellation. A separate red regression
+showed ambiguous native proof being accepted before the frame guard; all three duplicate variants
+now fail closed. Volume inspection runs away from the menu's main actor. Missing/malformed proof,
+image-only capability collection, request privacy, heartbeat freshness, reservation subtraction,
+unknown capacity, RAM fallback and timeout cleanup are covered by deterministic tests.
+
+`swift-capability-pair-live-03/report.json` records the ordinary collector and actual Swift
+pair/heartbeat transport against an owned real server with encoding and quality tools absent.
+Actual Mac tools prove JPEG, metadata preservation and both pinned metric revisions. WebP is
+omitted. Live memory changes between pairing and check-in, and the server's stored proof matches
+that check-in exactly. Both negotiate protocol 10 normally; there is no protocol-row elevation,
+explicit memory grant, job lease, source transfer or leftover probe scratch. Source-only proof is
+not installed-app acceptance: the helper/tools are supplied explicitly to the disposable worker.
+Observed available memory remains below the 3.5 GiB image admission budget, so positive full-image
+execution is still outstanding.
+
+The complete Swift suite passes **352 core tests and 9 UI tests**, and the release build succeeds.
+The retained release worker manifest is `swift-native-app-07-manifest.json`. Native Windows also
+passes a zero-warning worker build and all **466 shared worker tests** from verified snapshot
+`770455c6`, recorded in `picard-neutral-evidence-manifest.json`. No installed service, personal
+media, protection, protocol maximum or deployment was changed. Native-helper packaging, restart
+recovery and the remaining parity matrix stay open.

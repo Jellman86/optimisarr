@@ -30,6 +30,14 @@ public final class MemoryWorkBudget: @unchecked Sendable {
     public var reservedBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.total } } }
     public var reservedRamBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.ramBytes } } }
 
+    func available(_ liveBytes: Int64?) -> Int64? {
+        lock.withLock {
+            guard let liveBytes, liveBytes >= 0 else { return nil }
+            let held = reservations.values.reduce(0) { $0 + $1.total }
+            return max(0, liveBytes - held)
+        }
+    }
+
     func reserve(nativeBytes: Int64, ramBytes: Int64, ramLimit: Int64, availableMemory: Int64?) -> UUID? {
         lock.withLock {
             let total = nativeBytes.addingReportingOverflow(ramBytes)
@@ -78,6 +86,14 @@ public final class DiskWorkBudget: @unchecked Sendable {
     private struct Allocation { let volume: String; let bytes: Int64 }
     private var reservations: [UUID: Allocation] = [:]
     public init() {}
+
+    func available(volume: String, liveBytes: Int64) -> Int64? {
+        gate.withLock {
+            guard !volume.isEmpty, liveBytes >= 0 else { return nil }
+            let held = reservations.values.filter { $0.volume == volume }.reduce(Int64(0)) { $0 + $1.bytes }
+            return max(0, liveBytes - held)
+        }
+    }
 
     func reserve(volume: String?, bytes: Int64, available: Int64?) -> UUID? {
         gate.withLock {

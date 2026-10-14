@@ -2,6 +2,34 @@ import Foundation
 import Testing
 @testable import SidecarCore
 
+private final class SessionCapabilityHelper: NativeQualityExchanging, @unchecked Sendable {
+    private let gate = NSLock()
+    private var began = false, ended = false
+    var started: Bool { gate.withLock { began } }
+    var stopped: Bool { gate.withLock { ended } }
+    func exchange(request: Data, expectedJobId: Int?, report: @escaping @Sendable (NativeQualityEvent) -> Void) async throws -> NativeQualityReply {
+        gate.withLock { began = true }
+        defer { gate.withLock { ended = true } }
+        try await Task.sleep(for: .seconds(60))
+        throw NativeQualityHostError()
+    }
+}
+
+private final class NativeResourceSequence: @unchecked Sendable {
+    private let gate = NSLock()
+    private var count: Int64 = 0
+    func refresh(_ capabilities: SidecarCapabilities) -> SidecarCapabilities {
+        gate.withLock {
+            count += 1
+            var fresh = capabilities
+            fresh.perceptual?.availableMemoryBytes = count * 100
+            fresh.perceptual?.scratchUsesMemory = false
+            fresh.freeScratchBytes = 1000
+            return fresh
+        }
+    }
+}
+
 /// A transport that answers differently per call, so a whole lifecycle can be walked: pair, check
 /// in, get revoked.
 final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
@@ -21,6 +49,8 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     var releaseStatusOverride: Int?
     private(set) var heartbeatScratchBytes: [Int64] = []
     private(set) var heartbeatCapacities: [Int] = []
+    private var nativeMemoryReports: [Int64] = []
+    var reportedNativeMemory: [Int64] { lock.withLock { nativeMemoryReports } }
 
     init(_ replies: [Reply]) {
         self.replies = replies
@@ -30,6 +60,12 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
         if request.url?.path.hasSuffix("/claim") == true { await onClaim?() }
         let reply: Reply = lock.withLock {
             callCount += 1
+            if let body = request.httpBody,
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let proof = json["perceptual"] as? [String: Any],
+               let memory = proof["availableMemoryBytes"] as? Int64 {
+                nativeMemoryReports.append(memory)
+            }
             if request.url?.path.hasSuffix("/release") == true { releases += 1 }
             if request.url?.path.hasSuffix("/claim") == true { claims += 1 }
             if request.url?.path.hasSuffix("/heartbeat") == true,
@@ -258,6 +294,49 @@ struct SidecarSessionTests {
         try await waitFor { !transport.heartbeatScratchBytes.isEmpty }
 
         #expect(transport.heartbeatScratchBytes.first == 321)
+        session.unpair()
+    }
+
+    @Test("pairing and every heartbeat refresh native resources independently of tool qualification")
+    func nativeResourcesStayFresh() async throws {
+        let transport = ScriptedTransport([
+            .init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30]),
+        ])
+        let proof = try #require(WorkerPerceptualCapabilities(proof: NativeQualityCapabilityTests.proof))
+        let refresh = NativeResourceSequence()
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
+            capabilities: SidecarCapabilities(name: "Fixture", perceptual: proof), prober: nil,
+            nativeResources: refresh.refresh, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(for: .milliseconds(5)) })
+        await session.pair(serverAddress: "localhost:8787", pin: "fixture")
+        try await waitFor { transport.reportedNativeMemory.count >= 3 }
+        session.unpair()
+        #expect(Array(transport.reportedNativeMemory.prefix(3)) == [100, 200, 300])
+    }
+
+    @Test("unpair, sleep, quit and caller cancellation stop native qualification before any heartbeat", arguments: ["restore-unpair", "pair-unpair", "restore-sleep", "pair-sleep", "restore-quit", "pair-quit", "pair-cancel"])
+    func unpairCancelsNativeQualification(action: String) async throws {
+        let helper = SessionCapabilityHelper()
+        let native = NativeQualityCapabilityProber(tools: NativeQualityCapabilityTests.tools, helper: helper)
+        let prober = CapabilityProber(ffmpeg: NativeQualityCapabilityTests.tools.ffmpeg,
+            runner: ScriptedRunner(["encoders": (0, "")]), native: native)
+        let transport = ScriptedTransport([.init(status: 200, json: [:])])
+        let store = InMemoryCredentialStore(stored: StoredPairing(serverAddress: "localhost:8787", credential: "fixture", workerId: 11))
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: store, prober: prober,
+            persistConcurrency: { _ in })
+        let pairingTask: Task<Void, Never>?
+        if action.hasPrefix("pair-") {
+            pairingTask = Task { await session.pair(serverAddress: "localhost:8787", pin: "fixture") }
+        } else { session.restore(); pairingTask = nil }
+        try await waitFor { helper.started }
+        if action.hasSuffix("unpair") { session.unpair() }
+        else if action.hasSuffix("sleep") { await session.systemWillSleep() }
+        else if action.hasSuffix("cancel") { pairingTask?.cancel() }
+        else { await session.prepareToQuit() }
+        try await waitFor { helper.stopped }
+        await pairingTask?.value
+        if action.hasSuffix("unpair") { #expect(!session.isPaired) }
+        #expect(transport.callCount == 0)
         session.unpair()
     }
 

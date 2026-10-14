@@ -29,7 +29,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET native proof, capacity-aware claim and real-server lifecycle tests | Live positive image acceptance, automatic Swift proof/placement and packaging |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests | Live positive image acceptance, packaged Swift proof/placement and packaging |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims now pass all three codecs under live memory admission | Automatic placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
@@ -398,7 +398,7 @@ The real Mac route passes AAC/Opus/MP3, committed-response replay, final verific
 idempotent replacement and exact rollback with live memory admission. RAM storage/ejection
 and custom RAM aliases are qualified separately. A live image claim holds below its 3.5 GiB
 budget before any source download. This is conditional execution support, not automatic placement:
-Swift tool-proof advertisement, positive live image acceptance, owned native scratch restart
+Packaged Swift tool-proof advertisement, positive live image acceptance, owned native scratch restart
 recovery and complete packages remain required before
 protocol 11 is enabled. The soundtrack, preview/calibration and broader coverage obligations
 in the matrix are unchanged.
@@ -409,3 +409,27 @@ toward the three-worker refusal threshold. Genuine refusals still do. Three actu
 capacity returns leave a fourth worker eligible, without downloads, media failures or exclusions.
 The original release operation and its .NET public method signature remain compatible. This
 adds no column or migration; the reason fits the existing nullable enum-string field.
+
+## Conditional Swift capability collection
+
+The ordinary Mac collector now calls the bundled shared helper on owned synthetic inputs,
+validates bounded native tool proof and carries it in pairing and heartbeat requests. Current
+memory and the chosen physical disk fallback are sampled separately, subtracting app native/RAM
+and planned native disk reservations. Unknown resources clear capacity; custom RAM aliases
+cannot stand in for a physical disk. A RAM preference advertises its conservative disk fallback;
+the actual per-job RAM allocation is still admitted independently before creation.
+
+Duplicate, escaped-alias or case-alias fields in helper events are refused before dictionary
+conversion can erase their ambiguity. Missing tools, failed proof, malformed revisions and
+helper-supplied resource claims cannot advertise native support. Probe ownership survives async
+suspension: unpair, sleep and quit cancel native qualification, obsolete connection attempts
+cannot restore a pairing, and disk classification runs away from the menu's main actor.
+
+The ordinary collector and actual Swift pair/heartbeat transport pass against an isolated real
+server with its encoding/quality tools absent. JPEG, colour metadata and both pinned metrics are
+proved on the Mac; unavailable WebP is omitted. The server stores the fresh heartbeat proof with
+normal protocol-10 negotiation, no row elevation or explicit memory grant, no job leases and
+empty scratch. The observed memory remains below full-image admission, so this is tool and
+transport evidence, not positive live image execution. Swift passes 352 core tests and 9 UI tests;
+the release build succeeds. Native-helper bundling, installed-package qualification and protocol-11
+activation remain outstanding, along with the other parity requirements above.

@@ -104,6 +104,37 @@ public struct NativeQualityAssignment: Sendable, Equatable {
 /// The shared parser, not a reserialized dictionary, must see the original contract.
 enum NativeWireJSON {
     static let maximumBytes = 256 * 1024
+    static func hasUniqueProperties(_ wire: Data) -> Bool {
+        struct Container { let object: Bool; var expectingKey = true; var keys: Set<String> = [] }
+        var containers: [Container] = []
+        var quoted = false, escaped = false
+        var keyStart: Data.Index?
+        for index in wire.indices {
+            let byte = wire[index]
+            if quoted {
+                if escaped { escaped = false }
+                else if byte == 92 { escaped = true }
+                else if byte == 34 {
+                    quoted = false
+                    if let start = keyStart {
+                        guard let key = try? JSONDecoder().decode(String.self, from: wire[start...index]),
+                              containers[containers.count - 1].keys.insert(key.lowercased()).inserted else { return false }
+                        keyStart = nil
+                    }
+                }
+            } else if byte == 34 {
+                quoted = true
+                if containers.last?.object == true && containers.last?.expectingKey == true {
+                    keyStart = index; containers[containers.count - 1].expectingKey = false
+                }
+            } else if byte == 123 || byte == 91 { containers.append(Container(object: byte == 123)) }
+            else if byte == 125 || byte == 93 {
+                guard !containers.isEmpty else { return false }
+                containers.removeLast()
+            } else if byte == 44, !containers.isEmpty { containers[containers.count - 1].expectingKey = true }
+        }
+        return !quoted && containers.isEmpty
+    }
     static func rootKeys(_ wire: Data) -> [String] {
         var keys: [String] = []
         var depth = 0, quoted = false, escaped = false, expectingKey = false

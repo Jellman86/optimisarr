@@ -199,6 +199,7 @@ struct NativeQualityFrames {
         while let newline = pending.firstIndex(of: 10) {
             let line = pending[..<newline]
             guard !line.isEmpty, line.count <= 16 * 1024, terminal == nil,
+                  NativeWireJSON.hasUniqueProperties(Data(line)),
                   let value = try? JSONDecoder().decode(WireEvent.self, from: line),
                   value.version == 1 else { throw NativeQualityHostError() }
             let jobId = value.jobId
