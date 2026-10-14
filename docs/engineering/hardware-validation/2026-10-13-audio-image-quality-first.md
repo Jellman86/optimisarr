@@ -189,3 +189,10 @@ cancellation during replay, frozen contract/sample questions, unsafe sample comm
 premature selection, changed final commands and source-refusal overrides. The worker checks
 final arguments using the same one-control patch as the server. These are session tests;
 the session is not yet wired into automatic job execution or capability advertisement.
+
+CI exposed a scheduling race in the existing noisy-decoder fixture: it intentionally emits
+no progress while filling both pipes, so its two-second idle deadline could win under load.
+That drain case now has a separate 20-second cancellation bound and a 30-second test-only
+idle deadline. Dedicated stall tests retain two seconds. All seven process tests and the
+full **3,430-test Release suite** pass locally with a zero-warning rebuild; CI must requalify
+the revised fixture. Production watchdog deadlines are unchanged.

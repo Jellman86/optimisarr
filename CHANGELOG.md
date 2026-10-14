@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- The decoder-output stress test uses a separate bounded drain deadline, avoiding spurious watchdog failures under CI load while preserving dedicated stall checks.
+
 - Final image verification checks the frozen target format as well as readability, dimensions and quality; a different codec under the requested filename cannot pass.
 
 - Native tool capture decodes UTF-8 explicitly on Windows. Metadata acceptance fixtures prepare an atomic replacement so container ownership cannot prevent qualification.

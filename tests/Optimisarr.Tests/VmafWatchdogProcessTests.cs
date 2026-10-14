@@ -17,7 +17,7 @@ public sealed class VmafWatchdogProcessTests : IDisposable
         ReferenceStartSeconds: 20, DistortedStartSeconds: 20, MeasureDurationSeconds: 2,
         ReferenceFrameRate: 50, PairFramesByNumber: true, ModelVersion: "vmaf_v0.6.1");
 
-    private QualityScoreService Service(string mode)
+    private QualityScoreService Service(string mode, TimeSpan? progressTimeout = null)
     {
         Directory.CreateDirectory(_root);
         File.WriteAllText(Source, "source"); File.WriteAllText(Candidate, "candidate");
@@ -54,7 +54,7 @@ public sealed class VmafWatchdogProcessTests : IDisposable
             """.Replace("__ROOT__", JsonSerializer.Serialize(_root), StringComparison.Ordinal)
             .Replace("__MODE__", JsonSerializer.Serialize(mode), StringComparison.Ordinal));
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        return new QualityScoreService(tool, TimeSpan.FromSeconds(2));
+        return new QualityScoreService(tool, progressTimeout ?? TimeSpan.FromSeconds(2));
     }
 
     [PosixFact]
@@ -82,7 +82,10 @@ public sealed class VmafWatchdogProcessTests : IDisposable
     [PosixFact]
     public async Task Noisy_decoder_output_is_drained_and_error_capture_stays_bounded()
     {
-        var result = await Service("flood").MeasureAsync(Source, Candidate, Context, CancellationToken.None);
+        // This fixture deliberately emits no progress while filling both pipes. Give the drain
+        // its own overall bound so CPU contention cannot turn it into an idle-watchdog test.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var result = await Service("flood", TimeSpan.FromSeconds(30)).MeasureAsync(Source, Candidate, Context, deadline.Token);
         Assert.False(result.Measured);
         Assert.StartsWith("decoder error:", result.Error);
         Assert.InRange(result.Error!.Length, 1, 65_536);
