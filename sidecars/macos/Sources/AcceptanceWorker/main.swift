@@ -8,12 +8,49 @@ struct AcceptanceWorker {
     @MainActor
     static func main() async throws {
         let env = ProcessInfo.processInfo.environment
+        if CommandLine.arguments.contains("--memory-capacity") {
+            let value: Any = MacMemoryAvailability.read().map { $0 as Any } ?? NSNull()
+            let data = try JSONSerialization.data(withJSONObject: ["availableMemoryBytes": value,
+                "physicalBytes": ProcessInfo.processInfo.physicalMemory,
+                "reservedMemoryBytes": MemoryWorkBudget.shared.reservedBytes])
+            print(String(decoding: data, as: UTF8.self))
+            return
+        }
         func required(_ key: String) throws -> String {
             guard let value = env[key], !value.isEmpty else {
                 throw NSError(domain: "AcceptanceWorker", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "Missing \(key)"])
             }
             return value
+        }
+        if CommandLine.arguments.contains("--native-quality") {
+            let executable = URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_HOST"))
+            var data = Data()
+            while let chunk = try FileHandle.standardInput.read(upToCount: 4096), !chunk.isEmpty {
+                data.append(chunk)
+                guard data.count <= 256 * 1024 else { throw NativeQualityHostError() }
+            }
+            if data.last == 10 { data.removeLast() }
+            let request = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let jobId = (request?["assignment"] as? [String: Any])?["jobId"] as? Int
+            let reply = try await NativeQualityHost(executable: executable).exchange(request: data, expectedJobId: jobId) { event in
+                var message: [String: Any] = ["version": 1, "type": event.type]
+                if let jobId = event.jobId { message["jobId"] = jobId }
+                if let stage = event.stage { message["stage"] = stage }
+                if let seconds = event.encodedSeconds { message["encodedSeconds"] = seconds }
+                if let encoded = try? JSONSerialization.data(withJSONObject: message) {
+                    try? FileHandle.standardOutput.write(contentsOf: encoded + Data([10]))
+                }
+            }
+            var terminal: [String: Any] = ["version": 1, "type": reply.type]
+            if let proof = reply.capabilities { terminal["capabilities"] = try JSONSerialization.jsonObject(with: proof) }
+            if let jobId = reply.jobId {
+                terminal["jobId"] = jobId
+                terminal["outcome"] = ["jobId": jobId, "delivered": reply.delivered,
+                                       "capacityBlocked": reply.capacityBlocked, "detail": "Check the server for its recorded outcome."]
+            }
+            try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: terminal) + Data([10]))
+            return
         }
         let ffmpeg = URL(fileURLWithPath: try required("OPTIMISARR_FFMPEG"))
         let ffprobe = URL(fileURLWithPath: try required("OPTIMISARR_FFPROBE"))

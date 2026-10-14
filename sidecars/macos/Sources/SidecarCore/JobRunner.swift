@@ -386,6 +386,7 @@ public struct JobRunner: WorkExecutor {
     /// Read per job, so changing a setting takes effect on the next job without a restart.
     private let makeRamDisk: @Sendable (Int64) -> RamDisk?
     private let memoryBudget: MemoryWorkBudget
+    private let availableMemory: @Sendable () -> Int64?
     private let settings: SettingsSnapshot
     private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
@@ -409,6 +410,7 @@ public struct JobRunner: WorkExecutor {
             memoryBudgetBytes: WorkLocationPolicy.defaultBudget(
                 physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory))),
         memoryBudget: MemoryWorkBudget = .shared,
+        availableMemory: @escaping @Sendable () -> Int64? = MacMemoryAvailability.read,
         makeRamDisk: @escaping @Sendable (Int64) -> RamDisk? = RamDisk.create,
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
@@ -426,6 +428,7 @@ public struct JobRunner: WorkExecutor {
         self.wantsPreviews = wantsPreviews
         self.settings = settings
         self.memoryBudget = memoryBudget
+        self.availableMemory = availableMemory
         self.makeRamDisk = makeRamDisk
         self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
@@ -488,7 +491,8 @@ public struct JobRunner: WorkExecutor {
                 fallback = "The quality search has no scratch-size limit, so this job uses disk."
             } else if let plan = MemoryWorkPlan.make(sourceBytes: assignment.sourceBytes,
                                                      maximumCandidateBytes: assignment.maxCandidateBytes) {
-                if let token = memoryBudget.reserve(bytes: plan.allocatedBytes, limit: snapshot.memoryBudgetBytes) {
+                if let token = memoryBudget.reserve(nativeBytes: 0, ramBytes: plan.allocatedBytes,
+                    ramLimit: snapshot.memoryBudgetBytes, availableMemory: availableMemory()) {
                     reservation = token
                     if let disk = makeRamDisk(plan.workingBytes) {
                         ramDisk = disk
@@ -499,7 +503,7 @@ public struct JobRunner: WorkExecutor {
                         fallback = "The Mac could not create a RAM disk, so this job uses disk."
                     }
                 } else {
-                    fallback = "This job needs \(ByteCountFormatter.string(fromByteCount: plan.allocatedBytes, countStyle: .memory)) of RAM storage. The shared budget is too small or is in use by other jobs."
+                    fallback = "This job needs \(ByteCountFormatter.string(fromByteCount: plan.allocatedBytes, countStyle: .memory)) of RAM storage. The shared budget or current available memory is too small, unknown or in use by other jobs."
                 }
             } else {
                 fallback = "The candidate has no safe size limit, so this job uses disk."

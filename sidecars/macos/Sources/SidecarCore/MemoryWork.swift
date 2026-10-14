@@ -20,21 +20,38 @@ struct MemoryWorkPlan: Equatable, Sendable {
 public final class MemoryWorkBudget: @unchecked Sendable {
     public static let shared = MemoryWorkBudget()
     private let lock = NSLock()
-    private var reservations: [UUID: Int64] = [:]
+    private struct Allocation {
+        let nativeBytes: Int64
+        let ramBytes: Int64
+        var total: Int64 { nativeBytes + ramBytes }
+    }
+    private var reservations: [UUID: Allocation] = [:]
     public init() {}
-    public var reservedBytes: Int64 { lock.withLock { reservations.values.reduce(0, +) } }
+    public var reservedBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.total } } }
+    public var reservedRamBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.ramBytes } } }
 
-    func reserve(bytes: Int64, limit: Int64) -> UUID? {
+    func reserve(nativeBytes: Int64, ramBytes: Int64, ramLimit: Int64, availableMemory: Int64?) -> UUID? {
         lock.withLock {
-            let used = reservations.values.reduce(0, +)
-            guard bytes > 0, limit >= used, bytes <= limit - used else { return nil }
+            let total = nativeBytes.addingReportingOverflow(ramBytes)
+            let used = reservations.values.reduce(0) { $0 + $1.total }
+            let ramUsed = reservations.values.reduce(0) { $0 + $1.ramBytes }
+            guard nativeBytes >= 0, ramBytes >= 0, !total.overflow, total.partialValue > 0,
+                  let availableMemory, availableMemory >= used, total.partialValue <= availableMemory - used,
+                  ramBytes == 0 || ramLimit >= ramUsed && ramBytes <= ramLimit - ramUsed else { return nil }
             let token = UUID()
-            reservations[token] = bytes
+            reservations[token] = Allocation(nativeBytes: nativeBytes, ramBytes: ramBytes)
             return token
         }
     }
 
-    func release(_ token: UUID) { _ = lock.withLock { reservations.removeValue(forKey: token) } }
+    func release(_ token: UUID, retainRam: Bool = false) {
+        lock.withLock {
+            guard retainRam, let held = reservations[token], held.ramBytes > 0 else {
+                reservations.removeValue(forKey: token); return
+            }
+            reservations[token] = Allocation(nativeBytes: 0, ramBytes: held.ramBytes)
+        }
+    }
 }
 
 public struct WorkStorage: Sendable, Equatable {

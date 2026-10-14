@@ -325,3 +325,32 @@ verification, repeated replacement and exact rollback against an isolated server
 encoding/quality tools. This fixture grants 8 GiB explicitly; it is not live Swift memory
 admission or signed-app acceptance. The installed Mac FFmpeg still lacks WebP. Protocol 10
 remains advertised and protocol 11 remains reserved.
+
+## Swift bridge and live memory foundation
+
+The Swift client now has a bounded private-pipe bridge to the shared engine. Requests keep
+credentials out of arguments and environment; nonblocking writes suppress SIGPIPE locally.
+Replies must match their job, retain complete newline framing and agree with process exit.
+A terminal event cannot authorise an incompletely sent request or release process ownership
+early. Cancellation stops a blocked writer too. Killing the real Swift fixture process causes
+EOF in its native helper, which stops its tool and grandchild and clears scratch.
+
+The same bridge passes real JPEG and AAC workflows through the isolated AcceptanceWorker,
+including committed-response replay, sealed upload, strict final verification, repeated
+replacement and exact rollback. These still use an explicit fixture allocation. The menu-bar
+claim loop, native capability advertisement and packaged runtime are not integrated yet.
+
+Swift's memory ledger can atomically account for native peaks and complete RAM-volume
+allocations. RAM-storage preferences constrain RAM allocations, not native work on disk.
+A failed volume ejection retains its RAM charge while allowing a stopped native peak to be
+released. The existing Swift RAM-job path now also checks live capacity before creating a
+volume and falls back to disk when it is insufficient or unknown.
+
+The Mac admission estimate uses Mach free/inactive counters, excludes swap/compressed pages,
+leaves at least 1 GiB or 10% of physical RAM and refuses unknown/non-normal kernel memory
+pressure. Inactive pages are an estimate of reclaimable memory, not a guarantee. Speculative
+pages are already counted in free pages; no extra speculative or purgeable allowance is added.
+The implementation follows Apple's [VM counter definitions](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/vm_statistics.h)
+and [kernel counter collection](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/host.c).
+A live healthy Mac provider and real RAM-volume creation, encode success/failure/cancellation,
+ejection and stray-volume cleanup pass separately from deterministic capacity/refusal tests.

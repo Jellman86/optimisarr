@@ -451,3 +451,23 @@ Warning-free solution and Linux builds pass with 3,515 backend, 459 shared worke
 worker tests (three Windows-only shared skips). The 118 Python acceptance-script tests pass.
 Swift application integration, live memory reservation, signed packages, Intel qualification
 and Mac WebP remain outstanding; the shipped protocol maximum remains 10.
+
+## Swift bridge and resource foundation, 14 October
+
+The actual Swift AcceptanceWorker now delegates JPEG/AAC claims to the self-contained helper
+through its production bridge. Both pass committed-response loss/replay, sealed upload,
+independent final verification, repeat-safe replacement and exact rollback. Fixture memory
+is explicitly granted; this is not automatic menu-bar placement or signed-package acceptance.
+A real killed Swift parent loses its helper, native tool and grandchild in under 0.1 seconds,
+with owned scratch empty. The final bridge regression additionally refuses a terminal result
+when the child closes stdin before the full request arrives, without a SIGPIPE app crash.
+
+The live Mac memory provider reports about 2.74 GB available for admission on this 16 GiB
+machine at capture, rather than substituting installed RAM. That is a transient estimate.
+Deterministic tests cover unknown capacity, pressure, overflow, mixed native/RAM reservations,
+retained RAM after failed ejection and reduced RAM preferences. The existing Swift runner's
+real RAM success/failure/cancellation cases and volume creation/ejection/sweep pass with its
+bundled FFmpeg. The complete Swift suite passes 310 tests; the release build succeeds. A full
+SDK-27 compile retains the pre-existing legacy-Keychain deprecation warnings; no Keychain
+behaviour was changed. The 118 Python tests pass. Native app claims, resource advertisement,
+packaging/signing, Intel and physical Windows acceptance remain separate outstanding work.
