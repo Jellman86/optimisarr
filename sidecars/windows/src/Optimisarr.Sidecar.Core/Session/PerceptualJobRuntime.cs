@@ -21,13 +21,21 @@ public sealed class PerceptualJobRuntime(IPerceptualJobTools tools, Func<string,
     public IPerceptualJobTools Tools { get; } = tools;
     // Until a bounded native header-only inspection exists, inventory dimensions cannot safely
     // lower this: the transferred original may differ and self-assessment precedes its probe.
-    public const long ImageMemoryBytes = 3584L * 1024 * 1024;
-    public const long AudioMemoryBytes = 512L * 1024 * 1024;
+    public const long ImageMemoryBytes = PerceptualResourceBudget.ImageMemoryBytes;
+    public const long AudioMemoryBytes = PerceptualResourceBudget.AudioMemoryBytes;
 
     public IDisposable? Reserve(Assignment assignment, string root)
     {
         if (assignment.RequiredScratchBytes is not { } disk) return null;
-        var memory = assignment.Kind == MediaKind.Image ? ImageMemoryBytes : AudioMemoryBytes;
+        var resources = ReadResources(root, freeDisk, freeMemory);
+        if (resources is null || PerceptualResourceBudget.MemoryBytes(assignment.Kind, disk, resources.UsesMemory) is not { } memory) return null;
+        return (pool ?? PerceptualJobResourcePool.Shared).TryAcquire(resources.Volume, disk, memory, resources.Disk, resources.Memory);
+    }
+
+    internal sealed record Resources(string Volume, long? Disk, long? Memory, bool UsesMemory);
+
+    internal static Resources? ReadResources(string root, Func<string, long?>? freeDisk = null, Func<long?>? freeMemory = null)
+    {
         try
         {
             var full = PhysicalRoot(root);
@@ -36,9 +44,9 @@ public sealed class PerceptualJobRuntime(IPerceptualJobTools tools, Func<string,
                     OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                 .MaxBy(d => d.Name.Length);
             if (drive is null) return null;
-            if (drive.DriveType == DriveType.Ram || drive.DriveFormat is "tmpfs" or "ramfs") memory = checked(memory + disk);
-            return (pool ?? PerceptualJobResourcePool.Shared).TryAcquire(drive.Name, disk, memory,
-                freeDisk is null ? drive.AvailableFreeSpace : freeDisk(full), freeMemory is null ? NativeMemoryAvailability.Read() : freeMemory());
+            return new(drive.Name, freeDisk is null ? drive.AvailableFreeSpace : freeDisk(full),
+                freeMemory is null ? NativeMemoryAvailability.Read() : freeMemory(),
+                drive.DriveType == DriveType.Ram || drive.DriveFormat is "tmpfs" or "ramfs");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or OverflowException)
         { return null; }
@@ -72,7 +80,7 @@ public sealed class PerceptualJobRuntime(IPerceptualJobTools tools, Func<string,
 
     private sealed class NativeTools(string ffmpeg, string? measurementFfmpeg) : IPerceptualJobTools
     {
-        private readonly PerceptualNativeTools _tools = Resolve(ffmpeg);
+        private readonly PerceptualNativeTools _tools = ResolveNativeTools(ffmpeg);
         public Task<RemotePerceptualProbeReport> MeasureAsync(RemotePerceptualSearchStep step, string source, string sourceHash, string scratchRoot, CancellationToken token) =>
             new NativePerceptualProbeService(_tools).MeasureAsync(step, source, sourceHash, scratchRoot, token);
         public async Task<ImagePreparationResult> PrepareImageAsync(string source, string candidate, string? marker, CancellationToken token)
@@ -85,13 +93,14 @@ public sealed class PerceptualJobRuntime(IPerceptualJobTools tools, Func<string,
         public Task<RemoteVerificationEvidence> VerifyAsync(string source, string candidate, RemoteVerificationContract contract,
             string sourceHash, string candidateHash, CancellationToken token) =>
             FullVerification.MeasureAsync(ffmpeg, source, candidate, contract, sourceHash, candidateHash, token, measurementFfmpeg);
-        private static PerceptualNativeTools Resolve(string path)
-        {
-            var root = Path.GetDirectoryName(Path.GetFullPath(path))!;
-            string Tool(string name) => Path.Combine(root, name + (OperatingSystem.IsWindows() ? ".exe" : ""));
-            return new(path, Tool("ffprobe"), Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY") ?? Tool("optimisarr-audio-quality"),
-                Environment.GetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY") ?? Tool("optimisarr-image-quality"),
-                Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL") ?? Tool("exiftool"));
-        }
+    }
+
+    internal static PerceptualNativeTools ResolveNativeTools(string path)
+    {
+        var root = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        string Tool(string name) => Path.Combine(root, name + (OperatingSystem.IsWindows() ? ".exe" : ""));
+        return new(path, Tool("ffprobe"), Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY") ?? Tool("optimisarr-audio-quality"),
+            Environment.GetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY") ?? Tool("optimisarr-image-quality"),
+            NativeToolLocation.Resolve("exiftool", root, Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL"), Environment.GetEnvironmentVariable("PATH")));
     }
 }

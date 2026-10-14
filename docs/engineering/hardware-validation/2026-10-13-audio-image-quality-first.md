@@ -301,3 +301,43 @@ already retired graphics context. The revised fixture deliberately includes one 
 requires deliberate loss of a live renderer and retains fallback, theme/activity and unchanged
 creation-count assertions. Four repeated focused runs and the full 342-test suite pass;
 production rendering behavior is unchanged.
+
+## Native capability and resource-aware assignment
+
+The current Mac rebuild has zero warnings and passes **3,463 backend tests** and **427 shared
+.NET worker tests** (three Windows-only skips); all **31 Linux worker tests** and **118 Python
+tests** pass. Focused cases cover unknown/low memory, RAM scratch, overflow, reservation lifetime,
+heartbeat refresh, monotonic refusal cooldown, old/mismatched metric evidence, incomplete coverage,
+missing modules, cancellation cleanup and system metadata-tool lookup. The additive capability
+wire fields are reflected in the generated OpenAPI document; no database schema changes are needed.
+
+The actual collector passes **JPEG, pinned SSIMULACRA2/Zimtohrli and metadata on the Mac** and
+**JPEG/WebP, both metrics and metadata on Quark**. Metadata proof compares all **588 ICC bytes**
+from the embedded synthetic fixture, inspects EXIF and reads back the portable marker. The Mac's
+FFmpeg lacks WebP and the .NET memory provider returns unknown; those facts are not advertised
+as ready. All owned probe scratch is removed. The Linux publication verifies **10 artifact
+hashes** and records **929 C# working-tree hashes** at that snapshot; later tool-location changes
+have their own regression coverage.
+
+A real transient **256 MiB** Quark scope still proves its tools on these tiny fixtures and reports
+approximately **234 MiB** available, rather than host memory. A separate missing-Zlib environment
+withholds metadata/image-encoder proof while retaining usable metric evidence. Both collected
+reports pass through the real server's pairing and heartbeat routes, then prevent a native claim
+before source download, with the job queued, no lease and zero media failures. Complete proof
+allows JPEG and WebP through native search, committed-response replay, sealed upload, strict
+verification, repeated replacement and exact-byte rollback. The server fixtures elevate stored
+protocol to 11 after normal protocol-10 negotiation; shipped negotiation is unchanged.
+
+The corresponding server publication verifies **41 artifact hashes** and **929 C# source hashes**.
+Raw task-owned evidence is under `native-capabilities-01`, `capability-runtime-linux-01` and
+`capability-master-linux-01`. Installed services and personal media remain unchanged. Picard's
+SSH endpoint timed out again; physical Windows proof remains unresolved. Cgroup-v1/hybrid
+Linux, local-server memory admission, Swift support, package dependencies and broader fault
+acceptance remain required before declaring parity.
+
+A separate actual Linux executable discovery run leaves the metadata override unset and finds
+ExifTool on the system search path. It proves JPEG/WebP, both pinned metrics and metadata,
+reports approximately **13.8 GiB** available memory and disk-backed scratch, and preserves
+protocol-10 negotiation. Its publication verifies **11 artifact hashes** and records **931 C#
+source hashes**. Private evidence is under `native-worker-discovery-linux-01`; this qualifies
+the discovery composition, not a new installed package.

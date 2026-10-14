@@ -139,6 +139,7 @@ public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnostic
             ["freeScratchBytes"] = capabilities.FreeScratchBytes,
             ["maxConcurrency"] = capabilities.MaxConcurrency,
             ["sidecarVersion"] = SidecarBuild.Version,
+            ["perceptual"] = capabilities.Perceptual,
         };
 
         using var response = await http.PostAsJsonAsync(
@@ -199,6 +200,7 @@ public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnostic
             ["sidecarVersion"] = SidecarBuild.Version,
             ["protocolMinimum"] = WorkerProtocol.Minimum,
             ["protocolMaximum"] = WorkerProtocol.Maximum,
+            ["perceptual"] = capabilities.Perceptual,
         };
 
         // Only what was actually measured. A machine whose counters could not be read sends

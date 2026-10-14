@@ -6,6 +6,8 @@
 
 ### Added
 
+- Shared .NET workers qualify native image encoders, pinned audio/image metrics, compressed ICC/EXIF copying and marker readback on synthetic fixtures. Pairing and heartbeats report that proof plus current memory and working-space capacity. Native assignment accounts for RAM-backed scratch and waits when capacity is unknown or insufficient; a resource refusal briefly holds further claims while heartbeats continue. Automatic protocol-11 placement remains disabled pending the remaining clients and packages.
+
 - Experimental local image and standalone audio quality-first searches test up to four compression settings against explicit perceptual targets before the final encode. Search evidence remains separate from final verification; existing libraries keep fixed settings. Worker search and soundtrack selection remain under implementation.
 - Add bounded worker capability and lease-search storage, replay-safe perceptual search rules and strict image verification evidence as a worker foundation. Native search placement remains disabled until all clients implement it.
 - Add the server-side audio/image search exchange with frozen encoder commands, source and attempt fences, replay-safe progress, measurement workspace admission and delivery blocked until selection settles. Protocol 11 stays disabled pending native clients.

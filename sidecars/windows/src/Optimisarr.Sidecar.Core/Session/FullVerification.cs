@@ -15,11 +15,8 @@ public static class FullVerification
     {
         if (contract.Version == 4)
         {
-            var root = Path.GetDirectoryName(Path.GetFullPath(ffmpeg))!;
-            string Native(string name) => Path.Combine(root, name + (OperatingSystem.IsWindows() ? ".exe" : ""));
-            return await new RemoteImageVerificationService(ffmpeg, Native("ffprobe"),
-                Environment.GetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY") ?? Native("optimisarr-image-quality"),
-                Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL") ?? Native("exiftool"))
+            var tools = PerceptualJobRuntime.ResolveNativeTools(ffmpeg);
+            return await new RemoteImageVerificationService(tools.Ffmpeg, tools.Ffprobe, tools.ImageMetric, tools.ExifTool)
                 .MeasureAsync(source, candidate, contract, sourceHash, candidateHash, cancellationToken);
         }
         var evidence = new RemoteVerificationEvidence(contract.Id, sourceHash, candidateHash);

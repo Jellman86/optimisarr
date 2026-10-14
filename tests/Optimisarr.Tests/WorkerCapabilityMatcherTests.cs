@@ -15,7 +15,7 @@ public class WorkerCapabilityMatcherTests
         var requirement = new JobRequirements(null, "aac", null, VmafCapability.None, 1024,
             Optimisarr.Core.Domain.MediaKind.Audio, PerceptualSearch: true);
         var worker = Capable() with { ProtocolVersion = 11, Perceptual = new(
-            AudioMetricRevision: Optimisarr.Core.Verification.AudioQualityResultParser.Revision) };
+            AudioMetricRevision: Optimisarr.Core.Verification.AudioQualityResultParser.Revision, AvailableMemoryBytes: 8L * 1024 * 1024 * 1024, ScratchUsesMemory: false) };
         Assert.True(WorkerCapabilityMatcher.Match(worker, requirement).Accepted);
         Assert.False(WorkerCapabilityMatcher.Match(worker with { ProtocolVersion = 10 }, requirement).Accepted);
         Assert.False(WorkerCapabilityMatcher.Match(worker with { Perceptual = null }, requirement).Accepted);
@@ -28,7 +28,7 @@ public class WorkerCapabilityMatcherTests
         var requirement = new JobRequirements(null, null, null, VmafCapability.None, 1024,
             Optimisarr.Core.Domain.MediaKind.Image, ImageEncoder: "libwebp", PerceptualSearch: true);
         var proof = new WorkerPerceptualCapabilities(["libwebp", "mjpeg"], true,
-            ImageMetricRevision: Optimisarr.Core.Verification.ImagePerceptualResultParser.Revision);
+            ImageMetricRevision: Optimisarr.Core.Verification.ImagePerceptualResultParser.Revision, AvailableMemoryBytes: 8L * 1024 * 1024 * 1024, ScratchUsesMemory: false);
         var worker = Capable() with { VideoEncoders = [], Vmaf = VmafCapability.None, ProtocolVersion = 11, Perceptual = proof };
         Assert.True(WorkerCapabilityMatcher.Match(worker, requirement).Accepted);
         foreach (var refused in new[] { worker with { ProtocolVersion = 10 }, worker with { Perceptual = null },

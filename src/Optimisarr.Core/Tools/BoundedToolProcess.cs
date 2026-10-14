@@ -3,10 +3,10 @@ using System.Text;
 
 namespace Optimisarr.Core.Tools;
 
-internal sealed record ToolProcessResult(int ExitCode, string Output, string? Error);
+public sealed record ToolProcessResult(int ExitCode, string Output, string? Error);
 
 /// <summary>Small tool probes must finish promptly and cannot leave a child behind on abort.</summary>
-internal static class BoundedToolProcess
+public static class BoundedToolProcess
 {
     private const int MaximumCharacters = 1024 * 1024;
 

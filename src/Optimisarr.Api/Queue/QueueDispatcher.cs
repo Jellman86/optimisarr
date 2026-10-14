@@ -1438,13 +1438,21 @@ public sealed partial class QueueDispatcher(
         FrozenPerceptualEncoding? perceptualEncoding = null;
         if (perceptual)
         {
-            var required = new JobRequirements(null, work.Spec.Kind == MediaKind.Audio ? work.Spec.AudioEncoder : null,
-                null, VmafCapability.None, 0, work.Spec.Kind, work.Spec.ImageEncoder, PerceptualSearch: true);
-            var match = WorkerCapabilityMatcher.Match(worker, required);
-            if (!match.Accepted) return RemoteWorkPlan.Refused(string.Join(" ", match.Reasons));
+            JobRequirements Requirements(long bytes) => new(null, work.Spec.Kind == MediaKind.Audio ? work.Spec.AudioEncoder : null,
+                null, VmafCapability.None, bytes, work.Spec.Kind, work.Spec.ImageEncoder, PerceptualSearch: true);
+            // Reject missing tools/known-unaffordable memory before source metadata reads.
+            // Full workspace admission still uses the frozen plan below, before any lease.
+            var basic = WorkerCapabilityMatcher.Match(worker, Requirements(1));
+            if (!basic.Accepted) return RemoteWorkPlan.Refused(string.Join(" ", basic.Reasons));
             try { (perceptualStep, perceptualEncoding) = await PlanRemotePerceptualAsync(work, cancellationToken); }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException)
             { return RemoteWorkPlan.Refused(error.Message); }
+            var maximum = SizeBudget.MaxCandidateBytes(work.Original.SizeBytes, work.VerificationPolicy.RequireSizeReduction,
+                work.IsDisposable, work.VerificationPolicy.MinimumSizeSavingPercent);
+            var scratch = WorkerScratchBudget.RequiredBytes(work.Original.SizeBytes, maximum, perceptualStep.Contract);
+            if (scratch is null) return RemoteWorkPlan.Refused("The native search has no bounded working-space requirement.");
+            var match = WorkerCapabilityMatcher.Match(worker, Requirements(scratch.Value));
+            if (!match.Accepted) return RemoteWorkPlan.Refused(string.Join(" ", match.Reasons));
         }
 
         if (vmafModel is not null)

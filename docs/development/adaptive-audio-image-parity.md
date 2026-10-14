@@ -29,7 +29,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET runner and isolated real server pass native search, upload, final verification, replacement and rollback | Capability collection, capacity-aware placement, Swift verification and packaging |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET native proof, capacity-aware claim and real-server lifecycle tests | Swift verification/resource proof and packaging |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references | Placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
@@ -57,8 +57,8 @@ The next contract is reserved as protocol 11; the advertised protocol remains 10
 workers still refuse quality-first audio/image jobs. The persisted worker capabilities and
 lease search state are additive, bounded JSON fields with idempotent migration coverage.
 Pairing and check-in can record fresh optional native-tool proof; omission clears earlier
-proof so a downgraded or failed installation cannot inherit it. Capability collection on the
-native clients is still required before any new placement is enabled.
+proof so a downgraded or failed installation cannot inherit it. Shared .NET collection now
+runs those probes; Swift and exact-package qualification remain required before placement is enabled.
 
 The shared search coordinator freezes the source and encoder/metric binaries, validates
 raw measurements against the frozen policy, caps work at four candidates and handles repeated
@@ -215,3 +215,30 @@ fresh higher-quality retry also fails the unchanged zero-distance gate. The orig
 rejection remain. Seeded earlier-host image intent separately exercises fresh JPEG selection
 on both hosts and WebP on Quark, followed by verification, replacement and exact rollback.
 Missing-intent fixtures stop before measurement with zero media failures or exclusions.
+
+## Native .NET capability collection and placement
+
+Startup qualification now runs actual JPEG/WebP encodes, probes, full decode and native
+comparisons on a synthetic 32×32 fixture. It proves compressed PNG metadata inspection, copies
+complete ICC/EXIF into a stripped PNG and each encoded format, compares all profile bytes, and
+round-trips the portable marker. Separate image and stereo-audio self-assessments must match
+this release's metric revisions, file identities and complete coverage. A failed or missing
+module withholds its proof; it cannot inherit an earlier installation's capability. Fixtures
+are embedded in the worker assembly and removed after stopped children have been reaped.
+
+Pairing and heartbeats carry that proof. Volatile available memory and physical working-volume
+facts refresh without rerunning encodes. Native reservations stay deducted until cleanup, and
+RAM-backed scratch shares the memory budget. Placement and runtime use the same conservative
+3.5 GiB image/512 MiB audio allowances. Unknown memory/storage facts or insufficient capacity
+hold native work without changing media failure counts. Existing fixed video/audio work keeps
+its established requirements. A runtime resource refusal adds a 30-second monotonic claim
+cooldown while heartbeats continue, bounding stale-capacity reclaims.
+
+Mac tool qualification passes JPEG and both metrics; its .NET memory provider remains unknown
+and the shipped Swift client still needs implementation. Quark proves JPEG/WebP, both metrics
+and metadata. Its real 256 MiB scope reports limited capacity despite host memory; the server
+refuses a claim before source transfer. With missing compressed-metadata support, metric proof
+remains available but image encoding is withheld. Real pairing/heartbeat and qualified
+JPEG/WebP claim/search/upload/verification/replacement/rollback pass on an isolated server.
+Fixtures elevate only their stored protocol to 11 after normal negotiation at 10. This does
+not enable production assignment or complete package/Swift qualification.

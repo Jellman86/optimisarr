@@ -5951,6 +5951,15 @@
               "string"
             ]
           },
+          "availableMemoryBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "imageEncoders": {
             "items": {
               "type": "string"
@@ -5968,6 +5977,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "scratchUsesMemory": {
+            "type": [
+              "null",
+              "boolean"
             ]
           }
         },

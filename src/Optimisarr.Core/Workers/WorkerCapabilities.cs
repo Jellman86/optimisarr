@@ -35,12 +35,13 @@ public sealed record WorkerCapabilities(
 
 /// <summary>Native tool and still-encoder proof collected on the worker, never inferred from its platform.</summary>
 public sealed record WorkerPerceptualCapabilities(IReadOnlyList<string>? ImageEncoders = null,
-    bool ImageMetadataSupported = false, string? AudioMetricRevision = null, string? ImageMetricRevision = null)
+    bool ImageMetadataSupported = false, string? AudioMetricRevision = null, string? ImageMetricRevision = null,
+    long? AvailableMemoryBytes = null, bool? ScratchUsesMemory = null)
 {
     public bool Valid() => (ImageEncoders is null || ImageEncoders.Count <= 64
         && ImageEncoders.All(name => name is { Length: > 0 and <= 64 } && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
         && ImageEncoders.Sum(name => name.Length + 1) <= 1024)
-        && Revision(AudioMetricRevision) && Revision(ImageMetricRevision);
+        && Revision(AudioMetricRevision) && Revision(ImageMetricRevision) && AvailableMemoryBytes is not < 0;
 
     private static bool Revision(string? revision) => revision is null || revision is { Length: 40 } && revision.All(Uri.IsHexDigit);
 }
@@ -74,6 +75,14 @@ public static class WorkerCapabilityMatcher
         var reasons = new List<string>();
 
         if (!Enum.IsDefined(required.Kind)) reasons.Add("Unsupported assignment media kind.");
+        if (required.PerceptualSearch)
+        {
+            var memory = PerceptualResourceBudget.MemoryBytes(required.Kind, required.ScratchBytes, worker.Perceptual?.ScratchUsesMemory);
+            if (memory is null || worker.Perceptual?.AvailableMemoryBytes is not { } available)
+                reasons.Add("The worker could not confirm its available native memory and RAM working-space budget.");
+            else if (available < memory)
+                reasons.Add($"The worker has {available} bytes of available native memory, below the {memory} this job needs including any RAM working space.");
+        }
         if (required.PerceptualSearch && worker.ProtocolVersion < WorkerProtocol.PerceptualQualityVersion)
             reasons.Add($"Audio/image quality-first requires sidecar protocol {WorkerProtocol.PerceptualQualityVersion}.");
         if (required.PerceptualSearch && required.Kind != MediaKind.Image

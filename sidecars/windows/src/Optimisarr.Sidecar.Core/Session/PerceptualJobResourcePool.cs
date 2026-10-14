@@ -8,6 +8,13 @@ public sealed class PerceptualJobResourcePool
     private readonly Dictionary<string, long> _disk = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private long _memory;
 
+    public (long? Disk, long? Memory) Available(string root, long? freeDisk, long? freeMemory)
+    {
+        lock (_gate)
+            return (Remaining(freeDisk, _disk.GetValueOrDefault(Path.GetFullPath(root))), Remaining(freeMemory, _memory));
+    }
+    private static long? Remaining(long? available, long reserved) => available is { } bytes ? bytes < reserved ? 0 : bytes - reserved : null;
+
     public IDisposable? TryAcquire(string root, long disk, long memory, long? freeDisk, long? freeMemory)
     {
         if (disk <= 0 || memory <= 0 || freeDisk is not { } availableDisk || freeMemory is not { } availableMemory) return null;

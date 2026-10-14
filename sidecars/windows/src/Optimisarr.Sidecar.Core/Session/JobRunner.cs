@@ -5,7 +5,7 @@ using Optimisarr.Core.Workers;
 namespace Optimisarr.Sidecar.Core.Session;
 
 /// <summary>How a job ended, in the terms the operator and the server both care about.</summary>
-public sealed record JobOutcome(int JobId, bool Delivered, string Detail);
+public sealed record JobOutcome(int JobId, bool Delivered, string Detail, bool CapacityBlocked = false);
 
 /// <summary>
 /// One job, from claim to delivery.
@@ -66,7 +66,7 @@ public sealed class JobRunner(
                 if (reservation is null)
                 {
                     await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
-                    return new(assignment.JobId, false, "The worker cannot confirm enough free memory and working space for this quality-first job.");
+                    return new(assignment.JobId, false, "The worker cannot confirm enough free memory and working space for this quality-first job.", CapacityBlocked: true);
                 }
                 if (Directory.Exists(scratch) || File.Exists(scratch))
                     throw new SidecarException("The native workspace is occupied; the source was not fetched.", false);
@@ -284,7 +284,7 @@ public sealed class JobRunner(
         catch (Exception error) when (nativeSearch && error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
-            return new(assignment.JobId, false, "The native workspace or tools became unavailable; the original was kept.");
+            return new(assignment.JobId, false, "The native workspace or tools became unavailable; the original was kept.", CapacityBlocked: true);
         }
         finally
         {

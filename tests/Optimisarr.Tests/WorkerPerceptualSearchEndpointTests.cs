@@ -100,9 +100,15 @@ public sealed class WorkerPerceptualSearchEndpointTests(AdminTokenAuthEndpointTe
     }
 
     [Theory]
-    [InlineData(5368709120L, true)]
-    [InlineData(1048576L, false)]
-    public async Task A_proved_new_worker_claims_an_image_only_with_space_for_native_search_and_final_verification(long scratchBytes, bool canClaim)
+    [InlineData(5368709120L, 8589934592L, false, true)]
+    [InlineData(1048576L, 8589934592L, false, false)]
+    [InlineData(5368709120L, 2147483648L, false, false)]
+    [InlineData(5368709120L, 3758096384L, false, true)]
+    [InlineData(5368709120L, 3758096384L, true, false)]
+    [InlineData(5368709120L, null, false, false)]
+    [InlineData(5368709120L, 8589934592L, null, false)]
+    public async Task A_proved_new_worker_claims_an_image_only_with_space_for_native_search_and_final_verification(long scratchBytes,
+        long? memoryBytes, bool? scratchUsesMemory, bool canClaim)
     {
         var (client, oldLeaseId, jobId) = await Arrange(); using var owned = client;
         await using (var scope = api.Services.CreateAsyncScope())
@@ -118,7 +124,7 @@ public sealed class WorkerPerceptualSearchEndpointTests(AdminTokenAuthEndpointTe
             library.WorkPlacement = WorkPlacement.WorkerOnly; library.AudioLoudnessGateEnabled = true;
             old.Worker!.FreeScratchBytes = scratchBytes;
             old.Worker.PerceptualCapabilitiesJson = JsonSerializer.Serialize(new WorkerPerceptualCapabilities(["libwebp"], true,
-                ImageMetricRevision: ImagePerceptualResultParser.Revision), Json);
+                ImageMetricRevision: ImagePerceptualResultParser.Revision, AvailableMemoryBytes: memoryBytes, ScratchUsesMemory: scratchUsesMemory), Json);
             old.Job.Status = JobStatus.Queued; old.Job.SourceSha256 = null;
             db.JobLeases.Remove(old); await db.SaveChangesAsync();
         }
