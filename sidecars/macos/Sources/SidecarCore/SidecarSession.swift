@@ -519,7 +519,7 @@ public final class SidecarSession: ObservableObject {
     private func claimUpToCapacity(pairing: StoredPairing, workerId: Int) async {
         guard let executor, capabilities.maxConcurrency > 0, !unconfirmedResult else { return }
 
-        while !isPaused && !shutdown.armed && jobTasks.count < capabilities.maxConcurrency {
+        while !isPaused && !shutdown.armed && !unconfirmedResult && jobTasks.count < capabilities.maxConcurrency {
             let assignment: Assignment?
             do {
                 assignment = try await client.claim(
@@ -535,12 +535,12 @@ public final class SidecarSession: ObservableObject {
                 return
             }
             guard let assignment, jobTasks[assignment.jobId] == nil else { return }
-            if isPaused || shutdown.armed {
+            if isPaused || shutdown.armed || unconfirmedResult {
                 do {
                     try await client.release(serverAddress: pairing.serverAddress,
                                              credential: pairing.credential, leaseId: assignment.leaseId)
                 } catch {
-                    // The claim may have returned after shutdown was armed. A failed hand-back
+                    // The claim may return after draining or an unconfirmed result. A failed hand-back
                     // leaves a possibly held lease, so the countdown must stay blocked.
                     let reason = "Job \(assignment.jobId): hand-back was not acknowledged: \(error.localizedDescription)"
                     unconfirmedResult = true

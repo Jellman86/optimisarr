@@ -46,7 +46,7 @@
 
 ### Fixed
 
-- The Mac worker now refuses unreadable or unsupported quality-search instructions as a whole. It confirms the hand-back before treating that claim as finished; an unconfirmed claim drains new work and blocks automatic shutdown while check-ins continue.
+- The Mac worker now refuses unreadable or unsupported quality-search instructions as a whole. It confirms the hand-back before treating that claim as finished; an unconfirmed claim drains new work and blocks automatic shutdown while check-ins continue. In-flight claims are also handed back when another job becomes unconfirmed.
 
 - Native Windows quality work now waits when process-job ancestry prevents proving available memory. Physical nested-job tests caught an inner limit hiding a stricter outer limit; unresolved capacity no longer borrows the host estimate.
 

@@ -94,4 +94,55 @@ struct UnreadableClaimSessionTests {
         try await waitFor("the shutdown block to be displayed") { session.shutdown.detail.contains("blocked") }
         #expect(session.shutdown.secondsRemaining(at: Date().addingTimeInterval(120)) == nil)
     }
+    @Test("a pending claim is handed back when another job becomes unconfirmed before it returns")
+    func unconfirmedResultDuringClaim() async throws {
+        func claim(_ id: Int) -> ScriptedTransport.Reply {
+            .init(status: 200, json: [
+                "leaseId": UUID().uuidString, "jobId": id, "sourceBytes": 4096,
+                "videoEncoder": "libx265", "renewWithinSeconds": 30,
+                "arguments": ["-i", "{{input}}", "{{output}}.mp4"], "outputExtension": "mp4",
+                "quality": ["measure": false, "model": "vmaf_v0.6.1", "frameSubsample": 1,
+                    "clipVmaf": false, "minimumHarmonicMean": 0.0, "minimumMinimum": 0.0],
+            ])
+        }
+        let beat = ScriptedTransport.Reply(status: 200, json: ["workerId": 4, "protocolVersion": 10, "heartbeatIntervalSeconds": 30])
+        let transport = ScriptedTransport([beat, claim(1), claim(2), beat])
+        transport.releaseStatusOverride = 204
+        let executor = ClaimBoundaryExecutor(transport: transport)
+        let store = InMemoryCredentialStore(stored: StoredPairing(serverAddress: "http://localhost:8787", credential: "fixture", workerId: 4))
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: store,
+            capabilities: SidecarCapabilities(name: "Fixture", maxConcurrency: 2), prober: nil,
+            executor: executor, jobConcurrency: 2, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(nanoseconds: 5_000_000) })
+        transport.onClaimAfterReply = {
+            if transport.claims == 2 {
+                try? await waitFor("the first job's unconfirmed outcome") { session.lastOutcome != nil }
+            }
+        }
+        session.restore()
+        defer { session.unpair() }
+        try await waitFor("the pending claim to be returned") { transport.releases == 1 }
+        #expect(executor.startedIds == [1])
+        #expect(transport.claims == 2)
+    }
+
+}
+
+private final class ClaimBoundaryExecutor: WorkExecutor, @unchecked Sendable {
+    let transport: ScriptedTransport
+    private let gate = NSLock()
+    private var started: [Int] = []
+    var startedIds: [Int] { gate.withLock { started } }
+    init(transport: ScriptedTransport) { self.transport = transport }
+
+    func execute(_ assignment: Assignment, pairing: StoredPairing,
+                 progress: @escaping @Sendable (JobProgress) -> Void,
+                 preview: @escaping @Sendable (Data) -> Void,
+                 storage: @escaping @Sendable (WorkStorage) -> Void) async -> JobOutcome {
+        gate.withLock { started.append(assignment.jobId) }
+        if assignment.jobId == 1 {
+            try? await waitFor("the second claim to begin") { transport.claims == 2 }
+        }
+        return .unconfirmed(jobId: assignment.jobId, reason: "Fixture lost acknowledgement")
+    }
 }

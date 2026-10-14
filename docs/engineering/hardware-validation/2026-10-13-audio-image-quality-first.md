@@ -551,3 +551,10 @@ red before the fixes. All 318 Swift tests and the release build pass. An initial
 a changed shutdown message for an existing known-job hand-back; its existing semantics were
 preserved separately from the unreadable-claim display. No media was downloaded or encoded
 by these refusal fixtures.
+
+A deterministic two-slot regression then reproduces a further race: the first job becomes
+unconfirmed while the second claim is in flight, and the old loop starts that second job anyway.
+The claim loop now rechecks the hold both before each request and after its response, handing
+back that pending lease without starting the executor. The full 319-test Swift suite and
+release build pass after this correction. The server's existing lease/verification authority
+and automatic-shutdown checks remain intact.
