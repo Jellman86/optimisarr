@@ -23,6 +23,59 @@ struct AcceptanceWorker {
             }
             return value
         }
+        if CommandLine.arguments.contains("--native-workspace") {
+            let root = URL(fileURLWithPath: try required("OPTIMISARR_ACCEPTANCE_SCRATCH"))
+            let disk = NativeQualityJobRunner.availableDiskWorkspace(at: root)
+            let data = try JSONSerialization.data(withJSONObject: ["volume": disk.map { $0.volume as Any } ?? NSNull(),
+                "availableDiskBytes": disk.map { $0.availableBytes as Any } ?? NSNull()])
+            print(String(decoding: data, as: UTF8.self))
+            return
+        }
+        if CommandLine.arguments.contains("--native-claim") {
+            var data = Data()
+            while let chunk = try FileHandle.standardInput.read(upToCount: 4096), !chunk.isEmpty {
+                data.append(chunk)
+                guard data.count <= 4096 else { throw NativeQualityHostError() }
+            }
+            let pairing = try JSONDecoder().decode(StoredPairing.self, from: data)
+            let scratch = URL(fileURLWithPath: try required("OPTIMISARR_ACCEPTANCE_SCRATCH"))
+            guard !FileManager.default.fileExists(atPath: scratch.path) else { throw NativeQualityHostError() }
+            let tools = NativeQualityTools(host: URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_HOST")),
+                ffmpeg: URL(fileURLWithPath: try required("OPTIMISARR_FFMPEG")),
+                imageMetric: env["OPTIMISARR_IMAGE_QUALITY"].map { URL(fileURLWithPath: $0) },
+                audioMetric: env["OPTIMISARR_AUDIO_QUALITY"].map { URL(fileURLWithPath: $0) },
+                metadataTool: env["OPTIMISARR_EXIFTOOL"].map { URL(fileURLWithPath: $0) })
+            let client = SidecarClient()
+            guard let assignment = try await client.claim(serverAddress: pairing.serverAddress, credential: pairing.credential),
+                  assignment.nativeQuality != nil else { throw NativeQualityHostError() }
+            let settings = SettingsSnapshot(workLocation: env["OPTIMISARR_ACCEPTANCE_RAM"] == "1" ? .memory : .applicationSupport,
+                memoryBudgetBytes: WorkLocationPolicy.defaultBudget(physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory)))
+            let runner = JobRunner(client: client, scratchRoot: scratch, settings: settings, nativeTools: tools)
+            let outcome = await runner.execute(assignment, pairing: pairing) { value in
+                if let event = try? JSONSerialization.data(withJSONObject: ["type": "progress", "jobId": assignment.jobId, "stage": value.summary]) {
+                    try? FileHandle.standardOutput.write(contentsOf: event + Data([10]))
+                }
+            } storage: { location in
+                var event: [String: Any] = ["type": "storage", "inMemory": location.inMemory, "path": location.path]
+                if let reason = location.fallbackReason { event["fallbackReason"] = reason }
+                if let data = try? JSONSerialization.data(withJSONObject: event) {
+                    try? FileHandle.standardOutput.write(contentsOf: data + Data([10]))
+                }
+            }
+            let state: String
+            switch outcome {
+            case .delivered: state = "delivered"
+            case .capacityBlocked: state = "capacityBlocked"
+            case .released: state = "released"
+            case .unconfirmed: state = "unconfirmed"
+            case .failed: state = "failed"
+            case .leaseLost: state = "leaseLost"
+            }
+            let result = try JSONSerialization.data(withJSONObject: ["type": "completed", "jobId": assignment.jobId,
+                "state": state, "liveMemoryProvider": true, "reservedMemoryBytes": MemoryWorkBudget.shared.reservedBytes])
+            try FileHandle.standardOutput.write(contentsOf: result + Data([10]))
+            return
+        }
         if CommandLine.arguments.contains("--native-quality") {
             let executable = URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_HOST"))
             var data = Data()

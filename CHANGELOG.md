@@ -15,6 +15,8 @@
 
 ### Added
 
+- The Mac job runner now routes native audio/image searches through the shared engine, preserving the frozen contract and checking its lease before media work. Live memory and shared disk/RAM reservations govern admission; failed RAM ejection retains its allocation. Capacity hand-backs pause claims while check-ins continue, and progress never invents missing byte counts. Automatic protocol-11 placement remains disabled pending capability, restart and package qualification.
+
 - Native clients can ask the shared helper for a validated job's memory/workspace requirements without sending credentials or starting media tools. Swift consumes this bounded reply, keeping resource policy in the shared engine. Its frame parser now has an explicit initializer compatible with the CI Swift compiler.
 
 - Add the Swift bridge for the shared native quality helper, with private bounded requests, matching terminal/exit checks and cancellable pipes. A shared RAM/native ledger and live Mac memory estimate prevent double allocation; existing RAM jobs use disk when live capacity is unavailable. Automatic claims and signed native bundles remain gated.

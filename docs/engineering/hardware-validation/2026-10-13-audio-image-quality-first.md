@@ -558,3 +558,47 @@ The claim loop now rechecks the hold both before each request and after its resp
 back that pending lease without starting the executor. The full 319-test Swift suite and
 release build pass after this correction. The server's existing lease/verification authority
 and automatic-shutdown checks remain intact.
+
+## Ordinary Swift native execution, 14 October
+
+The ordinary SidecarClient claim decoder and JobRunner now preserve the frozen native contract
+and delegate it to the same shared engine, with no fixed-quality fallback. Tests cover typed
+identities, exact integer/escape preservation, retained unknown/duplicate fields, private grants,
+missing helpers, resource refusal, failed hand-back, generic false completion, mixed admission,
+RAM fallback/ejection retention, cancellation ownership, changing memory and lease loss during
+preparation. A red duplicate-identity regression also reproduced a hand-back targeting one of
+two lease IDs. Duplicate/case-aliased/escaped lease identities now remain unconfirmed; ordinary
+identity fields cannot collide with active-job tracking. Other duplicate fields reach the shared
+parser unchanged and are refused before media work.
+
+Standard Swift builds pass **341 core tests and 9 UI tests**; release builds succeed. A temporary
+native-build-backend run was used while the default build engine was delayed under host pressure;
+its aggregate count includes the UI target. Final acceptance uses the standard build engine.
+Full SDK-27 compilation retains the pre-existing Keychain deprecation warnings; these protections
+were not changed. The self-contained osx-arm64 helper publishes with zero .NET warnings.
+
+Actual Mac execution uses the live memory provider and actual disk capacity, without an explicit
+fixture grant. The isolated server still has no encoding/quality tools (audio planning retains
+ffprobe). Pairing/heartbeat negotiate protocol 10; reserved protocol 11 is elevated only in the
+fixture row, with earlier synthetic tool proof and explicit stored capacity. This deliberately
+stale claim proof is not automatic Swift capability qualification. AAC, Opus and MP3 pass native
+search, one committed-response loss/replay, sealed upload, strict final verification, repeated
+replacement and exact rollback. The RAM-preferred AAC run records actual RAM use, removal of
+its owned mount and zero remaining reservation. Its success is distinct from preference-only
+runs. A real JPEG claim under insufficient live memory is acknowledged back to the queue before
+any source GET/probe, with zero failures, unchanged original and no owned scratch.
+
+A real RAM-volume/alias test verifies neither can advertise physical disk capacity. Testing also
+caught Foundation presenting the writable Data volume as logical `/`, causing diskutil to inspect
+the read-only system snapshot. The provider now obtains the actual mounted device from
+[Apple's file-descriptor filesystem statistics](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fstatfs.2.html)
+before inspecting disk facts. Physical APFS workspace now reports positive capacity; unproved,
+network, custom disk-image/RAM and read-only storage holds safely. Container identity shares
+planned native workspace across folders/aliases. Final image-card captures in both themes were
+visually checked; unknown delivery size and stage-only progress do not invent counters.
+
+No installed app, service, personal media or protection was changed. Automatic tool-proof
+advertisement, positive live image acceptance, native scratch restart recovery and exact-package
+qualification remain outstanding. A separate review must distinguish temporary capacity returns
+from durable worker refusal opinions before automatic placement is enabled. This record does
+not claim complete parity or change the protocol maximum.

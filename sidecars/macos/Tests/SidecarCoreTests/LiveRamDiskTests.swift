@@ -9,6 +9,19 @@ import Testing
 ///     OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
 @Suite("Live RAM disk", .serialized, .enabled(if: ProcessInfo.processInfo.environment["OPTIMISARR_LIVE_RAMDISK"] != nil))
 struct LiveRamDiskTests {
+    @Test("a real RAM volume and an alias into it never advertise physical disk capacity")
+    func nativeWorkspaceAliases() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let ram = try #require(RamDisk.create(bytes: 64 * 1024 * 1024))
+        defer { #expect(ram.destroy()) }
+        let alias = root.appendingPathComponent("alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: ram.mountPoint)
+        #expect(NativeQualityJobRunner.availableDiskWorkspace(at: ram.mountPoint) == nil)
+        #expect(NativeQualityJobRunner.availableDiskWorkspace(at: alias.appendingPathComponent("not-created")) == nil)
+    }
+
     @Test("the production job runner ejects its RAM volume after delivery, encoder failure or cancellation",
           .enabled(if: ProcessInfo.processInfo.environment["OPTIMISARR_FFMPEG"] != nil),
           arguments: [LiveEncodeOutcome.success, .failure, .cancelled])

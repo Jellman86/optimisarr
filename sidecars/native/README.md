@@ -40,6 +40,8 @@ ignore cancellation. A cancelled pipe operation is never reused; the single-use 
 The host is built by the main and Windows-worker solutions and tested by the shared worker
 suite. Distribution must publish a self-contained runtime for the native client's architecture,
 include the runtime's required notices, and qualify the actual bundle, tool dependencies,
-parent-death/cancellation behavior and signing/runtime entitlements. The Swift bridge is tested
-through the isolated AcceptanceWorker; the menu-bar app's claim loop is not wired to it yet.
+parent-death/cancellation behavior and signing/runtime entitlements. The Swift client and ordinary job runner now route complete native assignments to this host when
+it is bundled; an installation missing it hands back the job. The AcceptanceWorker exercises the
+same claim, admission and execution path with live Mac resources. Automatic capability advertisement,
+restart recovery and exact bundle qualification remain in progress.
 Do not advertise protocol 11 on the strength of the host or bridge alone.

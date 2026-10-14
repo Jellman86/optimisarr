@@ -33,7 +33,11 @@ public struct NativeQualityReply: Sendable {
 
 /// The wire assignment stays intact; the shared engine owns its validation and execution.
 /// This bridge never treats a terminal event as proof that the process and its children stopped.
-public struct NativeQualityHost: Sendable {
+public protocol NativeQualityExchanging: Sendable {
+    func exchange(request: Data, expectedJobId: Int?, report: @escaping @Sendable (NativeQualityEvent) -> Void) async throws -> NativeQualityReply
+}
+
+public struct NativeQualityHost: NativeQualityExchanging {
     public let executable: URL
     public init(executable: URL) { self.executable = executable }
 

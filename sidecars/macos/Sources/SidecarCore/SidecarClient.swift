@@ -388,9 +388,8 @@ public struct SidecarClient: Sendable {
         let (data, response) = try await perform(request)
         switch response.statusCode {
         case 200:
-            let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            guard let body, let assignment = Assignment(json: body) else {
-                try await releaseUnreadableClaim(body, serverAddress: serverAddress, credential: credential)
+            guard let assignment = Assignment.decode(data) else {
+                try await releaseUnreadableClaim(data, serverAddress: serverAddress, credential: credential)
                 throw SidecarError.unexpectedResponse(status: 200)
             }
             await diagnostics.assignment(leaseId: assignment.leaseId, jobId: assignment.jobId)
@@ -406,9 +405,8 @@ public struct SidecarClient: Sendable {
         }
     }
 
-    private func releaseUnreadableClaim(_ body: [String: Any]?, serverAddress: String, credential: String) async throws {
-        guard let text = body?["leaseId"] as? String, let leaseId = UUID(uuidString: text),
-              leaseId.uuidString != "00000000-0000-0000-0000-000000000000" else { throw SidecarError.unconfirmedClaim }
+    private func releaseUnreadableClaim(_ data: Data, serverAddress: String, credential: String) async throws {
+        guard let leaseId = NativeWireJSON.uniqueLeaseId(data) else { throw SidecarError.unconfirmedClaim }
         do {
             try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId.uuidString)
         } catch let error as SidecarError where error.endsTheLease {
@@ -454,6 +452,7 @@ public struct SidecarClient: Sendable {
     /// The server's `RemoteStage` names. Sent as names because the two sides are versioned apart.
     static func stageName(_ progress: JobProgress) -> String {
         switch progress {
+        case let .stageOnly(stage): return stage.rawValue
         case .fetchingSource: return "FetchingSource"
         case .encoding: return "Encoding"
         case .measuring: return "Measuring"

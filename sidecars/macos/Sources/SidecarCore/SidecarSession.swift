@@ -56,6 +56,7 @@ public final class SidecarSession: ObservableObject {
     /// The encoder each running job uses, as the server assigned it ("hevc_videotoolbox").
     @Published public internal(set) var jobEncoders: [Int: String] = [:]
     @Published public internal(set) var audioJobs: Set<Int> = []
+    @Published public internal(set) var imageJobs: Set<Int> = []
 
     /// Free space on the work volume, as this Mac last reported it to the server. Nil until the
     /// first check-in, so the panel shows a dash rather than a zero nobody measured.
@@ -97,6 +98,7 @@ public final class SidecarSession: ObservableObject {
     private var lastDrainedHeartbeat: Date?
     private var unconfirmedResult = false
     private var unconfirmedClaim = false
+    private let capacityBackoff: CapacityClaimBackoff
     private var shutdownTask: Task<Void, Never>?
     private let requestShutdown: @Sendable () async throws -> Void
 
@@ -213,6 +215,7 @@ public final class SidecarSession: ObservableObject {
         /// when `executor` is supplied, which only tests do.
         settingsSnapshot: SettingsSnapshot? = nil,
         executor: WorkExecutor? = nil,
+        capacityBackoff: CapacityClaimBackoff = CapacityClaimBackoff(),
         scratchCapacity: @escaping @Sendable () -> Int64 = {
             JobRunner.availableScratchBytes(at: JobRunner.defaultScratchRoot()) ?? 0
         },
@@ -224,6 +227,7 @@ public final class SidecarSession: ObservableObject {
         requestShutdown: @escaping @Sendable () async throws -> Void = { try await SystemShutdown.request() }
     ) {
         self.client = client
+        self.capacityBackoff = capacityBackoff
         self.store = store
         self.capabilities = capabilities
         self.prober = prober
@@ -380,6 +384,7 @@ public final class SidecarSession: ObservableObject {
         jobTitles = [:]
         jobEncoders = [:]
         audioJobs = []
+        imageJobs = []
         transferRates = [:]
         rateMeters = [:]
         filmStrips = [:]
@@ -517,9 +522,9 @@ public final class SidecarSession: ObservableObject {
     /// The server hands out one job per claim and holds the worker to the concurrency it
     /// reported, so this can never run more than the server believes it can.
     private func claimUpToCapacity(pairing: StoredPairing, workerId: Int) async {
-        guard let executor, capabilities.maxConcurrency > 0, !unconfirmedResult else { return }
+        guard let executor, capabilities.maxConcurrency > 0, !unconfirmedResult, !capacityBackoff.isWaiting else { return }
 
-        while !isPaused && !shutdown.armed && !unconfirmedResult && jobTasks.count < capabilities.maxConcurrency {
+        while !isPaused && !shutdown.armed && !unconfirmedResult && !capacityBackoff.isWaiting && jobTasks.count < capabilities.maxConcurrency {
             let assignment: Assignment?
             do {
                 assignment = try await client.claim(
@@ -535,7 +540,7 @@ public final class SidecarSession: ObservableObject {
                 return
             }
             guard let assignment, jobTasks[assignment.jobId] == nil else { return }
-            if isPaused || shutdown.armed || unconfirmedResult {
+            if isPaused || shutdown.armed || unconfirmedResult || capacityBackoff.isWaiting {
                 do {
                     try await client.release(serverAddress: pairing.serverAddress,
                                              credential: pairing.credential, leaseId: assignment.leaseId)
@@ -551,10 +556,11 @@ public final class SidecarSession: ObservableObject {
             }
 
             let jobId = assignment.jobId
-            activeJobs[jobId] = .fetchingSource(received: 0, total: assignment.sourceBytes)
+            activeJobs[jobId] = assignment.nativeQuality == nil ? .fetchingSource(received: 0, total: assignment.sourceBytes) : .stageOnly(.measuring)
             jobTitles[jobId] = assignment.title
             jobEncoders[jobId] = assignment.encoder
             if assignment.isAudio { audioJobs.insert(jobId) }
+            if assignment.isImage { imageJobs.insert(jobId) }
             refreshWorkingStatus()
             beginActivity()
             // The task holds the session for the job's duration, which is intended: a job is
@@ -704,6 +710,7 @@ public final class SidecarSession: ObservableObject {
     private func finish(_ outcome: JobOutcome, jobId: Int, workerId: Int) {
         lastOutcome = outcome
         if case .unconfirmed = outcome { unconfirmedResult = true }
+        if case .capacityBlocked = outcome { capacityBackoff.block() }
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
         jobStorage[jobId] = nil
@@ -711,6 +718,7 @@ public final class SidecarSession: ObservableObject {
         jobTitles[jobId] = nil
         jobEncoders[jobId] = nil
         audioJobs.remove(jobId)
+        imageJobs.remove(jobId)
         transferRates[jobId] = nil
         rateMeters[jobId] = nil
         filmStrips[jobId] = nil
@@ -800,6 +808,7 @@ public extension SidecarSession {
         transferRates: [Int: Double] = [:],
         filmStrips: [Int: FilmStrip] = [:],
         audioJobs: Set<Int> = [],
+        imageJobs: Set<Int> = [],
         gpu: GpuUsage? = nil,
         cpu: Double? = nil,
         freeScratchBytes: Int64? = nil,
@@ -826,6 +835,7 @@ public extension SidecarSession {
         session.transferRates = transferRates
         session.filmStrips = filmStrips
         session.audioJobs = audioJobs
+        session.imageJobs = imageJobs
         session.gpu = gpu
         session.cpu = cpu
         session.freeScratchBytes = freeScratchBytes

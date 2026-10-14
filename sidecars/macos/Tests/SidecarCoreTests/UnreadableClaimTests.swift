@@ -70,6 +70,20 @@ struct UnreadableClaimTests {
             #expect(transport.requests.count == 2)
         }
     }
+    @Test("duplicate or case-aliased lease identities cannot acknowledge the wrong job")
+    func ambiguousLeaseIdentity() async {
+        let first = "8b1e2c3d-0000-4000-8000-000000000001"
+        let other = "8b1e2c3d-0000-4000-8000-000000000002"
+        for key in ["leaseId", "LeaseId", "\\u006ceaseId"] {
+            let transport = StubTransport(status: 200)
+            transport.body = Data("{\"leaseId\":\"\(first)\",\"\(key)\":\"\(other)\",\"perceptualSearch\":{}}".utf8)
+            await #expect(throws: SidecarError.unconfirmedClaim) {
+                try await SidecarClient(transport: transport).claim(serverAddress: "http://localhost:8787", credential: "fixture")
+            }
+            #expect(transport.lastRequest?.url?.path == "/api/workers/claim")
+        }
+    }
+
 }
 
 @MainActor

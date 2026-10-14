@@ -181,8 +181,10 @@ public struct Assignment: Sendable, Equatable {
     public let videoEncoder: String
     public let kind: String
     public let audioEncoder: String?
+    public let nativeQuality: NativeQualityAssignment?
     public var isAudio: Bool { kind == "Audio" }
-    public var encoder: String { isAudio ? audioEncoder ?? "Unknown audio encoder" : videoEncoder }
+    public var isImage: Bool { kind == "Image" }
+    public var encoder: String { nativeQuality?.encoder ?? (isAudio ? audioEncoder ?? "Unknown audio encoder" : videoEncoder) }
     public let renewWithinSeconds: Int
     public let arguments: [String]
     public let outputExtension: String
@@ -200,8 +202,10 @@ public struct Assignment: Sendable, Equatable {
         renewWithinSeconds: Int, arguments: [String], outputExtension: String,
         quality: QualityRequirement, search: AdaptiveSearchStep? = nil,
         fullVerification: FullVerificationContract? = nil, maxCandidateBytes: Int64? = nil,
-        minCandidateBytes: Int64? = nil, kind: String = "Video", audioEncoder: String? = nil
+        minCandidateBytes: Int64? = nil, kind: String = "Video", audioEncoder: String? = nil,
+        nativeQuality: NativeQualityAssignment? = nil
     ) {
+        self.nativeQuality = nativeQuality
         self.leaseId = leaseId
         self.jobId = jobId
         self.title = title
@@ -217,6 +221,21 @@ public struct Assignment: Sendable, Equatable {
         self.fullVerification = fullVerification
         self.maxCandidateBytes = maxCandidateBytes
         self.minCandidateBytes = minCandidateBytes
+    }
+
+    public static func decode(_ data: Data) -> Self? {
+        guard let wire = try? NativeWireJSON.compact(data),
+              let object = try? JSONSerialization.jsonObject(with: wire) as? [String: Any] else { return nil }
+        let keys = NativeWireJSON.rootKeys(wire).map { $0.lowercased() }
+        guard keys.filter({ $0 == "leaseid" }).count == 1, keys.filter({ $0 == "jobid" }).count == 1 else { return nil }
+        if let search = object["perceptualSearch"], !(search is NSNull) {
+            guard let native = NativeQualityAssignment(data: wire) else { return nil }
+            return Self(leaseId: native.leaseId, jobId: native.jobId, title: native.title,
+                sourceBytes: native.sourceBytes, videoEncoder: "", renewWithinSeconds: native.renewWithinSeconds,
+                arguments: native.arguments, outputExtension: native.outputExtension, quality: native.quality,
+                kind: native.kind, audioEncoder: native.kind == "Audio" ? native.encoder : nil, nativeQuality: native)
+        }
+        return Self(json: object)
     }
 
     init?(json: [String: Any]) {

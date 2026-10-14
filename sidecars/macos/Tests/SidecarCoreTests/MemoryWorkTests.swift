@@ -113,3 +113,52 @@ struct LiveMacMemoryTests {
         #expect(UInt64(bytes) < ProcessInfo.processInfo.physicalMemory)
     }
 }
+
+@Suite("Native disk workspace admission")
+struct NativeDiskWorkTests {
+    @Test("folders and aliases on one volume share planned workspace while independent volumes do not")
+    func sharedVolume() throws {
+        let budget = DiskWorkBudget()
+        let first = try #require(budget.reserve(volume: "container-1", bytes: 60, available: 100))
+        #expect(budget.reserve(volume: "container-1", bytes: 41, available: 100) == nil)
+        let second = try #require(budget.reserve(volume: "container-1", bytes: 40, available: 100))
+        let other = try #require(budget.reserve(volume: "container-2", bytes: 100, available: 100))
+        budget.release(first); budget.release(first)
+        #expect(budget.reserve(volume: "container-1", bytes: 61, available: 100) == nil)
+        budget.release(second); budget.release(other)
+        #expect(budget.reserve(volume: "container-1", bytes: 100, available: 100) != nil)
+    }
+
+    @Test("unproved, invalid and overflowing workspace never becomes unlimited")
+    func unknownDisk() {
+        let budget = DiskWorkBudget()
+        #expect(budget.reserve(volume: nil, bytes: 1, available: 100) == nil)
+        #expect(budget.reserve(volume: "", bytes: 1, available: 100) == nil)
+        #expect(budget.reserve(volume: "disk", bytes: -1, available: 100) == nil)
+        #expect(budget.reserve(volume: "disk", bytes: 1, available: nil) == nil)
+        #expect(budget.reserve(volume: "disk", bytes: Int64.max, available: Int64.max) != nil)
+        #expect(budget.reserve(volume: "disk", bytes: 1, available: Int64.max) == nil)
+    }
+
+    @Test("unknown, read-only, image and RAM storage cannot masquerade as a proved physical disk")
+    func diskClassification() {
+        #expect(MacNativeWorkspace.isPhysicalDisk(["WritableVolume": true, "BusProtocol": "Apple Fabric"]))
+        #expect(MacNativeWorkspace.isPhysicalDisk(["WritableVolume": true, "BusProtocol": "USB"]))
+        for info: [String: Any] in [[:], ["WritableVolume": false, "BusProtocol": "USB"],
+            ["WritableVolume": true, "BusProtocol": "Disk Image"],
+            ["WritableVolume": true, "BusProtocol": "RAM"],
+            ["WritableVolume": true, "BusProtocol": "Future bus"],
+            ["WritableVolume": true, "BusProtocol": "USB", "DiskImage": true]] {
+            #expect(!MacNativeWorkspace.isPhysicalDisk(info))
+        }
+    }
+    @Test("kernel mount devices are read without confusing the logical root, paths or remote mounts")
+    func kernelDeviceIdentity() {
+        #expect(MacNativeWorkspace.deviceName(Data("/dev/disk3s5\0trailing".utf8)) == "/dev/disk3s5")
+        #expect(MacNativeWorkspace.deviceName(Data("/dev/disk3s1s1\0".utf8)) == "/dev/disk3s1s1")
+        for value in ["/dev/disk", "/dev/disk3s5", "/dev/disk3/../disk4\0", "host:/folder\0", "/System/Volumes/Data\0"] {
+            #expect(MacNativeWorkspace.deviceName(Data(value.utf8)) == nil)
+        }
+    }
+
+}

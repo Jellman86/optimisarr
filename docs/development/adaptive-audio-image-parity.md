@@ -29,12 +29,12 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET native proof, capacity-aware claim and real-server lifecycle tests | Swift verification/resource proof and packaging |
-| Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references | Placement parity, longer-track and difficult-passage qualification |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; .NET native proof, capacity-aware claim and real-server lifecycle tests | Live positive image acceptance, automatic Swift proof/placement and packaging |
+| Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims now pass all three codecs under live memory admission | Automatic placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
-| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Swift native integration, broader reconnect acceptance, interrupted-attempt history and export qualification |
+| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Swift automatic capability integration, broader reconnect acceptance, interrupted-attempt history and export qualification |
 | Lifetime | Owned local scratch, stopped-process cleanup, cancellation propagation, source revalidation, attempt-fenced result persistence | All native worker implementations, resource exhaustion and restart/reconnect acceptance |
 | Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Native worker retry/restart and exact-package qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
@@ -377,3 +377,28 @@ explicitly outside jobs. This is deliberately conservative, including an apparen
 job; product code never escapes a job or changes its limits. The physical happy-path matrix
 was repeated in an independently verified standalone process after the guard. Full Swift app
 integration, exact packages and the other completion-matrix obligations remain outstanding.
+
+## Mac execution route, 14 October
+
+The ordinary Swift client preserves an opaque native assignment, and its normal job runner
+selects the shared engine when available. Version-4 image evidence remains in that engine;
+it cannot enter legacy verification. Unknown fields, number precision and nonidentity duplicates
+survive the private request for authoritative validation. Ambiguous lease/job identities are
+refused at the client boundary; an ambiguous lease cannot be reported as safely handed back.
+
+Requirements are validated before reserving the shared native/RAM budget. Disk helpers share
+planned workspace by volume/container; owned RAM is charged for its full allocation and remains
+charged after a failed ejection. A fresh memory check follows workspace creation. Lease checks
+bracket preparation before the helper begins downloading. Confirmed capacity refusal pauses
+claims for 30 monotonic seconds while heartbeats continue. Delivery with an unknown byte count
+is displayed without substituting zero. Image cards use the photo icon and native stages carry
+no invented transfer counts.
+
+The real Mac route passes AAC/Opus/MP3, committed-response replay, final verification,
+idempotent replacement and exact rollback with live memory admission. RAM storage/ejection
+and custom RAM aliases are qualified separately. A live image claim holds below its 3.5 GiB
+budget before any source download. This is conditional execution support, not automatic placement:
+Swift tool-proof advertisement, positive live image acceptance, owned native scratch restart
+recovery, resource hand-back classification and complete packages remain required before
+protocol 11 is enabled. The soundtrack, preview/calibration and broader coverage obligations
+in the matrix are unchanged.

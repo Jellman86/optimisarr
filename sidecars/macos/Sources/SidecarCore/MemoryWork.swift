@@ -44,6 +44,13 @@ public final class MemoryWorkBudget: @unchecked Sendable {
         }
     }
 
+    func remainsAdmitted(_ token: UUID, availableMemory: Int64?) -> Bool {
+        lock.withLock {
+            guard reservations[token] != nil, let availableMemory, availableMemory >= 0 else { return false }
+            return reservations.values.reduce(Int64(0)) { $0 + $1.total } <= availableMemory
+        }
+    }
+
     func release(_ token: UUID, retainRam: Bool = false) {
         lock.withLock {
             guard retainRam, let held = reservations[token], held.ramBytes > 0 else {
@@ -62,4 +69,24 @@ public struct WorkStorage: Sendable, Equatable {
         self.inMemory = inMemory; self.path = path; self.fallbackReason = fallbackReason
     }
     public var summary: String { inMemory ? "Working in RAM" : "Working on disk" }
+}
+
+/// Native helpers run in separate processes. Their planned disk work must still share one app ledger.
+public final class DiskWorkBudget: @unchecked Sendable {
+    public static let shared = DiskWorkBudget()
+    private let gate = NSLock()
+    private struct Allocation { let volume: String; let bytes: Int64 }
+    private var reservations: [UUID: Allocation] = [:]
+    public init() {}
+
+    func reserve(volume: String?, bytes: Int64, available: Int64?) -> UUID? {
+        gate.withLock {
+            guard let volume, !volume.isEmpty, bytes > 0, let available, available >= 0 else { return nil }
+            let used = reservations.values.filter { $0.volume == volume }.reduce(Int64(0)) { $0 + $1.bytes }
+            guard available >= used, bytes <= available - used else { return nil }
+            let token = UUID(); reservations[token] = Allocation(volume: volume, bytes: bytes)
+            return token
+        }
+    }
+    func release(_ token: UUID) { gate.withLock { _ = reservations.removeValue(forKey: token) } }
 }

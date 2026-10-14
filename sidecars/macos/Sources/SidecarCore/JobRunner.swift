@@ -257,7 +257,10 @@ public struct ProcessTranscodeRunner: TranscodeRunner {
 /// How one assignment ended, in terms the menu can show and a log can keep.
 public enum JobOutcome: Sendable, Equatable {
     /// The candidate reached the server intact. Verification there decides what it is worth.
-    case delivered(jobId: Int, bytes: Int64)
+    case delivered(jobId: Int, bytes: Int64?)
+
+    /// Capacity refusal was acknowledged before media work; check-ins continue during backoff.
+    case capacityBlocked(jobId: Int, reason: String)
 
     /// The server accepted a terminal failure for this attempt; it will not requeue it.
     case failed(jobId: Int, reason: String)
@@ -279,7 +282,21 @@ public enum JobOutcome: Sendable, Equatable {
 /// stalled one unless the bytes are counted. A total of zero means it is not known yet, which is
 /// true for the moment before the first range comes back and for a server that answers with the
 /// whole file and no range header.
+public enum NativeWorkStage: String, Sendable, Equatable {
+    case fetchingSource = "FetchingSource", encoding = "Encoding", measuring = "Measuring", delivering = "Delivering"
+    public var summary: String {
+        switch self {
+        case .fetchingSource: return "Receiving"
+        case .encoding: return "Encoding"
+        case .measuring: return "Measuring"
+        case .delivering: return "Sending"
+        }
+    }
+}
+
 public enum JobProgress: Sendable, Equatable {
+    /// The shared engine reports this stage without a transfer count or encoded-time measurement.
+    case stageOnly(NativeWorkStage)
     case fetchingSource(received: Int64, total: Int64)
     case encoding(encodedSeconds: Double)
     case measuring
@@ -290,6 +307,7 @@ public extension JobProgress {
     /// One word for the stage, for the menu's header line.
     var summary: String {
         switch self {
+        case let .stageOnly(stage): return stage.summary
         case .fetchingSource: return "Receiving"
         case .encoding: return "Encoding"
         case .measuring: return "Measuring"
@@ -302,13 +320,14 @@ public extension JobProgress {
         switch self {
         case let .fetchingSource(received, _): return received
         case let .delivering(sent, _): return sent
-        case .encoding, .measuring: return nil
+        case .encoding, .measuring, .stageOnly: return nil
         }
     }
 
     /// Whether two reports describe the same stage, ignoring how far through it they are.
     func isSameStage(as other: JobProgress) -> Bool {
         switch (self, other) {
+        case let (.stageOnly(first), .stageOnly(second)): return first == second
         case (.fetchingSource, .fetchingSource), (.encoding, .encoding),
              (.measuring, .measuring), (.delivering, .delivering):
             return true
@@ -368,6 +387,7 @@ public protocol WorkExecutor: Sendable {
 /// behind but a line in the log.
 public struct JobRunner: WorkExecutor {
     private let client: SidecarClient
+    private let nativeRunner: NativeQualityJobRunner?
     private let ffmpeg: URL?
     private let ffprobe: URL?
     private let runner: TranscodeRunner
@@ -413,11 +433,19 @@ public struct JobRunner: WorkExecutor {
         availableMemory: @escaping @Sendable () -> Int64? = MacMemoryAvailability.read,
         makeRamDisk: @escaping @Sendable (Int64) -> RamDisk? = RamDisk.create,
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
+        nativeTools: NativeQualityTools? = NativeQualityTools.bundled(),
+        nativeHelper: (any NativeQualityExchanging)? = nil,
+        nativeWorkspace: (@Sendable (URL) -> NativeDiskCapacity?)? = nil,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
     ) {
         self.client = client
+        self.nativeRunner = nativeTools.map {
+            NativeQualityJobRunner(client: client, tools: $0, helper: nativeHelper, scratchRoot: scratchRoot,
+                settings: settings, memoryBudget: memoryBudget, availableMemory: availableMemory,
+                workspace: nativeWorkspace, makeRamDisk: makeRamDisk, availableScratch: availableScratchBytes)
+        }
         self.ffmpeg = ffmpeg
         self.ffprobe = ffprobe
         self.runner = runner
@@ -470,6 +498,12 @@ public struct JobRunner: WorkExecutor {
         preview: @escaping @Sendable (Data) -> Void = { _ in },
         storage: @escaping @Sendable (WorkStorage) -> Void = { _ in }
     ) async -> JobOutcome {
+        if assignment.nativeQuality != nil {
+            guard let nativeRunner else {
+                return await release(assignment, pairing: pairing, reason: "This installation has no shared native audio/image helper.")
+            }
+            return await nativeRunner.execute(assignment, pairing: pairing, progress: progress, preview: preview, storage: storage)
+        }
         // Where this job works, which the operator may have moved to another volume or to memory.
         // A RAM disk is made per job and sized to it, so an idle sidecar holds no memory at all,
         // and a job too large for the memory budget quietly runs on disk instead of being lost.

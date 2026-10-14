@@ -260,12 +260,12 @@ struct SidecarMenu: View {
     private var shutdownDetail: String {
         if case .unreachable = session.status { return session.shutdown.detail }
         if session.activeJobs.values.contains(where: {
-            if case .delivering = $0 { return true }; return false
+            switch $0 { case .delivering, .stageOnly(.delivering): return true; default: return false }
         }) {
             return "Finishing candidate upload and waiting for the server acknowledgement. No new jobs are accepted."
         }
         if session.activeJobs.values.contains(where: {
-            if case .measuring = $0 { return true }; return false
+            switch $0 { case .measuring, .stageOnly(.measuring): return true; default: return false }
         }) {
             return "Waiting for sidecar quality checks and verification to finish. No new jobs are accepted."
         }
@@ -299,7 +299,7 @@ struct SidecarMenu: View {
                     if let data = session.filmStrips[jobId]?.frames.last, let image = NSImage(data: data) {
                         Image(nsImage: image).resizable().scaledToFill()
                     } else {
-                        Image(systemName: "film").foregroundStyle(Instrument.ink4)
+                        Image(systemName: session.imageJobs.contains(jobId) ? "photo" : "film").foregroundStyle(Instrument.ink4)
                     }
                 }.frame(width: 96, height: 54).clipped().clipShape(RoundedRectangle(cornerRadius: 8))
                     .accessibilityLabel("Media preview")
@@ -434,10 +434,16 @@ struct SidecarMenu: View {
     private static func lastValue(_ outcome: JobOutcome) -> String {
         switch outcome {
         case let .delivered(jobId, bytes):
-            return "#\(jobId) · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+            return "#\(jobId) · " + (bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "returned")
         case let .failed(jobId, _):
             return "#\(jobId) · failed"
-        case let .released(jobId, _), let .leaseLost(jobId, _), let .unconfirmed(jobId, _):
+        case let .capacityBlocked(jobId, _):
+            return "#\(jobId) · waiting for capacity"
+        case let .unconfirmed(jobId, _):
+            return "#\(jobId) · hand-back unconfirmed"
+        case let .leaseLost(jobId, _):
+            return "#\(jobId) · lease ended"
+        case let .released(jobId, _):
             return "#\(jobId) · handed back"
         }
     }
@@ -515,6 +521,7 @@ private extension JobProgress {
     /// The stage in the words both sidecars use.
     var stage: String {
         switch self {
+        case let .stageOnly(stage): return stage.summary
         case .fetchingSource: return "Receiving source"
         case .encoding: return "Encoding"
         case .measuring: return "Quality & verification"
@@ -524,6 +531,7 @@ private extension JobProgress {
 
     var label: String {
         switch self {
+        case let .stageOnly(stage): return stage.summary
         case let .fetchingSource(received, total):
             return Self.transferred(received, total)
         case let .encoding(seconds):
@@ -542,7 +550,7 @@ private extension JobProgress {
         case let .fetchingSource(done, total), let .delivering(done, total):
             guard total > 0 else { return nil }
             return min(max(Double(done) / Double(total), 0), 1)
-        case .encoding, .measuring:
+        case .encoding, .measuring, .stageOnly:
             return nil
         }
     }
@@ -562,8 +570,10 @@ private extension JobOutcome {
     var label: String {
         switch self {
         case let .delivered(jobId, bytes):
-            let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-            return "Last job #\(jobId): returned \(size) to the server."
+            let size = bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+            return size.map { "Last job #\(jobId): returned \($0) to the server." } ?? "Last job #\(jobId): returned to the server."
+        case let .capacityBlocked(jobId, reason):
+            return "Last job #\(jobId): waiting for capacity — \(reason)"
         case let .failed(jobId, reason):
             return "Last job #\(jobId): \(reason)"
         case let .released(jobId, reason):
