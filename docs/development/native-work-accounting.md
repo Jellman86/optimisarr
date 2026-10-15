@@ -2,7 +2,7 @@
 
 Tracked by [#332](https://github.com/Jellman86/optimisarr/issues/332) and
 [draft #415](https://github.com/Jellman86/optimisarr/pull/415). The shared .NET ledger and
-checkpoint protocol are a **pure foundation**. Standalone workers do not yet use durable
+checkpoint protocol and serialized transaction boundary are **unconnected foundations**. Standalone workers do not yet use durable
 startup reconciliation, and protocol 11 remains disabled. The connected Mac runtime has its
 own [qualified implementation and limits](../engineering/hardware-validation/2026-10-15-native-work-runtime.md).
 
@@ -68,6 +68,38 @@ fails; zero reported availability is not proof that debt was successfully restor
 still needs to obtain a canonical physical ID and capacity from the same pinned root. Opaque IDs
 must never be substituted with display names or mount paths.
 
+## Serialized transaction boundary
+
+The internal `NativeWorkJournal` owns an injected, exclusively locked storage lifetime.
+`OpenExisting` never initializes missing authority. It selects only checkpoint-authorized bytes,
+durably reconfirms that exact visible ledger generation, then saves and reads back the resolved
+checkpoint. Ledger reconfirmation must synchronize the file and its containing directory before
+old/new authority is discarded; reading visible bytes alone is insufficient after a failed rename sync.
+
+Each commit validates the transition before I/O, verifies the existing ledger and checkpoint,
+saves and reads back pending authority, durably replaces and reads back the ledger, then saves
+and reads back committed authority. Physical bindings are checked throughout. The new immutable
+snapshot becomes visible only after the final exact readbacks. Any I/O or binding uncertainty
+poisons the instance, stops future effects and prevents a caught storage exception from reporting
+successful execution. An invalid in-memory transition without I/O does not poison a trusted store.
+
+One asynchronous gate spans preparation, the actual media body and finalization. Only the currently
+issued preparation/finalization session can commit; the body receives a cancellation token. Phase
+completion revokes that session and joins any synchronous commit already in progress. Retained,
+manufactured or expired sessions cannot write, including after storage ownership ends. Preparation
+and finalization must join their own work; the media body must await all owned children and previews.
+
+Closing rejects queued work, cancels the active body and waits for its actual completion and
+finalization before disposing storage. Active finalization retains write authority during closing;
+poisoned accounting grants none. Preparation/body failures and cancellation still finalize, while
+finalization failure holds further work. Cancellation observers cannot skip finalization. Callbacks
+must not await disposal of the journal that owns their own lifetime.
+
+The **44 injected-storage tests** cover every commit I/O boundary, lost write acknowledgements,
+authorized old/new reopening, missing/changed authority, stale scopes, caught commit failures,
+close during authorization/finalization, and a body that ignores cancellation. These are deterministic
+transaction and lifetime tests, not physical power-loss, OS durability or packaged-worker evidence.
+
 ## Required integration
 
 The portable coordinator and OS adapters must enforce this ordering:
@@ -99,7 +131,7 @@ Restoring both Linux files together from one configuration snapshot cannot be de
 two-file protocol; that limitation must remain explicit. No access or decode failure may fall
 back to fresh empty authority.
 
-These adapters and effect ordering remain unimplemented. Their acceptance must cover every
+The OS adapters, bootstrap and coordinator effect ordering remain unimplemented. Their acceptance must cover every
 commit boundary, contention, stale continuations, previous roots, active-owner exclusion,
 capability cancellation, callback failures and same-heartbeat overclaim. See the
 [parity matrix](adaptive-audio-image-parity.md) and

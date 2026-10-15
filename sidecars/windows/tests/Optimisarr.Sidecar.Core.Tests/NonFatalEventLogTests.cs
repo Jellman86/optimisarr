@@ -152,8 +152,9 @@ public sealed class NonFatalEventLogTests
         {
             EventLog.CreateEventSource(source, "Application");
             var notices = new List<EventLogWriteState>();
-            using var provider = new NonFatalEventLogProvider(new NativeEventLogProvider(new EventLogSettings
-            { SourceName = source, LogName = "Application" }), notices.Add, TimeProvider.System);
+            var recorded = new RecordedNativeSink(new NativeEventLogProvider(new EventLogSettings
+            { SourceName = source, LogName = "Application" }));
+            using var provider = new NonFatalEventLogProvider(recorded, notices.Add, TimeProvider.System);
             var registration = provider.CreateLogger("registration");
             // Windows refreshes its registered sources asynchronously. Prove a real
             // write before concurrent entry assertions; an initial refusal must recover
@@ -177,8 +178,19 @@ public sealed class NonFatalEventLogTests
             Parallel.For(0, 100, index => provider.CreateLogger($"category{index}")
                 .LogInformation(new EventId(1000 + index), "Synthetic logging probe {Index}; no job or pairing.", index));
             provider.CreateLogger("empty").LogInformation(new EventId(1100), "");
+            var failureEvidence = "";
+            if (noticesBefore != notices.Count)
+            {
+                try
+                {
+                    var published = ReadOwnedEntries(1000, Stopwatch.StartNew(), TimeSpan.FromSeconds(5));
+                    failureEvidence = " Published synthetic IDs: " + string.Join(",", published.Order());
+                }
+                catch (Exception error) { failureEvidence = " Synthetic-ID query failed: " + error; }
+            }
             Assert.True(noticesBefore == notices.Count,
-                "Concurrent native writes changed sink availability: " + string.Join(", ", notices.Skip(noticesBefore)));
+                "Concurrent native writes changed sink availability: " + string.Join(", ", notices.Skip(noticesBefore))
+                + failureEvidence + " Native write failures: " + string.Join("\n", recorded.Failures));
             var written = Array.Empty<int>();
             var publication = Stopwatch.StartNew();
             while (publication.Elapsed < TimeSpan.FromSeconds(30))
@@ -241,6 +253,37 @@ public sealed class NonFatalEventLogTests
     private sealed class ThrowingScope
     {
         public override string ToString() => throw new IOException("Scope bug");
+    }
+
+    // Only this disposable synthetic source uses exception detail. Production notices retain
+    // safe fields only; recording must not replay dropped IDs or change throttling/readiness.
+    [SupportedOSPlatform("windows")]
+    private sealed class RecordedNativeSink(NativeEventLogProvider native) : ILoggerProvider
+    {
+        private readonly Stopwatch _elapsed = Stopwatch.StartNew();
+        public List<string> Failures { get; } = [];
+        public ILogger CreateLogger(string category) => new RecordedLogger(this, native.CreateLogger(category));
+        public void Dispose() => native.Dispose();
+
+        private sealed class RecordedLogger(RecordedNativeSink owner, ILogger logger) : ILogger, IPreparedEventLogLogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => logger.BeginScope(state);
+            public bool IsEnabled(LogLevel level) => logger.IsEnabled(level);
+            public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter) => PrepareWrite(level, id, formatter(state, exception), exception)();
+            public Action PrepareWrite(LogLevel level, EventId id, string message, Exception? exception)
+            {
+                var write = ((IPreparedEventLogLogger)logger).PrepareWrite(level, id, message, exception);
+                return () => {
+                    try { write(); }
+                    catch (Exception error)
+                    {
+                        owner.Failures.Add($"Synthetic ID {id.Id}, elapsed {owner._elapsed.Elapsed}, thread {Environment.CurrentManagedThreadId}: {error}");
+                        throw;
+                    }
+                };
+            }
+        }
     }
 
     private sealed class ThrowingException : Exception

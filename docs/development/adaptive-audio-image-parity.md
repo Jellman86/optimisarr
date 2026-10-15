@@ -4,7 +4,7 @@ Operator priority: **13 October 2026**. Finish quality-first workflows for audio
 images before continuing perceptual dedupe or activating exact-copy file actions.
 Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
-## Active checkpoint, 15 October 2026
+## Active checkpoint, 16 October 2026
 
 The operator resumed full parity work after the 14 October pause. [Draft PR #415](https://github.com/Jellman86/optimisarr/pull/415)
 remains unmerged and undeployed. Protocol 10 remains advertised; automatic protocol-11 placement
@@ -60,8 +60,10 @@ unconnected; this prerequisite does not establish standalone restart accounting.
 The shared .NET [accounting format and checkpoint rules](native-work-accounting.md) now freeze
 immutable obligations and forward transitions, and accept only independently recorded old/new
 snapshots after an interrupted save. A fixed physical-ID pool now prevents mixed path/ID
-accounting namespaces. Physical identity/capacity capture, durable OS storage and coordinator
-effect ordering remain required before standalone integration.
+accounting namespaces. The shared transaction boundary now serializes preparation, actual work
+and finalization, fences uncertain commits and retains ownership through shutdown. Its injected
+storage tests do not establish physical durability. Physical identity/capacity capture, durable OS
+storage, first-start bootstrap and coordinator effect ordering remain required before standalone integration.
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.

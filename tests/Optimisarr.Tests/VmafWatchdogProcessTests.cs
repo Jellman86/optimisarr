@@ -114,7 +114,11 @@ public sealed class VmafWatchdogProcessTests : IDisposable
     [PosixFact]
     public async Task Heartbeats_cannot_replace_missing_quality_evidence()
     {
-        var result = await Service("no-log").MeasureAsync(Source, Candidate, Context, CancellationToken.None);
+        // This asserts evidence refusal after a successful tool exit, not startup latency.
+        // Keep it independent of the short idle deadline exercised by the stalled fixtures.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var result = await Service("no-log", TimeSpan.FromSeconds(30))
+            .MeasureAsync(Source, Candidate, Context, deadline.Token);
         Assert.False(result.Measured);
         Assert.Contains("no log", result.Error);
         AssertReaped(); AssertOwnedLogRemoved();

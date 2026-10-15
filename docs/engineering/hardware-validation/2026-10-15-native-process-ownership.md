@@ -226,3 +226,39 @@ tests** on Mac and native Quark, plus three Windows-only skips. Quark passes **3
 after verifying the source archive hash. All **346 browser tests** pass again. Swift and Python
 sources retain the preceding passing checkpoints. Picard's SSH connection still times out;
 the new physical-ID policy has no fresh physical Windows qualification yet.
+
+## Shared journal transaction boundary, 16 October
+
+The unconnected shared journal now owns one exclusive storage lifetime and serializes preparation,
+the actual media body and finalization. Only the currently issued preparation/finalization scope
+can commit. Missing authority cannot initialize an existing store, uncertain I/O poisons further
+effects, and caught commit failures cannot report successful execution. Shutdown cancels admission
+but retains storage ownership until actual work and positive-retirement finalization return.
+
+All **44 deterministic injected-storage cases** pass locally. They cover every commit I/O boundary,
+successful writes with lost acknowledgements, exact old/new recovery, ledger durability reconfirmation
+before checkpoint resolution, changed bindings, manufactured/expired scope refusal, preparation and
+body failures, close during authorization/finalization and throwing/reentrant cancellation observers.
+A body that ignores cancellation holds the gate until its actual completion. Astra's review
+identified scope forgery, recovery reconfirmation and caught-commit reporting gaps; each is fixed
+with regression coverage. This does not qualify an OS persistence adapter or physical crash recovery.
+
+The first full Mac backend run stopped the missing-report fixture at its short idle deadline,
+before successful process exit could establish the intended missing-log refusal. That fixture
+now uses the existing separate overall-bound pattern; production and stalled-progress deadlines
+are unchanged. The original failing result is retained.
+
+At physical-pool source `0fc2459f`, Windows CI built with zero warnings but the synthetic fresh-source
+logging fixture failed after 537 ms with native code 5 during its concurrent burst (688 cases passed,
+one failed). The initial ID-zero publication does not prove stable source registration. No concrete
+serialization defect or access-denied cause is established. Fixture-only diagnostics now capture
+the failed synthetic ID, elapsed time, native stack and published IDs. They neither replay missing
+entries nor weaken the required 101 exact IDs or production retry policy. Fresh Windows evidence
+and the cause remain pending.
+
+The final frozen source passes zero-warning .NET builds, **3,565 backend / 730 shared-worker
+tests** on Mac and native Quark, plus three Windows-only logging skips. Quark passes all **31
+Linux tests** after verifying its archive hash. All **346 browser tests** pass again. Astra's final
+journal and fixture reviews are clear. Unchanged Swift/Python sources retain their preceding
+passing gates. Fresh Picard SSH still times out. Physical OS durability and standalone integration
+remain unqualified; the new package/CI checkpoint must be assessed separately.
