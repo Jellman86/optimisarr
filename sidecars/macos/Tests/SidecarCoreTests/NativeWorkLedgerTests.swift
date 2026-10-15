@@ -17,7 +17,16 @@ struct NativeWorkLedgerTests {
         record.ramBytes = 64 * 1024 * 1024
         record.ramIdentity = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 123456, backingEntryId: 123450, volumeId: UUID(),
             device: "/dev/disk9", mountPoint: record.root!, rootIdentity: record.scope!.root)
+        record.ramCreationAttempted = true
+        record.ramAllocation = NativeRamAllocationIdentity(bootSession: boot, owner: record.owner.owner,
+            registryEntryId: 123456, backingEntryId: 123450, device: "/dev/disk9", allocatedBytes: record.ramBytes)
         return record
+    }
+
+    @Test("a mounted RAM receipt cannot omit the original allocation provenance")
+    func mountedWithoutAllocation() {
+        var record = ram(); record.ramAllocation = nil
+        #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.encode([record]) }
     }
 
     @Test("checksummed round trips retain previous actual roots and full obligations")
@@ -53,6 +62,30 @@ struct NativeWorkLedgerTests {
         #expect(record.holdsResources)
         #expect(try NativeWorkLedger.decode(NativeWorkLedger.encode([record])) == [record])
         record.phase = .running; record.receipt = .required
+        #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.encode([record]) }
+    }
+
+    @Test("an allocated but unmounted RAM image retains its independently tagged physical identity")
+    func partialAllocation() throws {
+        var record = disk()
+        record.phase = .admitting; record.root = nil; record.scope = nil; record.diskVolume = nil
+        record.ramBytes = 64 * 1024 * 1024; record.ramCreationAttempted = true
+        let allocation = NativeRamAllocationIdentity(bootSession: boot, owner: record.owner.owner,
+            registryEntryId: 123, backingEntryId: 120, device: "/dev/disk9", allocatedBytes: record.ramBytes)
+        record.ramAllocation = allocation
+        #expect(try NativeWorkLedger.decode(NativeWorkLedger.encode([record])) == [record])
+        record.phase = .writersRetired; record.ramRetired = true; record.phase = .accountingReleased
+        #expect(try NativeWorkLedger.decode(NativeWorkLedger.encode([record])) == [record])
+        for changed in [NativeRamAllocationIdentity(bootSession: UUID(), owner: record.owner.owner,
+            registryEntryId: 123, backingEntryId: 120, device: "/dev/disk9", allocatedBytes: record.ramBytes),
+            NativeRamAllocationIdentity(bootSession: boot, owner: UUID(), registryEntryId: 123, backingEntryId: 120,
+                device: "/dev/disk9", allocatedBytes: record.ramBytes),
+            NativeRamAllocationIdentity(bootSession: boot, owner: record.owner.owner, registryEntryId: 123,
+                backingEntryId: 120, device: "/dev/disk9", allocatedBytes: record.ramBytes + 512)] {
+            record.ramAllocation = changed
+            #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.encode([record]) }
+        }
+        record.ramAllocation = allocation; record.ramCreationAttempted = false
         #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.encode([record]) }
     }
 
@@ -96,7 +129,7 @@ struct NativeWorkLedgerTests {
         object["checksum"] = String(repeating: "0", count: 64)
         #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.decode(JSONSerialization.data(withJSONObject: object)) }
         object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        for version in [1, 99] {
+        for version in [1, 2, 99] {
             object["schemaVersion"] = version
             #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.decode(JSONSerialization.data(withJSONObject: object)) }
         }

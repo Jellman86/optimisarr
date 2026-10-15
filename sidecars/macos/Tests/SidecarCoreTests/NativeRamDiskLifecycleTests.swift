@@ -106,6 +106,25 @@ struct NativeRamDiskLifecycleTests {
         #expect(await !service.retire(invalid))
         #expect(calls.count == 0)
     }
+
+    @Test("partial and mounted receipts share one physical retirement slot across lifecycle instances")
+    func partialAndMountedSingleFlight() async throws {
+        let calls = LockedRamCalls(), barrier = DispatchSemaphore(value: 0)
+        let allocation = NativeRamAllocationIdentity(bootSession: identity.bootSession, owner: UUID(),
+            registryEntryId: identity.registryEntryId, backingEntryId: identity.backingEntryId,
+            device: identity.device, allocatedBytes: 512)
+        let first = NativeRamDiskLifecycle(timeout: .milliseconds(30), retire: { _, _ in false }, retireAllocation: { _, permitted in
+            calls.increment(); barrier.wait(); return permitted()
+        })
+        let second = NativeRamDiskLifecycle(retire: { _, _ in calls.increment(); return true })
+        #expect(await !first.retire(allocation))
+        #expect(await !second.retire(identity))
+        #expect(calls.count == 1)
+        barrier.signal()
+        try await waitFor("the partial allocation's OS operation to finish") { !first.hasInFlightOperation(identity) }
+        #expect(await second.retire(identity))
+        #expect(calls.count == 2)
+    }
 }
 
 private final class LockedRamCalls: @unchecked Sendable {

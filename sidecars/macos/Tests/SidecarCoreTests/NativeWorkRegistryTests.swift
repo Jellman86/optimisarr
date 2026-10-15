@@ -14,12 +14,14 @@ struct NativeWorkRegistryTests {
     private func record(ram: Bool = false) -> NativeWorkObligation {
         var record = NativeWorkObligation(owner: NativeAccountedOwner(owner: UUID(), jobId: 12, leaseId: UUID()),
             bootSession: boot, root: ram ? "/Volumes/OptimisarrWork-fixture" : "/previous/actual/folder", scope: scope,
-            nativeBytes: 60, scratchBytes: 20, diskVolume: ram ? nil : "disk1", ramBytes: ram ? 40 : 0)
+            nativeBytes: 60, scratchBytes: 20, diskVolume: ram ? nil : "disk1", ramBytes: ram ? 512 : 0)
         record.phase = .running; record.receipt = .required
         if ram {
             record.ramCreationAttempted = true
             record.ramIdentity = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 123, backingEntryId: 120, volumeId: UUID(),
                 device: "/dev/disk9", mountPoint: record.root!, rootIdentity: scope.root)
+            record.ramAllocation = NativeRamAllocationIdentity(bootSession: boot, owner: record.owner.owner,
+                registryEntryId: 123, backingEntryId: 120, device: "/dev/disk9", allocatedBytes: record.ramBytes)
         }
         return record
     }
@@ -87,14 +89,14 @@ struct NativeWorkRegistryTests {
             let current = try journal.load()
             if stage == "eject" {
                 #expect(current.first?.phase == .writersRetired && current.first?.receipt == .consumed)
-                #expect(memory.reservedBytes == 100)
+                #expect(memory.reservedBytes == 572)
             }
         })
         let registry = try NativeWorkRegistry(journal: journal, bootSession: boot, memory: memory, disk: disk,
             retirement: cleanup.operations)
         #expect(try await !registry.recover())
         #expect(cleanup.calls == ["retire:\(old.root!)", "consume:\(old.root!)", "eject:/dev/disk9"])
-        #expect(memory.reservedBytes == 100)
+        #expect(memory.reservedBytes == 572)
         #expect(try journal.load().first?.receipt == .consumed)
         cleanup.ejected = true
         #expect(try await registry.recover())
@@ -140,6 +142,65 @@ struct NativeWorkRegistryTests {
             disk: DiskWorkBudget(), retirement: cleanup.operations)
         #expect(try await afterReboot.recover())
         #expect(afterRebootMemory.reservedBytes == 0 && cleanup.calls.isEmpty)
+    }
+
+    @Test("a partial RAM allocation is persisted before preparation and a failed retirement retains all charges")
+    func partialRamAllocation() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appendingPathComponent("ledger")
+        let journal = try NativeWorkJournal(directory: directory)
+        let memory = MemoryWorkBudget(), calls = PartialRamCalls()
+        let retirement = NativeWorkRetirement(retire: { _, _, _ in throw NativeWorkRegistryError.invalid },
+            consume: { _, _, _ in throw NativeWorkRegistryError.invalid }, retireRam: { _ in throw NativeWorkRegistryError.invalid },
+            retireAllocation: { allocation in calls.record(allocation); return calls.retired })
+        let registry = try NativeWorkRegistry(journal: journal, bootSession: boot, memory: memory,
+            disk: DiskWorkBudget(), retirement: retirement)
+        let owner = try await registry.reserve(jobId: 12, leaseId: UUID(), nativeBytes: 60, scratchBytes: 20,
+            ramBytes: 512, ramLimit: 1000, availableMemory: 1000, disk: nil)
+        let allocation = NativeRamAllocationIdentity(bootSession: boot, owner: owner.owner,
+            registryEntryId: 123, backingEntryId: 120, device: "/dev/disk9", allocatedBytes: 512)
+        await #expect(throws: NativeWorkRegistryError.self) { try await registry.recordRamAllocation(owner: owner, allocation: allocation) }
+        try await registry.markRamCreationAttempted(owner: owner)
+        try await registry.recordRamAllocation(owner: owner, allocation: allocation)
+        #expect(try journal.load().first?.ramAllocation == allocation)
+        await #expect(throws: NativeWorkRegistryError.self) { try await registry.recordRamAllocation(owner: owner, allocation: allocation) }
+        #expect(try await !registry.recover())
+        #expect(calls.allocations == [allocation] && memory.reservedBytes == 572)
+        let id = journal.storeId; journal.close()
+        let reopened = try NativeWorkJournal(directory: directory, expectedStoreId: id); defer { reopened.close() }
+        let restored = MemoryWorkBudget()
+        let resumed = try NativeWorkRegistry(journal: reopened, bootSession: boot, memory: restored,
+            disk: DiskWorkBudget(), retirement: retirement)
+        #expect(restored.reservedBytes == 572)
+        calls.retired = true
+        #expect(try await resumed.recover())
+        #expect(restored.reservedBytes == 0 && calls.allocations == [allocation, allocation])
+        #expect(try reopened.load().isEmpty)
+    }
+
+    @Test("mounted RAM preparation cannot replace a persisted allocation with a different physical disk")
+    func changedPartialRamPreparation() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let journal = try NativeWorkJournal(directory: root.appendingPathComponent("ledger")); defer { journal.close() }
+        let memory = MemoryWorkBudget(), cleanup = RegistryCleanupFixture()
+        let registry = try NativeWorkRegistry(journal: journal, bootSession: boot, memory: memory,
+            disk: DiskWorkBudget(), retirement: cleanup.operations)
+        let owner = try await registry.reserve(jobId: 12, leaseId: UUID(), nativeBytes: 60, scratchBytes: 20,
+            ramBytes: 512, ramLimit: 1000, availableMemory: 1000, disk: nil)
+        try await registry.markRamCreationAttempted(owner: owner)
+        let allocation = NativeRamAllocationIdentity(bootSession: boot, owner: owner.owner,
+            registryEntryId: 123, backingEntryId: 120, device: "/dev/disk9", allocatedBytes: 512)
+        try await registry.recordRamAllocation(owner: owner, allocation: allocation)
+        let changed = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 124, backingEntryId: 120,
+            volumeId: UUID(), device: "/dev/disk9", mountPoint: "/Volumes/OptimisarrWork-fixture", rootIdentity: scope.root)
+        await #expect(throws: NativeWorkRegistryError.self) {
+            try await registry.prepare(owner: owner, root: URL(fileURLWithPath: changed.mountPoint), scope: scope, ramIdentity: changed)
+        }
+        #expect(try journal.load().first?.phase == .admitting && memory.reservedBytes == 572)
+        let correct = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 123, backingEntryId: 120,
+            volumeId: UUID(), device: "/dev/disk9", mountPoint: changed.mountPoint, rootIdentity: scope.root)
+        try await registry.prepare(owner: owner, root: URL(fileURLWithPath: correct.mountPoint), scope: scope, ramIdentity: correct)
+        #expect(try journal.load().first?.phase == .reserved)
     }
 
     @Test("running intent is durable and a no-workspace terminal cannot release a potentially live duplicate owner")
@@ -220,7 +281,7 @@ struct NativeWorkRegistryTests {
         } else {
             await #expect(throws: NativeWorkJournalError.self) { try await registry.recover() }
         }
-        #expect(memory.reservedBytes == (usesRam ? 100 : 60))
+        #expect(memory.reservedBytes == (usesRam ? 572 : 60))
         let expectedCalls: [String]
         switch boundary {
         case .running, .accountingReleased: expectedCalls = []
@@ -283,6 +344,15 @@ struct NativeWorkRegistryTests {
         #expect(try journal.load().map(\.owner) == [owner])
         #expect(memory.reservedBytes == 30 && disk.available(volume: "disk1", liveBytes: 100) == 80)
     }
+}
+
+private final class PartialRamCalls: @unchecked Sendable {
+    private let lock = NSLock()
+    private var history: [NativeRamAllocationIdentity] = []
+    private var result = false
+    var allocations: [NativeRamAllocationIdentity] { lock.withLock { history } }
+    var retired: Bool { get { lock.withLock { result } } set { lock.withLock { result = newValue } } }
+    func record(_ allocation: NativeRamAllocationIdentity) { lock.withLock { history.append(allocation) } }
 }
 
 private final class RegistryCleanupFixture: @unchecked Sendable {

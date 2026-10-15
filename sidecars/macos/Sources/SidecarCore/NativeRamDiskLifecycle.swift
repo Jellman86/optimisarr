@@ -19,16 +19,29 @@ public final class NativeRamDiskLifecycle: @unchecked Sendable {
     private static let slots = Slots()
     private let timeout: TimeInterval
     private let retireOperation: @Sendable (NativeRamDiskIdentity, @Sendable () -> Bool) -> Bool
+    private let retireAllocationOperation: @Sendable (NativeRamAllocationIdentity, @Sendable () -> Bool) -> Bool
 
     public convenience init(timeout: Duration = .seconds(10)) {
         self.init(timeout: timeout, retire: MacNativeRamDiskSystem.retire)
     }
 
     init(timeout: Duration = .seconds(10),
-         retire: @escaping @Sendable (NativeRamDiskIdentity, @Sendable () -> Bool) -> Bool) {
+         retire: @escaping @Sendable (NativeRamDiskIdentity, @Sendable () -> Bool) -> Bool,
+         retireAllocation: @escaping @Sendable (NativeRamAllocationIdentity, @Sendable () -> Bool) -> Bool = MacNativeRamDiskSystem.retireAllocation) {
         let parts = timeout.components
         self.timeout = max(0.001, min(30, Double(parts.seconds) + Double(parts.attoseconds) / 1e18))
         retireOperation = retire
+        retireAllocationOperation = retireAllocation
+    }
+
+    public func captureAllocation(device: String, owner: UUID, bootSession: UUID,
+                                  allocatedBytes: Int64) async -> NativeRamAllocationIdentity? {
+        guard Self.isSupported, !Task.isCancelled, owner != NativeWorkLedger.zero, bootSession != NativeWorkLedger.zero,
+              allocatedBytes > 0, allocatedBytes % 512 == 0 else { return nil }
+        return await perform(fallback: nil) { permitted in
+            MacNativeRamDiskSystem.captureAllocation(device: device, owner: owner, bootSession: bootSession,
+                allocatedBytes: allocatedBytes, permitted: permitted)
+        }
     }
 
     public func capture(_ disk: RamDisk, scope: NativeScratchScope, allocatedBytes: Int64) async -> NativeRamDiskIdentity? {
@@ -46,6 +59,17 @@ public final class NativeRamDiskLifecycle: @unchecked Sendable {
             defer { Self.slots.gate.withLock { _ = Self.slots.inFlight.remove(key) } }
             guard permitted() else { return false }
             return self.retireOperation(identity, permitted)
+        }
+    }
+
+    public func retire(_ allocation: NativeRamAllocationIdentity) async -> Bool {
+        guard allocation.isValid, !Task.isCancelled else { return false }
+        let key = Key(boot: allocation.bootSession, media: allocation.registryEntryId, backing: allocation.backingEntryId)
+        guard Self.slots.gate.withLock({ Self.slots.inFlight.insert(key).inserted }) else { return false }
+        return await perform(fallback: false) { permitted in
+            defer { Self.slots.gate.withLock { _ = Self.slots.inFlight.remove(key) } }
+            guard permitted() else { return false }
+            return self.retireAllocationOperation(allocation, permitted)
         }
     }
 
@@ -157,6 +181,72 @@ enum MacNativeRamDiskSystem {
         } catch { return nil }
     }
 
+    static func captureAllocation(device: String, owner: UUID, bootSession expectedBoot: UUID, allocatedBytes: Int64,
+                                  permitted: @Sendable () -> Bool) -> NativeRamAllocationIdentity? {
+        do {
+            guard permitted(), bootSession() == expectedBoot, let media = try namedMedia(device) else { return nil }
+            defer { IOObjectRelease(media) }
+            guard let backing = try backing(media) else { return nil }
+            defer { IOObjectRelease(backing) }
+            guard try property(backing, "OptimisarrNativeOwner") as? String == owner.uuidString,
+                  try number(media, "Size") == UInt64(allocatedBytes) else { return nil }
+            let raw = try pin(device, media: media)
+            defer { Darwin.close(raw) }
+            guard permitted(), let snapshot = RamDisk.run("/usr/bin/hdiutil", ["info", "-plist"], timeout: 5),
+                  NativeRamImageProvenance.isRAM(Data(snapshot.utf8), device: device, allocatedBytes: allocatedBytes), permitted() else { return nil }
+            let allocation = NativeRamAllocationIdentity(bootSession: expectedBoot, owner: owner,
+                registryEntryId: try id(media), backingEntryId: try id(backing), device: device, allocatedBytes: allocatedBytes)
+            return allocation.isValid ? allocation : nil
+        } catch { return nil }
+    }
+
+    static func retireAllocation(_ allocation: NativeRamAllocationIdentity, permitted: @Sendable () -> Bool) -> Bool {
+        do {
+            guard allocation.isValid, permitted(), let boot = bootSession() else { return false }
+            if boot != allocation.bootSession { return permitted() }
+            if try absent(mediaId: allocation.registryEntryId, backingId: allocation.backingEntryId, permitted: permitted) { return permitted() }
+            guard let media = try entry(allocation.registryEntryId) else { return false }
+            defer { IOObjectRelease(media) }
+            guard let backing = try backing(media) else { return false }
+            defer { IOObjectRelease(backing) }
+            guard try id(backing) == allocation.backingEntryId,
+                  try property(backing, "OptimisarrNativeOwner") as? String == allocation.owner.uuidString,
+                  try number(media, "Size") == UInt64(allocation.allocatedBytes), permitted(),
+                  let snapshot = RamDisk.run("/usr/bin/hdiutil", ["info", "-plist"], timeout: 5),
+                  NativeRamImageProvenance.isRAM(Data(snapshot.utf8), device: allocation.device, allocatedBytes: allocation.allocatedBytes)
+            else { return false }
+            // Tool probes can open the raw node. Acquire a fresh pin only after they end:
+            // IOMedia's open count is reset on last close, not decremented per opener.
+            let raw = try pin(allocation.device, media: media)
+            let ejected: Bool
+            do {
+                defer { Darwin.close(raw) }
+                let estimate = getfsstat(nil, 0, MNT_NOWAIT)
+                guard estimate > 0, estimate < 16_368 else { return false }
+                var mounts = Array<statfs>(repeating: statfs(), count: Int(estimate) + 16)
+                let bytes = Int32(mounts.count * MemoryLayout<statfs>.stride)
+                let count = mounts.withUnsafeMutableBufferPointer { getfsstat($0.baseAddress, bytes, MNT_NOWAIT) }
+                guard count > 0, count < mounts.count else { return false }
+                for offset in 0..<Int(count) {
+                    let mountedDevice = withUnsafeBytes(of: mounts[offset].f_mntfromname) { bytes in
+                        String(decoding: bytes.prefix(while: { $0 != 0 }), as: UTF8.self)
+                    }
+                    guard mountedDevice != allocation.device else { return false }
+                }
+                // A partial receipt has no authority to unmount. Kernel open counts also
+                // veto a mounted filesystem or a still-pinned formatter missed by this scan.
+                ejected = permitted() && ioctl(raw, UInt(0x20006415), 0) == 0
+            }
+            guard ejected else { return false }
+            for _ in 0..<100 {
+                if try absent(mediaId: allocation.registryEntryId, backingId: allocation.backingEntryId, permitted: permitted) { return permitted() }
+                guard permitted() else { return false }
+                usleep(10_000)
+            }
+        } catch {}
+        return false
+    }
+
     static func retire(_ identity: NativeRamDiskIdentity, permitted: @Sendable () -> Bool) -> Bool {
         do {
             guard permitted(), let boot = bootSession() else { return false }
@@ -198,10 +288,14 @@ enum MacNativeRamDiskSystem {
     }
 
     private static func absent(_ identity: NativeRamDiskIdentity, permitted: @Sendable () -> Bool) throws -> Bool {
-        let media = try entry(identity.registryEntryId)
+        try absent(mediaId: identity.registryEntryId, backingId: identity.backingEntryId, permitted: permitted)
+    }
+
+    private static func absent(mediaId: UInt64, backingId: UInt64, permitted: @Sendable () -> Bool) throws -> Bool {
+        let media = try entry(mediaId)
         defer { if let media { IOObjectRelease(media) } }
         if media != nil { return false }
-        let backing = try entry(identity.backingEntryId)
+        let backing = try entry(backingId)
         defer { if let backing { IOObjectRelease(backing) } }
         if backing != nil { return false }
         // Optimized ID lookups can return success+null even when their iterator could not
@@ -214,7 +308,7 @@ enum MacNativeRamDiskSystem {
             isValid: { permitted() && IOIteratorIsValid(iterator) != 0 }, release: { IOObjectRelease($0) }, accepts: {
                 guard permitted() else { throw Unconfirmed() }
                 let value = try id($0)
-                return value == identity.registryEntryId || value == identity.backingEntryId
+                return value == mediaId || value == backingId
             })
         defer { if let found { IOObjectRelease(found) } }
         return found == nil

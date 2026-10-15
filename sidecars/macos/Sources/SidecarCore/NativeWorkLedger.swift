@@ -43,6 +43,7 @@ public struct NativeWorkObligation: Codable, Equatable, Sendable {
     public var diskVolume: String?
     public var ramBytes: Int64
     public var ramIdentity: NativeRamDiskIdentity?
+    public var ramAllocation: NativeRamAllocationIdentity?
     public var ramCreationAttempted = false
     public var ramRetired = false
     public var phase: Phase = .reserved
@@ -56,11 +57,16 @@ public struct NativeWorkObligation: Codable, Equatable, Sendable {
               root == nil || NativeWorkLedger.validPath(root!), scope == nil || scope!.isValid,
               diskVolume == nil || !diskVolume!.isEmpty && diskVolume!.utf8.count <= 512 else { return false }
         if ramBytes == 0 {
-            guard ramIdentity == nil, !ramCreationAttempted, !ramRetired else { return false }
+            guard ramIdentity == nil, ramAllocation == nil, !ramCreationAttempted, !ramRetired else { return false }
         } else {
             guard diskVolume == nil, !(ramRetired && receipt == .required) else { return false }
+            if let ramAllocation {
+                guard ramCreationAttempted, ramAllocation.isValid, ramAllocation.owner == owner.owner,
+                      ramAllocation.bootSession == bootSession, ramAllocation.allocatedBytes == ramBytes,
+                      ramIdentity.map(ramAllocation.matches) ?? true else { return false }
+            }
             if let ramIdentity {
-                guard ramIdentity.isValid, ramIdentity.bootSession == bootSession,
+                guard ramCreationAttempted, ramAllocation != nil, ramIdentity.isValid, ramIdentity.bootSession == bootSession,
                       ramIdentity.mountPoint == root, ramIdentity.rootIdentity == scope?.root else { return false }
             }
         }
@@ -75,7 +81,7 @@ public struct NativeWorkObligation: Codable, Equatable, Sendable {
             return receipt == .notRequired || root != nil && scope != nil
                 && (ramBytes == 0 || ramIdentity != nil)
         case .accountingReleased:
-            return (ramBytes == 0 || ramRetired && (ramIdentity != nil || !ramCreationAttempted))
+            return (ramBytes == 0 || ramRetired && (ramIdentity != nil || ramAllocation != nil || !ramCreationAttempted))
                 && (receipt == .notRequired || root != nil && scope != nil)
         }
     }
@@ -92,8 +98,8 @@ public enum NativeWorkLedger {
     public static func encode(_ obligations: [NativeWorkObligation]) throws -> Data {
         try validate(obligations)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        let payload = try encoder.encode(Payload(schemaVersion: 2, obligations: obligations))
-        let data = try encoder.encode(Envelope(schemaVersion: 2, payload: payload, checksum: checksum(payload)))
+        let payload = try encoder.encode(Payload(schemaVersion: 3, obligations: obligations))
+        let data = try encoder.encode(Envelope(schemaVersion: 3, payload: payload, checksum: checksum(payload)))
         guard data.count <= maximumBytes else { throw NativeWorkLedgerError.invalidData }
         return data
     }
@@ -104,12 +110,12 @@ public enum NativeWorkLedger {
                   let outer = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   Set(outer.keys) == Set(["schemaVersion", "payload", "checksum"]) else { throw NativeWorkLedgerError.invalidData }
             let envelope = try JSONDecoder().decode(Envelope.self, from: data)
-            guard envelope.schemaVersion == 2 else { throw NativeWorkLedgerError.unsupportedSchema }
+            guard envelope.schemaVersion == 3 else { throw NativeWorkLedgerError.unsupportedSchema }
             guard !envelope.payload.isEmpty, envelope.payload.count <= maximumBytes,
                   envelope.checksum == checksum(envelope.payload), NativeWireJSON.hasUniqueProperties(envelope.payload),
                   validShape(envelope.payload) else { throw NativeWorkLedgerError.invalidData }
             let payload = try JSONDecoder().decode(Payload.self, from: envelope.payload)
-            guard payload.schemaVersion == 2 else { throw NativeWorkLedgerError.unsupportedSchema }
+            guard payload.schemaVersion == 3 else { throw NativeWorkLedgerError.unsupportedSchema }
             try validate(payload.obligations)
             return payload.obligations
         } catch let error as NativeWorkLedgerError { throw error }
@@ -143,9 +149,10 @@ public enum NativeWorkLedger {
               Set(object.keys) == Set(["schemaVersion", "obligations"]),
               let records = object["obligations"] as? [[String: Any]] else { return false }
         let known = Set(["owner", "bootSession", "root", "scope", "nativeBytes", "scratchBytes", "diskVolume", "ramBytes",
-            "ramIdentity", "ramCreationAttempted", "ramRetired", "phase", "receipt"])
+            "ramIdentity", "ramAllocation", "ramCreationAttempted", "ramRetired", "phase", "receipt"])
         let nested = [("owner", Set(["owner", "jobId", "leaseId"])), ("scope", Set(["root", "control", "gate"])),
-            ("ramIdentity", Set(["bootSession", "registryEntryId", "backingEntryId", "volumeId", "device", "mountPoint", "rootIdentity"]))]
+            ("ramIdentity", Set(["bootSession", "registryEntryId", "backingEntryId", "volumeId", "device", "mountPoint", "rootIdentity"])),
+            ("ramAllocation", Set(["bootSession", "owner", "registryEntryId", "backingEntryId", "device", "allocatedBytes"]))]
         return records.allSatisfy { record in
             Set(record.keys).isSubset(of: known) && nested.allSatisfy { key, keys in
                 guard let value = record[key], !(value is NSNull) else { return true }

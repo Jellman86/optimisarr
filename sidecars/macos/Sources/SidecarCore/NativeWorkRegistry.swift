@@ -6,16 +6,19 @@ public struct NativeWorkRetirement: Sendable {
     let retire: @Sendable (URL, NativeAccountedOwner, NativeScratchScope) async throws -> NativeScratchRetirement
     let consume: @Sendable (URL, NativeAccountedOwner, NativeScratchScope) async throws -> NativeScratchConsumption
     let retireRam: @Sendable (NativeRamDiskIdentity) async throws -> Bool
+    let retireAllocation: @Sendable (NativeRamAllocationIdentity) async throws -> Bool
 
     public init(service: NativeResourceRetirementService,
-                retireRam: @escaping @Sendable (NativeRamDiskIdentity) async throws -> Bool) {
-        self.init(retire: service.retire, consume: service.consume, retireRam: retireRam)
+                retireRam: @escaping @Sendable (NativeRamDiskIdentity) async throws -> Bool,
+                retireAllocation: @escaping @Sendable (NativeRamAllocationIdentity) async throws -> Bool = { _ in false }) {
+        self.init(retire: service.retire, consume: service.consume, retireRam: retireRam, retireAllocation: retireAllocation)
     }
 
     init(retire: @escaping @Sendable (URL, NativeAccountedOwner, NativeScratchScope) async throws -> NativeScratchRetirement,
          consume: @escaping @Sendable (URL, NativeAccountedOwner, NativeScratchScope) async throws -> NativeScratchConsumption,
-         retireRam: @escaping @Sendable (NativeRamDiskIdentity) async throws -> Bool) {
-        self.retire = retire; self.consume = consume; self.retireRam = retireRam
+         retireRam: @escaping @Sendable (NativeRamDiskIdentity) async throws -> Bool,
+         retireAllocation: @escaping @Sendable (NativeRamAllocationIdentity) async throws -> Bool = { _ in false }) {
+        self.retire = retire; self.consume = consume; self.retireRam = retireRam; self.retireAllocation = retireAllocation
     }
 }
 
@@ -87,10 +90,21 @@ public actor NativeWorkRegistry {
         try checkAvailable()
         var record = try find(owner)
         guard record.phase == .admitting, root.isFileURL,
-              record.ramBytes == 0 || record.ramCreationAttempted && ramIdentity != nil else {
+              record.ramBytes == 0 || record.ramCreationAttempted && record.ramAllocation != nil && ramIdentity != nil else {
             throw NativeWorkRegistryError.invalid
         }
         record.root = root.path; record.scope = scope; record.ramIdentity = ramIdentity; record.phase = .reserved
+        guard record.isValid else { throw NativeWorkRegistryError.invalid }
+        try replace(record)
+    }
+
+    public func recordRamAllocation(owner: NativeAccountedOwner, allocation: NativeRamAllocationIdentity) throws {
+        try checkAvailable()
+        var record = try find(owner)
+        guard record.phase == .admitting, record.ramCreationAttempted, record.ramAllocation == nil else {
+            throw NativeWorkRegistryError.invalid
+        }
+        record.ramAllocation = allocation
         guard record.isValid else { throw NativeWorkRegistryError.invalid }
         try replace(record)
     }
@@ -155,6 +169,8 @@ public actor NativeWorkRegistry {
         if record.ramBytes > 0 && !record.ramRetired {
             if let identity = record.ramIdentity {
                 guard try await retirement.retireRam(identity) else { return false }
+            } else if let allocation = record.ramAllocation {
+                guard try await retirement.retireAllocation(allocation) else { return false }
             } else if record.ramCreationAttempted { return false }
             record.ramRetired = true
             try replace(record)

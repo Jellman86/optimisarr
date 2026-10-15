@@ -18,6 +18,7 @@ public final class NativeWorkJournal: @unchecked Sendable {
     private let directory: URL
     private var directoryFD: Int32 = -1
     private var coordinatorFD: Int32 = -1
+    private var coordinatorLocked = false
     private var directoryIdentity: Identity?
     private var coordinatorIdentity: Identity?
     private var expected: Snapshot?
@@ -70,6 +71,7 @@ public final class NativeWorkJournal: @unchecked Sendable {
             guard coordinatorFD >= 0 else { throw NativeWorkJournalError.unavailable }
             coordinatorIdentity = try identity(coordinatorFD)
             guard flock(coordinatorFD, LOCK_EX | LOCK_NB) == 0 else { throw NativeWorkJournalError.contended }
+            coordinatorLocked = true
             if created {
                 guard try readOptional(Self.fileName) == nil else { throw NativeWorkJournalError.changed }
                 storeId = UUID()
@@ -105,7 +107,12 @@ public final class NativeWorkJournal: @unchecked Sendable {
     }
 
     private func closeDescriptors() {
-        if coordinatorFD >= 0 { _ = Darwin.close(coordinatorFD); coordinatorFD = -1 }
+        if coordinatorFD >= 0 {
+            // CLOEXEC closes at exec, leaving a brief fork window. Explicit unlock ends this
+            // parent's authority even while a child still holds the same open description.
+            if coordinatorLocked { _ = flock(coordinatorFD, LOCK_UN); coordinatorLocked = false }
+            _ = Darwin.close(coordinatorFD); coordinatorFD = -1
+        }
         if directoryFD >= 0 { _ = Darwin.close(directoryFD); directoryFD = -1 }
     }
 

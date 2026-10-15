@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import SidecarCore
 
+extension LiveRamDiskTestSuite {
 @Suite("Live identity-bound native RAM retirement", .serialized,
     .enabled(if: ProcessInfo.processInfo.environment["OPTIMISARR_LIVE_RAMDISK"] != nil && NativeRamDiskLifecycle.isSupported))
 struct LiveNativeRamDiskTests {
@@ -150,4 +151,6 @@ struct LiveNativeRamDiskTests {
         #expect(captured == nil)
         #expect(FileManager.default.fileExists(atPath: path))
     }
+}
+
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve native Mac RAM allocations interrupted before filesystem preparation. Owner-bound partial receipts retain accounting through uncertain cleanup and cannot authorize formatting or unmounting. Journal close explicitly releases its coordinator lock across transient inherited descriptors. Production factory/startup integration remains pending.
+
 - Add an independent Keychain checkpoint for native Mac accounting. Interrupted writes reconcile only their recorded old/new snapshots, while missing anchors and older ledger copies cannot discard outstanding work. Legacy credential and accounting operations share verified prompt suppression. Production startup/runner integration remains pending.
 
 - Add identity-bound Mac RAM retirement using retained device and volume handles, with explicit RAM-source provenance. Busy writers veto cleanup, reused disk names cannot redirect it, and interrupted unmount/eject operations replay without forcing removal. OS-tool output and inherited pipe readers are bounded; idle pipes no longer occupy shared worker threads. Physical component tests pass; production runner/startup integration and full app-crash qualification remain pending.

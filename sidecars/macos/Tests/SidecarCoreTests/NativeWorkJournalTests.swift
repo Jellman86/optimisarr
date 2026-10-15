@@ -4,6 +4,29 @@ import Testing
 
 @Suite("Durable native work journal")
 struct NativeWorkJournalTests {
+    @Test("closing a parent journal releases its lock while a fork-inherited descriptor remains open")
+    func closeReleasesInheritedLock() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = try NativeWorkJournal(directory: directory); defer { journal.close() }
+        var expected = stat()
+        try #require(lstat(directory.appendingPathComponent(NativeWorkJournal.coordinatorName).path, &expected) == 0)
+        let matches = (0..<min(getdtablesize(), 4096)).filter { descriptor in
+            var actual = stat()
+            return fstat(descriptor, &actual) == 0 && actual.st_dev == expected.st_dev && actual.st_ino == expected.st_ino
+        }
+        let descriptor = try #require(matches.count == 1 ? matches.first : nil)
+        #expect(fcntl(descriptor, F_GETFD) & FD_CLOEXEC != 0)
+        // dup shares the same open-file description as a fork before its child's exec.
+        let inherited = dup(descriptor)
+        try #require(inherited >= 0)
+        defer { Darwin.close(inherited) }
+        let id = journal.storeId
+        journal.close()
+        let reopened = try NativeWorkJournal(directory: directory, expectedStoreId: id); defer { reopened.close() }
+        #expect(try reopened.load().isEmpty)
+        #expect(fcntl(inherited, F_GETFD) >= 0)
+    }
     private func fixture() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -22,6 +45,8 @@ struct NativeWorkJournalTests {
         let first = try NativeWorkJournal(directory: directory)
         let obligation = record()
         try first.save([obligation])
+        #expect(throws: NativeWorkJournalError.self) { try NativeWorkJournal(directory: directory, expectedStoreId: first.storeId) }
+        // A failed contender's descriptor cleanup must not unlock the incumbent.
         #expect(throws: NativeWorkJournalError.self) { try NativeWorkJournal(directory: directory, expectedStoreId: first.storeId) }
         let identity = first.storeId
         first.close(); first.close()

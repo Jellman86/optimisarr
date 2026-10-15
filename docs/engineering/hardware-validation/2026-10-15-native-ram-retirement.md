@@ -12,7 +12,9 @@ allocation size. A bounded `hdiutil info` snapshot taken while the original raw/
 pinned must identify exactly one matching image with the expected `ram://` sector count. Physical
 disk images or changed roots cannot borrow a freshly created RAM disk's provenance. The parent ledger's development format is now version 2 so the backing-driver identity
 is mandatory; unsupported older private formats fail closed. No production journal was activated
-and this is not a database schema change.
+and this is not a database schema change. The subsequent [partial-allocation slice](2026-10-15-native-ram-allocation.md)
+advances this unactivated private ledger to schema 3 and binds mounted receipts to their original
+owner-tagged allocation.
 
 Cleanup opens and retains the raw device, validates its kernel device mapping and original media
 identity, then validates the original volume/root through an event-only directory handle. It uses

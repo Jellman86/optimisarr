@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SidecarCore
 
+extension LiveRamDiskTestSuite {
 /// Creates and destroys a real RAM disk, so the hdiutil/newfs_hfs/diskutil sequence is proved
 /// rather than assumed. Skipped unless asked for, because a test that mounts volumes on someone's
 /// machine — or a CI runner — should be a deliberate act:
@@ -151,4 +152,6 @@ private struct RecordedLiveTranscoder: TranscodeRunner {
         if ending == .cancelled { throw CancellationError() }
         return try await ProcessTranscodeRunner().run(executable, arguments, progress: progress)
     }
+}
+
 }
