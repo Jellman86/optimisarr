@@ -1,12 +1,17 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Optimisarr.Core.Domain;
 using Optimisarr.Sidecar.Core.Session;
 
 namespace Optimisarr.Sidecar.Native;
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record NativeAccountedOwner(Guid Owner, int JobId, Guid LeaseId);
+
 internal sealed record NativeHostRequest(int Version, string Mode, string FfmpegPath, string ScratchRoot,
     string? ImageMetric = null, string? AudioMetric = null, string? MetadataTool = null,
-    StoredPairing? Pairing = null, JsonElement? Assignment = null, long? GrantedMemoryBytes = null, string? RecoveryAfterOwner = null);
+    StoredPairing? Pairing = null, JsonElement? Assignment = null, long? GrantedMemoryBytes = null, string? RecoveryAfterOwner = null,
+    NativeAccountedOwner? AccountedOwner = null, NativeScratchScope? AccountingScope = null);
 
 /// <summary>One bounded private request; closing its pipe ends the parent's authority to run.</summary>
 internal static class NativeHostProtocol
@@ -45,19 +50,41 @@ internal static class NativeHostProtocol
             using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
             if (!UniqueProperties(document.RootElement)) throw new InvalidDataException(invalid);
             var request = document.RootElement.Deserialize<NativeHostRequest>(Json);
-            if (request is null || request.Version != 1 || request.Mode is not ("capabilities" or "requirements" or "run" or "recover")
+            if (request is null || request.Version is not (1 or 2)
+                || (request.Version == 1 ? request.Mode is not ("capabilities" or "requirements" or "run" or "recover")
+                    || request.AccountedOwner is not null || request.AccountingScope is not null
+                    : request.Mode is not ("requirements" or "run" or "retire" or "forget" or "scope"))
                 || !Absolute(request.FfmpegPath) || !Absolute(request.ScratchRoot)
                 || request.ImageMetric is not null && !Absolute(request.ImageMetric)
                 || request.AudioMetric is not null && !Absolute(request.AudioMetric)
                 || request.MetadataTool is not null && !Absolute(request.MetadataTool)) throw new InvalidDataException(invalid);
+            if (request.Version == 2 && document.RootElement.EnumerateObject().Any(property => property.Name is not
+                ("version" or "mode" or "ffmpegPath" or "scratchRoot" or "imageMetric" or "audioMetric" or "metadataTool"
+                    or "pairing" or "assignment" or "grantedMemoryBytes" or "recoveryAfterOwner" or "accountedOwner" or "accountingScope")))
+                throw new InvalidDataException(invalid);
+            if (request.Version == 2 && (request.Mode is "run" or "retire" or "forget"
+                ? !ValidScope(request.AccountingScope) : request.AccountingScope is not null)) throw new InvalidDataException(invalid);
             if (request.Mode != "recover" && request.RecoveryAfterOwner is not null) throw new InvalidDataException(invalid);
-            if (request.Mode == "recover")
+            if (request.Mode == "scope")
+            {
+                if (request.AccountedOwner is not null || request.Pairing is not null || request.Assignment is not null
+                    || request.GrantedMemoryBytes is not null || request.ImageMetric is not null || request.AudioMetric is not null
+                    || request.MetadataTool is not null) throw new InvalidDataException(invalid);
+            }
+            else if (request.Mode is "retire" or "forget")
+            {
+                if (request.AccountedOwner is not { JobId: > 0 } owner || owner.Owner == Guid.Empty || owner.LeaseId == Guid.Empty
+                    || request.Pairing is not null || request.Assignment is not null || request.GrantedMemoryBytes is not null
+                    || request.ImageMetric is not null || request.AudioMetric is not null || request.MetadataTool is not null)
+                    throw new InvalidDataException(invalid);
+            }
+            else if (request.Mode == "recover")
             {
                 if (request.Pairing is not null || request.Assignment is not null || request.GrantedMemoryBytes is not null
                     || request.ImageMetric is not null || request.AudioMetric is not null || request.MetadataTool is not null
                     || document.RootElement.EnumerateObject().Any(property => property.Name is not
                         ("version" or "mode" or "ffmpegPath" or "scratchRoot" or "recoveryAfterOwner"
-                            or "imageMetric" or "audioMetric" or "metadataTool" or "pairing" or "assignment" or "grantedMemoryBytes"))
+                            or "imageMetric" or "audioMetric" or "metadataTool" or "pairing" or "assignment" or "grantedMemoryBytes" or "accountedOwner" or "accountingScope"))
                     || request.RecoveryAfterOwner is { } cursor && (cursor.Length != 43 || !cursor.StartsWith("owner-", StringComparison.Ordinal)
                         || !cursor.EndsWith(".json", StringComparison.Ordinal) || !Guid.TryParseExact(cursor[6..^5], "N", out var owner) || owner == Guid.Empty))
                     throw new InvalidDataException(invalid);
@@ -71,7 +98,7 @@ internal static class NativeHostProtocol
             {
                 if (request.Mode == "requirements")
                 {
-                    if (request.Pairing is not null || request.GrantedMemoryBytes is not null) throw new InvalidDataException(invalid);
+                    if (request.Pairing is not null || request.GrantedMemoryBytes is not null || request.AccountedOwner is not null) throw new InvalidDataException(invalid);
                 }
                 else if (request.Pairing is not { WorkerId: > 0 } pairing || pairing.Credential is not { Length: >= 32 and <= 512 }
                     || pairing.Credential.Any(character => character <= 32 || character >= 127)
@@ -84,6 +111,9 @@ internal static class NativeHostProtocol
                 if (assignment is null || assignment.JobId <= 0 || assignment.LeaseId == Guid.Empty || assignment.SourceBytes <= 0
                     || assignment.Kind is not (MediaKind.Image or MediaKind.Audio) || assignment.PerceptualSearch is null
                     || assignment.RefuseMediaContract() is not null) throw new InvalidDataException(invalid);
+                if (request.Version == 2 && request.Mode == "run"
+                    && (request.AccountedOwner is not { } owner || owner.Owner == Guid.Empty
+                        || owner.JobId != assignment.JobId || owner.LeaseId != assignment.LeaseId)) throw new InvalidDataException(invalid);
             }
             return request;
         }
@@ -117,6 +147,9 @@ internal static class NativeHostProtocol
 
     private static bool Absolute(string? path) => path is { Length: > 0 and <= 4096 }
         && !path.Contains('\0') && Path.IsPathFullyQualified(path);
+    private static bool ValidScope(NativeScratchScope? scope) => scope is not null
+        && new[] { scope.Root, scope.Control, scope.Gate }.All(value => value is { Length: > 0 and <= 256 }
+            && value.All(character => character > 32 && character < 127));
     private static bool UniqueProperties(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.Object => value.EnumerateObject().GroupBy(property => property.Name, StringComparer.OrdinalIgnoreCase).All(group => group.Count() == 1)

@@ -29,7 +29,8 @@ internal static class NativeHostProgram
             NativeHostEvent result;
             try
             {
-                result = await (execute ?? NativeHostExecutor.RunAsync)(request, events.Report, work.Token);
+                result = await (execute ?? NativeHostExecutor.RunAsync)(request,
+                    value => events.Report(value with { Version = request.Version }), work.Token);
             }
             catch (OperationCanceledException) when (work.IsCancellationRequested)
             {
@@ -40,9 +41,9 @@ internal static class NativeHostProgram
                 NativeHostProtocol.CancelOwnedWork(work);
                 result = new("refused", Detail: "Native work did not return a complete result. Check the server for its recorded outcome.");
             }
-            try { await events.FinishAsync(result); }
+            try { await events.FinishAsync(result with { Version = request.Version }); }
             catch (IOException) { return 2; }
-            return result.Type is "capabilities" or "requirements" or "recovered" || result.Outcome?.Delivered == true ? 0 : 1;
+            return result.Type is "capabilities" or "requirements" or "recovered" or "retired" or "forgotten" or "scope" || result.Outcome?.Delivered == true ? 0 : 1;
         }
         finally
         {

@@ -48,8 +48,13 @@ must retain its native peak/disk reservation until positively qualified retireme
 ownership evidence cannot count as retirement, and delayed RAM ejection must validate mount
 identity. Full-encode cancellation also still needs explicit process-reaping qualification.
 
+The shared helper now has a version-2, parent-bound retirement contract with pinned physical
+scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.
+Its source/process tests pass on Mac, Quark and Picard; Swift persistent grant accounting and
+RAM-volume identity are not yet connected. See the [retirement foundation and limits](../engineering/hardware-validation/2026-10-15-native-retirement-foundation.md).
+
 Latest source verification: 3,526 backend tests on Mac/Quark; 3,503 plus 23 platform skips on native
-Windows; 513 shared worker tests plus three Windows-only skips on Mac/Quark; 516 native Windows
+Windows; 547 shared worker tests plus three Windows-only skips on Mac/Quark; 550 native Windows
 shared tests; 31 Linux tests, 370 Swift core plus nine UI, 154 Python and 346 browser tests.
 Check the PR for exact-head CI. Native trial protocol elevation remains fixture-only.
 

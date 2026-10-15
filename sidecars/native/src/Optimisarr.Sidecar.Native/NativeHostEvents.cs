@@ -7,7 +7,9 @@ namespace Optimisarr.Sidecar.Native;
 
 internal sealed record NativeHostEvent(string Type, int? JobId = null, string? Stage = null, double? EncodedSeconds = null,
     string? Detail = null, WorkerPerceptualCapabilities? Capabilities = null, JobOutcome? Outcome = null, int Version = 1,
-    long? NativeMemoryBytes = null, long? RequiredScratchBytes = null, NativeScratchRecovery? Recovery = null);
+    long? NativeMemoryBytes = null, long? RequiredScratchBytes = null, NativeScratchRecovery? Recovery = null,
+    NativeScratchRetirement? Retirement = null, NativeScratchConsumption? Consumption = null,
+    bool? NativeWorkspaceCreated = null, bool? NativeResourcesRetired = null, NativeScratchScope? AccountingScope = null);
 
 /// <summary>Keep latest progress bounded while preserving the final result and parent liveness.</summary>
 internal sealed class NativeHostEvents

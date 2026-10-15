@@ -10,6 +10,20 @@ internal static class NativeHostExecutor
     {
         // A parsed run already owns a lease. Let the runner acknowledge even an early stop.
         if (request.Mode != "run") token.ThrowIfCancellationRequested();
+        if (request.Mode == "scope")
+            return new("scope", Version: request.Version, AccountingScope: NativeScratchWorkspace.PrepareAccountingScope(request.ScratchRoot));
+        if (request.Mode == "retire")
+        {
+            var owner = request.AccountedOwner!;
+            return new("retired", owner.JobId, Version: request.Version,
+                Retirement: NativeScratchWorkspace.RetireAccountedJob(request.ScratchRoot, owner.JobId, owner.LeaseId, owner.Owner, token, request.AccountingScope));
+        }
+        if (request.Mode == "forget")
+        {
+            var owner = request.AccountedOwner!;
+            return new("forgotten", owner.JobId, Version: request.Version,
+                Consumption: NativeScratchWorkspace.ForgetRetiredJob(request.ScratchRoot, owner.JobId, owner.LeaseId, owner.Owner, request.AccountingScope));
+        }
         if (request.Mode == "recover")
             return new("recovered", Recovery: NativeScratchWorkspace.Recover(request.ScratchRoot,
                 afterOwner: request.RecoveryAfterOwner, cancellationToken: token));
@@ -17,6 +31,7 @@ internal static class NativeHostExecutor
         {
             var planned = request.Assignment!.Value.Deserialize<Assignment>(NativeHostProtocol.Json)!;
             return new("requirements", planned.JobId,
+                Version: request.Version,
                 NativeMemoryBytes: Optimisarr.Core.Workers.PerceptualResourceBudget.MemoryBytes(planned.Kind, planned.RequiredScratchBytes!.Value, false),
                 RequiredScratchBytes: planned.RequiredScratchBytes);
         }
@@ -33,11 +48,17 @@ internal static class NativeHostExecutor
         using var transfers = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         var client = new SidecarClient(control);
         var runtime = PerceptualJobRuntime.Native(request.FfmpegPath, freeMemory: () => request.GrantedMemoryBytes);
+        bool? workspaceCreated = null, resourcesRetired = null;
         var runner = new JobRunner(client, new JobTransfer(transfers, client.Diagnostics), new ProcessTranscoder(),
             request.FfmpegPath, request.ScratchRoot, () => null,
             report: detail => report(new("status", assignment.JobId, Detail: detail)),
-            observe: job => report(new("progress", job.JobId, job.Stage.ToString(), job.EncodedSeconds)), perceptual: runtime);
+            observe: job => report(new("progress", job.JobId, job.Stage.ToString(), job.EncodedSeconds)), perceptual: runtime,
+            accountedOwner: request.AccountedOwner?.Owner,
+            reportNativeRetirement: (created, retired) => { workspaceCreated = created; resourcesRetired = retired; },
+            accountingScope: request.AccountingScope);
         var outcome = await runner.RunAsync(request.Pairing!, assignment, token);
-        return new("completed", assignment.JobId, Outcome: outcome);
+        return new("completed", assignment.JobId, Outcome: outcome, Version: request.Version,
+            NativeWorkspaceCreated: request.Version == 2 ? workspaceCreated : null,
+            NativeResourcesRetired: request.Version == 2 ? resourcesRetired : null);
     }
 }

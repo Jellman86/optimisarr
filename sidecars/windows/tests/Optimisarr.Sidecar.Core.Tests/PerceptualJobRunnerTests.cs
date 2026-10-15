@@ -137,10 +137,65 @@ public sealed class PerceptualJobRunnerTests : IDisposable
     }
 
     private JobRunner Runner(Server server, NativeTools tools, FakeMeasuringTranscoder encoder, Preview? preview = null,
-        long? disk = long.MaxValue, long? memory = long.MaxValue) =>
+        long? disk = long.MaxValue, long? memory = long.MaxValue, Guid? accountedOwner = null,
+        Action<bool, bool>? retirement = null) =>
         new(new(new HttpClient(server)), new(new HttpClient(server)), encoder, Tool, _root, () => null,
             wantsPreview: preview is null ? null : () => true, publishPreview: preview is null ? null : (_, _) => { }, previewExtractor: preview,
-            perceptual: new(tools, _ => disk, () => memory, new PerceptualJobResourcePool()));
+            perceptual: new(tools, _ => disk, () => memory, new PerceptualJobResourcePool()),
+            accountedOwner: accountedOwner, reportNativeRetirement: retirement);
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_accounted_native_run_reports_cleanup_and_keeps_a_replayable_receipt(bool image)
+    {
+        var assignment = PerceptualJobFixture.Assignment(image); using var server = new Server(assignment);
+        var identity = Guid.NewGuid();
+        var reports = new List<(bool Created, bool Retired)>();
+        var outcome = await Runner(server, new(Tool), new(), accountedOwner: identity,
+            retirement: (created, retired) => reports.Add((created, retired)))
+            .RunAsync(new("https://server.example", "secret", 1), assignment, default);
+        Assert.True(outcome.Delivered, outcome.Detail);
+        Assert.Equal([(true, true)], reports);
+        Assert.True(NativeScratchWorkspace.RetireAccountedJob(_root, assignment.JobId, assignment.LeaseId, identity).Retired);
+        Assert.True(NativeScratchWorkspace.ForgetRetiredJob(_root, assignment.JobId, assignment.LeaseId, identity).Consumed);
+    }
+
+    [Fact]
+    public async Task An_accounted_run_reports_unproved_cleanup_even_after_successful_delivery()
+    {
+        var assignment = PerceptualJobFixture.Assignment(); using var server = new Server(assignment);
+        var identity = Guid.NewGuid();
+        var tools = new NativeTools(Tool) { Measuring = path => File.AppendAllText(Path.Combine(path, NativeScratchWorkspace.MarkerName), "changed") };
+        var reports = new List<(bool Created, bool Retired)>();
+        var outcome = await Runner(server, tools, new(), accountedOwner: identity,
+            retirement: (created, retired) => reports.Add((created, retired)))
+            .RunAsync(new("https://server.example", "secret", 1), assignment, default);
+        Assert.True(outcome.Delivered, outcome.Detail);
+        Assert.Equal([(true, false)], reports);
+        Assert.False(NativeScratchWorkspace.RetireAccountedJob(_root, assignment.JobId, assignment.LeaseId, identity).Retired);
+    }
+
+    [Theory]
+    [InlineData("normal")]
+    [InlineData("cancelled")]
+    [InlineData("capacity")]
+    public async Task A_duplicate_nonce_cannot_report_never_started_retirement_of_an_existing_live_owner(string condition)
+    {
+        var assignment = PerceptualJobFixture.Assignment(); using var server = new Server(assignment);
+        var identity = Guid.NewGuid();
+        using var existing = NativeScratchWorkspace.CreateAccountedJob(_root, assignment.JobId, assignment.LeaseId, identity);
+        using var cancelled = new CancellationTokenSource();
+        if (condition == "cancelled") cancelled.Cancel();
+        var reports = new List<(bool Created, bool Retired)>();
+        var outcome = await Runner(server, new(Tool), new(), memory: condition == "capacity" ? 0 : long.MaxValue, accountedOwner: identity,
+            retirement: (created, retired) => reports.Add((created, retired)))
+            .RunAsync(new("https://server.example", "secret", 1), assignment, cancelled.Token);
+        Assert.False(outcome.Delivered);
+        Assert.Equal([(false, false)], reports);
+        Assert.True(NativeScratchWorkspace.RetireAccountedJob(_root, assignment.JobId, assignment.LeaseId, identity).Busy);
+        Assert.True(existing.Cleanup());
+    }
 
     [Theory]
     [InlineData(false)]

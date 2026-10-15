@@ -85,8 +85,10 @@ public sealed class NativeHostRecoveryTests : IDisposable
         Assert.Equal(1, JsonSerializer.SerializeToElement(second, NativeHostProtocol.Json).GetProperty("recovery").GetProperty("removed").GetInt32());
     }
 
-    [Fact]
-    public async Task A_parsed_run_cancelled_before_execution_still_returns_its_known_lease_without_media_work()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task A_parsed_run_cancelled_before_execution_still_returns_its_known_lease_without_media_work(int version)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
@@ -107,9 +109,12 @@ public sealed class NativeHostRecoveryTests : IDisposable
             }
             await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), deadline.Token);
         }, deadline.Token);
-        var request = new NativeHostRequest(1, "run", Path.GetFullPath("missing-media-tool"), _root,
+        var assignment = PerceptualJobFixture.Assignment();
+        var request = new NativeHostRequest(version, "run", Path.GetFullPath("missing-media-tool"), _root,
             Pairing: new(address, new('a', 43), 1), GrantedMemoryBytes: 8L * 1024 * 1024 * 1024,
-            Assignment: JsonSerializer.SerializeToElement(PerceptualJobFixture.Assignment(), NativeHostProtocol.Json));
+            Assignment: JsonSerializer.SerializeToElement(assignment, NativeHostProtocol.Json),
+            AccountedOwner: version == 2 ? new(Guid.NewGuid(), assignment.JobId, assignment.LeaseId) : null,
+            AccountingScope: version == 2 ? NativeScratchWorkspace.PrepareAccountingScope(_root) : null);
         request = NativeHostProtocol.Parse(JsonSerializer.SerializeToUtf8Bytes(request, NativeHostProtocol.Json));
         try
         {
@@ -118,8 +123,16 @@ public sealed class NativeHostRecoveryTests : IDisposable
             Assert.Equal("completed", result.Type);
             Assert.False(result.Outcome!.Delivered);
             Assert.False(result.Outcome.CapacityBlocked);
+            Assert.Equal(version, result.Version);
+            Assert.Equal(version == 2 ? true : null, result.NativeWorkspaceCreated);
+            Assert.Equal(version == 2 ? true : null, result.NativeResourcesRetired);
             Assert.EndsWith("/interrupted HTTP/1.1", action);
-            Assert.False(Directory.Exists(_root));
+            if (version == 1) Assert.False(Directory.Exists(_root));
+            else
+            {
+                Assert.True(NativeScratchWorkspace.RetireAccountedJob(_root, assignment.JobId, assignment.LeaseId, request.AccountedOwner!.Owner).Retired);
+                Assert.True(NativeScratchWorkspace.ForgetRetiredJob(_root, assignment.JobId, assignment.LeaseId, request.AccountedOwner.Owner).Consumed);
+            }
         }
         finally
         {

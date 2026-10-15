@@ -29,7 +29,8 @@ public sealed class JobRunner(
     Action<int, byte[]>? publishPreview = null,
     IFramePreviewExtractor? previewExtractor = null,
     string? measurementFfmpegPath = null, bool allowLinuxDevices = false,
-    PerceptualJobRuntime? perceptual = null)
+    PerceptualJobRuntime? perceptual = null, Guid? accountedOwner = null,
+    Action<bool, bool>? reportNativeRetirement = null, NativeScratchScope? accountingScope = null)
 {
     public async Task<JobOutcome> RunAsync(
         StoredPairing pairing, Assignment assignment, CancellationToken cancellationToken)
@@ -61,6 +62,10 @@ public sealed class JobRunner(
             }
             if (nativeSearch)
             {
+                // An externally accounted invocation must establish its fresh nonce even on
+                // early cancellation/capacity return. No-workspace is never owner-wide proof.
+                if (accountedOwner is { } owner)
+                    nativeWorkspace = NativeScratchWorkspace.CreateAccountedJob(scratchRoot, assignment.JobId, assignment.LeaseId, owner, accountingScope);
                 NativeScratchWorkspace.Recover(scratchRoot, cancellationToken: cancellationToken);
                 native = perceptual ?? PerceptualJobRuntime.Native(ffmpegPath, measurementFfmpegPath);
                 reservation = native.Reserve(assignment, scratchRoot);
@@ -69,7 +74,7 @@ public sealed class JobRunner(
                     await client.ReleaseForCapacityAsync(pairing, assignment.LeaseId, CancellationToken.None);
                     return new(assignment.JobId, false, "The worker cannot confirm enough free memory and working space for this quality-first job.", CapacityBlocked: true);
                 }
-                nativeWorkspace = NativeScratchWorkspace.CreateJob(scratchRoot, assignment.JobId, assignment.LeaseId);
+                nativeWorkspace ??= NativeScratchWorkspace.CreateJob(scratchRoot, assignment.JobId, assignment.LeaseId);
                 scratch = nativeWorkspace.DirectoryPath;
                 source = Path.Combine(scratch, "source");
                 candidatePrefix = Path.Combine(scratch, "candidate");
@@ -302,9 +307,12 @@ public sealed class JobRunner(
             if (previews is not null) await previews.WaitForIdleAsync();
             if (nativeWorkspace is not null)
             {
-                if (!nativeWorkspace.Cleanup()) report?.Invoke($"Job {assignment.JobId}: native working files are retained for a later ownership-qualified cleanup.");
+                var retired = nativeWorkspace.Cleanup();
+                reportNativeRetirement?.Invoke(true, retired);
+                if (!retired) report?.Invoke($"Job {assignment.JobId}: native working files are retained for a later ownership-qualified cleanup.");
                 nativeWorkspace.Dispose();
             }
+            else if (nativeSearch) reportNativeRetirement?.Invoke(false, false);
             if (ownsScratch) TryDelete(scratch);
             reservation?.Dispose();
         }

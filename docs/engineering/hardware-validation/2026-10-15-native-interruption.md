@@ -95,6 +95,8 @@ allocation. Scratch retention protects files but does not reserve a survivor's f
 This must be fixed before activation. Retirement needs positive evidence for the expected owner;
 an empty aggregate recovery summary is insufficient when records or roots have disappeared.
 Delayed RAM ejection also needs the original mount identity checked before a device name is reused.
+The [shared retirement foundation](2026-10-15-native-retirement-foundation.md) supplies that
+positive, replayable helper contract; Swift persistent accounting remains to be connected.
 
 Full-encode process cancellation additionally needs focused reaping qualification: the shared
 transcoder requests termination but currently does not explicitly await exit in its cancellation
