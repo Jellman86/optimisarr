@@ -53,7 +53,7 @@ internal static class NativeHostProtocol
             if (request is null || request.Version is not (1 or 2)
                 || (request.Version == 1 ? request.Mode is not ("capabilities" or "requirements" or "run" or "recover")
                     || request.AccountedOwner is not null || request.AccountingScope is not null
-                    : request.Mode is not ("requirements" or "run" or "retire" or "forget" or "scope"))
+                    : request.Mode is not ("requirements" or "run" or "retire" or "forget" or "scope" or "recover"))
                 || !Absolute(request.FfmpegPath) || !Absolute(request.ScratchRoot)
                 || request.ImageMetric is not null && !Absolute(request.ImageMetric)
                 || request.AudioMetric is not null && !Absolute(request.AudioMetric)
@@ -62,7 +62,7 @@ internal static class NativeHostProtocol
                 ("version" or "mode" or "ffmpegPath" or "scratchRoot" or "imageMetric" or "audioMetric" or "metadataTool"
                     or "pairing" or "assignment" or "grantedMemoryBytes" or "recoveryAfterOwner" or "accountedOwner" or "accountingScope")))
                 throw new InvalidDataException(invalid);
-            if (request.Version == 2 && (request.Mode is "run" or "retire" or "forget"
+            if (request.Version == 2 && (request.Mode is "run" or "retire" or "forget" or "recover"
                 ? !ValidScope(request.AccountingScope) : request.AccountingScope is not null)) throw new InvalidDataException(invalid);
             if (request.Mode != "recover" && request.RecoveryAfterOwner is not null) throw new InvalidDataException(invalid);
             if (request.Mode == "scope")
@@ -80,7 +80,7 @@ internal static class NativeHostProtocol
             }
             else if (request.Mode == "recover")
             {
-                if (request.Pairing is not null || request.Assignment is not null || request.GrantedMemoryBytes is not null
+                if (request.AccountedOwner is not null || request.Pairing is not null || request.Assignment is not null || request.GrantedMemoryBytes is not null
                     || request.ImageMetric is not null || request.AudioMetric is not null || request.MetadataTool is not null
                     || document.RootElement.EnumerateObject().Any(property => property.Name is not
                         ("version" or "mode" or "ffmpegPath" or "scratchRoot" or "recoveryAfterOwner"

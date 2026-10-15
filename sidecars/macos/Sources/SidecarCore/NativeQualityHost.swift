@@ -308,13 +308,13 @@ struct NativeQualityFrames {
                 terminal = NativeQualityReply(type: value.type, jobId: jobId, delivered: false, capacityBlocked: false,
                     capabilities: nil, version: 2, retirement: value.retirement, consumption: value.consumption)
             case "recovered":
-                guard expectedVersion == 1, expectedJobId == nil, jobId == nil, value.outcome == nil,
+                guard expectedJobId == nil, jobId == nil, value.outcome == nil, value.hasNoRetirementProof,
                       value.nativeMemoryBytes == nil, value.requiredScratchBytes == nil,
                       let recovery = value.recovery, recovery.isValidPage,
                       let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                       raw["capabilities"] == nil || raw["capabilities"] is NSNull else { throw NativeQualityHostError() }
                 terminal = NativeQualityReply(type: value.type, jobId: nil, delivered: false,
-                    capacityBlocked: false, capabilities: nil, recovery: recovery)
+                    capacityBlocked: false, capabilities: nil, recovery: recovery, version: expectedVersion)
             case "capabilities":
                 guard expectedVersion == 1, expectedJobId == nil, jobId == nil,
                       let proof = raw["capabilities"] as? [String: Any] else { throw NativeQualityHostError() }

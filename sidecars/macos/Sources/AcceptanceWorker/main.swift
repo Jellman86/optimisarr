@@ -103,6 +103,21 @@ struct AcceptanceWorker {
             let client = SidecarClient()
             let settings = SettingsSnapshot(workLocation: env["OPTIMISARR_ACCEPTANCE_RAM"] == "1" ? .memory : .applicationSupport,
                 memoryBudgetBytes: WorkLocationPolicy.defaultBudget(physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory)))
+            let accountingRoot = URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_ACCOUNTING_ROOT"))
+            let accountingService = try required("OPTIMISARR_NATIVE_ACCOUNTING_SERVICE")
+            guard accountingService.hasPrefix("uk.optimisarr.acceptance."), accountingService.utf8.count <= 200 else { throw NativeQualityHostError() }
+            let runtime = NativeWorkRuntime(directory: accountingRoot,
+                checkpointStore: KeychainNativeWorkCheckpointStore(service: accountingService, backend: .fileBased), tools: tools)
+            let mountParent = accountingRoot.deletingLastPathComponent().appendingPathComponent("native-ram", isDirectory: true)
+            try FileManager.default.createDirectory(at: mountParent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            var readiness = NativeWorkReadiness.blocked
+            for attempt in 1...3 {
+                readiness = await runtime.refresh(roots: [scratch, FileManager.default.temporaryDirectory])
+                try FileHandle.standardError.write(contentsOf: Data("Native startup attempt \(attempt): \(readiness)\n".utf8))
+                if readiness == .ready { break }
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            guard readiness == .ready else { throw NativeQualityHostError() }
             let pairing: StoredPairing
             if session {
                 let request = try JSONDecoder().decode(AcceptancePairingRequest.self, from: controlFrame())
@@ -141,7 +156,8 @@ struct AcceptanceWorker {
                 return
             }
             guard assignment.nativeQuality != nil else { throw NativeQualityHostError() }
-            let runner = JobRunner(client: client, scratchRoot: scratch, settings: settings, nativeTools: tools)
+            let runner = JobRunner(client: client, scratchRoot: scratch, settings: settings, nativeTools: tools, nativeRuntime: runtime,
+                nativeMountParent: mountParent)
             let outcome = await runner.execute(assignment, pairing: pairing) { value in
                 if let event = try? JSONSerialization.data(withJSONObject: ["type": "progress", "jobId": assignment.jobId, "stage": value.summary]) {
                     try? FileHandle.standardOutput.write(contentsOf: event + Data([10]))

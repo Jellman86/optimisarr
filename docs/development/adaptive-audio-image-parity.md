@@ -43,10 +43,11 @@ See the [interruption qualification and exact limits](../engineering/hardware-va
 Independent Astra review identified Swift pre-run cancellation and helper failure using ordinary
 release. The Swift follow-up now acknowledges those interruptions independently of task
 cancellation, with regressions for requirements, recovery, RAM preparation and running cleanup.
-An additional blocker remains: a helper can exit while an inherited tool survives, and the app
-must retain its native peak/disk reservation until positively qualified retirement. Missing
-ownership evidence cannot count as retirement, and delayed RAM ejection must validate mount
-identity. Full-encode cancellation also still needs explicit process-reaping qualification.
+The connected runtime now retains native peak/disk reservations when an inherited writer outlives
+the helper. Signed release-library trials cover busy delivery and a killed Swift parent followed
+by restored accounting and same-identity replay. Missing ownership evidence cannot count as
+retirement, and delayed RAM ejection validates mount identity. Full-encode cancellation still
+needs explicit process-reaping qualification.
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.
@@ -70,8 +71,12 @@ even during transient descriptor inheritance. A registry-backed RAM factory now 
 allocation before formatting and the actual mounted root before helper scope preparation. It
 retains the original device pin through actual command exit, including caller cancellation.
 Signed-process SIGKILL trials pass at the pre-attach, partial-allocation and mounted-root durable
-boundaries; unknown pre-attach debt stays held. Production runner/startup integration remains open;
-these component results do not close the app lifetime defect. See the [helper foundation](../engineering/hardware-validation/2026-10-15-native-retirement-foundation.md),
+boundaries; unknown pre-attach debt stays held. The app/session/runner now share anchored startup
+recovery and registry-backed v2 execution. Incomplete recovery drains new claims, and late leases
+after disconnect are acknowledged independently. Final connected-runtime and packaged lifecycle
+qualification remains open; these results do not certify every installed-app lifetime boundary. See the
+[runtime integration and current limits](../engineering/hardware-validation/2026-10-15-native-work-runtime.md),
+[helper foundation](../engineering/hardware-validation/2026-10-15-native-retirement-foundation.md),
 [Swift accounting evidence](../engineering/hardware-validation/2026-10-15-swift-durable-native-accounting.md)
 [independent checkpoint evidence](../engineering/hardware-validation/2026-10-15-native-accounting-checkpoint.md)
 and [RAM retirement qualification and limits](../engineering/hardware-validation/2026-10-15-native-ram-retirement.md).
@@ -80,8 +85,10 @@ records the partial receipt. The [factory qualification](../engineering/hardware
 records creation, physical tests and signed crash-recovery limits.
 
 Latest source verification: 3,526 backend tests on Mac/Quark; 3,503 plus 23 platform skips on native
-Windows; 547 shared worker tests plus three Windows-only skips on Mac/Quark; 550 native Windows
-shared tests; 31 Linux tests, 466 registered Swift core plus nine UI, 154 Python and 346 browser tests.
+Windows; 554 shared worker tests plus three Windows-only skips on Mac/Quark; 557 native Windows
+shared tests; 31 Linux tests, 489 registered Swift core plus nine UI, 154 Python and 346 browser tests.
+Final Swift and browser gates pass serially with unchanged assertions and deadlines; parallel
+host-load failures remain retained in the runtime qualification record.
 Live/paired Swift gates remain opt-in; twelve identity/partial/factory physical RAM cases pass explicitly.
 Check the PR for exact-head CI. Native trial protocol elevation remains fixture-only.
 
@@ -125,7 +132,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
 | Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Packaged Swift capability/placement qualification, broader reconnect acceptance, interrupted-attempt history and export qualification |
-| Lifetime | Local scratch ownership, inherited native guards, bounded restart recovery, partial cleanup replay, cancellation and busy RAM retention; source revalidation and attempt-fenced persistence | Exact packaged restart/reconnect, full reboot/remount and resource-exhaustion acceptance |
+| Lifetime | App-shared anchored Mac accounting, scoped v2 execution, inherited native guards, partial cleanup replay and positive writer/RAM retirement; connected busy-delivery and parent-kill/same-identity restart trials; source and attempt fences | Exact packaged restart/reconnect, full reboot/remount and resource-exhaustion acceptance |
 | Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Native worker retry/restart and exact-package qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
 
@@ -427,15 +434,17 @@ A terminal event cannot authorise an incompletely sent request or release proces
 early. Cancellation stops a blocked writer too. Killing the real Swift fixture process causes
 EOF in its native helper, which stops its tool and grandchild and clears scratch.
 
-The same bridge passes real JPEG and AAC workflows through the isolated AcceptanceWorker,
-including committed-response replay, sealed upload, strict final verification, repeated
-replacement and exact rollback. These still use an explicit fixture allocation. The menu-bar
-claim loop, native capability advertisement and packaged runtime are not integrated yet.
+The bridge passes real JPEG and audio component workflows through isolated acceptance processes.
+The current signed release-library route passes AAC/Opus/MP3 and actual RAM work with live parent
+resource admission, committed-response replay, sealed upload, final verification and exact rollback.
+The server offer capacity and protocol elevation remain explicit test fixtures. App/headless sessions
+and the runner now share anchored recovery; installed-app and complete package qualification
+remain separate. See the [current runtime evidence](../engineering/hardware-validation/2026-10-15-native-work-runtime.md).
 
 Swift's memory ledger can atomically account for native peaks and complete RAM-volume
 allocations. RAM-storage preferences constrain RAM allocations, not native work on disk.
-A failed volume ejection retains its RAM charge while allowing a stopped native peak to be
-released. The existing Swift RAM-job path now also checks live capacity before creating a
+Native obligations now remain charged until registry-backed writer and RAM retirement are
+positively established. The existing Swift RAM-job path also checks live capacity before creating a
 volume and falls back to disk when it is insufficient or unknown.
 
 The Mac admission estimate uses Mach free/inactive counters, excludes swap/compressed pages,
@@ -467,8 +476,8 @@ queries missed a stricter outer limit. Native work now holds when the process be
 any job, or membership cannot be established. It uses physical available memory only when
 explicitly outside jobs. This is deliberately conservative, including an apparently unbounded
 job; product code never escapes a job or changes its limits. The physical happy-path matrix
-was repeated in an independently verified standalone process after the guard. Full Swift app
-integration, exact packages and the other completion-matrix obligations remain outstanding.
+was repeated in an independently verified standalone process after the guard. Installed Swift app
+qualification, exact packages and the other completion-matrix obligations remain outstanding.
 
 ## Mac execution route, 14 October
 
@@ -490,9 +499,9 @@ The real Mac route passes AAC/Opus/MP3, committed-response replay, final verific
 idempotent replacement and exact rollback with live memory admission. RAM storage/ejection
 and custom RAM aliases are qualified separately. A live image claim holds below its 3.5 GiB
 budget before any source download. This is conditional execution support, not automatic placement:
-Packaged Swift tool-proof advertisement, positive live image acceptance, owned native scratch restart
-recovery and complete packages remain required before
-protocol 11 is enabled. The soundtrack, preview/calibration and broader coverage obligations
+Tool-proof advertisement and connected accounting/restart are now implemented and component
+qualified. Positive live image acceptance and complete packaged lifecycle qualification remain
+required before protocol 11 is enabled. The soundtrack, preview/calibration and broader coverage obligations
 in the matrix are unchanged.
 
 Capacity returns now have a separate, authenticated, replay-safe lease operation and durable
@@ -522,8 +531,9 @@ server with its encoding/quality tools absent. JPEG, colour metadata and both pi
 proved on the Mac; unavailable WebP is omitted. The server stores the fresh heartbeat proof with
 normal protocol-10 negotiation, no row elevation or explicit memory grant, no job leases and
 empty scratch. The observed memory remains below full-image admission, so this is tool and
-transport evidence, not positive live image execution. Swift passes 352 core tests and 9 UI tests;
-the release build succeeds. Native-helper bundling, installed-package qualification and protocol-11
+transport evidence, not positive live image execution. Those initial collector tests passed 352
+core tests and nine UI tests. Current runtime qualification passes 489 core plus nine UI tests.
+Native-helper bundling is now implemented; installed-package qualification and protocol-11
 activation remain outstanding, along with the other parity requirements above.
 
 ## Audio assessment input boundaries

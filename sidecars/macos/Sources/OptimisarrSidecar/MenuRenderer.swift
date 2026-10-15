@@ -72,6 +72,8 @@ enum MenuRenderer {
             ("connected-idle", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()),
                 lastOutcome: .delivered(jobId: 5845, bytes: 394_256_442))),
+            ("accounting-paused", .posed(status: .connected(workerId: 1, lastCheckIn: Date()),
+                workReadinessNotice: "Previous working files could not be checked safely. New jobs are paused.")),
             ("update-available", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()),
                 availableUpdate: SidecarUpdate(

@@ -1,7 +1,7 @@
 # Registry-backed Mac RAM creation, 15 October 2026
 
 Development component evidence for [draft #415](https://github.com/Jellman86/optimisarr/pull/415).
-The production runner and startup still need integration. Protocol 11 remains disabled.
+Startup/runner integration is now implemented with [separate qualification limits](2026-10-15-native-work-runtime.md). Protocol 11 remains disabled.
 These results qualify the factory boundaries described here, not complete media parity.
 
 ## Creation and recovery

@@ -8,6 +8,30 @@ struct NativeScratchRecoveryTests {
     private let tools = NativeQualityCapabilityTests.tools
     private let cursor = "owner-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
 
+    @Test("a full owner page can carry one final root-level orphan hold without becoming clean")
+    func fullPageWithOrphan() async throws {
+        let page = NativeScratchRecovery(removed: 64, deferred: 1)
+        let helper = ScratchRecoveryHelper(pages: [page])
+        let summary = try await NativeScratchRecoveryService(tools: tools, helper: helper).recover(root: root)
+        #expect(summary == page && helper.requests.count == 1)
+        for invalid in [NativeScratchRecovery(removed: 64, busy: 1), NativeScratchRecovery(removed: 64, deferred: 2),
+                        NativeScratchRecovery(removed: 64, deferred: 1, nextOwner: cursor)] {
+            #expect(!invalid.isValidPage)
+        }
+    }
+
+    @Test("scope-bound recovery carries the same physical scope on every page and requires version two")
+    func boundScope() async throws {
+        let scope = NativeScratchScope(root: "darwin:1:2", control: "darwin:1:3", gate: "darwin:1:4")
+        let helper = ScratchRecoveryHelper(pages: [NativeScratchRecovery(nextOwner: cursor), NativeScratchRecovery()])
+        _ = try await NativeScratchRecoveryService(tools: tools, helper: helper).recover(root: root, scope: scope)
+        for frame in helper.requests {
+            let json = try #require(JSONSerialization.jsonObject(with: frame) as? [String: Any])
+            #expect(json["version"] as? Int == 2)
+            #expect(try JSONDecoder().decode(NativeScratchScope.self, from: JSONSerialization.data(withJSONObject: json["accountingScope"]!)) == scope)
+        }
+    }
+
     @Test("bounded pages carry only a working root and an opaque owner cursor")
     func pages() async throws {
         let helper = ScratchRecoveryHelper(pages: [NativeScratchRecovery(removed: 2, busy: 1, nextOwner: cursor), NativeScratchRecovery(deferred: 1)])
@@ -102,6 +126,8 @@ final class ScratchRecoveryHelper: NativeQualityExchanging, @unchecked Sendable 
         defer { gate.withLock { ended = true } }
         if hang { try await Task.sleep(for: .seconds(60)); throw NativeQualityHostError() }
         let page = gate.withLock { pages.count > 1 ? pages.removeFirst() : pages.first ?? NativeScratchRecovery() }
-        return NativeQualityReply(type: "recovered", jobId: nil, delivered: false, capacityBlocked: false, capabilities: nil, recovery: page)
+        let json = try JSONSerialization.jsonObject(with: request) as! [String: Any]
+        return NativeQualityReply(type: "recovered", jobId: nil, delivered: false, capacityBlocked: false, capabilities: nil, recovery: page,
+            version: json["version"] as! Int)
     }
 }

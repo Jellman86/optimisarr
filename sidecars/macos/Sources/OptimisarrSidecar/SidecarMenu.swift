@@ -119,11 +119,11 @@ struct SidecarMenu: View {
     /// The state in a word or two, from the table both sidecars share: pause and an armed
     /// shutdown outrank the connection, because they say what the machine will do next.
     private var chipText: String {
-        session.shutdown.armed ? "Shutdown armed" : session.isPaused ? "Paused" : session.status.readout
+        session.shutdown.armed ? "Shutdown armed" : session.workReadinessNotice != nil ? "Work paused" : session.isPaused ? "Paused" : session.status.readout
     }
 
     private var chipTone: Tone {
-        session.shutdown.armed ? .warn : session.isPaused ? .info : session.status.tone
+        session.shutdown.armed || session.workReadinessNotice != nil ? .warn : session.isPaused ? .info : session.status.tone
     }
 
     // MARK: - Pairing
@@ -181,6 +181,11 @@ struct SidecarMenu: View {
                 }
             }
             cells
+            if let notice = session.workReadinessNotice {
+                Label(notice, systemImage: "pause.circle.fill")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Instrument.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             DisclosureGroup("Processing details", isExpanded: $detailsExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(session.activeJobs.keys.sorted(), id: \.self) { jobId in
@@ -215,10 +220,10 @@ struct SidecarMenu: View {
                     }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
                 Button { session.setPaused(!session.isPaused) } label: {
-                    Label(session.isPaused ? "Resume accepting jobs" : session.activeJobs.isEmpty ? "Pause new jobs" : "Pause after current jobs",
+                    Label(session.isPaused ? "Resume accepting jobs" : session.workReadinessNotice != nil ? "New jobs paused" : session.activeJobs.isEmpty ? "Pause new jobs" : "Pause after current jobs",
                           systemImage: session.isPaused ? "play.fill" : "pause.fill")
                         .frame(maxWidth: .infinity)
-                }.panelButton().disabled(!session.isPaired)
+                }.panelButton().disabled(!session.isPaired || session.workReadinessNotice != nil)
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("After current work")
@@ -237,7 +242,7 @@ struct SidecarMenu: View {
                 }.panelButton().disabled(!session.isPaired || (session.shutdown.armed && !session.shutdown.canCancel))
                     .padding(.top, 2)
             }.frame(maxWidth: .infinity, alignment: .leading).monitorCard()
-            Text(session.shutdown.armed ? "Closing this panel does not cancel shutdown." : session.isPaused ? "Current work will finish. New jobs are paused until resumed or the app restarts." : "Closing this panel keeps your jobs running.")
+            Text(session.shutdown.armed ? "Closing this panel does not cancel shutdown." : session.workReadinessNotice != nil ? "Working files are retained while checks are incomplete." : session.isPaused ? "Current work will finish. New jobs are paused until resumed or the app restarts." : "Closing this panel keeps your jobs running.")
                 .font(.system(size: 12)).foregroundStyle(Instrument.ink3).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -248,6 +253,7 @@ struct SidecarMenu: View {
     /// evidence that the machine was working recently and is not quietly broken.
     private var idleTitle: String {
         if session.shutdown.armed { return "Finishing before shutdown" }
+        if session.workReadinessNotice != nil { return "New jobs paused" }
         if session.isPaused { return "New jobs paused" }
         switch session.status {
         case .unreachable: return "Waiting for the server"
@@ -278,6 +284,7 @@ struct SidecarMenu: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Instrument.ink)
             Text(session.shutdown.armed ? "No new jobs will be accepted." :
+                 session.workReadinessNotice != nil ? "Existing working files are retained." :
                  session.lastOutcome.map(Self.lastLine) ?? "New jobs will appear here automatically.")
                 .font(.system(size: 12))
                 .foregroundStyle(Instrument.ink3)

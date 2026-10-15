@@ -17,6 +17,130 @@ public sealed class NativeHostRecoveryTests : IDisposable
         ["ffmpegPath"] = Path.GetFullPath("missing-native-media-tool"), ["scratchRoot"] = _root };
     private static NativeHostRequest Parse(JsonObject request) => NativeHostProtocol.Parse(JsonSerializer.SerializeToUtf8Bytes(request));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Missing_coordination_cannot_hide_a_live_owner(bool missingControl)
+    {
+        using var live = NativeScratchWorkspace.CreateJob(_root, 12, Guid.NewGuid());
+        if (missingControl && ControlMoveIsVetoedForLiveOwner(live)) return;
+        var sentinel = Path.Combine(live.DirectoryPath, "copy.flac");
+        File.WriteAllText(sentinel, "owned live copy");
+        var gate = Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName);
+        if (!missingControl) gate = Path.Combine(gate, "root.lock");
+        var retainedGate = gate + ".retained";
+        if (missingControl) Directory.Move(gate, retainedGate); else File.Move(gate, retainedGate);
+        try
+        {
+            var result = await NativeHostExecutor.RunAsync(Parse(Request()), _ => Assert.Fail("Recovery cannot run media"), default);
+            Assert.Equal(new NativeScratchRecovery(Deferred: 1), result.Recovery);
+            Assert.False(Path.Exists(gate));
+            Assert.True(File.Exists(missingControl ? Path.Combine(retainedGate, Path.GetFileName(live.RecordPath)) : live.RecordPath));
+            Assert.Equal("owned live copy", File.ReadAllText(sentinel));
+        }
+        finally { if (missingControl) Directory.Move(retainedGate, gate); else File.Move(retainedGate, gate); }
+        Assert.True(live.Cleanup());
+    }
+
+    [Fact]
+    public void Recreated_empty_coordination_cannot_hide_the_old_coordinators_live_workspace()
+    {
+        using var live = NativeScratchWorkspace.CreateJob(_root, 12, Guid.NewGuid());
+        if (ControlMoveIsVetoedForLiveOwner(live)) return;
+        var control = Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName);
+        var retainedControl = control + ".retained";
+        Directory.Move(control, retainedControl);
+        try
+        {
+            var replacementScope = NativeScratchWorkspace.PrepareAccountingScope(_root);
+            Assert.Equal(new NativeScratchRecovery(Deferred: 1), NativeScratchWorkspace.Recover(_root));
+            Assert.Equal(new NativeScratchRecovery(Deferred: 1), NativeScratchWorkspace.Recover(_root, expectedScope: replacementScope));
+            Assert.True(Directory.Exists(live.DirectoryPath));
+        }
+        finally
+        {
+            File.Delete(Path.Combine(control, "root.lock"));
+            Directory.Delete(control);
+            Directory.Move(retainedControl, control);
+        }
+        Assert.True(live.Cleanup());
+    }
+
+    private bool ControlMoveIsVetoedForLiveOwner(NativeScratchWorkspace live)
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        // Windows denies relocating a directory containing the exclusively held owner file.
+        // Prove that kernel veto and the retained busy result rather than fabricating a move.
+        var control = Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName);
+        Assert.Throws<IOException>(() => Directory.Move(control, control + ".retained"));
+        Assert.True(Directory.Exists(control));
+        Assert.Equal(new NativeScratchRecovery(Busy: 1), NativeScratchWorkspace.Recover(_root));
+        Assert.True(Directory.Exists(live.DirectoryPath));
+        Assert.True(live.Cleanup());
+        return true;
+    }
+
+    [Fact]
+    public void Missing_control_without_native_work_is_clean_but_an_incomplete_root_scan_is_not()
+    {
+        Directory.CreateDirectory(_root);
+        var sentinel = Path.Combine(_root, "original.flac");
+        File.WriteAllText(sentinel, "unrecorded original");
+        Assert.Equal(new NativeScratchRecovery(), NativeScratchWorkspace.Recover(_root));
+        for (var index = 0; index < 4096; index++) File.WriteAllText(Path.Combine(_root, $"entry-{index}"), "");
+        Assert.True(NativeScratchWorkspace.Recover(_root).ScanLimited);
+        Assert.False(Directory.Exists(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName)));
+        Assert.Equal("unrecorded original", File.ReadAllText(sentinel));
+    }
+
+    [Fact]
+    public void A_full_recovery_page_preserves_a_separate_root_level_orphan_hold()
+    {
+        for (var index = 0; index < 64; index++) NativeScratchWorkspace.CreateCapability(_root).Dispose();
+        var orphan = Path.Combine(_root, "native-capability-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(orphan);
+        var sentinel = Path.Combine(orphan, "copy.png");
+        File.WriteAllText(sentinel, "unaccounted copy");
+        Assert.Equal(new NativeScratchRecovery(Removed: 64, Deferred: 1), NativeScratchWorkspace.Recover(_root));
+        Assert.Equal(new NativeScratchRecovery(Deferred: 1), NativeScratchWorkspace.Recover(_root));
+        Assert.Equal("unaccounted copy", File.ReadAllText(sentinel));
+    }
+
+    [Fact]
+    public async Task Version_two_recovery_requires_the_parent_scope_and_cannot_borrow_another_roots_clean_result()
+    {
+        var scope = NativeScratchWorkspace.PrepareAccountingScope(_root);
+        var request = Request(); request["version"] = 2;
+        Assert.Throws<InvalidDataException>(() => Parse(request));
+        request["accountingScope"] = JsonSerializer.SerializeToNode(scope, NativeHostProtocol.Json);
+        var parsed = Parse(request);
+        var result = await NativeHostExecutor.RunAsync(parsed, _ => Assert.Fail("Recovery cannot run media"), default);
+        Assert.Equal(2, result.Version);
+        Assert.Equal(new NativeScratchRecovery(), result.Recovery);
+        request["accountedOwner"] = JsonSerializer.SerializeToNode(new { owner = Guid.NewGuid(), jobId = 12, leaseId = Guid.NewGuid() });
+        Assert.Throws<InvalidDataException>(() => Parse(request));
+    }
+
+    [Fact]
+    public void Scope_bound_recovery_preserves_stopped_work_in_a_replacement_root_and_rejects_missing_scope_files()
+    {
+        var scope = NativeScratchWorkspace.PrepareAccountingScope(_root);
+        var replacement = Path.Combine(_root, "replacement");
+        using var stopped = NativeScratchWorkspace.CreateCapability(replacement);
+        stopped.Dispose();
+        var before = File.ReadAllBytes(stopped.RecordPath);
+        var result = NativeScratchWorkspace.Recover(replacement, expectedScope: scope);
+        Assert.Equal(1, result.Deferred);
+        Assert.Equal(0, result.Removed);
+        Assert.Equal(before, File.ReadAllBytes(stopped.RecordPath));
+        Assert.True(Directory.Exists(stopped.DirectoryPath));
+        result = NativeScratchWorkspace.Recover(Path.Combine(_root, "missing"), expectedScope: scope);
+        Assert.Equal(1, result.Deferred);
+        Assert.False(Directory.Exists(Path.Combine(_root, "missing")));
+        var replacementScope = NativeScratchWorkspace.PrepareAccountingScope(replacement);
+        Assert.Equal(1, NativeScratchWorkspace.Recover(replacement, expectedScope: replacementScope).Removed);
+    }
+
     [Fact]
     public async Task Recovery_does_not_need_media_tools_network_credentials_or_a_memory_grant()
     {

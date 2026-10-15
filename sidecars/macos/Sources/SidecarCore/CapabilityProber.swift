@@ -79,14 +79,14 @@ public struct CapabilityProber: Sendable {
 
     /// What this machine has proved. With no ffmpeg there is nothing to prove, so it reports
     /// nothing and the server's fail-closed matcher simply never offers it work.
-    public func probe(name: String, maxConcurrency: Int = 1) async -> SidecarCapabilities {
+    public func probe(name: String, maxConcurrency: Int = 1, nativeAllowed: Bool = true) async -> SidecarCapabilities {
         guard let ffmpeg else {
             return SidecarCapabilities.provenToday(name: name)
         }
 
         let listing = await runner.run(ffmpeg, ["-hide_banner", "-encoders"])
         guard listing.exitCode == 0 else {
-            return await withNativeProof(.provenToday(name: name), maxConcurrency: maxConcurrency)
+            return await withNativeProof(.provenToday(name: name), maxConcurrency: maxConcurrency, allowed: nativeAllowed)
         }
 
         var proved: [String] = []
@@ -119,12 +119,12 @@ public struct CapabilityProber: Sendable {
             freeScratchBytes: freeScratchBytes(),
             // Nothing to offer means nothing to accept. Reporting concurrency while advertising no
             // encoder would have the server see a live worker it can never actually use.
-            maxConcurrency: proved.isEmpty && provedAudio.isEmpty ? 0 : maxConcurrency), maxConcurrency: maxConcurrency)
+            maxConcurrency: proved.isEmpty && provedAudio.isEmpty ? 0 : maxConcurrency), maxConcurrency: maxConcurrency, allowed: nativeAllowed)
     }
 
-    private func withNativeProof(_ capabilities: SidecarCapabilities, maxConcurrency: Int) async -> SidecarCapabilities {
+    private func withNativeProof(_ capabilities: SidecarCapabilities, maxConcurrency: Int, allowed: Bool) async -> SidecarCapabilities {
         var proved = capabilities
-        proved.perceptual = await native?.probe(scratchRoot: scratchDirectory)
+        proved.perceptual = allowed ? await native?.probe(scratchRoot: scratchDirectory) : nil
         if proved.perceptual?.imageEncoders.isEmpty == false { proved.maxConcurrency = maxConcurrency }
         return proved
     }

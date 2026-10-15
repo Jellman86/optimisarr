@@ -44,6 +44,9 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     /// How many times work was asked for, whatever the scripted answer was.
     private(set) var claims = 0
     private(set) var releases = 0
+    private(set) var interruptions = 0
+    private(set) var interruptionServers: [String] = []
+    private(set) var handbackWasCancelled: [Bool] = []
     var onClaim: (@Sendable () async -> Void)?
     var onClaimAfterReply: (@Sendable () async -> Void)?
     var releaseStatusOverride: Int?
@@ -67,6 +70,13 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
                 nativeMemoryReports.append(memory)
             }
             if request.url?.path.hasSuffix("/release") == true { releases += 1 }
+            if request.url?.path.hasSuffix("/interrupted") == true {
+                interruptions += 1
+                interruptionServers.append(request.url!.absoluteString)
+            }
+            if request.url?.path.hasSuffix("/interrupted") == true || request.url?.path.hasSuffix("/release") == true {
+                handbackWasCancelled.append(Task.isCancelled)
+            }
             if request.url?.path.hasSuffix("/claim") == true { claims += 1 }
             if request.url?.path.hasSuffix("/heartbeat") == true,
                let body = request.httpBody,
@@ -77,7 +87,7 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
                     heartbeatCapacities.append(capacity)
                 }
             }
-            if request.url?.path.hasSuffix("/release") == true,
+            if request.url?.path.hasSuffix("/release") == true || request.url?.path.hasSuffix("/interrupted") == true,
                let releaseStatusOverride { return Reply(status: releaseStatusOverride, json: [:]) }
             return replies.count > 1 ? replies.removeFirst() : replies[0]
         }
@@ -131,6 +141,76 @@ final class Persisted: @unchecked Sendable {
 @MainActor
 @Suite("Session lifecycle")
 struct SidecarSessionTests {
+    @Test("an empty journal cannot hide a surviving legacy native owner from ordinary RAM admission")
+    func unaccountedOwnerDrainsLegacyClaims() async throws {
+        let accounting = try NativeRuntimeTestFixture(); defer { accounting.close() }
+        let runtime = accounting.runtime(recover: { _ in NativeScratchRecovery(busy: 1) })
+        let transport = ScriptedTransport([.init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30])])
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
+            capabilities: SidecarCapabilities(name: "Fixture", videoEncoders: ["libx265"], maxConcurrency: 1), prober: nil,
+            settingsSnapshot: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 100_000),
+            nativeRuntime: runtime, persistConcurrency: { _ in }, sleep: { _ in try await Task.sleep(for: .milliseconds(5)) })
+        await session.pair(serverAddress: "localhost:8787", pin: "fixture")
+        try await waitFor { transport.heartbeatCapacities.count >= 2 }
+        #expect(transport.claims == 0 && transport.heartbeatCapacities.allSatisfy { $0 == 0 })
+        #expect(await !runtime.allowsClaims())
+        session.unpair()
+    }
+    @Test("delayed accounting restoration drains legacy RAM claims until the same open completes")
+    func delayedAccountingDrainsLegacyClaims() async throws {
+        let accounting = try NativeRuntimeTestFixture(); defer { accounting.close() }
+        let gate = NativeRuntimeOpenTestGate()
+        let runtime = NativeWorkRuntime(open: { await gate.wait(); return try accounting.registry() }, toolsAvailable: true,
+            recover: { _ in NativeScratchRecovery() }, openingTimeout: .milliseconds(10))
+        let transport = ScriptedTransport([.init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30])])
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
+            capabilities: SidecarCapabilities(name: "Fixture", videoEncoders: ["libx265"], maxConcurrency: 1), prober: nil,
+            settingsSnapshot: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 100_000),
+            nativeRuntime: runtime, persistConcurrency: { _ in }, sleep: { _ in try await Task.sleep(for: .milliseconds(5)) })
+        await session.pair(serverAddress: "localhost:8787", pin: "fixture")
+        try await waitFor { transport.heartbeatCapacities.count >= 2 }
+        #expect(transport.claims == 0)
+        #expect(transport.heartbeatCapacities.allSatisfy { $0 == 0 })
+        #expect(session.workReadinessNotice != nil)
+        gate.finish()
+        try await waitFor { transport.claims > 0 }
+        #expect(session.workReadinessNotice == nil)
+        #expect(gate.count == 1)
+        session.unpair()
+    }
+
+    @Test("corrupt accounting keeps ordinary legacy claims drained while pairing and heartbeat remain available")
+    func corruptAccountingDrainsLegacyClaims() async throws {
+        let runtime = NativeWorkRuntime(open: { throw NativeWorkJournalError.changed }, toolsAvailable: true,
+            recover: { _ in Issue.record("Unknown accounting cannot authorize cleanup"); return NativeScratchRecovery() })
+        let transport = ScriptedTransport([.init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30])])
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
+            capabilities: SidecarCapabilities(name: "Fixture", videoEncoders: ["libx265"], maxConcurrency: 1), prober: nil,
+            nativeRuntime: runtime, persistConcurrency: { _ in }, sleep: { _ in try await Task.sleep(for: .milliseconds(5)) })
+        await session.pair(serverAddress: "localhost:8787", pin: "fixture")
+        try await waitFor { transport.heartbeatCapacities.count >= 2 }
+        #expect(session.isPaired && transport.claims == 0)
+        #expect(transport.heartbeatCapacities.allSatisfy { $0 == 0 })
+        session.unpair()
+    }
+    @Test("unconfirmed accounting removes native capacity even when a resource refresh supplies it")
+    func accountingBlocksAdvertisement() async throws {
+        let transport = ScriptedTransport([
+            .init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30]),
+        ])
+        let proof = try #require(WorkerPerceptualCapabilities(proof: NativeQualityCapabilityTests.proof))
+        let runtime = NativeWorkRuntime(open: { throw NativeWorkJournalError.changed }, toolsAvailable: true,
+            recover: { _ in Issue.record("Corrupt accounting must not start native recovery"); return NativeScratchRecovery() })
+        let refresh = NativeResourceSequence()
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
+            capabilities: SidecarCapabilities(name: "Fixture", perceptual: proof), prober: nil,
+            nativeRuntime: runtime, nativeResources: refresh.refresh, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(for: .milliseconds(5)) })
+        await session.pair(serverAddress: "localhost:8787", pin: "fixture")
+        try await waitFor { transport.callCount >= 3 }
+        session.unpair()
+        #expect(transport.reportedNativeMemory.isEmpty)
+    }
     private func session(
         _ replies: [ScriptedTransport.Reply],
         store: CredentialStore = InMemoryCredentialStore()
@@ -299,6 +379,7 @@ struct SidecarSessionTests {
 
     @Test("pairing and every heartbeat refresh native resources independently of tool qualification")
     func nativeResourcesStayFresh() async throws {
+        let accounting = try NativeRuntimeTestFixture(); defer { accounting.close() }
         let transport = ScriptedTransport([
             .init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30]),
         ])
@@ -306,7 +387,7 @@ struct SidecarSessionTests {
         let refresh = NativeResourceSequence()
         let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
             capabilities: SidecarCapabilities(name: "Fixture", perceptual: proof), prober: nil,
-            nativeResources: refresh.refresh, persistConcurrency: { _ in },
+            nativeRuntime: accounting.runtime(), nativeResources: refresh.refresh, persistConcurrency: { _ in },
             sleep: { _ in try await Task.sleep(for: .milliseconds(5)) })
         await session.pair(serverAddress: "localhost:8787", pin: "fixture")
         try await waitFor { transport.reportedNativeMemory.count >= 3 }
@@ -316,6 +397,7 @@ struct SidecarSessionTests {
 
     @Test("unpair, sleep, quit and caller cancellation stop native qualification before any heartbeat", arguments: ["restore-unpair", "pair-unpair", "restore-sleep", "pair-sleep", "restore-quit", "pair-quit", "pair-cancel"])
     func unpairCancelsNativeQualification(action: String) async throws {
+        let accounting = try NativeRuntimeTestFixture(); defer { accounting.close() }
         let helper = SessionCapabilityHelper()
         let native = NativeQualityCapabilityProber(tools: NativeQualityCapabilityTests.tools, helper: helper)
         let prober = CapabilityProber(ffmpeg: NativeQualityCapabilityTests.tools.ffmpeg,
@@ -323,6 +405,7 @@ struct SidecarSessionTests {
         let transport = ScriptedTransport([.init(status: 200, json: [:])])
         let store = InMemoryCredentialStore(stored: StoredPairing(serverAddress: "localhost:8787", credential: "fixture", workerId: 11))
         let session = SidecarSession(client: SidecarClient(transport: transport), store: store, prober: prober,
+            nativeRuntime: accounting.runtime(),
             persistConcurrency: { _ in })
         let pairingTask: Task<Void, Never>?
         if action.hasPrefix("pair-") {
@@ -512,6 +595,84 @@ struct SidecarSessionTests {
         #expect(session.activeJobs.isEmpty)
     }
 
+    @Test("a native assignment ends the claim batch so the next heartbeat refreshes grants before another offer")
+    func nativeClaimEndsBatch() async throws {
+        let executor = HangingExecutor(), gate = NativeRuntimeOpenTestGate()
+        let first = try #require(JSONSerialization.jsonObject(with: NativeQualityAssignmentTests.wire()) as? [String: Any])
+        var second = first; second["jobId"] = 13; second["leaseId"] = UUID().uuidString
+        let transport = ScriptedTransport([Self.beat, .init(status: 200, json: first), .init(status: 200, json: second)])
+        let session = SidecarSession(client: SidecarClient(transport: transport),
+            store: InMemoryCredentialStore(stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11)),
+            capabilities: SidecarCapabilities(name: "Test", maxConcurrency: 2), prober: nil, executor: executor,
+            jobConcurrency: 2, persistConcurrency: { _ in }, sleep: { _ in await gate.wait() })
+        session.restore()
+        try await waitFor("the completed claim batch") { gate.count == 1 }
+        try await waitFor("the scheduled native job") { executor.started }
+        #expect(transport.claims == 1)
+        #expect(transport.releases == 0 && transport.interruptions == 0)
+        #expect(executor.startedCount == 1)
+        #expect(session.activeJobs.count == 1)
+        await session.prepareToQuit()
+        gate.finish()
+    }
+
+    @Test("a claim returned after unpair, sleep or quit is independently handed back without starting work", arguments: ["unpair", "sleep", "quit", "unpair-failed-handback"], [false, true])
+    func lateClaimAfterDisconnect(action: String, useRuntime: Bool) async throws {
+        let accounting = try NativeRuntimeTestFixture(); defer { accounting.close() }
+        let runtime = accounting.runtime()
+        let executor = HangingExecutor()
+        let transport = ScriptedTransport([Self.beat, Self.claim, .init(status: 204, json: [:])])
+        if action == "unpair-failed-handback" { transport.releaseStatusOverride = 503 }
+        let session = SidecarSession(client: SidecarClient(transport: transport),
+            store: InMemoryCredentialStore(stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11)),
+            capabilities: SidecarCapabilities(name: "Test", videoEncoders: ["libx265"], maxConcurrency: 1),
+            prober: nil, executor: executor, nativeRuntime: useRuntime ? runtime : nil, jobConcurrency: 1, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(for: .milliseconds(1)) })
+        transport.onClaimAfterReply = {
+            if action.hasPrefix("unpair") { await session.unpair() }
+            else if action == "sleep" { await session.systemWillSleep() }
+            else { await session.prepareToQuit() }
+        }
+        session.restore()
+        try await waitFor { transport.interruptions > 0 || executor.started }
+        #expect(!executor.started)
+        #expect(session.activeJobs.isEmpty)
+        #expect(transport.interruptions == 1)
+        #expect(transport.handbackWasCancelled == [false])
+        if action.hasPrefix("unpair") { #expect(session.status == .unpaired) }
+        await session.prepareToQuit()
+    }
+
+    @Test("a new server's colliding job ID cannot suppress handback of an old server's late lease")
+    func lateClaimAcrossPairings() async throws {
+        let executor = HangingExecutor()
+        let gate = NativeRuntimeOpenTestGate()
+        let transport = ScriptedTransport([Self.beat, Self.claim,
+            .init(status: 200, json: ["workerId": 22, "credential": "new-fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30]),
+            Self.beat, Self.claim, .init(status: 204, json: [:])])
+        let session = SidecarSession(client: SidecarClient(transport: transport),
+            store: InMemoryCredentialStore(stored: StoredPairing(serverAddress: "http://localhost:8787", credential: "c", workerId: 11)),
+            capabilities: SidecarCapabilities(name: "Test", videoEncoders: ["libx265"], maxConcurrency: 1),
+            prober: nil, executor: executor, jobConcurrency: 1, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(for: .milliseconds(1)) })
+        transport.onClaimAfterReply = {
+            guard transport.claims == 1 else { return }
+            await gate.wait()
+        }
+        session.restore()
+        try await waitFor("the old server's pending claim") { gate.count == 1 }
+        session.unpair()
+        await session.pair(serverAddress: "http://localhost:8788", pin: "new-fixture")
+        try await waitFor("the new server's job") { executor.started }
+        gate.finish()
+        try await waitFor("the old server's handback") { transport.interruptions == 1 }
+        #expect(executor.startedCount == 1)
+        #expect(session.activeJobs.count == 1)
+        #expect(transport.interruptionServers.first?.hasPrefix("http://localhost:8787/") == true)
+        #expect(transport.handbackWasCancelled == [false])
+        await session.prepareToQuit()
+    }
+
     @Test("pausing while a claim is in flight returns its lease without starting an encode")
     func pauseDuringClaim() async throws {
         let executor = HangingExecutor()
@@ -543,7 +704,7 @@ struct SidecarSessionTests {
             requestShutdown: { Issue.record("a failed lease hand-back must never shut down the Mac") })
         transport.onClaimAfterReply = { await session.armShutdown() }
         session.restore()
-        try await waitFor { transport.releases > 0 }
+        try await waitFor { transport.releases + transport.interruptions > 0 }
         try await waitFor { session.shutdown.detail.contains("not acknowledged") }
         #expect(!executor.started)
         guard case .unconfirmed = session.lastOutcome else {

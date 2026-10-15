@@ -6,6 +6,23 @@ import Testing
 struct NativeRetirementContractTests {
     private let scope = #"{"root":"darwin:1:2","control":"darwin:1:3","gate":"darwin:1:4"}"#
 
+    @Test("version two recovery accepts bounded counters without retirement or media authority")
+    func scopedRecoveryFrames() throws {
+        let recovery = #"{"removed":0,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#
+        var frames = NativeQualityFrames(expectedJobId: nil, expectedVersion: 2)
+        _ = try frames.append(Data("{\"version\":2,\"type\":\"recovered\",\"recovery\":\(recovery)}\n".utf8))
+        #expect(try frames.finish(exitCode: 0).version == 2)
+        for extra: [String: Any] in [["nativeResourcesRetired": true], ["accountingScope": [:]], ["jobId": 12]] {
+            var body: [String: Any] = ["version": 2, "type": "recovered", "recovery": try JSONSerialization.jsonObject(with: Data(recovery.utf8))]
+            body.merge(extra) { _, new in new }
+            let encoded = try JSONSerialization.data(withJSONObject: body) + Data([10])
+            #expect(throws: NativeQualityHostError.self) {
+                var invalid = NativeQualityFrames(expectedJobId: nil, expectedVersion: 2)
+                _ = try invalid.append(encoded)
+            }
+        }
+    }
+
     @Test("version two is explicit and old helper output cannot acknowledge an accounted request")
     func versionFence() throws {
         #expect(throws: NativeQualityHostError.self) {

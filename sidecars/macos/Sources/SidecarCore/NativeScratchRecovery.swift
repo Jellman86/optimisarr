@@ -17,7 +17,11 @@ public struct NativeScratchRecovery: Codable, Equatable, Sendable {
 
     var isValidPage: Bool {
         let counts = [removed, busy, deferred, invalid]
-        guard counts.allSatisfy({ (0...64).contains($0) }), counts.reduce(0, +) <= 64 else { return false }
+        guard counts.allSatisfy({ (0...64).contains($0) }) else { return false }
+        // A completed 64-owner sweep can discover one additional root-level orphan hold.
+        // It is never a clean page or a cursor authorizing another page of owners.
+        let finalRootHold = removed == 64 && busy == 0 && deferred == 1 && invalid == 0 && nextOwner == nil
+        guard counts.reduce(0, +) <= 64 || finalRootHold else { return false }
         guard let nextOwner else { return true }
         guard nextOwner.utf8.count == 43, nextOwner.hasPrefix("owner-"), nextOwner.hasSuffix(".json") else { return false }
         let nonce = nextOwner.dropFirst(6).dropLast(5).utf8
@@ -48,12 +52,13 @@ public struct NativeScratchRecoveryService: Sendable {
 
     public static func bundled() -> Self? { NativeQualityTools.bundled().map { Self(tools: $0) } }
 
-    public func recover(root: URL) async throws -> NativeScratchRecovery {
+    public func recover(root: URL, scope: NativeScratchScope? = nil) async throws -> NativeScratchRecovery {
         guard root.isFileURL, root.path.hasPrefix("/"), root.path.utf8.count <= 4096, !root.path.contains("\0") else {
             throw NativeQualityHostError()
         }
+        guard scope == nil || scope!.isValid else { throw NativeQualityHostError() }
         return try await withThrowingTaskGroup(of: NativeScratchRecovery.self) { group in
-            group.addTask { try await pages(root: root) }
+            group.addTask { try await pages(root: root, scope: scope) }
             group.addTask { try await Task.sleep(for: timeout); throw NativeQualityHostError() }
             defer { group.cancelAll() }
             guard let result = try await group.next() else { throw NativeQualityHostError() }
@@ -61,15 +66,17 @@ public struct NativeScratchRecoveryService: Sendable {
         }
     }
 
-    private func pages(root: URL) async throws -> NativeScratchRecovery {
+    private func pages(root: URL, scope: NativeScratchScope?) async throws -> NativeScratchRecovery {
         var total = NativeScratchRecovery()
         for _ in 0..<maximumPages {
             try Task.checkCancellation()
-            var body: [String: Any] = ["version": 1, "mode": "recover", "ffmpegPath": tools.ffmpeg.path, "scratchRoot": root.path]
+            let version = scope == nil ? 1 : 2
+            var body: [String: Any] = ["version": version, "mode": "recover", "ffmpegPath": tools.ffmpeg.path, "scratchRoot": root.path]
+            if let scope { body["accountingScope"] = ["root": scope.root, "control": scope.control, "gate": scope.gate] }
             if let cursor = total.nextOwner { body["recoveryAfterOwner"] = cursor }
             let reply = try await helper.exchange(request: JSONSerialization.data(withJSONObject: body), expectedJobId: nil, report: { _ in })
             try Task.checkCancellation()
-            guard reply.type == "recovered", reply.jobId == nil, !reply.delivered, !reply.capacityBlocked,
+            guard reply.version == version, reply.type == "recovered", reply.jobId == nil, !reply.delivered, !reply.capacityBlocked,
                   reply.capabilities == nil, reply.nativeMemoryBytes == nil, reply.requiredScratchBytes == nil,
                   let page = reply.recovery, page.isValidPage,
                   page.nextOwner == nil || total.nextOwner == nil || page.nextOwner! > total.nextOwner! else { throw NativeQualityHostError() }

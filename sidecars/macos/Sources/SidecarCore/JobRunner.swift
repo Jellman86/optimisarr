@@ -435,7 +435,10 @@ public struct JobRunner: WorkExecutor {
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         nativeTools: NativeQualityTools? = NativeQualityTools.bundled(),
         nativeHelper: (any NativeQualityExchanging)? = nil,
-        nativeWorkspace: (@Sendable (URL) -> NativeDiskCapacity?)? = nil,
+        nativeRuntime: NativeWorkRuntime = .shared,
+        nativeRamFactory: NativeRamDiskFactory = NativeRamDiskFactory(),
+        nativeMountParent: URL? = nil,
+        nativeWorkspace: (@Sendable (URL, NativeScratchScope) -> NativeDiskCapacity?)? = nil,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
@@ -443,8 +446,8 @@ public struct JobRunner: WorkExecutor {
         self.client = client
         self.nativeRunner = nativeTools.map {
             NativeQualityJobRunner(client: client, tools: $0, helper: nativeHelper, scratchRoot: scratchRoot,
-                settings: settings, memoryBudget: memoryBudget, availableMemory: availableMemory,
-                workspace: nativeWorkspace, makeRamDisk: makeRamDisk, availableScratch: availableScratchBytes)
+                settings: settings, memoryBudget: memoryBudget, runtime: nativeRuntime, availableMemory: availableMemory,
+                workspace: nativeWorkspace, ramFactory: nativeRamFactory, mountParent: nativeMountParent, availableScratch: availableScratchBytes)
         }
         self.ffmpeg = ffmpeg
         self.ffprobe = ffprobe

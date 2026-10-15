@@ -204,16 +204,21 @@ public sealed class NativeScratchWorkspace : IDisposable
         return record;
     }
 
-    public static NativeScratchRecovery Recover(string path, int maximumOwners = 64, string? afterOwner = null, CancellationToken cancellationToken = default)
+    public static NativeScratchRecovery Recover(string path, int maximumOwners = 64, string? afterOwner = null,
+        CancellationToken cancellationToken = default, NativeScratchScope? expectedScope = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (maximumOwners is < 1 or > 256 || afterOwner is not null && !TryOwnerName(afterOwner, out _))
             throw new ArgumentException("Invalid native recovery page.");
+        var controlOpened = false;
         try
         {
             using var root = NativeWorkspaceDirectory.OpenRoot(path, create: false);
-            using var control = Control(root, create: false);
+            using var control = RecoveryControl(root, expectedScope);
+            if (control is null) return UnrecordedWork(root, cancellationToken);
+            controlOpened = true;
             using var gate = control.OpenFile(GateName, locked: true);
+            RequireScope(root, control, gate, expectedScope);
             var scanned = control.Names().Select(name => { cancellationToken.ThrowIfCancellationRequested(); return name; }).Take(4097).ToArray();
             // Unknown names stay untouched and cannot become a cursor that the next page refuses.
             var names = scanned.Take(4096).Where(name => TryOwnerName(name, out _))
@@ -227,11 +232,32 @@ public sealed class NativeScratchWorkspace : IDisposable
                 result = result with { Removed = result.Removed + item.Removed, Busy = result.Busy + item.Busy,
                     Deferred = result.Deferred + item.Deferred, Invalid = result.Invalid + item.Invalid };
             }
-            return result with { NextOwner = names.Length > maximumOwners ? names[maximumOwners - 1] : null };
+            result = result with { NextOwner = names.Length > maximumOwners ? names[maximumOwners - 1] : null };
+            if (result.Busy != 0 || result.Deferred != 0 || result.Invalid != 0 || result.ScanLimited || result.NextOwner is not null)
+                return result;
+            var unrecorded = UnrecordedWork(root, cancellationToken);
+            return result with { Deferred = unrecorded.Deferred, ScanLimited = unrecorded.ScanLimited };
         }
-        catch (Exception error) when (Missing(error)) { return new(); }
+        // A missing coordinator inside an existing control directory cannot establish that its
+        // owners have stopped. Only an absent root/control may represent a clean first start.
+        catch (Exception error) when (Missing(error)) { return expectedScope is null && !controlOpened ? new() : new(Deferred: 1); }
         catch (Exception error) when (Contended(error)) { return new(Busy: 1); }
         catch (Exception error) when (Unavailable(error)) { return new(Deferred: 1); }
+    }
+
+    private static NativeWorkspaceDirectory? RecoveryControl(NativeWorkspaceDirectory root, NativeScratchScope? expectedScope)
+    {
+        try { return Control(root, create: false); }
+        catch (Exception error) when (expectedScope is null && Missing(error)) { return null; }
+    }
+
+    private static NativeScratchRecovery UnrecordedWork(NativeWorkspaceDirectory root, CancellationToken cancellationToken)
+    {
+        // Removed or recreated coordinator metadata cannot make surviving native work clean.
+        // Names alone authorize only a hold, never deletion or retirement.
+        var entries = root.Names().Select(name => { cancellationToken.ThrowIfCancellationRequested(); return name; }).Take(4097).ToArray();
+        return new(Deferred: entries.Any(name => name.StartsWith("native-job-", StringComparison.Ordinal)
+            || name.StartsWith("native-capability-", StringComparison.Ordinal)) ? 1 : 0, ScanLimited: entries.Length > 4096);
     }
 
     private static NativeScratchRecovery RecoverOwner(NativeWorkspaceDirectory root, NativeWorkspaceDirectory control,

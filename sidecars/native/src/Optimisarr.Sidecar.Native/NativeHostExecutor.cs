@@ -25,8 +25,8 @@ internal static class NativeHostExecutor
                 Consumption: NativeScratchWorkspace.ForgetRetiredJob(request.ScratchRoot, owner.JobId, owner.LeaseId, owner.Owner, request.AccountingScope));
         }
         if (request.Mode == "recover")
-            return new("recovered", Recovery: NativeScratchWorkspace.Recover(request.ScratchRoot,
-                afterOwner: request.RecoveryAfterOwner, cancellationToken: token));
+            return new("recovered", Version: request.Version, Recovery: NativeScratchWorkspace.Recover(request.ScratchRoot,
+                afterOwner: request.RecoveryAfterOwner, cancellationToken: token, expectedScope: request.AccountingScope));
         if (request.Mode == "requirements")
         {
             var planned = request.Assignment!.Value.Deserialize<Assignment>(NativeHostProtocol.Json)!;

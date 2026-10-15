@@ -1113,7 +1113,7 @@ or VMAF v0 policy as current behavior.
     - **Image status:** experimental server-local SSIMULACRA2 reports and separate explicit gates
       are implemented for bounded same-size 8-bit sRGB PNG/JPEG/WebP stills. Animation, other
       profiles/depths and orientation transforms fail closed. Native tools are packaged across
-      platforms, but image worker placement remains future work. Broader photographs, colour
+      platforms; automatic image worker placement remains disabled pending full parity. Broader photographs, colour
       and human-viewing calibration remain planned. Compare against the
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
@@ -1131,6 +1131,11 @@ or VMAF v0 policy as current behavior.
       bounded execution, source/size checks and independent final verification. Adaptive
       retained soundtracks and the remaining [parity qualification](development/adaptive-audio-image-parity.md)
       are still outstanding.
+    - **Native Mac lifetime:** app/session/runner wiring now restores independently anchored
+      accounting before claims and uses scoped helper execution with positive writer/RAM retirement.
+      Signed release-library trials cover AAC/Opus/MP3, actual RAM, busy delivery and parent-kill/
+      same-identity replay. Installed-package and reboot/remount qualification remain open; see the
+      [runtime evidence and limits](engineering/hardware-validation/2026-10-15-native-work-runtime.md).
     - **Video soundtracks:** opt-in reporting and a separate explicit gate are implemented in
       development for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
       source tracks to output order, with language/title/commentary identity and timing checks.
