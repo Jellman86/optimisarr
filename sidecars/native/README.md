@@ -56,8 +56,9 @@ retains notices from each exact runtime pack and signs all nested Mach-O code be
 Developer ID builds give only the helper the JIT entitlement required by
 [.NET on macOS](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos).
 Ad-hoc development builds do not enable the hardened runtime's team-based library validation.
-`verify-app.sh` checks a relocated bundle's managed startup, real JPEG/ICC/EXIF/marker proof,
+`verify-app.sh` checks a relocated bundle's managed startup, real JPEG/WebP ICC/EXIF/marker proof,
 both pinned metrics, empty scratch and native UI fixtures. Pinned ExifTool modules use system
 Perl, including its compression support; missing support cannot advertise metadata or image
-encoders. This qualification does not enable protocol 11. WebP packaging, full packaged job
-lifecycles and restart recovery remain outstanding.
+encoders. This qualification does not enable protocol 11. Full packaged job lifecycles and restart recovery
+remain outstanding. WebP lossy/lossless qualification preserves alpha exactly and additionally
+requires exact colour in lossless mode; independent fixtures pass on Mac, Quark and native Windows.

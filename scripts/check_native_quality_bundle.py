@@ -13,10 +13,11 @@ import time
 def validate(event):
     proof = event.get('capabilities') or {}
     if (event.get('version') != 1 or event.get('type') != 'capabilities'
-            or proof.get('imageMetadataSupported') is not True or 'mjpeg' not in proof.get('imageEncoders', [])
+            or proof.get('imageMetadataSupported') is not True
+            or not {'mjpeg', 'libwebp'} <= set(proof.get('imageEncoders') or [])
             or proof.get('imageMetricRevision') != 'a7a9c787341cf703dede03c2009fa460cae5e5df'
             or proof.get('audioMetricRevision') != 'f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3'):
-        raise ValueError('Packaged native tools did not prove JPEG, metadata and both pinned metrics')
+        raise ValueError('Packaged native tools did not prove JPEG/WebP, metadata and both pinned metrics')
 
 
 def check(app):

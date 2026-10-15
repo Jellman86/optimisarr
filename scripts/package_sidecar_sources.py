@@ -21,6 +21,7 @@ MAC_REPOS = {
     'vmaf': 'https://github.com/Netflix/vmaf.git',
     'opus': 'https://github.com/xiph/opus.git',
     'ffmpeg': 'https://github.com/FFmpeg/FFmpeg.git',
+    'webp': 'https://chromium.googlesource.com/webm/libwebp',
 }
 AUDIO_SOURCES = {
     'zimtohrli': ('https://github.com/google/zimtohrli.git', 'f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3'),
@@ -88,18 +89,23 @@ def command(*args, cwd=None):
 
 
 def git_source(name, url, revision, stage, local=None):
+    if not re.fullmatch(r'[0-9a-f]{40}', revision):
+        raise ValueError(f'{name}: an immutable full Git object pin is required')
     checkout = local if local and (local / '.git').exists() else stage / f'{name}-checkout'
     if not (checkout / '.git').exists():
         command('git', 'init', str(checkout))
         command('git', 'remote', 'add', 'origin', url, cwd=checkout)
         command('git', 'fetch', '--depth=1', 'origin', revision, cwd=checkout)
-    resolved = command('git', 'rev-parse', f'{revision}^{{commit}}', cwd=checkout).decode().strip()
-    if not resolved.startswith(revision):
+    pinned = command('git', 'rev-parse', '--verify', revision, cwd=checkout).decode().strip()
+    if pinned != revision:
         raise ValueError(f'{name}: source revision mismatch')
+    resolved = command('git', 'rev-parse', f'{revision}^{{commit}}', cwd=checkout).decode().strip()
     # git archive ignores build outputs and working-tree edits in an existing checkout.
     archive = stage / f'{name}-{resolved}.tar'
     command('git', 'archive', '--format=tar', f'--prefix={name}/', f'--output={archive}', resolved, cwd=checkout)
-    return archive, resolved
+    # An annotated tag's object hash is immutable too. Archive its commit, retaining the
+    # declared object identity so the manifest still matches the build's exact pin.
+    return archive, pinned
 
 
 def copy_licenses(archive, destination):

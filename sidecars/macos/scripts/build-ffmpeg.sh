@@ -37,6 +37,7 @@ DAV1D_TAG="${DAV1D_TAG:-1.5.3}"
 OPUS_TAG="${OPUS_TAG:-v1.5.2}"
 LAME_VERSION="3.100"
 LAME_SHA256="ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e"
+WEBP_REVISION="$(python3 -c 'import json; print(json.load(open("../../tools/image-quality-native/sources.json"))["image-webp"][1])')"
 # n7.1.2, not n7.1. The libx265 wrapper in the base n7.1 tag guards the multi-layer encoder API
 # with `#if X265_BUILD >= 210` and no upper bound. x265 reverted that API at build 213, so a
 # wrapper built against x265 4.2 passes an array of *pointers* where the library now expects an
@@ -51,13 +52,14 @@ FFMPEG_TAG="${FFMPEG_TAG:-n8.0.3}"
 # Extra cmake flags for x265, e.g. -DENABLE_ASSEMBLY=OFF while chasing a crash.
 X265_CMAKE_FLAGS="${X265_CMAKE_FLAGS:-}"
 
-JOBS="$(sysctl -n hw.ncpu)"
+JOBS="${OPTIMISARR_BUILD_JOBS:-$(sysctl -n hw.ncpu)}"
+[[ "${JOBS}" =~ ^[1-9][0-9]*$ ]] || { echo "error: invalid build concurrency" >&2; exit 2; }
 
 # Checked up front rather than discovered forty minutes in. x264, x265 and ffmpeg need only cmake
 # and a compiler, but libvmaf builds with meson and ninja, so a machine without them gets most of
 # the way through and then stops with a bare "command not found".
 missing=()
-for tool in git cmake meson ninja pkg-config curl shasum; do
+for tool in git cmake meson ninja pkg-config curl shasum python3; do
   command -v "${tool}" >/dev/null 2>&1 || missing+=("${tool}")
 done
 if (( ${#missing[@]} )); then
@@ -91,6 +93,20 @@ clone_at() {
   git clone --depth 1 --branch "${tag}" "${url}" "${BUILD}/${dir}" >/dev/null 2>&1
 }
 
+clone_webp() {
+  local directory="${BUILD}/webp"
+  if [[ ! -d "${directory}/.git" ]]; then
+    git init "${directory}" >/dev/null
+    git -C "${directory}" remote add origin https://chromium.googlesource.com/webm/libwebp
+    git -C "${directory}" fetch --depth 1 origin "${WEBP_REVISION}"
+    git -C "${directory}" checkout --detach "${WEBP_REVISION}^{commit}"
+  fi
+  # The pin can be an immutable annotated tag object, so compare its peeled commit.
+  [[ "$(git -C "${directory}" rev-parse HEAD)" == "$(git -C "${directory}" rev-parse "${WEBP_REVISION}^{commit}")" ]] || {
+    echo "error: cached WebP source does not match the pinned image dependency" >&2; exit 2;
+  }
+}
+
 echo "==> Fetching sources"
 clone_at "https://code.videolan.org/videolan/x264.git" "${X264_TAG}" x264
 clone_at "https://bitbucket.org/multicoreware/x265_git.git" "${X265_TAG}" x265
@@ -102,6 +118,7 @@ clone_at "https://github.com/FFmpeg/FFmpeg.git" "${FFMPEG_TAG}" ffmpeg
 python3 ../../scripts/patch_ffmpeg_opus.py "${BUILD}/ffmpeg"
 printf '%s\n' 'FFmpeg Opus parser backport: upstream 618fc15e65; scripts/patch_ffmpeg_opus.py' > "${VENDOR}/BUILD-PATCHES.txt"
 clone_at "https://github.com/xiph/opus.git" "${OPUS_TAG}" opus
+clone_webp
 if [[ ! -f "${BUILD}/lame-${LAME_VERSION}.tar.gz" ]]; then
   curl -fL --retry 3 -o "${BUILD}/lame-${LAME_VERSION}.tar.gz" \
     "https://downloads.sourceforge.net/project/lame/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz"
@@ -115,13 +132,13 @@ fi
 echo "==> Recording exactly what was built"
 {
   echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  for d in x264 x265 svtav1 dav1d vmaf ffmpeg opus; do
+  for d in x264 x265 svtav1 dav1d vmaf ffmpeg opus webp; do
     printf '%-8s %s %s\n' "${d}" "$(git -C "${BUILD}/${d}" describe --tags --always 2>/dev/null || echo '?')" \
       "$(git -C "${BUILD}/${d}" rev-parse HEAD 2>/dev/null || echo '?')"
   done
   printf 'lame     %s %s\n' "${LAME_VERSION}" "${LAME_SHA256}"
-} > "${VENDOR}/BUILD-INFO.txt"
-cat "${VENDOR}/BUILD-INFO.txt"
+} > "${BUILD}/BUILD-INFO.pending.txt"
+cat "${BUILD}/BUILD-INFO.pending.txt"
 
 if [[ ! -f "${PREFIX}/lib/libx264.a" ]]; then
   echo "==> x264"
@@ -198,6 +215,18 @@ if [[ ! -f "${PREFIX}/lib/libmp3lame.a" ]]; then
     && make -j"${JOBS}" >/dev/null && make install >/dev/null)
 fi
 
+if [[ ! -f "${PREFIX}/lib/webp-${WEBP_REVISION}" ]]; then
+  echo "==> WebP (pinned static encoder and decoder)"
+  cmake -S "${BUILD}/webp" -B "${BUILD}/webp/build" -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+    -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF \
+    -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF \
+    -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF >/dev/null
+  cmake --build "${BUILD}/webp/build" -j "${JOBS}" >/dev/null
+  cmake --install "${BUILD}/webp/build" >/dev/null
+  touch "${PREFIX}/lib/webp-${WEBP_REVISION}"
+fi
+
 echo "==> ffmpeg"
 # VideoToolbox comes from the platform rather than a third-party library, and is what makes hardware
 # encoding possible here at all. libvmaf is the reason this script exists.
@@ -223,6 +252,7 @@ echo "==> ffmpeg"
     --enable-libvmaf \
     --enable-libopus \
     --enable-libmp3lame \
+    --enable-libwebp \
     --enable-videotoolbox \
     --disable-doc \
     --disable-debug \
@@ -264,3 +294,4 @@ python3 ../../scripts/check_macos_minimum.py --minimum "${MINIMUM_MACOS}" "${VEN
 # Listings alone missed both bugs: an encoder can silently reduce bit depth, and AV1 hardware
 # decode does not provide the software decoder used by full verification.
 python3 ../../scripts/check_media_tool_bundle.py --ffmpeg "${VENDOR}/ffmpeg" --ffprobe "${VENDOR}/ffprobe"
+mv "${BUILD}/BUILD-INFO.pending.txt" "${VENDOR}/BUILD-INFO.txt"

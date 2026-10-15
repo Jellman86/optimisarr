@@ -153,6 +153,28 @@ class SidecarSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'No licence'):
             source.copy_licenses(archive, self.root / 'licenses')
 
+    def test_immutable_annotated_tag_pin_archives_its_commit_without_losing_the_pinned_identity(self):
+        checkout = self.root / 'tagged'
+        source.command('git', 'init', str(checkout))
+        (checkout / 'LICENSE').write_text('pinned licence')
+        source.command('git', 'add', 'LICENSE', cwd=checkout)
+        identity = ['git', '-c', 'user.name=Source test', '-c', 'user.email=source@example.invalid']
+        source.command(*identity, 'commit', '-m', 'fixture', cwd=checkout)
+        commit = source.command('git', 'rev-parse', 'HEAD', cwd=checkout).decode().strip()
+        source.command(*identity, 'tag', '-a', 'fixture-tag', '-m', 'immutable fixture tag', cwd=checkout)
+        pin = source.command('git', 'rev-parse', 'fixture-tag', cwd=checkout).decode().strip()
+        self.assertNotEqual(pin, commit)
+        (checkout / 'LICENSE').write_text('later checkout bytes')
+        archive, retained_pin = source.git_source('tagged', 'unused', pin, self.root, checkout)
+        self.assertEqual(pin, retained_pin)
+        self.assertIn(commit, archive.name)
+        with tarfile.open(archive) as contents:
+            self.assertEqual(b'pinned licence', contents.extractfile('tagged/LICENSE').read())
+
+    def test_a_moving_tag_name_cannot_be_a_corresponding_source_pin(self):
+        with self.assertRaisesRegex(ValueError, 'immutable'):
+            source.git_source('fixture', 'unused', 'v1.6.0', self.root)
+
 
 if __name__ == '__main__':
     unittest.main()

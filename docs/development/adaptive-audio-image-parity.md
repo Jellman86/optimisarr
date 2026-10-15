@@ -18,22 +18,23 @@ for runtime library validation. The minimum-macOS check now traverses nested run
 and checks the highest requirement across universal-binary slices.
 
 Physical Mac acceptance passed from a relocated Developer ID signed app with no Homebrew or
-installed .NET on its execution path: managed startup, JPEG encoding with compressed ICC/EXIF
+installed .NET on its execution path: managed startup, JPEG/WebP encoding with compressed ICC/EXIF
 preservation and marker readback, both pinned metrics, scratch cleanup and all 20 UI fixture
 states. This is package qualification for that tool set, not notarisation, automatic placement,
-full job/restart acceptance or complete parity. The current Mac FFmpeg still lacks WebP.
+full job/restart acceptance or complete parity. The pinned Mac FFmpeg now includes WebP. Its lossy/lossless checks require exact alpha, and lossless colour must match the independent RGBA fixture byte for byte. Those WebP checks pass on Mac, native Quark and native Picard. The relocated signed Mac bundle now proves both JPEG and WebP with metadata preservation.
 
 Latest source verification: 3,522 backend tests, 463 shared worker tests plus three Windows-only
-skips, 31 Linux tests, 353 Swift core plus 9 UI tests and 142 Python tests. Earlier native Windows
+skips, 31 Linux tests, 353 Swift core plus 9 UI tests and 149 Python tests. Earlier native Windows
 verification passed all 466 shared tests. Mac AAC/Opus/MP3 workflows previously covered replay,
 strict final verification, repeated replacement and exact rollback. Check the PR for exact-head CI.
 
-Continue with Mac WebP packaging and exact-package media lifecycles, then durable ownership
+Continue with exact-package media lifecycles, then durable ownership
 fences for native scratch restart recovery. Fixed-image worker coverage, adaptive selection for
 every retained re-encoded soundtrack, preview/calibration parity, broader source, reconnect/retry
 and input-format qualification remain required. Positive full-image execution under live Mac
 admission is still unproved: earlier available memory was below the 3.5 GiB budget, and the job
-returned safely before downloading. The matrix below remains the completion contract. Perceptual
+returned safely before downloading. The current Mac also reports warning memory pressure, which
+correctly prevents a live capacity grant; tool-fixture success does not override admission. The matrix below remains the completion contract. Perceptual
 dedupe and exact-copy file actions remain behind this work in priority.
 
 ## Completion contract
@@ -61,7 +62,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests | Positive full-image execution under live Mac admission, packaged Swift proof/placement and packaging |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests | Positive full-image execution under live Mac admission, packaged Swift advertisement/placement and full job/restart qualification |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims now pass all three codecs under live memory admission | Automatic placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
@@ -484,3 +485,26 @@ AAC/Opus/MP3 claim/search/replay/final verification/repeated replacement/exact r
 Windows WAV/AAC/Opus/MP3 measurements pass and clear scratch. This slice bounds audio qualification
 and assessment. Generic inventory probes and other full-encode/verification input paths still
 need their own format audit before protocol-11 activation; it is not a general process sandbox.
+
+## Mac WebP and corresponding sources, 15 October
+
+FFmpeg uses the same immutable WebP pin as the native image decoder. Build provenance records
+its actual commit; corresponding-source packaging retains the declared immutable Git object
+identity while archiving its peeled commit. This matters for annotated tag hashes, which differ
+from their commit hashes. Moving tag names are refused. A dirty checkout cannot change archive
+bytes. Completed build provenance is published only after media-tool qualification passes.
+
+The regenerated bundle passes Developer ID signing, relocated JPEG/WebP ICC/EXIF/marker proof,
+both pinned metrics, empty scratch, nested minimum-OS checks and all 20 UI fixtures. Physical Mac
+checks also prove VideoToolbox encode/decode, AAC/Opus/MP3 and software AV1 after the FFmpeg rebuild.
+Platform-neutral source/validation tests pass on Mac, Quark and native Windows; independent
+64×64 RGBA WebP fixtures pass lossy and lossless checks on all three hosts. These small fixtures
+qualify codec/alpha behaviour, not representative quality thresholds or full native-job lifecycles.
+
+The updated packaged helper also passes ordinary Swift claim/admission trials for JPEG and WebP
+while the physical Mac reports warning memory pressure. Both return a neutral acknowledged
+capacity hold before any source download or perceptual report, with zero media failures,
+unchanged source hashes, no scratch and no residual resource reservations. These trials use
+explicit server-side placement fixtures and fixture protocol elevation; the parent uses actual
+live pressure/capacity without a grant override. They prove safe refusal, not positive image
+execution or automatic placement.

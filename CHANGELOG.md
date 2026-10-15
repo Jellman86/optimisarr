@@ -15,7 +15,10 @@
 
 ### Added
 
-- Mac app builds now include the self-contained native quality helper, exact runtime notices and pinned ExifTool modules. Nested native code is signed before the app, with JIT limited to the helper in hardened builds. Relocated package checks exercise JPEG metadata preservation, both metrics and managed startup without Homebrew or an installed .NET runtime. WebP packaging and the remaining parity gates still keep protocol 11 disabled.
+- Mac FFmpeg now bundles the pinned WebP encoder. Package acceptance proves JPEG/WebP metadata round trips, exact alpha in both WebP modes and exact lossless colour. Corresponding-source archives now accept immutable annotated-tag object pins while refusing moving tag names; completed media-tool checks precede publication of build provenance.
+
+
+- Mac app builds now include the self-contained native quality helper, exact runtime notices and pinned ExifTool modules. Nested native code is signed before the app, with JIT limited to the helper in hardened builds. Relocated package checks exercise JPEG metadata preservation, both metrics and managed startup without Homebrew or an installed .NET runtime. Full packaged-job, restart and remaining parity gates still keep protocol 11 disabled.
 
 
 - Audio quality qualification and measurement now restrict FFmpeg/ffprobe to local media containers before opening originals or candidates. Playlist sources cannot use secondary files to pass a file-bound assessment; supported soundtrack containers and independent verification gates remain intact.

@@ -10,7 +10,7 @@ SPEC.loader.exec_module(bundle)
 class NativeQualityBundleTests(unittest.TestCase):
     def proof(self):
         return {'version': 1, 'type': 'capabilities', 'capabilities': {
-            'imageEncoders': ['mjpeg'], 'imageMetadataSupported': True,
+            'imageEncoders': ['mjpeg', 'libwebp'], 'imageMetadataSupported': True,
             'imageMetricRevision': 'a7a9c787341cf703dede03c2009fa460cae5e5df',
             'audioMetricRevision': 'f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3'}}
 
@@ -31,3 +31,9 @@ class NativeQualityBundleTests(unittest.TestCase):
             proof[key] = value
             with self.assertRaises(ValueError):
                 bundle.validate(proof)
+
+    def test_a_jpeg_only_package_cannot_claim_complete_image_tool_parity(self):
+        proof = self.proof()
+        proof['capabilities']['imageEncoders'] = ['mjpeg']
+        with self.assertRaises(ValueError):
+            bundle.validate(proof)

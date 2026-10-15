@@ -170,6 +170,7 @@ Encoding, all proved with a real test encode at launch rather than taken from FF
 | HEVC | `hevc_videotoolbox` (hardware) and `libx265` |
 | AV1 | `libsvtav1` (software only) |
 | Audio | `aac`, `libopus`, `libmp3lame`; each encoder must pass a real capability probe. The bundle includes pinned Opus and LAME sources and licenses. |
+| Still images | JPEG and WebP with pinned ExifTool modules. Native tool proof is bundled, while automatic image placement remains gated behind protocol-11 workflow qualification. |
 
 **This sidecar currently offers software AV1 encoding through SVT-AV1.** Hardware decoding is
 advertised only where the launch probe succeeds. The bundled build is pinned to FFmpeg 8.0.3; see
@@ -382,7 +383,7 @@ staples the ticket to the bundle, re-archives, and checks the result the way Gat
 then builds a disk image from the stapled app and notarises and staples that too. Before notarisation,
 `verify-app.sh` copies the signed app to a temporary directory and renders all twenty light/dark
 fixture states using embedded artwork, without pairing or contacting a server. It also proves
-managed startup, real JPEG metadata preservation and both pinned metrics using only bundled tools
+managed startup, real JPEG/WebP metadata preservation and both pinned metrics using only bundled tools
 and system Perl. Missing tool dependencies block package acceptance. Final `.sha256`
 files are generated after stapling. Attach the `.dmg`, `.zip`, checksums and corresponding-source
 parts to the GitHub Release.
