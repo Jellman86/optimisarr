@@ -1,6 +1,9 @@
 # Swift durable native accounting foundation, 15 October 2026
 
 Development evidence for [draft #415](https://github.com/Jellman86/optimisarr/pull/415).
+This accounting checkpoint was qualified at `02e24887`; the subsequent
+[identity-bound RAM component](2026-10-15-native-ram-retirement.md) adds physical retirement
+qualification without yet connecting either component to app startup or execution.
 The production runner still uses private helper protocol v1. These components are not yet
 connected to installed app startup or execution; the native resource-lifetime P1 remains open.
 Protocol 10 remains advertised and automatic protocol 11 remains disabled.
@@ -37,7 +40,8 @@ The reconciliation actor serializes native admission while any prior obligation 
 3. Persist writer retirement before consuming its receipt. Lost consumption responses replay
    against this durable proof; an absent receipt alone never proves writer retirement.
 4. Persist consumption before asking the RAM retirement provider to eject. A failed ejection
-   retains all charges. The physical provider is still pending.
+   retains all charges. The physical provider was pending at this checkpoint; its subsequent
+   component evidence is linked above.
 5. Persist accounting release before releasing memory/disk reservations. Replay releases the
    same owner idempotently, including recovery with the original in-process budget instances.
 

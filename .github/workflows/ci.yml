@@ -128,7 +128,7 @@ jobs:
           swift --version
       - run: swift test
       - name: Verify real RAM volume capacity and cleanup
-        run: OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
+        run: OPTIMISARR_LIVE_RAMDISK=1 swift test --filter 'LiveRamDisk|LiveNativeRamDisk'
       - run: swift build --configuration release
       - name: Verify relocated native quality runtime
         run: python3 ../../scripts/check_macos_native_package.py

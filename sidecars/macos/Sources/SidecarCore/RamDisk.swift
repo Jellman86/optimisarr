@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// A RAM-backed volume, created for one job and destroyed when it ends.
@@ -11,6 +12,20 @@ import Foundation
 /// Carries the child's output back from the reading thread.
 private final class OutputBox: @unchecked Sendable {
     var data = Data()
+    var exceeded = false
+    var reachedEOF = false
+}
+
+private final class CommandDrainLifetime: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stopped = false
+    let deadline: DispatchTime
+
+    init(timeout: TimeInterval) { deadline = .now() + timeout }
+    func stop() { lock.withLock { stopped = true } }
+    var shouldStop: Bool {
+        lock.withLock { stopped || DispatchTime.now() >= deadline }
+    }
 }
 
 public struct RamDisk: Sendable {
@@ -25,14 +40,19 @@ public struct RamDisk: Sendable {
     /// job slot for ever — which is exactly what happened on 2026-09-13, leaving a sidecar that
     /// checked in cheerfully and never asked for work again.
     /// Runs a command and returns its trimmed output, or nil if it failed or took too long.
-    static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20) -> String? {
+    static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20,
+                    maximumOutputBytes: Int = 1024 * 1024,
+                    onReaderStopped: (@Sendable () -> Void)? = nil) -> String? {
+        guard maximumOutputBytes > 0, timeout.isFinite, timeout > 0, timeout <= 3600 else { return nil }
+        let lifetime = CommandDrainLifetime(timeout: timeout)
         let process = Process()
-        let pipe = Pipe()
+        let pipe = Pipe(), errors = Pipe()
         pipe.sealFromOtherChildren()
+        errors.sealFromOtherChildren()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errors
         let finished = DispatchGroup()
         finished.enter()
         process.terminationHandler = { _ in finished.leave() }
@@ -43,29 +63,73 @@ public struct RamDisk: Sendable {
             return nil
         }
 
-        // Read on another thread so a child that holds the pipe open cannot block the wait, and
-        // wait with a deadline so nothing here can hang the job that called it.
-        // Foundation can strand waitUntilExit on a different thread from process.run,
-        // even after the child has exited. Its termination callback is independent of
-        // that thread's run loop. Wait for both exit and output without moving the wait.
-        let box = OutputBox()
-        finished.enter()
-        DispatchQueue.global(qos: .utility).async {
-            box.data = pipe.fileHandleForReading.readDataToEndOfFile()
-            finished.leave()
+        // Each reader owns its descriptor. Nonblocking reads and short polls let it stop even
+        // when an inherited pipe stays open after the direct child exits. Closing a FileHandle
+        // from another thread cannot safely interrupt Foundation's blocking read locks.
+        // The termination callback avoids waitUntilExit's cross-thread run-loop dependency.
+        let box = OutputBox(), errorBox = OutputBox()
+        @Sendable func read(_ source: Pipe, into output: OutputBox) {
+            finished.enter()
+            DispatchQueue.global(qos: .utility).async {
+                defer {
+                    try? source.fileHandleForReading.close()
+                    onReaderStopped?()
+                    finished.leave()
+                }
+                let fd = source.fileHandleForReading.fileDescriptor
+                let flags = fcntl(fd, F_GETFL)
+                guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
+                    lifetime.stop()
+                    return
+                }
+                var bytes = [UInt8](repeating: 0, count: 8192)
+                while !lifetime.shouldStop {
+                    let count = bytes.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
+                    if count == 0 {
+                        output.reachedEOF = true
+                        return
+                    }
+                    if count > 0 {
+                        guard count <= maximumOutputBytes - output.data.count else {
+                            output.exceeded = true
+                            lifetime.stop()
+                            if process.isRunning { process.terminate() }
+                            return
+                        }
+                        output.data.append(contentsOf: bytes.prefix(count))
+                        continue
+                    }
+                    if errno == EINTR { continue }
+                    guard errno == EAGAIN || errno == EWOULDBLOCK else {
+                        lifetime.stop()
+                        return
+                    }
+                    var descriptor = pollfd(fd: fd, events: Int16(POLLIN | POLLHUP), revents: 0)
+                    let ready = poll(&descriptor, 1, 25)
+                    if ready < 0 && errno != EINTR {
+                        lifetime.stop()
+                        return
+                    }
+                }
+            }
         }
+        read(pipe, into: box)
+        read(errors, into: errorBox)
 
-        guard finished.wait(timeout: .now() + timeout) == .success else {
+        guard finished.wait(timeout: lifetime.deadline) == .success else {
             SidecarLog.storage.error(
                 "\(path, privacy: .public) did not finish within \(timeout)s; giving up on it")
+            lifetime.stop()
             if process.isRunning { process.terminate() }
             if finished.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
                 kill(process.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + 1)
             }
             return nil
         }
 
-        guard process.terminationStatus == 0 else {
+        guard process.terminationStatus == 0, box.reachedEOF, errorBox.reachedEOF,
+              !box.exceeded, !errorBox.exceeded else {
             SidecarLog.storage.error(
                 "\(path, privacy: .public) exited \(process.terminationStatus)")
             return nil

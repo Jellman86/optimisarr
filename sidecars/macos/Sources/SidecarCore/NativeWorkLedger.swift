@@ -11,6 +11,7 @@ public enum NativeWorkLedgerError: Error, Sendable {
 public struct NativeRamDiskIdentity: Codable, Equatable, Sendable {
     public let bootSession: UUID
     public let registryEntryId: UInt64
+    public let backingEntryId: UInt64
     public let volumeId: UUID
     public let device: String
     public let mountPoint: String
@@ -18,6 +19,7 @@ public struct NativeRamDiskIdentity: Codable, Equatable, Sendable {
 
     var isValid: Bool {
         bootSession != NativeWorkLedger.zero && volumeId != NativeWorkLedger.zero && registryEntryId > 0
+            && backingEntryId > 0 && backingEntryId != registryEntryId
             && device.hasPrefix("/dev/disk") && !device.dropFirst(9).isEmpty
             && device.dropFirst(9).allSatisfy({ $0.isASCII && $0.isNumber })
             && NativeWorkLedger.validPath(mountPoint) && !rootIdentity.isEmpty && rootIdentity.utf8.count <= 256
@@ -90,8 +92,8 @@ public enum NativeWorkLedger {
     public static func encode(_ obligations: [NativeWorkObligation]) throws -> Data {
         try validate(obligations)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        let payload = try encoder.encode(Payload(schemaVersion: 1, obligations: obligations))
-        let data = try encoder.encode(Envelope(schemaVersion: 1, payload: payload, checksum: checksum(payload)))
+        let payload = try encoder.encode(Payload(schemaVersion: 2, obligations: obligations))
+        let data = try encoder.encode(Envelope(schemaVersion: 2, payload: payload, checksum: checksum(payload)))
         guard data.count <= maximumBytes else { throw NativeWorkLedgerError.invalidData }
         return data
     }
@@ -102,12 +104,12 @@ public enum NativeWorkLedger {
                   let outer = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   Set(outer.keys) == Set(["schemaVersion", "payload", "checksum"]) else { throw NativeWorkLedgerError.invalidData }
             let envelope = try JSONDecoder().decode(Envelope.self, from: data)
-            guard envelope.schemaVersion == 1 else { throw NativeWorkLedgerError.unsupportedSchema }
+            guard envelope.schemaVersion == 2 else { throw NativeWorkLedgerError.unsupportedSchema }
             guard !envelope.payload.isEmpty, envelope.payload.count <= maximumBytes,
                   envelope.checksum == checksum(envelope.payload), NativeWireJSON.hasUniqueProperties(envelope.payload),
                   validShape(envelope.payload) else { throw NativeWorkLedgerError.invalidData }
             let payload = try JSONDecoder().decode(Payload.self, from: envelope.payload)
-            guard payload.schemaVersion == 1 else { throw NativeWorkLedgerError.unsupportedSchema }
+            guard payload.schemaVersion == 2 else { throw NativeWorkLedgerError.unsupportedSchema }
             try validate(payload.obligations)
             return payload.obligations
         } catch let error as NativeWorkLedgerError { throw error }
@@ -143,7 +145,7 @@ public enum NativeWorkLedger {
         let known = Set(["owner", "bootSession", "root", "scope", "nativeBytes", "scratchBytes", "diskVolume", "ramBytes",
             "ramIdentity", "ramCreationAttempted", "ramRetired", "phase", "receipt"])
         let nested = [("owner", Set(["owner", "jobId", "leaseId"])), ("scope", Set(["root", "control", "gate"])),
-            ("ramIdentity", Set(["bootSession", "registryEntryId", "volumeId", "device", "mountPoint", "rootIdentity"]))]
+            ("ramIdentity", Set(["bootSession", "registryEntryId", "backingEntryId", "volumeId", "device", "mountPoint", "rootIdentity"]))]
         return records.allSatisfy { record in
             Set(record.keys).isSubset(of: known) && nested.allSatisfy { key, keys in
                 guard let value = record[key], !(value is NSNull) else { return true }

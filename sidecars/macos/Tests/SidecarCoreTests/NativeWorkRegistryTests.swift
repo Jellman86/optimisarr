@@ -18,7 +18,7 @@ struct NativeWorkRegistryTests {
         record.phase = .running; record.receipt = .required
         if ram {
             record.ramCreationAttempted = true
-            record.ramIdentity = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 123, volumeId: UUID(),
+            record.ramIdentity = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 123, backingEntryId: 120, volumeId: UUID(),
                 device: "/dev/disk9", mountPoint: record.root!, rootIdentity: scope.root)
         }
         return record

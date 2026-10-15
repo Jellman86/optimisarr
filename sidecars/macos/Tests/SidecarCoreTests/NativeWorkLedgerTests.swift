@@ -15,7 +15,7 @@ struct NativeWorkLedgerTests {
         record.root = "/Volumes/OptimisarrWork-fixture"
         record.diskVolume = nil
         record.ramBytes = 64 * 1024 * 1024
-        record.ramIdentity = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 123456, volumeId: UUID(),
+        record.ramIdentity = NativeRamDiskIdentity(bootSession: boot, registryEntryId: 123456, backingEntryId: 123450, volumeId: UUID(),
             device: "/dev/disk9", mountPoint: record.root!, rootIdentity: record.scope!.root)
         return record
     }
@@ -78,7 +78,7 @@ struct NativeWorkLedgerTests {
         var noReceipt = disk(); noReceipt.phase = .running
         var premature = ram(); premature.phase = .accountingReleased
         var changedMount = ram(); changedMount.ramIdentity = NativeRamDiskIdentity(bootSession: boot,
-            registryEntryId: 123456, volumeId: UUID(), device: "/dev/disk9", mountPoint: "/different", rootIdentity: "darwin:1:2")
+            registryEntryId: 123456, backingEntryId: 123450, volumeId: UUID(), device: "/dev/disk9", mountPoint: "/different", rootIdentity: "darwin:1:2")
         var overflow = ram(); overflow.nativeBytes = Int64.max
         var negative = disk(); negative.scratchBytes = -1
         for record in [noScope, noReceipt, premature, changedMount, overflow, negative] {
@@ -96,8 +96,10 @@ struct NativeWorkLedgerTests {
         object["checksum"] = String(repeating: "0", count: 64)
         #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.decode(JSONSerialization.data(withJSONObject: object)) }
         object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        object["schemaVersion"] = 99
-        #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.decode(JSONSerialization.data(withJSONObject: object)) }
+        for version in [1, 99] {
+            object["schemaVersion"] = version
+            #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.decode(JSONSerialization.data(withJSONObject: object)) }
+        }
         for data in [Data(), Data("{}".utf8), Data("{\"schemaVersion\":1,\"schemaVersion\":1}".utf8), encoded.dropLast()] {
             #expect(throws: NativeWorkLedgerError.self) { try NativeWorkLedger.decode(Data(data)) }
         }
