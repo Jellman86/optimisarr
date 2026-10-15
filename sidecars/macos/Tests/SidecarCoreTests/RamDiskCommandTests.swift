@@ -5,6 +5,16 @@ import Testing
 
 @Suite("RAM disk command lifecycle")
 struct RamDiskCommandTests {
+    @Test("an explicitly inherited input survives exec without closing the caller's handle")
+    func inheritedInput() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("original device pin fixture".utf8).write(to: path)
+        defer { try? FileManager.default.removeItem(at: path) }
+        let input = try FileHandle(forReadingFrom: path); defer { try? input.close() }
+        #expect(fcntl(input.fileDescriptor, F_SETFD, FD_CLOEXEC) == 0)
+        #expect(RamDisk.run("/bin/sh", ["-c", "exec /bin/cat"], standardInput: input) == "original device pin fixture")
+        #expect(fcntl(input.fileDescriptor, F_GETFD) >= 0)
+    }
     @Test("short commands complete from background tasks without waiting on another thread's run loop")
     func repeatedCommands() async {
         await withTaskGroup(of: Void.self) { group in

@@ -67,7 +67,8 @@ public struct NativeWorkObligation: Codable, Equatable, Sendable {
             }
             if let ramIdentity {
                 guard ramCreationAttempted, ramAllocation != nil, ramIdentity.isValid, ramIdentity.bootSession == bootSession,
-                      ramIdentity.mountPoint == root, ramIdentity.rootIdentity == scope?.root else { return false }
+                      ramIdentity.mountPoint == root,
+                      scope.map({ ramIdentity.rootIdentity == $0.root }) ?? (receipt == .notRequired) else { return false }
             }
         }
         switch phase {

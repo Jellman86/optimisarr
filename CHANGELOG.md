@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add registry-backed native Mac RAM creation with durable allocation and mount checkpoints. Cancellation retains the original device pin and accounting until owned commands actually end; recovery can retire a mounted volume before helper preparation. Signed hard-exit fixtures cover both boundaries. Production startup/runner integration remains pending.
+
 - Preserve native Mac RAM allocations interrupted before filesystem preparation. Owner-bound partial receipts retain accounting through uncertain cleanup and cannot authorize formatting or unmounting. Journal close explicitly releases its coordinator lock across transient inherited descriptors. Production factory/startup integration remains pending.
 
 - Add an independent Keychain checkpoint for native Mac accounting. Interrupted writes reconcile only their recorded old/new snapshots, while missing anchors and older ledger copies cannot discard outstanding work. Legacy credential and accounting operations share verified prompt suppression. Production startup/runner integration remains pending.

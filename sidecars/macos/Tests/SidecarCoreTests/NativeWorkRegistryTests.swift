@@ -105,6 +105,26 @@ struct NativeWorkRegistryTests {
         #expect(try journal.load().isEmpty)
     }
 
+    @Test("an unmounted original allocation can finish retirement when cached mounted-volume metadata is unavailable")
+    func partialReplayAfterUnmount() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let journal = try NativeWorkJournal(directory: root.appendingPathComponent("ledger")); defer { journal.close() }
+        let old = record(ram: true); try journal.save([old])
+        let calls = PartialRamCalls(), memory = MemoryWorkBudget()
+        let retirement = NativeWorkRetirement(retire: { _, _, _ in NativeScratchRetirement(retired: true, busy: false) },
+            consume: { _, _, _ in NativeScratchConsumption(consumed: true, alreadyAbsent: false) },
+            retireRam: { _ in false }, retireAllocation: { allocation in
+                #expect((try? journal.load().first?.receipt) == .consumed)
+                calls.record(allocation); return calls.retired
+            })
+        let registry = try NativeWorkRegistry(journal: journal, bootSession: boot, memory: memory, disk: DiskWorkBudget(), retirement: retirement)
+        #expect(try await !registry.recover())
+        #expect(calls.allocations == [old.ramAllocation!] && memory.reservedBytes == 572)
+        calls.retired = true
+        #expect(try await registry.recover())
+        #expect(calls.allocations == [old.ramAllocation!, old.ramAllocation!] && memory.reservedBytes == 0)
+    }
+
     @Test("a durable reservation is recorded before launch and a never-launched attempt needs no writer receipt")
     func reservedWithoutLaunch() async throws {
         let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }

@@ -66,19 +66,23 @@ remain blocked. Owner-bound partial allocation receipts now cover interrupted cr
 a filesystem exists; a mounted identity must match that original allocation. Partial retirement
 cannot unmount or format. Three additional physical cases cover unformatted allocation, actual
 BSD-name reuse and mounted-volume refusal. Journal close explicitly releases its acquired lock
-even during transient descriptor inheritance. Production runner/startup integration and the
-typed RAM factory are still open;
+even during transient descriptor inheritance. A registry-backed RAM factory now persists partial
+allocation before formatting and the actual mounted root before helper scope preparation. It
+retains the original device pin through actual command exit, including caller cancellation.
+Signed-process SIGKILL trials pass at the pre-attach, partial-allocation and mounted-root durable
+boundaries; unknown pre-attach debt stays held. Production runner/startup integration remains open;
 these component results do not close the app lifetime defect. See the [helper foundation](../engineering/hardware-validation/2026-10-15-native-retirement-foundation.md),
 [Swift accounting evidence](../engineering/hardware-validation/2026-10-15-swift-durable-native-accounting.md)
 [independent checkpoint evidence](../engineering/hardware-validation/2026-10-15-native-accounting-checkpoint.md)
 and [RAM retirement qualification and limits](../engineering/hardware-validation/2026-10-15-native-ram-retirement.md).
 The [partial-allocation record](../engineering/hardware-validation/2026-10-15-native-ram-allocation.md)
-separates the tested component from the remaining factory lifetime work.
+records the partial receipt. The [factory qualification](../engineering/hardware-validation/2026-10-15-native-ram-factory.md)
+records creation, physical tests and signed crash-recovery limits.
 
 Latest source verification: 3,526 backend tests on Mac/Quark; 3,503 plus 23 platform skips on native
 Windows; 547 shared worker tests plus three Windows-only skips on Mac/Quark; 550 native Windows
-shared tests; 31 Linux tests, 449 registered Swift core plus nine UI, 154 Python and 346 browser tests.
-Live/paired Swift gates remain opt-in; nine identity/partial-allocation physical RAM cases also passed explicitly.
+shared tests; 31 Linux tests, 466 registered Swift core plus nine UI, 154 Python and 346 browser tests.
+Live/paired Swift gates remain opt-in; twelve identity/partial/factory physical RAM cases pass explicitly.
 Check the PR for exact-head CI. Native trial protocol elevation remains fixture-only.
 
 Continue with exact-package media lifecycles and broader restart/reconnect qualification.

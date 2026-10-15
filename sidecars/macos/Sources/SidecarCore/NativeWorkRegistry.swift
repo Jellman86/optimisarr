@@ -32,6 +32,7 @@ public actor NativeWorkRegistry {
     private let retirement: NativeWorkRetirement
     private var records: [NativeWorkObligation]
     private var reconciling = false
+    private var creating: UUID?
     private var failed = false
 
     public init(journal: NativeWorkJournal, bootSession: UUID, memory: MemoryWorkBudget = .shared,
@@ -90,6 +91,8 @@ public actor NativeWorkRegistry {
         try checkAvailable()
         var record = try find(owner)
         guard record.phase == .admitting, root.isFileURL,
+              record.root == nil || record.root == root.path,
+              record.ramIdentity == nil || record.ramIdentity == ramIdentity,
               record.ramBytes == 0 || record.ramCreationAttempted && record.ramAllocation != nil && ramIdentity != nil else {
             throw NativeWorkRegistryError.invalid
         }
@@ -100,6 +103,39 @@ public actor NativeWorkRegistry {
 
     public func recordRamAllocation(owner: NativeAccountedOwner, allocation: NativeRamAllocationIdentity) throws {
         try checkAvailable()
+        try assignRamAllocation(owner: owner, allocation: allocation)
+    }
+
+    public func createRamStorage(owner: NativeAccountedOwner, factory: NativeRamDiskFactory = NativeRamDiskFactory(),
+                                 mountParent: URL) async throws -> NativeRamDiskCreation? {
+        try checkAvailable()
+        try Task.checkCancellation()
+        var record = try find(owner)
+        guard record.phase == .admitting, record.ramBytes > 0, !record.ramCreationAttempted else {
+            throw NativeWorkRegistryError.invalid
+        }
+        let attempt = UUID()
+        creating = attempt
+        defer { if creating == attempt { creating = nil } }
+        record.ramCreationAttempted = true
+        try replace(record)
+        let result = await factory.create(owner: owner, bootSession: record.bootSession, allocatedBytes: record.ramBytes,
+            mountParent: mountParent, allocated: { allocation, permitted in
+                try await self.createdAllocation(owner: owner, attempt: attempt, allocation: allocation, permitted: permitted)
+            }, mounted: { identity, permitted in
+                try await self.createdMount(owner: owner, attempt: attempt, identity: identity, permitted: permitted)
+            })
+        guard !failed else { throw NativeWorkRegistryError.unavailable }
+        return result
+    }
+
+    private func createdAllocation(owner: NativeAccountedOwner, attempt: UUID, allocation: NativeRamAllocationIdentity,
+                                   permitted: @Sendable () -> Bool) throws {
+        try checkCreation(attempt, permitted: permitted)
+        try assignRamAllocation(owner: owner, allocation: allocation)
+    }
+
+    private func assignRamAllocation(owner: NativeAccountedOwner, allocation: NativeRamAllocationIdentity) throws {
         var record = try find(owner)
         guard record.phase == .admitting, record.ramCreationAttempted, record.ramAllocation == nil else {
             throw NativeWorkRegistryError.invalid
@@ -107,6 +143,24 @@ public actor NativeWorkRegistry {
         record.ramAllocation = allocation
         guard record.isValid else { throw NativeWorkRegistryError.invalid }
         try replace(record)
+    }
+
+    private func createdMount(owner: NativeAccountedOwner, attempt: UUID, identity: NativeRamDiskIdentity,
+                              permitted: @Sendable () -> Bool) throws {
+        try checkCreation(attempt, permitted: permitted)
+        var record = try find(owner)
+        guard record.phase == .admitting, record.ramCreationAttempted, record.ramAllocation != nil,
+              record.ramIdentity == nil, record.scope == nil else { throw NativeWorkRegistryError.invalid }
+        record.root = identity.mountPoint; record.ramIdentity = identity
+        guard record.isValid else { throw NativeWorkRegistryError.invalid }
+        try replace(record)
+    }
+
+    private func checkCreation(_ attempt: UUID, permitted: @Sendable () -> Bool) throws {
+        guard !failed else { throw NativeWorkRegistryError.unavailable }
+        guard creating == attempt, permitted(), !reconciling else { throw NativeWorkRegistryError.busy }
+        do { try validateSnapshot() }
+        catch { failed = true; throw error }
     }
 
     public func markRunning(owner: NativeAccountedOwner) throws {
@@ -168,7 +222,12 @@ public actor NativeWorkRegistry {
         }
         if record.ramBytes > 0 && !record.ramRetired {
             if let identity = record.ramIdentity {
-                guard try await retirement.retireRam(identity) else { return false }
+                if try await !retirement.retireRam(identity) {
+                    // Direct mount metadata can be absent after interrupted unmount. The
+                    // original allocation receipt may eject only when no filesystem is mounted.
+                    guard let allocation = record.ramAllocation,
+                          try await retirement.retireAllocation(allocation) else { return false }
+                }
             } else if let allocation = record.ramAllocation {
                 guard try await retirement.retireAllocation(allocation) else { return false }
             } else if record.ramCreationAttempted { return false }
@@ -186,7 +245,7 @@ public actor NativeWorkRegistry {
 
     private func checkAvailable() throws {
         guard !failed else { throw NativeWorkRegistryError.unavailable }
-        guard !reconciling else { throw NativeWorkRegistryError.busy }
+        guard !reconciling, creating == nil else { throw NativeWorkRegistryError.busy }
         do { try validateSnapshot() }
         catch { failed = true; throw error }
     }

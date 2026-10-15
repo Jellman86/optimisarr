@@ -1,7 +1,8 @@
 # Native Mac partial RAM allocation, 15 October 2026
 
 Development component evidence for [draft #415](https://github.com/Jellman86/optimisarr/pull/415).
-The production runner/startup and typed allocation factory remain unconnected. Protocol 11
+The production runner/startup remain unconnected. The subsequent
+[typed factory qualification](2026-10-15-native-ram-factory.md) covers creation and durable crash boundaries. Protocol 11
 stays disabled; this record does not establish complete app-crash or media-workflow parity.
 
 ## Interrupted creation

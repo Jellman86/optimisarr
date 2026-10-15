@@ -60,6 +60,8 @@ public struct RamDisk: Sendable {
     /// Runs a command and returns its trimmed output, or nil if it failed or took too long.
     static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20,
                     maximumOutputBytes: Int = 1024 * 1024,
+                    standardInput: FileHandle? = nil,
+                    launchProcess: (@Sendable (Process) throws -> Void)? = nil,
                     onReaderStopped: (@Sendable () -> Void)? = nil) -> String? {
         guard maximumOutputBytes > 0, timeout.isFinite, timeout > 0, timeout <= 3600 else { return nil }
         let lifetime = CommandDrainLifetime(timeout: timeout)
@@ -72,10 +74,14 @@ public struct RamDisk: Sendable {
         process.arguments = arguments
         process.standardOutput = pipe
         process.standardError = errors
+        if let standardInput { process.standardInput = standardInput }
         let finished = DispatchGroup()
         finished.enter()
         process.terminationHandler = { _ in finished.leave() }
-        do { try process.run() } catch {
+        do {
+            if let launchProcess { try launchProcess(process) }
+            else { try process.run() }
+        } catch {
             process.terminationHandler = nil
             finished.leave()
             SidecarLog.storage.error("\(path, privacy: .public) could not be launched")

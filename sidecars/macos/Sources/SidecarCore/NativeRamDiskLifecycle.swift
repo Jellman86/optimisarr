@@ -78,6 +78,12 @@ public final class NativeRamDiskLifecycle: @unchecked Sendable {
         Key(boot: identity.bootSession, media: identity.registryEntryId, backing: identity.backingEntryId)
     }
 
+    static func creationLease(_ identity: NativeRamAllocationIdentity) -> NativeRamCreationLease? {
+        let key = Key(boot: identity.bootSession, media: identity.registryEntryId, backing: identity.backingEntryId)
+        guard slots.gate.withLock({ slots.inFlight.insert(key).inserted }) else { return nil }
+        return NativeRamCreationLease { slots.gate.withLock { _ = slots.inFlight.remove(key) } }
+    }
+
     private func perform<Value: Sendable>(fallback: Value,
         work: @escaping @Sendable (@Sendable () -> Bool) -> Value) async -> Value {
         let attempt = NativeRamAttempt(fallback: fallback)
@@ -93,7 +99,15 @@ public final class NativeRamDiskLifecycle: @unchecked Sendable {
     }
 }
 
-private final class NativeRamAttempt<Value: Sendable>: @unchecked Sendable {
+final class NativeRamCreationLease: @unchecked Sendable {
+    private let gate = NSLock()
+    private var release: (@Sendable () -> Void)?
+    init(_ release: @escaping @Sendable () -> Void) { self.release = release }
+    func close() { gate.withLock { let pending = release; release = nil; return pending }?() }
+    deinit { close() }
+}
+
+final class NativeRamAttempt<Value: Sendable>: @unchecked Sendable {
     private let gate = NSLock()
     private let fallback: Value
     private var continuation: CheckedContinuation<Value, Never>?
@@ -270,16 +284,18 @@ enum MacNativeRamDiskSystem {
         guard try id(backing) == identity.backingEntryId else { return false }
         let raw = try pin(identity.device, media: media)
         defer { Darwin.close(raw) }
-        let volume = try volume(identity.device)
-        guard volume.id == identity.volumeId else { return false }
-        if let mount = volume.mount {
-            guard mount.path == identity.mountPoint else { return false }
-            let root = try rootHandle(mount, device: identity.device, identity: identity.rootIdentity)
+        if let root = try? rootHandle(URL(fileURLWithPath: identity.mountPoint), device: identity.device, identity: identity.rootIdentity) {
             let unmounted: Bool
-            if #available(macOS 16, *) { unmounted = permitted() && funmount(root, 0) == 0 }
-            else { unmounted = false }
-            Darwin.close(root)
+            do {
+                defer { Darwin.close(root) }
+                guard try NativeRamMountedVolume.id(root) == identity.volumeId else { return false }
+                if #available(macOS 16, *) { unmounted = permitted() && funmount(root, 0) == 0 }
+                else { unmounted = false }
+            }
             guard unmounted else { return false }
+        } else {
+            let volume = try volume(identity.device)
+            guard volume.id == identity.volumeId, volume.mount == nil else { return false }
         }
         guard permitted() else { return false }
         // sys/disk.h DKIOCEJECT: _IO('d', 21). The retained descriptor binds the original
@@ -314,7 +330,7 @@ enum MacNativeRamDiskSystem {
         return found == nil
     }
 
-    private static func pin(_ device: String, media: io_service_t) throws -> Int32 {
+    static func pin(_ device: String, media: io_service_t) throws -> Int32 {
         guard device.hasPrefix("/dev/disk"), device.dropFirst(9).allSatisfy({ $0.isASCII && $0.isNumber }),
               !device.dropFirst(9).isEmpty, try property(media, "BSD Name") as? String == String(device.dropFirst(5)),
               IOObjectConformsTo(media, "IOMedia") != 0 else { throw Unconfirmed() }
@@ -372,7 +388,7 @@ enum MacNativeRamDiskSystem {
         return Volume(id: id, mount: mount)
     }
 
-    private static func entry(_ target: UInt64) throws -> io_service_t? { try matching(IORegistryEntryIDMatching(target)) }
+    static func entry(_ target: UInt64) throws -> io_service_t? { try matching(IORegistryEntryIDMatching(target)) }
     private static func namedMedia(_ device: String) throws -> io_service_t? {
         try matching(IOBSDNameMatching(kIOMainPortDefault, 0, String(device.dropFirst(5))))
     }
@@ -385,12 +401,12 @@ enum MacNativeRamDiskSystem {
         return try NativeRegistryIterator.readSingle(next: { IOIteratorNext(iterator) },
             isValid: { IOIteratorIsValid(iterator) != 0 }, release: { IOObjectRelease($0) }, maximum: 16)
     }
-    private static func id(_ object: io_service_t) throws -> UInt64 {
+    static func id(_ object: io_service_t) throws -> UInt64 {
         var id: UInt64 = 0
         guard IORegistryEntryGetRegistryEntryID(object, &id) == KERN_SUCCESS, id > 0 else { throw Unconfirmed() }
         return id
     }
-    private static func backing(_ media: io_service_t) throws -> io_service_t? {
+    static func backing(_ media: io_service_t) throws -> io_service_t? {
         guard IOObjectRetain(media) == KERN_SUCCESS else { throw Unconfirmed() }
         var current = media
         for _ in 0..<8 {
@@ -406,13 +422,13 @@ enum MacNativeRamDiskSystem {
         IOObjectRelease(current)
         return nil
     }
-    private static func property(_ object: io_service_t, _ key: String) throws -> CFTypeRef {
+    static func property(_ object: io_service_t, _ key: String) throws -> CFTypeRef {
         guard let value = IORegistryEntryCreateCFProperty(object, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
             throw Unconfirmed()
         }
         return value
     }
-    private static func number(_ object: io_service_t, _ key: String) throws -> UInt64 {
+    static func number(_ object: io_service_t, _ key: String) throws -> UInt64 {
         let value = try property(object, key)
         guard CFGetTypeID(value) == CFNumberGetTypeID(), let number = value as? NSNumber, number.int64Value >= 0 else {
             throw Unconfirmed()
