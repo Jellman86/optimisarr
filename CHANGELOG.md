@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add owner-keyed, idempotent resource restoration as a foundation for standalone worker recovery. Conflicting charges and overflow are refused, and volume-path separators cannot hide disk reservations. Durable persistence and worker integration remain pending.
+
 - Make worker shutdown qualification reliable under load: readiness records become visible only when complete, and RAM tests distinguish queued work from an operation already in flight. Production retirement deadlines are unchanged.
 
 - Shared worker encodes and probes now retain process ownership until confirmed direct-child exit, including cancellation, reader failure and failed tree termination. Progress observer failures no longer stop pipe drainage, captured text is bounded, and incomplete probe or capability output cannot count as successful evidence. Descendant retirement and standalone durable resource accounting remain separate qualification work.

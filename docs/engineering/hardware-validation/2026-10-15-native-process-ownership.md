@@ -106,3 +106,35 @@ stays zero and its scratch/ledger are positively empty. This refusal is not a ne
 workflow result; the earlier successful RAM workflow above belongs to the pre-race-fix driver.
 The same newly linked driver passes a fresh AAC disk workflow with strict final verification,
 lost-response replay, idempotent replacement, exact rollback and positive empty-ledger cleanup.
+
+## Resource reconciliation foundation
+
+The pure shared pool now supports owner-keyed admission, restoration and release. Identical
+restoration is idempotent; a conflicting volume or charge is refused without changing existing
+debt. Restored obligations are retained even when current capacity is smaller than their charge.
+Overflow is checked before mutation, and ordinary disposable reservations share the same
+accounting. Owner IDs must remain unique to each obligation and cannot be reused after release;
+the future coordinator must enforce that lifetime.
+
+Three test-first regressions also exposed an existing path-key defect: a trailing separator
+could hide an ordinary or restored disk charge when capacity was queried without that separator.
+All reserve, restore and capacity queries now use the same normalized key. The new foundation
+adds **19 pure tests**, including conflicting replay, overflow, reduced capacity, changed volumes,
+concurrent restoration/release and distinct owners competing for limited capacity. All **28
+resource policy tests** pass. Repeated zero-warning Mac and Quark .NET builds and backend suites
+pass **3,545 tests**; shared suites pass 579 plus three platform skips, and Quark Linux passes 31.
+All 346 browser tests pass again. Independent Astra source review found no actionable defect;
+its additional distinct-owner concurrency cases are included in the passing tests.
+
+The rebuilt helper and signed release-library driver pass fresh AAC/Opus/MP3 disk and actual
+AAC RAM workflows with live admission, committed-response replay, final verification, idempotent
+replacement, exact rollback and positive cleanup. An initial capacity refusal during concurrent
+host testing occurs before transfer, with zero media failures. The attempted fresh busy-writer
+and crash trials also meet a live capacity refusal before injection; they do not count as new
+fault qualification. Their empty ledgers are positively reconciled and their private anchors
+removed. Earlier successful busy/crash evidence remains dated to its previous source.
+
+This pool performs no filesystem access and does not persist obligations, authenticate retirement
+or connect standalone startup, capability probing and execution. The durable coordinator, its
+independent checkpoint, previous-root recovery and positive receipt consumption remain required
+before standalone restart accounting can be qualified. Fresh Picard execution is still pending.
