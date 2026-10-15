@@ -67,6 +67,41 @@ permits recovery only after it exits.
 
 ## Source checks and limits
 
+### Swift interruption follow-up and independent review
+
+An independent Astra review found a second route to ordinary media refusal: Swift cancellation
+before the shared helper starts, and an unexpected helper failure while the app remains alive.
+Swift now uses the explicit interruption endpoint for both. Its final request runs in a separate,
+bounded control task so job cancellation cannot cancel the acknowledgement. A failed response
+remains unconfirmed; authoritative lease loss remains distinct.
+
+Test-first regressions reproduced both the wrong endpoint and cancelled-transport failure.
+The updated tests cover cancellation before requirements, during requirements and recovery,
+during RAM-volume preparation and during an executing helper's cleanup. They also cover helper
+failure, acknowledged return, HTTP 503 and authoritative lease loss. These are deterministic
+Swift lifecycle tests, not new hardware or packaged-job qualification.
+
+The review caught an additional failed-RAM fallback path before the next cancellation check;
+its regression failed before the release helper was made cancellation-aware. Another failing
+regression covers cancellation arriving during the capacity HTTP request itself. Requirements and
+recovery tests cancel the outer execution task, including its task-group children. Follow-up
+source checks pass 370 Swift core and nine UI tests, 3,526 backend tests and 346 browser tests;
+the .NET build has zero warnings. Swift release compilation retains the existing SDK warnings.
+
+The review also found an **open resource-accounting defect**: direct helper exit does not prove
+that an inherited media child has exited. Swift currently drops native peak and disk reservations
+on return even if that child retains its ownership guard; failed RAM ejection keeps only the RAM
+allocation. Scratch retention protects files but does not reserve a survivor's future growth.
+This must be fixed before activation. Retirement needs positive evidence for the expected owner;
+an empty aggregate recovery summary is insufficient when records or roots have disappeared.
+Delayed RAM ejection also needs the original mount identity checked before a device name is reused.
+
+Full-encode process cancellation additionally needs focused reaping qualification: the shared
+transcoder requests termination but currently does not explicitly await exit in its cancellation
+catch. Neither this Swift fix nor the earlier parent-death trials resolves that path.
+
+### Earlier cross-host source qualification
+
 Zero-warning .NET builds and current suites pass **3,526 backend tests** on Mac/Quark,
 **3,503 backend tests plus 23 platform skips** on native Windows, **513 shared-worker tests
 plus three Windows-only skips** on Mac/Quark and **516 shared-worker tests** on Picard.

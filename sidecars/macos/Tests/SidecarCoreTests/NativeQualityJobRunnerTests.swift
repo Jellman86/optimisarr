@@ -6,16 +6,20 @@ private final class NativeExchangeFixture: NativeQualityExchanging, @unchecked S
     let budget: MemoryWorkBudget
     let recoveryFails: Bool
     let run: @Sendable (Data) async throws -> NativeQualityReply
+    let boundary: @Sendable (String) async throws -> Void
     private let gate = NSLock()
     private var modes: [String] = []
     var requests: [String] { gate.withLock { modes } }
-    init(budget: MemoryWorkBudget, recoveryFails: Bool = false, run: @escaping @Sendable (Data) async throws -> NativeQualityReply) {
-        self.budget = budget; self.run = run; self.recoveryFails = recoveryFails
+    init(budget: MemoryWorkBudget, recoveryFails: Bool = false,
+         boundary: @escaping @Sendable (String) async throws -> Void = { _ in },
+         run: @escaping @Sendable (Data) async throws -> NativeQualityReply) {
+        self.budget = budget; self.run = run; self.recoveryFails = recoveryFails; self.boundary = boundary
     }
     func exchange(request: Data, expectedJobId: Int?, report: @escaping @Sendable (NativeQualityEvent) -> Void) async throws -> NativeQualityReply {
         let json = try JSONSerialization.jsonObject(with: request) as! [String: Any]
         let mode = json["mode"] as! String
         gate.withLock { modes.append(mode) }
+        try await boundary(mode)
         if mode == "requirements" {
             #expect(json["pairing"] == nil && json["grantedMemoryBytes"] == nil)
             return NativeQualityReply(type: "requirements", jobId: expectedJobId, delivered: false, capacityBlocked: false,
@@ -181,7 +185,8 @@ struct NativeQualityJobRunnerTests {
                 throw CancellationError()
             } onCancel: { cleanup.cancelled() }
         }
-        let runner = NativeQualityJobRunner(client: SidecarClient(transport: StubTransport(status: 204)), tools: tools, helper: helper,
+        let transport = NativeInterruptionFixture(status: 204)
+        let runner = NativeQualityJobRunner(client: SidecarClient(transport: transport), tools: tools, helper: helper,
             scratchRoot: root, memoryBudget: budget, availableMemory: { 100_000 },
             workspace: { _ in NativeDiskCapacity(volume: "cancel-fixture", availableBytes: 100_000) })
         let assignment = try #require(Assignment.decode(NativeQualityAssignmentTests.wire()))
@@ -193,7 +198,103 @@ struct NativeQualityJobRunnerTests {
         cleanup.finish()
         let result = await task.value
         guard case .released = result else { Issue.record("Cancelled work must hand back"); return }
+        #expect(transport.lastPath?.hasSuffix("/interrupted") == true)
         #expect(budget.reservedBytes == 0)
+    }
+
+    @Test("pre-run cancellation uses an uncancelled acknowledged interruption without starting the helper", arguments: [204, 503, 409])
+    func earlyCancellation(status: Int) async throws {
+        let budget = MemoryWorkBudget()
+        let helper = NativeExchangeFixture(budget: budget) { _ in
+            Issue.record("Cancelled work cannot start media tools"); throw NativeQualityHostError()
+        }
+        let transport = NativeInterruptionFixture(status: status)
+        let runner = NativeQualityJobRunner(client: SidecarClient(transport: transport), tools: tools, helper: helper,
+            scratchRoot: root, memoryBudget: budget)
+        let assignment = try #require(Assignment.decode(NativeQualityAssignmentTests.wire()))
+        let start = NativeCleanupGate()
+        let task = Task {
+            await start.wait()
+            return await runner.execute(assignment, pairing: pairing) { _ in }
+        }
+        try await waitFor("the cancellation fixture to be ready") { start.waiting }
+        task.cancel(); start.finish()
+        let result = await task.value
+        #expect(helper.requests.isEmpty && budget.reservedBytes == 0)
+        #expect(transport.lastPath?.hasSuffix("/interrupted") == true)
+        switch (status, result) {
+        case (204, .released), (503, .unconfirmed), (409, .leaseLost): break
+        default: Issue.record("Only an acknowledged interruption or authoritative lease loss may end this attempt: \(result)")
+        }
+    }
+
+    @Test("a failed native helper is an interruption rather than a permanent file refusal")
+    func helperFailure() async throws {
+        let budget = MemoryWorkBudget()
+        let helper = NativeExchangeFixture(budget: budget) { _ in throw NativeQualityHostError() }
+        let transport = NativeInterruptionFixture(status: 204)
+        let runner = NativeQualityJobRunner(client: SidecarClient(transport: transport), tools: tools, helper: helper,
+            scratchRoot: root, memoryBudget: budget, availableMemory: { 100_000 },
+            workspace: { _ in NativeDiskCapacity(volume: "crash-fixture", availableBytes: 100_000) })
+        let result = await runner.execute(try #require(Assignment.decode(NativeQualityAssignmentTests.wire())), pairing: pairing) { _ in }
+        guard case .released = result else { Issue.record("Helper failure needs an acknowledged interruption"); return }
+        #expect(transport.lastPath?.hasSuffix("/interrupted") == true)
+    }
+
+    @Test("cancellation arriving during a capacity handback still gets an independent interruption acknowledgement")
+    func cancellationDuringHandback() async throws {
+        let budget = MemoryWorkBudget()
+        let helper = NativeExchangeFixture(budget: budget) { _ in
+            Issue.record("Unknown capacity cannot start native media work"); throw NativeQualityHostError()
+        }
+        let transport = NativeInterruptionFixture(status: 204, cancelCapacity: true)
+        let runner = NativeQualityJobRunner(client: SidecarClient(transport: transport), tools: tools, helper: helper,
+            scratchRoot: root, memoryBudget: budget, availableMemory: { nil },
+            workspace: { _ in NativeDiskCapacity(volume: "cancel-capacity", availableBytes: 100_000) })
+        let assignment = try #require(Assignment.decode(NativeQualityAssignmentTests.wire()))
+        let result = await Task { await runner.execute(assignment, pairing: pairing) { _ in } }.value
+        guard case .released = result else { Issue.record("Cancelled capacity transport must acknowledge interruption"); return }
+        #expect(transport.lastPath?.hasSuffix("/interrupted") == true)
+        #expect(budget.reservedBytes == 0 && !helper.requests.contains("run"))
+    }
+
+    @Test("requirements, recovery and RAM preparation cancellation cannot create file refusals", arguments: ["requirements", "recover", "ram", "ramFailure"])
+    func preparationCancellation(boundary: String) async throws {
+        let budget = MemoryWorkBudget()
+        let preparation = NativeCleanupGate()
+        let helper = NativeExchangeFixture(budget: budget, boundary: { mode in
+            if mode == boundary {
+                await preparation.wait()
+                try Task.checkCancellation()
+            }
+        }) { _ in Issue.record("Cancelled preparation cannot run media tools"); throw NativeQualityHostError() }
+        let transport = NativeInterruptionFixture(status: 204)
+        let state = NativeFixtureState()
+        let runner = NativeQualityJobRunner(client: SidecarClient(transport: transport), tools: tools, helper: helper,
+            scratchRoot: root, settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 100_000_000),
+            memoryBudget: budget, availableMemory: { 100_000_000 },
+            workspace: { _ in nil },
+            makeRamDisk: { _ in
+                #expect(boundary == "ram" || boundary == "ramFailure")
+                withUnsafeCurrentTask { $0?.cancel() }
+                if boundary == "ramFailure" { return nil }
+                return RamDisk(mountPoint: URL(fileURLWithPath: "/tmp/owned-ram-fixture"), device: "/dev/fixture")
+            }, destroyRamDisk: { _ in state.eject(); return true }, availableScratch: { _ in 100_000 })
+        let assignment = try #require(Assignment.decode(NativeQualityAssignmentTests.wire()))
+        let task = Task {
+            let result = await runner.execute(assignment, pairing: pairing) { _ in }
+            #expect(Task.isCancelled)
+            return result
+        }
+        if boundary == "requirements" || boundary == "recover" {
+            try await waitFor("the outer job to reach \(boundary)") { preparation.waiting }
+            task.cancel(); preparation.finish()
+        }
+        let result = await task.value
+        guard case .released = result else { Issue.record("Preparation cancellation needs an acknowledged interruption"); return }
+        #expect(transport.lastPath?.hasSuffix("/interrupted") == true)
+        #expect(!helper.requests.contains("run") && budget.reservedBytes == 0)
+        #expect(state.ejected == (boundary == "ram"))
     }
 
     @Test("a lease lost during workspace preparation cannot start media work")
@@ -285,6 +386,28 @@ private final class NativeLeaseFixture: HTTPTransport, @unchecked Sendable {
             return releaseStatus
         }
         return (Data(), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }
+    func download(_ request: URLRequest, to destination: URL) async throws -> HTTPURLResponse { try await send(request).1 }
+    func upload(_ request: URLRequest, fromFile file: URL) async throws -> (Data, HTTPURLResponse) { try await send(request) }
+}
+
+private final class NativeInterruptionFixture: HTTPTransport, @unchecked Sendable {
+    private let gate = NSLock()
+    private var path: String?
+    var lastPath: String? { gate.withLock { path } }
+    let status: Int
+    let cancelCapacity: Bool
+    init(status: Int, cancelCapacity: Bool = false) { self.status = status; self.cancelCapacity = cancelCapacity }
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        // URLSession cancels requests inherited from a cancelled task; a permissive stub hid it.
+        try Task.checkCancellation()
+        gate.withLock { path = request.url!.path }
+        if cancelCapacity && request.url!.path.hasSuffix("/capacity-unavailable") {
+            withUnsafeCurrentTask { $0?.cancel() }
+            throw CancellationError()
+        }
+        return (Data(), HTTPURLResponse(url: request.url!, statusCode: request.url!.path.hasSuffix("/renew") ? 204 : status,
+            httpVersion: nil, headerFields: nil)!)
     }
     func download(_ request: URLRequest, to destination: URL) async throws -> HTTPURLResponse { try await send(request).1 }
     func upload(_ request: URLRequest, fromFile file: URL) async throws -> (Data, HTTPURLResponse) { try await send(request) }

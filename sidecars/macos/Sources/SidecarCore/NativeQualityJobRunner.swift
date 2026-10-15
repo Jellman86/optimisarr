@@ -107,9 +107,9 @@ public struct NativeQualityJobRunner: WorkExecutor {
         } catch let error as SidecarError where error.endsTheLease {
             return .leaseLost(jobId: assignment.jobId, reason: "The server ended this worker's lease before media work could proceed.")
         } catch is CancellationError {
-            return await release(assignment, pairing, "Native work was cancelled on this Mac.")
+            return await interrupt(assignment, pairing, "Native work was cancelled on this Mac.")
         } catch {
-            return await release(assignment, pairing, "The shared native helper did not complete this assignment. Check its recorded server outcome.")
+            return await interrupt(assignment, pairing, "The shared native helper did not complete this assignment. Check its recorded server outcome.")
         }
     }
 
@@ -132,12 +132,29 @@ public struct NativeQualityJobRunner: WorkExecutor {
     }
 
     private func release(_ assignment: Assignment, _ pairing: StoredPairing, _ reason: String, capacity: Bool = false) async -> JobOutcome {
+        if Task.isCancelled { return await interrupt(assignment, pairing, "Native work was cancelled on this Mac.") }
         do {
             try await client.release(serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId, capacityUnavailable: capacity)
             return capacity ? .capacityBlocked(jobId: assignment.jobId, reason: reason) : .released(jobId: assignment.jobId, reason: reason)
         } catch let error as SidecarError where error.endsTheLease {
             return .leaseLost(jobId: assignment.jobId, reason: reason)
-        } catch { return .unconfirmed(jobId: assignment.jobId, reason: "\(reason) The hand-back was not acknowledged.") }
+        } catch {
+            if Task.isCancelled { return await interrupt(assignment, pairing, "Native work was cancelled on this Mac.") }
+            return .unconfirmed(jobId: assignment.jobId, reason: "\(reason) The hand-back was not acknowledged.")
+        }
+    }
+
+    private func interrupt(_ assignment: Assignment, _ pairing: StoredPairing, _ reason: String) async -> JobOutcome {
+        // A cancelled job cannot inherit cancellation into its final control-plane request.
+        // URLSession still imposes the ordinary bounded request timeout on this independent task.
+        await Task.detached {
+            do {
+                try await client.releaseForInterruption(serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId)
+                return .released(jobId: assignment.jobId, reason: reason)
+            } catch let error as SidecarError where error.endsTheLease {
+                return .leaseLost(jobId: assignment.jobId, reason: reason)
+            } catch { return .unconfirmed(jobId: assignment.jobId, reason: "\(reason) The hand-back was not acknowledged.") }
+        }.value
     }
 }
 

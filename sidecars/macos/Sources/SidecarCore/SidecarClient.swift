@@ -550,6 +550,15 @@ public struct SidecarClient: Sendable {
     /// Hands the job back so the server can reassign it. Tolerant of a lease already gone.
     public func release(serverAddress: String, credential: String, leaseId: String, capacityUnavailable: Bool = false) async throws {
         let action = capacityUnavailable ? "capacity-unavailable" : "release"
+        try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId, action: action)
+    }
+
+    /// Runtime interruption says nothing about this worker's ability to encode the file.
+    public func releaseForInterruption(serverAddress: String, credential: String, leaseId: String) async throws {
+        try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId, action: "interrupted")
+    }
+
+    private func release(serverAddress: String, credential: String, leaseId: String, action: String) async throws {
         let request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/\(action)", credential: credential, method: "POST")
         let (data, response) = try await perform(request)

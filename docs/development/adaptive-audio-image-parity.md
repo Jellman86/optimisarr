@@ -40,9 +40,17 @@ Fresh Swift pairing and packaged Mac AAC/Opus/MP3/RAM workflows passed on the pr
 the rebuilt bundle's full crash/image workflows remain constrained by current memory pressure.
 See the [interruption qualification and exact limits](../engineering/hardware-validation/2026-10-15-native-interruption.md).
 
+Independent Astra review identified Swift pre-run cancellation and helper failure using ordinary
+release. The Swift follow-up now acknowledges those interruptions independently of task
+cancellation, with regressions for requirements, recovery, RAM preparation and running cleanup.
+An additional blocker remains: a helper can exit while an inherited tool survives, and the app
+must retain its native peak/disk reservation until positively qualified retirement. Missing
+ownership evidence cannot count as retirement, and delayed RAM ejection must validate mount
+identity. Full-encode cancellation also still needs explicit process-reaping qualification.
+
 Latest source verification: 3,526 backend tests on Mac/Quark; 3,503 plus 23 platform skips on native
 Windows; 513 shared worker tests plus three Windows-only skips on Mac/Quark; 516 native Windows
-shared tests; 31 Linux tests, 366 Swift core plus nine UI, 154 Python and 346 browser tests.
+shared tests; 31 Linux tests, 370 Swift core plus nine UI, 154 Python and 346 browser tests.
 Check the PR for exact-head CI. Native trial protocol elevation remains fixture-only.
 
 Continue with exact-package media lifecycles and broader restart/reconnect qualification.
