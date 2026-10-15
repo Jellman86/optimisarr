@@ -50,3 +50,14 @@ tool proof. Unpair, sleep and quit cancel pending qualification, and volume clas
 away from the menu's main actor. Packaged advertisement, restart recovery and exact bundle
 qualification remain in progress.
 Do not advertise protocol 11 on the strength of the host or bridge alone.
+
+The Mac packager now publishes this helper self-contained for the build host's architecture,
+retains notices from each exact runtime pack and signs all nested Mach-O code before the app.
+Developer ID builds give only the helper the JIT entitlement required by
+[.NET on macOS](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos).
+Ad-hoc development builds do not enable the hardened runtime's team-based library validation.
+`verify-app.sh` checks a relocated bundle's managed startup, real JPEG/ICC/EXIF/marker proof,
+both pinned metrics, empty scratch and native UI fixtures. Pinned ExifTool modules use system
+Perl, including its compression support; missing support cannot advertise metadata or image
+encoders. This qualification does not enable protocol 11. WebP packaging, full packaged job
+lifecycles and restart recovery remain outstanding.

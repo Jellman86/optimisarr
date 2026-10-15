@@ -66,7 +66,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path('../../scripts').resolve()))
-from package_sidecar_sources import read_mac_revisions, sha256, AUDIO_SOURCES
+from package_sidecar_sources import mac_release_revisions, sha256
 
 package = Path(sys.argv[1]).resolve()
 version = sys.argv[2]
@@ -78,9 +78,7 @@ if manifest.get('platform') != 'macos' or manifest.get('version') != version:
     raise SystemExit('Source package platform/version does not match this release.')
 records = manifest.get('sources', [])
 revisions = {item['name']: item['revision'] for item in records}
-expected = read_mac_revisions(info)
-expected.update({name: revision for name, (_, revision) in AUDIO_SOURCES.items()})
-expected['optimisarr'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+expected = mac_release_revisions(info, subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip())
 if len(revisions) != len(records) or revisions != expected:
     raise SystemExit('Source package revisions do not match this application and its bundled media tools.')
 parts = list(package.glob(f'OptimisarrSidecar-{version}-macos-sources-*.tar'))

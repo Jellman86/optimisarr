@@ -35,9 +35,9 @@ implemented in this development slice; see [qualification and limits](engineerin
 Draft [PR #415](https://github.com/Jellman86/optimisarr/pull/415) adds bounded audio/image
 quality selection, shared native execution, conditional Swift proof, live admission, neutral
 capacity returns and audio assessment input restrictions. It remains unmerged and undeployed,
-with automatic protocol-11 placement disabled. Work is paused at the operator's request;
-the [parity checkpoint](development/adaptive-audio-image-parity.md#paused-checkpoint-14-october-2026)
-records verified coverage and the resume order. Complete native packaging, restart recovery and
+with automatic protocol-11 placement disabled. Full parity work resumed on 15 October;
+the [parity checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-15-october-2026)
+records signed Mac helper/metadata packaging, verified coverage and the remaining work. Complete native packaging, restart recovery and
 the remaining audio/image parity before returning to perceptual dedupe or exact-copy actions.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
@@ -1098,7 +1098,7 @@ or VMAF v0 policy as current behavior.
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: reports/gates in development, adaptive standalone audio/image workflows in draft #415; paused with parity incomplete, 2026-10-14.** Add
+14. **Perceptual quality for audio and still images: reports/gates in development, adaptive standalone audio/image workflows in draft #415; active with parity incomplete, 2026-10-15.** Add
     understandable, optional quality evidence alongside the existing structural, timing,
     loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
     An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with

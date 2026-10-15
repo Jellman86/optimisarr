@@ -41,6 +41,16 @@ class SidecarSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'every bundled'):
             source.read_mac_revisions(info)
 
+    def test_mac_release_revisions_include_image_and_metadata_tools_as_well_as_ffmpeg_and_audio(self):
+        info = self.root / 'BUILD-INFO.txt'
+        info.write_text(''.join(f'{name} pinned {"a" * 40}\n' for name in source.MAC_REPOS)
+                        + ''.join(f'{name} pinned {"b" * 64}\n' for name in source.MAC_ARCHIVES))
+        revisions = source.mac_release_revisions(info, 'c' * 40)
+        self.assertEqual('c' * 40, revisions['optimisarr'])
+        self.assertEqual(source.MAC_METADATA_SOURCES['exiftool'][1], revisions['exiftool'])
+        for name, (_, revision) in source.IMAGE_SOURCES.items():
+            self.assertEqual(revision, revisions[name])
+
     def test_duplicate_dependency_is_rejected(self):
         info = self.root / 'BUILD-INFO.txt'
         info.write_text(('x264 stable ' + 'a' * 40 + '\n') * 2)

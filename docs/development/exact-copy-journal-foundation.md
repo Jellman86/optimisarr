@@ -5,8 +5,8 @@ This is the first safety foundation for D3. Manual exact-copy quarantine and res
 unavailable. There is no dedupe mutation endpoint, confirmation button, automatic cleanup or
 new filesystem move implementation in this slice.
 
-Further dedupe implementation is paused at the operator's request on 14 October. Resume the
-[audio/image parity work](adaptive-audio-image-parity.md) in #332/#415 first, then continue the
+Further dedupe implementation remains deferred behind the
+[audio/image parity work](adaptive-audio-image-parity.md) in #332/#415, resumed on 15 October. Then continue the
 remaining D3 ownership, preflight and recovery gates tracked in #397. This pause does not enable
 any file action or change the guarantees of the existing foundation.
 

@@ -14,13 +14,17 @@ public struct NativeQualityTools: Sendable {
 
     public static func bundled() -> Self? {
         guard let root = Bundle.main.resourceURL else { return nil }
+        return bundled(in: root)
+    }
+
+    static func bundled(in root: URL) -> Self? {
         func executable(_ path: String) -> URL? {
             let url = root.appendingPathComponent(path)
             return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
         }
         guard let host = executable("native-quality/Optimisarr.Sidecar.Native"), let ffmpeg = executable("ffmpeg") else { return nil }
         return Self(host: host, ffmpeg: ffmpeg, imageMetric: executable("optimisarr-image-quality"),
-                    audioMetric: executable("optimisarr-audio-quality"), metadataTool: executable("exiftool"))
+                    audioMetric: executable("optimisarr-audio-quality"), metadataTool: executable("metadata/exiftool"))
     }
 }
 

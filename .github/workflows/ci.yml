@@ -115,6 +115,9 @@ jobs:
         working-directory: sidecars/macos
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
       - name: Build with the newest installed Xcode
         # The menu's glass controls need the macOS 26 SDK; an older default Xcode builds the
         # bordered fallback instead. Beta releases are skipped.
@@ -127,6 +130,8 @@ jobs:
       - name: Verify real RAM volume capacity and cleanup
         run: OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
       - run: swift build --configuration release
+      - name: Verify relocated native quality runtime
+        run: python3 ../../scripts/check_macos_native_package.py
 
   windows-sidecar:
     name: Windows sidecar build & test

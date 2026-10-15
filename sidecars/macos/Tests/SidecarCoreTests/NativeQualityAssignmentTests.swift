@@ -4,6 +4,24 @@ import Testing
 
 @Suite("Native assignment routing")
 struct NativeQualityAssignmentTests {
+    @Test("bundled native tools use the pinned metadata directory and never a system fallback")
+    func packagedMetadataLocation() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for name in ["native-quality/Optimisarr.Sidecar.Native", "ffmpeg", "metadata/exiftool", "exiftool"] {
+            let path = root.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("fixture".utf8).write(to: path)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path.path)
+        }
+        let tools = try #require(NativeQualityTools.bundled(in: root))
+        #expect(tools.metadataTool == root.appendingPathComponent("metadata/exiftool"))
+        try FileManager.default.removeItem(at: root.appendingPathComponent("metadata/exiftool"))
+        #expect(NativeQualityTools.bundled(in: root)?.metadataTool == nil)
+        try FileManager.default.removeItem(at: root.appendingPathComponent("native-quality/Optimisarr.Sidecar.Native"))
+        #expect(NativeQualityTools.bundled(in: root) == nil)
+    }
+
     static func wire(kind: Int = 3) -> Data {
         Data("""
         {

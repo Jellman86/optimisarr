@@ -4,27 +4,35 @@ Operator priority: **13 October 2026**. Finish quality-first workflows for audio
 images before continuing perceptual dedupe or activating exact-copy file actions.
 Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
-## Paused checkpoint, 14 October 2026
+## Active checkpoint, 15 October 2026
 
-Work is paused at the operator's request. [Draft PR #415](https://github.com/Jellman86/optimisarr/pull/415)
-contains the implementation through `662863bb`: bounded audio/image searches, independent final
-verification and retry evidence, shared native execution, conditional Swift capability collection,
-live resource admission, neutral capacity returns and restricted audio assessment inputs. None
-of this draft has been merged or deployed. Protocol 10 remains advertised; automatic protocol-11
-placement stays disabled. No quality target has been calibrated as a universal default.
+The operator resumed full parity work after the 14 October pause. [Draft PR #415](https://github.com/Jellman86/optimisarr/pull/415)
+remains unmerged and undeployed. Protocol 10 remains advertised; automatic protocol-11 placement
+stays disabled. No quality target has been calibrated as a universal default.
+
+The Mac package now contains the self-contained shared helper, exact runtime notices and pinned
+ExifTool source/modules using system Perl. Every nested native library is signed before the app;
+Developer ID builds grant JIT only to the managed helper. Development ad-hoc builds retain their
+existing non-hardened signing because ad-hoc signatures cannot establish a shared team identity
+for runtime library validation. The minimum-macOS check now traverses nested runtime libraries
+and checks the highest requirement across universal-binary slices.
+
+Physical Mac acceptance passed from a relocated Developer ID signed app with no Homebrew or
+installed .NET on its execution path: managed startup, JPEG encoding with compressed ICC/EXIF
+preservation and marker readback, both pinned metrics, scratch cleanup and all 20 UI fixture
+states. This is package qualification for that tool set, not notarisation, automatic placement,
+full job/restart acceptance or complete parity. The current Mac FFmpeg still lacks WebP.
 
 Latest source verification: 3,522 backend tests, 463 shared worker tests plus three Windows-only
-skips, 31 Linux tests, all 466 shared tests on native Windows, and 352 Swift core plus 9 UI tests.
-Mac AAC/Opus/MP3 workflows cover replay, strict final verification, repeated replacement and exact
-rollback. Windows additionally qualifies the secondary-file rejection and positive audio
-measurements. CI passed on `b1906114`; check the PR for `662863bb` and subsequent documentation-only
-commit results. Physical fixture acceptance and CI do not qualify an installed package.
+skips, 31 Linux tests, 353 Swift core plus 9 UI tests and 142 Python tests. Earlier native Windows
+verification passed all 466 shared tests. Mac AAC/Opus/MP3 workflows previously covered replay,
+strict final verification, repeated replacement and exact rollback. Check the PR for exact-head CI.
 
-Resume with native helper/tool packaging and exact-package acceptance, then durable ownership
-fences for native scratch restart recovery. Continue with fixed-image worker coverage, adaptive
-selection for every retained re-encoded soundtrack, preview/calibration parity, broader source,
-reconnect/retry and input-format qualification. Positive full-image execution under live Mac
-admission is still unproved: observed available memory was below the 3.5 GiB budget, and the job
+Continue with Mac WebP packaging and exact-package media lifecycles, then durable ownership
+fences for native scratch restart recovery. Fixed-image worker coverage, adaptive selection for
+every retained re-encoded soundtrack, preview/calibration parity, broader source, reconnect/retry
+and input-format qualification remain required. Positive full-image execution under live Mac
+admission is still unproved: earlier available memory was below the 3.5 GiB budget, and the job
 returned safely before downloading. The matrix below remains the completion contract. Perceptual
 dedupe and exact-copy file actions remain behind this work in priority.
 
@@ -160,9 +168,9 @@ the required fidelity, including JPEG's one-setting maximum-quality case.
 
 Claim admission includes bounded samples, lossless references, native PCM scratch and
 metadata rewrites. The required workspace is sent with the assignment for native admission.
-.NET worker and local-server native memory/workspace reservations are implemented; Swift admission still needs implementation. The global worker
+.NET worker and local-server native memory/workspace reservations are implemented; Swift admission is implemented and independently qualified for audio; positive image admission remains pending. The global worker
 protocol remains **10**: declaring protocol-11 server contracts does not activate native work.
-Swift capability discovery/execution and exact-package acceptance remain required.
+Packaged advertisement, exact-package media lifecycles and remaining workflow qualification are still required.
 
 The shared native probe executor now validates every supplied command against the canonical
 original-source plan before starting tools. It qualifies the source, prepares references,

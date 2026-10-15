@@ -15,6 +15,9 @@
 
 ### Added
 
+- Mac app builds now include the self-contained native quality helper, exact runtime notices and pinned ExifTool modules. Nested native code is signed before the app, with JIT limited to the helper in hardened builds. Relocated package checks exercise JPEG metadata preservation, both metrics and managed startup without Homebrew or an installed .NET runtime. WebP packaging and the remaining parity gates still keep protocol 11 disabled.
+
+
 - Audio quality qualification and measurement now restrict FFmpeg/ffprobe to local media containers before opening originals or candidates. Playlist sources cannot use secondary files to pass a file-bound assessment; supported soundtrack containers and independent verification gates remain intact.
 
 - Mac workers collect image and audio tool proof through the shared native helper when bundled, refresh live memory and chosen-disk capacity at pairing and each check-in, and subtract active app reservations. Missing or ambiguous proof cannot advertise native tools. Unpairing, sleeping and quitting cancel pending native qualification; protocol 11 remains disabled pending package and workflow qualification.
