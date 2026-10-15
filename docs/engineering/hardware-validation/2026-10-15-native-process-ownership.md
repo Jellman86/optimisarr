@@ -76,3 +76,33 @@ Independent Astra review found the incomplete-evidence and aggregate-observation
 follow-up source review found no further actionable defect in this process component. Review
 is separate from executed tests. Raw logs, source hashes, private fixtures and copied media
 remain outside Git.
+
+## CI race follow-up
+
+The first CI run exposed two fixture races. Linux observed the new PID-readiness file after
+creation but before its asynchronous contents were written. The managed fixture now writes
+and closes a sibling temporary file before publishing it through a same-directory move.
+The Mac test assumed a callback had started before its 30 ms deadline; under concurrent load,
+the real implementation correctly refused to start an operation whose permission had expired.
+
+Tests for an already-running retirement now expire a controlled deadline only after both the
+operation and its timeout have started. A separate real-deadline test still proves that queued
+or running OS work cannot veto caller completion while its release barrier remains held. Failed
+assertions also release fixture barriers. The production timeout and dispatch behaviour are
+unchanged; no existing deadline or ownership assertion is weakened.
+
+The repaired full parallel Swift run passes **490 core and nine UI tests**. Its separate live
+RAM gate completes **17 registered cases**, including an explicitly skipped legacy FFmpeg-dependent
+case when that tool variable is absent. Release builds succeed with the same two existing
+Keychain API warnings. The repeated Mac .NET suites pass 3,526 backend and 579 shared-worker
+tests plus three platform skips. The failed CI logs and the intermediate new timer-test wall-clock
+failure remain in private evidence; the latter was replaced by an explicit completion-before-OS-release
+handshake rather than measuring scheduler delay as retirement latency. The repeated Quark .NET
+and Linux suites also pass at the repaired fixture source.
+
+The newly linked signed driver correctly refuses an AAC RAM trial when live capacity is
+insufficient: no source download or probe occurs, the hand-back is acknowledged, failure count
+stays zero and its scratch/ledger are positively empty. This refusal is not a new positive RAM
+workflow result; the earlier successful RAM workflow above belongs to the pre-race-fix driver.
+The same newly linked driver passes a fresh AAC disk workflow with strict final verification,
+lost-response replay, idempotent replacement, exact rollback and positive empty-ledger cleanup.

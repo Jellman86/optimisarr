@@ -12,17 +12,17 @@ public static class Program
         var token = timeout.Token;
         if (args[0] == "encode-wait")
         {
-            await File.WriteAllTextAsync(args[1], Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), token);
+            await PublishReadyAsync(args[1], Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), token);
             await Task.Delay(Timeout.InfiniteTimeSpan, token);
             return 0;
         }
         if (args[0] == "pipe-holder")
         {
-            await File.WriteAllTextAsync(Path.Combine(args[1], "holder-ready"), "ready", token);
+            await PublishReadyAsync(Path.Combine(args[1], "holder-ready"), "ready", token);
             while (!File.Exists(Path.Combine(args[1], "late-progress"))) await Task.Delay(20, token);
             try { Console.WriteLine("out_time_us=2000000"); await Console.Out.FlushAsync(token); }
             catch (IOException) { }
-            await File.WriteAllTextAsync(Path.Combine(args[1], "late-attempted"), "attempted", token);
+            await PublishReadyAsync(Path.Combine(args[1], "late-attempted"), "attempted", token);
             while (!File.Exists(Path.Combine(args[1], "release"))) await Task.Delay(20, token);
             return 0;
         }
@@ -39,7 +39,7 @@ public static class Program
                 if (holder.HasExited) throw new IOException("The pipe holder did not start.");
                 await Task.Delay(20, token);
             }
-            await File.WriteAllTextAsync(args[5], JsonSerializer.Serialize(new { childId = holder.Id, directory = workspace.DirectoryPath }), token);
+            await PublishReadyAsync(args[5], JsonSerializer.Serialize(new { childId = holder.Id, directory = workspace.DirectoryPath }), token);
             Console.WriteLine("out_time_us=1000000");
             await Console.Out.FlushAsync(token);
             // The child deliberately survives this parent with both pipes and the real scratch
@@ -48,7 +48,7 @@ public static class Program
         }
         if (args[0] == "child")
         {
-            await File.WriteAllTextAsync(args[1], "ready", token);
+            await PublishReadyAsync(args[1], "ready", token);
             if (args.Length > 2) while (!File.Exists(args[2])) await Task.Delay(20, token);
             else await Task.Delay(TimeSpan.FromSeconds(30), token);
             return 0;
@@ -85,5 +85,17 @@ public static class Program
             if (!child.HasExited) { child.Kill(entireProcessTree: true); await child.WaitForExitAsync(CancellationToken.None); }
             owner.Cleanup();
         }
+    }
+
+    private static async Task PublishReadyAsync(string path, string text, CancellationToken token)
+    {
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(temporary, text, token);
+            token.ThrowIfCancellationRequested();
+            File.Move(temporary, path);
+        }
+        finally { File.Delete(temporary); }
     }
 }

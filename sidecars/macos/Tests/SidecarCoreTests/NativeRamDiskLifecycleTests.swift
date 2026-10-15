@@ -9,14 +9,18 @@ struct NativeRamDiskLifecycleTests {
 
     @Test("a timed-out OS operation retains its single-flight slot until it actually finishes")
     func blockedOSOperation() async throws {
-        let entered = LockedRamCalls(), barrier = DispatchSemaphore(value: 0)
+        let entered = LockedRamCalls(), barrier = DispatchSemaphore(value: 0), deadline = ControlledRamDeadline()
         let service = NativeRamDiskLifecycle(timeout: .milliseconds(30), retire: { _, permitted in
             entered.increment()
             barrier.wait()
             return permitted()
-        })
+        }, scheduleTimeout: deadline.schedule)
+        let task = Task { await service.retire(identity) }
+        defer { barrier.signal() }
+        try await waitFor("the OS operation and its deadline to start") { entered.count == 1 && deadline.isScheduled }
         let started = Date()
-        #expect(await !service.retire(identity))
+        deadline.expire()
+        #expect(await !task.value)
         #expect(Date().timeIntervalSince(started) < 2)
         #expect(entered.count == 1)
         #expect(await !service.retire(identity))
@@ -26,12 +30,29 @@ struct NativeRamDiskLifecycleTests {
         #expect(entered.count == 1)
     }
 
+    @Test("the real deadline bounds queued or running OS work without treating either as retired")
+    func realDeadlineBoundsQueuedOrRunningWork() async throws {
+        let calls = LockedRamCalls(), barrier = DispatchSemaphore(value: 0), completion = LockedRamResult()
+        let service = NativeRamDiskLifecycle(timeout: .milliseconds(30), retire: { _, permitted in
+            calls.increment(); barrier.wait(); return permitted()
+        })
+        let task = Task { completion.store(await service.retire(identity)) }
+        defer { task.cancel(); barrier.signal() }
+        try await waitFor("the real deadline to return while OS work remains unreleased") { completion.value != nil }
+        #expect(completion.value == false)
+        barrier.signal()
+        await task.value
+        try await waitFor("queued or running OS work to finish") { !service.hasInFlightOperation(identity) }
+        #expect(calls.count <= 1)
+    }
+
     @Test("cancellation returns without admitting an overlapping OS operation")
     func cancelledOSOperation() async throws {
         let entered = LockedRamCalls(), barrier = DispatchSemaphore(value: 0)
         let service = NativeRamDiskLifecycle(timeout: .seconds(5), retire: { _, permitted in
             entered.increment(); barrier.wait(); return permitted()
         })
+        defer { barrier.signal() }
         let task = Task { await service.retire(identity) }
         try await waitFor("the OS operation to start") { entered.count == 1 }
         task.cancel()
@@ -44,12 +65,16 @@ struct NativeRamDiskLifecycleTests {
 
     @Test("separate lifecycle instances share the timed-out physical allocation slot")
     func crossInstanceSingleFlight() async throws {
-        let calls = LockedRamCalls(), barrier = DispatchSemaphore(value: 0)
+        let calls = LockedRamCalls(), barrier = DispatchSemaphore(value: 0), deadline = ControlledRamDeadline()
         let first = NativeRamDiskLifecycle(timeout: .milliseconds(30), retire: { _, permitted in
             calls.increment(); barrier.wait(); return permitted()
-        })
+        }, scheduleTimeout: deadline.schedule)
         let second = NativeRamDiskLifecycle(retire: { _, _ in calls.increment(); return true })
-        #expect(await !first.retire(identity))
+        let task = Task { await first.retire(identity) }
+        defer { barrier.signal() }
+        try await waitFor("the first retirement and its deadline to start") { calls.count == 1 && deadline.isScheduled }
+        deadline.expire()
+        #expect(await !task.value)
         #expect(await !second.retire(identity))
         #expect(calls.count == 1)
         barrier.signal()
@@ -109,15 +134,19 @@ struct NativeRamDiskLifecycleTests {
 
     @Test("partial and mounted receipts share one physical retirement slot across lifecycle instances")
     func partialAndMountedSingleFlight() async throws {
-        let calls = LockedRamCalls(), barrier = DispatchSemaphore(value: 0)
+        let calls = LockedRamCalls(), barrier = DispatchSemaphore(value: 0), deadline = ControlledRamDeadline()
         let allocation = NativeRamAllocationIdentity(bootSession: identity.bootSession, owner: UUID(),
             registryEntryId: identity.registryEntryId, backingEntryId: identity.backingEntryId,
             device: identity.device, allocatedBytes: 512)
         let first = NativeRamDiskLifecycle(timeout: .milliseconds(30), retire: { _, _ in false }, retireAllocation: { _, permitted in
             calls.increment(); barrier.wait(); return permitted()
-        })
+        }, scheduleTimeout: deadline.schedule)
         let second = NativeRamDiskLifecycle(retire: { _, _ in calls.increment(); return true })
-        #expect(await !first.retire(allocation))
+        let task = Task { await first.retire(allocation) }
+        defer { barrier.signal() }
+        try await waitFor("the partial retirement and its deadline to start") { calls.count == 1 && deadline.isScheduled }
+        deadline.expire()
+        #expect(await !task.value)
         #expect(await !second.retire(identity))
         #expect(calls.count == 1)
         barrier.signal()
@@ -125,6 +154,26 @@ struct NativeRamDiskLifecycleTests {
         #expect(await second.retire(identity))
         #expect(calls.count == 2)
     }
+}
+
+private final class ControlledRamDeadline: @unchecked Sendable {
+    private let gate = NSLock()
+    private var pending: (@Sendable () -> Void)?
+    var isScheduled: Bool { gate.withLock { pending != nil } }
+    func schedule(_ delay: TimeInterval, _ expire: @escaping @Sendable () -> Void) {
+        gate.withLock { pending = expire }
+    }
+    func expire() {
+        let action = gate.withLock { let action = pending; pending = nil; return action }
+        action?()
+    }
+}
+
+private final class LockedRamResult: @unchecked Sendable {
+    private let gate = NSLock()
+    private var result: Bool?
+    var value: Bool? { gate.withLock { result } }
+    func store(_ result: Bool) { gate.withLock { self.result = result } }
 }
 
 private final class LockedRamCalls: @unchecked Sendable {

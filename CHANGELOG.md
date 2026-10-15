@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make worker shutdown qualification reliable under load: readiness records become visible only when complete, and RAM tests distinguish queued work from an operation already in flight. Production retirement deadlines are unchanged.
+
 - Shared worker encodes and probes now retain process ownership until confirmed direct-child exit, including cancellation, reader failure and failed tree termination. Progress observer failures no longer stop pipe drainage, captured text is bounded, and incomplete probe or capability output cannot count as successful evidence. Descendant retirement and standalone durable resource accounting remain separate qualification work.
 
 - Connect native Mac startup and job execution to one independently anchored accounting runtime. Unconfirmed recovery pauses new claims, surviving tools retain resource charges, and RAM/disk work uses registry-backed helper scopes. Recovery holds missing or recreated coordinator metadata; late claims after disconnect acknowledge interruption independently. Full packaged lifecycle and parity qualification remain pending; protocol 11 stays disabled.

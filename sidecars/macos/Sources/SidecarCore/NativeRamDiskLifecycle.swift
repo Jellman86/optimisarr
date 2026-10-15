@@ -20,6 +20,7 @@ public final class NativeRamDiskLifecycle: @unchecked Sendable {
     private let timeout: TimeInterval
     private let retireOperation: @Sendable (NativeRamDiskIdentity, @Sendable () -> Bool) -> Bool
     private let retireAllocationOperation: @Sendable (NativeRamAllocationIdentity, @Sendable () -> Bool) -> Bool
+    private let scheduleTimeout: @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void
 
     public convenience init(timeout: Duration = .seconds(10)) {
         self.init(timeout: timeout, retire: MacNativeRamDiskSystem.retire)
@@ -27,11 +28,15 @@ public final class NativeRamDiskLifecycle: @unchecked Sendable {
 
     init(timeout: Duration = .seconds(10),
          retire: @escaping @Sendable (NativeRamDiskIdentity, @Sendable () -> Bool) -> Bool,
-         retireAllocation: @escaping @Sendable (NativeRamAllocationIdentity, @Sendable () -> Bool) -> Bool = MacNativeRamDiskSystem.retireAllocation) {
+         retireAllocation: @escaping @Sendable (NativeRamAllocationIdentity, @Sendable () -> Bool) -> Bool = MacNativeRamDiskSystem.retireAllocation,
+         scheduleTimeout: @escaping @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void = { delay, expire in
+             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay, execute: expire)
+         }) {
         let parts = timeout.components
         self.timeout = max(0.001, min(30, Double(parts.seconds) + Double(parts.attoseconds) / 1e18))
         retireOperation = retire
         retireAllocationOperation = retireAllocation
+        self.scheduleTimeout = scheduleTimeout
     }
 
     public func captureAllocation(device: String, owner: UUID, bootSession: UUID,
@@ -93,7 +98,7 @@ public final class NativeRamDiskLifecycle: @unchecked Sendable {
                 DispatchQueue.global(qos: .utility).async {
                     attempt.finish(work { attempt.isPermitted })
                 }
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { attempt.cancel() }
+                scheduleTimeout(timeout) { attempt.cancel() }
             }
         } onCancel: { attempt.cancel() }
     }
