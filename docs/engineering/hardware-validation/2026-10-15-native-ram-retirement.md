@@ -62,11 +62,17 @@ coordination, invalid iteration, complete absence versus a present target, scan 
 failure. Live fixture cleanup uses captured physical identity even when the mount has disappeared.
 Five command-lifecycle tests cover normal exits, failure, timeout, output limits and a live descendant
 retaining stderr. The latter reproduced a reader/descriptor leak before the fix: timeout returned
-while one reader remained blocked. Nonblocking reads and bounded polls now stop both readers
-before the descendant is released. Oversized stdout/stderr is refused, and success requires both
+while one reader remained blocked. Nonblocking readiness handlers and cancellation now stop both readers
+before the descendant is released. Idle pipes hold no shared worker threads. Oversized stdout/stderr
+is refused, and success requires both
 real EOFs. Pure provenance checks also cover wrong sectors, ambiguous devices and file-backed images.
 
-The final Swift suite completed successfully with 425 registered core tests and nine UI tests;
+The first CI run at `56d45de0` exposed clustered scheduling delays across command, cancellation
+and recovery tests. Polling stdout and stderr on separate shared workers increased thread pressure
+under concurrent command tests. Event-driven readiness handlers replace those blocking workers;
+the caller still enforces its own deadline and cancellation handlers exclusively close descriptors.
+
+The final local Swift suite completed successfully with 425 registered core tests and nine UI tests;
 live/paired gates are opt-in and the six new RAM tests passed separately. All 18 tests in the four
 RAM/provenance/command suites also passed together with the live gate enabled. Release build passed
 with three existing Keychain API deprecation warnings; the new component adds none. The release

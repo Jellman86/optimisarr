@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add identity-bound Mac RAM retirement using retained device and volume handles, with explicit RAM-source provenance. Busy writers veto cleanup, reused disk names cannot redirect it, and interrupted unmount/eject operations replay without forcing removal. OS-tool output and inherited pipe readers are bounded. Physical component tests pass; production runner/startup integration and full app-crash qualification remain pending.
+- Add identity-bound Mac RAM retirement using retained device and volume handles, with explicit RAM-source provenance. Busy writers veto cleanup, reused disk names cannot redirect it, and interrupted unmount/eject operations replay without forcing removal. OS-tool output and inherited pipe readers are bounded; idle pipes no longer occupy shared worker threads. Physical component tests pass; production runner/startup integration and full app-crash qualification remain pending.
 
 - Add the Swift foundation for durable native-work accounting: restart restores outstanding grants, busy or uncertain owners stay charged, and replay reconciles receipts before RAM retirement. Atomic journal updates fail closed on changed files or unconfirmed durability. Production runner integration remains pending; protocol 11 stays disabled.
 

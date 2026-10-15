@@ -19,13 +19,31 @@ private final class OutputBox: @unchecked Sendable {
 private final class CommandDrainLifetime: @unchecked Sendable {
     private let lock = NSLock()
     private var stopped = false
+    private var sources: [Int32: any DispatchSourceProtocol] = [:]
     let deadline: DispatchTime
 
     init(timeout: TimeInterval) { deadline = .now() + timeout }
-    func stop() { lock.withLock { stopped = true } }
-    var shouldStop: Bool {
-        lock.withLock { stopped || DispatchTime.now() >= deadline }
+    func add(_ source: any DispatchSourceProtocol, key: Int32) {
+        let cancelled = lock.withLock {
+            source.activate()
+            if stopped { return true }
+            sources[key] = source
+            return false
+        }
+        // Activation precedes cancellation, including a deadline reached during setup.
+        if cancelled { source.cancel() }
     }
+    func end(_ key: Int32) { lock.withLock { sources.removeValue(forKey: key) }?.cancel() }
+    func stop() {
+        let active = lock.withLock {
+            stopped = true
+            let active = Array(sources.values)
+            sources.removeAll()
+            return active
+        }
+        for source in active { source.cancel() }
+    }
+    var shouldStop: Bool { lock.withLock { stopped || DispatchTime.now() >= deadline } }
 }
 
 public struct RamDisk: Sendable {
@@ -45,6 +63,7 @@ public struct RamDisk: Sendable {
                     onReaderStopped: (@Sendable () -> Void)? = nil) -> String? {
         guard maximumOutputBytes > 0, timeout.isFinite, timeout > 0, timeout <= 3600 else { return nil }
         let lifetime = CommandDrainLifetime(timeout: timeout)
+        defer { lifetime.stop() }
         let process = Process()
         let pipe = Pipe(), errors = Pipe()
         pipe.sealFromOtherChildren()
@@ -63,30 +82,37 @@ public struct RamDisk: Sendable {
             return nil
         }
 
-        // Each reader owns its descriptor. Nonblocking reads and short polls let it stop even
-        // when an inherited pipe stays open after the direct child exits. Closing a FileHandle
-        // from another thread cannot safely interrupt Foundation's blocking read locks.
+        // Nonblocking readiness handlers leave shared threads idle while descendants retain a
+        // pipe. Cancellation handlers exclusively close descriptors; cross-thread FileHandle
+        // closure cannot safely interrupt Foundation's blocking read locks.
         // The termination callback avoids waitUntilExit's cross-thread run-loop dependency.
         let box = OutputBox(), errorBox = OutputBox()
-        @Sendable func read(_ source: Pipe, into output: OutputBox) {
+        let drainQueue = DispatchQueue(label: "uk.optimisarr.ram-command-output", qos: .utility)
+        func read(_ pipe: Pipe, into output: OutputBox) {
             finished.enter()
-            DispatchQueue.global(qos: .utility).async {
-                defer {
-                    try? source.fileHandleForReading.close()
-                    onReaderStopped?()
-                    finished.leave()
-                }
-                let fd = source.fileHandleForReading.fileDescriptor
-                let flags = fcntl(fd, F_GETFL)
-                guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
-                    lifetime.stop()
-                    return
-                }
+            let fd = pipe.fileHandleForReading.fileDescriptor
+            let flags = fcntl(fd, F_GETFL)
+            guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
+                try? pipe.fileHandleForReading.close()
+                onReaderStopped?()
+                finished.leave()
+                lifetime.stop()
+                if process.isRunning { process.terminate() }
+                return
+            }
+            let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: drainQueue)
+            source.setCancelHandler {
+                try? pipe.fileHandleForReading.close()
+                onReaderStopped?()
+                finished.leave()
+            }
+            source.setEventHandler {
                 var bytes = [UInt8](repeating: 0, count: 8192)
                 while !lifetime.shouldStop {
                     let count = bytes.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
                     if count == 0 {
                         output.reachedEOF = true
+                        lifetime.end(fd)
                         return
                     }
                     if count > 0 {
@@ -100,21 +126,21 @@ public struct RamDisk: Sendable {
                         continue
                     }
                     if errno == EINTR { continue }
-                    guard errno == EAGAIN || errno == EWOULDBLOCK else {
-                        lifetime.stop()
-                        return
-                    }
-                    var descriptor = pollfd(fd: fd, events: Int16(POLLIN | POLLHUP), revents: 0)
-                    let ready = poll(&descriptor, 1, 25)
-                    if ready < 0 && errno != EINTR {
-                        lifetime.stop()
-                        return
-                    }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { return }
+                    lifetime.stop()
+                    if process.isRunning { process.terminate() }
+                    return
                 }
+                lifetime.stop()
             }
+            lifetime.add(source, key: fd)
         }
         read(pipe, into: box)
         read(errors, into: errorBox)
+        let timer = DispatchSource.makeTimerSource(queue: drainQueue)
+        timer.schedule(deadline: lifetime.deadline)
+        timer.setEventHandler { lifetime.stop() }
+        lifetime.add(timer, key: -1)
 
         guard finished.wait(timeout: lifetime.deadline) == .success else {
             SidecarLog.storage.error(
