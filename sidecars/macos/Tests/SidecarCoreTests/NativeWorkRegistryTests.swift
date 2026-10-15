@@ -195,6 +195,53 @@ struct NativeWorkRegistryTests {
         #expect(resumedCleanup.calls.count == (phase == .writersRetired ? 1 : 0))
     }
 
+    enum AnchorBoundary: CaseIterable { case running, writersRetired, receiptConsumed, ramRetired, accountingReleased }
+
+    @Test("unconfirmed independent checkpoints veto helper launch, consumption, RAM removal and accounting release",
+          arguments: AnchorBoundary.allCases)
+    func failedAnchorTransition(_ boundary: AnchorBoundary) async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appendingPathComponent("ledger"), store = CheckpointFixture()
+        let journal = try NativeWorkJournal(directory: directory, checkpointStore: store)
+        let usesRam = boundary == .receiptConsumed || boundary == .ramRetired
+        var old = record(ram: usesRam)
+        if boundary == .running { old.phase = .reserved; old.receipt = .notRequired }
+        if boundary == .receiptConsumed { old.phase = .writersRetired }
+        if boundary == .ramRetired || boundary == .accountingReleased {
+            old.phase = .writersRetired; old.receipt = .consumed
+        }
+        try journal.save([old])
+        let memory = MemoryWorkBudget(), disk = DiskWorkBudget(), cleanup = RegistryCleanupFixture()
+        let registry = try NativeWorkRegistry(journal: journal, bootSession: boot, memory: memory, disk: disk,
+            retirement: cleanup.operations)
+        store.configure(.beforeFinal)
+        if boundary == .running {
+            await #expect(throws: NativeWorkJournalError.self) { try await registry.markRunning(owner: old.owner) }
+        } else {
+            await #expect(throws: NativeWorkJournalError.self) { try await registry.recover() }
+        }
+        #expect(memory.reservedBytes == (usesRam ? 100 : 60))
+        let expectedCalls: [String]
+        switch boundary {
+        case .running, .accountingReleased: expectedCalls = []
+        case .writersRetired: expectedCalls = ["retire:\(old.root!)"]
+        case .receiptConsumed: expectedCalls = ["consume:\(old.root!)"]
+        case .ramRetired: expectedCalls = ["eject:/dev/disk9"]
+        }
+        #expect(cleanup.calls == expectedCalls)
+        #expect(throws: NativeWorkJournalError.self) { try journal.load() }
+        store.configure(nil)
+        let reopened = try NativeWorkJournal(directory: directory, checkpointStore: store); defer { reopened.close() }
+        let replay = RegistryCleanupFixture(alreadyAbsent: true)
+        let restored = try NativeWorkRegistry(journal: reopened, bootSession: boot, memory: memory, disk: disk,
+            retirement: replay.operations)
+        #expect(try await restored.recover())
+        #expect(memory.reservedBytes == 0 && disk.available(volume: "disk1", liveBytes: 100) == 100)
+        #expect(try reopened.load().isEmpty)
+        if boundary == .receiptConsumed { #expect(replay.calls == ["eject:/dev/disk9"]) }
+        if boundary == .ramRetired || boundary == .accountingReleased { #expect(replay.calls.isEmpty) }
+    }
+
     @Test("actor reentrancy cannot grant work while writer retirement is awaiting its helper")
     func concurrentRecovery() async throws {
         let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import SidecarCore
@@ -72,16 +73,20 @@ struct NativeResourceRetirementServiceTests {
         defer { try? FileManager.default.removeItem(at: fixture) }
         let ready = fixture.appendingPathComponent("ignoring-termination")
         let executable = fixture.appendingPathComponent("native-helper")
+        let barrier = fixture.appendingPathComponent("blocked-open")
+        try #require(mkfifo(barrier.path, 0o600) == 0)
+        func quoted(_ path: String) -> String { "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         let source = """
-        #!/usr/bin/python3
-        import os,pathlib,signal,sys,time
-        signal.signal(signal.SIGTERM,signal.SIG_IGN)
-        sys.stdin.readline()
-        pathlib.Path(\(String(reflecting: ready.path))).write_text('ready')
-        if \(closesOutput ? "True" : "False"):
-            print('{"version":2,"type":"scope","accountingScope":{"root":"darwin:1:2","control":"darwin:1:3","gate":"darwin:1:4"}}',flush=True)
-            os.close(1)
-        time.sleep(10)
+        #!/bin/sh
+        trap '' TERM
+        IFS= read -r request
+        if \(closesOutput ? "true" : "false"); then
+            printf '%s\\n' '{"version":2,"type":"scope","accountingScope":{"root":"darwin:1:2","control":"darwin:1:3","gate":"darwin:1:4"}}'
+            exec 1>&-
+        fi
+        printf ready > \(quoted(ready.path))
+        exec 3<> \(quoted(barrier.path))
+        IFS= read -r -t 10 released <&3
         """
         try Data(source.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)

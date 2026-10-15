@@ -60,14 +60,17 @@ The RAM component now captures the original boot, media and backing-driver IDs, 
 and root identity. Six physical Mac tests pass busy-writer retention, changed/redirected identities,
 actual device-name reuse, replay after unmount and rejection of a matching file-backed image. Removal uses retained handles and never forces
 ejection; missing registry matches need a completed valid scan before counting as absence.
-Production runner/startup integration and independently pinned journal identity are still open;
+An independent Keychain checkpoint now binds the journal hash/store/path, with pending old/new
+transitions and signed-process hard-exit tests. Unreadable items and unrelated older ledger snapshots
+remain blocked. Production runner/startup integration and typed RAM creation are still open;
 these component results do not close the app lifetime defect. See the [helper foundation](../engineering/hardware-validation/2026-10-15-native-retirement-foundation.md),
 [Swift accounting evidence](../engineering/hardware-validation/2026-10-15-swift-durable-native-accounting.md)
+[independent checkpoint evidence](../engineering/hardware-validation/2026-10-15-native-accounting-checkpoint.md)
 and [RAM retirement qualification and limits](../engineering/hardware-validation/2026-10-15-native-ram-retirement.md).
 
 Latest source verification: 3,526 backend tests on Mac/Quark; 3,503 plus 23 platform skips on native
 Windows; 547 shared worker tests plus three Windows-only skips on Mac/Quark; 550 native Windows
-shared tests; 31 Linux tests, 425 registered Swift core plus nine UI, 154 Python and 346 browser tests.
+shared tests; 31 Linux tests, 440 registered Swift core plus nine UI, 154 Python and 346 browser tests.
 Live/paired Swift gates remain opt-in; the six new physical RAM cases also passed explicitly.
 Check the PR for exact-head CI. Native trial protocol elevation remains fixture-only.
 

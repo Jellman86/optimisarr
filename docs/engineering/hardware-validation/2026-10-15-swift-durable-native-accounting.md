@@ -3,7 +3,9 @@
 Development evidence for [draft #415](https://github.com/Jellman86/optimisarr/pull/415).
 This accounting checkpoint was qualified at `02e24887`; the subsequent
 [identity-bound RAM component](2026-10-15-native-ram-retirement.md) adds physical retirement
-qualification without yet connecting either component to app startup or execution.
+qualification without yet connecting either component to app startup or execution. The subsequent
+[independent Keychain checkpoint](2026-10-15-native-accounting-checkpoint.md) adds journal-only
+rollback detection and signed-process interruption tests; production wiring remains open.
 The production runner still uses private helper protocol v1. These components are not yet
 connected to installed app startup or execution; the native resource-lifetime P1 remains open.
 Protocol 10 remains advertised and automatic protocol 11 remains disabled.

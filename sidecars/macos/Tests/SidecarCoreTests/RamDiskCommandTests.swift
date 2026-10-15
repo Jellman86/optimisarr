@@ -41,31 +41,40 @@ struct RamDiskCommandTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let release = root.appendingPathComponent("release")
+        try #require(mkfifo(release.path, 0o600) == 0)
         defer {
-            FileManager.default.createFile(atPath: release.path, contents: Data())
-            // The fixture's descendant exits naturally; it remains alive during the assertion.
+            // The descendant blocks in the FIFO until explicitly released, without a polling
+            // process or interpreter startup inside the command's one-second deadline.
+            for _ in 0..<100 {
+                let writer = Darwin.open(release.path, O_WRONLY | O_NONBLOCK | O_CLOEXEC)
+                if writer >= 0 {
+                    let sealed = fcntl(writer, F_SETNOSIGPIPE, 1) == 0
+                    #expect(sealed)
+                    if sealed { _ = Data("release\n".utf8).withUnsafeBytes { Darwin.write(writer, $0.baseAddress, $0.count) } }
+                    Darwin.close(writer)
+                    break
+                }
+                usleep(10_000)
+            }
             for _ in 0..<100 where !FileManager.default.fileExists(atPath: root.appendingPathComponent("done").path) {
                 usleep(10_000)
             }
             try? FileManager.default.removeItem(at: root)
         }
-        let script = root.appendingPathComponent("hold.py")
+        let script = root.appendingPathComponent("hold.sh")
         try """
-        import os, pathlib, sys, time
-        root = pathlib.Path(sys.argv[1])
-        if os.fork():
-            os._exit(0)
-        os.close(1)
-        (root / "ready").write_text(str(os.getpid()))
-        deadline = time.monotonic() + 10
-        while not (root / "release").exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        (root / "done").touch()
-        os._exit(0)
+        (
+            exec 1>&-
+            exec 3<> "$1/release"
+            printf ready > "$1/ready"
+            IFS= read -r -t 10 released <&3
+            : > "$1/done"
+        ) &
+        exit 0
         """.write(to: script, atomically: true, encoding: .utf8)
         let stopped = ReaderCount()
         let clock = ContinuousClock(), start = clock.now
-        #expect(RamDisk.run("/usr/bin/python3", [script.path, root.path], timeout: 1,
+        #expect(RamDisk.run("/bin/sh", [script.path, root.path], timeout: 1,
                             onReaderStopped: { stopped.increment() }) == nil)
         #expect(clock.now - start < .seconds(3))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("ready").path))

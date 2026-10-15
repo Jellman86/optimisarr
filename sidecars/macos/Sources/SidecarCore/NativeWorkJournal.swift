@@ -8,7 +8,7 @@ public enum NativeWorkJournalError: Error, Sendable {
 /// A stable, non-inherited parent lock spans loading, transitions and durable replacement.
 /// This directory lives outside working media; the app must retain its store ID independently.
 public final class NativeWorkJournal: @unchecked Sendable {
-    enum Checkpoint: Sendable { case temporarySynced, replaced, reopening }
+    enum Checkpoint: Sendable { case temporarySynced, replaced, filesystemSynced, reopening }
     public static let fileName = "native-work.json"
     public static let coordinatorName = "native-work.lock"
     public private(set) var storeId = NativeWorkLedger.zero
@@ -22,20 +22,34 @@ public final class NativeWorkJournal: @unchecked Sendable {
     private var coordinatorIdentity: Identity?
     private var expected: Snapshot?
     private let checkpoint: @Sendable (Checkpoint) throws -> Void
+    private let checkpointStore: (any NativeWorkCheckpointStore)?
+    private var checkpointState: NativeWorkCheckpoint?
 
     public convenience init(directory: URL, expectedStoreId: UUID? = nil) throws {
         try self.init(directory: directory, expectedStoreId: expectedStoreId, checkpoint: { _ in })
     }
 
+    public convenience init(directory: URL, checkpointStore: any NativeWorkCheckpointStore) throws {
+        try self.init(directory: directory, expectedStoreId: nil, checkpointStore: checkpointStore, checkpoint: { _ in })
+    }
+
     init(directory: URL, expectedStoreId: UUID? = nil,
+         checkpointStore: (any NativeWorkCheckpointStore)? = nil,
          checkpoint: @escaping @Sendable (Checkpoint) throws -> Void) throws {
         self.checkpoint = checkpoint
+        self.checkpointStore = checkpointStore
         self.directory = directory.standardizedFileURL
         guard directory.isFileURL, NativeWorkLedger.validPath(directory.path), expectedStoreId != NativeWorkLedger.zero else {
             throw NativeWorkJournalError.unavailable
         }
         do {
-            if expectedStoreId == nil {
+            checkpointState = try checkpointStore?.read()
+            if let state = checkpointState {
+                guard state.isValid, state.directory == self.directory.path,
+                      expectedStoreId == nil || expectedStoreId == state.storeId else { throw NativeWorkJournalError.changed }
+            }
+            let pinnedStoreId = checkpointState?.storeId ?? expectedStoreId
+            if pinnedStoreId == nil {
                 try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true,
                     attributes: [.posixPermissions: 0o700])
             }
@@ -47,7 +61,7 @@ public final class NativeWorkJournal: @unchecked Sendable {
                 throw NativeWorkJournalError.unavailable
             }
             var created = false
-            if expectedStoreId == nil {
+            if pinnedStoreId == nil {
                 coordinatorFD = openat(directoryFD, Self.coordinatorName, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
                 created = coordinatorFD >= 0
                 if coordinatorFD < 0 && errno != EEXIST { throw NativeWorkJournalError.unavailable }
@@ -66,10 +80,11 @@ public final class NativeWorkJournal: @unchecked Sendable {
                 let header = try readBytes(coordinatorFD, maximum: 128)
                 guard let text = String(data: header, encoding: .utf8), text.hasSuffix("\n"),
                       let id = UUID(uuidString: String(text.dropLast())), id != NativeWorkLedger.zero,
-                      text == id.uuidString + "\n", expectedStoreId == nil || expectedStoreId == id,
+                      text == id.uuidString + "\n", pinnedStoreId == nil || pinnedStoreId == id,
                       let snapshot = try readOptional(Self.fileName) else { throw NativeWorkJournalError.unavailable }
                 storeId = id
                 _ = try NativeWorkLedger.decode(snapshot.bytes)
+                try validateCheckpoint(snapshot.bytes)
                 expected = snapshot
                 try validateBinding()
                 try validateExpected()
@@ -78,6 +93,7 @@ public final class NativeWorkJournal: @unchecked Sendable {
                 try checkpoint(.reopening)
                 guard fsync(directoryFD) == 0 else { throw NativeWorkJournalError.unavailable }
                 try synchronize(coordinatorFD)
+                try confirmCheckpoint(snapshot.bytes)
             }
         } catch { close(); throw error }
     }
@@ -126,13 +142,14 @@ public final class NativeWorkJournal: @unchecked Sendable {
         let writtenIdentity = try identity(descriptor)
         var renamed = false
         var committed = false
+        var checkpointAttempted = false
         defer {
             _ = Darwin.close(descriptor)
             if !renamed, (try? readOptional(temporary)?.identity) == writtenIdentity {
                 _ = unlinkat(directoryFD, temporary, 0)
             }
             // No receipt consumption or resource release may follow an unconfirmed transition.
-            if renamed && !committed { closeDescriptors() }
+            if (renamed || checkpointAttempted) && !committed { closeDescriptors() }
         }
         try writeAll(descriptor, data)
         try synchronize(descriptor)
@@ -141,11 +158,26 @@ public final class NativeWorkJournal: @unchecked Sendable {
         try validateExpected()
         guard let temporaryState = try readOptional(temporary), temporaryState.identity == writtenIdentity,
               temporaryState.bytes == data else { throw NativeWorkJournalError.changed }
+        if let state = checkpointState, let checkpointStore {
+            guard state.pending == nil, let expected,
+                  state.committed == NativeWorkCheckpoint.digest(expected.bytes) else { throw NativeWorkJournalError.changed }
+            let pending = NativeWorkCheckpoint(storeId: storeId, directory: directory.path,
+                committed: state.committed, pending: NativeWorkCheckpoint.digest(data))
+            checkpointAttempted = true
+            try checkpointStore.write(pending, replacing: state)
+            guard try checkpointStore.read() == pending else { throw NativeWorkJournalError.changed }
+            checkpointState = pending
+        } else if checkpointStore != nil {
+            guard expected == nil, try NativeWorkLedger.decode(data).isEmpty else { throw NativeWorkJournalError.changed }
+        }
         guard renameat(directoryFD, temporary, directoryFD, Self.fileName) == 0 else { throw NativeWorkJournalError.unavailable }
         renamed = true
         try checkpoint(.replaced)
         guard fsync(directoryFD) == 0 else { throw NativeWorkJournalError.unavailable }
         try synchronize(coordinatorFD)
+        try checkpoint(.filesystemSynced)
+        checkpointAttempted = checkpointStore != nil
+        try confirmCheckpoint(data)
         expected = Snapshot(identity: writtenIdentity, bytes: data)
         committed = true
     }
@@ -157,6 +189,28 @@ public final class NativeWorkJournal: @unchecked Sendable {
         } else if current != nil { throw NativeWorkJournalError.changed }
     }
 
+    private func validateCheckpoint(_ data: Data) throws {
+        guard checkpointStore != nil else { return }
+        if let state = checkpointState {
+            let digest = NativeWorkCheckpoint.digest(data)
+            guard state.committed == digest || state.pending == digest else { throw NativeWorkJournalError.changed }
+        } else {
+            // A first-start crash can leave an empty journal before its anchor is inserted.
+            // Outstanding work can never be adopted without independent checkpoint authority.
+            guard try NativeWorkLedger.decode(data).isEmpty else { throw NativeWorkJournalError.changed }
+        }
+    }
+
+    private func confirmCheckpoint(_ data: Data) throws {
+        guard let checkpointStore else { return }
+        try validateCheckpoint(data)
+        let confirmed = NativeWorkCheckpoint(storeId: storeId, directory: directory.path,
+            committed: NativeWorkCheckpoint.digest(data), pending: nil)
+        if checkpointState != confirmed { try checkpointStore.write(confirmed, replacing: checkpointState) }
+        guard try checkpointStore.read() == confirmed else { throw NativeWorkJournalError.changed }
+        checkpointState = confirmed
+    }
+
     private func validateBinding() throws {
         guard directoryFD >= 0, coordinatorFD >= 0 else { throw NativeWorkJournalError.closed }
         let fresh = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -165,6 +219,9 @@ public final class NativeWorkJournal: @unchecked Sendable {
         guard try identity(fresh, isDirectory: true) == directoryIdentity,
               let lock = try readOptional(Self.coordinatorName, maximum: 128), lock.identity == coordinatorIdentity,
               lock.bytes == Data((storeId.uuidString + "\n").utf8) else { throw NativeWorkJournalError.changed }
+        if let checkpointStore {
+            guard try checkpointStore.read() == checkpointState else { throw NativeWorkJournalError.changed }
+        }
     }
 
     private func readOptional(_ name: String, maximum: Int = NativeWorkLedger.maximumBytes) throws -> Snapshot? {
