@@ -27,7 +27,8 @@ The parent consumes a receipt only after durably recording retirement and accoun
 reconciliation outside scratch. Consumption distinguishes removal, already-absent receipt
 and unconfirmed results, allowing a lost successful response to be replayed. Already-absent
 consumption requires the pinned scope and does not establish writer retirement. Parent
-ledger phases and their RAM-volume ordering are still to be implemented in Swift.
+ledger phases and their RAM-volume ordering now have an isolated Swift foundation; see the
+[follow-up evidence and integration limits](2026-10-15-swift-durable-native-accounting.md).
 
 ## Verification and limits
 
@@ -54,7 +55,8 @@ consumption framing, changed-scope refusal and version-1 downgrade refusal. This
 qualify an installed or signed app package. Private source hashes, logs and receipts retain
 the exact test evidence; no originals, installed pairing or protection settings changed.
 
-The remaining P1 fix requires Swift's persistent grant ledger, exactly-once reconciliation,
-old actual-root discovery, and original mount identity before delayed RAM ejection. Explicit
+The remaining P1 fix requires connecting Swift's tested journal/reconciliation foundation to
+the production runner and startup, retaining an independent store identity, discovering old
+actual roots, and proving original mount identity before delayed RAM ejection. Explicit
 full-encode child reaping is also open. See the [parity matrix](../../development/adaptive-audio-image-parity.md)
 and [interruption review](2026-10-15-native-interruption.md) before activation.

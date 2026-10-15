@@ -50,12 +50,19 @@ identity. Full-encode cancellation also still needs explicit process-reaping qua
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.
-Its source/process tests pass on Mac, Quark and Picard; Swift persistent grant accounting and
-RAM-volume identity are not yet connected. See the [retirement foundation and limits](../engineering/hardware-validation/2026-10-15-native-retirement-foundation.md).
+Its source/process tests pass on Mac, Quark and Picard. Swift now has a checksummed, atomically
+replaced obligation journal, restart debt restoration and a tested reconciliation actor.
+Every running owner still needs targeted positive retirement, including a duplicate invocation
+that reports no workspace. Durable receipt consumption precedes RAM ejection, and accounting
+release is replayable with either fresh or retained in-process budgets. The actual Swift bridge
+passes busy-owner, retirement and consumption replay checks against the self-contained helper.
+Production runner integration, independently pinned journal identity and physical RAM retirement
+are still open; this is not closure of the app lifetime defect. See the [helper foundation](../engineering/hardware-validation/2026-10-15-native-retirement-foundation.md)
+and [Swift accounting evidence and limits](../engineering/hardware-validation/2026-10-15-swift-durable-native-accounting.md).
 
 Latest source verification: 3,526 backend tests on Mac/Quark; 3,503 plus 23 platform skips on native
 Windows; 547 shared worker tests plus three Windows-only skips on Mac/Quark; 550 native Windows
-shared tests; 31 Linux tests, 370 Swift core plus nine UI, 154 Python and 346 browser tests.
+shared tests; 31 Linux tests, 410 Swift core plus nine UI, 154 Python and 346 browser tests.
 Check the PR for exact-head CI. Native trial protocol elevation remains fixture-only.
 
 Continue with exact-package media lifecycles and broader restart/reconnect qualification.

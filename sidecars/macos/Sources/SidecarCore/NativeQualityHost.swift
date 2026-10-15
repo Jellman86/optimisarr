@@ -15,6 +15,7 @@ public struct NativeQualityEvent: Sendable {
 }
 
 public struct NativeQualityReply: Sendable {
+    public let version: Int
     public let type: String
     public let jobId: Int?
     public let delivered: Bool
@@ -23,12 +24,22 @@ public struct NativeQualityReply: Sendable {
     public let nativeMemoryBytes: Int64?
     public let requiredScratchBytes: Int64?
     public let recovery: NativeScratchRecovery?
+    public let accountingScope: NativeScratchScope?
+    public let retirement: NativeScratchRetirement?
+    public let consumption: NativeScratchConsumption?
+    public let nativeWorkspaceCreated: Bool?
+    public let nativeResourcesRetired: Bool?
 
     init(type: String, jobId: Int?, delivered: Bool, capacityBlocked: Bool, capabilities: Data?,
-         nativeMemoryBytes: Int64? = nil, requiredScratchBytes: Int64? = nil, recovery: NativeScratchRecovery? = nil) {
+         nativeMemoryBytes: Int64? = nil, requiredScratchBytes: Int64? = nil, recovery: NativeScratchRecovery? = nil,
+         version: Int = 1, accountingScope: NativeScratchScope? = nil, retirement: NativeScratchRetirement? = nil,
+         consumption: NativeScratchConsumption? = nil, nativeWorkspaceCreated: Bool? = nil, nativeResourcesRetired: Bool? = nil) {
+        self.version = version
         self.type = type; self.jobId = jobId; self.delivered = delivered
         self.capacityBlocked = capacityBlocked; self.capabilities = capabilities
         self.nativeMemoryBytes = nativeMemoryBytes; self.requiredScratchBytes = requiredScratchBytes; self.recovery = recovery
+        self.accountingScope = accountingScope; self.retirement = retirement; self.consumption = consumption
+        self.nativeWorkspaceCreated = nativeWorkspaceCreated; self.nativeResourcesRetired = nativeResourcesRetired
     }
 }
 
@@ -46,8 +57,16 @@ public struct NativeQualityHost: NativeQualityExchanging {
                          report: @escaping @Sendable (NativeQualityEvent) -> Void = { _ in }) async throws -> NativeQualityReply {
         guard !request.isEmpty, request.count <= 256 * 1024,
               !request.contains(10), !request.contains(13),
-              let object = try? JSONSerialization.jsonObject(with: request), object is [String: Any],
+              let object = try? JSONSerialization.jsonObject(with: request) as? [String: Any],
               expectedJobId == nil || expectedJobId! > 0 else { throw NativeQualityHostError() }
+        struct RequestVersion: Decodable { let version: Int }
+        let version: Int
+        if object["version"] != nil {
+            guard let envelope = try? JSONDecoder().decode(RequestVersion.self, from: request), [1, 2].contains(envelope.version) else {
+                throw NativeQualityHostError()
+            }
+            version = envelope.version
+        } else { version = 1 }
         // Preserve the original fields so the shared parser can reject ambiguous duplicates.
         let frame = request + Data([10])
         let owned = OwnedNativeHost(executable: executable)
@@ -55,7 +74,7 @@ public struct NativeQualityHost: NativeQualityExchanging {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
                 DispatchQueue.global(qos: .utility).async {
-                    do { continuation.resume(returning: try owned.exchange(frame, expectedJobId: expectedJobId, report: report)) }
+                    do { continuation.resume(returning: try owned.exchange(frame, expectedJobId: expectedJobId, expectedVersion: version, report: report)) }
                     catch { continuation.resume(throwing: error) }
                 }
             }
@@ -91,7 +110,7 @@ private final class OwnedNativeHost: @unchecked Sendable {
     }
     private var isCancelled: Bool { gate.withLock { cancelled } }
 
-    func exchange(_ frame: Data, expectedJobId: Int?, report: @Sendable (NativeQualityEvent) -> Void) throws -> NativeQualityReply {
+    func exchange(_ frame: Data, expectedJobId: Int?, expectedVersion: Int, report: @Sendable (NativeQualityEvent) -> Void) throws -> NativeQualityReply {
         var inputOpen = true
         defer {
             if inputOpen { try? input.fileHandleForWriting.close() }
@@ -115,9 +134,9 @@ private final class OwnedNativeHost: @unchecked Sendable {
         guard fcntl(incoming, F_SETFL, fcntl(incoming, F_GETFL) | O_NONBLOCK) == 0,
               fcntl(outgoing, F_SETFL, fcntl(outgoing, F_GETFL) | O_NONBLOCK) == 0,
               fcntl(outgoing, F_SETNOSIGPIPE, 1) == 0 else {
-            process.terminate(); process.waitUntilExit(); throw NativeQualityHostError()
+            stopOwnedHelper(); throw NativeQualityHostError()
         }
-        var frames = NativeQualityFrames(expectedJobId: expectedJobId)
+        var frames = NativeQualityFrames(expectedJobId: expectedJobId, expectedVersion: expectedVersion)
         var sent = 0
         var ended = false
         var exitDeadline: ContinuousClock.Instant?
@@ -125,6 +144,7 @@ private final class OwnedNativeHost: @unchecked Sendable {
         do {
             while true {
                 if isCancelled && inputOpen { try? input.fileHandleForWriting.close(); inputOpen = false }
+                if isCancelled { throw CancellationError() }
                 while !ended {
                     if isCancelled { throw CancellationError() }
                     let count = read(incoming, &buffer, buffer.count)
@@ -160,13 +180,26 @@ private final class OwnedNativeHost: @unchecked Sendable {
             }
         } catch {
             if inputOpen { try? input.fileHandleForWriting.close(); inputOpen = false }
-            if process.isRunning { process.terminate() }
-            // The helper owns native children and scratch. Keep the parent's allocation until
-            // its process exits, including when its terminal event was missing or malformed.
-            process.waitUntilExit()
+            // An unconfirmed helper may leave inherited writers behind. Its exit cannot retire
+            // their grants, but a blocked helper must not strand the control task indefinitely.
+            stopOwnedHelper()
             if isCancelled { throw CancellationError() }
             throw NativeQualityHostError()
         }
+    }
+
+    private func stopOwnedHelper() {
+        if process.isRunning { process.terminate() }
+        waitForOwnedExit(until: .now.advanced(by: .seconds(1)))
+        if process.isRunning {
+            _ = Darwin.kill(process.processIdentifier, SIGKILL)
+            waitForOwnedExit(until: .now.advanced(by: .seconds(1)))
+        }
+        if !process.isRunning { process.waitUntilExit() }
+    }
+
+    private func waitForOwnedExit(until deadline: ContinuousClock.Instant) {
+        while process.isRunning && ContinuousClock.now < deadline { usleep(10_000) }
     }
 }
 
@@ -187,12 +220,25 @@ struct NativeQualityFrames {
         let nativeMemoryBytes: Int64?
         let requiredScratchBytes: Int64?
         let recovery: NativeScratchRecovery?
+        let accountingScope: NativeScratchScope?
+        let retirement: NativeScratchRetirement?
+        let consumption: NativeScratchConsumption?
+        let nativeWorkspaceCreated: Bool?
+        let nativeResourcesRetired: Bool?
+
+        var hasNoRetirementProof: Bool {
+            accountingScope == nil && retirement == nil && consumption == nil
+                && nativeWorkspaceCreated == nil && nativeResourcesRetired == nil
+        }
     }
     let expectedJobId: Int?
+    let expectedVersion: Int
     private var pending = Data()
     private(set) var terminal: NativeQualityReply?
 
-    init(expectedJobId: Int?) { self.expectedJobId = expectedJobId }
+    init(expectedJobId: Int?, expectedVersion: Int = 1) {
+        self.expectedJobId = expectedJobId; self.expectedVersion = expectedVersion
+    }
 
     mutating func append(_ data: Data) throws -> [NativeQualityEvent] {
         guard terminal == nil || data.isEmpty else { throw NativeQualityHostError() }
@@ -203,11 +249,25 @@ struct NativeQualityFrames {
             guard !line.isEmpty, line.count <= 16 * 1024, terminal == nil,
                   NativeWireJSON.hasUniqueProperties(Data(line)),
                   let value = try? JSONDecoder().decode(WireEvent.self, from: line),
-                  value.version == 1 else { throw NativeQualityHostError() }
+                  value.version == expectedVersion, [1, 2].contains(expectedVersion),
+                  expectedVersion == 2 || value.hasNoRetirementProof,
+                  let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { throw NativeQualityHostError() }
             let jobId = value.jobId
+            let noCapabilities = raw["capabilities"] == nil || raw["capabilities"] is NSNull
+            if expectedVersion == 2 {
+                let known = Set(["version", "type", "jobId", "stage", "encodedSeconds", "detail", "outcome", "capabilities",
+                    "nativeMemoryBytes", "requiredScratchBytes", "recovery", "accountingScope", "retirement", "consumption",
+                    "nativeWorkspaceCreated", "nativeResourcesRetired"])
+                guard Set(raw.keys).isSubset(of: known) else { throw NativeQualityHostError() }
+                for (key, fields) in [("accountingScope", Set(["root", "control", "gate"])),
+                                      ("retirement", Set(["retired", "busy"])),
+                                      ("consumption", Set(["consumed", "alreadyAbsent"]))] {
+                    if let object = raw[key] as? [String: Any], Set(object.keys) != fields { throw NativeQualityHostError() }
+                }
+            }
             switch value.type {
             case "status", "progress":
-                guard jobId == expectedJobId, expectedJobId != nil else { throw NativeQualityHostError() }
+                guard jobId == expectedJobId, expectedJobId != nil, value.hasNoRetirementProof else { throw NativeQualityHostError() }
                 let seconds = value.encodedSeconds
                 guard seconds == nil || seconds!.isFinite && seconds! >= 0 else { throw NativeQualityHostError() }
                 events.append(NativeQualityEvent(type: value.type, jobId: jobId, stage: value.stage,
@@ -215,17 +275,40 @@ struct NativeQualityFrames {
             case "completed":
                 guard jobId == expectedJobId, expectedJobId != nil,
                       let outcome = value.outcome, outcome.jobId == jobId,
-                      !outcome.delivered || outcome.capacityBlocked != true else { throw NativeQualityHostError() }
+                      !outcome.delivered || outcome.capacityBlocked != true,
+                      value.accountingScope == nil, value.retirement == nil, value.consumption == nil,
+                      value.recovery == nil, value.nativeMemoryBytes == nil, value.requiredScratchBytes == nil, noCapabilities,
+                      expectedVersion == 1 || value.nativeWorkspaceCreated != nil && value.nativeResourcesRetired != nil,
+                      value.nativeResourcesRetired != true || value.nativeWorkspaceCreated == true else { throw NativeQualityHostError() }
                 terminal = NativeQualityReply(type: value.type, jobId: jobId, delivered: outcome.delivered,
-                    capacityBlocked: outcome.capacityBlocked ?? false, capabilities: nil)
+                    capacityBlocked: outcome.capacityBlocked ?? false, capabilities: nil, version: expectedVersion,
+                    nativeWorkspaceCreated: value.nativeWorkspaceCreated, nativeResourcesRetired: value.nativeResourcesRetired)
             case "requirements":
-                guard jobId == expectedJobId, expectedJobId != nil, value.outcome == nil,
+                guard jobId == expectedJobId, expectedJobId != nil, value.outcome == nil, value.hasNoRetirementProof, value.recovery == nil, noCapabilities,
                       let memory = value.nativeMemoryBytes, memory > 0,
                       let scratch = value.requiredScratchBytes, scratch > 0 else { throw NativeQualityHostError() }
                 terminal = NativeQualityReply(type: value.type, jobId: jobId, delivered: false,
-                    capacityBlocked: false, capabilities: nil, nativeMemoryBytes: memory, requiredScratchBytes: scratch)
+                    capacityBlocked: false, capabilities: nil, nativeMemoryBytes: memory, requiredScratchBytes: scratch, version: expectedVersion)
+            case "scope":
+                guard expectedVersion == 2, expectedJobId == nil, jobId == nil, value.outcome == nil,
+                      let scope = value.accountingScope, scope.isValid, value.retirement == nil, value.consumption == nil,
+                      value.nativeWorkspaceCreated == nil, value.nativeResourcesRetired == nil, value.recovery == nil,
+                      value.nativeMemoryBytes == nil, value.requiredScratchBytes == nil, noCapabilities else { throw NativeQualityHostError() }
+                terminal = NativeQualityReply(type: value.type, jobId: nil, delivered: false, capacityBlocked: false,
+                    capabilities: nil, version: 2, accountingScope: scope)
+            case "retired", "forgotten":
+                guard expectedVersion == 2, expectedJobId != nil, jobId == expectedJobId, value.outcome == nil,
+                      value.accountingScope == nil, value.nativeWorkspaceCreated == nil, value.nativeResourcesRetired == nil,
+                      value.recovery == nil, value.nativeMemoryBytes == nil, value.requiredScratchBytes == nil, noCapabilities else { throw NativeQualityHostError() }
+                if value.type == "retired" {
+                    guard value.retirement?.isValid == true, value.consumption == nil else { throw NativeQualityHostError() }
+                } else {
+                    guard value.consumption?.isValid == true, value.retirement == nil else { throw NativeQualityHostError() }
+                }
+                terminal = NativeQualityReply(type: value.type, jobId: jobId, delivered: false, capacityBlocked: false,
+                    capabilities: nil, version: 2, retirement: value.retirement, consumption: value.consumption)
             case "recovered":
-                guard expectedJobId == nil, jobId == nil, value.outcome == nil,
+                guard expectedVersion == 1, expectedJobId == nil, jobId == nil, value.outcome == nil,
                       value.nativeMemoryBytes == nil, value.requiredScratchBytes == nil,
                       let recovery = value.recovery, recovery.isValidPage,
                       let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
@@ -233,13 +316,13 @@ struct NativeQualityFrames {
                 terminal = NativeQualityReply(type: value.type, jobId: nil, delivered: false,
                     capacityBlocked: false, capabilities: nil, recovery: recovery)
             case "capabilities":
-                guard expectedJobId == nil, jobId == nil, let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                guard expectedVersion == 1, expectedJobId == nil, jobId == nil,
                       let proof = raw["capabilities"] as? [String: Any] else { throw NativeQualityHostError() }
                 terminal = NativeQualityReply(type: value.type, jobId: nil, delivered: false, capacityBlocked: false,
                     capabilities: try JSONSerialization.data(withJSONObject: proof))
             case "refused":
-                guard jobId == nil, value.outcome == nil else { throw NativeQualityHostError() }
-                terminal = NativeQualityReply(type: value.type, jobId: nil, delivered: false, capacityBlocked: false, capabilities: nil)
+                guard jobId == nil, value.outcome == nil, value.hasNoRetirementProof else { throw NativeQualityHostError() }
+                terminal = NativeQualityReply(type: value.type, jobId: nil, delivered: false, capacityBlocked: false, capabilities: nil, version: expectedVersion)
             default: throw NativeQualityHostError()
             }
             pending.removeSubrange(...newline)
@@ -250,7 +333,7 @@ struct NativeQualityFrames {
 
     func finish(exitCode: Int32) throws -> NativeQualityReply {
         guard pending.isEmpty, let terminal else { throw NativeQualityHostError() }
-        let expectedExit = ["capabilities", "requirements", "recovered"].contains(terminal.type) || terminal.delivered ? exitCode == 0
+        let expectedExit = ["capabilities", "requirements", "recovered", "scope", "retired", "forgotten"].contains(terminal.type) || terminal.delivered ? exitCode == 0
             : terminal.type == "refused" ? [1, 2].contains(exitCode) : exitCode == 1
         guard expectedExit else { throw NativeQualityHostError() }
         return terminal

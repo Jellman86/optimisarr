@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add the Swift foundation for durable native-work accounting: restart restores outstanding grants, busy or uncertain owners stay charged, and replay reconciles receipts before RAM retirement. Atomic journal updates fail closed on changed files or unconfirmed durability. Production runner integration and physical RAM retirement remain pending; protocol 11 stays disabled.
+
 - Add a replayable native-helper retirement contract bound to the parent's run and physical workspace. Surviving tools, changed ownership and missing evidence cannot confirm cleanup. Swift persistent accounting and RAM-volume retirement remain in progress; protocol 11 stays disabled.
 
 - Mac native jobs now acknowledge cancellation and helper failure as an interruption, including stops during requirements, ownership recovery and RAM preparation. The final request runs independently of job cancellation; failed acknowledgements remain unconfirmed. Surviving-tool resource accounting remains under qualification before protocol 11 can be enabled.

@@ -20,7 +20,7 @@ struct MemoryWorkPlan: Equatable, Sendable {
 public final class MemoryWorkBudget: @unchecked Sendable {
     public static let shared = MemoryWorkBudget()
     private let lock = NSLock()
-    private struct Allocation {
+    private struct Allocation: Equatable {
         let nativeBytes: Int64
         let ramBytes: Int64
         var total: Int64 { nativeBytes + ramBytes }
@@ -29,6 +29,20 @@ public final class MemoryWorkBudget: @unchecked Sendable {
     public init() {}
     public var reservedBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.total } } }
     public var reservedRamBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.ramBytes } } }
+
+    /// Restoration records an existing obligation; it never grants permission to start work.
+    func restoreObligation(_ owner: UUID, nativeBytes: Int64, ramBytes: Int64) -> Bool {
+        lock.withLock {
+            let total = nativeBytes.addingReportingOverflow(ramBytes)
+            guard nativeBytes >= 0, ramBytes >= 0, !total.overflow, total.partialValue > 0 else { return false }
+            let allocation = Allocation(nativeBytes: nativeBytes, ramBytes: ramBytes)
+            if let existing = reservations[owner] { return existing == allocation }
+            let held = reservations.values.reduce(Int64(0)) { $0 + $1.total }
+            guard !held.addingReportingOverflow(total.partialValue).overflow else { return false }
+            reservations[owner] = allocation
+            return true
+        }
+    }
 
     func available(_ liveBytes: Int64?) -> Int64? {
         lock.withLock {
@@ -83,9 +97,21 @@ public struct WorkStorage: Sendable, Equatable {
 public final class DiskWorkBudget: @unchecked Sendable {
     public static let shared = DiskWorkBudget()
     private let gate = NSLock()
-    private struct Allocation { let volume: String; let bytes: Int64 }
+    private struct Allocation: Equatable { let volume: String; let bytes: Int64 }
     private var reservations: [UUID: Allocation] = [:]
     public init() {}
+
+    func restoreObligation(_ owner: UUID, volume: String, bytes: Int64) -> Bool {
+        gate.withLock {
+            guard !volume.isEmpty, volume.utf8.count <= 4096, bytes > 0 else { return false }
+            let allocation = Allocation(volume: volume, bytes: bytes)
+            if let existing = reservations[owner] { return existing == allocation }
+            let held = reservations.values.filter { $0.volume == volume }.reduce(Int64(0)) { $0 + $1.bytes }
+            guard !held.addingReportingOverflow(bytes).overflow else { return false }
+            reservations[owner] = allocation
+            return true
+        }
+    }
 
     func available(volume: String, liveBytes: Int64) -> Int64? {
         gate.withLock {
@@ -95,13 +121,13 @@ public final class DiskWorkBudget: @unchecked Sendable {
         }
     }
 
-    func reserve(volume: String?, bytes: Int64, available: Int64?) -> UUID? {
+    func reserve(volume: String?, bytes: Int64, available: Int64?, owner: UUID = UUID()) -> UUID? {
         gate.withLock {
-            guard let volume, !volume.isEmpty, bytes > 0, let available, available >= 0 else { return nil }
+            guard let volume, !volume.isEmpty, bytes > 0, let available, available >= 0, reservations[owner] == nil else { return nil }
             let used = reservations.values.filter { $0.volume == volume }.reduce(Int64(0)) { $0 + $1.bytes }
             guard available >= used, bytes <= available - used else { return nil }
-            let token = UUID(); reservations[token] = Allocation(volume: volume, bytes: bytes)
-            return token
+            reservations[owner] = Allocation(volume: volume, bytes: bytes)
+            return owner
         }
     }
     func release(_ token: UUID) { gate.withLock { _ = reservations.removeValue(forKey: token) } }

@@ -176,9 +176,10 @@ struct AcceptanceWorker {
             }
             if data.last == 10 { data.removeLast() }
             let request = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let jobId = (request?["assignment"] as? [String: Any])?["jobId"] as? Int
+            let jobId = ((request?["assignment"] ?? request?["accountedOwner"]) as? [String: Any])?["jobId"] as? Int
+            let version = request?["version"] as? Int ?? 1
             let reply = try await NativeQualityHost(executable: executable).exchange(request: data, expectedJobId: jobId) { event in
-                var message: [String: Any] = ["version": 1, "type": event.type]
+                var message: [String: Any] = ["version": version, "type": event.type]
                 if let jobId = event.jobId { message["jobId"] = jobId }
                 if let stage = event.stage { message["stage"] = stage }
                 if let seconds = event.encodedSeconds { message["encodedSeconds"] = seconds }
@@ -186,7 +187,7 @@ struct AcceptanceWorker {
                     try? FileHandle.standardOutput.write(contentsOf: encoded + Data([10]))
                 }
             }
-            var terminal: [String: Any] = ["version": 1, "type": reply.type]
+            var terminal: [String: Any] = ["version": reply.version, "type": reply.type]
             if let proof = reply.capabilities { terminal["capabilities"] = try JSONSerialization.jsonObject(with: proof) }
             if let jobId = reply.jobId {
                 terminal["jobId"] = jobId
@@ -198,6 +199,11 @@ struct AcceptanceWorker {
             if let recovery = reply.recovery { terminal["recovery"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(recovery)) }
             if let memory = reply.nativeMemoryBytes { terminal["nativeMemoryBytes"] = memory }
             if let scratch = reply.requiredScratchBytes { terminal["requiredScratchBytes"] = scratch }
+            if let scope = reply.accountingScope { terminal["accountingScope"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(scope)) }
+            if let retirement = reply.retirement { terminal["retirement"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(retirement)) }
+            if let consumption = reply.consumption { terminal["consumption"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(consumption)) }
+            if let created = reply.nativeWorkspaceCreated { terminal["nativeWorkspaceCreated"] = created }
+            if let retired = reply.nativeResourcesRetired { terminal["nativeResourcesRetired"] = retired }
             try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: terminal) + Data([10]))
             return
         }

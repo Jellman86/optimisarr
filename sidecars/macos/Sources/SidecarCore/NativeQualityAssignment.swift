@@ -82,13 +82,24 @@ public struct NativeQualityAssignment: Sendable, Equatable {
     }
 
     public func request(mode: String, tools: NativeQualityTools, scratchRoot: URL,
-                        pairing: StoredPairing? = nil, grantedMemoryBytes: Int64? = nil) throws -> Data {
+                        pairing: StoredPairing? = nil, grantedMemoryBytes: Int64? = nil,
+                        version: Int = 1, owner: NativeAccountedOwner? = nil, accountingScope: NativeScratchScope? = nil) throws -> Data {
         guard ["requirements", "run"].contains(mode),
+              [1, 2].contains(version),
+              version == 1 ? owner == nil && accountingScope == nil
+                : mode == "requirements" ? owner == nil && accountingScope == nil
+                    : owner?.isValid == true && owner?.jobId == jobId && owner?.leaseId.uuidString == leaseId && accountingScope?.isValid == true,
               mode == "requirements" ? pairing == nil && grantedMemoryBytes == nil : pairing != nil && grantedMemoryBytes ?? 0 > 0,
               [tools.host, tools.ffmpeg, tools.imageMetric, tools.audioMetric, tools.metadataTool, scratchRoot]
                 .compactMap({ $0 }).allSatisfy({ $0.isFileURL && $0.path.hasPrefix("/") && $0.path.utf8.count <= 4096 })
         else { throw NativeQualityHostError() }
-        var body: [String: Any] = ["version": 1, "mode": mode, "ffmpegPath": tools.ffmpeg.path, "scratchRoot": scratchRoot.path]
+        var body: [String: Any] = ["version": version, "mode": mode, "ffmpegPath": tools.ffmpeg.path, "scratchRoot": scratchRoot.path]
+        if let owner {
+            body["accountedOwner"] = ["owner": owner.owner.uuidString, "jobId": owner.jobId, "leaseId": owner.leaseId.uuidString]
+        }
+        if let accountingScope {
+            body["accountingScope"] = ["root": accountingScope.root, "control": accountingScope.control, "gate": accountingScope.gate]
+        }
         if let path = tools.imageMetric { body["imageMetric"] = path.path }
         if let path = tools.audioMetric { body["audioMetric"] = path.path }
         if let path = tools.metadataTool { body["metadataTool"] = path.path }
