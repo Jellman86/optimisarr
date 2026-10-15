@@ -10,6 +10,42 @@ public static class Program
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         var token = timeout.Token;
+        if (args[0] == "encode-wait")
+        {
+            await File.WriteAllTextAsync(args[1], Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return 0;
+        }
+        if (args[0] == "pipe-holder")
+        {
+            await File.WriteAllTextAsync(Path.Combine(args[1], "holder-ready"), "ready", token);
+            while (!File.Exists(Path.Combine(args[1], "late-progress"))) await Task.Delay(20, token);
+            try { Console.WriteLine("out_time_us=2000000"); await Console.Out.FlushAsync(token); }
+            catch (IOException) { }
+            await File.WriteAllTextAsync(Path.Combine(args[1], "late-attempted"), "attempted", token);
+            while (!File.Exists(Path.Combine(args[1], "release"))) await Task.Delay(20, token);
+            return 0;
+        }
+        if (args[0] == "pipe-parent")
+        {
+            using var workspace = NativeScratchWorkspace.CreateJob(args[1], 42, Guid.NewGuid());
+            using var holder = new Process { StartInfo = new(args[2]) { UseShellExecute = false } };
+            foreach (var argument in new[] { "exec", "--runtimeconfig", args[3], "--depsfile", args[4],
+                         typeof(Program).Assembly.Location, "pipe-holder", workspace.DirectoryPath })
+                holder.StartInfo.ArgumentList.Add(argument);
+            holder.Start();
+            while (!File.Exists(Path.Combine(workspace.DirectoryPath, "holder-ready")))
+            {
+                if (holder.HasExited) throw new IOException("The pipe holder did not start.");
+                await Task.Delay(20, token);
+            }
+            await File.WriteAllTextAsync(args[5], JsonSerializer.Serialize(new { childId = holder.Id, directory = workspace.DirectoryPath }), token);
+            Console.WriteLine("out_time_us=1000000");
+            await Console.Out.FlushAsync(token);
+            // The child deliberately survives this parent with both pipes and the real scratch
+            // guard. Its test owns release; direct exit must never be treated as retirement.
+            return 0;
+        }
         if (args[0] == "child")
         {
             await File.WriteAllTextAsync(args[1], "ready", token);

@@ -1,67 +1,46 @@
 using System.Diagnostics;
+using Optimisarr.Sidecar.Core.Session;
 
 namespace Optimisarr.Sidecar.Core.Capabilities;
 
-/// <summary>
-/// Runs a real process.
-///
-/// Output is read asynchronously rather than by blocking on a stream, and stdout and stderr are
-/// both drained: a child that fills a pipe nobody is reading simply stops, and the caller waits for
-/// an exit that never comes. The deadline exists for the same reason — a probe that hangs would
-/// hold up the service start, and on the macOS sidecar an equivalent hang held a worker's only job
-/// slot until the app was killed.
-/// </summary>
-public sealed class ProcessCommandRunner(TimeSpan? timeout = null) : ICommandRunner
+/// <summary>Capability commands with bounded output, a deadline and confirmed direct-child exit.</summary>
+public sealed class ProcessCommandRunner : ICommandRunner
 {
-    private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromMinutes(2);
+    private readonly TimeSpan _timeout;
+    private readonly Func<ProcessStartInfo, IChildProcess> _createProcess;
+
+    public ProcessCommandRunner(TimeSpan? timeout = null)
+        : this(info => new SystemChildProcess(info), timeout) { }
+
+    internal ProcessCommandRunner(Func<ProcessStartInfo, IChildProcess> createProcess, TimeSpan? timeout = null)
+    {
+        _createProcess = createProcess;
+        _timeout = timeout ?? TimeSpan.FromMinutes(2);
+    }
 
     public async Task<(int ExitCode, string Output)> RunAsync(
         string executable, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        using var process = new Process();
-        process.StartInfo.FileName = executable;
-        foreach (var argument in arguments)
-        {
-            // ArgumentList, never a joined string: a path with a space or a quote in it must not be
-            // able to become a second argument, or anything else.
-            process.StartInfo.ArgumentList.Add(argument);
-        }
-
-        process.StartInfo.RedirectStandardOutput = true;
-        process.StartInfo.RedirectStandardError = true;
-        process.StartInfo.UseShellExecute = false;
-        process.StartInfo.CreateNoWindow = true;
-
-        try
-        {
-            process.Start();
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
-        {
-            return (-1, string.Empty);
-        }
-
-        // FFmpeg writes its listings to stdout and almost everything else to stderr, so a probe's
-        // reason for failing is usually in the latter. Both are returned together.
-        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-
+        cancellationToken.ThrowIfCancellationRequested();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(_timeout);
         try
         {
+            await using var process = new OwnedChildProcess(_createProcess(ProcessTranscoder.StartInfo(executable, arguments)));
+            if (!process.Start(deadline.Token)) return (-1, string.Empty);
+            var stdout = process.Track(ChildText.ReadBoundedAsync(process.Output, process.ReadingToken));
+            var stderr = process.Track(ChildText.ReadBoundedAsync(process.Error, process.ReadingToken));
             await process.WaitForExitAsync(deadline.Token);
+            if (!await process.DrainAsync()) return (-1, string.Empty);
+            return (process.ExitCode, ProcessTranscoder.CompletedText(stdout) + "\n" + ProcessTranscoder.CompletedText(stderr));
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { /* already gone */ }
             return (-1, string.Empty);
         }
-
-        // The deadline above covers a process that will not exit. This covers a pipe that will
-        // not end after it has: the listing is worth two seconds, never a stalled service start.
-        return (
-            process.ExitCode,
-            await ChildOutput.WithinGraceAsync(stdout) + "\n" + await ChildOutput.WithinGraceAsync(stderr));
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        {
+            return (-1, string.Empty);
+        }
     }
 }

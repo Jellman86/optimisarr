@@ -46,8 +46,11 @@ cancellation, with regressions for requirements, recovery, RAM preparation and r
 The connected runtime now retains native peak/disk reservations when an inherited writer outlives
 the helper. Signed release-library trials cover busy delivery and a killed Swift parent followed
 by restored accounting and same-identity replay. Missing ownership evidence cannot count as
-retirement, and delayed RAM ejection validates mount identity. Full-encode cancellation still
-needs explicit process-reaping qualification.
+retirement, and delayed RAM ejection validates mount identity. Shared encode/probe execution
+now retains direct-child ownership through cancellation and reader failures, bounds captured
+text and refuses incomplete probe evidence. Managed process and inherited-guard tests pass
+on Mac and Quark; fresh Picard execution and standalone durable reservation integration remain
+open. See the [process ownership evidence and limits](../engineering/hardware-validation/2026-10-15-native-process-ownership.md).
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.

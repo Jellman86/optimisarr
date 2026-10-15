@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Shared worker encodes and probes now retain process ownership until confirmed direct-child exit, including cancellation, reader failure and failed tree termination. Progress observer failures no longer stop pipe drainage, captured text is bounded, and incomplete probe or capability output cannot count as successful evidence. Descendant retirement and standalone durable resource accounting remain separate qualification work.
+
 - Connect native Mac startup and job execution to one independently anchored accounting runtime. Unconfirmed recovery pauses new claims, surviving tools retain resource charges, and RAM/disk work uses registry-backed helper scopes. Recovery holds missing or recreated coordinator metadata; late claims after disconnect acknowledge interruption independently. Full packaged lifecycle and parity qualification remain pending; protocol 11 stays disabled.
 
 - Add registry-backed native Mac RAM creation with durable allocation and mount checkpoints. Cancellation retains the original device pin and accounting until owned commands actually end; recovery can retire a mounted volume before helper preparation. Signed hard-exit fixtures cover both boundaries. Connected runtime and packaged lifecycle qualification remain pending.
