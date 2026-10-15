@@ -117,11 +117,11 @@ public struct RamDisk: Sendable {
         return RamDisk(mountPoint: mountPoint, device: device)
     }
 
-    /// Ejects it. Forced, because a job that has just failed may still hold a file handle and the
-    /// alternative to forcing is leaking the memory until reboot.
+    /// A surviving writer must veto ejection. Callers retain the RAM reservation when
+    /// detaching fails, so an interrupted native helper cannot lose its working volume.
     @discardableResult
     public func destroy() -> Bool {
-        Self.run("/usr/bin/hdiutil", ["detach", device, "-force"]) != nil
+        Self.run("/usr/bin/hdiutil", ["detach", device]) != nil
     }
 
     /// Ejects anything left behind by a previous run that did not exit cleanly.

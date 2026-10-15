@@ -2,9 +2,11 @@ using System.Security.Cryptography;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 using Optimisarr.Sidecar.Core.Capabilities;
+using Optimisarr.Sidecar.Core.Session;
 
 namespace Optimisarr.Sidecar.Core.Tests;
 
+[Collection("Native scratch ownership")]
 public sealed class PerceptualCapabilityProberTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "native-capability-" + Guid.NewGuid().ToString("N"));
@@ -26,6 +28,23 @@ public sealed class PerceptualCapabilityProberTests : IDisposable
         new(new("fixture-encoder", "fixture-probe", "fixture-audio", "fixture-image", "fixture-metadata"), operations ?? Operations());
 
     [Fact]
+    public async Task Capability_qualification_owns_its_workspace_and_recovers_old_stopped_probes()
+    {
+        var abandoned = NativeScratchWorkspace.CreateCapability(_root);
+        var old = abandoned.DirectoryPath; abandoned.Dispose();
+        var ops = Operations(); var encoder = ops.Encoder;
+        ops = ops with { Encoder = (name, source, candidate, token) =>
+        {
+            Assert.False(Directory.Exists(old));
+            Assert.Equal(1, NativeScratchWorkspace.Recover(_root).Busy);
+            return encoder(name, source, candidate, token);
+        } };
+        var proof = await Prober(ops).ProbeAsync(_root, default);
+        Assert.NotNull(proof.ImageMetricRevision);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName), "owner-*.json"));
+    }
+
+    [Fact]
     public async Task Proof_requires_real_successful_encoder_round_trips_and_both_pinned_self_assessments()
     {
         var proof = await Prober().ProbeAsync(_root, default);
@@ -34,7 +53,8 @@ public sealed class PerceptualCapabilityProberTests : IDisposable
         Assert.True(proof.ImageMetadataSupported);
         Assert.Equal(ImagePerceptualResultParser.Revision, proof.ImageMetricRevision);
         Assert.Equal(AudioQualityResultParser.Revision, proof.AudioMetricRevision);
-        Assert.Empty(Directory.GetFileSystemEntries(_root));
+        Assert.Equal([NativeScratchWorkspace.ControlDirectoryName], Directory.GetFileSystemEntries(_root).Select(Path.GetFileName));
+        Assert.Equal(["root.lock"], Directory.GetFileSystemEntries(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName)).Select(Path.GetFileName));
     }
 
     [Theory]
@@ -71,7 +91,8 @@ public sealed class PerceptualCapabilityProberTests : IDisposable
         if (missing.StartsWith("image")) { Assert.Null(proof.ImageMetricRevision); Assert.NotNull(proof.AudioMetricRevision); }
         if (missing.StartsWith("audio")) { Assert.Null(proof.AudioMetricRevision); Assert.NotNull(proof.ImageMetricRevision); }
         if (missing == "metadata") Assert.False(proof.ImageMetadataSupported);
-        Assert.Empty(Directory.GetFileSystemEntries(_root));
+        Assert.Equal([NativeScratchWorkspace.ControlDirectoryName], Directory.GetFileSystemEntries(_root).Select(Path.GetFileName));
+        Assert.Equal(["root.lock"], Directory.GetFileSystemEntries(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName)).Select(Path.GetFileName));
     }
 
     [Fact]
@@ -80,7 +101,8 @@ public sealed class PerceptualCapabilityProberTests : IDisposable
         var proof = await Prober(Operations() with { Image = (_, _) => throw new IOException("missing module") }).ProbeAsync(_root, default);
         Assert.Null(proof.ImageMetricRevision); Assert.NotNull(proof.AudioMetricRevision);
         Assert.True(proof.ImageMetadataSupported);
-        Assert.Empty(Directory.GetFileSystemEntries(_root));
+        Assert.Equal([NativeScratchWorkspace.ControlDirectoryName], Directory.GetFileSystemEntries(_root).Select(Path.GetFileName));
+        Assert.Equal(["root.lock"], Directory.GetFileSystemEntries(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName)).Select(Path.GetFileName));
     }
 
     [Fact]
@@ -95,6 +117,7 @@ public sealed class PerceptualCapabilityProberTests : IDisposable
             return null;
         } };
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Prober(ops).ProbeAsync(_root, cancellation.Token));
-        Assert.Empty(Directory.GetFileSystemEntries(_root));
+        Assert.Equal([NativeScratchWorkspace.ControlDirectoryName], Directory.GetFileSystemEntries(_root).Select(Path.GetFileName));
+        Assert.Equal(["root.lock"], Directory.GetFileSystemEntries(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName)).Select(Path.GetFileName));
     }
 }

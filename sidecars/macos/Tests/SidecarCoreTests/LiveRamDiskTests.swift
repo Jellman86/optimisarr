@@ -9,6 +9,20 @@ import Testing
 ///     OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
 @Suite("Live RAM disk", .serialized, .enabled(if: ProcessInfo.processInfo.environment["OPTIMISARR_LIVE_RAMDISK"] != nil))
 struct LiveRamDiskTests {
+    @Test("a surviving writer vetoes RAM ejection until it releases the volume")
+    func busyVolumeRetained() throws {
+        let disk = try #require(RamDisk.create(bytes: 32 * 1024 * 1024))
+        let source = disk.mountPoint.appendingPathComponent("owned-source-copy")
+        try Data("retained copy".utf8).write(to: source)
+        let writer = try FileHandle(forUpdating: source)
+        defer { try? writer.close(); if FileManager.default.fileExists(atPath: disk.mountPoint.path) { #expect(disk.destroy()) } }
+        #expect(!disk.destroy())
+        #expect(FileManager.default.fileExists(atPath: source.path))
+        if FileManager.default.fileExists(atPath: source.path) { #expect(try Data(contentsOf: source) == Data("retained copy".utf8)) }
+        try writer.close()
+        #expect(disk.destroy())
+    }
+
     @Test("a real RAM volume and an alias into it never advertise physical disk capacity")
     func nativeWorkspaceAliases() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

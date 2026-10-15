@@ -6,7 +6,7 @@ namespace Optimisarr.Sidecar.Native;
 
 internal sealed record NativeHostRequest(int Version, string Mode, string FfmpegPath, string ScratchRoot,
     string? ImageMetric = null, string? AudioMetric = null, string? MetadataTool = null,
-    StoredPairing? Pairing = null, JsonElement? Assignment = null, long? GrantedMemoryBytes = null);
+    StoredPairing? Pairing = null, JsonElement? Assignment = null, long? GrantedMemoryBytes = null, string? RecoveryAfterOwner = null);
 
 /// <summary>One bounded private request; closing its pipe ends the parent's authority to run.</summary>
 internal static class NativeHostProtocol
@@ -45,12 +45,24 @@ internal static class NativeHostProtocol
             using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
             if (!UniqueProperties(document.RootElement)) throw new InvalidDataException(invalid);
             var request = document.RootElement.Deserialize<NativeHostRequest>(Json);
-            if (request is null || request.Version != 1 || request.Mode is not ("capabilities" or "requirements" or "run")
+            if (request is null || request.Version != 1 || request.Mode is not ("capabilities" or "requirements" or "run" or "recover")
                 || !Absolute(request.FfmpegPath) || !Absolute(request.ScratchRoot)
                 || request.ImageMetric is not null && !Absolute(request.ImageMetric)
                 || request.AudioMetric is not null && !Absolute(request.AudioMetric)
                 || request.MetadataTool is not null && !Absolute(request.MetadataTool)) throw new InvalidDataException(invalid);
-            if (request.Mode == "capabilities")
+            if (request.Mode != "recover" && request.RecoveryAfterOwner is not null) throw new InvalidDataException(invalid);
+            if (request.Mode == "recover")
+            {
+                if (request.Pairing is not null || request.Assignment is not null || request.GrantedMemoryBytes is not null
+                    || request.ImageMetric is not null || request.AudioMetric is not null || request.MetadataTool is not null
+                    || document.RootElement.EnumerateObject().Any(property => property.Name is not
+                        ("version" or "mode" or "ffmpegPath" or "scratchRoot" or "recoveryAfterOwner"
+                            or "imageMetric" or "audioMetric" or "metadataTool" or "pairing" or "assignment" or "grantedMemoryBytes"))
+                    || request.RecoveryAfterOwner is { } cursor && (cursor.Length != 43 || !cursor.StartsWith("owner-", StringComparison.Ordinal)
+                        || !cursor.EndsWith(".json", StringComparison.Ordinal) || !Guid.TryParseExact(cursor[6..^5], "N", out var owner) || owner == Guid.Empty))
+                    throw new InvalidDataException(invalid);
+            }
+            else if (request.Mode == "capabilities")
             {
                 if (request.Pairing is not null || request.Assignment is not null || request.GrantedMemoryBytes is not null)
                     throw new InvalidDataException(invalid);

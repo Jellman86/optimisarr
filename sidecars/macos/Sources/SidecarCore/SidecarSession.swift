@@ -200,6 +200,9 @@ public final class SidecarSession: ObservableObject {
     private let prober: CapabilityProber?
     private let executor: WorkExecutor?
     private let scratchCapacity: @Sendable () -> Int64
+    private let recoverNativeScratch: @Sendable () async -> Void
+    private let nativeRecoveryLocation: @Sendable () -> WorkLocation
+    private var recoveredNativeLocation: WorkLocation?
     private let nativeResources: @Sendable (SidecarCapabilities) -> SidecarCapabilities
     private var capabilities: SidecarCapabilities
     private let sleep: @Sendable (TimeInterval) async throws -> Void
@@ -227,6 +230,7 @@ public final class SidecarSession: ObservableObject {
             JobRunner.availableScratchBytes(at: JobRunner.defaultScratchRoot()) ?? 0
         },
         nativeResources: (@Sendable (SidecarCapabilities) -> SidecarCapabilities)? = nil,
+        recoverNativeScratch: (@Sendable () async -> Void)? = nil,
         jobConcurrency: Int = UserDefaults.standard.object(forKey: "jobConcurrency") as? Int ?? 1,
         persistConcurrency: @escaping @Sendable (Int) -> Void = { UserDefaults.standard.set($0, forKey: "jobConcurrency") },
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
@@ -248,6 +252,10 @@ public final class SidecarSession: ObservableObject {
             settings: settings)
         self.scratchCapacity = scratchCapacity
         self.nativeResources = nativeResources ?? NativeWorkerResources(settings: settings).refresh
+        self.nativeRecoveryLocation = { settings.workLocation }
+        self.recoverNativeScratch = recoverNativeScratch ?? {
+            await NativeScratchRecoveryService.bundled()?.recoverWorkingRoots(settings: settings)
+        }
         self.jobConcurrency = Self.concurrencyRange.contains(jobConcurrency) ? jobConcurrency : 1
         self.persistConcurrency = persistConcurrency
         self.sleep = sleep
@@ -303,6 +311,8 @@ public final class SidecarSession: ObservableObject {
             // it blocks in exactly the same way once it starts. A windowless menu-bar app that
             // freezes here has no window to show for it and looks simply dead, which is what
             // 0.1.7 did.
+            await self.recoverNativeWorkingFiles(force: true)
+            guard !Task.isCancelled, self.connectionGeneration == generation else { return }
             let store = self.store
             let stored = await Task.detached(priority: .userInitiated) { try? store.load() }.value
             guard !Task.isCancelled, self.connectionGeneration == generation else { return }
@@ -352,10 +362,14 @@ public final class SidecarSession: ObservableObject {
     }
 
     private func proveCapabilities() async -> SidecarCapabilities? {
-        guard let prober else { return capabilities }
         capabilityTask?.cancel()
         let name = capabilities.name, concurrency = jobConcurrency
-        let task = Task { await prober.probe(name: name, maxConcurrency: concurrency) }
+        let current = capabilities
+        let task = Task {
+            await recoverNativeWorkingFiles(force: true)
+            guard !Task.isCancelled, let prober else { return current }
+            return await prober.probe(name: name, maxConcurrency: concurrency)
+        }
         capabilityTask = task
         let proved = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
         guard !Task.isCancelled, !task.isCancelled else { return nil }
@@ -369,7 +383,16 @@ public final class SidecarSession: ObservableObject {
         capabilityTask?.cancel(); capabilityTask = nil
     }
 
+    private func recoverNativeWorkingFiles(force: Bool = false) async {
+        let location = nativeRecoveryLocation()
+        guard force || location != recoveredNativeLocation else { return }
+        await recoverNativeScratch()
+        guard !Task.isCancelled else { return }
+        recoveredNativeLocation = location
+    }
+
     private func refreshNativeResources(_ capabilities: SidecarCapabilities) async -> SidecarCapabilities {
+        await recoverNativeWorkingFiles()
         let refresh = nativeResources
         // Volume classification can wait for diskutil. Keep that work off the menu's actor.
         return await Task.detached(priority: .utility) { refresh(capabilities) }.value

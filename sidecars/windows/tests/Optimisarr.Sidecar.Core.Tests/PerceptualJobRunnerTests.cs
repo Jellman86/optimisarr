@@ -10,6 +10,7 @@ using Optimisarr.Sidecar.Core.Session;
 
 namespace Optimisarr.Sidecar.Core.Tests;
 
+[Collection("Native scratch ownership")]
 public sealed class PerceptualJobRunnerTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "native-job-" + Guid.NewGuid().ToString("N"));
@@ -34,10 +35,12 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         public TimeSpan MeasureDelay;
         public string? Marker;
         public string? LastSource;
+        public Action<string>? Measuring;
         public bool UnavailableSample, UnavailableFinal;
         public async Task<RemotePerceptualProbeReport> MeasureAsync(RemotePerceptualSearchStep step, string source, string sourceHash, string scratch, CancellationToken token)
         {
-            Probes++; LastSource = source; if (MeasureDelay > TimeSpan.Zero) await Task.Delay(MeasureDelay, token);
+            Probes++; LastSource = source; Measuring?.Invoke(scratch);
+            if (MeasureDelay > TimeSpan.Zero) await Task.Delay(MeasureDelay, token);
             var tool = Hash(await File.ReadAllBytesAsync(encoder, token));
             var candidate = step.Value.ToString("x64");
             RemoteImagePerceptualEvidence Image(string hash, double score) => RemoteImagePerceptualEvidence.From(
@@ -131,6 +134,40 @@ public sealed class PerceptualJobRunnerTests : IDisposable
             wantsPreview: preview is null ? null : () => true, publishPreview: preview is null ? null : (_, _) => { }, previewExtractor: preview,
             perceptual: new(tools, _ => disk, () => memory, new PerceptualJobResourcePool()));
 
+    [Fact]
+    public async Task Native_execution_holds_a_kernel_owner_and_reclaims_completed_older_work_before_fetching()
+    {
+        var abandoned = NativeScratchWorkspace.CreateJob(_root, 999, Guid.NewGuid());
+        var old = abandoned.DirectoryPath;
+        File.WriteAllText(Path.Combine(old, "source"), "old copy");
+        abandoned.Dispose();
+        var assignment = PerceptualJobFixture.Assignment(); using var server = new Server(assignment);
+        var tools = new NativeTools(Tool) { Measuring = _ =>
+        {
+            Assert.False(Directory.Exists(old));
+            Assert.Equal(1, NativeScratchWorkspace.Recover(_root).Busy);
+        } };
+        var outcome = await Runner(server, tools, new()).RunAsync(new("https://server.example", "secret", 1), assignment, default);
+        Assert.True(outcome.Delivered, outcome.Detail);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName), "owner-*.json"));
+    }
+
+    [Fact]
+    public async Task Unavailable_workspace_ownership_returns_neutral_capacity_before_media_transfer()
+    {
+        using var occupied = NativeScratchWorkspace.CreateCapability(_root);
+        using var root = NativeWorkspaceDirectory.OpenRoot(_root, create: false);
+        using var control = root.OpenDirectory(NativeScratchWorkspace.ControlDirectoryName);
+        using var gate = control.OpenFile("root.lock", locked: true);
+        var assignment = PerceptualJobFixture.Assignment(); using var server = new Server(assignment);
+        var tools = new NativeTools(Tool); var encoder = new FakeMeasuringTranscoder();
+        var outcome = await Runner(server, tools, encoder).RunAsync(new("https://server.example", "secret", 1), assignment, default);
+        Assert.True(outcome.CapacityBlocked);
+        Assert.Equal(0, tools.Probes); Assert.Empty(encoder.AllRuns);
+        Assert.Contains(server.Transfer.Calls, call => call.EndsWith("/capacity-unavailable", StringComparison.Ordinal));
+        Assert.DoesNotContain(server.Transfer.Calls, call => call.EndsWith("/source", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -144,7 +181,7 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         Assert.Single(encoder.AllRuns);
         Assert.Contains(image ? "62" : "96k", encoder.Arguments!);
         if (image) { Assert.Equal(1, tools.Preparations); Assert.Equal("worker-fixture", tools.Marker); }
-        Assert.Empty(Directory.GetDirectories(_root));
+        Assert.DoesNotContain(Directory.GetDirectories(_root), path => Path.GetFileName(path) != NativeScratchWorkspace.ControlDirectoryName);
     }
 
     [Fact]
@@ -157,7 +194,7 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         Assert.False(outcome.Delivered); Assert.Contains("incomplete", outcome.Detail);
         Assert.Equal(0, tools.Probes); Assert.Empty(encoder.AllRuns);
         Assert.DoesNotContain(server.Transfer.Calls, call => call.EndsWith("/source", StringComparison.Ordinal));
-        Assert.Empty(Directory.GetDirectories(_root));
+        Assert.DoesNotContain(Directory.GetDirectories(_root), path => Path.GetFileName(path) != NativeScratchWorkspace.ControlDirectoryName);
     }
 
     [Fact]
@@ -167,7 +204,7 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         var tools = new NativeTools(Tool) { BlockSource = true }; var encoder = new FakeMeasuringTranscoder(); var preview = new Preview();
         var outcome = await Runner(server, tools, encoder, preview).RunAsync(new("https://server.example", "secret", 1), assignment, default);
         Assert.False(outcome.Delivered); Assert.Equal(1, server.Reports); Assert.Empty(encoder.AllRuns); Assert.Equal(0, preview.Calls);
-        Assert.Equal(0, tools.Verifications); Assert.Empty(Directory.GetDirectories(_root));
+        Assert.Equal(0, tools.Verifications); Assert.DoesNotContain(Directory.GetDirectories(_root), path => Path.GetFileName(path) != NativeScratchWorkspace.ControlDirectoryName);
     }
 
     [Theory]
@@ -205,7 +242,7 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var outcome = await Runner(server, tools, encoder).RunAsync(new("https://server.example", "secret", 1), assignment, deadline.Token);
         Assert.False(outcome.Delivered); Assert.True(server.Transfer.RenewCalls > 0); Assert.Empty(encoder.AllRuns);
-        Assert.Empty(Directory.GetDirectories(_root));
+        Assert.DoesNotContain(Directory.GetDirectories(_root), path => Path.GetFileName(path) != NativeScratchWorkspace.ControlDirectoryName);
     }
 
     [Fact]

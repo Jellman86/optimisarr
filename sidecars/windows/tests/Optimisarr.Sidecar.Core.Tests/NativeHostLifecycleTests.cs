@@ -96,6 +96,17 @@ public sealed class NativeHostLifecycleTests
         finally { input.ParentClosed.TrySetResult(); try { await read; } catch (IOException) { } catch (OperationCanceledException) { } }
     }
 
+    [Fact]
+    public async Task A_recovery_result_requires_a_successful_host_exit_and_stops_parent_monitoring()
+    {
+        using var input = new ParentStream(Request());
+        using var output = new MemoryStream();
+        var result = await NativeHostProgram.RunAsync(input, output, default,
+            (_, _, _) => Task.FromResult(new NativeHostEvent("recovered")));
+        Assert.Equal(0, result);
+        Assert.True(input.MonitorCancelled);
+    }
+
     private sealed class ParentStream(byte[] frame, bool ignoreCancellation = false) : Stream
     {
         private int _position;

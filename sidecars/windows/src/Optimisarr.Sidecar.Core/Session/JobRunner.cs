@@ -39,6 +39,7 @@ public sealed class JobRunner(
         var nativeSearch = assignment.PerceptualSearch is not null;
         var scratch = Path.Combine(scratchRoot, nativeSearch ? $"job-{assignment.JobId}-{assignment.LeaseId:N}-{Guid.NewGuid():N}" : $"job-{assignment.JobId}");
         var ownsScratch = false;
+        NativeScratchWorkspace? nativeWorkspace = null;
         IDisposable? reservation = null;
         PerceptualJobRuntime? native = null;
         string? measuredEncoderHash = null;
@@ -58,9 +59,9 @@ public sealed class JobRunner(
                 await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false, contractRefusal);
             }
-            var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
             if (nativeSearch)
             {
+                NativeScratchWorkspace.Recover(scratchRoot, cancellationToken: cancellationToken);
                 native = perceptual ?? PerceptualJobRuntime.Native(ffmpegPath, measurementFfmpegPath);
                 reservation = native.Reserve(assignment, scratchRoot);
                 if (reservation is null)
@@ -68,11 +69,13 @@ public sealed class JobRunner(
                     await client.ReleaseForCapacityAsync(pairing, assignment.LeaseId, CancellationToken.None);
                     return new(assignment.JobId, false, "The worker cannot confirm enough free memory and working space for this quality-first job.", CapacityBlocked: true);
                 }
-                if (Directory.Exists(scratch) || File.Exists(scratch))
-                    throw new SidecarException("The native workspace is occupied; the source was not fetched.", false);
+                nativeWorkspace = NativeScratchWorkspace.CreateJob(scratchRoot, assignment.JobId, assignment.LeaseId);
+                scratch = nativeWorkspace.DirectoryPath;
+                source = Path.Combine(scratch, "source");
+                candidatePrefix = Path.Combine(scratch, "candidate");
             }
-            Directory.CreateDirectory(scratch); ownsScratch = true;
-            if (nativeSearch && !OperatingSystem.IsWindows()) File.SetUnixFileMode(scratch, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            else { Directory.CreateDirectory(scratch); ownsScratch = true; }
+            var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
             report?.Invoke($"Job {assignment.JobId}: fetching {assignment.Title}");
             var declaredHash = await WhileRenewing(
                 pairing, assignment, RemoteStage.FetchingSource, null, cancellationToken,
@@ -283,15 +286,18 @@ public sealed class JobRunner(
         }
         catch (Exception error) when (nativeSearch && error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+            await client.ReleaseForCapacityAsync(pairing, assignment.LeaseId, CancellationToken.None);
             return new(assignment.JobId, false, "The native workspace or tools became unavailable; the original was kept.", CapacityBlocked: true);
         }
         finally
         {
             previewLifetime.Cancel();
             if (previews is not null) await previews.WaitForIdleAsync();
-            // Never left behind. A worker that kept every source it was ever sent would fill a disk
-            // in a weekend, and nothing here is of any use once the job has ended.
+            if (nativeWorkspace is not null)
+            {
+                if (!nativeWorkspace.Cleanup()) report?.Invoke($"Job {assignment.JobId}: native working files are retained for a later ownership-qualified cleanup.");
+                nativeWorkspace.Dispose();
+            }
             if (ownsScratch) TryDelete(scratch);
             reservation?.Dispose();
         }

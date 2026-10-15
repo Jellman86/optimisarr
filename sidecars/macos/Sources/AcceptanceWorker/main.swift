@@ -28,6 +28,14 @@ struct AcceptanceWorker {
             }
             return value
         }
+        if CommandLine.arguments.contains("--native-recover") {
+            let tools = NativeQualityTools(host: URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_HOST")),
+                ffmpeg: URL(fileURLWithPath: try required("OPTIMISARR_FFMPEG")))
+            let root = URL(fileURLWithPath: try required("OPTIMISARR_ACCEPTANCE_SCRATCH"))
+            let result = try await NativeScratchRecoveryService(tools: tools).recover(root: root)
+            try FileHandle.standardOutput.write(contentsOf: JSONEncoder().encode(result) + Data([10]))
+            return
+        }
         if CommandLine.arguments.contains("--native-workspace") {
             let root = URL(fileURLWithPath: try required("OPTIMISARR_ACCEPTANCE_SCRATCH"))
             let disk = NativeQualityJobRunner.availableDiskWorkspace(at: root)
@@ -147,6 +155,7 @@ struct AcceptanceWorker {
                                            "capacityBlocked": reply.capacityBlocked, "detail": "Check the server for its recorded outcome."]
                 }
             }
+            if let recovery = reply.recovery { terminal["recovery"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(recovery)) }
             if let memory = reply.nativeMemoryBytes { terminal["nativeMemoryBytes"] = memory }
             if let scratch = reply.requiredScratchBytes { terminal["requiredScratchBytes"] = scratch }
             try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: terminal) + Data([10]))

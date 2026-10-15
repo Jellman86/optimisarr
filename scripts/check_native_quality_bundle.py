@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import selectors
+import stat
 import subprocess
 import tempfile
 import time
@@ -20,10 +21,38 @@ def validate(event):
         raise ValueError('Packaged native tools did not prove JPEG/WebP, metadata and both pinned metrics')
 
 
+def validate_scratch(root):
+    def ordinary(path, directory=False):
+        info = path.lstat()
+        return (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size == 0)
+    try:
+        control = root / '.optimisarr-native'
+        if (not ordinary(root, directory=True) or set(path.name for path in root.iterdir()) != {control.name}
+                or not ordinary(control, directory=True) or set(path.name for path in control.iterdir()) != {'root.lock'}
+                or not ordinary(control / 'root.lock')):
+            raise ValueError('Packaged native qualification retained media, owner records or unexpected control files')
+    except OSError as error:
+        raise ValueError('Packaged native scratch ownership could not be verified') from error
+
+
+def retire_scratch(root):
+    # A killed helper can leave an encoder holding the owner guard. Preserve every
+    # working tree on failure; never let a generic temporary-directory cleanup bypass it.
+    try:
+        validate_scratch(root)
+    except ValueError:
+        return False
+    (root / '.optimisarr-native/root.lock').unlink()
+    (root / '.optimisarr-native').rmdir()
+    root.rmdir()
+    return True
+
+
 def check(app):
     resources = app.resolve() / 'Contents/Resources'
-    with tempfile.TemporaryDirectory(prefix='optimisarr-native-tools-') as scratch:
-        request = {'version': 1, 'mode': 'capabilities', 'scratchRoot': scratch,
+    scratch = Path(tempfile.mkdtemp(prefix='optimisarr-native-tools-'))
+    try:
+        request = {'version': 1, 'mode': 'capabilities', 'scratchRoot': str(scratch),
                    'ffmpegPath': str(resources / 'ffmpeg'), 'imageMetric': str(resources / 'optimisarr-image-quality'),
                    'audioMetric': str(resources / 'optimisarr-audio-quality'),
                    'metadataTool': str(resources / 'metadata/exiftool')}
@@ -53,8 +82,7 @@ def check(app):
                 if process.wait(timeout=10) != 0 or len(events) != 1:
                     raise ValueError('Packaged native qualification did not complete')
                 validate(events[0])
-                if list(Path(scratch).iterdir()):
-                    raise ValueError('Packaged native qualification left scratch behind')
+                validate_scratch(scratch)
                 print(json.dumps(events[0]['capabilities'], sort_keys=True))
             finally:
                 process.stdin.close()
@@ -65,6 +93,9 @@ def check(app):
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait(timeout=10)
+
+    finally:
+        retire_scratch(scratch)
 
 
 if __name__ == '__main__':

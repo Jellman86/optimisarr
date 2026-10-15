@@ -23,13 +23,23 @@ preservation and marker readback, both pinned metrics, scratch cleanup and all 2
 states. This is package qualification for that tool set, not notarisation, automatic placement,
 full job/restart acceptance or complete parity. The pinned Mac FFmpeg now includes WebP. Its lossy/lossless checks require exact alpha, and lossless colour must match the independent RGBA fixture byte for byte. Those WebP checks pass on Mac, native Quark and native Picard. The relocated signed Mac bundle now proves both JPEG and WebP with metadata preservation.
 
-Latest source verification: 3,522 backend tests, 463 shared worker tests plus three Windows-only
-skips, 31 Linux tests, 353 Swift core plus 9 UI tests and 149 Python tests. Earlier native Windows
-verification passed all 466 shared tests. Mac AAC/Opus/MP3 workflows previously covered replay,
-strict final verification, repeated replacement and exact rollback. Check the PR for exact-head CI.
+Native scratch now uses persistent, inherited ownership guards across .NET and Swift work.
+Recovery retains files while a surviving tool holds its guard, validates physical identities,
+preflights bounded trees and records deletion intent for interrupted cleanup. Startup and chosen
+folder recovery run before native admission. Actual FFmpeg parent-death trials pass on Mac,
+Quark and Picard; the signed Mac helper also passes Swift recovery and busy-volume retention on
+a real RAM disk. Unknown filenames cannot starve owner pages. This proves specific process
+restart behaviour, not complete packaged-job or machine-reboot/remount recovery. See the
+[ownership qualification and limits](../engineering/hardware-validation/2026-10-15-native-scratch-recovery.md).
 
-Continue with exact-package media lifecycles, then durable ownership
-fences for native scratch restart recovery. Fixed-image worker coverage, adaptive selection for
+Latest source verification: 3,522 backend tests, 509 shared worker tests plus three Windows-only
+skips on Mac/Quark, 512 native Windows shared tests, 31 Linux tests, 366 Swift core plus nine UI
+tests, 154 Python tests and 346 browser tests. Mac AAC/Opus/MP3 workflows previously covered
+replay, strict final verification, repeated replacement and exact rollback. Check the PR for
+exact-head CI.
+
+Continue with exact-package media lifecycles and broader restart/reconnect qualification.
+Fixed-image worker coverage, adaptive selection for
 every retained re-encoded soundtrack, preview/calibration parity, broader source, reconnect/retry
 and input-format qualification remain required. Positive full-image execution under live Mac
 admission is still unproved: earlier available memory was below the 3.5 GiB budget, and the job
@@ -68,7 +78,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
 | Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Packaged Swift capability/placement qualification, broader reconnect acceptance, interrupted-attempt history and export qualification |
-| Lifetime | Owned local scratch, stopped-process cleanup, cancellation propagation, source revalidation, attempt-fenced result persistence | All native worker implementations, resource exhaustion and restart/reconnect acceptance |
+| Lifetime | Local scratch ownership, inherited native guards, bounded restart recovery, partial cleanup replay, cancellation and busy RAM retention; source revalidation and attempt-fenced persistence | Exact packaged restart/reconnect, full reboot/remount and resource-exhaustion acceptance |
 | Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Native worker retry/restart and exact-package qualification |
 | Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
 

@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Optimisarr.Sidecar.Core\Optimisarr.Sidecar.Core.csproj" />
     <ProjectReference Include="..\..\src\Optimisarr.Sidecar.Service\Optimisarr.Sidecar.Service.csproj" />
     <ProjectReference Include="../../../native/src/Optimisarr.Sidecar.Native/Optimisarr.Sidecar.Native.csproj" />
+    <ProjectReference Include="../Optimisarr.Sidecar.ScratchFixture/Optimisarr.Sidecar.ScratchFixture.csproj" />
   </ItemGroup>
 
 </Project>

@@ -4,12 +4,13 @@ import Testing
 
 private final class NativeExchangeFixture: NativeQualityExchanging, @unchecked Sendable {
     let budget: MemoryWorkBudget
+    let recoveryFails: Bool
     let run: @Sendable (Data) async throws -> NativeQualityReply
     private let gate = NSLock()
     private var modes: [String] = []
     var requests: [String] { gate.withLock { modes } }
-    init(budget: MemoryWorkBudget, run: @escaping @Sendable (Data) async throws -> NativeQualityReply) {
-        self.budget = budget; self.run = run
+    init(budget: MemoryWorkBudget, recoveryFails: Bool = false, run: @escaping @Sendable (Data) async throws -> NativeQualityReply) {
+        self.budget = budget; self.run = run; self.recoveryFails = recoveryFails
     }
     func exchange(request: Data, expectedJobId: Int?, report: @escaping @Sendable (NativeQualityEvent) -> Void) async throws -> NativeQualityReply {
         let json = try JSONSerialization.jsonObject(with: request) as! [String: Any]
@@ -19,6 +20,12 @@ private final class NativeExchangeFixture: NativeQualityExchanging, @unchecked S
             #expect(json["pairing"] == nil && json["grantedMemoryBytes"] == nil)
             return NativeQualityReply(type: "requirements", jobId: expectedJobId, delivered: false, capacityBlocked: false,
                 capabilities: nil, nativeMemoryBytes: 40_000, requiredScratchBytes: 10_000)
+        }
+        if mode == "recover" {
+            if recoveryFails { throw NativeQualityHostError() }
+            #expect(budget.reservedBytes == 0)
+            return NativeQualityReply(type: "recovered", jobId: nil, delivered: false, capacityBlocked: false,
+                capabilities: nil, recovery: NativeScratchRecovery(removed: 1))
         }
         #expect(budget.reservedBytes >= 40_000)
         return try await run(request)
@@ -41,10 +48,14 @@ struct NativeQualityJobRunnerTests {
             return NativeQualityReply(type: "completed", jobId: 12, delivered: true, capacityBlocked: false, capabilities: nil)
         }
         let runner = NativeQualityJobRunner(client: SidecarClient(transport: StubTransport(status: 204)), tools: tools,
-            helper: helper, scratchRoot: root, memoryBudget: budget, availableMemory: { 100_000 }, workspace: { _ in NativeDiskCapacity(volume: "fixture", availableBytes: 100_000) })
+            helper: helper, scratchRoot: root, memoryBudget: budget, availableMemory: { 100_000 }, workspace: { chosen in
+                #expect(chosen == root)
+                #expect(helper.requests == ["requirements", "recover"])
+                return NativeDiskCapacity(volume: "fixture", availableBytes: 100_000)
+            })
         let outcome = await runner.execute(try #require(Assignment.decode(NativeQualityAssignmentTests.wire())), pairing: pairing) { _ in }
         #expect(outcome == .delivered(jobId: 12, bytes: nil))
-        #expect(helper.requests == ["requirements", "run"])
+        #expect(helper.requests == ["requirements", "recover", "run"])
         #expect(budget.reservedBytes == 0)
     }
 
@@ -59,9 +70,26 @@ struct NativeQualityJobRunnerTests {
             let outcome = await runner.execute(try #require(Assignment.decode(NativeQualityAssignmentTests.wire())), pairing: pairing) { _ in }
             guard case .capacityBlocked = outcome else { Issue.record("Expected acknowledged capacity refusal"); continue }
             #expect(transport.lastRequest?.url?.path.hasSuffix("/capacity-unavailable") == true)
-            #expect(helper.requests == ["requirements"])
+            #expect(helper.requests == ["requirements", "recover"])
             #expect(budget.reservedBytes == 0)
         }
+    }
+
+    @Test("unavailable recovery is a neutral capacity return before disk admission or native media work")
+    func recoveryUnavailable() async throws {
+        let budget = MemoryWorkBudget()
+        let helper = NativeExchangeFixture(budget: budget, recoveryFails: true) { _ in
+            Issue.record("Recovery failure cannot start media work"); throw NativeQualityHostError()
+        }
+        let transport = StubTransport(status: 204)
+        let runner = NativeQualityJobRunner(client: SidecarClient(transport: transport), tools: tools, helper: helper,
+            scratchRoot: root, memoryBudget: budget, availableMemory: { 100_000 }, workspace: { _ in
+                Issue.record("Recovery must precede capacity sampling"); return nil
+            })
+        let outcome = await runner.execute(try #require(Assignment.decode(NativeQualityAssignmentTests.wire())), pairing: pairing) { _ in }
+        guard case .capacityBlocked = outcome else { Issue.record("Expected neutral, acknowledged capacity return"); return }
+        #expect(transport.lastRequest?.url?.path.hasSuffix("/capacity-unavailable") == true)
+        #expect(helper.requests == ["requirements", "recover"] && budget.reservedBytes == 0)
     }
 
     @Test("a failed capacity handback is unconfirmed, never a confirmed cooldown")
@@ -138,7 +166,7 @@ struct NativeQualityJobRunnerTests {
             destroyRamDisk: { _ in live.eject(); return true }, availableScratch: { _ in 100_000 })
         let outcome = await runner.execute(try #require(Assignment.decode(NativeQualityAssignmentTests.wire())), pairing: pairing) { _ in }
         guard case .capacityBlocked = outcome else { Issue.record("Expected capacity hand-back before run"); return }
-        #expect(helper.requests == ["requirements"])
+        #expect(helper.requests == ["requirements", "recover"])
         #expect(live.ejected)
         #expect(budget.reservedBytes == 0)
     }
@@ -181,7 +209,7 @@ struct NativeQualityJobRunnerTests {
             workspace: { _ in NativeDiskCapacity(volume: "lease-fixture", availableBytes: 100_000) })
         let outcome = await runner.execute(try #require(Assignment.decode(NativeQualityAssignmentTests.wire())), pairing: pairing) { _ in }
         guard case .leaseLost = outcome else { Issue.record("Expected authoritative lease loss before native run"); return }
-        #expect(helper.requests == ["requirements"])
+        #expect(helper.requests == ["requirements", "recover"])
         #expect(budget.reservedBytes == 0)
     }
 

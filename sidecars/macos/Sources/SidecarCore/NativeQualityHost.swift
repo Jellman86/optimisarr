@@ -22,12 +22,13 @@ public struct NativeQualityReply: Sendable {
     public let capabilities: Data?
     public let nativeMemoryBytes: Int64?
     public let requiredScratchBytes: Int64?
+    public let recovery: NativeScratchRecovery?
 
     init(type: String, jobId: Int?, delivered: Bool, capacityBlocked: Bool, capabilities: Data?,
-         nativeMemoryBytes: Int64? = nil, requiredScratchBytes: Int64? = nil) {
+         nativeMemoryBytes: Int64? = nil, requiredScratchBytes: Int64? = nil, recovery: NativeScratchRecovery? = nil) {
         self.type = type; self.jobId = jobId; self.delivered = delivered
         self.capacityBlocked = capacityBlocked; self.capabilities = capabilities
-        self.nativeMemoryBytes = nativeMemoryBytes; self.requiredScratchBytes = requiredScratchBytes
+        self.nativeMemoryBytes = nativeMemoryBytes; self.requiredScratchBytes = requiredScratchBytes; self.recovery = recovery
     }
 }
 
@@ -185,6 +186,7 @@ struct NativeQualityFrames {
         let outcome: WireOutcome?
         let nativeMemoryBytes: Int64?
         let requiredScratchBytes: Int64?
+        let recovery: NativeScratchRecovery?
     }
     let expectedJobId: Int?
     private var pending = Data()
@@ -222,6 +224,14 @@ struct NativeQualityFrames {
                       let scratch = value.requiredScratchBytes, scratch > 0 else { throw NativeQualityHostError() }
                 terminal = NativeQualityReply(type: value.type, jobId: jobId, delivered: false,
                     capacityBlocked: false, capabilities: nil, nativeMemoryBytes: memory, requiredScratchBytes: scratch)
+            case "recovered":
+                guard expectedJobId == nil, jobId == nil, value.outcome == nil,
+                      value.nativeMemoryBytes == nil, value.requiredScratchBytes == nil,
+                      let recovery = value.recovery, recovery.isValidPage,
+                      let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                      raw["capabilities"] == nil || raw["capabilities"] is NSNull else { throw NativeQualityHostError() }
+                terminal = NativeQualityReply(type: value.type, jobId: nil, delivered: false,
+                    capacityBlocked: false, capabilities: nil, recovery: recovery)
             case "capabilities":
                 guard expectedJobId == nil, jobId == nil, let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                       let proof = raw["capabilities"] as? [String: Any] else { throw NativeQualityHostError() }
@@ -240,7 +250,7 @@ struct NativeQualityFrames {
 
     func finish(exitCode: Int32) throws -> NativeQualityReply {
         guard pending.isEmpty, let terminal else { throw NativeQualityHostError() }
-        let expectedExit = ["capabilities", "requirements"].contains(terminal.type) || terminal.delivered ? exitCode == 0
+        let expectedExit = ["capabilities", "requirements", "recovered"].contains(terminal.type) || terminal.delivered ? exitCode == 0
             : terminal.type == "refused" ? [1, 2].contains(exitCode) : exitCode == 1
         guard expectedExit else { throw NativeQualityHostError() }
         return terminal

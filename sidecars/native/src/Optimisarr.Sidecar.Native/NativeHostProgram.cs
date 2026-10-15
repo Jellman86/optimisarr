@@ -42,7 +42,7 @@ internal static class NativeHostProgram
             }
             try { await events.FinishAsync(result); }
             catch (IOException) { return 2; }
-            return result.Type is "capabilities" or "requirements" || result.Outcome?.Delivered == true ? 0 : 1;
+            return result.Type is "capabilities" or "requirements" or "recovered" || result.Outcome?.Delivered == true ? 0 : 1;
         }
         finally
         {

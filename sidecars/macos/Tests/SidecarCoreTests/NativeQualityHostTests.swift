@@ -15,6 +15,38 @@ struct NativeQualityHostTests {
         #expect(throws: NativeQualityHostError.self) { try frames.finish(exitCode: 1) }
     }
 
+    @Test("recovery returns a bounded summary without a job or tool capability")
+    func recoveryFrames() throws {
+        var frames = NativeQualityFrames(expectedJobId: nil)
+        _ = try frames.append(Data((#"{"version":1,"type":"recovered","recovery":{"removed":2,"busy":1,"deferred":0,"invalid":0,"nextOwner":"owner-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json","scanLimited":false}}"# + "\n").utf8))
+        let reply = try frames.finish(exitCode: 0)
+        #expect(reply.type == "recovered" && reply.jobId == nil && !reply.delivered)
+        #expect(throws: NativeQualityHostError.self) { try frames.finish(exitCode: 1) }
+    }
+
+    @Test("missing, ambiguous, unbounded or job-bearing recovery frames cannot authorise cleanup")
+    func invalidRecoveryFrames() {
+        for body in [
+            #""recovery":{}"#,
+            #""recovery":{"removed":-1,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#,
+            #""recovery":{"removed":65,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#,
+            #""recovery":{"removed":64,"busy":1,"deferred":0,"invalid":0,"scanLimited":false}"#,
+            #""recovery":{"removed":0,"busy":0,"deferred":0,"invalid":0,"nextOwner":"../outside","scanLimited":false}"#,
+            #""recovery":{"removed":0,"busy":0,"deferred":0,"invalid":0,"nextOwner":"owner-00000000000000000000000000000000.json","scanLimited":false}"#,
+            #""recovery":{"removed":0,"Removed":1,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#,
+            #""jobId":12,"recovery":{"removed":0,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#,
+            #""outcome":{"jobId":12,"delivered":true},"recovery":{"removed":0,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#,
+            #""nativeMemoryBytes":1,"recovery":{"removed":0,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#,
+            #""capabilities":{},"recovery":{"removed":0,"busy":0,"deferred":0,"invalid":0,"scanLimited":false}"#
+        ] {
+            #expect(throws: NativeQualityHostError.self) {
+                var frames = NativeQualityFrames(expectedJobId: nil)
+                _ = try frames.append(Data((#"{"version":1,"type":"recovered","# + body + "}\n").utf8))
+                _ = try frames.finish(exitCode: 0)
+            }
+        }
+    }
+
     @Test("fragmented progress and final events retain their identity")
     func frames() throws {
         var frames = NativeQualityFrames(expectedJobId: 12)

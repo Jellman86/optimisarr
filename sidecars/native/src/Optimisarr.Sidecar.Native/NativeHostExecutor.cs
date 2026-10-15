@@ -9,6 +9,9 @@ internal static class NativeHostExecutor
     public static async Task<NativeHostEvent> RunAsync(NativeHostRequest request, Action<NativeHostEvent> report, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (request.Mode == "recover")
+            return new("recovered", Recovery: NativeScratchWorkspace.Recover(request.ScratchRoot,
+                afterOwner: request.RecoveryAfterOwner, cancellationToken: token));
         if (request.Mode == "requirements")
         {
             var planned = request.Assignment!.Value.Deserialize<Assignment>(NativeHostProtocol.Json)!;

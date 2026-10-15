@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+import os
 
 SPEC = importlib.util.spec_from_file_location('quality_bundle', Path(__file__).resolve().parents[1] / 'check_native_quality_bundle.py')
 bundle = importlib.util.module_from_spec(SPEC)
@@ -37,3 +39,62 @@ class NativeQualityBundleTests(unittest.TestCase):
         proof['capabilities']['imageEncoders'] = ['mjpeg']
         with self.assertRaises(ValueError):
             bundle.validate(proof)
+
+
+class NativeScratchBundleTests(unittest.TestCase):
+    def test_completed_qualification_allows_only_the_empty_stable_coordinator(self):
+        with tempfile.TemporaryDirectory() as root:
+            control = Path(root) / '.optimisarr-native'
+            control.mkdir()
+            (control / 'root.lock').touch()
+            bundle.validate_scratch(Path(root))
+
+    def test_unknown_or_owned_files_are_never_hidden_by_the_control_directory_exception(self):
+        for relative in ['source', 'native-capability-old/source.png', '.optimisarr-native/owner-dead.json',
+                         '.optimisarr-native/unknown', '.optimisarr-native/root.lock/child']:
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as root:
+                leaf = Path(root) / relative
+                leaf.parent.mkdir(parents=True, exist_ok=True)
+                leaf.touch()
+                if not (Path(root) / '.optimisarr-native/root.lock').exists():
+                    (Path(root) / '.optimisarr-native').mkdir(exist_ok=True)
+                    (Path(root) / '.optimisarr-native/root.lock').touch()
+                with self.assertRaises(ValueError):
+                    bundle.validate_scratch(Path(root))
+
+    def test_reparse_links_and_shared_or_nonempty_gate_files_do_not_qualify(self):
+        for kind in ['control-link', 'gate-link', 'gate-hardlink', 'gate-content', 'missing-gate', 'missing-control']:
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+                control = Path(root) / '.optimisarr-native'
+                gate = control / 'root.lock'
+                target = Path(outside) / 'kept'
+                target.touch()
+                if kind == 'control-link':
+                    control.symlink_to(outside, target_is_directory=True)
+                elif kind != 'missing-control':
+                    control.mkdir()
+                    if kind == 'gate-link': gate.symlink_to(target)
+                    elif kind == 'gate-hardlink': os.link(target, gate)
+                    elif kind == 'gate-content': gate.write_text('unexpected')
+                    elif kind != 'missing-gate': gate.touch()
+                with self.assertRaises(ValueError):
+                    bundle.validate_scratch(Path(root))
+                self.assertTrue(target.exists())
+
+    def test_failed_proof_retains_owned_work_even_after_the_helper_exits(self):
+        with tempfile.TemporaryDirectory() as root:
+            work = Path(root) / 'native-capability-owned'
+            work.mkdir()
+            copy = work / 'source.png'
+            copy.write_text('still owned by a surviving encoder')
+            self.assertFalse(bundle.retire_scratch(Path(root)))
+            self.assertEqual(copy.read_text(), 'still owned by a surviving encoder')
+
+    def test_successful_proof_retires_only_its_empty_control_directory(self):
+        with tempfile.TemporaryDirectory() as parent:
+            root = Path(parent) / 'proof'
+            control = root / '.optimisarr-native'
+            control.mkdir(parents=True)
+            (control / 'root.lock').touch()
+            self.assertTrue(bundle.retire_scratch(root))
+            self.assertFalse(root.exists())

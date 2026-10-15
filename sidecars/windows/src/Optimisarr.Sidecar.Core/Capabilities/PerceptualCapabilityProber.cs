@@ -27,13 +27,12 @@ public sealed class PerceptualCapabilityProber
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromMinutes(1));
-        var root = Path.Combine(scratchRoot, "native-capability-" + Guid.NewGuid().ToString("N"));
-        var owned = false;
+        NativeScratchWorkspace? workspace = null;
         try
         {
-            if (Directory.Exists(root) || File.Exists(root)) return new();
-            Directory.CreateDirectory(root); owned = true;
-            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            NativeScratchWorkspace.Recover(scratchRoot, cancellationToken: deadline.Token);
+            workspace = NativeScratchWorkspace.CreateCapability(scratchRoot);
+            var root = workspace.DirectoryPath;
             var source = Path.Combine(root, "source.png");
             var copy = Path.Combine(root, "copy.png");
             var audio = Path.Combine(root, "stereo.wav");
@@ -62,9 +61,7 @@ public sealed class PerceptualCapabilityProber
         catch (Exception error) when (Unavailable(error)) { return new(); }
         finally
         {
-            if (owned)
-                try { Directory.Delete(root, recursive: true); }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            if (workspace is not null) { workspace.Cleanup(); workspace.Dispose(); }
         }
     }
 

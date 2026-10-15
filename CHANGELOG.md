@@ -60,6 +60,9 @@
 
 ### Fixed
 
+- Native audio/image work now keeps an inherited ownership guard through search and verification. Restart recovery preserves surviving writers, refuses redirected or shared files and resumes recorded partial cleanup. Mac startup and folder changes recover owned work before capacity checks; busy RAM volumes retain their allocation instead of being forcibly detached. Package checks permit only the empty persistent coordinator and retain working files after a failed helper.
+
+
 - Temporary worker capacity returns now retain their retry pause without counting as permanent file-refusal opinions. Three low-memory workers can no longer bar a job from every worker. Capacity returns are replay-safe, preserve cancellation and retry intent, and keep the original release API intact.
 
 - The Mac worker now refuses unreadable or unsupported quality-search instructions as a whole. It confirms the hand-back before treating that claim as finished; an unconfirmed claim drains new work and blocks automatic shutdown while check-ins continue. In-flight claims are also handed back when another job becomes unconfirmed.

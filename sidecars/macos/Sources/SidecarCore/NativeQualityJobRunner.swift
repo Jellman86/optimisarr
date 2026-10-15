@@ -59,6 +59,11 @@ public struct NativeQualityJobRunner: WorkExecutor {
             var root = scratchRoot
             var fallback: String?
             if case let .folder(folder) = snapshot.workLocation { root = folder }
+            do { _ = try await NativeScratchRecoveryService(tools: tools, helper: helper).recover(root: root) }
+            catch is CancellationError { throw CancellationError() }
+            catch {
+                return await release(assignment, pairing, "Native working-file ownership could not be checked; existing files were retained.", capacity: true)
+            }
             if snapshot.workLocation == .memory {
                 if let allocated = RamDisk.allocationBytes(for: scratch),
                    let token = memoryBudget.reserve(nativeBytes: peak, ramBytes: allocated,

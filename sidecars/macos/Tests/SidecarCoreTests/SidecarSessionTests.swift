@@ -340,6 +340,48 @@ struct SidecarSessionTests {
         session.unpair()
     }
 
+    @Test("startup, unpair and caller cancellation own working-file recovery before network activity", arguments: ["restore-unpair", "pair-unpair", "pair-cancel"])
+    func nativeRecoveryOwnership(action: String) async throws {
+        let helper = ScratchRecoveryHelper(hang: true)
+        let recovery = NativeScratchRecoveryService(tools: NativeQualityCapabilityTests.tools, helper: helper)
+        let transport = ScriptedTransport([.init(status: 200, json: [:])])
+        let store = InMemoryCredentialStore(stored: StoredPairing(serverAddress: "localhost:8787", credential: "fixture", workerId: 11))
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: store, prober: nil,
+            recoverNativeScratch: { _ = try? await recovery.recover(root: URL(fileURLWithPath: "/fixture")) }, persistConcurrency: { _ in })
+        let task: Task<Void, Never>?
+        if action.hasPrefix("pair-") { task = Task { await session.pair(serverAddress: "localhost:8787", pin: "fixture") } }
+        else { session.restore(); task = nil }
+        try await waitFor { !helper.requests.isEmpty }
+        #expect(transport.callCount == 0)
+        if action.hasSuffix("cancel") { task?.cancel() } else { session.unpair() }
+        try await waitFor { helper.stopped }
+        await task?.value
+        #expect(transport.callCount == 0)
+        session.unpair()
+    }
+
+    @Test("a changed working folder is recovered before its capacity is advertised")
+    func changedNativeWorkingFolder() async throws {
+        let helper = ScratchRecoveryHelper(pages: [NativeScratchRecovery()])
+        let recovery = NativeScratchRecoveryService(tools: NativeQualityCapabilityTests.tools, helper: helper)
+        let settings = SettingsSnapshot()
+        let proof = try #require(WorkerPerceptualCapabilities(proof: NativeQualityCapabilityTests.proof))
+        let transport = ScriptedTransport([.init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 10, "heartbeatIntervalSeconds": 30])])
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
+            capabilities: SidecarCapabilities(name: "Fixture", perceptual: proof), prober: nil, settingsSnapshot: settings,
+            nativeResources: { caps in
+                if case let .folder(folder) = settings.workLocation { #expect(helper.roots.contains(folder.path)) }
+                return caps
+            }, recoverNativeScratch: { await recovery.recoverWorkingRoots(settings: settings,
+                defaultRoot: URL(fileURLWithPath: "/default"), capabilityRoot: URL(fileURLWithPath: "/capability")) },
+            persistConcurrency: { _ in }, sleep: { _ in try await Task.sleep(for: .milliseconds(5)) })
+        await session.pair(serverAddress: "localhost:8787", pin: "fixture")
+        settings.update(workLocation: .folder(URL(fileURLWithPath: "/new-choice")), memoryBudgetBytes: 0)
+        try await waitFor { helper.roots.contains("/new-choice") }
+        session.unpair()
+        #expect(helper.roots == ["/default", "/capability", "/default", "/capability", "/new-choice"])
+    }
+
     @Test("the panel's free space is the figure the latest check-in reported")
     func freeSpaceFollowsCheckIn() async throws {
         let store = InMemoryCredentialStore(
