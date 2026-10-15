@@ -177,3 +177,32 @@ now records the full physical allocation receipt. No production retirement logic
 changes. The repeated live gate passes **17 registered cases**, with the same explicit legacy
 FFmpeg-only skip. Astra's read-only review found no actionable production defect and accepted
 this bounded same-receipt qualification.
+
+## Shared ledger and checkpoint foundation
+
+The new pure shared format records immutable owner/purpose/job/lease, actual root, pinned scope,
+physical volume identity and separate peak/scratch requirements. Checked transition validation
+refuses rewritten obligations, phase regression, skipped retirement, premature compaction and
+revision overflow. Charges remain through Retired until durable Released. Immutable collections
+close an exposed-array mutation reproduced by a failing regression.
+
+The independent-checkpoint rules bind a store to its journal path, physical directory and lock.
+Interrupted saves admit only their exact old/new hashes. Earlier empty snapshots, changed bindings,
+missing authority and nested pending transitions are refused. Canonical bounded JSON and golden
+byte fixtures freeze property order, nulls, GUIDs, enums, escaping and the full-document digest.
+
+All **90 pure cases** pass locally, including null/malformed data, UTF-16 and text limits,
+duplicate owners, aggregate charge overflow, mutable collection exposure and rollback rules.
+A further failing regression proves valid escaped path text cannot make a generated checkpoint
+exceed its serialized byte limit; initialization, pending and resolved results are all bounded.
+Astra's initial and follow-up read-only reviews find no actionable defect in this foundation.
+This is not persistence or a crash-boundary qualification: OS storage, independent checkpoint
+durability, physical-volume pool keys and coordinator wiring remain required. See the
+[accounting contract and integration requirements](../../development/native-work-accounting.md).
+
+The final frozen C# source passes zero-warning builds and all **3,545 backend / 686 shared-worker
+tests** on Mac and Quark, with the same three Windows-only skips. Quark also passes all **31
+Linux tests** after verifying the source archive hash. Swift, browser and Python sources are
+unchanged from the preceding capability checkpoint's passing 490 core/nine UI, 346 browser
+and 154 Python gates. Documentation checks pass again. Picard remains unreachable, so fresh
+physical Windows qualification is still pending.

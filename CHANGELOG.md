@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an immutable, bounded shared native-work ledger and independent-checkpoint transition rules. Unsafe phase changes, rewritten obligations, overflow and older ledger copies are refused. Durable storage and standalone startup integration remain pending.
+
 - Add scoped, accounted capability workspaces with replayable retirement receipts. Surviving probe tools retain ownership after parent death, and generic cleanup cannot erase their accounting evidence. Standalone durable coordinator integration remains pending.
 
 - Make live RAM retirement qualification replay the original physical receipt after unmount and retain the full receipt when cleanup is unconfirmed. Mounted-volume and wrong-owner refusal checks remain mandatory; production retirement behavior is unchanged.
