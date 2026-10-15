@@ -59,8 +59,9 @@ unconnected; this prerequisite does not establish standalone restart accounting.
 
 The shared .NET [accounting format and checkpoint rules](native-work-accounting.md) now freeze
 immutable obligations and forward transitions, and accept only independently recorded old/new
-snapshots after an interrupted save. These are pure rules; physical-volume pool keys, durable
-OS storage and coordinator effect ordering remain required before standalone integration.
+snapshots after an interrupted save. A fixed physical-ID pool now prevents mixed path/ID
+accounting namespaces. Physical identity/capacity capture, durable OS storage and coordinator
+effect ordering remain required before standalone integration.
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.

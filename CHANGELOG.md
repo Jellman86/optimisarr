@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add explicit physical-volume resource pools with bounded opaque IDs. Path and physical-ID APIs cannot mix accounting namespaces, and refused restoration cannot silently discard existing charges. Physical capacity capture and standalone coordinator wiring remain pending.
+
 - Add an immutable, bounded shared native-work ledger and independent-checkpoint transition rules. Unsafe phase changes, rewritten obligations, overflow and older ledger copies are refused. Durable storage and standalone startup integration remain pending.
 
 - Add scoped, accounted capability workspaces with replayable retirement receipts. Surviving probe tools retain ownership after parent death, and generic cleanup cannot erase their accounting evidence. Standalone durable coordinator integration remains pending.

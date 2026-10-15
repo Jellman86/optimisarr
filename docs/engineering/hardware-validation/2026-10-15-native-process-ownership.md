@@ -206,3 +206,23 @@ Linux tests** after verifying the source archive hash. Swift, browser and Python
 unchanged from the preceding capability checkpoint's passing 490 core/nine UI, 346 browser
 and 154 Python gates. Documentation checks pass again. Picard remains unreachable, so fresh
 physical Windows qualification is still pending.
+
+## Physical-volume pool prerequisite
+
+The shared pool now has a fixed physical-ID mode alongside the unchanged default path mode.
+Opaque IDs preserve case and path-like characters on every platform. Wrong-mode APIs fail
+before normalization or mutation and cannot create a second accounting namespace. Null and
+uninitialized ID wrappers, invalid UTF-16, unknown capacity and invalid charges are refused.
+All volumes still share one owner table and memory charge; replay, overflow, exactly-once release
+and concurrent admission retain the existing policy.
+
+All **20 new pure cases** and **48 targeted resource cases** pass locally. Astra's design and
+source reviews find no actionable defect in this prerequisite. This does not prove that an OS
+adapter captures physical identity and capacity from one pinned root or that standalone callers
+share the new pool; those integration requirements remain open.
+
+The frozen source passes zero-warning .NET builds, **3,565 backend tests** and **686 shared-worker
+tests** on Mac and native Quark, plus three Windows-only skips. Quark passes **31 Linux tests**
+after verifying the source archive hash. All **346 browser tests** pass again. Swift and Python
+sources retain the preceding passing checkpoints. Picard's SSH connection still times out;
+the new physical-ID policy has no fresh physical Windows qualification yet.

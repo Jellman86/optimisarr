@@ -49,6 +49,25 @@ when provisioning a positively new store under exclusive ownership. It must not 
 method to repair a missing checkpoint for an existing journal, even when that journal is empty.
 First-start crash recovery needs its own independently authorized bootstrap ordering.
 
+## Resource pool identity
+
+`PerceptualJobResourcePool.ForPhysicalVolumes()` creates a pool with one fixed physical-ID
+namespace. `PhysicalVolumeId` preserves its exact value, including case and path-like characters;
+it never passes through path normalization. IDs require nonblank, valid UTF-8 text of at most
+512 bytes without NUL. Every typed pool boundary also refuses null or uninitialized identifiers.
+
+The default pool retains its existing path semantics. Neither mode can change during its lifetime,
+even when empty. Calling the wrong API mode refuses admission/restoration and reports zero
+available capacity; it cannot introduce a separate namespace that hides another charge. Each
+pool still shares one owner table and memory total across its volumes, with checked overflow,
+idempotent restoration and exactly-once release.
+
+The coordinator must inject the same physical pool into every native admission, recovery and
+capacity-reporting caller. It must check every restoration result and hold admission when one
+fails; zero reported availability is not proof that debt was successfully restored. The OS adapter
+still needs to obtain a canonical physical ID and capacity from the same pinned root. Opaque IDs
+must never be substituted with display names or mount paths.
+
 ## Required integration
 
 The portable coordinator and OS adapters must enforce this ordering:
@@ -70,8 +89,8 @@ while an admitted operation or finalizer can still act.
 Busy, incomplete or untrusted recovery must drain all claims while retaining pairing and
 heartbeats. Live owners need explicit exclusion from maintenance. Cancellation and observer
 failures cannot skip finalization. Capacity reporting, admission and recovery must share one
-pool. That pool still needs a physical-volume key API: opaque IDs must not pass through its
-existing path-normalization methods.
+pool. The physical-ID API above is available, but identity capture and coordinator injection remain
+required; existing standalone callers still use the path pool.
 
 Windows requires a fixed machine-context, ACL-protected checkpoint separate from the journal
 directory. Linux requires a private, no-follow checkpoint on persistent storage outside the
