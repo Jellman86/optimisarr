@@ -138,3 +138,42 @@ This pool performs no filesystem access and does not persist obligations, authen
 or connect standalone startup, capability probing and execution. The durable coordinator, its
 independent checkpoint, previous-root recovery and positive receipt consumption remain required
 before standalone restart accounting can be qualified. Fresh Picard execution is still pending.
+
+## Accounted capability ownership
+
+Capability probes now have explicit v2 workspace creation, targeted retirement and receipt
+consumption APIs. They require a parent-selected owner and a pinned physical root/control/gate
+scope. Probe identities carry no job or lease, and neither kind of receipt can satisfy the other.
+Generic recovery preserves both active and retired accounted probe records for their coordinator.
+Cleanup closes this parent's inherited guard before attempting retirement and retains the positive
+receipt until explicit consumption. Missing records never establish retirement.
+
+The test-first API contract and ownership cases cover live guards, replay, purpose confusion,
+legacy unaccounted probes, replaced root/control/gate/owner/marker identities, missing scopes,
+nonce conflicts, incomplete deletion and pre-cancelled retirement. The managed parent-death
+fixture now exercises both jobs and capability probes: a surviving child vetoes targeted cleanup
+until its actual exit, then retirement and receipt consumption succeed. These are workspace
+component tests; the standalone capability prober still needs durable resource admission and
+startup reconciliation before using this API.
+
+The expanded component gate passes **35 cases**, including both real parent-death variants,
+on Mac and native Quark. Each host also passes zero-warning .NET builds, **3,545 backend tests**
+and **596 shared-worker tests** plus three Windows-only event-log skips; Quark passes **31 Linux
+tests**. The source archive was hash-verified before remote execution. Independent Astra review
+found no actionable defect in this prerequisite. Fresh Picard SSH still times out, so these
+results do not certify physical Windows execution of the new capability API.
+
+All **346 browser tests**, **154 Python tests**, documentation and Unraid checks pass again.
+The live RAM gate initially refuses a partial allocation's immediate post-unmount retirement
+and retains its recovery intent. A later exact-owner capture through the normal API positively
+retires and replays that owned fixture; independent enumeration confirms it absent. The original
+failure and recovery evidence remain private. This establishes immediate refusal followed by
+successful owned retirement, without identifying which original OS guard refused the attempt.
+
+The fixture now polls retirement within a bounded interval using the **same original receipt**
+after successful handle-bound unmount and handle closure. It still requires positive retirement
+and preserves the mounted-volume, redirected-owner and sentinel assertions. Unconfirmed cleanup
+now records the full physical allocation receipt. No production retirement logic or deadline
+changes. The repeated live gate passes **17 registered cases**, with the same explicit legacy
+FFmpeg-only skip. Astra's read-only review found no actionable production defect and accepted
+this bounded same-receipt qualification.

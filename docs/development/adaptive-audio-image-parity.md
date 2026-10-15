@@ -52,6 +52,11 @@ text and refuses incomplete probe evidence. Managed process and inherited-guard 
 on Mac and Quark; fresh Picard execution and standalone durable reservation integration remain
 open. See the [process ownership evidence and limits](../engineering/hardware-validation/2026-10-15-native-process-ownership.md).
 
+Accounted capability workspaces now use the same pinned ownership and retained retirement
+receipts as jobs. Component tests pass actual parent death with surviving probe tools on Mac
+and Quark. Standalone startup, capability admission and durable charge reconciliation remain
+unconnected; this prerequisite does not establish standalone restart accounting.
+
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.
 Its source/process tests pass on Mac, Quark and Picard. Swift now has a checksummed, atomically

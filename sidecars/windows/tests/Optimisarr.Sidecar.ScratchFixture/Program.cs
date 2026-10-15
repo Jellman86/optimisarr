@@ -55,7 +55,10 @@ public static class Program
         }
         if (args[0] != "parent") return 2;
         var lease = Guid.Parse("81223344-1234-4321-8123-123456789012");
-        using var owner = args.Length > 5 ? NativeScratchWorkspace.CreateAccountedJob(args[1], 42, lease, Guid.Parse(args[5]))
+        var scope = NativeScratchWorkspace.PrepareAccountingScope(args[1]);
+        using var owner = args.Length > 7 && args[7] == "capability"
+            ? NativeScratchWorkspace.CreateAccountedCapability(args[1], Guid.Parse(args[5]), scope)
+            : args.Length > 5 ? NativeScratchWorkspace.CreateAccountedJob(args[1], 42, lease, Guid.Parse(args[5]), scope)
             : NativeScratchWorkspace.CreateJob(args[1], 42, lease);
         await File.WriteAllTextAsync(Path.Combine(owner.DirectoryPath, "source"), "owned test copy", token);
         var ready = Path.Combine(owner.DirectoryPath, "child-ready");
@@ -74,7 +77,7 @@ public static class Program
                 if (child.HasExited) throw new IOException("The test child did not start.");
                 await Task.Delay(10, token);
             }
-            Console.WriteLine(JsonSerializer.Serialize(new { childId = child.Id, directory = owner.DirectoryPath }));
+            Console.WriteLine(JsonSerializer.Serialize(new { childId = child.Id, directory = owner.DirectoryPath, scope }));
             await Console.Out.FlushAsync(token);
             await child.WaitForExitAsync(token);
             await Task.WhenAll(output, error);

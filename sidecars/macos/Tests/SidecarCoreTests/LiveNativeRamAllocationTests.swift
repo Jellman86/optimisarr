@@ -8,6 +8,13 @@ extension LiveRamDiskTestSuite {
     .enabled(if: ProcessInfo.processInfo.environment["OPTIMISARR_LIVE_RAMDISK"] != nil && NativeRamDiskLifecycle.isSupported))
 struct LiveNativeRamAllocationTests {
     private let bytes: Int64 = 48 * 1024 * 1024
+    private struct RecoveryEvidence: Encodable {
+        let owner: UUID
+        let boot: UUID
+        let device: String
+        let allocatedBytes: Int64
+        let allocation: NativeRamAllocationIdentity?
+    }
 
     private func cleanup(device: String, owner: UUID, boot: UUID, captured: NativeRamAllocationIdentity?) {
         let receipt = captured ?? MacNativeRamDiskSystem.captureAllocation(device: device, owner: owner,
@@ -15,7 +22,7 @@ struct LiveNativeRamAllocationTests {
         let retired = receipt.map { MacNativeRamDiskSystem.retireAllocation($0, permitted: { true }) } ?? false
         if !retired {
             let recovery = FileManager.default.temporaryDirectory.appendingPathComponent("optimisarr-ram-recovery-\(owner.uuidString).json")
-            let evidence = ["owner": owner.uuidString, "boot": boot.uuidString, "device": device, "allocatedBytes": String(bytes)]
+            let evidence = RecoveryEvidence(owner: owner, boot: boot, device: device, allocatedBytes: bytes, allocation: receipt)
             try? JSONEncoder().encode(evidence).write(to: recovery, options: .atomic)
             Issue.record("Owned RAM cleanup unconfirmed; recovery intent retained at \(recovery.path)")
         }
@@ -109,7 +116,15 @@ struct LiveNativeRamAllocationTests {
         #expect(await !service.retire(redirected))
         if #available(macOS 16, *) { unmounted = funmount(root, 0) == 0; #expect(unmounted) }
         Darwin.close(root); root = -1
-        #expect(await service.retire(allocation))
+        // Unmount completion need not end every transient OS opener. Replay the same
+        // receipt; neither a delay nor a refreshed BSD-name lookup authorizes ejection.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var retired = await service.retire(allocation)
+        while !retired && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(25))
+            retired = await service.retire(allocation)
+        }
+        #expect(retired)
     }
 }
 

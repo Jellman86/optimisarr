@@ -72,6 +72,13 @@ public sealed class NativeScratchWorkspace : IDisposable
         return Create(root, "job", jobId, leaseId, owner, expectedScope);
     }
 
+    public static NativeScratchWorkspace CreateAccountedCapability(string root, Guid owner, NativeScratchScope expectedScope)
+    {
+        ArgumentNullException.ThrowIfNull(expectedScope);
+        if (owner == Guid.Empty) throw new ArgumentException("An accounted capability requires a parent-selected owner.");
+        return Create(root, "capability", null, null, owner, expectedScope);
+    }
+
     private static NativeScratchWorkspace Create(string path, string purpose, int? job, Guid? lease,
         Guid? accountedOwner = null, NativeScratchScope? expectedScope = null)
     {
@@ -106,7 +113,8 @@ public sealed class NativeScratchWorkspace : IDisposable
             _owner?.Dispose(); _owner = null;
             if (_record.ExternallyAccounted)
             {
-                _cleaned = RetireAccountedJob(_root, _record.JobId!.Value, _record.LeaseId!.Value, _record.Owner, _recordBytes).Retired;
+                _cleaned = RetireAccounted(_root, _record.Purpose, _record.JobId, _record.LeaseId, _record.Owner, _recordBytes,
+                    expectedScope: new(_record.Root, _record.Control, _record.Gate)).Retired;
                 return _cleaned;
             }
             try
@@ -126,13 +134,20 @@ public sealed class NativeScratchWorkspace : IDisposable
 
     public static NativeScratchRetirement RetireAccountedJob(string path, int jobId, Guid leaseId, Guid owner,
         CancellationToken cancellationToken = default, NativeScratchScope? expectedScope = null) =>
-        RetireAccountedJob(path, jobId, leaseId, owner, null, cancellationToken, expectedScope);
+        RetireAccounted(path, "job", jobId, leaseId, owner, null, cancellationToken, expectedScope);
 
-    private static NativeScratchRetirement RetireAccountedJob(string path, int jobId, Guid leaseId, Guid ownerId,
+    public static NativeScratchRetirement RetireAccountedCapability(string path, Guid owner, NativeScratchScope expectedScope,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedScope);
+        return RetireAccounted(path, "capability", null, null, owner, null, cancellationToken, expectedScope);
+    }
+
+    private static NativeScratchRetirement RetireAccounted(string path, string purpose, int? jobId, Guid? leaseId, Guid ownerId,
         byte[]? expected, CancellationToken cancellationToken = default, NativeScratchScope? expectedScope = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (jobId <= 0 || leaseId == Guid.Empty || ownerId == Guid.Empty) throw new ArgumentException("Invalid native retirement identity.");
+        RequireRetirementIdentity(purpose, jobId, leaseId, ownerId);
         try
         {
             using var root = NativeWorkspaceDirectory.OpenRoot(path, create: false);
@@ -140,7 +155,7 @@ public sealed class NativeScratchWorkspace : IDisposable
             using var gate = control.OpenFile(GateName, locked: true);
             RequireScope(root, control, gate, expectedScope);
             using var owner = control.OpenFile(RecordName(ownerId), locked: true);
-            var record = ReadAccountedOwner(root, control, gate, owner, jobId, leaseId, ownerId);
+            var record = ReadAccountedOwner(root, control, gate, owner, purpose, jobId, leaseId, ownerId);
             if (expected is not null && !JsonSerializer.SerializeToUtf8Bytes(record with { State = "active" }, Json).AsSpan().SequenceEqual(expected))
                 return new();
             if (record.State != "retired")
@@ -157,9 +172,18 @@ public sealed class NativeScratchWorkspace : IDisposable
 
     /// <summary>Consume only after durable parent reconciliation; an active owner is never adopted.</summary>
     public static NativeScratchConsumption ForgetRetiredJob(string path, int jobId, Guid leaseId, Guid ownerId,
-        NativeScratchScope? expectedScope = null)
+        NativeScratchScope? expectedScope = null) => ForgetRetired(path, "job", jobId, leaseId, ownerId, expectedScope);
+
+    public static NativeScratchConsumption ForgetRetiredCapability(string path, Guid ownerId, NativeScratchScope expectedScope)
     {
-        if (jobId <= 0 || leaseId == Guid.Empty || ownerId == Guid.Empty) throw new ArgumentException("Invalid native retirement identity.");
+        ArgumentNullException.ThrowIfNull(expectedScope);
+        return ForgetRetired(path, "capability", null, null, ownerId, expectedScope);
+    }
+
+    private static NativeScratchConsumption ForgetRetired(string path, string purpose, int? jobId, Guid? leaseId, Guid ownerId,
+        NativeScratchScope? expectedScope)
+    {
+        RequireRetirementIdentity(purpose, jobId, leaseId, ownerId);
         try
         {
             using var root = NativeWorkspaceDirectory.OpenRoot(path, create: false);
@@ -171,7 +195,7 @@ public sealed class NativeScratchWorkspace : IDisposable
             catch (Exception error) when (Missing(error)) { return new(AlreadyAbsent: true); }
             using (owner)
             {
-                var record = ReadAccountedOwner(root, control, gate, owner, jobId, leaseId, ownerId);
+                var record = ReadAccountedOwner(root, control, gate, owner, purpose, jobId, leaseId, ownerId);
                 if (record.State != "retired") return new();
                 var identity = NativeWorkspaceDirectory.ReadIdentity(owner.SafeFileHandle);
                 owner.Dispose();
@@ -180,6 +204,13 @@ public sealed class NativeScratchWorkspace : IDisposable
             }
         }
         catch (Exception error) when (Unavailable(error) || error is JsonException) { return new(); }
+    }
+
+    private static void RequireRetirementIdentity(string purpose, int? jobId, Guid? leaseId, Guid owner)
+    {
+        if (owner == Guid.Empty || !(purpose == "job" && jobId is > 0 && leaseId is { } lease && lease != Guid.Empty
+            || purpose == "capability" && jobId is null && leaseId is null))
+            throw new ArgumentException("Invalid native retirement identity.");
     }
 
     private static void RequireScope(NativeWorkspaceDirectory root, NativeWorkspaceDirectory control, FileStream gate,
@@ -191,11 +222,12 @@ public sealed class NativeScratchWorkspace : IDisposable
     }
 
     private static OwnerRecord ReadAccountedOwner(NativeWorkspaceDirectory root, NativeWorkspaceDirectory control,
-        FileStream gate, FileStream owner, int jobId, Guid leaseId, Guid ownerId)
+        FileStream gate, FileStream owner, string purpose, int? jobId, Guid? leaseId, Guid ownerId)
     {
         var bytes = Read(owner);
         var record = JsonSerializer.Deserialize<OwnerRecord>(bytes, Json) ?? throw new IOException("Missing native owner record.");
-        if (!Valid(record) || !record.ExternallyAccounted || record.Owner != ownerId || record.JobId != jobId || record.LeaseId != leaseId
+        if (!Valid(record) || !record.ExternallyAccounted || record.Owner != ownerId || record.Purpose != purpose
+            || record.JobId != jobId || record.LeaseId != leaseId
             || record.Root != root.Identity.Key || record.Control != control.Identity.Key
             || record.Gate != NativeWorkspaceDirectory.ReadIdentity(gate.SafeFileHandle).Key
             || record.Record != NativeWorkspaceDirectory.ReadIdentity(owner.SafeFileHandle).Key
@@ -324,7 +356,7 @@ public sealed class NativeScratchWorkspace : IDisposable
     }
 
     private static bool Valid(OwnerRecord value) => (value.Version == 1 && !value.ExternallyAccounted && value.State is "active" or "deleting"
-            || value.Version == 2 && value.ExternallyAccounted && value.Purpose == "job" && value.State is "active" or "deleting" or "retired")
+            || value.Version == 2 && value.ExternallyAccounted && value.State is "active" or "deleting" or "retired")
         && value.Owner != Guid.Empty
         && (value.Purpose == "job" && value.JobId is > 0 && value.LeaseId is { } lease && lease != Guid.Empty
             || value.Purpose == "capability" && value.JobId is null && value.LeaseId is null)

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add scoped, accounted capability workspaces with replayable retirement receipts. Surviving probe tools retain ownership after parent death, and generic cleanup cannot erase their accounting evidence. Standalone durable coordinator integration remains pending.
+
+- Make live RAM retirement qualification replay the original physical receipt after unmount and retain the full receipt when cleanup is unconfirmed. Mounted-volume and wrong-owner refusal checks remain mandatory; production retirement behavior is unchanged.
+
 - Add owner-keyed, idempotent resource restoration as a foundation for standalone worker recovery. Conflicting charges and overflow are refused, and volume-path separators cannot hide disk reservations. Durable persistence and worker integration remain pending.
 
 - Make worker shutdown qualification reliable under load: readiness records become visible only when complete, and RAM tests distinguish queued work from an operation already in flight. Production retirement deadlines are unchanged.

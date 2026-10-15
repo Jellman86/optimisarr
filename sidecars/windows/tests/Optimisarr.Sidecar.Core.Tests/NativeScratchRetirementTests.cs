@@ -158,8 +158,10 @@ public sealed class NativeScratchRetirementTests : IDisposable
         Assert.False(NativeScratchWorkspace.ForgetRetiredJob(_root, 12, Lease, identity).Consumed);
     }
 
-    [Fact]
-    public async Task A_real_inherited_child_vetoes_targeted_retirement_after_its_helper_is_killed()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_real_inherited_child_vetoes_targeted_retirement_after_its_helper_is_killed(bool capability)
     {
         var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
         var test = typeof(NativeScratchRetirementTests).Assembly.Location;
@@ -171,7 +173,8 @@ public sealed class NativeScratchRetirementTests : IDisposable
             RedirectStandardOutput = true, RedirectStandardError = true } };
         foreach (var arg in new[] { "exec", "--runtimeconfig", Path.ChangeExtension(test, ".runtimeconfig.json"), "--depsfile",
                      Path.ChangeExtension(test, ".deps.json"), typeof(ScratchFixture.Program).Assembly.Location, "parent", work,
-                     host, Path.ChangeExtension(test, ".runtimeconfig.json"), Path.ChangeExtension(test, ".deps.json"), identity.ToString(), release })
+                     host, Path.ChangeExtension(test, ".runtimeconfig.json"), Path.ChangeExtension(test, ".deps.json"), identity.ToString(), release,
+                     capability ? "capability" : "job" })
             parent.StartInfo.ArgumentList.Add(arg);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         Process? child = null;
@@ -182,21 +185,27 @@ public sealed class NativeScratchRetirementTests : IDisposable
             var line = await parent.StandardOutput.ReadLineAsync(timeout.Token);
             if (line is null) Assert.Fail(await errors.WaitAsync(TimeSpan.FromSeconds(1)));
             using var reply = JsonDocument.Parse(line!);
+            var scope = JsonSerializer.Deserialize<NativeScratchScope>(reply.RootElement.GetProperty("scope"))!;
             child = Process.GetProcessById(reply.RootElement.GetProperty("childId").GetInt32());
             var directory = reply.RootElement.GetProperty("directory").GetString()!;
             parent.Kill(); await parent.WaitForExitAsync(timeout.Token);
             Assert.False(child.HasExited);
-            Assert.True(NativeScratchWorkspace.RetireAccountedJob(work, 42, Lease, identity).Busy);
-            Assert.False(NativeScratchWorkspace.ForgetRetiredJob(work, 42, Lease, identity).Consumed);
+            Assert.True(Retire().Busy);
+            Assert.False(Consume().Consumed);
             Assert.Equal(1, NativeScratchWorkspace.Recover(work).Busy);
             Assert.Equal("owned test copy", File.ReadAllText(Path.Combine(directory, "source")));
             await File.WriteAllTextAsync(release, "finish naturally", timeout.Token);
             await child.WaitForExitAsync(timeout.Token);
-            Assert.True(NativeScratchWorkspace.RetireAccountedJob(work, 42, Lease, identity).Retired);
+            Assert.True(Retire().Retired);
             Assert.False(Directory.Exists(directory));
-            Assert.True(NativeScratchWorkspace.RetireAccountedJob(work, 42, Lease, identity).Retired);
+            Assert.True(Retire().Retired);
             Assert.Equal(0, NativeScratchWorkspace.Recover(work).Removed);
-            Assert.True(NativeScratchWorkspace.ForgetRetiredJob(work, 42, Lease, identity).Consumed);
+            Assert.True(Consume().Consumed);
+
+            NativeScratchRetirement Retire() => capability ? NativeScratchWorkspace.RetireAccountedCapability(work, identity, scope)
+                : NativeScratchWorkspace.RetireAccountedJob(work, 42, Lease, identity, expectedScope: scope);
+            NativeScratchConsumption Consume() => capability ? NativeScratchWorkspace.ForgetRetiredCapability(work, identity, scope)
+                : NativeScratchWorkspace.ForgetRetiredJob(work, 42, Lease, identity, scope);
         }
         finally
         {
