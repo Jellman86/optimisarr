@@ -285,6 +285,12 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         modelBuilder.Entity<Job>(entity =>
         {
             entity.HasKey(job => job.Id);
+            entity.Property(job => job.PerceptualSearchJson).HasMaxLength(262144);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Jobs_PerceptualSearch", """
+                (AdaptiveAudioBitrateKbps IS NULL OR AdaptiveAudioBitrateKbps BETWEEN 8 AND 512)
+                AND (AdaptiveImageQuality IS NULL OR AdaptiveImageQuality BETWEEN 0 AND 100)
+                AND (PerceptualSearchJson IS NULL OR length(PerceptualSearchJson) <= 262144)
+                """));
             entity.Property<long>("QueueEnqueuedUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("EnqueuedAt"));
             entity.Property<long>("QueueEffectiveUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("COALESCE(FinishedAt, EnqueuedAt)"));
             entity.HasIndex("Type", "Priority", "QueueEnqueuedUtcTicks", "Id").IsDescending(false, true, false, false);
@@ -380,6 +386,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(worker => worker.OperatingSystem).HasMaxLength(32);
             entity.Property(worker => worker.Architecture).HasMaxLength(32);
             entity.Property(worker => worker.VideoEncoders).HasMaxLength(1024);
+            entity.Property(worker => worker.PerceptualCapabilitiesJson).HasMaxLength(4096);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Workers_PerceptualCapabilities", """
+                "PerceptualCapabilitiesJson" IS NULL OR
+                (length("PerceptualCapabilitiesJson") <= 4096 AND json_valid("PerceptualCapabilitiesJson"))
+                """));
             entity.Property(worker => worker.HardwareDecoders).HasMaxLength(1024);
             entity.Property(worker => worker.Vmaf).HasConversion<string>().HasMaxLength(32);
             // A SHA-256 hex fingerprint is always 64 characters; the credential itself is never stored.
@@ -397,6 +408,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
             entity.Property(lease => lease.ResultUploadPath).HasMaxLength(4096);
             entity.Property(lease => lease.ResultUploadBinding).HasMaxLength(64);
+            entity.Property(lease => lease.PerceptualSearchStateJson).HasMaxLength(262144);
+            entity.ToTable(t => t.HasCheckConstraint("CK_JobLeases_PerceptualSearch", """
+                "PerceptualSearchStateJson" IS NULL OR
+                (length("PerceptualSearchStateJson") <= 262144 AND json_valid("PerceptualSearchStateJson"))
+                """));
             entity.ToTable(t => t.HasCheckConstraint("CK_JobLeases_ResultUpload", """
                 ("ResultUploadGeneration" IS NULL AND "ResultUploadPath" IS NULL AND "ResultUploadBinding" IS NULL AND "ResultUploadSealedBytes" IS NULL)
                 OR ("ResultUploadGeneration" IS NOT NULL AND "ResultUploadPath" IS NOT NULL AND "ResultUploadBinding" IS NOT NULL

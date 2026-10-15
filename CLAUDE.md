@@ -165,7 +165,7 @@ cd web && npm run test:e2e            # Playwright end-to-end suite (CI gate —
 cd web && node scripts/capture-docs.mjs # isolated fabricated documentation UI captures
 cd web && npm run build               # emits static assets into Optimisarr.Api/wwwroot
 cd sidecars/macos && swift test        # macOS sidecar protocol and lifecycle suite
-cd sidecars/macos && OPTIMISARR_LIVE_RAMDISK=1 swift test --filter LiveRamDisk
+cd sidecars/macos && OPTIMISARR_LIVE_RAMDISK=1 swift test --filter 'LiveRamDisk|LiveNativeRam'
 cd sidecars/macos && swift build -c release
 ```
 

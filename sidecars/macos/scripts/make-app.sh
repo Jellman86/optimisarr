@@ -46,11 +46,15 @@ cp build/audio-quality-install/bin/optimisarr-audio-quality "${BUNDLE}/Contents/
 mkdir -p "${BUNDLE}/Contents/Resources/licenses/audio-quality"
 cp build/audio-quality-install/share/optimisarr-audio-quality/* "${BUNDLE}/Contents/Resources/licenses/audio-quality/"
 
-# Package the same qualified metric for platform parity; image jobs remain server-local.
+# Package the same qualified metric used by the shared native engine.
 ../../scripts/build_image_quality.sh "$(pwd)/build/image-quality" "$(pwd)/build/image-quality-install"
 cp build/image-quality-install/bin/optimisarr-image-quality "${BUNDLE}/Contents/Resources/"
 mkdir -p "${BUNDLE}/Contents/Resources/licenses/image-quality"
 cp -R build/image-quality-install/share/optimisarr-image-quality/. "${BUNDLE}/Contents/Resources/licenses/image-quality/"
+
+# The Swift bridge delegates native work over private pipes; users need no installed .NET SDK.
+python3 ../../scripts/macos_native_package.py publish "${BUNDLE}/Contents/Resources/native-quality"
+python3 ../../scripts/macos_metadata_package.py "${BUNDLE}/Contents/Resources/metadata"
 
 # Build the Finder icon from the shared Precession artwork.
 if [[ -f Resources/AppIcon.png ]]; then
@@ -105,57 +109,9 @@ echo '</plist>' >> "${BUNDLE}/Contents/Info.plist"
   -e "s/__BUILD_NUMBER__/${BUILD_NUMBER}/" \
   "${BUNDLE}/Contents/Info.plist"
 
-# Signing.
-#
-# The Keychain decides what an app may read from the identity in its signature, so a *stable*
-# signature is what lets a paired credential survive a rebuild. An ad-hoc signature is derived
-# from the binary and therefore changes every single build, which makes every rebuilt copy a
-# different application to the Keychain — the credential becomes unreadable and, on the legacy
-# keychain, macOS asks the operator for a password to reach it. Set SIGNING_IDENTITY to a real
-# certificate and that stops for good:
-#
-#     SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/make-app.sh release
-#
-# `security find-identity -v -p codesigning` lists what this Mac holds. Ad-hoc remains the default
-# so a fresh clone builds and runs with no certificate at all.
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
-
-if [[ -n "${SIGNING_IDENTITY}" ]]; then
-  # keychain-access-groups moves the credential to the data protection keychain, which decides
-  # access by signature and never raises a dialog. It is a restricted entitlement: macOS kills an
-  # ad-hoc binary that claims it, which is exactly why it is written only when signing for real.
-  # No entitlements are claimed.
-  #
-  # keychain-access-groups would move the credential to the data protection keychain, which never
-  # raises a dialog — but it is a restricted entitlement and macOS refuses to launch an app that
-  # claims it without a matching provisioning profile (a bare "Launchd job spawn failed"). It is
-  # not needed: the prompting was caused by the signature changing on every build, and a stable
-  # certificate fixes that on the legacy keychain too. `CredentialStore` tries the data protection
-  # keychain first regardless, so a future profiled build gets it with no code change.
-
-  # Inside out: the bundled ffmpeg and ffprobe are separate Mach-O executables and must each carry
-  # their own signature before the bundle that contains them is sealed. The hardened runtime and a
-  # secure timestamp are both required for notarisation.
-  for tool in ffmpeg ffprobe optimisarr-audio-quality optimisarr-image-quality; do
-    if [[ -f "${BUNDLE}/Contents/Resources/${tool}" ]]; then
-      codesign --force --options runtime --timestamp \
-        --sign "${SIGNING_IDENTITY}" "${BUNDLE}/Contents/Resources/${tool}"
-    fi
-  done
-
-  codesign --force --options runtime --timestamp \
-    --sign "${SIGNING_IDENTITY}" "${BUNDLE}"
-
-  echo "Signed with: ${SIGNING_IDENTITY}"
-  codesign --verify --deep --strict --verbose=2 "${BUNDLE}" 2>&1 | sed 's/^/  /'
-else
-  # Enough to run locally. The signature changes on every build, so a pairing does not survive one.
-  codesign --force --sign - "${BUNDLE}" >/dev/null 2>&1 || {
-    echo "warning: ad-hoc codesign failed; the app will still run but Keychain access may prompt" >&2
-  }
-  echo "Ad-hoc signed (development). A pairing will not survive a rebuild —"
-  echo "set SIGNING_IDENTITY to a real certificate to keep one."
-fi
+# Sign every runtime library and tool before sealing the app. Only the managed helper
+# needs JIT; the Swift app and media tools retain the ordinary hardened runtime.
+python3 ../../scripts/macos_native_package.py sign "${BUNDLE}" --identity "${SIGNING_IDENTITY:--}"
 
 echo "Built ${BUNDLE}"
 echo "Run it with: open ${BUNDLE}"

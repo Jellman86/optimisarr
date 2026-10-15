@@ -53,6 +53,6 @@ struct LiveWorkLoopTests {
             return
         }
         #expect(jobId == assignment.jobId)
-        #expect(bytes > 0)
+        #expect(try #require(bytes) > 0)
     }
 }

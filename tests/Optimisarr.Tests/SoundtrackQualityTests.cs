@@ -230,7 +230,20 @@ public sealed class SoundtrackQualityTests
         Assert.DoesNotContain("-ss", args);
         Assert.Equal("3.1", args[args.ToList().IndexOf("-t") + 1]);
         Assert.Contains("aresample=48000,atrim=end_sample=144000", args);
-        Assert.Contains("-ss", AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3)));
+        Assert.DoesNotContain("-ss", AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3)));
+    }
+
+    [Theory]
+    [InlineData(0, 0.021, "0.021")]
+    [InlineData(22.5, 0.021, "22.521")]
+    public void Soundtrack_seeks_preserve_the_demuxer_origin_including_the_picture_lead(double start, double lead, string expected)
+    {
+        var args = AudioQualityCommandBuilder.Decode("source.mkv", "pcm", new(start, 3), 0, lead, soundtrack: true).ToList();
+        var seek = args.IndexOf("-ss");
+        Assert.True(seek >= 0 && seek < args.IndexOf("-i"));
+        Assert.Equal(expected, args[seek + 1]);
+        Assert.Single(args, arg => arg == "-ss");
+        Assert.Contains("aresample=48000,atrim=end_sample=144000", args);
     }
 
     [Fact]

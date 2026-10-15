@@ -169,9 +169,17 @@ public sealed class DurableExactDuplicateTests : IAsyncLifetime
         try
         {
             Assert.True(await service.TryStartAsync(1, _root, inputs, false, default));
-            for (var i = 0; i < 200 && (await service.ReadAsync(1, 0, default)).Progress.BytesRead <= 300_000; i++) await Task.Delay(10);
+            async Task WaitFor(Func<ExactDuplicateStatus, bool> ready)
+            {
+                // The coordinator allows ten seconds to flush completed checkpoints after a
+                // cancellation. Loaded Windows CI can need that allowance; the old two-second
+                // poll deadline could inspect the live status while that flush was still valid.
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                while (!ready(await service.ReadAsync(1, 0, deadline.Token))) await Task.Delay(10, deadline.Token);
+            }
+            await WaitFor(s => s.Progress.BytesRead > 300_000);
             Assert.True(service.Cancel(1));
-            for (var i = 0; i < 200 && (await service.ReadAsync(1, 0, default)).Status is "Running" or "Queued"; i++) await Task.Delay(10);
+            await WaitFor(s => s.Status is not ("Running" or "Queued"));
             var status = await service.ReadAsync(1, 0, default);
             Assert.Equal("Cancelled", status.Status); Assert.Null(status.Result);
             await using var scope = _services.CreateAsyncScope();

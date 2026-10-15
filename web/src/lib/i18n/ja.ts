@@ -1,7 +1,25 @@
 import type { Messages } from './en'
 
 export const ja: Messages = {
+  quality_first: {
+    previous_selected: "前回選択した設定",
+    retry_minimum: "再試行の最低設定値: {value}",
+    searching: '設定を検索中',
+    interrupted: '設定の選択前に検索が停止しました',
+    retry: "高品質で再試行",
+    loudness_drift: "ラウドネス差",
+    local_hint: "品質優先の探索は現在このサーバーで実行します。ワーカー限定のライブラリは待機します。",
+    image_no_resize: "画質優先ではサイズを変更できません。",
+    audio_no_downmix: "音質優先ではチャンネルを維持する必要があります。ダウンミックスをオフにしてください。",
+
+    title: "品質優先の探索",
+    selected: "選択した設定",
+    candidate: "候補",
+    note: "サンプルは設定の選択に使います。置き換えは最終検証で判断します。",
+  },
   image_quality: {
+    adaptive_label: "画質優先（実験的）",
+    adaptive_hint: "最終エンコード前に目標に合う圧縮設定を探索します。対応静止画の全体を比較し、最終安全チェックも適用します。 WebPでは、可逆圧縮の元画像から非可逆圧縮の出力を許可します。",
       "title": "画像品質レポート",
       "report_hint": "エンコード後に SSIMULACRA2 を測定します。任意で、初期設定はオフです。",
       "gate_label": "画像の知覚品質を必須にする",
@@ -114,6 +132,8 @@ export const ja: Messages = {
     custom_note: "詳細音声設定で独自のビットレートを指定します。品質ゲートは変わりません。",
   },
   audio_quality: {
+    adaptive_label: "音質優先（実験的）",
+    adaptive_hint: "冒頭・中間・末尾のサンプルからビットレートを探索します。モノラル・ステレオのみ。最終安全チェックも適用します。",
     gate_label: "音声品質を必須にする",
     gate_hint: "測定したチャンネルや区間が上限を超えた場合、または品質を測定できない場合は置換を止めます。単独のモノラル・ステレオ音声向けの実験的機能です。ワーカーは自分で測定します。",
     maximum: "音声の差の上限",
@@ -742,6 +762,9 @@ export const ja: Messages = {
     returned_from: '{worker} から返送 · 検証待ち',
     verifying_returned: 'このサーバーが {worker} から返されたファイルを検証しています。',
     stage_verifying_returned: '{worker} が返したものの品質を測定中…',
+    waiting_resources_row: 'メモリまたは空き容量を待機中…',
+    waiting_resources_title: 'メモリまたは作業領域を待機しています',
+    waiting_resources_detail: '元のファイルと再試行の設定は保持されています。サーバーはまもなく容量を再確認します。対応するワーカーは引き続きこのジョブを処理できます。',
     waiting_for_worker: 'ワーカーを待っています…',
     waiting_for_worker_title: 'このライブラリはこのサーバーでは処理しません。実行できるワーカーがオンラインで空くまで待機します。',
     status_completed: "完了",

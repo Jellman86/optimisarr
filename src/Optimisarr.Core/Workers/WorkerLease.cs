@@ -10,9 +10,8 @@ public enum LeaseState
 }
 
 /// <summary>
-/// Why a released lease ended, when the worker is not the reason. A plain release is a worker
-/// giving the job back, which earns it a handback cooldown; these are the control plane's own
-/// decisions and must not be held against the worker.
+/// Why a lease ended without a durable refusal opinion. Plain hand-backs carry no reason;
+/// control-plane holds and temporary capacity returns remain distinct from file refusals.
 /// </summary>
 public enum LeaseEndReason
 {
@@ -20,7 +19,16 @@ public enum LeaseEndReason
     HeldForSizeReview,
 
     /// <summary>The server rejected the full encode because samples predict a size-gate failure.</summary>
-    PredictedSizeFailure
+    PredictedSizeFailure,
+
+    /// <summary>Required source inspection is unavailable; no media encode or handback budget was spent.</summary>
+    SourceAssessmentUnavailable,
+
+    /// <summary>Temporary worker memory/workspace pressure; keep the pause without a refusal opinion.</summary>
+    CapacityUnavailable,
+
+    /// <summary>The native worker stopped; no media refusal or capacity cooldown was recorded.</summary>
+    WorkerInterrupted
 }
 
 /// <summary>Why a lease operation was accepted or refused.</summary>

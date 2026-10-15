@@ -271,8 +271,8 @@ is no persistent link to a preset after saving.
 When an explicit saved bitrate matches the profile default, the control explains that it
 remains saved. Choose **Default** to clear that override and follow future profile changes.
 
-Presets do not enable or change the audio quality gate. They use the existing fixed-bitrate
-encode path, with no automatic sample search or quality retry. Copied video audio is unchanged.
+Presets do not enable or change the audio quality gate. They use fixed bitrate unless the
+separate experimental **Audio quality first** control is enabled. Copied video audio is unchanged.
 For explicitly re-encoded video audio, configure the separate soundtrack report and gate below.
 
 ![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
@@ -377,6 +377,27 @@ candidate; quarantine is not a backup, and approval or retention purge removes r
 Dry-run blocks replacement and purge while allowing encoding and verification.
 
 ## Perceptual image quality reports and gates (development)
+
+The current quality-first development branch adds independent **Image quality first** and
+**Audio quality first** controls beneath their enabled quality gates. Both start off and require
+an explicit target. Local searches test at most four settings, choose the smallest measured
+passing candidate, and retain the samples and selection reason separately from final
+verification. Images compare the whole supported still and preserve the saved SSIM floor;
+standalone mono/stereo audio compares up to three disjoint windows totalling at most 90 seconds.
+Every probe comes from the original. Neither search permits replacement or weakens any final
+check. A missing/noisy measurement falls back to the saved setting and still requires final
+quality evidence. Resizing and downmixing are outside the current search contract.
+Enabling image quality first permits lossy WebP from lossless originals, judged against the
+explicit target and all final gates. Fixed WebP settings continue preserving lossless sources.
+
+Completed probes appear in the queue while searching and survive an interrupted search.
+Only a finished search displays a selected setting. If only the final perceptual gate fails,
+one higher-fidelity retry can run; both final verdicts remain in attempt history. Failures of
+size, decode, timing, metadata or other independent checks cannot trigger that retry.
+
+Worker search and adaptive soundtracks remain under implementation.
+Current workers refuse quality-first jobs rather than ignore the search;
+worker-only libraries wait. See the [parity completion matrix](../development/adaptive-audio-image-parity.md).
 
 In a photo or mixed library, open **Verify**, then **Advanced verification**. Enable
 **Image quality report** for optional SSIMULACRA2 evidence. Reporting alone does not block

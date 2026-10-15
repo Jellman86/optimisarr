@@ -170,6 +170,7 @@ Encoding, all proved with a real test encode at launch rather than taken from FF
 | HEVC | `hevc_videotoolbox` (hardware) and `libx265` |
 | AV1 | `libsvtav1` (software only) |
 | Audio | `aac`, `libopus`, `libmp3lame`; each encoder must pass a real capability probe. The bundle includes pinned Opus and LAME sources and licenses. |
+| Still images | JPEG and WebP with pinned ExifTool modules. Native tool proof is bundled, while automatic image placement remains gated behind protocol-11 workflow qualification. |
 
 **This sidecar currently offers software AV1 encoding through SVT-AV1.** Hardware decoding is
 advertised only where the launch probe succeeds. The bundled build is pinned to FFmpeg 8.0.3; see
@@ -214,7 +215,7 @@ reboots with nothing on screen to say so.
 ## Requirements
 
 - macOS 14 or later
-- Xcode 26 (or a Swift 6 toolchain) to build
+- Xcode 26 (or a Swift 6 toolchain), Python 3 and the .NET 10 SDK to build the app and its self-contained helper
 - An Optimisarr server with **Settings → Files & safety → Remote workers** switched on
 
 ## Build and run
@@ -374,12 +375,16 @@ binary. It prepares or validates exact corresponding sources against the release
 commit and bundled media-tool revisions before signing. `SIDECAR_SOURCE_PACKAGE` can select an
 existing package; a stale package fails rather than being reused silently.
 
-It builds, signs with the hardened runtime and a secure timestamp (signing the bundled `ffmpeg`
-and `ffprobe` first, as notarisation requires), archives with `ditto`, submits to Apple, waits,
+It builds the self-contained shared quality helper and pinned ExifTool modules, then signs every
+nested native runtime library and media tool before the app. Developer ID signing uses the
+hardened runtime and secure timestamps; only the managed helper receives the required JIT
+entitlement. It archives with `ditto`, submits to Apple, waits,
 staples the ticket to the bundle, re-archives, and checks the result the way Gatekeeper will. It
 then builds a disk image from the stapled app and notarises and staples that too. Before notarisation,
 `verify-app.sh` copies the signed app to a temporary directory and renders all twenty light/dark
-fixture states using embedded artwork, without pairing or contacting a server. Final `.sha256`
+fixture states using embedded artwork, without pairing or contacting a server. It also proves
+managed startup, real JPEG/WebP metadata preservation and both pinned metrics using only bundled tools
+and system Perl. Missing tool dependencies block package acceptance. Final `.sha256`
 files are generated after stapling. Attach the `.dmg`, `.zip`, checksums and corresponding-source
 parts to the GitHub Release.
 

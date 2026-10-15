@@ -37,6 +37,9 @@ public sealed class JobClearingTests
             VideoEncoder = "old_encoder",
             RequestedVideoQuality = 22,
             EffectiveVideoQuality = 31,
+            AdaptiveAudioBitrateKbps = 96,
+            AdaptiveImageQuality = 75,
+            PerceptualSearchJson = "old search",
             VideoQualityMode = "CQ",
             FfmpegArguments = "old command",
             VerificationPassed = false,
@@ -56,6 +59,9 @@ public sealed class JobClearingTests
         Assert.Null(job.VideoEncoder);
         Assert.Null(job.RequestedVideoQuality);
         Assert.Null(job.EffectiveVideoQuality);
+        Assert.Null(job.AdaptiveAudioBitrateKbps);
+        Assert.Null(job.AdaptiveImageQuality);
+        Assert.Null(job.PerceptualSearchJson);
         Assert.Null(job.VideoQualityMode);
         Assert.Null(job.FfmpegArguments);
         Assert.Null(job.VerificationPassed);

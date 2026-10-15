@@ -64,7 +64,7 @@ public sealed class ImagePerceptualQualityService
     private readonly string _metric;
     private readonly Func<string, IReadOnlyList<string>, CancellationToken, TimeSpan?, Task<ToolProcessResult>> _run;
     private readonly Func<string, CancellationToken, Task<string>> _hash;
-    private readonly SemaphoreSlim _lane = new(1, 1);
+    private static readonly SemaphoreSlim Lane = new(1, 1);
 
     public ImagePerceptualQualityService(string metric) : this(metric, BoundedToolProcess.RunAsync) { }
 
@@ -81,8 +81,8 @@ public sealed class ImagePerceptualQualityService
     {
         token.ThrowIfCancellationRequested();
         // A full-resolution metric has a substantial working set. Share one lane
-        // across this server's image jobs rather than multiplying it by queue size.
-        await _lane.WaitAsync(token);
+        // across this process's image jobs and worker verification instances rather than multiplying it by queue size.
+        await Lane.WaitAsync(token);
         var watch = Stopwatch.StartNew();
         string? originalHash = null, candidateHash = null, metricHash = null;
         ImagePerceptualReport Unavailable(string reason) => new(null, reason, originalHash, candidateHash, metricHash, watch.Elapsed.TotalSeconds);
@@ -106,7 +106,7 @@ public sealed class ImagePerceptualQualityService
         {
             return Unavailable("Image quality could not be measured. Check tool availability and file access.");
         }
-        finally { _lane.Release(); }
+        finally { Lane.Release(); }
     }
 
     private static async Task<string> HashAsync(string path, CancellationToken token)

@@ -4,6 +4,22 @@ namespace Optimisarr.Tests;
 
 public sealed class ConfigSnapshotValidatorTests
 {
+    [Fact]
+    public void Quality_first_configuration_requires_explicit_targets_and_preserves_its_opt_ins_in_json()
+    {
+        var audio = new LibrarySnapshot("Music", "/music", "Music", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null) { AdaptiveAudioQuality = true };
+        var image = audio with { MediaType = "Photo", AdaptiveAudioQuality = false, AdaptiveImageQuality = true };
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [audio, image] }, AllowedKeys).IsValid);
+        audio = audio with { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.02 };
+        image = image with { ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 85 };
+        var snapshot = Empty() with { Libraries = [audio, image] };
+        Assert.True(ConfigSnapshotValidator.Validate(snapshot, AllowedKeys).IsValid);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<ConfigSnapshot>(System.Text.Json.JsonSerializer.Serialize(snapshot))!;
+        Assert.True(restored.Libraries[0].AdaptiveAudioQuality);
+        Assert.True(restored.Libraries[1].AdaptiveImageQuality);
+    }
+
     private static readonly IReadOnlySet<string> AllowedKeys =
         new HashSet<string> { "queue.maxConcurrentJobs", "queue.encoderMode" };
 

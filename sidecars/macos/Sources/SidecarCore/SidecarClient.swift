@@ -24,6 +24,9 @@ public enum SidecarError: Error, Equatable, Sendable {
     /// The server answered, but not in a way this build understands.
     case unexpectedResponse(status: Int)
 
+    /// A claim was unreadable and its hand-back could not be confirmed.
+    case unconfirmedClaim
+
     /// The server could not be reached at all.
     case unreachable(description: String)
 
@@ -215,7 +218,7 @@ public struct SidecarClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             // Sent as typed by the operator. The server tolerates the grouping spaces people read
             // aloud, so there is no need to strip them here and risk mangling a valid code.
             "code": pin,
@@ -231,7 +234,9 @@ public struct SidecarClient: Sendable {
             "freeScratchBytes": capabilities.freeScratchBytes,
             "maxConcurrency": capabilities.maxConcurrency,
             "sidecarVersion": SidecarBuild.version,
-        ])
+        ]
+        if let proof = capabilities.perceptual { body["perceptual"] = proof.wire }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await perform(request)
 
@@ -296,6 +301,7 @@ public struct SidecarClient: Sendable {
             body["audioEncoders"] = capabilities.audioEncoders
             body["hardwareDecoders"] = capabilities.hardwareDecoders
             body["vmaf"] = capabilities.vmaf.rawValue
+            if let proof = capabilities.perceptual { body["perceptual"] = proof.wire }
         }
         // Only what was actually measured. A machine whose CPU ticks could not be read, or whose
         // first reading has nothing to compare against, sends nothing rather than a zero the
@@ -385,10 +391,8 @@ public struct SidecarClient: Sendable {
         let (data, response) = try await perform(request)
         switch response.statusCode {
         case 200:
-            guard
-                let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let assignment = Assignment(json: body)
-            else {
+            guard let assignment = Assignment.decode(data) else {
+                try await releaseUnreadableClaim(data, serverAddress: serverAddress, credential: credential)
                 throw SidecarError.unexpectedResponse(status: 200)
             }
             await diagnostics.assignment(leaseId: assignment.leaseId, jobId: assignment.jobId)
@@ -402,6 +406,15 @@ public struct SidecarClient: Sendable {
         case let status:
             throw SidecarError.unexpectedResponse(status: status)
         }
+    }
+
+    private func releaseUnreadableClaim(_ data: Data, serverAddress: String, credential: String) async throws {
+        guard let leaseId = NativeWireJSON.uniqueLeaseId(data) else { throw SidecarError.unconfirmedClaim }
+        do {
+            try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId.uuidString)
+        } catch let error as SidecarError where error.endsTheLease {
+            // Expiry, revocation or an already-ended lease is also authoritative.
+        } catch { throw SidecarError.unconfirmedClaim }
     }
 
     /// Extends the claim. Throws `leaseLost` when the server no longer recognises it as ours,
@@ -442,6 +455,7 @@ public struct SidecarClient: Sendable {
     /// The server's `RemoteStage` names. Sent as names because the two sides are versioned apart.
     static func stageName(_ progress: JobProgress) -> String {
         switch progress {
+        case let .stageOnly(stage): return stage.rawValue
         case .fetchingSource: return "FetchingSource"
         case .encoding: return "Encoding"
         case .measuring: return "Measuring"
@@ -534,9 +548,19 @@ public struct SidecarClient: Sendable {
     }
 
     /// Hands the job back so the server can reassign it. Tolerant of a lease already gone.
-    public func release(serverAddress: String, credential: String, leaseId: String) async throws {
+    public func release(serverAddress: String, credential: String, leaseId: String, capacityUnavailable: Bool = false) async throws {
+        let action = capacityUnavailable ? "capacity-unavailable" : "release"
+        try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId, action: action)
+    }
+
+    /// Runtime interruption says nothing about this worker's ability to encode the file.
+    public func releaseForInterruption(serverAddress: String, credential: String, leaseId: String) async throws {
+        try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId, action: "interrupted")
+    }
+
+    private func release(serverAddress: String, credential: String, leaseId: String, action: String) async throws {
         let request = try authorised(
-            serverAddress, "/api/workers/leases/\(leaseId)/release", credential: credential, method: "POST")
+            serverAddress, "/api/workers/leases/\(leaseId)/\(action)", credential: credential, method: "POST")
         let (data, response) = try await perform(request)
         await diagnostics.record(leaseId: leaseId, reason: (200..<300).contains(response.statusCode) ? "Worker.LeaseReleased" : "Worker.RequestFailed", httpStatus: response.statusCode)
         try Self.checkLease(response.statusCode, data)

@@ -6,6 +6,58 @@ namespace Optimisarr.Tests;
 public sealed class AudioQualityAssessmentTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Audio_assessment_opens_only_self_contained_local_formats_before_probing_or_decoding(bool soundtrack)
+    {
+        var source = "source";
+        var commands = new[] { AudioQualityCommandBuilder.Probe(source, soundtrack),
+            AudioQualityCommandBuilder.Decode(source, "decoded.raw", new(0, 1), soundtrack: soundtrack) };
+        foreach (var command in commands)
+        {
+            var args = command.ToList();
+            Assert.Equal("file", args[args.IndexOf("-protocol_whitelist") + 1]);
+            var formats = args[args.IndexOf("-format_whitelist") + 1].Split(',');
+            Assert.All(new[] { "wav", "flac", "mp3", "aac", "ogg", "mov", "matroska", "asf", "aiff", "ape", "wv", "dsf", "iff" }, format => Assert.Contains(format, formats));
+            Assert.All(new[] { "hls", "dash", "concat", "sdp", "image2", "tty", "lavfi" }, format => Assert.DoesNotContain(format, formats));
+            var input = args.Contains("-i") ? args.IndexOf("-i") : args.Count - 1;
+            Assert.True(args.IndexOf("-protocol_whitelist") < input);
+            Assert.True(args.IndexOf("-format_whitelist") < input);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Decoding_from_the_start_preserves_encoder_priming_without_a_demuxer_seek(bool soundtrack)
+    {
+        var args = AudioQualityCommandBuilder.Decode("source.m4a", "decoded.raw", new(0, 30), soundtrack: soundtrack);
+        Assert.DoesNotContain("-ss", args);
+        Assert.Contains("-ss", AudioQualityCommandBuilder.Decode("source.m4a", "decoded.raw", new(2, 30), soundtrack: soundtrack));
+        Assert.Contains("-ss", AudioQualityCommandBuilder.Decode("source.m4a", "decoded.raw", new(0, 30), containerLeadSeconds: 0.05, soundtrack: soundtrack));
+    }
+
+    [Theory]
+    [InlineData(1.25, null, "1.25")]
+    [InlineData(22.5, "12.5", "10")]
+    [InlineData(86370, "86360", "10")]
+    public void Audio_window_seeks_decode_context_before_trimming_at_the_exact_offset(double start, string? inputSeek, string outputSeek)
+    {
+        var args = AudioQualityCommandBuilder.Decode("source.m4a", "decoded.raw", new(start, 3)).ToList();
+        var input = args.IndexOf("-i");
+        var seeks = args.Select((arg, index) => (arg, index)).Where(p => p.arg == "-ss").Select(p => p.index).ToArray();
+        Assert.Equal(inputSeek is null ? 1 : 2, seeks.Length);
+        if (inputSeek is not null)
+        {
+            Assert.True(seeks[0] < input);
+            Assert.Equal(inputSeek, args[seeks[0] + 1]);
+        }
+        Assert.True(seeks[^1] > input);
+        Assert.Equal(outputSeek, args[seeks[^1] + 1]);
+        Assert.DoesNotContain("apad", args);
+    }
+
+    [Theory]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
     [InlineData(0)]

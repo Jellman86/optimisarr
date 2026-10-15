@@ -22,7 +22,8 @@ public sealed record SidecarCapabilities(
     IReadOnlyList<string> HardwareDecoders,
     VmafCapability Vmaf,
     long FreeScratchBytes,
-    int MaxConcurrency)
+    int MaxConcurrency,
+    Optimisarr.Core.Workers.WorkerPerceptualCapabilities? Perceptual = null)
 {
     /// <summary>What a machine with no FFmpeg reports: nothing, and no capacity to take work.</summary>
     public static SidecarCapabilities Nothing(string name, string platform = "windows") => new(

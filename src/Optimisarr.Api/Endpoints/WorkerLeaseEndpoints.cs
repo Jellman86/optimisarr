@@ -49,7 +49,10 @@ internal sealed record AssignmentDto(
     long? MinCandidateBytes = null,
     Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null,
     MediaKind Kind = MediaKind.Video,
-    string? AudioEncoder = null);
+    string? AudioEncoder = null,
+    RemotePerceptualSearchStep? PerceptualSearch = null,
+    string? ImageEncoder = null,
+    long? RequiredScratchBytes = null);
 
 internal sealed record SizeBudgetExceededRequest(long ObservedBytes);
 internal sealed record SizeBudgetUndershotRequest(long ObservedBytes);
@@ -293,12 +296,13 @@ internal static class WorkerLeaseEndpoints
                     .AsNoTracking()
                     .Where(lease => shortlist.Contains(lease.JobId)
                         && lease.State == LeaseState.Released
-                        && lease.EndReason == null)
-                    .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
+                        && (lease.EndReason == null || lease.EndReason == LeaseEndReason.CapacityUnavailable))
+                    .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt, lease.EndReason })
                     .ToListAsync(cancellationToken);
                 // Distinct workers, not refusals: see HandbackPolicy.MaxRefusingWorkers. One machine
                 // refusing the same job three times is one machine's opinion.
                 var refusingWorkers = handbacks
+                    .Where(handback => handback.EndReason == null)
                     .GroupBy(h => h.JobId)
                     .ToDictionary(g => g.Key, g => g.Select(h => h.WorkerId).Distinct().Count());
                 var lastHandbackHere = handbacks
@@ -373,7 +377,7 @@ internal static class WorkerLeaseEndpoints
                     }
 
                     var requiredProtocol = WorkerProtocol.MinimumForAssignment(assignment.Arguments, assignment.Kind, assignment.VmafModel,
-                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null, assignment.FullVerification?.CountVideoFrames == true);
+                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null, assignment.FullVerification?.CountVideoFrames == true, assignment.PerceptualSearch is not null);
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
@@ -402,6 +406,15 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
+                    var maximumOutputBytes = SizeBudget.MaxCandidateBytes(job.MediaFile.SizeBytes,
+                        assignment.Verification.RequireSizeReduction, job.Type is JobType.Preview or JobType.Calibration,
+                        assignment.Verification.MinimumSizeSavingPercent);
+                    var scratchBytes = WorkerScratchBudget.RequiredBytes(job.MediaFile.SizeBytes, maximumOutputBytes, assignment.PerceptualSearch?.Contract);
+                    if (scratchBytes is null)
+                    {
+                        skipped++; lastReason = "A bounded working-space requirement could not be calculated for this job.";
+                        continue;
+                    }
                     var requirements = new JobRequirements(
                         VideoEncoder: assignment.VideoEncoder,
                         // Null when the audio is copied. When the command names one it has to be
@@ -412,10 +425,9 @@ internal static class WorkerLeaseEndpoints
                         HardwareDecoder: assignment.HardwareDecoder,
                         // Only a job whose policy will judge VMAF needs a worker that can score it.
                         Vmaf: assignment.Verification.RequiresVmaf(assignment.Kind, true) ? VmafCapability.Cpu : VmafCapability.None,
-                        // Scratch for the candidate plus headroom; a worker that cannot hold the output
-                        // has no business starting the encode.
-                        ScratchBytes: job.MediaFile.SizeBytes + (job.MediaFile.SizeBytes / 2),
-                        Kind: assignment.Kind);
+                        ScratchBytes: scratchBytes.Value,
+                        Kind: assignment.Kind, ImageEncoder: assignment.ImageEncoder,
+                        PerceptualSearch: assignment.PerceptualSearch is not null);
 
                     var match = WorkerCapabilityMatcher.Match(capabilities, requirements);
                     if (!match.Accepted)
@@ -481,6 +493,8 @@ internal static class WorkerLeaseEndpoints
                             AdaptiveContractJson = assignment.Search is null
                                 ? null
                                 : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
+                            PerceptualSearchStateJson = assignment.PerceptualSearch is { } perceptual
+                                ? JsonSerializer.Serialize(RemotePerceptualSearchState.Start(perceptual.Contract, assignment.PerceptualEncoding), PerceptualWorkerWork.Json) : null,
                             VerificationWorkJson = assignment.VerificationWorkJson,
                             VerificationContractJson = assignment.FullVerification is null ? null
                                 : JsonSerializer.Serialize(assignment.FullVerification, EvidenceJson),
@@ -506,6 +520,9 @@ internal static class WorkerLeaseEndpoints
                         job.VerifiedSourceSha256 = null;
                         job.VerifiedOutputSha256 = null;
                         job.VerificationReportJson = null;
+                        job.PerceptualSearchJson = null;
+                        job.AdaptiveAudioBitrateKbps = null;
+                        job.AdaptiveImageQuality = null;
                         job.VerifiedAt = null;
                         // The queue shows these for every job. For a remote job they must be what the
                         // worker will actually run, not whatever this server last ran for it.
@@ -568,7 +585,8 @@ internal static class WorkerLeaseEndpoints
                             minCandidateBytes,
                             new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
                                 job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
-                                job.MediaFile.PixelFormat), assignment.Kind, assignment.AudioEncoder));
+                                job.MediaFile.PixelFormat), assignment.Kind, assignment.AudioEncoder, assignment.PerceptualSearch, assignment.ImageEncoder,
+                            assignment.PerceptualSearch is null ? null : scratchBytes));
                     }, cancellationToken);
                     if (!committed.Started) return Results.NoContent();
                     if (committed.Value?.Assignment is { } offered) return Results.Ok(offered);
@@ -1096,6 +1114,54 @@ internal static class WorkerLeaseEndpoints
         .Produces<ApiError>(StatusCodes.Status403Forbidden)
         .Produces<ApiError>(StatusCodes.Status409Conflict);
 
+        app.MapPost("/api/workers/leases/{leaseId:guid}/capacity-unavailable", async (
+            Guid leaseId,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+            await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Release(workerId, now),
+                (stored, job, _) =>
+                {
+                    stored.EndReason = LeaseEndReason.CapacityUnavailable;
+                    if (job.Status == JobStatus.Leased) job.Status = JobStatus.Queued;
+                },
+                _ => Results.NoContent(),
+                alreadyHandled: (stored, workerId) => stored.WorkerId == workerId
+                    && stored.State == LeaseState.Released && stored.EndReason == LeaseEndReason.CapacityUnavailable
+                        ? Results.NoContent() : null))
+        .WithName("ReportWorkerCapacityUnavailable")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
+        app.MapPost("/api/workers/leases/{leaseId:guid}/interrupted", async (
+            Guid leaseId,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+            await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Release(workerId, now),
+                (stored, job, _) =>
+                {
+                    stored.EndReason = LeaseEndReason.WorkerInterrupted;
+                    if (job.Status == JobStatus.Leased) job.Status = JobStatus.Queued;
+                },
+                _ => Results.NoContent(),
+                alreadyHandled: (stored, workerId) => stored.WorkerId == workerId
+                    && stored.State == LeaseState.Released && stored.EndReason == LeaseEndReason.WorkerInterrupted
+                        ? Results.NoContent() : null))
+        .WithName("ReportWorkerInterrupted")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         app.MapPost("/api/workers/leases/{leaseId:guid}/release", async (
             Guid leaseId,
             HttpRequest http,
@@ -1282,11 +1348,6 @@ internal static class WorkerLeaseEndpoints
     private static bool PlausiblyOfferable(Job job, WorkerCapabilities capabilities)
     {
         var media = job.MediaFile!;
-        if (media.MediaKind == MediaKind.Image)
-        {
-            return false;
-        }
-
         var library = media.Library;
         if (library is not null && !WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement))
         {
@@ -1300,6 +1361,10 @@ internal static class WorkerLeaseEndpoints
         // PrepareRemoteWorkAsync decides that, and refuses the job there if it cannot.
 
         var rules = LibraryRuleResolution.Resolve(library);
+        if (media.MediaKind == MediaKind.Image)
+            return library?.AdaptiveImageQuality == true && capabilities.ProtocolVersion >= WorkerProtocol.PerceptualQualityVersion
+                && capabilities.Perceptual?.ImageMetadataSupported == true && capabilities.Perceptual.ImageMetricRevision == ImagePerceptualResultParser.Revision
+                && (capabilities.Perceptual.ImageEncoders ?? []).Contains(ImageTarget.Resolve(rules.TargetImageFormat).Encoder, StringComparer.OrdinalIgnoreCase);
         if (media.MediaKind == MediaKind.Audio)
             return capabilities.ProtocolVersion >= 6 && AudioTarget.IsSupportedTarget(rules.TargetAudioCodec) && capabilities.AudioEncoders.Contains(
                 AudioTarget.Resolve(rules.TargetAudioCodec).Encoder, StringComparer.OrdinalIgnoreCase);

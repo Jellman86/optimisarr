@@ -11,6 +11,8 @@ SMOKE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/optimisarr-app-smoke.XXXXXX")"
 trap 'rm -rf "${SMOKE_ROOT}"' EXIT
 /usr/bin/ditto "${BUNDLE}" "${SMOKE_ROOT}/OptimisarrSidecar.app"
 /usr/bin/codesign --verify --deep --strict "${SMOKE_ROOT}/OptimisarrSidecar.app"
+python3 "$(dirname "$0")/../../../scripts/macos_native_package.py" smoke "${SMOKE_ROOT}/OptimisarrSidecar.app"
+python3 "$(dirname "$0")/../../../scripts/check_native_quality_bundle.py" "${SMOKE_ROOT}/OptimisarrSidecar.app"
 # Every bundled binary must run on the macOS the app declares, or it installs where its tools cannot.
 python3 "$(dirname "$0")/../../../scripts/check_macos_minimum.py" --bundle "${SMOKE_ROOT}/OptimisarrSidecar.app"
 python3 "$(dirname "$0")/../../../scripts/check_macos_minimum.py" --minimum 14.0 --system-libraries-only \

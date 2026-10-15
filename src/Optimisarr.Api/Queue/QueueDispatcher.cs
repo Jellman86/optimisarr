@@ -29,7 +29,7 @@ namespace Optimisarr.Api.Queue;
 /// and running ffmpeg out-of-process. A job only ever writes to the work directory;
 /// it never deletes or overwrites the original — safe replacement is a later phase.
 /// </summary>
-public sealed class QueueDispatcher(
+public sealed partial class QueueDispatcher(
     IServiceScopeFactory scopeFactory,
     IHubContext<JobsHub> hub,
     IHostEnvironment environment,
@@ -42,8 +42,11 @@ public sealed class QueueDispatcher(
     TranscodeOptions transcodeOptions,
     ActiveEncodeRegistry encodes,
     FileOperationClaims claims,
+    PerceptualResourceAdmission perceptualResources,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
+    private readonly LocalCapacityBackoff _nativeCapacityHolds = new(TimeProvider.System);
+    internal bool IsLocallyHeldForCapacity(int jobId, int attempt) => _nativeCapacityHolds.IsHeld(jobId, attempt);
     private readonly DiagnosticSchedulingCapture _diagnosticScheduling = new();
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private const int MaxAttempts = 3;
@@ -362,12 +365,14 @@ public sealed class QueueDispatcher(
                 .ToListAsync(stoppingToken);
             adaptiveLibraryIds = [.. adaptiveLibraries];
             delivered = await DeliveredWorkloadsAsync(db, stoppingToken);
+            _nativeCapacityHolds.PruneExpired();
             queued = (await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
                 .Select(job => new
                 {
                     job.Id,
+                    job.ExecutionAttempt,
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
@@ -380,7 +385,7 @@ public sealed class QueueDispatcher(
                     HonoursPlacement = job.Type == JobType.Normal,
                 })
                 .ToListAsync(stoppingToken))
-                .Where(job => !StartupRecovery.BlocksDispatch(job.Id))
+                .Where(job => !StartupRecovery.BlocksDispatch(job.Id) && !_nativeCapacityHolds.IsHeld(job.Id, job.ExecutionAttempt))
                 .Select(job => new QueuedJob(
                     job.Id,
                     job.LibraryId,
@@ -694,9 +699,7 @@ public sealed class QueueDispatcher(
 
             if (candidatePath is null || !File.Exists(candidatePath))
             {
-                await CompleteAsync(jobId, JobStatus.Failed,
-                    error: "The delivered candidate is missing from the work directory, so it cannot be verified.");
-                return;
+                throw new AttemptContentChangedException("The delivered candidate is missing from the work directory, so it cannot be verified.");
             }
 
             if (deliveredBy is null)
@@ -742,11 +745,7 @@ public sealed class QueueDispatcher(
 
             if (!File.Exists(work.Value.Original.Path))
             {
-                await CompleteAsync(jobId, JobStatus.Failed, error:
-                    $"Source file no longer exists: {work.Value.Original.Path}. It was most likely moved or "
-                    + "upgraded by your media manager (Radarr/Sonarr). Re-scan the library and the stale entry "
-                    + "will be removed.");
-                return;
+                throw new AttemptContentChangedException("The source no longer exists. It may have been moved or upgraded by a media manager; re-scan the library.");
             }
 
             await WithJobAsync(jobId, job => job.VideoEncoder = work.Value.VideoEncoder, cancellationToken);
@@ -792,8 +791,8 @@ public sealed class QueueDispatcher(
                     "Job {JobId}: quality evidence from {Worker} accepted; VMAF will not be re-measured here",
                     jobId, deliveredBy.Name);
             }
-            if (!await FileContentIdentity.MatchesAsync(candidatePath, deliveredLease.DeliveredSha256, cancellationToken))
-                throw new InvalidOperationException("The delivered candidate changed after upload; verification cannot trust different bytes.");
+            await FileContentIdentity.RequireMatchAsync(candidatePath, deliveredLease.DeliveredSha256,
+                "The delivered candidate changed or became unavailable after upload.", cancellationToken);
             var disposition = await VerifyAndFinishAsync(
                 jobId, executionAttempt, candidatePath, work.Value, cancellationToken,
                 // A worker's hardware decode can corrupt frames as a local one can; the retry
@@ -826,6 +825,11 @@ public sealed class QueueDispatcher(
         catch (OperationCanceledException)
         {
             await HandleCancelledAsync(jobId, executionAttempt);
+        }
+        catch (Exception ex) when (OwnedPreparationFailure.IsDeferral(ex))
+        {
+            logger.LogWarning("Job {JobId}: attempt deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
+            await FinishOwnedPreparationDeferredAsync(jobId, executionAttempt, ex.Message);
         }
         catch (Exception ex)
         {
@@ -989,6 +993,7 @@ public sealed class QueueDispatcher(
 
     private async Task RunJobAsync(int jobId, int executionAttempt, CancellationToken cancellationToken)
     {
+        var nativeReservations = new List<IDisposable>();
         try
         {
             var work = await LoadWorkAsync(jobId, cancellationToken);
@@ -1004,11 +1009,7 @@ public sealed class QueueDispatcher(
             // library scan prunes the stale inventory row.
             if (!File.Exists(work.Value.Original.Path))
             {
-                await CompleteAsync(jobId, JobStatus.Failed, error:
-                    $"Source file no longer exists: {work.Value.Original.Path}. It was most likely moved or "
-                    + "upgraded by your media manager (Radarr/Sonarr). Re-scan the library and the stale entry "
-                    + "will be removed.");
-                return;
+                throw new AttemptContentChangedException("The source no longer exists. It may have been moved or upgraded by a media manager; re-scan the library.");
             }
 
             // Pre-flight eligibility re-check: a job can sit in a long backlog while the library's
@@ -1038,7 +1039,8 @@ public sealed class QueueDispatcher(
 
             if (!work.Value.IsDisposable)
             {
-                var sourceHash = await FileContentIdentity.HashAsync(work.Value.Original.Path, cancellationToken);
+                var sourceHash = await FileContentIdentity.HashAttemptAsync(work.Value.Original.Path,
+                    "The source is unavailable for this attempt.", cancellationToken);
                 await WithJobAsync(jobId, job =>
                 {
                     job.SourceSha256 = sourceHash;
@@ -1056,7 +1058,7 @@ public sealed class QueueDispatcher(
                 preparedWork.AdaptiveVideoQuality is not null,
                 preparedWork.IsCalibration))
             {
-                var selection = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
+                var selection = await SelectAdaptiveQualityAsync(jobId, executionAttempt, preparedWork, cancellationToken);
                 if (selection is null)
                 {
                     // The samples rejected the size prediction before any full output existed.
@@ -1066,6 +1068,14 @@ public sealed class QueueDispatcher(
                 // The sample result belongs to this encoder. Worker-first placement already had
                 // its head start before this machine claimed the job; handing the chosen quality
                 // to a different encoder would discard the proof the search just gathered.
+            }
+
+            if (!preparedWork.IsDisposable && (preparedWork.Spec.Kind == MediaKind.Audio && preparedWork.AdaptiveAudioQuality
+                || preparedWork.Spec.Kind == MediaKind.Image && preparedWork.AdaptiveImageQuality))
+            {
+                var selection = await SelectPerceptualQualityAsync(jobId, executionAttempt, preparedWork, nativeReservations, cancellationToken);
+                if (selection is null) return;
+                preparedWork = selection.Value;
             }
 
             var (spec, arguments) = preparedWork;
@@ -1267,6 +1277,11 @@ public sealed class QueueDispatcher(
         {
             await HandleCancelledAsync(jobId, executionAttempt);
         }
+        catch (Exception ex) when (OwnedPreparationFailure.IsDeferral(ex))
+        {
+            logger.LogWarning("Job {JobId}: attempt deferred; files and evidence were retained. {Reason}", jobId, ex.Message);
+            await FinishOwnedPreparationDeferredAsync(jobId, executionAttempt, ex.Message);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed", jobId);
@@ -1275,6 +1290,7 @@ public sealed class QueueDispatcher(
         }
         finally
         {
+            foreach (var reservation in nativeReservations.AsEnumerable().Reverse()) reservation.Dispose();
             if (_running.TryRemove(jobId, out var work))
             {
                 work.Cancellation.Dispose();
@@ -1335,7 +1351,12 @@ public sealed class QueueDispatcher(
         // Why this work is a second encode of the same job, when it is one; carried into the
         // verification report's context so the record explains itself.
         string? SoftwareDecodeRetryReason = null,
-        bool BypassSizePreflight = false)
+        bool BypassSizePreflight = false,
+        bool AdaptiveAudioQuality = false,
+        bool AdaptiveImageQuality = false,
+        PerceptualSearchSummary? PerceptualSearch = null,
+        int PerceptualRetryCount = 0,
+        string? SourcePixelFormat = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1407,6 +1428,31 @@ public sealed class QueueDispatcher(
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
         }
 
+        var perceptual = work.Spec.Kind == MediaKind.Audio && work.AdaptiveAudioQuality
+            || work.Spec.Kind == MediaKind.Image && work.AdaptiveImageQuality;
+        if (perceptual && worker.ProtocolVersion < WorkerProtocol.PerceptualQualityVersion)
+            return RemoteWorkPlan.Refused("Audio/image quality-first requires the new perceptual-search worker contract; this worker cannot run it yet.");
+        RemotePerceptualSearchStep? perceptualStep = null;
+        FrozenPerceptualEncoding? perceptualEncoding = null;
+        if (perceptual)
+        {
+            JobRequirements Requirements(long bytes) => new(null, work.Spec.Kind == MediaKind.Audio ? work.Spec.AudioEncoder : null,
+                null, VmafCapability.None, bytes, work.Spec.Kind, work.Spec.ImageEncoder, PerceptualSearch: true);
+            // Reject missing tools/known-unaffordable memory before source metadata reads.
+            // Full workspace admission still uses the frozen plan below, before any lease.
+            var basic = WorkerCapabilityMatcher.Match(worker, Requirements(1));
+            if (!basic.Accepted) return RemoteWorkPlan.Refused(string.Join(" ", basic.Reasons));
+            try { (perceptualStep, perceptualEncoding) = await PlanRemotePerceptualAsync(work, cancellationToken); }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+            { return RemoteWorkPlan.Refused(error.Message); }
+            var maximum = SizeBudget.MaxCandidateBytes(work.Original.SizeBytes, work.VerificationPolicy.RequireSizeReduction,
+                work.IsDisposable, work.VerificationPolicy.MinimumSizeSavingPercent);
+            var scratch = WorkerScratchBudget.RequiredBytes(work.Original.SizeBytes, maximum, perceptualStep.Contract);
+            if (scratch is null) return RemoteWorkPlan.Refused("The native search has no bounded working-space requirement.");
+            var match = WorkerCapabilityMatcher.Match(worker, Requirements(scratch.Value));
+            if (!match.Accepted) return RemoteWorkPlan.Refused(string.Join(" ", match.Reasons));
+        }
+
         if (vmafModel is not null)
             work = work with { Original = work.Original with { VmafModel = vmafModel } };
 
@@ -1415,12 +1461,12 @@ public sealed class QueueDispatcher(
             return RemoteWorkPlan.Refused("The library keeps its work on this server.");
         }
 
-        var strictVerification = forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
+        var strictVerification = perceptual || forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
         if (strictVerification && work.IsDisposable)
             return RemoteWorkPlan.Refused("Sidecar-only verification requires a full-file job.");
 
         // Video and audio share the transfer lifecycle; remux and image paths stay local.
-        if (work.Spec.Kind != MediaKind.Audio && (work.Spec.VideoCodec is null || work.VideoEncoder is null))
+        if (!(work.Spec.Kind == MediaKind.Image && perceptual) && work.Spec.Kind != MediaKind.Audio && (work.Spec.VideoCodec is null || work.VideoEncoder is null))
         {
             return RemoteWorkPlan.Refused("Only video and audio re-encodes are offered to remote workers.");
         }
@@ -1430,7 +1476,7 @@ public sealed class QueueDispatcher(
         // being done here first. The worker measures the candidates this machine chooses, on the
         // encoder that will do the real encode.
         AdaptiveSearchStep? search = null;
-        if (work.Spec.Kind != MediaKind.Audio && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
+        if (work.Spec.Kind == MediaKind.Video && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
             search = work.VideoQuality is { } baseline
                 ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken, work.Original.VmafModel)
@@ -1456,7 +1502,7 @@ public sealed class QueueDispatcher(
         double? referenceContainerLead = null;
         string? referenceVideoCodec = null;
         var referenceFrameRate = work.Spec.TargetFrameRate ?? work.VideoFrameRate;
-        if (work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
+        if (work.Spec.Kind == MediaKind.Video && work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var sourceProbe = await scope.ServiceProvider
@@ -1466,7 +1512,7 @@ public sealed class QueueDispatcher(
             referenceContainerLead = ContainerLeadSeconds(sourceProbe);
             referenceFrameRate ??= sourceProbe.VideoFrameRate;
         }
-        var quality = work.SourcePicture is { } source
+        var quality = work.Spec.Kind == MediaKind.Video && work.SourcePicture is { } source
             ? RemoteQualityPlanner.Plan(
                 work.VerificationPolicy,
                 source.Width,
@@ -1493,18 +1539,20 @@ public sealed class QueueDispatcher(
             work.UsedHardwareDecode && work.VideoEncoder is not null ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
             work.Spec.AudioEncoder,
             search,
-            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Audio ? 2
+            strictVerification ? new RemoteVerificationContract(work.Spec.Kind == MediaKind.Image ? 4 : work.Spec.Kind == MediaKind.Audio ? 2
                 : work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded) ? 3 : 1, Guid.NewGuid(),
-                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled,
+                work.Spec.Kind != MediaKind.Image && (work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled),
                 work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind),
                 work.Spec.Kind == MediaKind.Video && work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded)
                     ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null,
-                CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null) : null,
+                CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null,
+                Image: work.Spec.Kind == MediaKind.Image ? new(work.VerificationPolicy.ImageQualityGateEnabled,
+                    work.VerificationPolicy.ImageMetadataGateEnabled, work.VerificationPolicy.RequiresImagePerceptualQuality(work.Spec.Kind)) : null) : null,
             JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
             work.VideoQuality?.Mode,
-            work.Spec.Kind));
+            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder));
     }
 
     /// <summary>
@@ -1710,7 +1758,8 @@ public sealed class QueueDispatcher(
             detectedCrop: detectedCrop,
             sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
-            sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null);
+            sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null,
+            adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true);
 
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
         {
@@ -1842,7 +1891,11 @@ public sealed class QueueDispatcher(
             // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
             // would add a full decode pass without providing another safety signal.
             VideoReencoded: spec.VideoCodec is not null,
-            ExpectedVideoCodec: spec.VideoCodec,
+            // ffprobe describes a still's encoded picture as a video stream too. Freeze its
+            // codec so a readable file under the requested suffix cannot bypass format checks.
+            ExpectedVideoCodec: spec.Kind == MediaKind.Image ? spec.ImageEncoder switch
+                { "mjpeg" => "mjpeg", "libwebp" => "webp", _ => throw new InvalidOperationException("Unsupported image encoder.") }
+                : spec.VideoCodec,
             // The size a downscale was told to produce. The gate holds the output to this rather
             // than to the source, and it is the same PictureSize the scale filter was built from.
             ExpectedWidth: spec.ExpectedSize?.Width,
@@ -2082,7 +2135,12 @@ public sealed class QueueDispatcher(
                 ? new PictureSize(media.Width.Value, media.Height.Value)
                 : null,
             SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null,
-            BypassSizePreflight: job.BypassSizePreflight);
+            BypassSizePreflight: job.BypassSizePreflight,
+            AdaptiveAudioQuality: library?.AdaptiveAudioQuality ?? false,
+            AdaptiveImageQuality: library?.AdaptiveImageQuality ?? false,
+            PerceptualSearch: ReadPerceptualRetry(job),
+            PerceptualRetryCount: job.QualityRetryCount,
+            SourcePixelFormat: media.PixelFormat);
     }
 
     /// <summary>
@@ -2127,13 +2185,12 @@ public sealed class QueueDispatcher(
     /// </summary>
     private async Task<JobWork?> SelectAdaptiveQualityAsync(
         int jobId,
+        int executionAttempt,
         JobWork work,
         CancellationToken cancellationToken)
     {
         var baseline = work.VideoQuality!.Effective;
-        var scratchRoot = Path.Combine(
-            Path.GetDirectoryName(work.Spec.OutputPath)!,
-            $".adaptive-quality-{jobId}-{Guid.NewGuid():N}");
+        OwnedScratchWorkspace? scratch = null;
 
         await WithJobAsync(jobId, job =>
         {
@@ -2198,7 +2255,8 @@ public sealed class QueueDispatcher(
                 : await MeasureSizeForecastBasisAsync(
                     jobId, work, windows, sourceProbe, samplingDuration.Value, cancellationToken);
 
-            Directory.CreateDirectory(scratchRoot);
+            scratch = await OwnedScratchWorkspace.CreateAsync(scopeFactory, claims, _workRoot, jobId, executionAttempt,
+                Path.GetDirectoryName(work.Spec.OutputPath)!, "adaptive-quality", logger, cancellationToken);
             var measured = new List<AdaptiveQualityProbe>();
             while (true)
             {
@@ -2239,7 +2297,7 @@ public sealed class QueueDispatcher(
                     policy,
                     qualityService,
                     probeService,
-                    scratchRoot,
+                    scratch,
                     cancellationToken);
                 if (candidate is null)
                 {
@@ -2278,7 +2336,7 @@ public sealed class QueueDispatcher(
         }
         finally
         {
-            DeleteDirectoryQuietly(scratchRoot);
+            if (scratch is not null) await scratch.DisposeAsync();
         }
     }
 
@@ -2293,7 +2351,7 @@ public sealed class QueueDispatcher(
         VerificationPolicy policy,
         QualityScoreService qualityService,
         MediaProbeService probeService,
-        string scratchRoot,
+        OwnedScratchWorkspace scratch,
         CancellationToken cancellationToken)
     {
         var results = new List<QualityResult>(windows.Count);
@@ -2302,7 +2360,7 @@ public sealed class QueueDispatcher(
         {
             var window = windows[index];
             var outputPath = Path.Combine(
-                scratchRoot,
+                scratch.Root,
                 $"q{qualityValue}-window{index}{Path.GetExtension(work.Spec.OutputPath)}");
             var sampleSpec = work.Spec with
             {
@@ -2327,27 +2385,32 @@ public sealed class QueueDispatcher(
                 hardwareDecode: false,
                 hardwareToneMap: false);
 
-            var run = await RunFfmpegAsync(
-                jobId,
-                outputPath,
-                primary,
-                window.DurationSeconds,
-                FrameRatePlanner.ScaleFrameCount(
-                    FfmpegProgressCalculator.ExpectedFramesForWindow(
-                        sourceProbe.FrameCount,
-                        sourceVideoDurationSeconds,
-                        window.DurationSeconds,
-                        sourceProbe.VideoFrameRate),
-                    sourceProbe.VideoFrameRate,
-                    work.Spec.TargetFrameRate),
-                IsHardwareEncoder(work.VideoEncoder),
-                cancellationToken,
-                progressMap: progress => AdaptiveQualityProgress.Map(
-                    candidateIndex,
-                    index,
-                    windows.Count,
-                    AdaptiveQualityPhase.Encoding,
-                    progress));
+            FfmpegRun run;
+            try
+            {
+                run = await RunFfmpegAsync(
+                    jobId,
+                    outputPath,
+                    primary,
+                    window.DurationSeconds,
+                    FrameRatePlanner.ScaleFrameCount(
+                        FfmpegProgressCalculator.ExpectedFramesForWindow(
+                            sourceProbe.FrameCount,
+                            sourceVideoDurationSeconds,
+                            window.DurationSeconds,
+                            sourceProbe.VideoFrameRate),
+                        sourceProbe.VideoFrameRate,
+                        work.Spec.TargetFrameRate),
+                    IsHardwareEncoder(work.VideoEncoder),
+                    cancellationToken,
+                    progressMap: progress => AdaptiveQualityProgress.Map(
+                        candidateIndex,
+                        index,
+                        windows.Count,
+                        AdaptiveQualityPhase.Encoding,
+                        progress));
+            }
+            finally { scratch.Capture(outputPath); }
             if (run.ExitCode != 0)
             {
                 logger.LogWarning(
@@ -2434,7 +2497,7 @@ public sealed class QueueDispatcher(
             }
 
             results.Add(result);
-            AdaptiveQualityScratch.DeleteSample(outputPath);
+            await scratch.TryDeleteAsync(outputPath);
         }
 
         var combined = QualityScoreAggregator.Combine(
@@ -2669,21 +2732,6 @@ public sealed class QueueDispatcher(
             SoftwareFallbackArguments = primary.SequenceEqual(software) ? null : software,
             UsedHardwareDecode = !primary.SequenceEqual(software)
         };
-    }
-
-    private static void DeleteDirectoryQuietly(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Scratch cleanup is also covered by the timed/orphan cleanup path.
-        }
     }
 
     internal static bool TrackCleanupHasNoRemovalWork(
@@ -3152,6 +3200,9 @@ public sealed class QueueDispatcher(
         job.Status = JobStatus.Transcoding;
         job.Attempt += 1;
         job.ExecutionAttempt += 1;
+        job.AdaptiveAudioBitrateKbps = null;
+        job.AdaptiveImageQuality = null;
+        if (job.RetryReason != "HigherPerceptualQualityRetry") job.PerceptualSearchJson = null;
         job.StartedAt = nowUtc;
         job.UpdatedAt = nowUtc;
         job.ErrorMessage = null;
@@ -3271,21 +3322,20 @@ public sealed class QueueDispatcher(
         }, cancellationToken);
         await NotifyAsync();
 
-        await using var sourceGuard = work.IsDisposable ? null : FileContentIdentity.OpenGuard(work.Original.Path);
-        await using var outputGuard = work.IsDisposable ? null : FileContentIdentity.OpenGuard(outputPath);
+        await using var sourceGuard = work.IsDisposable ? null : FileContentIdentity.OpenAttemptGuard(work.Original.Path, "The source is unavailable for verification.");
+        await using var outputGuard = work.IsDisposable ? null : FileContentIdentity.OpenAttemptGuard(outputPath, "The candidate is unavailable for verification.");
         string? verifiedSource = null;
         string? verifiedOutput = null;
         if (!work.IsDisposable)
         {
             await using var identityScope = scopeFactory.CreateAsyncScope();
             var identityDb = identityScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-            var expected = await identityDb.Jobs.AsNoTracking().Where(job => job.Id == jobId)
-                .Select(job => job.SourceSha256).SingleAsync(cancellationToken);
-            verifiedSource = await FileContentIdentity.HashAsync(work.Original.Path, cancellationToken);
-            if (!FileContentIdentity.IsHash(expected)
-                || !string.Equals(expected, verifiedSource, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The source changed since this attempt began, or its identity is missing. The original was kept; create a fresh verified attempt.");
-            verifiedOutput = await FileContentIdentity.HashAsync(outputPath, cancellationToken);
+            var expected = await identityDb.Jobs.AsNoTracking().Where(job => job.Id == jobId && job.ExecutionAttempt == executionAttempt)
+                .Select(job => job.SourceSha256).SingleOrDefaultAsync(cancellationToken);
+            await FileContentIdentity.RequireMatchAsync(work.Original.Path, expected,
+                "The source changed since this attempt began, or its identity is missing.", cancellationToken);
+            verifiedSource = expected;
+            verifiedOutput = await FileContentIdentity.HashAttemptAsync(outputPath, "The candidate is unavailable for verification.", cancellationToken);
         }
 
         var settings = await GetQueueSettingsAsync(cancellationToken);
@@ -3314,6 +3364,12 @@ public sealed class QueueDispatcher(
             work.Spec.ClipSeconds,
             work.Spec.ClipStartSeconds,
             outputPath);
+        await using var referenceScratch = clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip)
+            ? await OwnedScratchWorkspace.CreateAsync(scopeFactory, claims, _workRoot, jobId, executionAttempt,
+                Path.GetDirectoryName(outputPath)!, "verification-reference", logger, cancellationToken)
+            : null;
+        if (referenceScratch is not null) clip = clip! with
+            { ReferencePath = Path.Combine(referenceScratch.Root, Path.GetFileName(clip!.ReferencePath)) };
         // The VMAF pass is the long part of verification; surface its live progress on the same
         // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%
         // steps, and both helpers serialise (job lock / hub), so fire-and-forget is safe here.
@@ -3339,23 +3395,28 @@ public sealed class QueueDispatcher(
                 qualityProgress,
                 vmafAcceleration,
                 remoteQuality,
-                remoteEvidence);
+                remoteEvidence,
+                referenceScratch is null ? null : new VerificationScratchCallbacks(referenceScratch.Capture, referenceScratch.TryDeleteAsync));
         }
-        if (!work.IsDisposable
-            && (!await FileContentIdentity.MatchesAsync(work.Original.Path, verifiedSource, cancellationToken)
-                || !await FileContentIdentity.MatchesAsync(outputPath, verifiedOutput, cancellationToken)))
-            throw new InvalidOperationException("Source or candidate bytes changed during verification. The original was kept; create a fresh verified attempt.");
+        if (!work.IsDisposable)
+        {
+            await FileContentIdentity.RequireMatchAsync(work.Original.Path, verifiedSource,
+                "The source changed or became unavailable during verification.", cancellationToken);
+            await FileContentIdentity.RequireMatchAsync(outputPath, verifiedOutput,
+                "The candidate changed or became unavailable during verification.", cancellationToken);
+        }
 
         outcome = outcome with
         {
             Report = outcome.Report with
             {
+                PerceptualSearch = work.PerceptualSearch,
                 Context = new VerificationContext(
                     work.VideoEncoder,
                     work.VideoQuality?.Requested,
                     work.VideoQuality?.Effective,
                     work.VideoQuality?.Mode,
-                    work.VideoQuality?.RetryCount ?? 0,
+                    work.VideoQuality?.RetryCount ?? work.PerceptualRetryCount,
                     outcome.VmafSampling,
                     policy.MinimumVmafHarmonicMean,
                     policy.MinimumVmafMin,
@@ -3383,6 +3444,20 @@ public sealed class QueueDispatcher(
 
         if (!outcome.Report.Passed)
         {
+            if (!work.IsDisposable && work.PerceptualSearch is { Result.Decision.FellBack: false } search
+                && (work.Spec.Kind == MediaKind.Image && work.AdaptiveImageQuality || work.Spec.Kind == MediaKind.Audio && work.AdaptiveAudioQuality))
+            {
+                var baseline = search.Result.Probes.First().Value;
+                var plan = work.Spec.Kind == MediaKind.Image ? PerceptualQualityPlan.Image(search.Encoder, baseline)
+                    : PerceptualQualityPlan.Audio(search.Encoder, baseline);
+                var value = work.Spec.Kind == MediaKind.Image ? work.Spec.ImageQuality : work.Spec.AudioBitrateKbps;
+                if (value is { } current && PerceptualQualityRetryPolicy.Next(work.Spec.Kind, plan, current,
+                    work.PerceptualRetryCount, outcome.Report, policy) is { } next)
+                {
+                    await QueuePerceptualRetryAsync(jobId, executionAttempt, outputPath, search with { RetryValue = next });
+                    return VerificationDisposition.Finished;
+                }
+            }
             var sourceFailure = HardwareDecodeFallback.SourceFailureBlockingRetry(outcome.Report);
             if (sourceFailure is not null)
             {

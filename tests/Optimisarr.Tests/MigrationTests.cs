@@ -6,6 +6,79 @@ namespace Optimisarr.Tests;
 
 public sealed class MigrationTests : IDisposable
 {
+    [Fact]
+    public async Task Perceptual_worker_state_preserves_legacy_workers_and_leases_and_enforces_json_budgets()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261013201344_AddAdaptiveAudioImageQuality");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Workers (Id, Name, OperatingSystem, Architecture, ProtocolVersion, VideoEncoders,
+                HardwareDecoders, Vmaf, FreeScratchBytes, MaxConcurrency, PairedAt)
+            VALUES (1, 'Legacy worker', 'linux', 'x64', 10, 'libx265', '', 'Cpu', 1024, 1, '2026-10-14T00:00:00+00:00');
+            """);
+        db.Libraries.Add(new() { Id = 1, Name = "Music", Path = "fixtures" });
+        db.MediaFiles.Add(new() { Id = 1, LibraryId = 1, Path = "fixtures/source.flac", RelativePath = "source.flac" });
+        db.Jobs.Add(new() { Id = 1, MediaFileId = 1, LibraryId = 1, Status = JobStatus.Leased });
+        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO JobLeases (Id, JobId, WorkerId, ExecutionAttempt, AcquiredAt, ExpiresAt, State)
+            VALUES ('11111111-1111-1111-1111-111111111111', 1, 1, 0,
+                '2026-10-14T00:00:00+00:00', '2026-10-15T00:00:00+00:00', 'Held');
+            """);
+        await migrator.MigrateAsync();
+        var worker = await db.Workers.SingleAsync();
+        var lease = await db.JobLeases.SingleAsync();
+        Assert.Equal(10, worker.ProtocolVersion);
+        Assert.Null(worker.PerceptualCapabilitiesJson);
+        Assert.Null(lease.PerceptualSearchStateJson);
+        worker.PerceptualCapabilitiesJson = "{\"imageEncoders\":[\"libwebp\"]}";
+        lease.PerceptualSearchStateJson = "{\"sourceRejected\":true}";
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        worker = await db.Workers.SingleAsync();
+        lease = await db.JobLeases.SingleAsync();
+        Assert.Equal("{\"imageEncoders\":[\"libwebp\"]}", worker.PerceptualCapabilitiesJson);
+        Assert.Equal("{\"sourceRejected\":true}", lease.PerceptualSearchStateJson);
+        lease.PerceptualSearchStateJson = "{\"padding\":\"" + new string('x', 262144) + "\"}";
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        lease.PerceptualSearchStateJson = "{\"sourceRejected\":true}";
+        worker.PerceptualCapabilitiesJson = "not-json";
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Quality_first_migration_preserves_fixed_libraries_and_is_idempotent()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite($"Data Source={_dbPath};Pooling=False").Options;
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261012122056_AddWorkerResultUploadSeal");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES ('Music', '/data/music', 'Music', 'ConservativeHevc', 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+        await migrator.MigrateAsync();
+        var library = await db.Libraries.SingleAsync();
+        Assert.False(library.AdaptiveAudioQuality);
+        Assert.False(library.AdaptiveImageQuality);
+        library.AdaptiveAudioQuality = true;
+        library.AudioQualityGateEnabled = true;
+        library.MaximumAudioQualityDistance = 0.02;
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        var restored = await db.Libraries.SingleAsync();
+        Assert.True(restored.AdaptiveAudioQuality);
+        Assert.True(restored.AudioQualityGateEnabled);
+        Assert.Equal(0.02, restored.MaximumAudioQualityDistance);
+    }
+
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(),
         "optimisarr-tests",
@@ -19,11 +92,24 @@ public sealed class MigrationTests : IDisposable
         await using var db = new OptimisarrDbContext(options);
         var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
         await migrator.MigrateAsync("20261011194526_AddDedupeActionJournal");
-        db.Libraries.Add(new() { Id = 1, Name = "Legacy uploads", Path = "legacy" });
+        // Write the historical schema directly: current entities include columns
+        // introduced after this migration boundary.
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Libraries (Id, Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES (1, 'Legacy uploads', 'legacy', 'Film', 'ConservativeHevc', 1,
+                '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00');
+            """);
         db.MediaFiles.Add(new() { Id = 1, LibraryId = 1, Path = "legacy/source.mkv", RelativePath = "source.mkv" });
-        db.Workers.Add(new() { Id = 1, Name = "Legacy worker" });
-        db.Jobs.Add(new() { Id = 1, MediaFileId = 1, LibraryId = 1, Status = JobStatus.Leased });
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Workers (Id, Name, OperatingSystem, Architecture, ProtocolVersion, VideoEncoders,
+                HardwareDecoders, Vmaf, FreeScratchBytes, MaxConcurrency, PairedAt)
+            VALUES (1, 'Legacy worker', 'linux', 'x64', 10, 'libx265', '', 'Cpu', 1024, 1, '2026-10-12T00:00:00+00:00');
+            """);
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO Jobs (Id, MediaFileId, LibraryId, Status, Priority, Attempt, Progress, EnqueuedAt, UpdatedAt)
+            VALUES (1, 1, 1, 'Leased', 0, 0, 0, '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00');
+            """);
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO JobLeases (Id, JobId, WorkerId, ExecutionAttempt, AcquiredAt, ExpiresAt, State)
             VALUES ('11111111-1111-1111-1111-111111111111', 1, 1, 0,

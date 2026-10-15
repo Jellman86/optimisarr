@@ -3,7 +3,25 @@ import type { Messages } from './en'
 // German. Typed as `Messages`, so it must define exactly the English key set —
 // omitting or misnaming a key fails `npm run check`.
 export const de: Messages = {
+  quality_first: {
+    previous_selected: "Zuvor gewählte Einstellung",
+    retry_minimum: "Mindesteinstellung für den erneuten Versuch: {value}",
+    searching: 'Einstellung wird gesucht',
+    interrupted: 'Suche vor der Auswahl angehalten',
+    retry: "Wiederholung mit höherer Qualität",
+    loudness_drift: "Lautheitsabweichung",
+    local_hint: "Die Qualitätssuche läuft derzeit auf diesem Server. Auf Worker beschränkte Bibliotheken warten.",
+    image_no_resize: "Bildqualität zuerst erfordert unveränderte Bildgröße.",
+    audio_no_downmix: "Audioqualität zuerst erfordert unveränderte Kanäle; Downmix deaktivieren.",
+
+    title: "Qualitätssuche",
+    selected: "Gewählte Einstellung",
+    candidate: "Kandidat",
+    note: "Stichproben helfen bei der Auswahl. Die abschließende Prüfung entscheidet über die Ersetzung.",
+  },
   image_quality: {
+    adaptive_label: "Bildqualität zuerst (experimentell)",
+    adaptive_hint: "Kompression vor der endgültigen Kodierung anhand Ihres Zielwerts suchen. Ganze unterstützte Standbilder werden verglichen; alle abschließenden Prüfungen gelten weiter. Bei WebP erlaubt dies verlustbehaftete Ausgaben aus verlustfreien Originalen.",
       "title": "Bildqualitätsbericht",
       "report_hint": "SSIMULACRA2 nach dem Kodieren messen. Optional und standardmäßig aus.",
       "gate_label": "Wahrnehmungsqualität des Bildes verlangen",
@@ -116,6 +134,8 @@ export const de: Messages = {
     custom_note: "Eigene Bitrate in den erweiterten Audiooptionen einstellen. Die Qualitätsprüfung bleibt unverändert.",
   },
   audio_quality: {
+    adaptive_label: "Audioqualität zuerst (experimentell)",
+    adaptive_hint: "Bitraten anhand von Anfangs-, Mittel- und Endabschnitten suchen. Nur Mono/Stereo; alle abschließenden Prüfungen gelten weiter.",
     gate_label: "Audioqualität verlangen",
     gate_hint: "Blockiert den Austausch, wenn ein gemessener Kanal oder Ausschnitt den Grenzwert überschreitet oder die Qualität nicht gemessen werden kann. Experimentell, für eigenständiges Mono- und Stereo-Audio. Worker messen lokal.",
     maximum: "Maximale Audioabweichung",
@@ -773,6 +793,9 @@ export const de: Messages = {
     returned_from: 'zurück von {worker} · wartet auf Prüfung',
     verifying_returned: 'Dieser Server prüft die von {worker} zurückgesendete Datei.',
     stage_verifying_returned: 'Qualität dessen, was {worker} zurückgeliefert hat, wird gemessen…',
+    waiting_resources_row: 'wartet auf Speicher oder Platz…',
+    waiting_resources_title: 'Warten auf Arbeitsspeicher oder Arbeitsbereich',
+    waiting_resources_detail: 'Original und Wiederholungseinstellungen bleiben erhalten. Der Server prüft die Kapazität bald erneut; ein geeigneter Worker kann diesen Auftrag weiterhin übernehmen.',
     waiting_for_worker: 'wartet auf einen Worker…',
     waiting_for_worker_title: 'Diese Bibliothek hält ihre Arbeit von diesem Server fern: sie wartet, bis ein Worker, der sie ausführen kann, online und frei ist.',
     status_completed: 'Abgeschlossen',

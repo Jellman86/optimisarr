@@ -11,6 +11,7 @@
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import ImagePerceptualReport from '../components/ImagePerceptualReport.svelte'
+  import PerceptualSearchReport from '../components/PerceptualSearchReport.svelte'
   import MediaCompare from '../components/MediaCompare.svelte'
   import PosterGlow from '../components/PosterGlow.svelte'
 
@@ -177,6 +178,10 @@
     return Math.round((1 - r.newSizeBytes / r.originalSizeBytes) * 100)
   }
 
+  function searchReport(detail: ReplacementDetail | null | undefined) {
+    try { return detail?.verificationReportJson ? (JSON.parse(detail.verificationReportJson) as VerificationReport).perceptualSearch ?? null : null }
+    catch { return null }
+  }
   function audioReport(detail: ReplacementDetail | null | undefined) {
     try { return detail?.verificationReportJson ? (JSON.parse(detail.verificationReportJson) as VerificationReport).audioQuality ?? null : null }
     catch { return null }
@@ -270,6 +275,7 @@
         </div>
         <AudioQualityReport report={audioReport(detail)} />
         <SoundtrackQualityReport report={soundtrackReport(detail)} />
+        <PerceptualSearchReport report={searchReport(detail)} />
         <ImagePerceptualReport report={imageReport(detail)} />
         {#if checks}<VerificationChecks {checks} />{:else}<p class="text-sm text-ink-3">{i18n.m.quarantine.no_report}</p>{/if}
       </section>

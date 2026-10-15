@@ -20,21 +20,67 @@ struct MemoryWorkPlan: Equatable, Sendable {
 public final class MemoryWorkBudget: @unchecked Sendable {
     public static let shared = MemoryWorkBudget()
     private let lock = NSLock()
-    private var reservations: [UUID: Int64] = [:]
+    private struct Allocation: Equatable {
+        let nativeBytes: Int64
+        let ramBytes: Int64
+        var total: Int64 { nativeBytes + ramBytes }
+    }
+    private var reservations: [UUID: Allocation] = [:]
     public init() {}
-    public var reservedBytes: Int64 { lock.withLock { reservations.values.reduce(0, +) } }
+    public var reservedBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.total } } }
+    public var reservedRamBytes: Int64 { lock.withLock { reservations.values.reduce(0) { $0 + $1.ramBytes } } }
 
-    func reserve(bytes: Int64, limit: Int64) -> UUID? {
+    /// Restoration records an existing obligation; it never grants permission to start work.
+    func restoreObligation(_ owner: UUID, nativeBytes: Int64, ramBytes: Int64) -> Bool {
         lock.withLock {
-            let used = reservations.values.reduce(0, +)
-            guard bytes > 0, limit >= used, bytes <= limit - used else { return nil }
+            let total = nativeBytes.addingReportingOverflow(ramBytes)
+            guard nativeBytes >= 0, ramBytes >= 0, !total.overflow, total.partialValue > 0 else { return false }
+            let allocation = Allocation(nativeBytes: nativeBytes, ramBytes: ramBytes)
+            if let existing = reservations[owner] { return existing == allocation }
+            let held = reservations.values.reduce(Int64(0)) { $0 + $1.total }
+            guard !held.addingReportingOverflow(total.partialValue).overflow else { return false }
+            reservations[owner] = allocation
+            return true
+        }
+    }
+
+    func available(_ liveBytes: Int64?) -> Int64? {
+        lock.withLock {
+            guard let liveBytes, liveBytes >= 0 else { return nil }
+            let held = reservations.values.reduce(0) { $0 + $1.total }
+            return max(0, liveBytes - held)
+        }
+    }
+
+    func reserve(nativeBytes: Int64, ramBytes: Int64, ramLimit: Int64, availableMemory: Int64?) -> UUID? {
+        lock.withLock {
+            let total = nativeBytes.addingReportingOverflow(ramBytes)
+            let used = reservations.values.reduce(0) { $0 + $1.total }
+            let ramUsed = reservations.values.reduce(0) { $0 + $1.ramBytes }
+            guard nativeBytes >= 0, ramBytes >= 0, !total.overflow, total.partialValue > 0,
+                  let availableMemory, availableMemory >= used, total.partialValue <= availableMemory - used,
+                  ramBytes == 0 || ramLimit >= ramUsed && ramBytes <= ramLimit - ramUsed else { return nil }
             let token = UUID()
-            reservations[token] = bytes
+            reservations[token] = Allocation(nativeBytes: nativeBytes, ramBytes: ramBytes)
             return token
         }
     }
 
-    func release(_ token: UUID) { _ = lock.withLock { reservations.removeValue(forKey: token) } }
+    func remainsAdmitted(_ token: UUID, availableMemory: Int64?) -> Bool {
+        lock.withLock {
+            guard reservations[token] != nil, let availableMemory, availableMemory >= 0 else { return false }
+            return reservations.values.reduce(Int64(0)) { $0 + $1.total } <= availableMemory
+        }
+    }
+
+    func release(_ token: UUID, retainRam: Bool = false) {
+        lock.withLock {
+            guard retainRam, let held = reservations[token], held.ramBytes > 0 else {
+                reservations.removeValue(forKey: token); return
+            }
+            reservations[token] = Allocation(nativeBytes: 0, ramBytes: held.ramBytes)
+        }
+    }
 }
 
 public struct WorkStorage: Sendable, Equatable {
@@ -45,4 +91,44 @@ public struct WorkStorage: Sendable, Equatable {
         self.inMemory = inMemory; self.path = path; self.fallbackReason = fallbackReason
     }
     public var summary: String { inMemory ? "Working in RAM" : "Working on disk" }
+}
+
+/// Native helpers run in separate processes. Their planned disk work must still share one app ledger.
+public final class DiskWorkBudget: @unchecked Sendable {
+    public static let shared = DiskWorkBudget()
+    private let gate = NSLock()
+    private struct Allocation: Equatable { let volume: String; let bytes: Int64 }
+    private var reservations: [UUID: Allocation] = [:]
+    public init() {}
+
+    func restoreObligation(_ owner: UUID, volume: String, bytes: Int64) -> Bool {
+        gate.withLock {
+            guard !volume.isEmpty, volume.utf8.count <= 4096, bytes > 0 else { return false }
+            let allocation = Allocation(volume: volume, bytes: bytes)
+            if let existing = reservations[owner] { return existing == allocation }
+            let held = reservations.values.filter { $0.volume == volume }.reduce(Int64(0)) { $0 + $1.bytes }
+            guard !held.addingReportingOverflow(bytes).overflow else { return false }
+            reservations[owner] = allocation
+            return true
+        }
+    }
+
+    func available(volume: String, liveBytes: Int64) -> Int64? {
+        gate.withLock {
+            guard !volume.isEmpty, liveBytes >= 0 else { return nil }
+            let held = reservations.values.filter { $0.volume == volume }.reduce(Int64(0)) { $0 + $1.bytes }
+            return max(0, liveBytes - held)
+        }
+    }
+
+    func reserve(volume: String?, bytes: Int64, available: Int64?, owner: UUID = UUID()) -> UUID? {
+        gate.withLock {
+            guard let volume, !volume.isEmpty, bytes > 0, let available, available >= 0, reservations[owner] == nil else { return nil }
+            let used = reservations.values.filter { $0.volume == volume }.reduce(Int64(0)) { $0 + $1.bytes }
+            guard available >= used, bytes <= available - used else { return nil }
+            reservations[owner] = Allocation(volume: volume, bytes: bytes)
+            return owner
+        }
+    }
+    func release(_ token: UUID) { gate.withLock { _ = reservations.removeValue(forKey: token) } }
 }

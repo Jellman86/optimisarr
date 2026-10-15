@@ -14,6 +14,16 @@ namespace Optimisarr.Sidecar.Core.Tests;
 /// </summary>
 public sealed class SidecarClientTests
 {
+    private sealed class InterruptedReadStream : MemoryStream
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) =>
+            ValueTask.FromException<int>(new IOException("Response stream interrupted"));
+    }
+    private sealed class InterruptedResponseHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new InterruptedReadStream()) });
+    }
     private sealed class ScriptedHandler(HttpStatusCode status, string json) : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
@@ -268,6 +278,86 @@ public sealed class SidecarClientTests
         Assert.Equal(
             [100L, 110L, 120L],
             body.RootElement.GetProperty("windowEncodedBytes").EnumerateArray().Select(e => e.GetInt64()));
+    }
+
+    [Fact]
+    public async Task Perceptual_reports_send_raw_source_evidence_and_read_the_servers_frozen_command()
+    {
+        var (client, handler) = Client(HttpStatusCode.OK,
+            """{"nextStep":null,"selectedValue":80,"arguments":["-i","{{input}}","{{output}}.jpg"],"sourceBlocked":false,"reason":"measured"}""");
+        var id = Guid.NewGuid();
+        var report = new Optimisarr.Core.Workers.RemotePerceptualProbeReport(Guid.NewGuid(), "mjpeg", 80, new('a', 64),
+            new(Error: "unsupported original profile"), [], EncoderSha256: new('b', 64));
+        var result = await client.ReportPerceptualProbeAsync(new("https://server.example.com", "credential", 7), id, report);
+        Assert.Equal($"/api/workers/leases/{id}/perceptual-probe", handler.LastRequest!.RequestUri!.AbsolutePath);
+        Assert.Equal("Bearer credential", handler.LastRequest.Headers.Authorization!.ToString());
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        Assert.Equal(report.ContractId, body.RootElement.GetProperty("contractId").GetGuid());
+        Assert.Equal("unsupported original profile", body.RootElement.GetProperty("source").GetProperty("error").GetString());
+        Assert.Equal(80, result.SelectedValue); Assert.Equal("{{output}}.jpg", result.Arguments![^1]);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, false)]
+    [InlineData(HttpStatusCode.Unauthorized, false)]
+    [InlineData(HttpStatusCode.Forbidden, false)]
+    [InlineData(HttpStatusCode.Conflict, false)]
+    [InlineData(HttpStatusCode.BadGateway, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, true)]
+    public async Task Perceptual_report_transport_distinguishes_replayable_outages_from_terminal_contract_refusals(HttpStatusCode status, bool recoverable)
+    {
+        var (client, _) = Client(status, "{}");
+        var report = new Optimisarr.Core.Workers.RemotePerceptualProbeReport(Guid.NewGuid(), "aac", 128, new('a', 64), new(), []);
+        var error = await Assert.ThrowsAsync<SidecarException>(() => client.ReportPerceptualProbeAsync(new("https://server.example.com", "secret", 7), Guid.NewGuid(), report));
+        Assert.Equal(recoverable, error.Recoverable);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{broken")]
+    [InlineData("{\"nextStep\":null,\"sourceBlocked\":false,\"selectedValue\":80,\"arguments\":null}")]
+    [InlineData("{\"nextStep\":null,\"sourceBlocked\":true,\"selectedValue\":80,\"arguments\":[\"encode\"]}")]
+    public async Task An_unreadable_or_ambiguous_perceptual_direction_cannot_silently_resume_baseline_encoding(string json)
+    {
+        var (client, _) = Client(HttpStatusCode.OK, json);
+        var report = new Optimisarr.Core.Workers.RemotePerceptualProbeReport(Guid.NewGuid(), "aac", 128, new('a', 64), new(), []);
+        var error = await Assert.ThrowsAsync<SidecarException>(() => client.ReportPerceptualProbeAsync(new("https://server.example.com", "secret", 7), Guid.NewGuid(), report));
+        Assert.False(error.Recoverable);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Perceptual_transport_limits_UTF8_bytes_in_both_directions(bool oversizedRequest)
+    {
+        var (client, handler) = Client(HttpStatusCode.OK, oversizedRequest
+            ? "{\"sourceBlocked\":true,\"reason\":\"unavailable\"}"
+            : "{\"sourceBlocked\":true,\"reason\":\"" + new string('é', 40000) + "\"}");
+        var report = new Optimisarr.Core.Workers.RemotePerceptualProbeReport(Guid.NewGuid(), "aac", 128, new('a', 64),
+            new(Error: oversizedRequest ? new string('é', 30000) : "unavailable"), []);
+        var error = await Assert.ThrowsAsync<SidecarException>(() => client.ReportPerceptualProbeAsync(new("https://server.example.com", "secret", 7), Guid.NewGuid(), report));
+        Assert.False(error.Recoverable); Assert.Contains("budget", error.Message);
+        Assert.Equal(oversizedRequest, handler.LastRequest is null);
+    }
+
+    [Fact]
+    public async Task User_cancellation_is_not_relabelled_as_a_recoverable_perceptual_transport_failure()
+    {
+        var (client, handler) = Client(HttpStatusCode.OK, "{\"sourceBlocked\":true}");
+        var report = new Optimisarr.Core.Workers.RemotePerceptualProbeReport(Guid.NewGuid(), "aac", 128, new('a', 64), new(), []);
+        using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ReportPerceptualProbeAsync(new("https://server.example.com", "secret", 7), Guid.NewGuid(), report, cancellation.Token));
+        Assert.Null(handler.LastRequest);
+    }
+
+    [Fact]
+    public async Task An_interrupted_response_body_can_replay_the_same_perceptual_evidence()
+    {
+        using var http = new HttpClient(new InterruptedResponseHandler()); var client = new SidecarClient(http);
+        var report = new Optimisarr.Core.Workers.RemotePerceptualProbeReport(Guid.NewGuid(), "aac", 128, new('a', 64), new(), []);
+        var error = await Assert.ThrowsAsync<SidecarException>(() => client.ReportPerceptualProbeAsync(new("https://server.example.com", "secret", 7), Guid.NewGuid(), report));
+        Assert.True(error.Recoverable);
     }
 }
 

@@ -20,7 +20,7 @@ final class AppState {
         // hands the menu, and passing one here silently replaced it with a runner whose previews
         // defaulted to off — which is why no shipped build has ever drawn a film strip. The
         // settings it needs are given to the session instead, so the two cannot come apart again.
-        self.session = SidecarSession(settingsSnapshot: settings.snapshot)
+        self.session = SidecarSession(settingsSnapshot: settings.snapshot, nativeRuntime: .shared)
     }
 }
 
@@ -143,8 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
-    /// A RAM disk that outlived a crash holds real memory until the Mac reboots, and nothing on
-    /// screen would say so. Cleared at launch, before any job can make another.
+    /// Session restoration reconciles identity-bound native obligations before admission.
     func applicationDidFinishLaunching(_ notification: Notification) {
         installApplicationMenu()
         installMenuBarItem()
@@ -156,7 +155,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The session now does the read off the main actor; this waits for the answer only so it
         // knows whether to offer pairing.
         Task { @MainActor in
-            await Task.detached(priority: .utility) { RamDisk.sweepStrays() }.value
             await AppState.shared.session.restoreAndSettle()
             restoreSettled = true
             // Whether a pairing was found, not what the status says. A restored pairing leaves the

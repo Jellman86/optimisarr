@@ -1,5 +1,4 @@
-using System.Diagnostics;
-using System.Text;
+using Optimisarr.Core.Tools;
 using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.Verification;
@@ -15,8 +14,8 @@ public sealed record ImageMetadataResult(bool Measured, ImageMetadata Metadata, 
 /// <summary>
 /// Reads whether an image carries an embedded ICC colour profile and/or EXIF metadata, via
 /// <c>exiftool</c> (the same tool used for the portable image marker — ffprobe does not surface
-/// ICC/EXIF reliably across the still formats). The pure <see cref="ImageMetadataParser"/> turns
-/// exiftool's grouped output into a presence check; this class only runs the process.
+/// ICC/EXIF reliably across the still formats). Grouped JSON prevents values spoofing evidence;
+/// missing decompression support and other tool warnings produce an unavailable measurement.
 ///
 /// exiftool is invoked through an explicit argument list, never a shell string. Unlike the marker
 /// (which is best-effort), a failure here is reported as unmeasured so the opt-in metadata gate can
@@ -33,81 +32,23 @@ public sealed class ImageMetadataService(string? exiftoolCommand = null)
             return ImageMetadataResult.Failed($"File does not exist: {path}");
         }
 
-        // -G0 prefixes each line with its top-level group ([EXIF]/[ICC_Profile]); restricting to
-        // those two groups keeps the output small and unambiguous for the parser.
+        // The binary ICC tag proves presence even when decoded fields are unavailable. Grouped
+        // JSON prevents tag values spoofing evidence lines; warnings make the read unavailable.
         var result = await RunAsync(
-            new[] { "-G0", "-s", "-ICC_Profile:all", "-EXIF:all", path },
+            new[] { "-json", "-G0", "-s", "-ICC_Profile", "-ICC_Profile:all", "-EXIF:all", "-Warning", "-Error", path },
             cancellationToken);
 
         return result is { ExitCode: 0 }
-            ? ImageMetadataResult.Ok(ImageMetadataParser.Parse(result.Value.Stdout))
+            ? ImageMetadataParser.ParseJson(result.Value.Stdout)
             : ImageMetadataResult.Failed("exiftool could not read the image metadata (missing or failed).");
     }
 
     private async Task<(int ExitCode, string Stdout)?> RunAsync(
         IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        try
-        {
-            var command = ExifToolCommand.Build(arguments, OperatingSystem.IsWindows());
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = _exiftool,
-                RedirectStandardInput = command.StandardInput is not null,
-                StandardInputEncoding = command.StandardInput is not null ? new UTF8Encoding(false) : null,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            foreach (var argument in command.Arguments)
-            {
-                process.StartInfo.ArgumentList.Add(argument);
-            }
-
-            process.Start();
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-
-            try
-            {
-                if (command.StandardInput is { } input)
-                {
-                    await process.StandardInput.WriteAsync(input.AsMemory(), cancellationToken);
-                    process.StandardInput.Close();
-                }
-                await process.WaitForExitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                KillQuietly(process);
-                throw;
-            }
-
-            var stdout = await stdoutTask;
-            await stderrTask;
-            return (process.ExitCode, stdout);
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            // exiftool not installed or could not start.
-            return null;
-        }
-    }
-
-    private static void KillQuietly(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (Exception)
-        {
-            // Best effort; the process is exiting anyway.
-        }
+        var command = ExifToolCommand.Build(arguments, OperatingSystem.IsWindows());
+        var result = await BoundedToolProcess.RunWithInputAsync(_exiftool, command.Arguments, command.StandardInput,
+            cancellationToken, TimeSpan.FromSeconds(90));
+        return result.ExitCode == 0 ? (result.ExitCode, result.Output.Trim()) : null;
     }
 }

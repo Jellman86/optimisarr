@@ -42,7 +42,10 @@ public static class TranscodeSpecResolver
         // in which case the cap is not applied: guessing a rate would decimate the wrong frames.
         double? sourceFrameRate = null,
         IReadOnlyList<string?>? sourceSubtitleCodecs = null,
-        IReadOnlyList<string>? sourceAudioCodecs = null)
+        IReadOnlyList<string>? sourceAudioCodecs = null,
+        // Explicit quality-first opt-in permits perceptually gated lossy WebP from lossless stills.
+        // Fixed settings retain the existing lossless-source preservation rule.
+        bool adaptiveImageQuality = false)
     {
         if (kind == MediaKind.Image)
         {
@@ -59,6 +62,7 @@ public static class TranscodeSpecResolver
                 ImageQuality: rules.ImageQuality,
                 ImageScaleFilter: ImageScale.BuildFilter(rules.ImageDownscaleMode, rules.ImageDownscaleValue),
                 ImageLossless: image.Encoder == "libwebp"
+                    && !adaptiveImageQuality
                     && sourceImageCodec is not null
                     && ImageTarget.IsLossless(sourceImageCodec));
         }
