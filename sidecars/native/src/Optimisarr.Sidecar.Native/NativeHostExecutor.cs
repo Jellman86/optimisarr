@@ -8,7 +8,8 @@ internal static class NativeHostExecutor
 {
     public static async Task<NativeHostEvent> RunAsync(NativeHostRequest request, Action<NativeHostEvent> report, CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
+        // A parsed run already owns a lease. Let the runner acknowledge even an early stop.
+        if (request.Mode != "run") token.ThrowIfCancellationRequested();
         if (request.Mode == "recover")
             return new("recovered", Recovery: NativeScratchWorkspace.Recover(request.ScratchRoot,
                 afterOwner: request.RecoveryAfterOwner, cancellationToken: token));

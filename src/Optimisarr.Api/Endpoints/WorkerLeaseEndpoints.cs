@@ -1138,6 +1138,30 @@ internal static class WorkerLeaseEndpoints
         .Produces<ApiError>(StatusCodes.Status404NotFound)
         .Produces<ApiError>(StatusCodes.Status409Conflict);
 
+        app.MapPost("/api/workers/leases/{leaseId:guid}/interrupted", async (
+            Guid leaseId,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+            await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Release(workerId, now),
+                (stored, job, _) =>
+                {
+                    stored.EndReason = LeaseEndReason.WorkerInterrupted;
+                    if (job.Status == JobStatus.Leased) job.Status = JobStatus.Queued;
+                },
+                _ => Results.NoContent(),
+                alreadyHandled: (stored, workerId) => stored.WorkerId == workerId
+                    && stored.State == LeaseState.Released && stored.EndReason == LeaseEndReason.WorkerInterrupted
+                        ? Results.NoContent() : null))
+        .WithName("ReportWorkerInterrupted")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         app.MapPost("/api/workers/leases/{leaseId:guid}/release", async (
             Guid leaseId,
             HttpRequest http,

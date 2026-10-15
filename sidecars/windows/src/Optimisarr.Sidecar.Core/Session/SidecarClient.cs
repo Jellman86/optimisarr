@@ -505,14 +505,16 @@ public sealed class SidecarClient(HttpClient http, DiagnosticJournal? diagnostic
 
     /// <summary>Gives a job back, so it returns to the queue at once rather than waiting to lapse.</summary>
     public Task ReleaseAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
-        ReleaseCoreAsync(pairing, leaseId, false, cancellationToken);
+        ReleaseCoreAsync(pairing, leaseId, "release", cancellationToken);
 
     public Task ReleaseForCapacityAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
-        ReleaseCoreAsync(pairing, leaseId, true, cancellationToken);
+        ReleaseCoreAsync(pairing, leaseId, "capacity-unavailable", cancellationToken);
 
-    private async Task ReleaseCoreAsync(StoredPairing pairing, Guid leaseId, bool capacityUnavailable, CancellationToken cancellationToken)
+    public Task ReleaseForInterruptionAsync(StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default) =>
+        ReleaseCoreAsync(pairing, leaseId, "interrupted", cancellationToken);
+
+    private async Task ReleaseCoreAsync(StoredPairing pairing, Guid leaseId, string action, CancellationToken cancellationToken)
     {
-        var action = capacityUnavailable ? "capacity-unavailable" : "release";
         using var request = new HttpRequestMessage(
             HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/{action}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);

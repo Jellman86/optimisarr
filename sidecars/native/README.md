@@ -28,6 +28,13 @@ must add the full allocation of any RAM volume, atomically reserve that total ag
 memory and its RAM-storage preference, and only then send a separate `run` request with its
 credential and held grant. A requirements reply is successful only together with exit code 0.
 
+A validated `run` already identifies a held lease. Cancellation, including parent death or a
+stop before media execution, sends a separate interruption acknowledgement before exit.
+`WorkerInterrupted` preserves source/probe history and retry intent without a file-refusal
+opinion or capacity cooldown. Failure to acknowledge remains unconfirmed; no completion event
+can invent server authority. [Actual crash and restored-identity qualification](../../docs/engineering/hardware-validation/2026-10-15-native-interruption.md)
+remains separate from complete packaged-client qualification.
+
 `recover` accepts an absolute working root and an optional `recoveryAfterOwner` cursor.
 It forbids pairing, assignment, memory grants and metric/metadata paths. The shared engine
 acquires recorded kernel ownership before any deletion; it never starts media tools or creates

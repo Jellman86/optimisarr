@@ -93,9 +93,17 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         private RemotePerceptualSearchState _state = RemotePerceptualSearchState.Start(assignment.PerceptualSearch!.Contract);
         public Action? Selected;
         public int Reports, Evidence;
+        public string? ReturnedVia;
+        public bool ReturnTokenWasCancelled;
+        public HttpStatusCode InterruptionStatus = HttpStatusCode.NoContent;
         public bool EvidenceBeforeDelivery;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/interrupted", StringComparison.Ordinal))
+            {
+                ReturnedVia = "interrupted"; ReturnTokenWasCancelled = token.IsCancellationRequested;
+                return new(InterruptionStatus);
+            }
             if (request.RequestUri!.AbsolutePath.EndsWith("/perceptual-probe", StringComparison.Ordinal))
             {
                 Reports++;
@@ -133,6 +141,39 @@ public sealed class PerceptualJobRunnerTests : IDisposable
         new(new(new HttpClient(server)), new(new HttpClient(server)), encoder, Tool, _root, () => null,
             wantsPreview: preview is null ? null : () => true, publishPreview: preview is null ? null : (_, _) => { }, previewExtractor: preview,
             perceptual: new(tools, _ => disk, () => memory, new PerceptualJobResourcePool()));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Native_parent_cancellation_returns_the_lease_neutrally_without_a_cancelled_handback_token(bool beforeFetching)
+    {
+        var assignment = PerceptualJobFixture.Assignment(); using var server = new Server(assignment);
+        using var cancellation = new CancellationTokenSource();
+        var tools = new NativeTools(Tool) { Measuring = _ => cancellation.Cancel() };
+        var encoder = new FakeMeasuringTranscoder();
+        if (beforeFetching) cancellation.Cancel();
+        var outcome = await Runner(server, tools, encoder).RunAsync(new("https://server.example", "secret", 1), assignment, cancellation.Token);
+        Assert.False(outcome.Delivered); Assert.False(outcome.CapacityBlocked);
+        Assert.Equal("interrupted", server.ReturnedVia);
+        Assert.False(server.ReturnTokenWasCancelled);
+        Assert.Equal(beforeFetching ? 0 : 1, tools.Probes);
+        Assert.Equal(0, tools.Verifications);
+        Assert.Empty(encoder.AllRuns);
+        Assert.DoesNotContain(Directory.GetDirectories(_root), path => Path.GetFileName(path) != NativeScratchWorkspace.ControlDirectoryName);
+    }
+
+    [Fact]
+    public async Task An_unacknowledged_interruption_cannot_claim_the_server_has_released_its_lease()
+    {
+        var assignment = PerceptualJobFixture.Assignment(); using var server = new Server(assignment) { InterruptionStatus = HttpStatusCode.ServiceUnavailable };
+        using var cancellation = new CancellationTokenSource();
+        var tools = new NativeTools(Tool) { Measuring = _ => cancellation.Cancel() };
+        await Assert.ThrowsAsync<HttpRequestException>(() => Runner(server, tools, new()).RunAsync(
+            new("https://server.example", "secret", 1), assignment, cancellation.Token));
+        Assert.Equal("interrupted", server.ReturnedVia);
+        Assert.False(server.ReturnTokenWasCancelled);
+        Assert.DoesNotContain(Directory.GetDirectories(_root), path => Path.GetFileName(path) != NativeScratchWorkspace.ControlDirectoryName);
+    }
 
     [Fact]
     public async Task Native_execution_holds_a_kernel_owner_and_reclaims_completed_older_work_before_fetching()

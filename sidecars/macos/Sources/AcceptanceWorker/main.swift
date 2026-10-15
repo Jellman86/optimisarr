@@ -36,6 +36,15 @@ struct AcceptanceWorker {
             try FileHandle.standardOutput.write(contentsOf: JSONEncoder().encode(result) + Data([10]))
             return
         }
+        func controlFrame() throws -> Data {
+            var frame = Data()
+            while frame.count <= 4096 {
+                guard let byte = try FileHandle.standardInput.read(upToCount: 1), !byte.isEmpty else { throw NativeQualityHostError() }
+                if byte == Data([10]) { guard !frame.isEmpty else { throw NativeQualityHostError() }; return frame }
+                frame.append(byte)
+            }
+            throw NativeQualityHostError()
+        }
         if CommandLine.arguments.contains("--native-workspace") {
             let root = URL(fileURLWithPath: try required("OPTIMISARR_ACCEPTANCE_SCRATCH"))
             let disk = NativeQualityJobRunner.availableDiskWorkspace(at: root)
@@ -82,25 +91,56 @@ struct AcceptanceWorker {
             try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: output) + Data([10]))
             return
         }
-        if CommandLine.arguments.contains("--native-claim") {
-            var data = Data()
-            while let chunk = try FileHandle.standardInput.read(upToCount: 4096), !chunk.isEmpty {
-                data.append(chunk)
-                guard data.count <= 4096 else { throw NativeQualityHostError() }
-            }
-            let pairing = try JSONDecoder().decode(StoredPairing.self, from: data)
+        if CommandLine.arguments.contains("--native-claim") || CommandLine.arguments.contains("--native-session") {
+            let session = CommandLine.arguments.contains("--native-session")
             let scratch = URL(fileURLWithPath: try required("OPTIMISARR_ACCEPTANCE_SCRATCH"))
-            guard !FileManager.default.fileExists(atPath: scratch.path) else { throw NativeQualityHostError() }
+            guard session || !FileManager.default.fileExists(atPath: scratch.path) else { throw NativeQualityHostError() }
             let tools = NativeQualityTools(host: URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_HOST")),
                 ffmpeg: URL(fileURLWithPath: try required("OPTIMISARR_FFMPEG")),
                 imageMetric: env["OPTIMISARR_IMAGE_QUALITY"].map { URL(fileURLWithPath: $0) },
                 audioMetric: env["OPTIMISARR_AUDIO_QUALITY"].map { URL(fileURLWithPath: $0) },
                 metadataTool: env["OPTIMISARR_EXIFTOOL"].map { URL(fileURLWithPath: $0) })
             let client = SidecarClient()
-            guard let assignment = try await client.claim(serverAddress: pairing.serverAddress, credential: pairing.credential),
-                  assignment.nativeQuality != nil else { throw NativeQualityHostError() }
             let settings = SettingsSnapshot(workLocation: env["OPTIMISARR_ACCEPTANCE_RAM"] == "1" ? .memory : .applicationSupport,
                 memoryBudgetBytes: WorkLocationPolicy.defaultBudget(physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory)))
+            let pairing: StoredPairing
+            if session {
+                let request = try JSONDecoder().decode(AcceptancePairingRequest.self, from: controlFrame())
+                _ = try await NativeScratchRecoveryService(tools: tools).recover(root: scratch)
+                let proved = await CapabilityProber(ffmpeg: tools.ffmpeg, scratchDirectory: scratch,
+                    native: NativeQualityCapabilityProber(tools: tools)).probe(name: "Isolated native session")
+                let resources = NativeWorkerResources(settings: settings, scratchRoot: scratch)
+                let fresh = resources.refresh(proved)
+                let paired = try await client.pair(serverAddress: request.serverAddress, pin: request.pin, capabilities: fresh)
+                pairing = StoredPairing(serverAddress: request.serverAddress, credential: paired.credential, workerId: paired.workerId)
+                let current = resources.refresh(proved)
+                let beat = try await client.heartbeat(serverAddress: pairing.serverAddress, credential: pairing.credential,
+                    freeScratchBytes: current.freeScratchBytes, maxConcurrency: current.maxConcurrency, capabilities: current)
+                let proof: Any = try current.perceptual.map { try JSONSerialization.jsonObject(with: JSONEncoder().encode($0)) } ?? NSNull()
+                let event: [String: Any] = ["type": "paired", "workerId": paired.workerId, "negotiatedProtocol": paired.protocolVersion,
+                    "heartbeatProtocol": beat.protocolVersion, "capabilities": ["perceptual": proof, "videoEncoders": current.videoEncoders,
+                        "audioEncoders": current.audioEncoders, "freeScratchBytes": current.freeScratchBytes]]
+                try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: event) + Data([10]))
+                // The fixture coordinator seeds its isolated library after real pairing. It may
+                // elevate only that stored test row while automatic protocol 11 remains disabled.
+                guard let start = try JSONSerialization.jsonObject(with: controlFrame()) as? [String: Bool], start == ["start": true] else {
+                    throw NativeQualityHostError()
+                }
+            } else {
+                var data = Data()
+                while let chunk = try FileHandle.standardInput.read(upToCount: 4096), !chunk.isEmpty {
+                    data.append(chunk)
+                    guard data.count <= 4096 else { throw NativeQualityHostError() }
+                }
+                pairing = try JSONDecoder().decode(StoredPairing.self, from: data)
+            }
+            guard let assignment = try await client.claim(serverAddress: pairing.serverAddress, credential: pairing.credential) else {
+                guard session else { throw NativeQualityHostError() }
+                try FileHandle.standardOutput.write(contentsOf: JSONSerialization.data(withJSONObject: ["type": "completed",
+                    "state": "noAssignment", "reservedMemoryBytes": MemoryWorkBudget.shared.reservedBytes]) + Data([10]))
+                return
+            }
+            guard assignment.nativeQuality != nil else { throw NativeQualityHostError() }
             let runner = JobRunner(client: client, scratchRoot: scratch, settings: settings, nativeTools: tools)
             let outcome = await runner.execute(assignment, pairing: pairing) { value in
                 if let event = try? JSONSerialization.data(withJSONObject: ["type": "progress", "jobId": assignment.jobId, "stage": value.summary]) {

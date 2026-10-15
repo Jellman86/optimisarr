@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Optimisarr.Sidecar.Core.Session;
@@ -80,6 +83,49 @@ public sealed class NativeHostRecoveryTests : IDisposable
         request["recoveryAfterOwner"] = page.GetProperty("nextOwner").GetString();
         var second = await NativeHostExecutor.RunAsync(Parse(request), _ => Assert.Fail("No media progress"), default);
         Assert.Equal(1, JsonSerializer.SerializeToElement(second, NativeHostProtocol.Json).GetProperty("recovery").GetProperty("removed").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_parsed_run_cancelled_before_execution_still_returns_its_known_lease_without_media_work()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
+        var address = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
+        string? action = null;
+        var respond = Task.Run(async () =>
+        {
+            using var socket = await listener.AcceptTcpClientAsync(deadline.Token);
+            await using var stream = socket.GetStream();
+            using var reader = new StreamReader(stream, leaveOpen: true);
+            action = await reader.ReadLineAsync(deadline.Token);
+            for (var headers = 0; headers < 64; headers++)
+            {
+                var line = await reader.ReadLineAsync(deadline.Token);
+                if (line == "") break;
+                Assert.NotNull(line);
+            }
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), deadline.Token);
+        }, deadline.Token);
+        var request = new NativeHostRequest(1, "run", Path.GetFullPath("missing-media-tool"), _root,
+            Pairing: new(address, new('a', 43), 1), GrantedMemoryBytes: 8L * 1024 * 1024 * 1024,
+            Assignment: JsonSerializer.SerializeToElement(PerceptualJobFixture.Assignment(), NativeHostProtocol.Json));
+        request = NativeHostProtocol.Parse(JsonSerializer.SerializeToUtf8Bytes(request, NativeHostProtocol.Json));
+        try
+        {
+            var result = await NativeHostExecutor.RunAsync(request, _ => Assert.Fail("No media work may start"), cancelled.Token).WaitAsync(deadline.Token);
+            await respond.WaitAsync(deadline.Token);
+            Assert.Equal("completed", result.Type);
+            Assert.False(result.Outcome!.Delivered);
+            Assert.False(result.Outcome.CapacityBlocked);
+            Assert.EndsWith("/interrupted HTTP/1.1", action);
+            Assert.False(Directory.Exists(_root));
+        }
+        finally
+        {
+            deadline.Cancel(); listener.Stop();
+            try { await respond; } catch (OperationCanceledException) { } catch (SocketException) { }
+        }
     }
 
     [Fact]

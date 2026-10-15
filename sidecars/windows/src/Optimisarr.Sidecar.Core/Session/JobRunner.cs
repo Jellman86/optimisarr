@@ -277,6 +277,13 @@ public sealed class JobRunner(
 
             return new JobOutcome(assignment.JobId, true, "Delivered");
         }
+        catch (OperationCanceledException) when (nativeSearch && cancellationToken.IsCancellationRequested)
+        {
+            // The helper may outlive a crashed native parent. Its surviving control channel
+            // returns the lease before exit; stopping is not an opinion about the media file.
+            await client.ReleaseForInterruptionAsync(pairing, assignment.LeaseId, CancellationToken.None);
+            return new(assignment.JobId, false, "Native work was interrupted; the server acknowledged the hand-back.");
+        }
         catch (SidecarException exception)
         {
             // The lease is gone, or the server refused the result. Giving it back is best effort:

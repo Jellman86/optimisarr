@@ -60,6 +60,9 @@
 
 ### Fixed
 
+- Interrupted native audio/image work now returns its lease promptly, including when its parent exits or cancels before execution. A replay-safe interruption reason preserves committed reports and retry intent without counting crashes as file refusals or delaying a restored worker with a capacity cooldown. Failed hand-back acknowledgements remain unconfirmed.
+
+
 - Native audio/image work now keeps an inherited ownership guard through search and verification. Restart recovery preserves surviving writers, refuses redirected or shared files and resumes recorded partial cleanup. Mac startup and folder changes recover owned work before capacity checks; busy RAM volumes retain their allocation instead of being forcibly detached. Package checks permit only the empty persistent coordinator and retain working files after a failed helper.
 
 

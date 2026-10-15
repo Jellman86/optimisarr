@@ -1751,7 +1751,44 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_capacity_return_is_replay_safe_and_cannot_requeue_another_workers_new_lease()
+    public async Task Worker_interruptions_allow_immediate_recovery_without_becoming_permanent_media_refusals()
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        var route = "interrupted";
+        for (var index = 0; index < 3; index++)
+        {
+            using var worker = await PairCapableWorker($"Return policy interrupted {index} {Guid.NewGuid():N}");
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+            var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+            using var returned = await worker.PostAsync($"/api/workers/leases/{leaseId}/{route}", null);
+            Assert.Equal(HttpStatusCode.NoContent, returned.StatusCode);
+            using var immediate = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.OK, immediate.StatusCode);
+            var resumedLeaseId = (await immediate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+            using var resumedReturn = await worker.PostAsync($"/api/workers/leases/{resumedLeaseId}/{route}", null);
+            Assert.Equal(HttpStatusCode.NoContent, resumedReturn.StatusCode);
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var lease = await db.JobLeases.SingleAsync(l => l.Id == leaseId);
+            Assert.Equal("WorkerInterrupted", lease.EndReason?.ToString());
+        }
+        using var next = await PairCapableWorker($"After three returns interrupted {Guid.NewGuid():N}");
+        using var offered = await next.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, offered.StatusCode);
+        using var finalScope = _api.Services.CreateScope();
+        var context = finalScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await context.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        Assert.Equal(0, job.MediaFile!.FailureCount);
+        Assert.False(await context.Exclusions.AnyAsync(e => e.Path == job.MediaFile.Path));
+        Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile.Path));
+    }
+
+    [Theory]
+    [InlineData("capacity-unavailable")]
+    [InlineData("interrupted")]
+    public async Task A_temporary_return_is_replay_safe_and_cannot_requeue_another_workers_new_lease(string route)
     {
         await EnableRemoteWorkers();
         var jobId = await QueueAJob();
@@ -1759,7 +1796,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var second = await PairCapableWorker($"Capacity successor {Guid.NewGuid():N}");
         using var claim = await first.PostAsJsonAsync("/api/workers/claim", new { });
         var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
-        var path = $"/api/workers/leases/{leaseId}/capacity-unavailable";
+        var path = $"/api/workers/leases/{leaseId}/{route}";
         using var stolen = await second.PostAsync(path, null);
         Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
         using var anonymous = await _api.CreateClient().PostAsync(path, null);
@@ -1777,9 +1814,11 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Capacity_return_preserves_cancellation_and_retry_intent_and_refuses_expired_leases(bool expired)
+    [InlineData(false, "capacity-unavailable")]
+    [InlineData(true, "capacity-unavailable")]
+    [InlineData(false, "interrupted")]
+    [InlineData(true, "interrupted")]
+    public async Task Temporary_return_preserves_cancellation_and_retry_intent_and_refuses_expired_leases(bool expired, string route)
     {
         await EnableRemoteWorkers();
         var jobId = await QueueAJob();
@@ -1796,7 +1835,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             if (expired) (await db.JobLeases.SingleAsync(l => l.Id == leaseId)).ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1);
             await db.SaveChangesAsync();
         }
-        using var response = await worker.PostAsync($"/api/workers/leases/{leaseId}/capacity-unavailable", null);
+        using var response = await worker.PostAsync($"/api/workers/leases/{leaseId}/{route}", null);
         Assert.Equal(expired ? HttpStatusCode.Conflict : HttpStatusCode.NoContent, response.StatusCode);
         using var finalScope = _api.Services.CreateScope();
         var context = finalScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();

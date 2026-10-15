@@ -25,7 +25,10 @@ public enum LeaseEndReason
     SourceAssessmentUnavailable,
 
     /// <summary>Temporary worker memory/workspace pressure; keep the pause without a refusal opinion.</summary>
-    CapacityUnavailable
+    CapacityUnavailable,
+
+    /// <summary>The native worker stopped; no media refusal or capacity cooldown was recorded.</summary>
+    WorkerInterrupted
 }
 
 /// <summary>Why a lease operation was accepted or refused.</summary>

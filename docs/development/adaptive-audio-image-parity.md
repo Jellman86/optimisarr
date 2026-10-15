@@ -32,11 +32,18 @@ a real RAM disk. Unknown filenames cannot starve owner pages. This proves specif
 restart behaviour, not complete packaged-job or machine-reboot/remount recovery. See the
 [ownership qualification and limits](../engineering/hardware-validation/2026-10-15-native-scratch-recovery.md).
 
-Latest source verification: 3,522 backend tests, 509 shared worker tests plus three Windows-only
-skips on Mac/Quark, 512 native Windows shared tests, 31 Linux tests, 366 Swift core plus nine UI
-tests, 154 Python tests and 346 browser tests. Mac AAC/Opus/MP3 workflows previously covered
-replay, strict final verification, repeated replacement and exact rollback. Check the PR for
-exact-head CI.
+Native helper interruption now has a separate acknowledged end reason. Parent exit or early
+cancellation returns the lease without a media refusal or capacity cooldown. Actual Quark and
+Windows trials survive three parent crashes and then complete the same job with the restored
+worker identity, retained source assessments, independent final verification and exact rollback.
+Fresh Swift pairing and packaged Mac AAC/Opus/MP3/RAM workflows passed on the pre-fix bundle;
+the rebuilt bundle's full crash/image workflows remain constrained by current memory pressure.
+See the [interruption qualification and exact limits](../engineering/hardware-validation/2026-10-15-native-interruption.md).
+
+Latest source verification: 3,526 backend tests on Mac/Quark; 3,503 plus 23 platform skips on native
+Windows; 513 shared worker tests plus three Windows-only skips on Mac/Quark; 516 native Windows
+shared tests; 31 Linux tests, 366 Swift core plus nine UI, 154 Python and 346 browser tests.
+Check the PR for exact-head CI. Native trial protocol elevation remains fixture-only.
 
 Continue with exact-package media lifecycles and broader restart/reconnect qualification.
 Fixed-image worker coverage, adaptive selection for
