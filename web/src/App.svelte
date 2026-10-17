@@ -186,8 +186,12 @@
       </button>
     </header>
 
+    <!-- relative is a correctness requirement, not decoration: an absolutely positioned
+         descendant is only clipped by ancestors in its containing-block chain, so while main
+         was static, screen-reader text such as the queue table's sr-only header label kept its
+         own box outside this scroll container and stretched the document past the viewport. -->
     <main
-      class="min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
+      class="relative min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
       <div class="page-frame">
