@@ -47,6 +47,8 @@
 
 - Diagnostic concurrency tests tolerate a scheduled outer writer on busy Windows runners while retaining bounded deadlock checks and exact capture-limit assertions.
 
+- The queue page no longer adds scrollable height to the document. Its table header carries screen-reader-only text that the page's scroll container could not clip, so on a short window the page scrolled roughly 140px past its content into blank background. The document is now exactly one viewport tall and only the queue tray scrolls.
+
 ## 0.2.23 - 2026-10-09
 
 ### Fixed

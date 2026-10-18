@@ -569,6 +569,29 @@ test('job dialog contains keyboard focus and keeps artwork and actions visible i
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })
 
+test('a short window scrolls the queue inside the tray instead of growing the page', async ({ page }) => {
+  // The table header's screen-reader label is absolutely positioned, so it only stays inside
+  // the tray's scroll range while main is the containing block for it. Without that, its box
+  // lands below the fold, escapes the scroll container, and the document grows a scroll range
+  // that shows nothing but blank background.
+  await page.setViewportSize({ width: 812, height: 375 })
+  await mockWorkingQueue(page, { jobs: [
+    job(1, 'ReadyToReplace', true),
+    job(2, 'Queued', null),
+    job(3, 'Queued', null),
+    job(4, 'Queued', null),
+  ] })
+  await page.goto('/#/queue')
+  await expect(page.locator('#queue-list')).toBeVisible()
+  const pageRange = await page.evaluate(() => ({
+    scrollable: document.documentElement.scrollHeight,
+    viewport: window.innerHeight,
+  }))
+  expect(pageRange.scrollable, 'the document must not scroll past the viewport').toBeLessThanOrEqual(pageRange.viewport)
+  const tray = await page.locator('main').evaluate(el => ({ scrollable: el.scrollHeight, visible: el.clientHeight }))
+  expect(tray.scrollable, 'the tray is what scrolls, not the document').toBeGreaterThan(tray.visible)
+})
+
 test('loaded queue artwork stays visible across progress updates and queue refreshes', async ({ page }) => {
   const fixture = { jobs: [
     { ...job(1, 'Transcoding', null), progress: .3 },
