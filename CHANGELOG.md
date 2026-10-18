@@ -27,6 +27,8 @@
 
 ### Fixed
 
+- Simplified Chinese terminology is consistent for secrets, dry-run, duplicates and remote workers, correcting machine-translation errors (for example "token" no longer reads as a cryptocurrency token).
+
 - Adaptive samples and disposable preview references use owned workspaces. Cleanup retains reserved, changed or shared files and unknown folder contents. Reference encoding rejects input-path collisions and waits for cancellation to finish before cleanup; retained calibration references keep their existing lifecycle.
 
 - Automatic decoder and higher-quality retries stop if candidate cleanup is blocked, retaining files, evidence and the retry budget. Failure and cancellation cleanup use the same reservation guard. Stale cleanup callbacks preserve newer outputs, and cleanup conflicts do not auto-exclude media.
