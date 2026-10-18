@@ -19,6 +19,12 @@
 
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
 
+- Refresh the roadmap status to 2026-10-18: diagnostics #242 closed as shipped, audio/image parity #332 remains the active priority with Picard and Mac test hosts reachable again, and dedupe file actions remain deferred with no cleanup enabled.
+
+### Development tools
+
+- Update the pinned VMAF FFmpeg base image to 9.0.2-1, Playwright to 1.64, Svelte and Vite patches, the xUnit Visual Studio runner to 4.0.1, and the CI runner-hardening action to 2.22.1. Verification thresholds and media behaviour are unchanged.
+
 ### Fixed
 
 - Adaptive samples and disposable preview references use owned workspaces. Cleanup retains reserved, changed or shared files and unknown folder contents. Reference encoding rejects input-path collisions and waits for cancellation to finish before cleanup; retained calibration references keep their existing lifecycle.

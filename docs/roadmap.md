@@ -17,9 +17,9 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it. The converse matters too: an entry left
   describing finished work as outstanding sends effort at an item that has none.
-- Status claims last verified against the repository: **2026-08-24**.
+- Status claims last verified against the repository: **2026-10-18**.
 
-## Current hardening follow-up, reviewed 2026-10-10
+## Current hardening follow-up, reviewed 2026-10-18
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
 trial and pairing records with current implementation. Priorities are retained real-source playback evidence and broader quality coverage.
@@ -35,8 +35,21 @@ implemented in this development slice; see [qualification and limits](engineerin
 Broader image/audio qualification and dedupe remain planned.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
+Investigation-grade diagnostics ([#242](https://github.com/Jellman86/optimisarr/issues/242))
+closed as complete on 2026-10-18 against the shipped schema-v4 capture documented in
+[troubleshooting](troubleshooting/diagnostics.md). The active feature priority is audio/image
+quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), draft
+[#415](https://github.com/Jellman86/optimisarr/pull/415)): the Linux native-work journal
+storage slice is now on that branch with ABI-correct open flags and Quark test evidence, while
+standalone bootstrap/admission wiring and package qualification remain open and protocol 11
+stays disabled. Picard (Windows/NVIDIA) and Scott's Mac are SSH-reachable again as of
+2026-10-18, so host availability no longer blocks that qualification. Dedupe file actions
+remain deferred behind #332; merged D3 work to date is safety fencing only and enables no
+cleanup action. The 50 fps VMAF report
+([#406](https://github.com/Jellman86/optimisarr/issues/406)) has both fixes on `dev` and awaits
+reporter confirmation before the next stable release is cut from this line.
 
-## Up next (priority order, updated 2026-08-24)
+## Up next (priority order, updated 2026-10-18)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -1152,7 +1165,11 @@ or VMAF v0 policy as current behavior.
     and generation-bound keeper/ignore preferences. Manual, keep-all and preferred-library
     choices are available; quality/size strategies await non-identical matching. Safe cleanup
     remains future work. D3a adds a separate durable intent journal, retained reservations and
-    shared replacement/rollback claims; it enables no file action. The
+    shared replacement/rollback claims; it enables no file action. D3b fencing since then —
+    most recently owned verification scratch in
+    [#414](https://github.com/Jellman86/optimisarr/pull/414) (merged 2026-10-18) — hardens
+    cleanup ownership without enabling any file action, and further D3 work stays deferred
+    behind #332. The
     [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
     separate this groundwork from qualified quarantine and restore. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
