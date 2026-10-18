@@ -92,6 +92,12 @@
 
 - Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
 
+- Refresh the roadmap status to 2026-10-18: diagnostics #242 closed as shipped, audio/image parity #332 remains the active priority with Picard and Mac test hosts reachable again, and dedupe file actions remain deferred with no cleanup enabled.
+
+### Development tools
+
+- Update the pinned VMAF FFmpeg base image to 9.0.2-1, Playwright to 1.64, Svelte and Vite patches, the xUnit Visual Studio runner to 4.0.1, and the CI runner-hardening action to 2.22.1. Verification thresholds and media behaviour are unchanged.
+
 ### Fixed
 
 - Interrupted native audio/image work now returns its lease promptly, including when its parent exits or cancels before execution. A replay-safe interruption reason preserves committed reports and retry intent without counting crashes as file refusals or delaying a restored worker with a capacity cooldown. Failed hand-back acknowledgements remain unconfirmed.
@@ -124,6 +130,7 @@
 
 - Standalone audio quality checks preserve decoder priming and exact window samples at zero and fractional seeks; video soundtracks retain their demuxer-relative picture origin. Loudness checks use the finished measurement summary and distinguish measured silence from missing true-peak evidence.
 - Owned preparation refusals retain files and diagnostics without spending the source's failure/exclusion budget or a quality retry.
+- Simplified Chinese terminology is consistent for secrets, dry-run, duplicates and remote workers, correcting machine-translation errors (for example "token" no longer reads as a cryptocurrency token).
 
 - Adaptive samples and disposable preview references use owned workspaces. Cleanup retains reserved, changed or shared files and unknown folder contents. Reference encoding rejects input-path collisions and waits for cancellation to finish before cleanup; retained calibration references keep their existing lifecycle.
 
@@ -150,6 +157,8 @@
 - Library configuration, creation, Candidates and Excluded views use the full available page width, matching the rest of the interface while retaining readable form controls. Documentation captures now show configuration on a wide desktop.
 
 - Diagnostic concurrency tests tolerate a scheduled outer writer on busy Windows runners while retaining bounded deadlock checks and exact capture-limit assertions.
+
+- The queue page no longer adds scrollable height to the document. Its table header carries screen-reader-only text that the page's scroll container could not clip, so on a short window the page scrolled roughly 140px past its content into blank background. The document is now exactly one viewport tall and only the queue tray scrolls.
 
 ## 0.2.23 - 2026-10-09
 
