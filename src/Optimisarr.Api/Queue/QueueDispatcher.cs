@@ -1056,7 +1056,7 @@ public sealed class QueueDispatcher(
                 preparedWork.AdaptiveVideoQuality is not null,
                 preparedWork.IsCalibration))
             {
-                var selection = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
+                var selection = await SelectAdaptiveQualityAsync(jobId, executionAttempt, preparedWork, cancellationToken);
                 if (selection is null)
                 {
                     // The samples rejected the size prediction before any full output existed.
@@ -2127,13 +2127,12 @@ public sealed class QueueDispatcher(
     /// </summary>
     private async Task<JobWork?> SelectAdaptiveQualityAsync(
         int jobId,
+        int executionAttempt,
         JobWork work,
         CancellationToken cancellationToken)
     {
         var baseline = work.VideoQuality!.Effective;
-        var scratchRoot = Path.Combine(
-            Path.GetDirectoryName(work.Spec.OutputPath)!,
-            $".adaptive-quality-{jobId}-{Guid.NewGuid():N}");
+        OwnedScratchWorkspace? scratch = null;
 
         await WithJobAsync(jobId, job =>
         {
@@ -2198,7 +2197,8 @@ public sealed class QueueDispatcher(
                 : await MeasureSizeForecastBasisAsync(
                     jobId, work, windows, sourceProbe, samplingDuration.Value, cancellationToken);
 
-            Directory.CreateDirectory(scratchRoot);
+            scratch = await OwnedScratchWorkspace.CreateAsync(scopeFactory, claims, _workRoot, jobId, executionAttempt,
+                Path.GetDirectoryName(work.Spec.OutputPath)!, "adaptive-quality", logger, cancellationToken);
             var measured = new List<AdaptiveQualityProbe>();
             while (true)
             {
@@ -2239,7 +2239,7 @@ public sealed class QueueDispatcher(
                     policy,
                     qualityService,
                     probeService,
-                    scratchRoot,
+                    scratch,
                     cancellationToken);
                 if (candidate is null)
                 {
@@ -2278,7 +2278,7 @@ public sealed class QueueDispatcher(
         }
         finally
         {
-            DeleteDirectoryQuietly(scratchRoot);
+            if (scratch is not null) await scratch.DisposeAsync();
         }
     }
 
@@ -2293,7 +2293,7 @@ public sealed class QueueDispatcher(
         VerificationPolicy policy,
         QualityScoreService qualityService,
         MediaProbeService probeService,
-        string scratchRoot,
+        OwnedScratchWorkspace scratch,
         CancellationToken cancellationToken)
     {
         var results = new List<QualityResult>(windows.Count);
@@ -2302,7 +2302,7 @@ public sealed class QueueDispatcher(
         {
             var window = windows[index];
             var outputPath = Path.Combine(
-                scratchRoot,
+                scratch.Root,
                 $"q{qualityValue}-window{index}{Path.GetExtension(work.Spec.OutputPath)}");
             var sampleSpec = work.Spec with
             {
@@ -2327,27 +2327,32 @@ public sealed class QueueDispatcher(
                 hardwareDecode: false,
                 hardwareToneMap: false);
 
-            var run = await RunFfmpegAsync(
-                jobId,
-                outputPath,
-                primary,
-                window.DurationSeconds,
-                FrameRatePlanner.ScaleFrameCount(
-                    FfmpegProgressCalculator.ExpectedFramesForWindow(
-                        sourceProbe.FrameCount,
-                        sourceVideoDurationSeconds,
-                        window.DurationSeconds,
-                        sourceProbe.VideoFrameRate),
-                    sourceProbe.VideoFrameRate,
-                    work.Spec.TargetFrameRate),
-                IsHardwareEncoder(work.VideoEncoder),
-                cancellationToken,
-                progressMap: progress => AdaptiveQualityProgress.Map(
-                    candidateIndex,
-                    index,
-                    windows.Count,
-                    AdaptiveQualityPhase.Encoding,
-                    progress));
+            FfmpegRun run;
+            try
+            {
+                run = await RunFfmpegAsync(
+                    jobId,
+                    outputPath,
+                    primary,
+                    window.DurationSeconds,
+                    FrameRatePlanner.ScaleFrameCount(
+                        FfmpegProgressCalculator.ExpectedFramesForWindow(
+                            sourceProbe.FrameCount,
+                            sourceVideoDurationSeconds,
+                            window.DurationSeconds,
+                            sourceProbe.VideoFrameRate),
+                        sourceProbe.VideoFrameRate,
+                        work.Spec.TargetFrameRate),
+                    IsHardwareEncoder(work.VideoEncoder),
+                    cancellationToken,
+                    progressMap: progress => AdaptiveQualityProgress.Map(
+                        candidateIndex,
+                        index,
+                        windows.Count,
+                        AdaptiveQualityPhase.Encoding,
+                        progress));
+            }
+            finally { scratch.Capture(outputPath); }
             if (run.ExitCode != 0)
             {
                 logger.LogWarning(
@@ -2434,7 +2439,7 @@ public sealed class QueueDispatcher(
             }
 
             results.Add(result);
-            AdaptiveQualityScratch.DeleteSample(outputPath);
+            await scratch.TryDeleteAsync(outputPath);
         }
 
         var combined = QualityScoreAggregator.Combine(
@@ -2669,21 +2674,6 @@ public sealed class QueueDispatcher(
             SoftwareFallbackArguments = primary.SequenceEqual(software) ? null : software,
             UsedHardwareDecode = !primary.SequenceEqual(software)
         };
-    }
-
-    private static void DeleteDirectoryQuietly(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Scratch cleanup is also covered by the timed/orphan cleanup path.
-        }
     }
 
     internal static bool TrackCleanupHasNoRemovalWork(
@@ -3314,6 +3304,12 @@ public sealed class QueueDispatcher(
             work.Spec.ClipSeconds,
             work.Spec.ClipStartSeconds,
             outputPath);
+        await using var referenceScratch = clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip)
+            ? await OwnedScratchWorkspace.CreateAsync(scopeFactory, claims, _workRoot, jobId, executionAttempt,
+                Path.GetDirectoryName(outputPath)!, "verification-reference", logger, cancellationToken)
+            : null;
+        if (referenceScratch is not null) clip = clip! with
+            { ReferencePath = Path.Combine(referenceScratch.Root, Path.GetFileName(clip!.ReferencePath)) };
         // The VMAF pass is the long part of verification; surface its live progress on the same
         // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%
         // steps, and both helpers serialise (job lock / hub), so fire-and-forget is safe here.
@@ -3339,7 +3335,8 @@ public sealed class QueueDispatcher(
                 qualityProgress,
                 vmafAcceleration,
                 remoteQuality,
-                remoteEvidence);
+                remoteEvidence,
+                referenceScratch is null ? null : new VerificationScratchCallbacks(referenceScratch.Capture, referenceScratch.TryDeleteAsync));
         }
         if (!work.IsDisposable
             && (!await FileContentIdentity.MatchesAsync(work.Original.Path, verifiedSource, cancellationToken)
