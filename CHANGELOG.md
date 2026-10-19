@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add durable Linux native-work journal storage with ABI-correct open flags (x86-64 and arm64; unverified ABIs fail closed), private owner-only journal/checkpoint directories, an exclusive coordinator lock, and fsync-ordered replacement with exact readback. Standalone bootstrap/admission wiring, other-platform durable adapters and package qualification remain unfinished; protocol 11 stays disabled.
+
 - Separate missing-VMAF-report qualification from short startup watchdog timing. Native Windows logging failures now retain synthetic write IDs and exception evidence without replaying entries or relaxing the exact-entry assertion; the latest access-denied cause remains unconfirmed.
 
 - Add a serialized shared native-work journal transaction boundary. Uncertain writes stop further effects, expired write scopes cannot authorize work, and shutdown retains ownership through actual body completion and retirement. Durable OS storage, bootstrap and standalone integration remain pending.
