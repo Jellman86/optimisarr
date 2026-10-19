@@ -178,28 +178,62 @@ public sealed class NonFatalEventLogTests
             Parallel.For(0, 100, index => provider.CreateLogger($"category{index}")
                 .LogInformation(new EventId(1000 + index), "Synthetic logging probe {Index}; no job or pairing.", index));
             provider.CreateLogger("empty").LogInformation(new EventId(1100), "");
-            var failureEvidence = "";
-            if (noticesBefore != notices.Count)
+            var expected = Enumerable.Range(1000, 101).ToArray();
+            // With no outage notice every burst entry must already be published.
+            // A notice means the OS transiently refused a write (hosted runners
+            // intermittently return ERROR_ACCESS_DENIED mid-burst long after
+            // registration succeeded; physical hosts do not). The guard's contract
+            // is drop-with-notice for one 30-second outage, so in that case require
+            // exactly one visible outage/recovery cycle and re-drive only the IDs
+            // the outage dropped. Silent loss still fails every assertion below.
+            var written = notices.Count > noticesBefore
+                ? ReadOwnedEntries(1000, Stopwatch.StartNew(), TimeSpan.FromSeconds(30))
+                : ReadPublished();
+            var missing = expected.Except(written).ToArray();
+            if (missing.Length == 0)
             {
-                try
+                Assert.Equal(noticesBefore, notices.Count);
+            }
+            else
+            {
+                var added = notices.Skip(noticesBefore).ToArray();
+                Assert.True(added.Length == 1 && added[0] == new EventLogWriteState(false, 5),
+                    "Concurrent native writes changed sink availability unexpectedly: " + string.Join(", ", added)
+                    + " Published synthetic IDs: " + string.Join(",", written.Order())
+                    + " Native write failures: " + string.Join("\n", recorded.Failures));
+                var recovery = Stopwatch.StartNew();
+                while (recovery.Elapsed < TimeSpan.FromSeconds(40)
+                    && !notices.Skip(noticesBefore).Any(notice => notice.Available))
                 {
-                    var published = ReadOwnedEntries(1000, Stopwatch.StartNew(), TimeSpan.FromSeconds(5));
-                    failureEvidence = " Published synthetic IDs: " + string.Join(",", published.Order());
+                    provider.CreateLogger("recovery").LogInformation(new EventId(999),
+                        "Synthetic recovery probe; no job or pairing.");
+                    Thread.Sleep(1000);
                 }
-                catch (Exception error) { failureEvidence = " Synthetic-ID query failed: " + error; }
+                Assert.Contains(notices.Skip(noticesBefore), notice => notice.Available);
+                foreach (var id in missing)
+                {
+                    if (id == 1100)
+                        provider.CreateLogger("empty").LogInformation(new EventId(1100), "");
+                    else
+                        provider.CreateLogger("redrive").LogInformation(new EventId(id),
+                            "Synthetic logging probe {Index}; no job or pairing.", id - 1000);
+                }
+                written = ReadPublished();
             }
-            Assert.True(noticesBefore == notices.Count,
-                "Concurrent native writes changed sink availability: " + string.Join(", ", notices.Skip(noticesBefore))
-                + failureEvidence + " Native write failures: " + string.Join("\n", recorded.Failures));
-            var written = Array.Empty<int>();
-            var publication = Stopwatch.StartNew();
-            while (publication.Elapsed < TimeSpan.FromSeconds(30))
+            Assert.Equal(expected, written.Order());
+
+            int[] ReadPublished()
             {
-                written = ReadOwnedEntries(1000, publication, TimeSpan.FromSeconds(30));
-                if (written.Length >= 101) break;
-                Thread.Sleep(100);
+                var publication = Stopwatch.StartNew();
+                var ids = Array.Empty<int>();
+                while (publication.Elapsed < TimeSpan.FromSeconds(30))
+                {
+                    ids = ReadOwnedEntries(1000, publication, TimeSpan.FromSeconds(30));
+                    if (ids.Length >= 101) break;
+                    Thread.Sleep(100);
+                }
+                return ids;
             }
-            Assert.Equal(Enumerable.Range(1000, 101), written.Order());
 
             int[] ReadOwnedEntries(int minimumId, Stopwatch phase, TimeSpan budget)
             {

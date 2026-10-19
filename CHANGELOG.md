@@ -132,6 +132,8 @@
 
 - Standalone audio quality checks preserve decoder priming and exact window samples at zero and fractional seeks; video soundtracks retain their demuxer-relative picture origin. Loudness checks use the finished measurement summary and distinguish measured silence from missing true-peak evidence.
 - Owned preparation refusals retain files and diagnostics without spending the source's failure/exclusion budget or a quality retry.
+- Library probing now refuses indirect playlist/manifest formats (such as DASH or HLS files carrying a media extension). A manifest's referenced segments live outside the hashed original, so they can no longer supply probe facts for a file they are not part of; every supported single-file container continues to probe normally.
+
 - Diagnostic exports retain the typed image perceptual-quality policy (reporting, gate and minimum score) captured with each attempt, so an exported snapshot still shows the complete gate policy after library settings change. Unknown and free-text fields remain excluded.
 
 - Simplified Chinese terminology is consistent for secrets, dry-run, duplicates and remote workers, correcting machine-translation errors (for example "token" no longer reads as a cryptocurrency token). The Recent results savings column and the quality-slider endpoint are also worded as space saved and higher quality rather than file saving and sharpening.
