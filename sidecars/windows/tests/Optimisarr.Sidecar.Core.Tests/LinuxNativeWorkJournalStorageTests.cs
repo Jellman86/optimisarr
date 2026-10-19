@@ -266,6 +266,18 @@ public sealed class LinuxNativeWorkJournalStorageTests : IDisposable
         Assert.ThrowsAny<IOException>(() => NativeWorkJournal.OpenExisting(storage));
     }
 
+    public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
+    [DllImport("libc", EntryPoint = "link", SetLastError = true)] private static extern int Link(string existing, string link);
+    [DllImport("libc", EntryPoint = "mkfifo", SetLastError = true)] private static extern int MkFifo(string path, uint mode);
+    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true)] private static extern int Fcntl(int descriptor, int command);
+}
+
+/// <summary>
+/// The persisted identity key is pure logic, so it is tested on every platform — unlike the
+/// storage class above, whose constructor needs Unix file modes.
+/// </summary>
+public sealed class LinuxJournalIdentityTests
+{
     // statfs f_type magics, as in the adapter's persistence allowlist.
     private const long Ext4 = 0xef53, Btrfs = 0x9123683e, Xfs = 0x58465342;
 
@@ -309,11 +321,6 @@ public sealed class LinuxNativeWorkJournalStorageTests : IDisposable
         Assert.NotEqual(identity.Key, (identity with { Inode = 266 }).Key);
         Assert.NotEqual(identity.Key, (identity with { FileSystemType = Ext4 }).Key);
     }
-
-    public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
-    [DllImport("libc", EntryPoint = "link", SetLastError = true)] private static extern int Link(string existing, string link);
-    [DllImport("libc", EntryPoint = "mkfifo", SetLastError = true)] private static extern int MkFifo(string path, uint mode);
-    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true)] private static extern int Fcntl(int descriptor, int command);
 }
 
 public sealed class LinuxStorageFactAttribute : FactAttribute
