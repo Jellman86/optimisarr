@@ -6,6 +6,15 @@ complete quality-first parity or enable automatic protocol-11 placement.
 
 ## Behaviour
 
+Latest native follow-up, **19 October 2026**: Picard is reachable again and passes the current
+full shared-worker suite (865 tests, 23 Linux-only skips), including the process ownership
+regressions below. Mac passes 748 shared tests with 46 platform skips, and Quark passes 817
+with 23 skips. This supersedes the dated fresh-Picard blocker below; it does not requalify
+the older media packages or establish GPU encoding coverage. The additional
+[Windows journal process-death matrix](2026-10-19-windows-journal-process-death.md) records
+the exact source archive and its 49 killed-process cases. Standalone durable wiring and
+physical power-loss qualification remain open.
+
 Encode, media-probe and capability-command callers check cancellation before launch. Once
 launched, the direct child stays owned until its exit is positively confirmed. Cancellation,
 reader failure and other post-launch failures all pass through the same independent stop/reap

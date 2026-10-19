@@ -335,7 +335,7 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
         if (completeVisible) { await using var journal = Open(); Assert.Equal(0, journal.Snapshot.Revision); }
         else
         {
-            var error = Record.Exception(() => Open());
+            var error = await Record.ExceptionAsync(async () => { await using var _ = Open(); });
             Assert.True(error is IOException or InvalidDataException, error?.ToString());
         }
         Assert.ThrowsAny<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint));
@@ -416,6 +416,135 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
             .GetValue(storage)!;
         Assert.True(GetHandleInformation(coordinator.SafeFileHandle, out var flags));
         Assert.Equal(0u, flags & 1u);
+    }
+
+    [WindowsStorageTheory]
+    [InlineData("provision", "journal:created", false, 0)]
+    [InlineData("provision", "journal:parent-flushed", false, 0)]
+    [InlineData("provision", "checkpoint-root:created", false, 0)]
+    [InlineData("provision", "checkpoint-root:parent-flushed", false, 0)]
+    [InlineData("provision", "lock:created", false, 0)]
+    [InlineData("provision", "lock:file-synced", false, 0)]
+    [InlineData("provision", "lock:directory-flushed", false, 0)]
+    [InlineData("provision", "checkpoint:created", false, 0)]
+    [InlineData("provision", "checkpoint:file-synced", false, 0)]
+    [InlineData("provision", "checkpoint:directory-flushed", false, 0)]
+    [InlineData("provision", "ledger:created", false, 0)]
+    [InlineData("provision", "ledger:file-synced", true, 0)]
+    [InlineData("provision", "ledger:directory-flushed", true, 0)]
+    [InlineData("commit", "checkpoint:temp-created", true, 0)]
+    [InlineData("commit", "checkpoint:file-synced", true, 0)]
+    [InlineData("commit", "checkpoint:renamed", true, 0)]
+    [InlineData("commit", "checkpoint:rename-flushed", true, 0)]
+    [InlineData("commit", "checkpoint:directory-flushed", true, 0)]
+    [InlineData("commit", "ledger:temp-created", true, 0)]
+    [InlineData("commit", "ledger:file-synced", true, 0)]
+    [InlineData("commit", "ledger:renamed", true, 1)]
+    [InlineData("commit", "ledger:rename-flushed", true, 1)]
+    [InlineData("commit", "ledger:directory-flushed", true, 1)]
+    [InlineData("commit", "checkpoint:temp-created#2", true, 1)]
+    [InlineData("commit", "checkpoint:file-synced#2", true, 1)]
+    [InlineData("commit", "checkpoint:renamed#2", true, 1)]
+    [InlineData("commit", "checkpoint:rename-flushed#2", true, 1)]
+    [InlineData("commit", "checkpoint:directory-flushed#2", true, 1)]
+    [InlineData("reopen", "ledger:reconfirm-file-synced", true, 1)]
+    [InlineData("reopen", "ledger:reconfirm-directory-flushed", true, 1)]
+    [InlineData("reopen", "checkpoint:temp-created", true, 1)]
+    [InlineData("reopen", "checkpoint:file-synced", true, 1)]
+    [InlineData("reopen", "checkpoint:renamed", true, 1)]
+    [InlineData("reopen", "checkpoint:rename-flushed", true, 1)]
+    [InlineData("reopen", "checkpoint:directory-flushed", true, 1)]
+    [InlineData("recover-new", "ledger:reconfirm-file-synced", true, 1)]
+    [InlineData("recover-new", "ledger:reconfirm-directory-flushed", true, 1)]
+    [InlineData("recover-new", "checkpoint:temp-created", true, 1)]
+    [InlineData("recover-new", "checkpoint:file-synced", true, 1)]
+    [InlineData("recover-new", "checkpoint:renamed", true, 1)]
+    [InlineData("recover-new", "checkpoint:rename-flushed", true, 1)]
+    [InlineData("recover-new", "checkpoint:directory-flushed", true, 1)]
+    [InlineData("recover-old", "ledger:reconfirm-file-synced", true, 0)]
+    [InlineData("recover-old", "ledger:reconfirm-directory-flushed", true, 0)]
+    [InlineData("recover-old", "checkpoint:temp-created", true, 0)]
+    [InlineData("recover-old", "checkpoint:file-synced", true, 0)]
+    [InlineData("recover-old", "checkpoint:renamed", true, 0)]
+    [InlineData("recover-old", "checkpoint:rename-flushed", true, 0)]
+    [InlineData("recover-old", "checkpoint:directory-flushed", true, 0)]
+    public async Task Forced_process_death_retains_exact_authorized_state_without_repairing_partial_bootstrap(
+        string operation, string boundary, bool canReopen, int revision)
+    {
+        NativeWorkSnapshot? before = null;
+        if (operation != "provision")
+        {
+            await using var journal = NativeWorkJournal.OpenExisting(WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint));
+            if (operation == "reopen") await Commit(journal);
+            before = journal.Snapshot;
+        }
+
+        if (operation is "recover-new" or "recover-old")
+        {
+            await KillAtBoundary("commit", operation == "recover-new" ? "ledger:renamed" : "checkpoint:renamed");
+            Assert.NotNull(NativeWorkCheckpointProtocol.Decode(File.ReadAllBytes(CheckpointFile)).Pending);
+            before = NativeWorkLedger.Decode(File.ReadAllBytes(LedgerFile));
+        }
+        await KillAtBoundary(operation.StartsWith("recover-", StringComparison.Ordinal) ? "reopen" : operation, boundary);
+        if (!canReopen)
+        {
+            var error = await Record.ExceptionAsync(async () => { await using var _ = Open(); });
+            Assert.True(error is IOException or InvalidDataException, error?.ToString());
+        }
+        else
+        {
+            var visible = File.ReadAllBytes(LedgerFile);
+            await using var reopened = Open();
+            Assert.Equal(visible, NativeWorkLedger.Encode(reopened.Snapshot));
+            Assert.Equal(revision, reopened.Snapshot.Revision);
+            Assert.Equal(revision, reopened.Snapshot.Obligations.Length);
+            if (before is not null) Assert.Equal(before.StoreId, reopened.Snapshot.StoreId);
+            if (operation is "reopen" or "recover-new" or "recover-old")
+                Assert.Equal(NativeWorkLedger.Encode(before!), NativeWorkLedger.Encode(reopened.Snapshot));
+            if (revision == 1)
+            {
+                var debt = Assert.Single(reopened.Snapshot.Obligations);
+                Assert.Equal(NativeWorkPhase.Intent, debt.Phase);
+                Assert.Equal(100, debt.MemoryCharge);
+                Assert.Equal(200, debt.DiskCharge);
+                Assert.True(debt.HoldsResources);
+            }
+            Assert.Null(NativeWorkCheckpointProtocol.Decode(File.ReadAllBytes(CheckpointFile)).Pending);
+        }
+        Assert.ThrowsAny<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint));
+    }
+
+    private async Task KillAtBoundary(string operation, string boundary)
+    {
+        var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+        var test = typeof(WindowsNativeWorkJournalStorageTests).Assembly.Location;
+        var trial = Guid.NewGuid().ToString("N");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var process = new Process { StartInfo = new(host) { UseShellExecute = false,
+            RedirectStandardOutput = true, RedirectStandardError = true } };
+        foreach (var arg in new[] { "exec", "--runtimeconfig", Path.ChangeExtension(test, ".runtimeconfig.json"), "--depsfile",
+                     Path.ChangeExtension(test, ".deps.json"), typeof(ScratchFixture.Program).Assembly.Location,
+                     "windows-journal-cut", operation, Journal, Checkpoint, boundary, trial })
+            process.StartInfo.ArgumentList.Add(arg);
+        process.Start();
+        var errors = process.StandardError.ReadToEndAsync();
+        try
+        {
+            var line = await process.StandardOutput.ReadLineAsync(timeout.Token);
+            Assert.True(line == $"BLOCKED trial={trial} boundary={boundary}",
+                $"Child did not stop at the nominated boundary: {line ?? "<EOF>"}");
+            Assert.False(process.HasExited);
+            process.Kill();
+            await process.WaitForExitAsync(timeout.Token);
+            Assert.Empty(await process.StandardOutput.ReadToEndAsync(timeout.Token));
+            Assert.Empty(await errors.WaitAsync(timeout.Token));
+            Assert.NotEqual(0, process.ExitCode);
+        }
+        finally
+        {
+            if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
+            await errors;
+        }
     }
 
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }

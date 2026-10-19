@@ -174,7 +174,10 @@ that a write-through request causes NTFS to flush resulting metadata changes, in
 applying that sentence to this exact rename sequence remains an inference. The candidate
 claims only what its Windows tests demonstrate in a running OS — private creation-time ACLs,
 identity and exclusive-ownership checks, exact visible readback and fail-closed recovery.
-It may not claim directory synchronization, Linux-equivalent namespace durability,
+The [native process-death matrix](../engineering/hardware-validation/2026-10-19-windows-journal-process-death.md)
+also passes 49 forced-termination cases on Picard, including partial provisioning and repeated
+interruption while resolving pending old/new authority. This proves recovery with Windows and
+its caches still running. It may not claim directory synchronization, Linux-equivalent namespace durability,
 power-loss-safe commits, race-free predecessor replacement (an identity recheck narrows the
 same check-to-rename interval Linux has), or protocol-11 qualification. Its admission also
 requires the running account to hold write access on the parent so directory flushes can open

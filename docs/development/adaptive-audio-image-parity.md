@@ -49,8 +49,9 @@ by restored accounting and same-identity replay. Missing ownership evidence cann
 retirement, and delayed RAM ejection validates mount identity. Shared encode/probe execution
 now retains direct-child ownership through cancellation and reader failures, bounds captured
 text and refuses incomplete probe evidence. Managed process and inherited-guard tests pass
-on Mac and Quark; fresh Picard execution and standalone durable reservation integration remain
-open. See the [process ownership evidence and limits](../engineering/hardware-validation/2026-10-15-native-process-ownership.md).
+on Mac and Quark; the current shared suite also passes fresh native Picard execution on
+19 October. Standalone durable reservation integration remains open. See the
+[process ownership evidence and limits](../engineering/hardware-validation/2026-10-15-native-process-ownership.md).
 
 Accounted capability workspaces now use the same pinned ownership and retained retirement
 receipts as jobs. Component tests pass actual parent death with surviving probe tools on Mac
@@ -71,6 +72,10 @@ unconnected experimental candidate. That candidate is now implemented with Windo
 (private creation-time ACLs, pinned 128-bit identities, exclusive coordinator, cross-process
 forced-death lock release, lost-acknowledgement phases). It claims no directory synchronization
 or power-loss durability; physical power-cut qualification and standalone wiring remain open.
+Fresh Picard execution on 19 October also passes the
+[49-case process-death matrix](../engineering/hardware-validation/2026-10-19-windows-journal-process-death.md),
+including provisioning, commits and interrupted pending old/new recovery. Mac and Picard are
+reachable again; this supersedes their earlier offline status without qualifying power loss.
 An unconnected Linux-only bootstrap/restoration module now separates explicit operator
 provisioning from normal opening and restores exact physical charges into an unpublished pool;
 it has no service callers and does not provide startup admission or reporting integration.

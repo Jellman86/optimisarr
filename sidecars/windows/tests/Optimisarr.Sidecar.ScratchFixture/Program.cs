@@ -68,6 +68,11 @@ public static class Program
             if (!OperatingSystem.IsWindows()) return 2;
             return await RunJournalParent(args, token);
         }
+        if (args[0] == "windows-journal-cut")
+        {
+            if (!OperatingSystem.IsWindows()) return 2;
+            return await RunWindowsJournalCut(args);
+        }
         if (args[0] != "parent") return 2;
         var lease = Guid.Parse("81223344-1234-4321-8123-123456789012");
         var scope = NativeScratchWorkspace.PrepareAccountingScope(args[1]);
@@ -223,6 +228,52 @@ public static class Program
             Console.Out.Flush();
             return 0;
         }
+    }
+
+    // Process-death tests only: the OS and its caches keep running. This fixture
+    // deliberately bypasses the Linux-only bootstrap without adding any worker caller.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static async Task<int> RunWindowsJournalCut(string[] args)
+    {
+        // windows-journal-cut <provision|commit|reopen> <journal> <authority> <phase[#occurrence]> <trial>
+        if (args.Length != 6 || args[1] is not ("provision" or "commit" or "reopen")
+            || !Guid.TryParseExact(args[5], "N", out _)) return 2;
+        var boundary = args[4];
+        var phase = boundary;
+        var occurrence = 1;
+        var hash = boundary.LastIndexOf('#');
+        if (hash >= 0)
+        {
+            if (hash == 0 || !int.TryParse(boundary[(hash + 1)..], out occurrence) || occurrence <= 0) return 2;
+            phase = boundary[..hash];
+        }
+        var armed = args[1] != "commit";
+        var seen = 0;
+        void Step(string value)
+        {
+            if (!armed || value != phase || ++seen != occurrence) return;
+            Console.WriteLine($"BLOCKED trial={args[5]} boundary={boundary}");
+            Console.Out.Flush();
+            Thread.Sleep(Timeout.InfiniteTimeSpan);
+        }
+        var storage = args[1] == "provision"
+            ? WindowsNativeWorkJournalStorage.ProvisionNew(args[2], args[3], Step)
+            : WindowsNativeWorkJournalStorage.OpenExisting(args[2], args[3], Step);
+        await using var journal = NativeWorkJournal.OpenExisting(storage);
+        armed = true;
+        if (args[1] == "commit")
+        {
+            var root = Path.GetDirectoryName(Path.GetFullPath(args[2]))!;
+            await journal.ExecuteAsync<int>((scope, _) => {
+                scope.Commit(scope.Snapshot with {
+                    Revision = scope.Snapshot.Revision + 1,
+                    Obligations = [new(Guid.NewGuid(), NativeWorkPurpose.Capability, null, null, root,
+                        new("root:1", "control:1", "gate:1"), "volume:1", 100, 200, false, NativeWorkPhase.Intent)] });
+                return Task.CompletedTask;
+            }, _ => Task.FromResult(42), (_, _) => Task.CompletedTask);
+        }
+        Console.WriteLine("OPERATION_RETURNED");
+        return 0;
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

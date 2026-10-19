@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add 49 native Windows journal process-death regressions covering partial provisioning, both checkpoint writes and interrupted recovery of authorized old/new snapshots. Picard executes the actual killed-process matrix; power-loss durability and standalone wiring remain unqualified, and protocol 11 stays disabled.
+
 - Fix the Linux native-work journal's persisted identity so a store reopens after a Btrfs or ext4 remount/reboot: the binding key now uses the volume's UUID-derived `f_fsid` instead of the per-mount anonymous device number that changed between boots and refused an intact journal. XFS and ZFS keep device-bound keys and fail closed on a changed device; their remount stability remains unqualified. Same-process identity checks are unchanged, stores provisioned under the old key format refuse rather than migrate, and protocol 11 stays disabled.
 
 - Add an unconnected Linux-only native-work journal bootstrap/restoration foundation: normal opening never creates or repairs authority, explicit operator provisioning is a separate call, and every unreleased obligation is restored into an unpublished physical-ID pool before the journal and pool can be used together. It has no standalone service or admission callers, refuses Windows/Darwin before filesystem access, and does not establish power-loss qualification or enable protocol 11.

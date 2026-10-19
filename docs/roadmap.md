@@ -49,8 +49,9 @@ quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332)
 storage and an unconnected Linux-only bootstrap/restoration foundation are now on that branch
 with Quark test evidence, while standalone service bootstrap/admission wiring, physical
 power-cut qualification and package qualification remain open and protocol 11 stays disabled.
-Picard (Windows/NVIDIA) and Scott's Mac were offline at the 2026-10-19 check, so their
-physical qualification waits for host availability. Dedupe file actions
+Picard (Windows/NVIDIA) and Scott's Mac are reachable again at the later 2026-10-19 check.
+Picard passes the [49-case Windows journal process-death matrix](engineering/hardware-validation/2026-10-19-windows-journal-process-death.md);
+physical power-loss and exact-package qualification remain open. Dedupe file actions
 remain deferred behind #332; merged D3 work to date is safety fencing only and enables no
 cleanup action. The 50 fps VMAF report
 ([#406](https://github.com/Jellman86/optimisarr/issues/406)) closed on 2026-10-19 after the
