@@ -271,6 +271,36 @@ public sealed class NativeWorkJournalBootstrapLinuxTests : IDisposable
         foreach (var (path, bytes) in before) Assert.Equal(bytes, File.ReadAllBytes(path));
     }
 
+    [LinuxStorageFact]
+    public async Task The_powercut_fixture_drives_provision_commit_and_report_across_processes()
+    {
+        var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+        var test = typeof(NativeWorkJournalBootstrapLinuxTests).Assembly.Location;
+        async Task<string> Run(string mode)
+        {
+            using var process = new System.Diagnostics.Process { StartInfo = new(host) { UseShellExecute = false,
+                RedirectStandardOutput = true, RedirectStandardError = true } };
+            foreach (var arg in new[] { "exec", "--runtimeconfig", Path.ChangeExtension(test, ".runtimeconfig.json"), "--depsfile",
+                         Path.ChangeExtension(test, ".deps.json"), typeof(ScratchFixture.Program).Assembly.Location,
+                         "powercut-store", mode, Journal, Checkpoint })
+                process.StartInfo.ArgumentList.Add(arg);
+            process.Start();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var output = await process.StandardOutput.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            Assert.Equal(0, process.ExitCode);
+            return output;
+        }
+
+        Assert.Contains("REFUSED", await Run("report"));
+        Assert.Contains("COMMIT_RETURNED revision=0", await Run("provision"));
+        Assert.Contains("COMMIT_RETURNED revision=1", await Run("commit"));
+        var report = await Run("report");
+        Assert.Contains("VERDICT revision=1 obligations=1 holding=1 disk=200 memory=100", report);
+        Assert.Contains("phase=ledger:reconfirm-file-synced", report);
+        Assert.Contains("OBLIGATION", report);
+    }
+
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
 }
 

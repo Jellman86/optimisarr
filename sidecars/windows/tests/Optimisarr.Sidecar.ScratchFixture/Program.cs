@@ -53,6 +53,16 @@ public static class Program
             else await Task.Delay(TimeSpan.FromSeconds(30), token);
             return 0;
         }
+        if (args[0] == "powercut-store")
+        {
+            if (!OperatingSystem.IsLinux()) return 2;
+            return await RunPowercutStore(args);
+        }
+        if (args[0] == "powercut-calibrate")
+        {
+            if (!OperatingSystem.IsLinux()) return 2;
+            return RunPowercutCalibrate(args);
+        }
         if (args[0] == "journal-parent")
         {
             if (!OperatingSystem.IsWindows()) return 2;
@@ -92,6 +102,113 @@ public static class Program
         {
             if (!child.HasExited) { child.Kill(entireProcessTree: true); await child.WaitForExitAsync(CancellationToken.None); }
             owner.Cleanup();
+        }
+    }
+
+    // Fault-model calibration, deliberately NOT journal code: proves the cut
+    // model can discriminate flushed from unflushed writes before any journal
+    // result is trusted. `write` persists one file with an explicit flush,
+    // writes a second without one, announces both, then waits to be killed.
+    // `check` after restart reports exactly what survived.
+    // args: powercut-calibrate <write|check> <directory>
+    private static int RunPowercutCalibrate(string[] args)
+    {
+        var directory = args[2];
+        var flushed = Path.Combine(directory, "flushed.txt");
+        var unflushed = Path.Combine(directory, "unflushed.txt");
+        if (args[1] == "check")
+        {
+            Console.WriteLine($"CALIBRATION flushed={(File.Exists(flushed) ? File.ReadAllText(flushed).Trim() : "absent")} unflushed={(File.Exists(unflushed) ? File.ReadAllText(unflushed).Trim() : "absent")}");
+            return 0;
+        }
+        if (args[1] != "write") return 2;
+        Directory.CreateDirectory(directory);
+        using (var stream = new FileStream(flushed, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            stream.Write("flushed-v1\n"u8);
+            stream.Flush(flushToDisk: true);
+        }
+        Console.WriteLine("CALIBRATION-WRITTEN flushed");
+        Console.Out.Flush();
+        File.WriteAllText(unflushed, "unflushed-v1\n");
+        Console.WriteLine("CALIBRATION-WRITTEN unflushed");
+        Console.Out.Flush();
+        Thread.Sleep(Timeout.InfiniteTimeSpan);
+        return 0;
+    }
+
+    // Abrupt-termination qualification driver: provisioning, one durable commit
+    // at a time, and reopen reporting for the Linux journal store. Every durable
+    // phase is printed and flushed as one framed REACHED line carrying the trial
+    // id, this boot's kernel boot id and a sequence number, so stale output from
+    // an earlier boot can never trigger a later cut. When a block phase is named,
+    // the process prints BLOCKED in the same frame and waits indefinitely to be
+    // killed with the guest; there is no timeout release. COMMIT_RETURNED is
+    // printed only after the operation returns; the host records acknowledgements.
+    // args: powercut-store <provision|commit|report> <journal> <authority> [blockPhase] [trialId]
+    private static async Task<int> RunPowercutStore(string[] args)
+    {
+        var blockPhase = args.Length > 4 ? args[4] : null;
+        var trial = args.Length > 5 ? args[5] : "local";
+        var boot = File.ReadAllText("/proc/sys/kernel/random/boot_id").Trim();
+        var sequence = 0;
+        void Step(string phase)
+        {
+            Console.WriteLine($"REACHED trial={trial} boot={boot} seq={++sequence} phase={phase}");
+            Console.Out.Flush();
+            if (phase == blockPhase)
+            {
+                Console.WriteLine($"BLOCKED trial={trial} boot={boot} seq={sequence} phase={phase}");
+                Console.Out.Flush();
+                Thread.Sleep(Timeout.InfiniteTimeSpan);
+            }
+        }
+        try
+        {
+            if (args[1] == "provision")
+            {
+                await using var provisioned =
+                    await NativeWorkJournalBootstrap.ProvisionNewAsync(args[2], args[3], Step);
+                Console.WriteLine($"COMMIT_RETURNED revision={provisioned.Journal.Snapshot.Revision}");
+                Console.Out.Flush();
+                return 0;
+            }
+            await using var restored =
+                await NativeWorkJournalBootstrap.OpenExistingAsync(args[2], args[3], Step);
+            if (args[1] == "report")
+            {
+                var snapshot = restored.Journal.Snapshot;
+                long disk = 0, memory = 0; var holding = 0;
+                foreach (var obligation in snapshot.Obligations)
+                {
+                    if (!obligation.HoldsResources) continue;
+                    holding++; disk += obligation.DiskCharge; memory += obligation.MemoryCharge;
+                }
+                Console.WriteLine($"VERDICT revision={snapshot.Revision} obligations={snapshot.Obligations.Length} holding={holding} disk={disk} memory={memory}");
+                foreach (var obligation in snapshot.Obligations)
+                    Console.WriteLine($"OBLIGATION owner={obligation.Owner:N} purpose={obligation.Purpose} phase={obligation.Phase} volume={obligation.VolumeIdentity} disk={obligation.DiskCharge} memory={obligation.MemoryCharge}");
+                Console.Out.Flush();
+                return 0;
+            }
+            if (args[1] != "commit") return 2;
+            var root = Path.GetDirectoryName(Path.GetFullPath(args[2]))!;
+            await restored.Journal.ExecuteAsync<int>((scope, _) => {
+                scope.Commit(scope.Snapshot with {
+                    Revision = scope.Snapshot.Revision + 1,
+                    Obligations = [.. scope.Snapshot.Obligations, new NativeWorkObligation(
+                        Guid.NewGuid(), NativeWorkPurpose.Job, 42, Guid.NewGuid(), root,
+                        new("root:1", "control:1", "gate:1"), "device:powercut", 100, 200, false, NativeWorkPhase.Intent)] });
+                return Task.CompletedTask;
+            }, _ => Task.FromResult(42), (_, _) => Task.CompletedTask);
+            Console.WriteLine($"COMMIT_RETURNED revision={restored.Journal.Snapshot.Revision}");
+            Console.Out.Flush();
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.WriteLine($"REFUSED {error.GetType().Name}");
+            Console.Out.Flush();
+            return 0;
         }
     }
 
