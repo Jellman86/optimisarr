@@ -306,19 +306,20 @@ internal sealed class WindowsNativeWorkJournalStorage : INativeWorkJournalStorag
             {
                 if (ace is not CommonAce common || common.AceType != AceType.AccessAllowed)
                 {
-                    if (privateOwner || ace.AceType == AceType.AccessAllowed || ace.AceType == AceType.AccessAllowedObject) throw UnsafeSecurity();
+                    if (privateOwner || ace.AceType == AceType.AccessAllowed || ace.AceType == AceType.AccessAllowedObject)
+                        throw UnsafeSecurity($"unsupported ACE type {ace.AceType} for {ace.SecurityIdentifier}");
                     continue;
                 }
                 if (privateOwner)
                 {
                     if (common.AceFlags.HasFlag(AceFlags.Inherited) || !IsTrusted(common.SecurityIdentifier, ancestor: false))
-                        throw UnsafeSecurity();
+                        throw UnsafeSecurity($"ACE for {common.SecurityIdentifier} with flags {common.AceFlags}");
                 }
                 else if (!common.AceFlags.HasFlag(AceFlags.InheritOnly)
                     && !IsTrusted(common.SecurityIdentifier, ancestor: true) && (common.AccessMask & mutation) != 0)
-                    throw UnsafeSecurity();
+                    throw UnsafeSecurity($"ancestor ACE for {common.SecurityIdentifier} with mask 0x{common.AccessMask:x}");
             }
-            static IOException UnsafeSecurity() => new("Native accounting requires private owner-only directories and files.");
+            static IOException UnsafeSecurity(string detail) => new($"Native accounting requires private owner-only directories and files ({detail}).");
         }
         finally { LocalFree(descriptor); }
     }
