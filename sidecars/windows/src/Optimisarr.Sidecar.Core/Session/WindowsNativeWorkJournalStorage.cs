@@ -508,20 +508,23 @@ internal sealed class WindowsNativeWorkJournalStorage : INativeWorkJournalStorag
 
         public void RenameByHandle(SafeFileHandle file, string name)
         {
+            // The source is renamed by handle, so its identity cannot be swapped
+            // by path. The Win32 wrapper does not honour a RootDirectory handle
+            // (the handle-relative form is rejected with ERROR_INVALID_PARAMETER),
+            // so the destination is named absolutely beneath this directory,
+            // whose retained chain denies delete sharing and whose identity is
+            // re-verified here and after the rename by the caller.
             var attributes = new SecurityAttributes { Length = Marshal.SizeOf<SecurityAttributes>() };
             var root = CreateFileW(DevicePath, 0x20 | 0x80 | 0x20000, 1 | 2 | 4, ref attributes, 3, 0x2000000 | 0x200000, IntPtr.Zero);
             if (root.IsInvalid) { root.Dispose(); throw Io(); }
             using (root)
-            {
                 if (ReadIdentity(root, directory: true) != Identity) throw Changed();
-                var nameBytes = Encoding.Unicode.GetBytes(name);
-                var buffer = new byte[20 + nameBytes.Length];
-                buffer[0] = 1;
-                BitConverter.GetBytes(root.DangerousGetHandle().ToInt64()).CopyTo(buffer, 8);
-                BitConverter.GetBytes((uint)nameBytes.Length).CopyTo(buffer, 16);
-                nameBytes.CopyTo(buffer, 20);
-                if (!SetFileInformationByHandle(file, 3, buffer, buffer.Length)) throw Io();
-            }
+            var nameBytes = Encoding.Unicode.GetBytes(DevicePath + "\\" + name);
+            var buffer = new byte[20 + nameBytes.Length];
+            buffer[0] = 1;
+            BitConverter.GetBytes((uint)nameBytes.Length).CopyTo(buffer, 16);
+            nameBytes.CopyTo(buffer, 20);
+            if (!SetFileInformationByHandle(file, 3, buffer, buffer.Length)) throw Io();
         }
 
         public void Dispose()

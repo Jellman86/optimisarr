@@ -331,6 +331,9 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
         File.Delete(LockFile);
         File.WriteAllBytes(LockFile, header);
         var replacement = new FileInfo(LockFile); var security = replacement.GetAccessControl();
+        // Administrator-created files default to the Administrators group as
+        // owner; storage requires the creating account, so set it explicitly.
+        security.SetOwner(WindowsIdentity.GetCurrent().User!);
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         foreach (FileSystemAccessRule rule in security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)))
             security.RemoveAccessRule(rule);
