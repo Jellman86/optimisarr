@@ -153,7 +153,14 @@ In-process validation keeps the full `statx`/`statfs` identity (device, mount an
 strict. Stores provisioned under the earlier device-only key refuse on binding mismatch — the
 adapter is unconnected and unreleased, so no migration is offered. An exact copy of both
 journal and authority on a cloned volume remains indistinguishable, as the two-file protocol
-already states. A first Windows design built on the shared workspace directory with
+already states. Regression evidence (19 October 2026, Fedora 44 KVM guest on Btrfs,
+`cache=none`, fixture `e70c7fb7…` at `04bd5a0b`): a store holding one obligation was killed
+with QEMU twice; the anonymous device minor changed `51 → 52 → 34` while `f_fsid`
+(`0xe804917c8989937f`) and the journal inode stayed constant, the ledger/checkpoint SHA-256
+were byte-identical after each kill, and reopening restored the same revision, obligation and
+charges. The pre-fix store on the same guest refused under the new key without its authority
+bytes changing. This qualifies only the ordinary-Btrfs remount identity; the framed phase-cut
+matrix and host/device volatile-cache loss remain unqualified. A first Windows design built on the shared workspace directory with
 `FlushFileBuffers` on directory handles was reviewed on 19 October 2026 and **rejected**: no
 documented Win32 guarantee equates a directory flush with `fsync(directory)` after replacement,
 the shared workspace walk resolves reparse ancestors before checking them, and its handle
