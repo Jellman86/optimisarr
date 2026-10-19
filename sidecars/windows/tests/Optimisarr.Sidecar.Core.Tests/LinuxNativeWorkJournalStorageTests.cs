@@ -266,6 +266,50 @@ public sealed class LinuxNativeWorkJournalStorageTests : IDisposable
         Assert.ThrowsAny<IOException>(() => NativeWorkJournal.OpenExisting(storage));
     }
 
+    // statfs f_type magics, as in the adapter's persistence allowlist.
+    private const long Ext4 = 0xef53, Btrfs = 0x9123683e, Xfs = 0x58465342;
+
+    [Theory]
+    [InlineData(Btrfs)]
+    [InlineData(Ext4)]
+    public void The_persisted_identity_key_survives_a_remounts_new_anonymous_device_and_mount_ids(long filesystem)
+    {
+        // Btrfs assigns anonymous st_dev numbers per mount (observed 0:51 -> 0:34 -> 0:51 over
+        // three guest boots) and mnt_id is per-mount too, so neither may reach the persisted
+        // binding on filesystems whose f_fsid is UUID-derived. The volume's f_fsid and the
+        // inode were stable across every boot.
+        var provisioned = new LinuxNativeWorkJournalStorage.Identity(
+            FileSystemId: 0xe804917c8989937f, FileSystemType: filesystem, Inode: 265, Major: 0, Minor: 51, Mount: 23);
+        var afterReboot = provisioned with { Minor = 34, Mount = 41 };
+
+        Assert.Equal(provisioned.Key, afterReboot.Key);
+        // Same-process validation stays strict: only the persisted key forgives a remount.
+        Assert.NotEqual(provisioned, afterReboot);
+    }
+
+    [Fact]
+    public void The_persisted_identity_key_stays_device_bound_where_f_fsid_is_device_derived()
+    {
+        // XFS derives f_fsid from the device number, so it cannot prove remount stability; its
+        // key keeps the device identity and a changed device fails closed, as before.
+        var provisioned = new LinuxNativeWorkJournalStorage.Identity(
+            FileSystemId: 0xfc01, FileSystemType: Xfs, Inode: 265, Major: 252, Minor: 1, Mount: 23);
+
+        Assert.NotEqual(provisioned.Key, (provisioned with { Minor = 2 }).Key);
+        Assert.Equal(provisioned.Key, (provisioned with { Mount = 41 }).Key);
+    }
+
+    [Fact]
+    public void The_persisted_identity_key_distinguishes_filesystems_and_inodes()
+    {
+        var identity = new LinuxNativeWorkJournalStorage.Identity(
+            FileSystemId: 0xe804917c8989937f, FileSystemType: Btrfs, Inode: 265, Major: 0, Minor: 51, Mount: 23);
+
+        Assert.NotEqual(identity.Key, (identity with { FileSystemId = 0xe804917c8989937e }).Key);
+        Assert.NotEqual(identity.Key, (identity with { Inode = 266 }).Key);
+        Assert.NotEqual(identity.Key, (identity with { FileSystemType = Ext4 }).Key);
+    }
+
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
     [DllImport("libc", EntryPoint = "link", SetLastError = true)] private static extern int Link(string existing, string link);
     [DllImport("libc", EntryPoint = "mkfifo", SetLastError = true)] private static extern int MkFifo(string path, uint mode);

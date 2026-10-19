@@ -9,6 +9,8 @@ namespace Optimisarr.Sidecar.Core.Session;
 internal sealed class LinuxNativeWorkJournalStorage : INativeWorkJournalStorage
 {
     private const string LedgerName = "ledger.json", CheckpointName = "checkpoint.json", LockName = "coordinator.lock";
+    // statfs f_type magics for the supported persistent filesystems.
+    private const long Ext4Filesystem = 0xef53, XfsFilesystem = 0x58465342, BtrfsFilesystem = 0x9123683e, ZfsFilesystem = 0x2fc12fc1;
     private const int CloseOnExec = 0x80000, NonBlocking = 0x800;
     private static int NoFollow => LinuxNativeOpenFlags.Current.NoFollow;
     private static int DirectoryFlag => LinuxNativeOpenFlags.Current.Directory;
@@ -207,14 +209,28 @@ internal sealed class LinuxNativeWorkJournalStorage : INativeWorkJournalStorage
         if (error is not null) throw error;
     }
 
-    private sealed record Identity(uint Major, uint Minor, ulong Inode, ulong Mount)
-    { public string Key => $"linux:{Major}:{Minor}:{Inode}"; }
+    /// <summary>
+    /// One inspected object's identity. Full equality stays strict for same-process validation;
+    /// only <see cref="Key"/> is persisted. The key must survive a remount, which the anonymous
+    /// device numbers Btrfs assigns per mount (and the per-mount mnt_id) do not. Where f_fsid is
+    /// UUID-derived (ordinary Btrfs, ext4) it is the volume component; XFS derives f_fsid from
+    /// the device number and ZFS may substitute one, so there the device identity is kept and a
+    /// changed device fails closed until a filesystem-specific identity is qualified.
+    /// </summary>
+    internal sealed record Identity(ulong FileSystemId, long FileSystemType, ulong Inode, uint Major, uint Minor, ulong Mount)
+    {
+        public string Key => FileSystemType is BtrfsFilesystem or Ext4Filesystem
+            ? $"linux:{FileSystemType:x}:{FileSystemId:x16}:{Inode}"
+            : $"linux:{FileSystemType:x}:{Major}:{Minor}:{Inode}";
+    }
 
     private static Identity Inspect(SafeFileHandle handle, bool directory, bool privateOwner)
     {
         if (Statx(handle, "", 0x1000, 0x17ff, out var info) != 0) throw Io();
+        if (Fstatfs(handle, out var filesystem) != 0) throw Io();
         if ((info.Mask & 0x110f) != 0x110f || info.Inode == 0 || info.Mount == 0 || info.Links == 0
             || (info.Mode & 0xf000) != (directory ? 0x4000 : 0x8000) || !directory && info.Links != 1) throw Changed();
+        if (filesystem.Type is BtrfsFilesystem or Ext4Filesystem && filesystem.FileSystemId == 0) throw Changed();
         var user = GetEffectiveUserId();
         if (privateOwner)
         {
@@ -223,7 +239,7 @@ internal sealed class LinuxNativeWorkJournalStorage : INativeWorkJournalStorage
         }
         else if (info.UserId != 0 && info.UserId != user || (info.Mode & 0x12) != 0 && !(info.UserId == 0 && (info.Mode & 0x200) != 0))
             throw new IOException("Native accounting path ancestors are writable by another user.");
-        return new(info.Major, info.Minor, info.Inode, info.Mount);
+        return new(filesystem.FileSystemId, filesystem.Type, info.Inode, info.Major, info.Minor, info.Mount);
     }
 
     private sealed class PrivateDirectory : IDisposable
@@ -269,7 +285,7 @@ internal sealed class LinuxNativeWorkJournalStorage : INativeWorkJournalStorage
         private void RequirePersistent()
         {
             if (Fstatfs(_handle, out var filesystem) != 0) throw Io();
-            if (filesystem.Type is not (0xef53 or 0x58465342 or 0x9123683e or 0x2fc12fc1))
+            if (filesystem.Type is not (Ext4Filesystem or XfsFilesystem or BtrfsFilesystem or ZfsFilesystem))
                 throw new IOException("Native accounting requires supported persistent local storage (ext4, XFS, Btrfs or ZFS).");
         }
         public void Validate()
@@ -286,7 +302,8 @@ internal sealed class LinuxNativeWorkJournalStorage : INativeWorkJournalStorage
             try
             {
                 var identity = Inspect(handle, directory: false, privateOwner: true);
-                if (identity.Major != Identity.Major || identity.Minor != Identity.Minor || identity.Mount != Identity.Mount) throw Changed();
+                if (identity.FileSystemId != Identity.FileSystemId || identity.FileSystemType != Identity.FileSystemType
+                    || identity.Major != Identity.Major || identity.Minor != Identity.Minor || identity.Mount != Identity.Mount) throw Changed();
                 return new FileStream(handle, writable ? FileAccess.ReadWrite : FileAccess.Read);
             }
             catch { handle.Dispose(); throw; }
@@ -319,7 +336,11 @@ internal sealed class LinuxNativeWorkJournalStorage : INativeWorkJournalStorage
         [FieldOffset(144)] public ulong Mount;
     }
     [StructLayout(LayoutKind.Explicit, Size = 120)] private struct FileSystemInfo
-    { [FieldOffset(0)] public long Type; }
+    {
+        [FieldOffset(0)] public long Type;
+        // struct statfs f_fsid follows six further u64 fields on 64-bit Linux.
+        [FieldOffset(56)] public ulong FileSystemId;
+    }
     [DllImport("libc", EntryPoint = "openat", SetLastError = true)] private static extern int OpenAt(int directory, string path, int flags, uint mode);
     [DllImport("libc", EntryPoint = "mkdirat", SetLastError = true)] private static extern int MkdirAt(int directory, string name, uint mode);
     [DllImport("libc", EntryPoint = "renameat", SetLastError = true)] private static extern int RenameAt(int sourceDirectory, string source, int targetDirectory, string target);

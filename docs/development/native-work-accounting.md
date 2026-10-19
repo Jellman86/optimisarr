@@ -142,7 +142,18 @@ back to fresh empty authority.
 
 The Linux adapter (`LinuxNativeWorkJournalStorage`) implements this with no-follow owner-only
 directories, `statx` identities, an exclusive coordinator lock and file/directory `fsync` at
-every boundary. A first Windows design built on the shared workspace directory with
+every boundary. Its persisted binding key must survive a remount: Btrfs assigns anonymous
+`st_dev` numbers per mount (observed `0:51 → 0:34 → 0:51` across three guest boots, with the
+journal bytes intact), so on filesystems whose `fstatfs` `f_fsid` is UUID-derived (ordinary
+Btrfs, ext4) the key is `linux:<f_type>:<f_fsid>:<inode>` and a zero `f_fsid` is refused. XFS
+derives `f_fsid` from the device number and ZFS may substitute one, so there the key keeps the
+device identity and a changed device fails closed; remount stability is **not qualified** for
+XFS, ZFS or cloned Btrfs until a filesystem-specific identity passes its own remount trials.
+In-process validation keeps the full `statx`/`statfs` identity (device, mount and `f_fsid`)
+strict. Stores provisioned under the earlier device-only key refuse on binding mismatch — the
+adapter is unconnected and unreleased, so no migration is offered. An exact copy of both
+journal and authority on a cloned volume remains indistinguishable, as the two-file protocol
+already states. A first Windows design built on the shared workspace directory with
 `FlushFileBuffers` on directory handles was reviewed on 19 October 2026 and **rejected**: no
 documented Win32 guarantee equates a directory flush with `fsync(directory)` after replacement,
 the shared workspace walk resolves reparse ancestors before checking them, and its handle
