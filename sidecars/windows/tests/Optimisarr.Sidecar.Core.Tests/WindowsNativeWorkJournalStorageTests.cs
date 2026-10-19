@@ -126,8 +126,19 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
             Assert.ThrowsAny<IOException>(() => WindowsNativeWorkJournalStorage.OpenExisting(Journal, Checkpoint));
             parent.Kill(); await parent.WaitForExitAsync(timeout.Token);
             Assert.False(child.HasExited);
-            await using var journal = Open();
-            Assert.Equal(0, journal.Snapshot.Revision);
+            // Handle release at process teardown is not instantaneous on every
+            // host; retry briefly. The surviving child would hold an inherited
+            // coordinator for its whole 30-second life, far past this window,
+            // so a genuine inheritance leak still fails here.
+            NativeWorkJournal? journal = null;
+            for (var attempt = 0; attempt < 20 && journal is null; attempt++)
+            {
+                try { journal = Open(); }
+                catch (IOException) { await Task.Delay(250, timeout.Token); }
+            }
+            Assert.NotNull(journal);
+            await using (journal)
+                Assert.Equal(0, journal.Snapshot.Revision);
         }
         finally
         {
