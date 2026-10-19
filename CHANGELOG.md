@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep VMAF progress reads and decoder cleanup independent of a busy caller's async context. Advancing decodes no longer report a false idle timeout for that scheduling condition, and genuinely stalled decoders can still be stopped promptly. Watchdog deadlines and required quality evidence are unchanged.
+
 - Add 49 native Windows journal process-death regressions covering partial provisioning, both checkpoint writes and interrupted recovery of authorized old/new snapshots. Picard executes the actual killed-process matrix; power-loss durability and standalone wiring remain unqualified, and protocol 11 stays disabled.
 
 - Fix the Linux native-work journal's persisted identity so a store reopens after a Btrfs or ext4 remount/reboot: the binding key now uses the volume's UUID-derived `f_fsid` instead of the per-mount anonymous device number that changed between boots and refused an intact journal. XFS and ZFS keep device-bound keys and fail closed on a changed device; their remount stability remains unqualified. Same-process identity checks are unchanged, stores provisioned under the old key format refuse rather than migrate, and protocol 11 stays disabled.
