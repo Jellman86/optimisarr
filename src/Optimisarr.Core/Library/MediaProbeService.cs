@@ -75,6 +75,26 @@ public interface IMediaProbeService
 
 public sealed class MediaProbeService : IMediaProbeService
 {
+    // Single-file container demuxers for every inventoried extension family. Indirect
+    // formats (dash, hls, concat, playlists) are deliberately absent: hashing or probing
+    // a manifest does not bind the media it references outside the original file.
+    private const string LocalMediaFormats =
+        "matroska,mov,avi,asf,mpegts,flv,mpeg," +
+        "wav,flac,mp3,aac,ogg,aiff,ape,wv,dsf,iff," +
+        "image2,png_pipe,jpeg_pipe,webp_pipe,gif,bmp_pipe,tiff_pipe,jpegxl_pipe,jpegxl_anim";
+
+    /// <summary>The exact ffprobe argument list for one inventory probe.</summary>
+    public static IReadOnlyList<string> ProbeArguments(string path) =>
+    [
+        "-v", "error",
+        "-protocol_whitelist", "file",
+        "-format_whitelist", LocalMediaFormats,
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        path
+    ];
+
     private readonly string _ffprobe;
 
     public MediaProbeService(string? ffprobeCommand = null)
@@ -99,19 +119,13 @@ public sealed class MediaProbeService : IMediaProbeService
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _ffprobe,
-                ArgumentList =
-                {
-                    "-v", "error",
-                    "-print_format", "json",
-                    "-show_format",
-                    "-show_streams",
-                    path
-                },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            foreach (var argument in ProbeArguments(path))
+                process.StartInfo.ArgumentList.Add(argument);
 
             process.Start();
 
