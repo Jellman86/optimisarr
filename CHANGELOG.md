@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an unconnected Linux-only native-work journal bootstrap/restoration foundation: normal opening never creates or repairs authority, explicit operator provisioning is a separate call, and every unreleased obligation is restored into an unpublished physical-ID pool before the journal and pool can be used together. It has no standalone service or admission callers, refuses Windows/Darwin before filesystem access, and does not establish power-loss qualification or enable protocol 11.
+
 - Add an unconnected experimental Windows native-work journal storage candidate for NTFS: journal-specific no-follow handle walk with retained ancestors, private protected ACLs created with each object, 128-bit file identities, an exclusive coordinator handle, write-through temporary files renamed by pinned handles, and exact readback at every boundary. Independent review rejected an earlier directory-flush design; this candidate claims same-OS identity, security and fail-closed recovery only — power-loss durability through the rename sequence is not established and needs physical power-cut qualification before standalone wiring. Protocol 11 stays disabled.
 
 - Add durable Linux native-work journal storage with ABI-correct open flags (x86-64 and arm64; unverified ABIs fail closed), private owner-only journal/checkpoint directories, an exclusive coordinator lock, and fsync-ordered replacement with exact readback. Standalone bootstrap/admission wiring, other-platform durable adapters and package qualification remain unfinished; protocol 11 stays disabled.

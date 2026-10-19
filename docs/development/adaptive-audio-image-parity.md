@@ -71,7 +71,11 @@ unconnected experimental candidate. That candidate is now implemented with Windo
 (private creation-time ACLs, pinned 128-bit identities, exclusive coordinator, cross-process
 forced-death lock release, lost-acknowledgement phases). It claims no directory synchronization
 or power-loss durability; physical power-cut qualification and standalone wiring remain open.
-See the [accounting record](native-work-accounting.md).
+An unconnected Linux-only bootstrap/restoration module now separates explicit operator
+provisioning from normal opening and restores exact physical charges into an unpublished pool;
+it has no service callers and does not provide startup admission or reporting integration.
+A checksum-verified Fedora 44 cloud guest also boots under KVM on Quark, but no storage
+power-cut trial has run in it. See the [accounting record](native-work-accounting.md).
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.

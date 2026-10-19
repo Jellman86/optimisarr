@@ -124,6 +124,15 @@ failures cannot skip finalization. Capacity reporting, admission and recovery mu
 pool. The physical-ID API above is available, but identity capture and coordinator injection remain
 required; existing standalone callers still use the path pool.
 
+`NativeWorkJournalBootstrap` now supplies an unconnected Linux-only portion of steps 1–2.
+Its normal open path requires an existing Linux store, opens it under the coordinator lock,
+then restores every unreleased obligation into a newly created physical-ID pool. That pool is
+published only with the successfully opened journal; restoration failure disposes the journal
+and discards the staging pool. Provisioning is a separate explicit operator/install call and
+is never a normal-open fallback. Windows and Darwin are refused before filesystem access.
+There are still no service, admission, reporting, probe-gating or job-lifecycle callers, so this
+module does not implement durable startup reconciliation in a standalone worker.
+
 Windows requires a fixed machine-context, ACL-protected checkpoint separate from the journal
 directory. Linux requires a private, no-follow checkpoint on persistent storage outside the
 replaceable journal directory, with atomic replacement and file/directory synchronization.
@@ -155,8 +164,9 @@ their handle. Physical/VM power-cut
 qualification covering bootstrap, every commit write and restart reconfirmation remains the
 release gate, and the candidate stays unwired from admission until then.
 
-The Windows candidate's bootstrap/admission wiring, the macOS adapter, bootstrap and
-coordinator effect ordering remain unimplemented. Their acceptance must cover every
+Standalone service bootstrap/admission wiring for every platform, the Windows candidate's
+admission path, a macOS .NET adapter and coordinator effect ordering remain unimplemented.
+Their acceptance must cover every
 commit boundary, contention, stale continuations, previous roots, active-owner exclusion,
 capability cancellation, callback failures and same-heartbeat overclaim. See the
 [parity matrix](adaptive-audio-image-parity.md) and

@@ -46,10 +46,11 @@ closed as complete on 2026-10-18 against the shipped schema-v4 capture documente
 [troubleshooting](troubleshooting/diagnostics.md). The active feature priority is audio/image
 quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), draft
 [#415](https://github.com/Jellman86/optimisarr/pull/415)): the Linux native-work journal
-storage slice is now on that branch with ABI-correct open flags and Quark test evidence, while
-standalone bootstrap/admission wiring and package qualification remain open and protocol 11
-stays disabled. Picard (Windows/NVIDIA) and Scott's Mac are SSH-reachable again as of
-2026-10-18, so host availability no longer blocks that qualification. Dedupe file actions
+storage and an unconnected Linux-only bootstrap/restoration foundation are now on that branch
+with Quark test evidence, while standalone service bootstrap/admission wiring, physical
+power-cut qualification and package qualification remain open and protocol 11 stays disabled.
+Picard (Windows/NVIDIA) and Scott's Mac were offline at the 2026-10-19 check, so their
+physical qualification waits for host availability. Dedupe file actions
 remain deferred behind #332; merged D3 work to date is safety fencing only and enables no
 cleanup action. The 50 fps VMAF report
 ([#406](https://github.com/Jellman86/optimisarr/issues/406)) has both fixes on `dev` and awaits
