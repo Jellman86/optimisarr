@@ -311,7 +311,7 @@ internal sealed class WindowsNativeWorkJournalStorage : INativeWorkJournalStorag
                     // Conditional/callback and object allow ACEs can grant rights
                     // this validator does not model; refuse them on any object.
                     if (privateOwner || ace.AceType is AceType.AccessAllowed or AceType.AccessAllowedObject
-                        or AceType.AccessAllowedCallback or AceType.AccessAllowedCallbackObject)
+                        or AceType.AccessAllowedCallback or AceType.AccessAllowedCallbackObject or AceType.AccessAllowedCompound)
                         throw UnsafeSecurity($"unsupported ACE type {ace.AceType}");
                     continue;
                 }

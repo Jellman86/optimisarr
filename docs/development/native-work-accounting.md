@@ -149,7 +149,9 @@ claims only what its Windows tests demonstrate in a running OS — private creat
 identity and exclusive-ownership checks, exact visible readback and fail-closed recovery.
 It may not claim directory synchronization, Linux-equivalent namespace durability,
 power-loss-safe commits, race-free predecessor replacement (an identity recheck narrows the
-same check-to-rename interval Linux has), or protocol-11 qualification. Physical/VM power-cut
+same check-to-rename interval Linux has), or protocol-11 qualification. Its admission also
+requires the running account to hold write access on the parent so directory flushes can open
+their handle. Physical/VM power-cut
 qualification covering bootstrap, every commit write and restart reconfirmation remains the
 release gate, and the candidate stays unwired from admission until then.
 

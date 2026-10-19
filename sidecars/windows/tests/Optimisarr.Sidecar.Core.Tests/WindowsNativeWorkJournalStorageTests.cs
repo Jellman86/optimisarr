@@ -167,7 +167,11 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
     [InlineData("lock", true)]
     [InlineData("ledger", true)]
     [InlineData("authority-file", true)]
+    [InlineData("journal", false)]
+    [InlineData("checkpoint", false)]
+    [InlineData("lock", false)]
     [InlineData("ledger", false)]
+    [InlineData("authority-file", false)]
     public void Widened_private_access_refuses_accounting(string changed, bool write)
     {
         WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint).Dispose();
@@ -236,10 +240,15 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
     [WindowsStorageTheory]
     [InlineData(FileSystemRights.WriteData)]
     [InlineData(FileSystemRights.WriteAttributes)]
-    public void Reparse_capable_rights_on_a_parent_are_refused(FileSystemRights rights)
+    [InlineData(FileSystemRights.Delete)]
+    [InlineData(FileSystemRights.ChangePermissions)]
+    [InlineData(FileSystemRights.TakeOwnership)]
+    [InlineData(FileSystemRights.FullControl)]
+    public void Mutation_capable_rights_on_a_parent_are_refused(FileSystemRights rights)
     {
         // Write-data or write-attributes can set reparse data on an empty
-        // directory in place, rebinding the path beneath retained handles.
+        // directory in place; the deletion class can remove or rebind
+        // components outright. Both must refuse provisioning.
         GrantEveryone(_root, directory: true, rights);
         Assert.ThrowsAny<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint));
         Assert.False(Directory.Exists(Journal));
@@ -262,13 +271,16 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
     [InlineData("checkpoint:file-synced", 1, false)]
     [InlineData("checkpoint:renamed", 1, false)]
     [InlineData("checkpoint:rename-flushed", 1, false)]
+    [InlineData("checkpoint:directory-flushed", 1, false)]
     [InlineData("ledger:temp-created", 1, false)]
     [InlineData("ledger:file-synced", 1, false)]
     [InlineData("ledger:renamed", 1, true)]
     [InlineData("ledger:rename-flushed", 1, true)]
     [InlineData("ledger:directory-flushed", 1, true)]
     [InlineData("checkpoint:temp-created", 2, true)]
+    [InlineData("checkpoint:file-synced", 2, true)]
     [InlineData("checkpoint:renamed", 2, true)]
+    [InlineData("checkpoint:rename-flushed", 2, true)]
     [InlineData("checkpoint:directory-flushed", 2, true)]
     public async Task Lost_acknowledgement_at_each_real_write_boundary_poison_fences_until_exact_reopening(
         string phase, int occurrence, bool newVisible)
@@ -347,19 +359,59 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
     public async Task A_reconfirming_storage_keeps_the_named_ledger_exclusively_held()
     {
         WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint).Dispose();
+        var fired = false;
         var storage = WindowsNativeWorkJournalStorage.OpenExisting(Journal, Checkpoint, phase => {
             if (phase != "ledger:reconfirm-file-synced") return;
+            fired = true;
             // Unlike Linux, the named ledger cannot be unlinked beneath the open
             // no-sharing handle, so a detached predecessor cannot be substituted.
             Assert.ThrowsAny<IOException>(() => File.Move(LedgerFile, LedgerFile + ".original"));
         });
         await using var journal = NativeWorkJournal.OpenExisting(storage);
+        Assert.True(fired, "reconfirm boundary was never reached");
         Assert.Equal(0, journal.Snapshot.Revision);
+    }
+
+    [WindowsStorageFact]
+    public void Reconfirming_a_substituted_ledger_with_identical_bytes_is_refused()
+    {
+        WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint).Dispose();
+        var fired = false;
+        var storage = WindowsNativeWorkJournalStorage.OpenExisting(Journal, Checkpoint, phase => {
+            if (phase != "ledger:reconfirm-directory-flushed") return;
+            fired = true;
+            // The writable handle is closed by now; an owner process can swap in a
+            // byte-identical new file. The named-entry identity recheck must refuse.
+            var bytes = File.ReadAllBytes(LedgerFile);
+            var original = new FileInfo(LedgerFile).GetAccessControl();
+            File.Move(LedgerFile, LedgerFile + ".original");
+            File.WriteAllBytes(LedgerFile, bytes);
+            var replacement = new FileInfo(LedgerFile);
+            replacement.SetAccessControl(original);
+            var secured = replacement.GetAccessControl();
+            secured.SetOwner(WindowsIdentity.GetCurrent().User!);
+            replacement.SetAccessControl(secured);
+        });
+        Assert.ThrowsAny<IOException>(() => NativeWorkJournal.OpenExisting(storage));
+        Assert.True(fired, "reconfirm boundary was never reached");
+    }
+
+    [WindowsStorageFact]
+    public void Coordinator_and_directory_handles_are_not_inheritable()
+    {
+        using var storage = WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint);
+        var coordinator = (FileStream)typeof(WindowsNativeWorkJournalStorage)
+            .GetField("_coordinator", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(storage)!;
+        Assert.True(GetHandleInformation(coordinator.SafeFileHandle, out var flags));
+        Assert.Equal(0u, flags & 1u);
     }
 
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
     [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CreateHardLinkW(string link, string existing, IntPtr security);
+    [DllImport("kernel32.dll", EntryPoint = "GetHandleInformation", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetHandleInformation(Microsoft.Win32.SafeHandles.SafeFileHandle handle, out uint flags);
 }
 
 public sealed class WindowsStorageFactAttribute : FactAttribute
