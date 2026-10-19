@@ -223,14 +223,26 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
     }
 
     [WindowsStorageFact]
-    public void Creation_only_rights_on_a_parent_cannot_redirect_pinned_components()
+    public void Append_only_rights_on_a_parent_cannot_redirect_pinned_components()
     {
-        // Windows splits POSIX directory write into creation and deletion rights.
-        // System-drive roots grant creation to all users; exclusive creation,
+        // Windows splits POSIX directory write into distinct rights. System-drive
+        // roots grant create-directories/append to all users; exclusive creation,
         // protected leaf ACLs and retained handles keep that from redirecting us.
         GrantEveryone(_root, directory: true, FileSystemRights.CreateDirectories);
         using var storage = WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint);
         storage.ValidateBinding();
+    }
+
+    [WindowsStorageTheory]
+    [InlineData(FileSystemRights.WriteData)]
+    [InlineData(FileSystemRights.WriteAttributes)]
+    public void Reparse_capable_rights_on_a_parent_are_refused(FileSystemRights rights)
+    {
+        // Write-data or write-attributes can set reparse data on an empty
+        // directory in place, rebinding the path beneath retained handles.
+        GrantEveryone(_root, directory: true, rights);
+        Assert.ThrowsAny<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint));
+        Assert.False(Directory.Exists(Journal));
     }
 
     [WindowsStorageTheory]
@@ -291,9 +303,12 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
     [InlineData("ledger:directory-flushed", true)]
     public async Task Bootstrap_never_repairs_incomplete_authority_after_an_interruption(string phase, bool completeVisible)
     {
-        Assert.Throws<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint, value => {
-            if (value == phase) throw new IOException("bootstrap interrupted");
+        var fired = false;
+        var thrown = Assert.Throws<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint, value => {
+            if (value == phase) { fired = true; throw new IOException("bootstrap interrupted"); }
         }));
+        Assert.True(fired, $"nominated boundary {phase} was never reached");
+        Assert.Equal("bootstrap interrupted", thrown.Message);
         if (completeVisible) { await using var journal = Open(); Assert.Equal(0, journal.Snapshot.Revision); }
         else
         {

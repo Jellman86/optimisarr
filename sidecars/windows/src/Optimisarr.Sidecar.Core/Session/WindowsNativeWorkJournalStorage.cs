@@ -295,18 +295,23 @@ internal sealed class WindowsNativeWorkJournalStorage : INativeWorkJournalStorag
                 throw new IOException("Native accounting requires a protected private DACL.");
             // POSIX write access on an ancestor directory bundles entry creation
             // with entry deletion, so Linux refuses other-writable ancestors outright.
-            // Windows splits those rights: creation alone cannot replace pinned,
-            // already-open components while leaves are created exclusively with
-            // protected DACLs, but the deletion class (FILE_DELETE_CHILD, DELETE,
-            // WRITE_DAC, WRITE_OWNER, or generics containing them) can. The parity
-            // mapping for ancestors is therefore the deletion class; system-drive
-            // roots legitimately grant directory creation to all users.
-            const int mutation = 0x40 | 0x10000 | 0x40000 | 0x80000 | 0x10000000 | 0x2000000;
+            // Windows splits those rights. Append/create-directories alone cannot
+            // replace pinned, already-open components while leaves are created
+            // exclusively with protected DACLs (system-drive roots grant exactly
+            // that to all users). But FILE_WRITE_DATA and FILE_WRITE_ATTRIBUTES can
+            // set reparse data on an empty directory in place, and the deletion
+            // class (FILE_DELETE_CHILD, DELETE, WRITE_DAC, WRITE_OWNER, or generics
+            // containing them) can remove or rebind components, so ancestors refuse
+            // all of those for untrusted principals.
+            const int mutation = 0x2 | 0x40 | 0x100 | 0x10000 | 0x40000 | 0x80000 | 0x10000000 | 0x2000000;
             foreach (GenericAce ace in dacl)
             {
                 if (ace is not CommonAce common || common.AceType != AceType.AccessAllowed)
                 {
-                    if (privateOwner || ace.AceType == AceType.AccessAllowed || ace.AceType == AceType.AccessAllowedObject)
+                    // Conditional/callback and object allow ACEs can grant rights
+                    // this validator does not model; refuse them on any object.
+                    if (privateOwner || ace.AceType is AceType.AccessAllowed or AceType.AccessAllowedObject
+                        or AceType.AccessAllowedCallback or AceType.AccessAllowedCallbackObject)
                         throw UnsafeSecurity($"unsupported ACE type {ace.AceType}");
                     continue;
                 }
@@ -326,12 +331,15 @@ internal sealed class WindowsNativeWorkJournalStorage : INativeWorkJournalStorag
 
     private static byte[] PrivateDescriptor(bool directory)
     {
+        // A null DACL argument here would make .NET substitute an
+        // Everyone/full-control ACE; start from an explicitly empty DACL.
+        var dacl = new DiscretionaryAcl(directory, false, 1);
         var descriptor = new CommonSecurityDescriptor(directory, false,
             ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected | ControlFlags.SelfRelative,
-            CurrentUser, null, null, null);
+            CurrentUser, null, null, dacl);
         var inheritance = directory ? InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit : InheritanceFlags.None;
         foreach (var sid in new[] { CurrentUser, SystemSid, AdministratorsSid }.Distinct())
-            descriptor.DiscretionaryAcl!.AddAccess(AccessControlType.Allow, sid, -1, inheritance, PropagationFlags.None);
+            dacl.AddAccess(AccessControlType.Allow, sid, -1, inheritance, PropagationFlags.None);
         var bytes = new byte[descriptor.BinaryLength];
         descriptor.GetBinaryForm(bytes, 0);
         return bytes;
