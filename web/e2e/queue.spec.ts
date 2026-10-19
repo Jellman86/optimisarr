@@ -583,6 +583,9 @@ test('a short window scrolls the queue inside the tray instead of growing the pa
   ] })
   await page.goto('/#/queue')
   await expect(page.locator('#queue-list')).toBeVisible()
+  // The section renders before its table; measure only once the rows (and the sr-only
+  // header label above them) exist, or the assertions describe the loading layout.
+  await expect(page.locator('#queue-list tbody tr')).toHaveCount(4)
   const pageRange = await page.evaluate(() => ({
     scrollable: document.documentElement.scrollHeight,
     viewport: window.innerHeight,
