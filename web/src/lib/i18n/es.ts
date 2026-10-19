@@ -1035,7 +1035,7 @@ queue_desc: 'Cuántos trabajos se ejecutan, qué hace la codificación y cuándo
     max_jobs: 'Plazas principales de medios',
     max_jobs_tip: 'Empieza con 1. Las plazas extra de audio, imágenes y pruebas del cliente funcionan en paralelo.',
 encoder_mode: 'Modo de codificador',
-encoder_mode_tip: 'Auto prefiere un codificador por hardware cuando está disponible y, si no, usa CPU. La pestaña Herramientas muestra lo que soporta tu GPU.',
+encoder_mode_tip: 'Auto prefiere un codificador por hardware cuando está disponible y, si no, usa CPU. El modo CPU también se aplica a los workers remotos: también usan su codificador por CPU. La pestaña Herramientas muestra lo que soporta tu GPU.',
 cpu_threads: 'Límite de hilos de CPU',
 cpu_threads_tip: 'Se pasa a FFmpeg como -threads para cada trabajo. 0 deja que FFmpeg decida.',
 scan_interval: 'Intervalo de escaneo de biblioteca',

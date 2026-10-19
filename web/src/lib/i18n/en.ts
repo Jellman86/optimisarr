@@ -1175,7 +1175,7 @@ export const en = {
     max_jobs: 'Primary media slots',
     max_jobs_tip: 'Start with 1. Extra audio/image and sidecar-evidence slots are configured below and can run alongside these slots.',
     encoder_mode: 'Encoder mode',
-    encoder_mode_tip: 'Auto prefers a hardware encoder when available, then falls back to CPU. The Tools tab shows what your GPU supports.',
+    encoder_mode_tip: 'Auto prefers a hardware encoder when available, then falls back to CPU. CPU mode also applies to remote workers: they use their CPU encoder too. The Tools tab shows what your GPU supports.',
     cpu_threads: 'CPU thread limit',
     cpu_threads_tip: 'Passed to FFmpeg as -threads for each job. 0 lets FFmpeg decide.',
     scan_interval: 'Library scan interval',

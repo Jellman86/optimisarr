@@ -1030,7 +1030,7 @@ quarantine: {
     max_jobs: 'Slot multimediali principali',
     max_jobs_tip: 'Parti da 1. Gli slot extra per audio, immagini e prove del sidecar funzionano in parallelo.',
     encoder_mode: 'Modalità encoder',
-    encoder_mode_tip: 'Auto privilegia un encoder hardware quando disponibile, altrimenti usa la CPU. La scheda Strumenti mostra cosa supporta la tua GPU.',
+    encoder_mode_tip: 'Auto privilegia un encoder hardware quando disponibile, altrimenti usa la CPU. La modalità CPU si applica anche ai worker remoti: usano anch’essi il loro encoder CPU. La scheda Strumenti mostra cosa supporta la tua GPU.',
     cpu_threads: 'Limite thread CPU',
     cpu_threads_tip: 'Passato a FFmpeg come -threads per ogni lavoro. 0 lascia decidere a FFmpeg.',
     scan_interval: 'Intervallo scansione libreria',

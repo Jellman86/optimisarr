@@ -1,3 +1,4 @@
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Tools;
 
 namespace Optimisarr.Core.Workers;
@@ -29,6 +30,22 @@ public static class WorkerEncoderCatalogue
 
         return described;
     }
+
+    /// <summary>
+    /// The encoder mode a worker is chosen under. CPU mode is a software-encoding policy and
+    /// binds every machine (#425); a vendor mode names this server's GPU family, so a worker is
+    /// instead given the best hardware it proved, exactly as Auto chooses here.
+    /// </summary>
+    public static EncoderMode ModeForWorker(EncoderMode queueMode) =>
+        queueMode == EncoderMode.Cpu ? EncoderMode.Cpu : EncoderMode.Auto;
+
+    /// <summary>Chooses a worker's encoder from the names it advertised, under the queue's mode.</summary>
+    public static EncoderSelection Select(
+        string targetCodec,
+        EncoderMode queueMode,
+        IEnumerable<string> advertised,
+        int? sourceBitDepth = null) =>
+        EncoderSelector.Select(targetCodec, ModeForWorker(queueMode), Describe(advertised), sourceBitDepth);
 
     // The mode strings are the ones the local hardware probe reports, so the selector's preference
     // order applies unchanged to a remote worker.

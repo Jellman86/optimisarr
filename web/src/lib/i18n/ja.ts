@@ -1008,7 +1008,7 @@ export const ja: Messages = {
     max_jobs: '主なメディア処理枠',
     max_jobs_tip: 'まず 1 に設定します。追加の音声・画像枠とサイドカー検証枠は並行して動作します。',
     encoder_mode: "エンコーダモード",
-    encoder_mode_tip: "Auto は、利用可能な場合はハードウェア エンコーダを優先し、その後は CPU に戻ります。 [ツール] タブには、GPU がサポートしている内容が表示されます。",
+    encoder_mode_tip: "Auto は、利用可能な場合はハードウェア エンコーダを優先し、その後は CPU に戻ります。CPU モードはリモート ワーカーにも適用され、ワーカーも CPU エンコーダを使用します。 [ツール] タブには、GPU がサポートしている内容が表示されます。",
     cpu_threads: "CPU スレッド制限",
     cpu_threads_tip: "各処理タスクの -threads として FFmpeg に渡されます。 0 は FFmpeg に決定させます。",
     scan_interval: "メディア ライブラリのスキャン間隔",
