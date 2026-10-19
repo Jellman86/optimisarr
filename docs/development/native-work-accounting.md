@@ -137,15 +137,24 @@ every boundary. A first Windows design built on the shared workspace directory w
 `FlushFileBuffers` on directory handles was reviewed on 19 October 2026 and **rejected**: no
 documented Win32 guarantee equates a directory flush with `fsync(directory)` after replacement,
 the shared workspace walk resolves reparse ancestors before checking them, and its handle
-sharing conflicts with atomic replacement. A revised NTFS-only design is under review: create
-with a private protected descriptor, write through, rename by pinned handles, and verify
-128-bit file identities and security after replacement. Microsoft documents that a
-write-through request causes NTFS to flush resulting metadata changes, including a rename
+sharing conflicts with atomic replacement. A second review the same day allowed an
+**unconnected experimental candidate** (`WindowsNativeWorkJournalStorage`, NTFS only):
+a journal-specific no-follow walk retaining every ancestor handle, objects created with a
+protected private descriptor, write-through temporaries renamed by pinned handles, 128-bit
+`FILE_ID_INFO` identities and security revalidated through pinned handles. Microsoft documents
+that a write-through request causes NTFS to flush resulting metadata changes, including a rename
 ([CreateFileW caching behaviour](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew#caching-behavior));
-whether that covers this rename sequence through power loss still needs physical
-qualification, so no Windows durability is claimed yet.
+applying that sentence to this exact rename sequence remains an inference. The candidate
+claims only what its Windows tests demonstrate in a running OS — private creation-time ACLs,
+identity and exclusive-ownership checks, exact visible readback and fail-closed recovery.
+It may not claim directory synchronization, Linux-equivalent namespace durability,
+power-loss-safe commits, race-free predecessor replacement (an identity recheck narrows the
+same check-to-rename interval Linux has), or protocol-11 qualification. Physical/VM power-cut
+qualification covering bootstrap, every commit write and restart reconfirmation remains the
+release gate, and the candidate stays unwired from admission until then.
 
-The Windows/macOS adapters, bootstrap and coordinator effect ordering remain unimplemented. Their acceptance must cover every
+The Windows candidate's bootstrap/admission wiring, the macOS adapter, bootstrap and
+coordinator effect ordering remain unimplemented. Their acceptance must cover every
 commit boundary, contention, stale continuations, previous roots, active-owner exclusion,
 capability cancellation, callback failures and same-heartbeat overclaim. See the
 [parity matrix](adaptive-audio-image-parity.md) and

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an unconnected experimental Windows native-work journal storage candidate for NTFS: journal-specific no-follow handle walk with retained ancestors, private protected ACLs created with each object, 128-bit file identities, an exclusive coordinator handle, write-through temporary files renamed by pinned handles, and exact readback at every boundary. Independent review rejected an earlier directory-flush design; this candidate claims same-OS identity, security and fail-closed recovery only — power-loss durability through the rename sequence is not established and needs physical power-cut qualification before standalone wiring. Protocol 11 stays disabled.
+
 - Add durable Linux native-work journal storage with ABI-correct open flags (x86-64 and arm64; unverified ABIs fail closed), private owner-only journal/checkpoint directories, an exclusive coordinator lock, and fsync-ordered replacement with exact readback. Standalone bootstrap/admission wiring, other-platform durable adapters and package qualification remain unfinished; protocol 11 stays disabled.
 
 - Separate missing-VMAF-report qualification from short startup watchdog timing. Native Windows logging failures now retain synthetic write IDs and exception evidence without replaying entries or relaxing the exact-entry assertion; the latest access-denied cause remains unconfirmed.

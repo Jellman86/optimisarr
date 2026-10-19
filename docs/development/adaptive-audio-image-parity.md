@@ -64,11 +64,14 @@ accounting namespaces. The shared transaction boundary now serializes preparatio
 and finalization, fences uncertain commits and retains ownership through shutdown. Its injected
 storage tests do not establish physical durability. Physical identity/capacity capture, durable OS
 storage, first-start bootstrap and coordinator effect ordering remain required before standalone integration.
-Linux durable storage has since landed on this branch. An independent design review on 19 October 2026
+Linux durable storage has since landed on this branch. Independent design reviews on 19 October 2026
 rejected the first Windows storage design (shared-workspace foundation, directory `FlushFileBuffers`,
-path-based replace): the directory-durability claim is undocumented and the foundation resolves
-reparse ancestors before refusing them. A revised NTFS-only handle-scoped design is under review;
-no Windows durability is claimed. See the [accounting record](native-work-accounting.md).
+path-based replace) and then allowed a revised NTFS-only handle-scoped design only as an
+unconnected experimental candidate. That candidate is now implemented with Windows-gated tests
+(private creation-time ACLs, pinned 128-bit identities, exclusive coordinator, cross-process
+forced-death lock release, lost-acknowledgement phases). It claims no directory synchronization
+or power-loss durability; physical power-cut qualification and standalone wiring remain open.
+See the [accounting record](native-work-accounting.md).
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.

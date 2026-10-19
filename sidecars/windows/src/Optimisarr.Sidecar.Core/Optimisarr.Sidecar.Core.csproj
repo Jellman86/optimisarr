@@ -11,6 +11,9 @@
          construction and version formatting are worth pinning, and neither belongs on the public
          surface of a client whose job is to pair and check in. -->
     <InternalsVisibleTo Include="Optimisarr.Sidecar.Core.Tests" />
+    <!-- The process fixture provisions and holds internal storage so cross-process
+         ownership tests exercise real process lifetimes, not in-process stand-ins. -->
+    <InternalsVisibleTo Include="Optimisarr.Sidecar.ScratchFixture" />
   </ItemGroup>
 
   <ItemGroup>

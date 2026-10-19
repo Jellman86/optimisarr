@@ -53,6 +53,11 @@ public static class Program
             else await Task.Delay(TimeSpan.FromSeconds(30), token);
             return 0;
         }
+        if (args[0] == "journal-parent")
+        {
+            if (!OperatingSystem.IsWindows()) return 2;
+            return await RunJournalParent(args, token);
+        }
         if (args[0] != "parent") return 2;
         var lease = Guid.Parse("81223344-1234-4321-8123-123456789012");
         var scope = NativeScratchWorkspace.PrepareAccountingScope(args[1]);
@@ -87,6 +92,37 @@ public static class Program
         {
             if (!child.HasExited) { child.Kill(entireProcessTree: true); await child.WaitForExitAsync(CancellationToken.None); }
             owner.Cleanup();
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static async Task<int> RunJournalParent(string[] args, CancellationToken token)
+    {
+        // args: journal-parent <journal> <authority> <childReady> <host> <runtimeconfig> <depsfile>
+        using var storage = WindowsNativeWorkJournalStorage.ProvisionNew(args[1], args[2]);
+        var child = new Process { StartInfo = new(args[4]) { UseShellExecute = false } };
+        foreach (var argument in new[] { "exec", "--runtimeconfig", args[5], "--depsfile", args[6],
+                     typeof(Program).Assembly.Location, "child", args[3] })
+            child.StartInfo.ArgumentList.Add(argument);
+        child.Start();
+        try
+        {
+            while (!File.Exists(args[3]))
+            {
+                if (child.HasExited) throw new IOException("The journal child did not start.");
+                await Task.Delay(20, token);
+            }
+            storage.ValidateBinding();
+            Console.WriteLine(JsonSerializer.Serialize(new { childId = child.Id }));
+            await Console.Out.FlushAsync(token);
+            // The coordinator handle lives only in this parent. If handle
+            // inheritance leaked it, the surviving child would keep the lock.
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return 0;
+        }
+        finally
+        {
+            if (!child.HasExited) { child.Kill(entireProcessTree: true); await child.WaitForExitAsync(CancellationToken.None); }
         }
     }
 
