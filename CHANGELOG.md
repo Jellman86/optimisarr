@@ -27,6 +27,8 @@
 
 ### Fixed
 
+- Remote workers now honour the queue's **CPU** encoder mode (#425): a worker that proved both a CPU and a hardware encoder is given its CPU encoder (for example `libx265` instead of `hevc_nvenc`), and a worker with no proved CPU encoder is not offered video re-encodes while CPU mode is set. Vendor modes still describe the server's GPU, so under Auto or a vendor mode each worker keeps the best hardware it proved.
+
 - Library probing now refuses indirect playlist/manifest formats (such as DASH or HLS files carrying a media extension). A manifest's referenced segments live outside the hashed original, so they can no longer supply probe facts for a file they are not part of; every supported single-file container continues to probe normally.
 
 - Diagnostic exports retain the typed image perceptual-quality policy (reporting, gate and minimum score) captured with each attempt, so an exported snapshot still shows the complete gate policy after library settings change. Unknown and free-text fields remain excluded.

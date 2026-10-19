@@ -259,6 +259,7 @@ internal static class WorkerLeaseEndpoints
             }
 
             var capabilities = worker.ToCapabilities();
+            var encoderMode = (await settings.GetQueueSettingsAsync(cancellationToken)).EncoderMode;
 
             // Keep the queue projection light, and scan bounded batches until an assignment is
             // found. A batch is a loading limit, never a visibility limit: cleanup, incompatible
@@ -323,7 +324,7 @@ internal static class WorkerLeaseEndpoints
                     // preparation would refuse anyway from what is already loaded, so a queue of
                     // local-only or remux jobs does not cost an ffprobe per candidate per poll.
                     // Preparation repeats these refusals itself; this is only the cheap first pass.
-                    if (!PlausiblyOfferable(job, capabilities))
+                    if (!PlausiblyOfferable(job, capabilities, encoderMode))
                     {
                         skipped++;
                         lastReason = "Queued work includes jobs this worker cannot encode or that must run on this server.";
@@ -1279,7 +1280,7 @@ internal static class WorkerLeaseEndpoints
     /// encoder for the target codec. Mirrors <see cref="QueueDispatcher.PrepareRemoteWorkAsync"/>,
     /// which remains the authority.
     /// </summary>
-    private static bool PlausiblyOfferable(Job job, WorkerCapabilities capabilities)
+    private static bool PlausiblyOfferable(Job job, WorkerCapabilities capabilities, EncoderMode encoderMode)
     {
         var media = job.MediaFile!;
         if (media.MediaKind == MediaKind.Image)
@@ -1305,10 +1306,10 @@ internal static class WorkerLeaseEndpoints
                 AudioTarget.Resolve(rules.TargetAudioCodec).Encoder, StringComparer.OrdinalIgnoreCase);
         var targetCodec = rules.TargetVideoCodec;
         return targetCodec is not null
-            && EncoderSelector.Select(
+            && WorkerEncoderCatalogue.Select(
                 targetCodec,
-                EncoderMode.Auto,
-                WorkerEncoderCatalogue.Describe(capabilities.VideoEncoders)).Succeeded;
+                encoderMode,
+                capabilities.VideoEncoders).Succeeded;
     }
 
     private sealed class ClaimHistory

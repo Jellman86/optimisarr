@@ -1016,7 +1016,7 @@ export const de: Messages = {
     max_jobs: 'Primäre Medienplätze',
     max_jobs_tip: 'Beginnen Sie mit 1. Zusätzliche Audio-/Bild- und Sidecar-Nachweisplätze laufen parallel dazu.',
     encoder_mode: 'Encoder-Modus',
-    encoder_mode_tip: 'Auto bevorzugt einen Hardware-Encoder, sofern verfügbar, und weicht dann auf die CPU aus. Der Tab „Werkzeuge“ zeigt, was Ihre GPU unterstützt.',
+    encoder_mode_tip: 'Auto bevorzugt einen Hardware-Encoder, sofern verfügbar, und weicht dann auf die CPU aus. Der CPU-Modus gilt auch für entfernte Worker: Sie verwenden ebenfalls ihren CPU-Encoder. Der Tab „Werkzeuge“ zeigt, was Ihre GPU unterstützt.',
     cpu_threads: 'CPU-Thread-Limit',
     cpu_threads_tip: 'Wird FFmpeg als -threads für jede Aufgabe übergeben. 0 überlässt die Entscheidung FFmpeg.',
     scan_interval: 'Scan-Intervall der Bibliothek',

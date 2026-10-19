@@ -985,7 +985,7 @@ export const pt: Messages = {
     max_jobs: 'Vagas principais de multimédia',
     max_jobs_tip: 'Comece com 1. Vagas extra para áudio, imagens e provas do sidecar correm em paralelo.',
     encoder_mode: "Modo codificador",
-    encoder_mode_tip: "Auto prefere um codificador de hardware quando disponível e depois volta para CPU. A guia Ferramentas mostra o que seu GPU suporta.",
+    encoder_mode_tip: "Auto prefere um codificador de hardware quando disponível e depois volta para CPU. O modo CPU também se aplica aos workers remotos: eles também usam seu codificador de CPU. A guia Ferramentas mostra o que seu GPU suporta.",
     cpu_threads: "Limite de encadeamento CPU",
     cpu_threads_tip: "Passado para FFmpeg como -threads para cada tarefa de processamento. 0 permite que FFmpeg decida.",
     scan_interval: "Intervalo de verificação da biblioteca de mídia",
