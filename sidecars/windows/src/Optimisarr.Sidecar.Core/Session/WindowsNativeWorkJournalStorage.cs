@@ -307,7 +307,7 @@ internal sealed class WindowsNativeWorkJournalStorage : INativeWorkJournalStorag
                 if (ace is not CommonAce common || common.AceType != AceType.AccessAllowed)
                 {
                     if (privateOwner || ace.AceType == AceType.AccessAllowed || ace.AceType == AceType.AccessAllowedObject)
-                        throw UnsafeSecurity($"unsupported ACE type {ace.AceType} for {ace.SecurityIdentifier}");
+                        throw UnsafeSecurity($"unsupported ACE type {ace.AceType}");
                     continue;
                 }
                 if (privateOwner)
