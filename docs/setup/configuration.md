@@ -108,7 +108,7 @@ the former global policy into each existing library so behaviour does not change
 | Primary media slots | Bounds video encodes and full container media verification. Audio/image work can use a free slot. Advanced workload lanes provide independent extra audio/image and strict sidecar-evidence capacity. |
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
-| Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
+| Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. CPU is a software-encoding policy and also binds remote workers: they use their proved CPU encoder, and a worker that proved none is not offered video re-encodes. A vendor mode names this server's GPU family only; workers then use the best hardware they proved, as under Auto. |
 | Hardware decoding | Uses GPU decode with hardware encoders when possible, including eligible SDR VMAF passes. Runtime failures fall back to CPU decode, and a below-floor accelerated VMAF result is confirmed in software before rejection. |
 | HDR tone-map engine | Software is the compatible default. Hardware uses Intel QSV or VA-API for a freshly confirmed non-Dolby-Vision HDR10/PQ source under an existing **Tone-map to SDR** library rule when hardware decoding is active, and retries once with software if that path fails. HLG, Dolby Vision, unknown transfer metadata, VMAF-gated work, and disposable comparisons retain the software transform. |
 

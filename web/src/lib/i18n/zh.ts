@@ -985,7 +985,7 @@ export const zh: Messages = {
     max_jobs: '主要媒体处理名额',
     max_jobs_tip: '建议从 1 开始。额外的音频、图片和侧车证据名额可并行运行。',
     encoder_mode: "编码器模式",
-    encoder_mode_tip: "Auto 更喜欢硬件编码器（如果可用），然后回退到 CPU。工具选项卡显示 GPU 支持的内容。",
+    encoder_mode_tip: "Auto 更喜欢硬件编码器（如果可用），然后回退到 CPU。CPU 模式也适用于远程 Worker：它们也会使用其 CPU 编码器。工具选项卡显示 GPU 支持的内容。",
     cpu_threads: "CPU 线程上限",
     cpu_threads_tip: "作为每个处理任务的 -threads 参数传递给 FFmpeg。0 表示由 FFmpeg 决定线程数。",
     scan_interval: "媒体库扫描间隔",

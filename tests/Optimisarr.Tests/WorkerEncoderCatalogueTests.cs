@@ -57,4 +57,59 @@ public sealed class WorkerEncoderCatalogueTests
         Assert.True(selection.Succeeded);
         Assert.Equal("hevc_videotoolbox", selection.EncoderName);
     }
+
+    [Fact]
+    public void Cpu_mode_chooses_the_workers_cpu_encoder_even_when_it_proved_nvenc()
+    {
+        // #425: the queue's CPU mode is a software-encoding policy, not a description of the
+        // server's GPU. A worker that proved both families must be given its CPU encoder.
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Cpu, ["libx265", "hevc_nvenc"]);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("libx265", selection.EncoderName);
+    }
+
+    [Fact]
+    public void Cpu_mode_refuses_a_worker_that_proved_no_cpu_encoder()
+    {
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Cpu, ["hevc_nvenc"]);
+
+        Assert.False(selection.Succeeded);
+    }
+
+    [Fact]
+    public void A_vendor_mode_names_the_servers_gpu_so_the_worker_keeps_its_own_best_hardware()
+    {
+        // The server's NVENC choice must not strand an Intel worker: it uses the best hardware
+        // it proved, exactly as Auto would choose for it.
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.NvidiaNvenc, ["libx265", "hevc_qsv"]);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("hevc_qsv", selection.EncoderName);
+    }
+
+    [Theory]
+    [InlineData(EncoderMode.Cpu)]
+    [InlineData(EncoderMode.Auto)]
+    public void A_ten_bit_h264_source_keeps_the_worker_on_its_cpu_encoder(EncoderMode mode)
+    {
+        var selection = WorkerEncoderCatalogue.Select(
+            "h264", mode, ["libx264", "h264_nvenc"], sourceBitDepth: 10);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("libx264", selection.EncoderName);
+    }
+
+    [Fact]
+    public void Auto_mode_still_prefers_the_workers_proved_hardware_encoder()
+    {
+        var selection = WorkerEncoderCatalogue.Select(
+            "hevc", EncoderMode.Auto, ["libx265", "hevc_nvenc"]);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("hevc_nvenc", selection.EncoderName);
+    }
 }

@@ -1879,14 +1879,14 @@ public sealed class QueueDispatcher(
                 SourceBitDepth = sourceBitDepth,
                 SourceColorRange = freshSourceProbe?.Success == true ? freshSourceProbe.ColorRange : null
             };
-            // A worker's encoder is chosen from what it proved, in the same preference order this
-            // machine uses for its own hardware. The queue's encoder mode describes this machine's
-            // GPU and says nothing about the worker's, so Auto is the only honest mode there.
+            // A worker's encoder is chosen from what it proved, under the queue's mode: CPU mode
+            // is a software-encoding policy that binds workers too (#425), while a vendor mode
+            // names this machine's GPU family and leaves the worker its own best hardware.
             var videoEncoder = placement.RemoteWorker is { } remoteWorker
-                ? EncoderSelector.Select(
+                ? WorkerEncoderCatalogue.Select(
                     spec.VideoCodec,
-                    EncoderMode.Auto,
-                    WorkerEncoderCatalogue.Describe(remoteWorker.VideoEncoders),
+                    queueSettings.EncoderMode,
+                    remoteWorker.VideoEncoders,
                     sourceBitDepth)
                 : await ResolveVideoEncoderAsync(
                     spec.VideoCodec,

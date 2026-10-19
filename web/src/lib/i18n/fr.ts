@@ -1009,7 +1009,7 @@ queue_desc: 'Combien de tâches sont lancées, quel encodeur est utilisé, et qu
     max_jobs: 'Places média principales',
     max_jobs_tip: 'Commencez avec 1. Les places supplémentaires pour audio, images et preuves fonctionnent en parallèle.',
 encoder_mode: 'Mode encodeur',
-encoder_mode_tip: 'Auto privilégie un encodeur matériel quand disponible, puis bascule sur le CPU. L’onglet Outils indique les capacités de votre GPU.',
+encoder_mode_tip: 'Auto privilégie un encodeur matériel quand disponible, puis bascule sur le CPU. Le mode CPU s’applique aussi aux workers distants : ils utilisent eux aussi leur encodeur CPU. L’onglet Outils indique les capacités de votre GPU.',
 cpu_threads: 'Limite de threads CPU',
 cpu_threads_tip: 'Transmis à FFmpeg comme -threads pour chaque tâche. 0 laisse FFmpeg décider.',
 scan_interval: 'Intervalle de scan de la médiathèque',
