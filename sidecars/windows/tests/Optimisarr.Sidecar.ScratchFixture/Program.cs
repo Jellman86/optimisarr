@@ -148,17 +148,30 @@ public static class Program
     // args: powercut-store <provision|commit|report> <journal> <authority> [blockPhase] [trialId]
     private static async Task<int> RunPowercutStore(string[] args)
     {
-        var blockPhase = args.Length > 4 ? args[4] : null;
+        // blockPhase may carry an occurrence suffix ("checkpoint:renamed#2"): one commit writes
+        // the checkpoint twice (pending, then committed), and each write boundary is its own
+        // cut point. Without a suffix the first occurrence blocks, as before.
+        var blockSpec = args.Length > 4 ? args[4] : null;
+        var blockPhase = blockSpec;
+        var blockOccurrence = 1;
+        if (blockSpec is not null && blockSpec.LastIndexOf('#') is var hash and > 0
+            && int.TryParse(blockSpec[(hash + 1)..], out var occurrence) && occurrence > 0)
+        {
+            blockPhase = blockSpec[..hash];
+            blockOccurrence = occurrence;
+        }
+        var seen = 0;
         var trial = args.Length > 5 ? args[5] : "local";
         var boot = File.ReadAllText("/proc/sys/kernel/random/boot_id").Trim();
         var sequence = 0;
         void Step(string phase)
         {
+            if (phase == blockPhase) seen++;
             Console.WriteLine($"REACHED trial={trial} boot={boot} seq={++sequence} phase={phase}");
             Console.Out.Flush();
-            if (phase == blockPhase)
+            if (phase == blockPhase && seen == blockOccurrence)
             {
-                Console.WriteLine($"BLOCKED trial={trial} boot={boot} seq={sequence} phase={phase}");
+                Console.WriteLine($"BLOCKED trial={trial} boot={boot} seq={sequence} phase={phase} occurrence={seen}");
                 Console.Out.Flush();
                 Thread.Sleep(Timeout.InfiniteTimeSpan);
             }
