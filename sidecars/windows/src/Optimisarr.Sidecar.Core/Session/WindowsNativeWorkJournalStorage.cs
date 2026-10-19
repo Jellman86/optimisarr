@@ -293,8 +293,15 @@ internal sealed class WindowsNativeWorkJournalStorage : INativeWorkJournalStorag
                 throw new IOException("Native accounting requires an explicit private DACL.");
             if (privateOwner && (security.ControlFlags & ControlFlags.DiscretionaryAclProtected) == 0)
                 throw new IOException("Native accounting requires a protected private DACL.");
-            const int mutation = 0x2 | 0x4 | 0x10 | 0x40 | 0x100 | 0x10000 | 0x40000 | 0x80000
-                | unchecked((int)0x40000000) | 0x10000000 | 0x2000000;
+            // POSIX write access on an ancestor directory bundles entry creation
+            // with entry deletion, so Linux refuses other-writable ancestors outright.
+            // Windows splits those rights: creation alone cannot replace pinned,
+            // already-open components while leaves are created exclusively with
+            // protected DACLs, but the deletion class (FILE_DELETE_CHILD, DELETE,
+            // WRITE_DAC, WRITE_OWNER, or generics containing them) can. The parity
+            // mapping for ancestors is therefore the deletion class; system-drive
+            // roots legitimately grant directory creation to all users.
+            const int mutation = 0x40 | 0x10000 | 0x40000 | 0x80000 | 0x10000000 | 0x2000000;
             foreach (GenericAce ace in dacl)
             {
                 if (ace is not CommonAce common || common.AceType != AceType.AccessAllowed)

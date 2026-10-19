@@ -213,13 +213,24 @@ public sealed class WindowsNativeWorkJournalStorageTests : IDisposable
     }
 
     [WindowsStorageFact]
-    public void Redirected_ancestors_and_writable_untrusted_parents_are_refused()
+    public void Redirected_ancestors_and_deletion_capable_untrusted_parents_are_refused()
     {
         var link = Path.Combine(_root, "alias"); Directory.CreateSymbolicLink(link, _root);
         Assert.ThrowsAny<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Path.Combine(link, "journal"), Checkpoint));
-        GrantEveryone(_root, directory: true, FileSystemRights.WriteData);
+        GrantEveryone(_root, directory: true, FileSystemRights.DeleteSubdirectoriesAndFiles);
         Assert.ThrowsAny<IOException>(() => WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint));
         Assert.False(Directory.Exists(Journal));
+    }
+
+    [WindowsStorageFact]
+    public void Creation_only_rights_on_a_parent_cannot_redirect_pinned_components()
+    {
+        // Windows splits POSIX directory write into creation and deletion rights.
+        // System-drive roots grant creation to all users; exclusive creation,
+        // protected leaf ACLs and retained handles keep that from redirecting us.
+        GrantEveryone(_root, directory: true, FileSystemRights.CreateDirectories);
+        using var storage = WindowsNativeWorkJournalStorage.ProvisionNew(Journal, Checkpoint);
+        storage.ValidateBinding();
     }
 
     [WindowsStorageTheory]
