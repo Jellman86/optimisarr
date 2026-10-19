@@ -6,11 +6,11 @@
 
 - Separate missing-VMAF-report qualification from short startup watchdog timing. Native Windows logging failures now retain synthetic write IDs and exception evidence without replaying entries or relaxing the exact-entry assertion; the latest access-denied cause remains unconfirmed.
 
-- Add a serialized shared native-work journal transaction boundary. Uncertain writes stop further effects, expired write scopes cannot authorize work, and shutdown retains ownership through actual body completion and retirement. Durable OS storage, bootstrap and standalone integration remain pending.
+- Add a serialized shared native-work journal transaction boundary. Uncertain writes stop further effects, expired write scopes cannot authorize work, and shutdown retains ownership through actual body completion and retirement. Durable OS storage is provided for Linux (above); Windows/macOS durable adapters, bootstrap and standalone integration remain pending.
 
 - Add explicit physical-volume resource pools with bounded opaque IDs. Path and physical-ID APIs cannot mix accounting namespaces, and refused restoration cannot silently discard existing charges. Physical capacity capture and standalone coordinator wiring remain pending.
 
-- Add an immutable, bounded shared native-work ledger and independent-checkpoint transition rules. Unsafe phase changes, rewritten obligations, overflow and older ledger copies are refused. Durable storage and standalone startup integration remain pending.
+- Add an immutable, bounded shared native-work ledger and independent-checkpoint transition rules. Unsafe phase changes, rewritten obligations, overflow and older ledger copies are refused. Durable Linux storage is provided (above); Windows/macOS durable storage and standalone startup integration remain pending.
 
 - Add scoped, accounted capability workspaces with replayable retirement receipts. Surviving probe tools retain ownership after parent death, and generic cleanup cannot erase their accounting evidence. Standalone durable coordinator integration remains pending.
 
