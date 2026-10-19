@@ -131,7 +131,21 @@ Restoring both Linux files together from one configuration snapshot cannot be de
 two-file protocol; that limitation must remain explicit. No access or decode failure may fall
 back to fresh empty authority.
 
-The OS adapters, bootstrap and coordinator effect ordering remain unimplemented. Their acceptance must cover every
+The Linux adapter (`LinuxNativeWorkJournalStorage`) implements this with no-follow owner-only
+directories, `statx` identities, an exclusive coordinator lock and file/directory `fsync` at
+every boundary. A first Windows design built on the shared workspace directory with
+`FlushFileBuffers` on directory handles was reviewed on 19 October 2026 and **rejected**: no
+documented Win32 guarantee equates a directory flush with `fsync(directory)` after replacement,
+the shared workspace walk resolves reparse ancestors before checking them, and its handle
+sharing conflicts with atomic replacement. A revised NTFS-only design is under review: create
+with a private protected descriptor, write through, rename by pinned handles, and verify
+128-bit file identities and security after replacement. Microsoft documents that a
+write-through request causes NTFS to flush resulting metadata changes, including a rename
+([CreateFileW caching behaviour](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew#caching-behavior));
+whether that covers this rename sequence through power loss still needs physical
+qualification, so no Windows durability is claimed yet.
+
+The Windows/macOS adapters, bootstrap and coordinator effect ordering remain unimplemented. Their acceptance must cover every
 commit boundary, contention, stale continuations, previous roots, active-owner exclusion,
 capability cancellation, callback failures and same-heartbeat overclaim. See the
 [parity matrix](adaptive-audio-image-parity.md) and
