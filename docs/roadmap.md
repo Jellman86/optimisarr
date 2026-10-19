@@ -53,8 +53,8 @@ Picard (Windows/NVIDIA) and Scott's Mac were offline at the 2026-10-19 check, so
 physical qualification waits for host availability. Dedupe file actions
 remain deferred behind #332; merged D3 work to date is safety fencing only and enables no
 cleanup action. The 50 fps VMAF report
-([#406](https://github.com/Jellman86/optimisarr/issues/406)) has both fixes on `dev` and awaits
-reporter confirmation before the next stable release is cut from this line.
+([#406](https://github.com/Jellman86/optimisarr/issues/406)) closed on 2026-10-19 after the
+reporter confirmed both fixes on the exact episode; it ships in the next stable release.
 
 ## Up next (priority order, updated 2026-10-18)
 
