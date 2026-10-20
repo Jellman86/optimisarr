@@ -23,9 +23,11 @@ The later 20 October [native image workflow trials](../engineering/hardware-vali
 pass JPEG and WebP on Picard through the production shared runner with live memory,
 committed-response replay, strict final verification, idempotent replacement and exact
 rollback. The temporary fixture service is removed afterward. The current Swift runner
-and helper are built, but the Mac's locked login keychain blocks signing and accounting
-startup before pairing. The operator cannot unlock it locally at present; positive live
-Mac image acceptance remains open. These trials do not qualify installed package lifecycle.
+and helper now pass Developer ID signing, accounting startup and pairing when launched
+from the Mac's unlocked desktop session; SSH observes a different Keychain state.
+The image claim is safely held with only 2.57 GB of live available memory, below its
+3.5 GiB reservation. Positive live Mac image acceptance remains open. These trials
+do not qualify installed package lifecycle.
 
 The Mac package now contains the self-contained shared helper, exact runtime notices and pinned
 ExifTool source/modules using system Perl. Every nested native library is signed before the app;

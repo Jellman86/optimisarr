@@ -66,24 +66,37 @@ even under the disposable service, reproducing the capacity hold. Waiting on the
 process handle instead allows the ordinary native provider to report live memory.
 No product threshold or job-ancestry guard was weakened to admit these trials.
 
-## Mac: prepared, blocked before pairing
+## Mac: desktop-session startup passes; image capacity held
 
 The current server and self-contained ARM64 helper build successfully, and the
 release `AcceptanceWorker` links the current production `SidecarCore`. Swift emits
 the existing legacy-Keychain API deprecation warnings. The previously qualified
 JPEG/WebP, metric and metadata tools are present.
 
-Developer ID signing fails with `errSecInternalComponent`. A read-only Keychain
-status query confirms that the login keychain is locked. An ad-hoc development
+The initial SSH launch fails Developer ID signing with `errSecInternalComponent`.
+A read-only Keychain status query in that SSH session reports the login keychain
+locked. An ad-hoc development
 signature allows process startup, but production accounting remains blocked during
 all three startup attempts, before pairing or media transfer. An independent helper
 recovery request succeeds with no invalid, deferred or busy owners. Live available
 memory is 4,819,982,746 bytes, with no reserved memory; memory is no longer the only
 identified prerequisite for retrying the image workflow.
 
-The operator cannot unlock the Mac locally at present. The isolated run is retained
-for a later retry; no password is requested, stored or used by the fixture. A failed
-startup is not positive image-admission or signed-package acceptance.
+The later desktop-session check supersedes the assumption that the desktop keychain
+was also locked: the operator has it unlocked, and a Terminal-launched check reports
+`unlocked=true` while SSH still reports `false`. The prepared launcher runs from
+that desktop session. Developer ID signing succeeds for the native helper, its
+nested libraries and the release Swift acceptance executable. Strict signature
+verification passes for both executable entry points. Production accounting becomes
+ready on its first startup attempt, and real capability probing, pairing and
+heartbeat succeed. No password is requested, stored or used by the fixture.
+
+The JPEG trial then advertises only 2,573,441,434 available memory bytes, below the
+3.5 GiB image reservation. The server refuses the claim before source transfer or
+probe reporting. The job remains queued with zero media failures, zero reserved
+memory and clean scratch. This qualifies the capacity hold and desktop-session
+startup, not positive image delivery or installed-package acceptance. The isolated
+fixture remains available for a retry when live memory is sufficient.
 
 ## Remaining qualification
 
@@ -91,7 +104,7 @@ These Windows trials prove current shared-runner image workflows with live capac
 and disk scratch. They do not qualify the installed service's new-feature lifecycle,
 standalone durable-accounting integration, RAM disks, reboot/remount recovery or
 process crashes during these particular image jobs. The Mac's complete image job
-under live admission remains open until its Keychain prerequisite is available.
+under live admission remains open until sufficient live memory is available.
 Automatic protocol-11 placement remains disabled. Wider source coverage, fixed-image
 workers, retained-soundtrack parity and other completion requirements remain in the
 [parity matrix](../../development/adaptive-audio-image-parity.md).
