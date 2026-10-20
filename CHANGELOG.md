@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record current-source JPEG/WebP workflow acceptance on native Windows with live memory, committed-response replay, final verification, repeat replacement and exact rollback. The Mac trial is prepared but blocked by its locked login keychain; installed-package lifecycle and positive Mac image admission remain unqualified.
+
 - Record fresh native Mac and Picard qualification of the current scratch-ownership source, including the Windows journal process-death matrix. Both hosts are reachable again; physical Linux ARM64 and packaged job lifecycle acceptance remain separate.
 
 - Use the verified Linux ARM64 directory and no-follow flags for native scratch ownership, matching the journal's architecture-aware checks. Scratch directory walks and file opens no longer substitute x86-64 flags on ARM64; unverified Linux architectures refuse those opens. Exclusive creation, inherited writer guards and nonblocking special-file refusal retain their existing behavior. ARM64 syscall behavior is checked under emulation; a physical Linux ARM64 worker remains unqualified.
