@@ -21,12 +21,16 @@ MAC_REPOS = {
     'vmaf': 'https://github.com/Netflix/vmaf.git',
     'opus': 'https://github.com/xiph/opus.git',
     'ffmpeg': 'https://github.com/FFmpeg/FFmpeg.git',
+    'webp': 'https://chromium.googlesource.com/webm/libwebp',
 }
 AUDIO_SOURCES = {
     'zimtohrli': ('https://github.com/google/zimtohrli.git', 'f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3'),
     'highway': ('https://github.com/google/highway.git', '7fff3c667fb62475cdfb2b6c441452c8223c1a67'),
 }
 IMAGE_SOURCES = json.loads((ROOT / 'tools/image-quality-native/sources.json').read_text())
+MAC_METADATA_SOURCES = {
+    'exiftool': ('https://github.com/exiftool/exiftool.git', 'de11d240cf7e521e939a0575a128ffe01b63be05'),
+}
 MAC_ARCHIVES = {
     'lame': ('https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz',
              'ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e'),
@@ -63,6 +67,13 @@ def read_mac_revisions(path):
     return result
 
 
+def mac_release_revisions(build_info, app_revision):
+    revisions = read_mac_revisions(build_info)
+    revisions.update({name: revision for name, (_, revision) in
+                      (AUDIO_SOURCES | IMAGE_SOURCES | MAC_METADATA_SOURCES).items()})
+    return revisions | {'optimisarr': app_revision}
+
+
 def validate_windows_toolchain(path):
     script = Path(path).read_text()
     expected = {'Release': WINDOWS_RELEASE, 'Asset': WINDOWS_BINARY_ASSET, 'Sha256': WINDOWS_BINARY_SHA256}
@@ -78,18 +89,23 @@ def command(*args, cwd=None):
 
 
 def git_source(name, url, revision, stage, local=None):
+    if not re.fullmatch(r'[0-9a-f]{40}', revision):
+        raise ValueError(f'{name}: an immutable full Git object pin is required')
     checkout = local if local and (local / '.git').exists() else stage / f'{name}-checkout'
     if not (checkout / '.git').exists():
         command('git', 'init', str(checkout))
         command('git', 'remote', 'add', 'origin', url, cwd=checkout)
         command('git', 'fetch', '--depth=1', 'origin', revision, cwd=checkout)
-    resolved = command('git', 'rev-parse', f'{revision}^{{commit}}', cwd=checkout).decode().strip()
-    if not resolved.startswith(revision):
+    pinned = command('git', 'rev-parse', '--verify', revision, cwd=checkout).decode().strip()
+    if pinned != revision:
         raise ValueError(f'{name}: source revision mismatch')
+    resolved = command('git', 'rev-parse', f'{revision}^{{commit}}', cwd=checkout).decode().strip()
     # git archive ignores build outputs and working-tree edits in an existing checkout.
     archive = stage / f'{name}-{resolved}.tar'
     command('git', 'archive', '--format=tar', f'--prefix={name}/', f'--output={archive}', resolved, cwd=checkout)
-    return archive, resolved
+    # An annotated tag's object hash is immutable too. Archive its commit, retaining the
+    # declared object identity so the manifest still matches the build's exact pin.
+    return archive, pinned
 
 
 def copy_licenses(archive, destination):
@@ -239,7 +255,10 @@ def main():
                 copy_licenses(archive, args.output / 'licenses')
                 files.append(archive)
                 records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive)})
-        for name, (url, revision) in (AUDIO_SOURCES | IMAGE_SOURCES).items():
+        extra_sources = AUDIO_SOURCES | IMAGE_SOURCES
+        if args.platform == 'macos':
+            extra_sources |= MAC_METADATA_SOURCES
+        for name, (url, revision) in extra_sources.items():
             archive, resolved = git_source(name, url, revision, stage)
             copy_licenses(archive, args.output / 'licenses')
             files.append(archive)
@@ -257,6 +276,7 @@ def main():
         'Optimisarr bundles FFmpeg, codec libraries, Zimtohrli, SSIMULACRA2 and their pinned dependencies. Their exact source archives, build scripts,\n'
         'revision manifest and SHA-256 checksums are supplied with this release. Source archives retain\n'
         'their upstream licences. Additional licence copies are provided in the licenses directory.\n'
+        'Mac packages additionally bundle pinned ExifTool source/modules and retain exact .NET runtime notices beside the helper.\n'
         'See source-manifest.json for the exact source revisions and download provenance.\n')
         instructions = args.output / 'SOURCE-README.txt'
         instructions.write_text(

@@ -533,6 +533,26 @@ struct TimelineLeadShiftTests {
 
 @Suite("Work location in a real job")
 struct WorkLocationJobTests {
+    @Test("unknown or exhausted live RAM uses disk before creating a volume", arguments: [Int64?.none, Int64?(1)])
+    func liveMemoryFallback(_ available: Int64?) async {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
+        let budget = MemoryWorkBudget()
+        let storage = StorageRecorder()
+        let root = scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
+            memoryBudget: budget, availableMemory: { available },
+            makeRamDisk: { _ in Issue.record("must not allocate without live capacity"); return nil })
+        let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
+            pairing: pairing, progress: { _ in }, storage: storage.record)
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(budget.reservedBytes == 0)
+        #expect(storage.value?.inMemory == false)
+        #expect(storage.value?.fallbackReason?.contains("available memory") == true)
+    }
+
     @Test("failed RAM creation frees its reservation and reports disk fallback")
     func failedCreationFallsBack() async {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
@@ -543,7 +563,7 @@ struct WorkLocationJobTests {
         let runner = JobRunner(client: SidecarClient(transport: server),
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
             settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
-            memoryBudget: budget, makeRamDisk: { _ in nil })
+            memoryBudget: budget, availableMemory: { Int64.max }, makeRamDisk: { _ in nil })
         let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
             pairing: pairing, progress: { _ in }, storage: storage.record)
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
@@ -557,7 +577,7 @@ struct WorkLocationJobTests {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
         let budget = MemoryWorkBudget()
         let limit: Int64 = 200 * 1024 * 1024
-        let reservation = budget.reserve(bytes: limit, limit: limit)
+        let reservation = budget.reserve(nativeBytes: 0, ramBytes: limit, ramLimit: limit, availableMemory: limit)
         let token = try #require(reservation)
         defer { budget.release(token) }
         let storage = StorageRecorder()
@@ -566,7 +586,7 @@ struct WorkLocationJobTests {
         let runner = JobRunner(client: SidecarClient(transport: server),
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
             settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
-            memoryBudget: budget, makeRamDisk: { _ in Issue.record("must not create an over-budget volume"); return nil })
+            memoryBudget: budget, availableMemory: { Int64.max }, makeRamDisk: { _ in Issue.record("must not create an over-budget volume"); return nil })
         let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
             pairing: pairing, progress: { _ in }, storage: storage.record)
         #expect(outcome == .delivered(jobId: 12, bytes: 15))

@@ -36,20 +36,49 @@ public sealed record Assignment(
     long? MinCandidateBytes = null,
     Optimisarr.Core.Workers.WorkerMediaInfo? SourceMedia = null,
     MediaKind Kind = MediaKind.Video,
-    string? AudioEncoder = null)
+    string? AudioEncoder = null,
+    Optimisarr.Core.Workers.RemotePerceptualSearchStep? PerceptualSearch = null,
+    string? ImageEncoder = null,
+    long? RequiredScratchBytes = null)
 {
     public string? RefuseMediaContract()
     {
-        if (Kind is not (MediaKind.Video or MediaKind.Audio)) return "Unsupported media kind.";
-        if (string.IsNullOrWhiteSpace(Kind == MediaKind.Audio ? AudioEncoder : VideoEncoder)) return "The media encoder is missing.";
-        if (Kind == MediaKind.Audio && (Quality.Measure || Search is not null)) return "Audio jobs cannot request video quality measurements or searches.";
-        if (FullVerification is { } contract && (contract.Kind != Kind || contract.Version is not (1 or 2 or 3)
+        if (Kind is not (MediaKind.Video or MediaKind.Audio or MediaKind.Image)) return "Unsupported media kind.";
+        if (Quality is null || Arguments is null || string.IsNullOrWhiteSpace(OutputExtension)) return "The assignment is incomplete.";
+        if (string.IsNullOrWhiteSpace(Kind == MediaKind.Image ? ImageEncoder : Kind == MediaKind.Audio ? AudioEncoder : VideoEncoder)) return "The media encoder is missing.";
+        if (Kind != MediaKind.Video && (Quality.Measure || Search is not null)) return $"{Kind} jobs cannot request video quality measurements or searches.";
+        if (Kind == MediaKind.Image && PerceptualSearch is null) return "Still-image work requires its native quality-first search.";
+        if (FullVerification is { } contract && (contract.Kind != Kind || contract.Version is not (1 or 2 or 3 or 4)
             || (contract.Version == 3 && contract.SoundtrackQuality is null)))
             return "The verification contract does not match the media kind.";
+        if (PerceptualSearch is { } step)
+        {
+            var search = step.Contract;
+            if (Kind == MediaKind.Video || search is null || search.Policy is null || search.Kind != Kind || search.Encoder != Encoder
+                || FullVerification is not { } verification || verification.SoundtrackQuality is not null || verification.CountVideoFrames
+                || (Kind == MediaKind.Image ? verification.Image is not { MeasurePerceptual: true } image
+                    || verification.MeasureAudio || verification.MeasureAudioQuality
+                    || image.MeasureSsim != search.Policy.ImageQualityGateEnabled || image.MeasureMetadata != search.Policy.ImageMetadataGateEnabled
+                    : !verification.MeasureAudioQuality || verification.Image is not null
+                        || verification.MeasureAudio != (search.Policy.AudioLoudnessGateEnabled || search.Policy.AudioClippingGateEnabled)))
+                return "The native search and final verification requirements disagree.";
+            try
+            {
+                Optimisarr.Core.Workers.RemotePerceptualSearchPlanner.ValidateStep(step);
+                Optimisarr.Core.Workers.FrozenPerceptualEncoding.SelectArguments(search, Arguments, search.Plan.Baseline);
+                if (OutputExtension.TrimStart('.') != Optimisarr.Core.Workers.RemotePerceptualSearchPlanner.OutputExtension(search.Encoder).TrimStart('.'))
+                    return "The native encoder and output suffix disagree.";
+                var required = Optimisarr.Core.Workers.WorkerScratchBudget.RequiredBytes(SourceBytes, MaxCandidateBytes, search);
+                if (required is null || RequiredScratchBytes is not { } offered || offered < required.Value)
+                    return "The assignment does not reserve its native measurement workspace.";
+            }
+            catch (ArgumentException) { return "The native search or frozen encoder command is unsupported."; }
+        }
         return null;
     }
 
-    public string Encoder => Kind == MediaKind.Audio ? AudioEncoder ?? "Unknown audio encoder" : VideoEncoder ?? "Unknown video encoder";
+    public string Encoder => Kind == MediaKind.Image ? ImageEncoder ?? "Unknown image encoder"
+        : Kind == MediaKind.Audio ? AudioEncoder ?? "Unknown audio encoder" : VideoEncoder ?? "Unknown video encoder";
 }
 
 /// <summary>
@@ -81,6 +110,16 @@ public sealed record AdaptiveSearchDirection(
     IReadOnlyList<string>? Arguments)
 {
     public bool IsComplete => NextStep is null;
+}
+
+/// <summary>A server-owned audio/image search directive; a source refusal never authorises an encode.</summary>
+public sealed record PerceptualSearchDirection(Optimisarr.Core.Workers.RemotePerceptualSearchStep? NextStep,
+    int? SelectedValue, IReadOnlyList<string>? Arguments, bool SourceBlocked, string? Reason)
+{
+    public bool Valid => SourceBlocked
+        ? NextStep is null && SelectedValue is null && Arguments is null
+        : NextStep is not null ? SelectedValue is null && Arguments is null
+        : SelectedValue is not null && Arguments is { Count: > 0 };
 }
 
 /// <summary>

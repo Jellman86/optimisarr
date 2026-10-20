@@ -25,13 +25,16 @@ public static class WorkerProtocol
     // Protocol 10 adds opt-in correlated diagnostic capture; media verification contracts are unchanged.
     public const int Current = 10;
 
+    // Advertise this only once all native runners and strict verification implement the contract.
+    public const int PerceptualQualityVersion = 11;
+
     public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments, MediaKind kind = MediaKind.Video) =>
-        arguments.Contains("-itsoffset") ? 9 : kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
+        kind == MediaKind.Image ? PerceptualQualityVersion : arguments.Contains("-itsoffset") ? 9 : kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
             : arguments.Any(argument => argument.StartsWith("-c:s:", StringComparison.Ordinal)) ? 4 : 1;
 
     public static int MinimumForAssignment(IReadOnlyList<string> arguments, MediaKind kind, string model, bool measuresVmaf,
-        bool measuresSoundtracks = false, bool countsVideoFrames = false) =>
-        Math.Max(MinimumForEncodeCommand(arguments, kind), countsVideoFrames ? 9
+        bool measuresSoundtracks = false, bool countsVideoFrames = false, bool perceptualSearch = false) =>
+        Math.Max(MinimumForEncodeCommand(arguments, kind), perceptualSearch ? PerceptualQualityVersion : countsVideoFrames ? 9
             : measuresSoundtracks ? 8 : measuresVmaf && model.StartsWith("vmaf_v1.", StringComparison.Ordinal) ? 7 : 1);
 
     /// <summary>The oldest contract version this build still accepts.</summary>

@@ -30,7 +30,7 @@ enum HeadlessPairing {
             return 2
         }
 
-        let session = await MainActor.run { SidecarSession() }
+        let session = await MainActor.run { SidecarSession(nativeRuntime: .shared) }
         await session.pair(serverAddress: serverAddress, pin: pin)
 
         let status = await MainActor.run { session.status }

@@ -32,7 +32,13 @@ which distinguishes installed fleet checks from disposable media tests and recor
 pending Mac upgrade. Audio reports and explicit gates are implemented in
 development. Experimental SDR still-image reports and explicit SSIMULACRA2 gates are
 implemented in this development slice; see [qualification and limits](engineering/hardware-validation/2026-10-10-image-perceptual-quality.md).
-Broader image/audio qualification and dedupe remain planned.
+Draft [PR #415](https://github.com/Jellman86/optimisarr/pull/415) adds bounded audio/image
+quality selection, shared native execution, conditional Swift proof, live admission, neutral
+capacity returns and audio assessment input restrictions. It remains unmerged and undeployed,
+with automatic protocol-11 placement disabled. Full parity work resumed on 15 October;
+the [parity checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-15-october-2026)
+records signed Mac helper/metadata packaging, verified coverage and the remaining work. Complete native packaging, restart recovery and
+the remaining audio/image parity before returning to perceptual dedupe or exact-copy actions.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
 Investigation-grade diagnostics ([#242](https://github.com/Jellman86/optimisarr/issues/242))
@@ -40,14 +46,22 @@ closed as complete on 2026-10-18 against the shipped schema-v4 capture documente
 [troubleshooting](troubleshooting/diagnostics.md). The active feature priority is audio/image
 quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), draft
 [#415](https://github.com/Jellman86/optimisarr/pull/415)): the Linux native-work journal
-storage slice is now on that branch with ABI-correct open flags and Quark test evidence, while
-standalone bootstrap/admission wiring and package qualification remain open and protocol 11
-stays disabled. Picard (Windows/NVIDIA) and Scott's Mac are SSH-reachable again as of
-2026-10-18, so host availability no longer blocks that qualification. Dedupe file actions
-remain deferred behind #332; merged D3 work to date is safety fencing only and enables no
+storage and an unconnected Linux-only bootstrap/restoration foundation are now on that branch
+with Quark test evidence, while standalone service bootstrap/admission wiring, physical
+power-cut qualification and package qualification remain open and protocol 11 stays disabled.
+Picard (Windows/NVIDIA) and Scott's Mac are reachable again at the later 2026-10-19 check.
+Picard passes the [49-case Windows journal process-death matrix](engineering/hardware-validation/2026-10-19-windows-journal-process-death.md);
+physical power-loss and exact-package qualification remain open. Dedupe file actions
+remain deferred behind #332. The 20 October
+[Linux scratch-open follow-up](engineering/hardware-validation/2026-10-20-linux-scratch-open-flags.md)
+corrects ARM64 directory/no-follow flags with pure/native Quark tests and a separate ARM64
+syscall-emulation probe; physical Linux ARM64 execution remains unqualified. Mac and Picard
+are reachable again at the later 20 October check and pass fresh exact-source shared suites
+(Mac 765, Picard 882); the qualification record distinguishes this from installed-package
+and physical Linux ARM64 acceptance. Merged D3 work to date is safety fencing only and enables no
 cleanup action. The 50 fps VMAF report
-([#406](https://github.com/Jellman86/optimisarr/issues/406)) has both fixes on `dev` and awaits
-reporter confirmation before the next stable release is cut from this line.
+([#406](https://github.com/Jellman86/optimisarr/issues/406)) closed on 2026-10-19 after the
+reporter confirmed both fixes on the exact episode; it ships in the next stable release.
 
 ## Up next (priority order, updated 2026-10-18)
 
@@ -1105,7 +1119,7 @@ reporter confirmation before the next stable release is cut from this line.
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: audio and video soundtrack reporting and explicit gates implemented in development; broader work planned, 2026-10-02.** Add
+14. **Perceptual quality for audio and still images: reports/gates in development, adaptive standalone audio/image workflows in draft #415; active with parity incomplete, 2026-10-15.** Add
     understandable, optional quality evidence alongside the existing structural, timing,
     loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
     An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with
@@ -1120,7 +1134,7 @@ reporter confirmation before the next stable release is cut from this line.
     - **Image status:** experimental server-local SSIMULACRA2 reports and separate explicit gates
       are implemented for bounded same-size 8-bit sRGB PNG/JPEG/WebP stills. Animation, other
       profiles/depths and orientation transforms fail closed. Native tools are packaged across
-      platforms, but image worker placement remains future work. Broader photographs, colour
+      platforms; automatic image worker placement remains disabled pending full parity. Broader photographs, colour
       and human-viewing calibration remain planned. Compare against the
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
@@ -1134,8 +1148,15 @@ reporter confirmation before the next stable release is cut from this line.
     - **Encoding presets:** codec-aware bitrate starting points are implemented in development
       for standalone audio and explicitly re-encoded video soundtracks. They preserve existing
       settings and never choose a quality gate limit. A bounded sample search for a suitable
-      bitrate remains planned; include cancellation, cost reporting, source-bitrate and size
-      checks, and final verification before replacement.
+      bitrate is implemented for standalone audio in draft #415, with measured candidates,
+      bounded execution, source/size checks and independent final verification. Adaptive
+      retained soundtracks and the remaining [parity qualification](development/adaptive-audio-image-parity.md)
+      are still outstanding.
+    - **Native Mac lifetime:** app/session/runner wiring now restores independently anchored
+      accounting before claims and uses scoped helper execution with positive writer/RAM retirement.
+      Signed release-library trials cover AAC/Opus/MP3, actual RAM, busy delivery and parent-kill/
+      same-identity replay. Installed-package and reboot/remount qualification remain open; see the
+      [runtime evidence and limits](engineering/hardware-validation/2026-10-15-native-work-runtime.md).
     - **Video soundtracks:** opt-in reporting and a separate explicit gate are implemented in
       development for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
       source tracks to output order, with language/title/commentary identity and timing checks.
@@ -1173,6 +1194,9 @@ reporter confirmation before the next stable release is cut from this line.
     [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
     separate this groundwork from qualified quarantine and restore. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
+    Further dedupe implementation is paused behind audio/image parity in #332/#415, following
+    the operator's 13 October priority and 14 October pause. Existing read-only review and
+    qualified ownership foundations remain available; no cleanup action is enabled by this work.
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.

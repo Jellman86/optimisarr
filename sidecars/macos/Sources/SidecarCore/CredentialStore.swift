@@ -97,7 +97,7 @@ public struct KeychainCredentialStore: CredentialStore {
                 query[kSecUseAuthenticationContext as String] = context
                 status = SecItemCopyMatching(query as CFDictionary, &item)
             } else {
-                status = Self.withoutLegacyKeychainUI {
+                status = try Self.withoutLegacyKeychainUI {
                     SecItemCopyMatching(query as CFDictionary, &item)
                 }
             }
@@ -116,7 +116,8 @@ public struct KeychainCredentialStore: CredentialStore {
                 // this one no longer matches. Take it away rather than leave it to prompt on every
                 // future attempt; the secret is unrecoverable either way and pairing again is a
                 // few seconds' work.
-                SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
+                if dataProtection { SecItemDelete(baseQuery(dataProtection: true) as CFDictionary) }
+                else { _ = try Self.withoutLegacyKeychainUI { SecItemDelete(baseQuery(dataProtection: false) as CFDictionary) } }
                 return nil
 
             default:
@@ -133,13 +134,20 @@ public struct KeychainCredentialStore: CredentialStore {
         for dataProtection in keychains {
             // Replace rather than update-or-insert: pairing again should not leave a stale secret
             // behind if the previous item was written by an older build with different attributes.
-            SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
-
             var query = baseQuery(dataProtection: dataProtection)
             query[kSecValueData as String] = data
             query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
 
-            let status = SecItemAdd(query as CFDictionary, nil)
+            let status: OSStatus
+            if dataProtection {
+                SecItemDelete(baseQuery(dataProtection: true) as CFDictionary)
+                status = SecItemAdd(query as CFDictionary, nil)
+            } else {
+                status = try Self.withoutLegacyKeychainUI {
+                    SecItemDelete(baseQuery(dataProtection: false) as CFDictionary)
+                    return SecItemAdd(query as CFDictionary, nil)
+                }
+            }
             if status == errSecSuccess { return }
             lastStatus = status
             // A build without the entitlement cannot use the data protection keychain at all.
@@ -150,7 +158,9 @@ public struct KeychainCredentialStore: CredentialStore {
 
     public func clear() throws {
         for dataProtection in keychains {
-            let status = SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
+            let status: OSStatus
+            if dataProtection { status = SecItemDelete(baseQuery(dataProtection: true) as CFDictionary) }
+            else { status = try Self.withoutLegacyKeychainUI { SecItemDelete(baseQuery(dataProtection: false) as CFDictionary) } }
             guard status == errSecSuccess
                 || status == errSecItemNotFound
                 || status == errSecMissingEntitlement
@@ -170,17 +180,8 @@ extension KeychainCredentialStore {
     /// menu-bar app must never be able to hang behind one. With interaction off, a read of an item
     /// this build cannot claim returns `errSecInteractionNotAllowed` immediately instead of
     /// blocking, which is the answer the caller already knows how to act on.
-    static func withoutLegacyKeychainUI<T>(_ body: () -> T) -> T {
-        var previous: DarwinBoolean = true
-        let read = SecKeychainGetUserInteractionAllowed(&previous)
-        SecKeychainSetUserInteractionAllowed(false)
-        defer {
-            // Only put back what we actually managed to read, and only ever re-enable interaction
-            // that was already enabled: leaving it off for the whole process would break any
-            // later call that legitimately needs to ask.
-            SecKeychainSetUserInteractionAllowed(read == errSecSuccess ? previous.boolValue : true)
-        }
-        return body()
+    static func withoutLegacyKeychainUI<T>(_ body: () throws -> T) throws -> T {
+        try LegacyKeychainInteraction.shared.perform(body)
     }
 }
 

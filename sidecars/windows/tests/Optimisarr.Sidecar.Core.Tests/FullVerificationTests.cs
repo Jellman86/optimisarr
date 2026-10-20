@@ -7,6 +7,21 @@ namespace Optimisarr.Sidecar.Core.Tests;
 public sealed class FullVerificationTests
 {
     [Fact]
+    public async Task A_missing_image_tool_returns_image_failure_evidence_without_scanning_as_video()
+    {
+        var contract = new RemoteVerificationContract(4, Guid.NewGuid(), false, Image: new(true, true, true));
+        var missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "ffmpeg");
+        var evidence = await FullVerification.MeasureAsync(missing, "source", "candidate", contract,
+            new string('a', 64), new string('b', 64), default);
+        Assert.Equal(contract.Id, evidence.ContractId);
+        Assert.NotNull(evidence.Error);
+        Assert.NotNull(evidence.Image);
+        Assert.Null(evidence.SourceVideo);
+        Assert.Null(evidence.SourceAudio);
+        Assert.Null(evidence.Decode);
+    }
+
+    [Fact]
     public async Task A_missing_media_tool_returns_bound_failure_evidence_without_claiming_a_pass()
     {
         var contract = new RemoteVerificationContract(1, Guid.NewGuid(), true, CountVideoFrames: true);

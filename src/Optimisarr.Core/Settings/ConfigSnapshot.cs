@@ -98,7 +98,9 @@ public sealed record LibrarySnapshot(
     double? MaximumSoundtrackQualityDistance = null,
     bool? ImagePerceptualReportingEnabled = null,
     bool? ImagePerceptualGateEnabled = null,
-    double? MinimumImagePerceptualScore = null);
+    double? MinimumImagePerceptualScore = null,
+    bool? AdaptiveAudioQuality = null,
+    bool? AdaptiveImageQuality = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

@@ -261,6 +261,7 @@ internal static class MediaAndQueueEndpoints
             SettingsStore settingsStore,
             RemoteWorkersFeature remoteWorkers,
             ReplacementCoordinator replacementCoordinator,
+            QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
             JobStatus? wantedStatus = null;
@@ -303,9 +304,14 @@ internal static class MediaAndQueueEndpoints
             }, cancellationToken, availability);
 
             response.Headers["X-Total-Count"] = result.Total.ToString();
-            return Results.Ok(result.Items.Select(job => job with { Finalizing = replacementCoordinator.IsActive(job.Id) }));
+            return Results.Ok(result.Items.Select(job => job with
+            {
+                Finalizing = replacementCoordinator.IsActive(job.Id),
+                WaitingForResources = job.Status == nameof(JobStatus.Queued) && dispatcher.IsLocallyHeldForCapacity(job.Id, job.ExecutionAttempt)
+            }));
         })
-        .WithName("ListJobs");
+        .WithName("ListJobs")
+        .Produces<IReadOnlyList<JobDto>>();
 
         // Diagnostics: failed jobs grouped by classified reason (size-saving, container incompatibility,
         // replacement collision, …) with counts and recent samples, so "why are jobs failing?" is answerable
@@ -517,6 +523,9 @@ internal static class MediaAndQueueEndpoints
 
             job.BypassSizePreflight = true;
             job.AdaptiveVideoQuality = null;
+            job.AdaptiveAudioBitrateKbps = null;
+            job.AdaptiveImageQuality = null;
+            job.PerceptualSearchJson = null;
             job.VmafModel = null;
             job.ErrorMessage = null;
             job.Progress = 0;
@@ -631,6 +640,9 @@ internal static class MediaAndQueueEndpoints
             // A retry must re-evaluate the samples against the current settings and whichever
             // encoder claims the job. Reusing the old selected quality also skips size preflight.
             job.AdaptiveVideoQuality = null;
+            job.AdaptiveAudioBitrateKbps = null;
+            job.AdaptiveImageQuality = null;
+            job.PerceptualSearchJson = null;
             job.VmafModel = null;
             if (higherQuality)
             {

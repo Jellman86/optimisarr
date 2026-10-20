@@ -936,3 +936,37 @@ test('disabling the soundtrack gate discards an invalid unsaved custom limit', a
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ soundtrackQualityGateEnabled: false, maximumSoundtrackQualityDistance: null })
 })
+
+test('image quality first requires a target and saves its independent opt-in', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Photo' })
+  await page.goto('/#/libraries/1/configure/verify')
+  await expect(page.getByRole('checkbox', { name: 'Image quality first (experimental)', exact: true })).toHaveCount(0)
+  await page.getByRole('checkbox', { name: 'Require perceptual image quality', exact: true }).check()
+  const adaptive = page.getByRole('checkbox', { name: 'Image quality first (experimental)', exact: true })
+  await expect(page.getByText('With WebP, this permits lossy output from lossless originals.', { exact: false })).toBeVisible()
+  await expect(adaptive).not.toBeChecked()
+  await adaptive.check()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.getByLabel('Minimum SSIMULACRA2 score', { exact: true }).fill('85')
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ adaptiveImageQuality: true, adaptiveAudioQuality: false,
+    imagePerceptualGateEnabled: true, minimumImagePerceptualScore: 85 })
+})
+
+test('audio quality first preserves its choice and explicit target across navigation', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/verify')
+  await page.getByRole('checkbox', { name: 'Require audio quality', exact: true }).check()
+  const adaptive = page.getByRole('checkbox', { name: 'Audio quality first (experimental)', exact: true })
+  await expect(adaptive).not.toBeChecked()
+  await adaptive.check()
+  await page.getByRole('button', { name: 'Set the limit in Advanced verification', exact: true }).click()
+  await page.getByRole('spinbutton', { name: 'Maximum audio difference', exact: true }).fill('0.01')
+  await stage(page, 'Verify').click()
+  await expect(adaptive).toBeChecked()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ adaptiveAudioQuality: true, adaptiveImageQuality: false,
+    audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.01 })
+})

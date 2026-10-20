@@ -1,7 +1,25 @@
 import type { Messages } from './en'
 
 export const pt: Messages = {
+  quality_first: {
+    previous_selected: "Configuração selecionada anteriormente",
+    retry_minimum: "Configuração mínima para a nova tentativa: {value}",
+    searching: 'A procurar uma definição',
+    interrupted: 'Pesquisa interrompida antes da seleção',
+    retry: "Nova tentativa com qualidade superior",
+    loudness_drift: "Variação de intensidade",
+    local_hint: "A pesquisa por qualidade é executada neste servidor. As bibliotecas restritas a workers aguardam.",
+    image_no_resize: "A qualidade de imagem primeiro requer dimensões inalteradas.",
+    audio_no_downmix: "A qualidade de áudio primeiro requer canais inalterados; desative o downmix.",
+
+    title: "Pesquisa por qualidade",
+    selected: "Definição selecionada",
+    candidate: "Candidato",
+    note: "As amostras ajudam a escolher definições. A verificação final decide a substituição.",
+  },
   image_quality: {
+    adaptive_label: "Qualidade de imagem primeiro (experimental)",
+    adaptive_hint: "Procurar a compressão segundo o objetivo antes da codificação final. Comparar imagens completas compatíveis; manter as verificações finais. Com WebP, permite resultados com perdas a partir de originais sem perdas.",
       "title": "Relatório de qualidade de imagem",
       "report_hint": "Medir SSIMULACRA2 após a codificação. Opcional e desativado por predefinição.",
       "gate_label": "Exigir qualidade percetual da imagem",
@@ -114,6 +132,8 @@ export const pt: Messages = {
     custom_note: "Defina sua taxa de bits nas opções avançadas de áudio. O requisito de qualidade não muda.",
   },
   audio_quality: {
+    adaptive_label: "Qualidade de áudio primeiro (experimental)",
+    adaptive_hint: "Procurar taxas de bits com amostras do início, meio e fim. Apenas mono/estéreo; manter as verificações finais.",
     gate_label: "Exigir qualidade de áudio",
     gate_hint: "Bloqueia a substituição se um canal ou amostra exceder o limite, ou se não for possível medir a qualidade. Experimental, para áudio independente mono e estéreo. Os workers medem localmente.",
     maximum: "Diferença máxima de áudio",
@@ -742,6 +762,9 @@ export const pt: Messages = {
     returned_from: 'devolvido por {worker} · aguardando verificação',
     verifying_returned: 'Este servidor está a verificar o ficheiro devolvido por {worker}.',
     stage_verifying_returned: 'medindo a qualidade do que {worker} devolveu…',
+    waiting_resources_row: 'aguardando memória ou espaço…',
+    waiting_resources_title: 'Aguardando memória ou espaço de trabalho',
+    waiting_resources_detail: 'O original e as configurações da nova tentativa são preservados. O servidor verificará a capacidade novamente em breve; um worker apto ainda pode aceitar este trabalho.',
     waiting_for_worker: 'aguardando um worker…',
     waiting_for_worker_title: 'Esta biblioteca mantém seu trabalho fora deste servidor: aguarda até que um worker capaz de executá-lo esteja online e livre.',
     status_completed: "Concluído",

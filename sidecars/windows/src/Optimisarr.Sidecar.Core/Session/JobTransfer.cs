@@ -34,9 +34,12 @@ public sealed class JobTransfer(HttpClient http, DiagnosticJournal? diagnostics 
         Guid leaseId,
         string destination,
         IProgress<(long Received, long Total)>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long? expectedBytes = null)
     {
         var already = File.Exists(destination) ? new FileInfo(destination).Length : 0;
+        if (expectedBytes is <= 0 || expectedBytes is { } expected && already > expected)
+            throw new SidecarException("The source workspace does not match its assigned byte budget.", recoverable: false);
 
         using var request = new HttpRequestMessage(
             HttpMethod.Get, SidecarClient.Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/source"));
@@ -54,6 +57,8 @@ public sealed class JobTransfer(HttpClient http, DiagnosticJournal? diagnostics 
         diagnostics?.Record(leaseId, "Worker.TransferOffset", offset: already, httpStatus: (int)response.StatusCode);
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
+            if (expectedBytes is { } complete && already != complete)
+                throw new SidecarException("The server refused a source range before the assigned file was complete.", recoverable: false);
             // Already have the whole thing: the server has nothing beyond what is on disk.
             return DeclaredHash(response);
         }
@@ -70,7 +75,16 @@ public sealed class JobTransfer(HttpClient http, DiagnosticJournal? diagnostics 
         // A server that ignored the range header sends the whole file: start again rather than
         // append its first bytes onto what is already here and produce a corrupt source.
         var appending = already > 0 && response.StatusCode == HttpStatusCode.PartialContent;
-        var total = (response.Content.Headers.ContentLength ?? 0) + (appending ? already : 0);
+        var offset = appending ? already : 0;
+        var declaredLength = response.Content.Headers.ContentLength;
+        if (expectedBytes is { } assigned)
+        {
+            if (declaredLength is { } length && (length > long.MaxValue - offset || length + offset != assigned)
+                || response.StatusCode == HttpStatusCode.PartialContent
+                    && (response.Content.Headers.ContentRange is not { } range || range.From != offset || range.Length != assigned))
+                throw new SidecarException("The source response does not match its assigned size or resume range.", recoverable: false);
+        }
+        var total = expectedBytes ?? ((declaredLength ?? 0) + offset);
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(destination))!);
         await using (var file = new FileStream(
@@ -83,12 +97,19 @@ public sealed class JobTransfer(HttpClient http, DiagnosticJournal? diagnostics 
             var buffer = new byte[ChunkBytes];
             var received = appending ? already : 0;
             int read;
-            while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            while (true)
             {
+                var capacity = expectedBytes is { } limit && limit - received < buffer.Length ? (int)(limit - received) + 1 : buffer.Length;
+                read = await stream.ReadAsync(buffer.AsMemory(0, capacity), cancellationToken);
+                if (read == 0) break;
+                if (expectedBytes is { } maximum && read > maximum - received)
+                    throw new SidecarException("The source transfer exceeded its assigned byte budget.", recoverable: false);
                 await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                 received += read;
                 progress?.Report((received, total));
             }
+            if (expectedBytes is { } final && received != final)
+                throw new SidecarException("The source transfer ended before its assigned byte count arrived.", recoverable: false);
         }
 
         diagnostics?.Record(leaseId, "Worker.TransferAcknowledged", offset: new FileInfo(destination).Length, httpStatus: (int)response.StatusCode);

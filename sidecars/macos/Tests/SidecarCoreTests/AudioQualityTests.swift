@@ -4,6 +4,32 @@ import Testing
 
 @Suite("Audio quality reporting")
 struct AudioQualityTests {
+    @Test("soundtrack seeks retain the demuxer origin and picture lead")
+    func soundtrackSeekOrigin() {
+        for (start, expected) in [(0.0, "0.021"), (22.5, "22.521")] {
+            let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/source.mkv"),
+                output: URL(fileURLWithPath: "/decoded.raw"), window: .init(startSeconds: start, durationSeconds: 3),
+                audioIndex: 0, lead: 0.021, soundtrack: true)
+            let seeks = args.indices.filter { args[$0] == "-ss" }
+            #expect(seeks.count == 1)
+            #expect(seeks[0] < args.firstIndex(of: "-i")!)
+            #expect(args[seeks[0] + 1] == expected)
+        }
+    }
+
+    @Test func audioWindowSeeksPreserveDecoderContextAndTrimExactSamples() {
+        for start in [0.0, 1.25, 22.5, 86370] {
+            let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/source.m4a"),
+                output: URL(fileURLWithPath: "/decoded.raw"), window: .init(startSeconds: start, durationSeconds: 3),
+                audioIndex: 0, lead: 0, soundtrack: false)
+            let input = args.firstIndex(of: "-i")!
+            let seeks = args.indices.filter { args[$0] == "-ss" }
+            #expect(seeks.count == (start == 0 ? 0 : start > 10 ? 2 : 1))
+            if start > 10 { #expect(seeks[0] < input); #expect(args[seeks[0] + 1] == AudioQualityAssessment.secondsText(start - 10)) }
+            if start > 0 { #expect(seeks.last! > input); #expect(args[seeks.last! + 1] == AudioQualityAssessment.secondsText(min(start, 10))) }
+            #expect(!args.contains("apad"))
+        }
+    }
 
     @Test("Matroska duration tags use the track end and tiny seeks stay in fixed point")
     func trackEndsAndSeeks() {

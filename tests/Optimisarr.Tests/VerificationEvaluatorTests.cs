@@ -95,6 +95,7 @@ public sealed class VerificationEvaluatorTests
     {
         Kind = MediaKind.Image,
         OutputVideoCodec = "webp",
+        ExpectedVideoCodec = "webp",
         OriginalDurationSeconds = null,
         OutputDurationSeconds = null,
         OriginalAudioTrackCount = 0,
@@ -133,6 +134,21 @@ public sealed class VerificationEvaluatorTests
 
         Assert.False(report.Passed);
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Picture"));
+    }
+
+    [Theory]
+    [InlineData("webp", "webp", true)]
+    [InlineData("WEBP", "webp", true)]
+    [InlineData("mjpeg", "mjpeg", true)]
+    [InlineData("webp", "png", false)]
+    [InlineData("mjpeg", "webp", false)]
+    [InlineData("webp", null, false)]
+    public void Image_format_is_verified_against_the_frozen_intent(string expected, string? actual, bool passes)
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyImage() with
+            { ExpectedVideoCodec = expected, OutputVideoCodec = actual }, VerificationPolicy.Default);
+        Assert.Equal(passes, report.Passed);
+        Assert.Equal(passes ? CheckOutcome.Passed : CheckOutcome.Failed, Outcome(report, "Image format"));
     }
 
     [Fact]
@@ -1875,6 +1891,25 @@ public sealed class VerificationEvaluatorTests
         VerificationPolicy.Default with { AudioClippingGateEnabled = true, MaxTruePeakDbtp = 0.0 };
 
     private const string ClippingCheck = "Audio clipping (true peak)";
+
+    [Fact]
+    public void Known_silence_is_distinct_from_missing_true_peak_evidence()
+    {
+        var input = Healthy() with { TruePeakMeasured = true, OriginalTruePeakIsSilent = true,
+            OutputTruePeakIsSilent = true };
+        Assert.True(VerificationEvaluator.Evaluate(input, ClippingGate).Passed);
+        var introduced = input with { OutputTruePeakIsSilent = false, OutputTruePeakDbtp = 0.5 };
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(introduced, ClippingGate), ClippingCheck));
+        var malformed = input with { OriginalTruePeakDbtp = -1 };
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(malformed, ClippingGate), ClippingCheck));
+    }
+
+    [Fact]
+    public void Non_finite_true_peak_values_cannot_pass_the_clipping_gate()
+    {
+        var input = Healthy() with { TruePeakMeasured = true, OriginalTruePeakDbtp = double.NaN, OutputTruePeakDbtp = 0.5 };
+        Assert.Equal(CheckOutcome.Failed, Outcome(VerificationEvaluator.Evaluate(input, ClippingGate), ClippingCheck));
+    }
 
     [Fact]
     public void Clipping_gate_is_absent_unless_enabled()

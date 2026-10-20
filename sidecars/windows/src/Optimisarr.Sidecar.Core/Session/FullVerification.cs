@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
@@ -13,6 +12,12 @@ public static class FullVerification
         string ffmpeg, string source, string candidate, RemoteVerificationContract contract,
         string sourceHash, string candidateHash, CancellationToken cancellationToken, string? measurementFfmpeg = null)
     {
+        if (contract.Version == 4)
+        {
+            var tools = PerceptualJobRuntime.ResolveNativeTools(ffmpeg);
+            return await new RemoteImageVerificationService(tools.Ffmpeg, tools.Ffprobe, tools.ImageMetric, tools.ExifTool)
+                .MeasureAsync(source, candidate, contract, sourceHash, candidateHash, cancellationToken);
+        }
         var evidence = new RemoteVerificationEvidence(contract.Id, sourceHash, candidateHash);
         try
         {
@@ -97,45 +102,11 @@ public static class FullVerification
 
     private static async Task<string> ProbeAsync(string ffprobe, string path, CancellationToken token)
     {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo(ffprobe)
-            {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true,
-                ArgumentList = { "-v", "error", "-print_format", "json", "-show_format", "-show_streams", path }
-            }
-        };
-        process.Start();
-        using var stop = token.Register(() => { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } });
-        var output = ReadBoundedAsync(process.StandardOutput, token);
-        var error = ReadBoundedAsync(process.StandardError, token);
-        // Readers and wait are observed together; an oversized probe cannot leave a child blocked
-        // on an unread pipe. A reader failure kills its writer before it propagates.
-        try
-        {
-            await Task.WhenAll(output, error, process.WaitForExitAsync(token));
-            if (process.ExitCode != 0) throw new InvalidOperationException("ffprobe failed: " + await error);
-            return await output;
-        }
-        finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
-
-        async Task<string> ReadBoundedAsync(StreamReader reader, CancellationToken cancellation)
-        {
-            var text = new System.Text.StringBuilder();
-            var buffer = new char[8192];
-            try
-            {
-                int count;
-                while ((count = await reader.ReadAsync(buffer.AsMemory(), cancellation)) > 0)
-                {
-                    if (text.Length + count > 1024 * 1024)
-                        throw new InvalidOperationException("ffprobe evidence exceeded the 1 MiB limit.");
-                    text.Append(buffer, 0, count);
-                }
-                return text.ToString();
-            }
-            catch { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; }
-        }
+        var result = await new ProcessTranscoder().ProbeAsync(ffprobe,
+            ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path], token);
+        if (result.ExitCode != 0) throw new InvalidOperationException("ffprobe failed.");
+        if (string.IsNullOrWhiteSpace(result.Output))
+            throw new InvalidOperationException("ffprobe evidence did not finish before its output pipe closed.");
+        return result.Output;
     }
 }

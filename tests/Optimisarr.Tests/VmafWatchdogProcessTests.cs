@@ -17,7 +17,7 @@ public sealed class VmafWatchdogProcessTests : IDisposable
         ReferenceStartSeconds: 20, DistortedStartSeconds: 20, MeasureDurationSeconds: 2,
         ReferenceFrameRate: 50, PairFramesByNumber: true, ModelVersion: "vmaf_v0.6.1");
 
-    private QualityScoreService Service(string mode)
+    private QualityScoreService Service(string mode, TimeSpan? progressTimeout = null)
     {
         Directory.CreateDirectory(_root);
         File.WriteAllText(Source, "source"); File.WriteAllText(Candidate, "candidate");
@@ -51,10 +51,11 @@ public sealed class VmafWatchdogProcessTests : IDisposable
                     time.sleep(0.1)
             if mode!='no-log':
                 pathlib.Path(log).write_text(json.dumps({'frames':[{'frameNum':0,'metrics':{'vmaf':96}},{'frameNum':1,'metrics':{'vmaf':96}}],'pooled_metrics':{'vmaf':{'mean':96,'harmonic_mean':96,'min':96}}}))
+            (root/'finished').write_text('done')
             """.Replace("__ROOT__", JsonSerializer.Serialize(_root), StringComparison.Ordinal)
             .Replace("__MODE__", JsonSerializer.Serialize(mode), StringComparison.Ordinal));
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        return new QualityScoreService(tool, TimeSpan.FromSeconds(2));
+        return new QualityScoreService(tool, progressTimeout ?? TimeSpan.FromSeconds(2));
     }
 
     [PosixFact]
@@ -66,6 +67,82 @@ public sealed class VmafWatchdogProcessTests : IDisposable
         Assert.Equal(96, result.Scores!.VmafHarmonicMean);
         Assert.Empty(progress.Values);
         AssertReaped(); AssertOwnedLogRemoved();
+    }
+
+    [PosixFact]
+    public async Task A_busy_caller_context_cannot_starve_decoder_reads_and_report_a_false_stall()
+    {
+        var service = Service("advance");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var caller = new PausedSynchronizationContext();
+        var previous = SynchronizationContext.Current;
+        Task<QualityResult> run;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(caller);
+            run = service.MeasureAsync(Source, Candidate, Context, deadline.Token);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+
+        try
+        {
+            // The child advances for three seconds, longer than the unchanged two-second
+            // idle budget. Hold caller continuations until it has written real score evidence.
+            while (!File.Exists(Path.Combine(_root, "finished")))
+                await Task.Delay(20, deadline.Token);
+            caller.Resume();
+            var result = await run.WaitAsync(deadline.Token);
+            Assert.True(result.Measured, result.Error);
+            Assert.Equal(96, result.Scores!.VmafHarmonicMean);
+            AssertReaped(); AssertOwnedLogRemoved();
+        }
+        finally
+        {
+            caller.Resume();
+            await deadline.CancelAsync();
+            try { await run; }
+            catch (OperationCanceledException) { }
+        }
+    }
+
+    [PosixFact]
+    public async Task A_busy_caller_context_cannot_delay_reaping_a_genuinely_stalled_decoder()
+    {
+        var service = Service("stale");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var caller = new PausedSynchronizationContext();
+        var previous = SynchronizationContext.Current;
+        Task<QualityResult> run;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(caller);
+            run = service.MeasureAsync(Source, Candidate, Context, deadline.Token);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+
+        try
+        {
+            while (!File.Exists(Pid)) await Task.Delay(20, deadline.Token);
+            try
+            {
+                using var child = Process.GetProcessById(int.Parse(File.ReadAllText(Pid)));
+                // Do not resume the caller to let the timeout handler reap its child.
+                await child.WaitForExitAsync(deadline.Token);
+            }
+            catch (ArgumentException) { /* The child has already been reaped. */ }
+            caller.Resume();
+            var result = await run.WaitAsync(deadline.Token);
+            Assert.False(result.Measured);
+            Assert.Contains("no decoding or VMAF progress", result.Error);
+            AssertReaped(); AssertOwnedLogRemoved();
+        }
+        finally
+        {
+            caller.Resume();
+            await deadline.CancelAsync();
+            try { await run; }
+            catch (OperationCanceledException) { }
+        }
     }
 
     [PosixFact]
@@ -82,7 +159,10 @@ public sealed class VmafWatchdogProcessTests : IDisposable
     [PosixFact]
     public async Task Noisy_decoder_output_is_drained_and_error_capture_stays_bounded()
     {
-        var result = await Service("flood").MeasureAsync(Source, Candidate, Context, CancellationToken.None);
+        // This fixture deliberately emits no progress while filling both pipes. Give the drain
+        // its own overall bound so CPU contention cannot turn it into an idle-watchdog test.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var result = await Service("flood", TimeSpan.FromSeconds(30)).MeasureAsync(Source, Candidate, Context, deadline.Token);
         Assert.False(result.Measured);
         Assert.StartsWith("decoder error:", result.Error);
         Assert.InRange(result.Error!.Length, 1, 65_536);
@@ -111,7 +191,11 @@ public sealed class VmafWatchdogProcessTests : IDisposable
     [PosixFact]
     public async Task Heartbeats_cannot_replace_missing_quality_evidence()
     {
-        var result = await Service("no-log").MeasureAsync(Source, Candidate, Context, CancellationToken.None);
+        // This asserts evidence refusal after a successful tool exit, not startup latency.
+        // Keep it independent of the short idle deadline exercised by the stalled fixtures.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var result = await Service("no-log", TimeSpan.FromSeconds(30))
+            .MeasureAsync(Source, Candidate, Context, deadline.Token);
         Assert.False(result.Measured);
         Assert.Contains("no log", result.Error);
         AssertReaped(); AssertOwnedLogRemoved();
@@ -142,6 +226,35 @@ public sealed class VmafWatchdogProcessTests : IDisposable
     {
         internal List<double> Values { get; } = [];
         public void Report(double value) => Values.Add(value);
+    }
+
+    private sealed class PausedSynchronizationContext : SynchronizationContext, IDisposable
+    {
+        private readonly object _gate = new();
+        private readonly List<(SendOrPostCallback Callback, object? State)> _pending = [];
+        private bool _resumed;
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            lock (_gate)
+            {
+                if (!_resumed) { _pending.Add((callback, state)); return; }
+            }
+            ThreadPool.QueueUserWorkItem(_ => callback(state));
+        }
+
+        public void Resume()
+        {
+            lock (_gate)
+            {
+                _resumed = true;
+                foreach (var (callback, state) in _pending)
+                    ThreadPool.QueueUserWorkItem(_ => callback(state));
+                _pending.Clear();
+            }
+        }
+
+        public void Dispose() => Resume();
     }
 
     public void Dispose()

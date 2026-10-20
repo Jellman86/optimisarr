@@ -20,6 +20,9 @@ public sealed class JobLease
     public string? VerificationContractJson { get; set; }
     public string? VerificationEvidenceJson { get; set; }
 
+    /// <summary>Frozen perceptual contract, completed probes and replay state for this lease only.</summary>
+    public string? PerceptualSearchStateJson { get; set; }
+
     /// <summary>Fences upload retries and seals stable bytes before hashing outside the writer.</summary>
     public Guid? ResultUploadGeneration { get; set; }
     public string? ResultUploadBinding { get; set; }

@@ -28,8 +28,8 @@ LEGACY_VERSION = re.compile(r'cmd LC_VERSION_MIN_MACOSX.*?\n\s*version (\S+)', r
 
 def declared_minimum(otool_output: str) -> str | None:
     """The minimum macOS a binary's load commands record, or None when it records none."""
-    match = BUILD_VERSION.search(otool_output) or LEGACY_VERSION.search(otool_output)
-    return match.group(1) if match else None
+    versions = BUILD_VERSION.findall(otool_output) + LEGACY_VERSION.findall(otool_output)
+    return max(versions, key=lambda value: tuple(map(int, value.split('.')))) if versions else None
 
 
 def newer(version: str, than: str) -> bool:
@@ -69,7 +69,7 @@ def check_bundle(app: Path, read: Callable[[Path], str] = otool, *, system_libra
     with (app / 'Contents/Info.plist').open('rb') as stream:
         minimum = plistlib.load(stream)['LSMinimumSystemVersion']
     binaries = sorted(path for folder in ('MacOS', 'Resources')
-                      for path in (app / 'Contents' / folder).iterdir()
+                      for path in (app / 'Contents' / folder).rglob('*')
                       if path.is_file() and is_mach_o(path))
     return check_binaries(binaries, minimum, read, system_libraries_only=system_libraries_only)
 

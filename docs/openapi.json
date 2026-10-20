@@ -242,6 +242,12 @@
               }
             ]
           },
+          "imageEncoder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "jobId": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -278,6 +284,16 @@
           "outputExtension": {
             "type": "string"
           },
+          "perceptualSearch": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemotePerceptualSearchStep"
+              }
+            ]
+          },
           "quality": {
             "$ref": "#/components/schemas/QualityRequirementDto"
           },
@@ -285,6 +301,15 @@
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "requiredScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
               "integer",
               "string"
             ]
@@ -1481,6 +1506,16 @@
               "string"
             ]
           },
+          "perceptual": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkerPerceptualCapabilities"
+              }
+            ]
+          },
           "protocolMaximum": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1598,6 +1633,251 @@
         ],
         "type": "object"
       },
+      "ImageMetadata": {
+        "properties": {
+          "hasExif": {
+            "type": "boolean"
+          },
+          "hasIccProfile": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ImageMetadataResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ImageMetadata"
+          }
+        },
+        "required": [
+          "measured",
+          "metadata",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ImagePerceptualMeasurement": {
+        "properties": {
+          "alpha": {
+            "type": "boolean"
+          },
+          "backgroundScores": {
+            "items": {
+              "format": "double",
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "type": "array"
+          },
+          "height": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "maximumAlphaError": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "score": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "width": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "alpha",
+          "maximumAlphaError",
+          "score",
+          "backgroundScores"
+        ],
+        "type": "object"
+      },
+      "ImagePerceptualReport": {
+        "properties": {
+          "candidateSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "elapsedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "gateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "gatePassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "measurement": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImagePerceptualMeasurement"
+              }
+            ]
+          },
+          "measurementLocation": {
+            "default": "Server",
+            "type": "string"
+          },
+          "metric": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "metricSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "minimumScore": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "preparation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measurement",
+          "error",
+          "sourceSha256",
+          "candidateSha256",
+          "metricSha256",
+          "elapsedSeconds"
+        ],
+        "type": "object"
+      },
+      "ImageQualityMeasurementContext": {
+        "properties": {
+          "referenceHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "referenceMayHaveAlpha": {
+            "type": "boolean"
+          },
+          "referenceWidth": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "referenceWidth",
+          "referenceHeight",
+          "referenceMayHaveAlpha"
+        ],
+        "type": "object"
+      },
+      "ImageQualityResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "ssim": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "ssim",
+          "error"
+        ],
+        "type": "object"
+      },
       "JellyfinConnectRequest": {
         "properties": {
           "baseUrl": {
@@ -1633,6 +1913,265 @@
         ],
         "type": "object"
       },
+      "JobDto": {
+        "properties": {
+          "attemptHistoryJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clearable": {
+            "type": "boolean"
+          },
+          "effectiveVideoQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "enqueueReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enqueuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "executionAttempt": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "failureCategory": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ffmpegArguments": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "finalizing": {
+            "default": false,
+            "type": "boolean"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "mediaFileId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "outputSizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "perceptualSearchJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "priority": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "progress": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "qualityRetryCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "remoteStage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestedVideoQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "retryReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sidecarVerification": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sourceSizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "verificationPassed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "verificationReportJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "verifiedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoEncoder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoQualityMode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "waitingForResources": {
+            "default": false,
+            "type": "boolean"
+          },
+          "waitingForWorker": {
+            "default": false,
+            "type": "boolean"
+          },
+          "workerName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "mediaFileId",
+          "libraryId",
+          "relativePath",
+          "status",
+          "priority",
+          "progress",
+          "errorMessage",
+          "enqueueReason",
+          "failureCategory",
+          "ffmpegArguments",
+          "videoEncoder",
+          "requestedVideoQuality",
+          "effectiveVideoQuality",
+          "videoQualityMode",
+          "qualityRetryCount",
+          "sourceSizeBytes",
+          "outputSizeBytes",
+          "verificationPassed",
+          "verificationReportJson",
+          "verifiedAt",
+          "enqueuedAt",
+          "startedAt",
+          "finishedAt",
+          "clearable",
+          "executionAttempt",
+          "retryReason",
+          "attemptHistoryJson"
+        ],
+        "type": "object"
+      },
       "LeaseRenewedDto": {
         "properties": {
           "expiresUtc": {
@@ -1652,6 +2191,18 @@
       },
       "LibrarySnapshot": {
         "properties": {
+          "adaptiveAudioQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "adaptiveImageQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioBitrateKbps": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2187,6 +2738,10 @@
               "number",
               "string"
             ]
+          },
+          "truePeakIsSilent": {
+            "default": false,
+            "type": "boolean"
           }
         },
         "required": [
@@ -2297,6 +2852,16 @@
               "string"
             ]
           },
+          "perceptual": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkerPerceptualCapabilities"
+              }
+            ]
+          },
           "protocolMaximum": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2402,6 +2967,122 @@
           "code",
           "expiresUtc",
           "attemptsRemaining"
+        ],
+        "type": "object"
+      },
+      "PerceptualAudioWindow": {
+        "properties": {
+          "durationSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "startSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "startSeconds",
+          "durationSeconds"
+        ],
+        "type": "object"
+      },
+      "PerceptualProbeDirectionDto": {
+        "properties": {
+          "arguments": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "nextStep": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemotePerceptualSearchStep"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "selectedValue": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "sourceBlocked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nextStep",
+          "selectedValue",
+          "arguments",
+          "sourceBlocked",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "PerceptualQualityPlan": {
+        "properties": {
+          "baseline": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "baselineIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "minimumValue": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "values": {
+            "items": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "values",
+          "baselineIndex"
         ],
         "type": "object"
       },
@@ -2820,6 +3501,416 @@
         ],
         "type": "object"
       },
+      "RemoteImagePerceptualEvidence": {
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/ImagePerceptualReport"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "preparation": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "revision",
+          "preparation",
+          "assessment"
+        ],
+        "type": "object"
+      },
+      "RemoteImageVerificationEvidence": {
+        "properties": {
+          "candidateMetadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageMetadataResult"
+              }
+            ]
+          },
+          "encoderSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "metadataToolSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "perceptual": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "probeSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "sourceMetadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageMetadataResult"
+              }
+            ]
+          },
+          "ssim": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageQualityResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
+      "RemoteImageVerificationRequest": {
+        "properties": {
+          "measureMetadata": {
+            "type": "boolean"
+          },
+          "measurePerceptual": {
+            "type": "boolean"
+          },
+          "measureSsim": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "measureSsim",
+          "measureMetadata",
+          "measurePerceptual"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualProbeReport": {
+        "properties": {
+          "contractId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "encoder": {
+            "type": "string"
+          },
+          "encoderSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/RemotePerceptualSampleEvidence"
+            },
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RemotePerceptualSourceEvidence"
+          },
+          "sourceSha256": {
+            "type": "string"
+          },
+          "value": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "contractId",
+          "encoder",
+          "value",
+          "sourceSha256",
+          "source",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSampleEvidence": {
+        "properties": {
+          "audio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteAudioQualityEvidence"
+              }
+            ]
+          },
+          "candidateLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "candidateSha256": {
+            "type": "string"
+          },
+          "encodedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "index": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "referenceSha256": {
+            "type": "string"
+          },
+          "sourceLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "ssim": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageQualityResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "index",
+          "encodedBytes",
+          "referenceSha256",
+          "candidateSha256"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSearchContract": {
+        "properties": {
+          "audioWindows": {
+            "items": {
+              "$ref": "#/components/schemas/PerceptualAudioWindow"
+            },
+            "type": "array"
+          },
+          "encoder": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MediaKind"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PerceptualQualityPlan"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/VerificationPolicy"
+          },
+          "requiredSourceSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceAudio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "sourceImage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageQualityMeasurementContext"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "encoder",
+          "plan",
+          "policy",
+          "audioWindows"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSearchStep": {
+        "properties": {
+          "candidateIndex": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "contract": {
+            "$ref": "#/components/schemas/RemotePerceptualSearchContract"
+          },
+          "referenceCommands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "sampleCommands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "value": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "contract",
+          "value",
+          "candidateIndex",
+          "sampleCommands",
+          "referenceCommands"
+        ],
+        "type": "object"
+      },
+      "RemotePerceptualSourceEvidence": {
+        "properties": {
+          "audio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioQualityInput"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImagePerceptualEvidence"
+              }
+            ]
+          },
+          "imageMetadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImageMetadataResult"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
       "RemoteVerificationContract": {
         "properties": {
           "countVideoFrames": {
@@ -2829,6 +3920,16 @@
           "id": {
             "format": "uuid",
             "type": "string"
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImageVerificationRequest"
+              }
+            ]
           },
           "kind": {
             "$ref": "#/components/schemas/MediaKind"
@@ -2944,6 +4045,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteImageVerificationEvidence"
+              }
             ]
           },
           "soundtrackQuality": {
@@ -3204,6 +4315,18 @@
       },
       "SaveLibraryRequest": {
         "properties": {
+          "adaptiveAudioQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "adaptiveImageQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioBitrateKbps": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -4610,6 +5733,194 @@
         ],
         "type": "object"
       },
+      "VerificationPolicy": {
+        "properties": {
+          "audioClippingGateEnabled": {
+            "type": "boolean"
+          },
+          "audioLoudnessGateEnabled": {
+            "type": "boolean"
+          },
+          "audioQualityGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "audioQualityReportingEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "clipVmafEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "durationTolerancePercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "imageMetadataGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imagePerceptualGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imagePerceptualReportingEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imageQualityGateEnabled": {
+            "type": "boolean"
+          },
+          "maxLoudnessDriftLufs": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "maxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "maximumAudioQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumSoundtrackQualityDistance": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measureVmaf": {
+            "default": false,
+            "type": "boolean"
+          },
+          "minimumImagePerceptualScore": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumImageSsim": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumVmafCatastrophicMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumVmafHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "qualityGateEnabled": {
+            "type": "boolean"
+          },
+          "requireAudioRetained": {
+            "type": "boolean"
+          },
+          "requireSizeReduction": {
+            "type": "boolean"
+          },
+          "requireSubtitlesRetained": {
+            "type": "boolean"
+          },
+          "soundtrackQualityGateEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "soundtrackQualityReportingEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "vmafFrameSubsample": {
+            "default": 1,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "durationTolerancePercent",
+          "requireAudioRetained",
+          "requireSubtitlesRetained",
+          "requireSizeReduction",
+          "qualityGateEnabled",
+          "minimumVmafHarmonicMean",
+          "minimumVmafMin",
+          "minimumVmafCatastrophicMin",
+          "audioLoudnessGateEnabled",
+          "maxLoudnessDriftLufs",
+          "audioClippingGateEnabled",
+          "maxTruePeakDbtp",
+          "imageQualityGateEnabled",
+          "minimumImageSsim"
+        ],
+        "type": "object"
+      },
       "WorkerDto": {
         "properties": {
           "activeJobs": {
@@ -4889,6 +6200,51 @@
           "audioCodecs",
           "pixelFormat"
         ],
+        "type": "object"
+      },
+      "WorkerPerceptualCapabilities": {
+        "properties": {
+          "audioMetricRevision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "availableMemoryBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "imageEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "imageMetadataSupported": {
+            "default": false,
+            "type": "boolean"
+          },
+          "imageMetricRevision": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scratchUsesMemory": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        },
         "type": "object"
       },
       "WorkerUpdateDto": {
@@ -6142,6 +7498,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "OK"
           },
           "401": {
@@ -8268,6 +9634,225 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/capacity-unavailable": {
+      "post": {
+        "operationId": "ReportWorkerCapacityUnavailable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/interrupted": {
+      "post": {
+        "operationId": "ReportWorkerInterrupted",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/perceptual-probe": {
+      "post": {
+        "operationId": "ReportPerceptualProbe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemotePerceptualProbeReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerceptualProbeDirectionDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "409": {
             "content": {

@@ -301,6 +301,9 @@ public sealed class Library
     /// <summary>Whether still-image output must clear the structural-similarity floor.</summary>
     public bool ImageQualityGateEnabled { get; set; } = true;
 
+    public bool AdaptiveAudioQuality { get; set; }
+    public bool AdaptiveImageQuality { get; set; }
+
     public bool ImagePerceptualReportingEnabled { get; set; }
     public bool ImagePerceptualGateEnabled { get; set; }
     public double? MinimumImagePerceptualScore { get; set; }

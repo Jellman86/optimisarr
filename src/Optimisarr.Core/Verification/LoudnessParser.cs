@@ -18,7 +18,7 @@ public static partial class LoudnessParser
             return null;
         }
 
-        var match = IntegratedLoudness().Match(stderr);
+        var match = LastMatch(IntegratedLoudness(), FinalSummary(stderr));
         return match.Success
             && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var lufs)
             && double.IsFinite(lufs)
@@ -39,7 +39,7 @@ public static partial class LoudnessParser
             return null;
         }
 
-        var match = TruePeak().Match(stderr);
+        var match = LastMatch(TruePeak(), FinalTruePeak(stderr));
         return match.Success
             && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var dbtp)
             && double.IsFinite(dbtp)
@@ -48,10 +48,40 @@ public static partial class LoudnessParser
     }
 
     // Matches the integrated-loudness line, e.g. "    I:         -23.0 LUFS".
-    [GeneratedRegex(@"\bI:\s*(-?\d+(?:\.\d+)?)\s*LUFS", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^\s*I:\s*(-?\d+(?:\.\d+)?)\s*LUFS\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex IntegratedLoudness();
 
     // Matches the true-peak line under the "True peak" section, e.g. "    Peak:  -1.5 dBFS".
-    [GeneratedRegex(@"\bPeak:\s*(-?\d+(?:\.\d+)?)\s*dBFS", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^\s*Peak:\s*(-?\d+(?:\.\d+)?)\s*dBFS\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex TruePeak();
+
+    public static bool IsSilentTruePeak(string? log) => !string.IsNullOrWhiteSpace(log)
+        && FinalSummary(log).Contains("True peak:", StringComparison.OrdinalIgnoreCase)
+        && SilentPeak().IsMatch(FinalTruePeak(log));
+
+    [GeneratedRegex(@"^\s*Peak:\s*-inf\s*dBFS\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex SilentPeak();
+
+    private static string FinalTruePeak(string log)
+    {
+        var summary = FinalSummary(log);
+        var start = summary.LastIndexOf("True peak:", StringComparison.OrdinalIgnoreCase);
+        return start >= 0 ? summary[start..] : summary;
+    }
+
+    private static string FinalSummary(string log)
+    {
+        // Frame progress also contains "I: ... LUFS", initially -70. Some FFmpeg
+        // builds additionally close an unused filter graph before the real one.
+        // Only the last summary can describe the completed decode. A malformed
+        // final summary must not borrow an earlier graph's apparently good value.
+        var start = log.LastIndexOf("Summary:", StringComparison.OrdinalIgnoreCase);
+        return start >= 0 ? log[start..] : log;
+    }
+
+    private static Match LastMatch(Regex pattern, string text)
+    {
+        var matches = pattern.Matches(text);
+        return matches.Count == 0 ? Match.Empty : matches[matches.Count - 1];
+    }
 }

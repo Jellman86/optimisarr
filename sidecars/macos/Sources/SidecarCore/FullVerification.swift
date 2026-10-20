@@ -27,6 +27,7 @@ public struct VerificationLoudness: Codable, Sendable, Equatable {
     public let integratedLufs: Double?
     public let truePeakDbtp: Double?
     public let error: String?
+    public var truePeakIsSilent: Bool? = nil
 }
 
 public struct FullVerificationEvidence: Codable, Sendable {
@@ -258,15 +259,23 @@ public struct FullVerification: Sendable {
     }
 
     static func parseLoudness(_ text: String, exitCode: Int32) -> VerificationLoudness {
-        func last(_ expression: String) -> Double? {
+        let summary = text.range(of: "Summary:", options: [.backwards, .caseInsensitive])
+            .map { String(text[$0.lowerBound...]) } ?? text
+        let peakText = summary.range(of: "True peak:", options: [.backwards, .caseInsensitive])
+            .map { String(summary[$0.lowerBound...]) } ?? summary
+        func last(_ expression: String, in section: String) -> Double? {
             guard let regex = try? NSRegularExpression(pattern: expression),
-                  let match = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
-                  let range = Range(match.range(at: 1), in: text), let number = Double(text[range]), number.isFinite else { return nil }
+                  let match = regex.matches(in: section, range: NSRange(section.startIndex..., in: section)).last,
+                  let range = Range(match.range(at: 1), in: section), let number = Double(section[range]), number.isFinite else { return nil }
             return number
         }
-        let lufs = last(#"I:\s+(-?[\d.]+) LUFS"#), peak = last(#"Peak:\s+(-?[\d.]+) dBFS"#)
+        let lufs = last(#"(?im)^\s*I:\s*(-?\d+(?:\.\d+)?)\s*LUFS\s*$"#, in: summary)
+        let peak = last(#"(?im)^\s*Peak:\s*(-?\d+(?:\.\d+)?)\s*dBFS\s*$"#, in: peakText)
+        let silent = summary.range(of: "True peak:", options: .caseInsensitive) != nil
+            && peakText.range(of: #"(?im)^\s*Peak:\s*-inf\s*dBFS\s*$"#, options: .regularExpression) != nil
         return VerificationLoudness(measured: exitCode == 0 && lufs != nil, integratedLufs: lufs,
-            truePeakDbtp: peak, error: exitCode == 0 && lufs != nil ? nil : "No complete EBU R128 measurement.")
+            truePeakDbtp: peak, error: exitCode == 0 && lufs != nil ? nil : "No complete EBU R128 measurement.",
+            truePeakIsSilent: silent ? true : nil)
     }
 
     static func parseDecode(_ text: String, exitCode: Int32) -> VerificationDecode {

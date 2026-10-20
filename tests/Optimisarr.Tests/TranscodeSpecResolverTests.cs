@@ -6,6 +6,19 @@ namespace Optimisarr.Tests;
 
 public sealed class TranscodeSpecResolverTests
 {
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void Only_explicit_quality_first_opt_in_allows_lossy_webp_from_a_lossless_source(bool adaptive, bool lossless)
+    {
+        var rules = Hevc with { TargetImageFormat = "webp", ImageQuality = 80 };
+        var spec = TranscodeSpecResolver.Resolve(rules, "/data/photo.png", "photo.png", "/work", false, null, null,
+            kind: MediaKind.Image, sourceImageCodec: "png", adaptiveImageQuality: adaptive);
+        Assert.Equal(lossless, spec.ImageLossless);
+        Assert.Equal(80, spec.ImageQuality);
+        Assert.Equal("libwebp", spec.ImageEncoder);
+    }
+
     private static readonly RuleSettings Hevc = RuleProfileDefaults.For(RuleProfile.ConservativeHevc);
 
     [Fact]

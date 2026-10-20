@@ -48,7 +48,11 @@ public sealed record JobDto(
     /// <summary>The current worker assignment supplied a strict verification contract.</summary>
     bool SidecarVerification = false,
     /// <summary>Safe replacement is currently moving this job's verified output into place.</summary>
-    bool Finalizing = false);
+    bool Finalizing = false,
+    /// <summary>Completed search probes while final verification has not produced its own report.</summary>
+    string? PerceptualSearchJson = null,
+    /// <summary>A temporary local memory/workspace hold; an eligible worker may still claim it.</summary>
+    bool WaitingForResources = false);
 
 public static class JobQueries
 {
@@ -163,7 +167,9 @@ public static class JobQueries
                 false,
                 job.ExecutionAttempt,
                 job.RetryReason,
-                job.AttemptHistoryJson))
+                job.AttemptHistoryJson,
+                null, null, false, false, false,
+                job.VerificationReportJson == null ? job.PerceptualSearchJson : null))
             .ToListAsync(cancellationToken);
 
         var pageIds = jobs.Select(job => job.Id).ToArray();

@@ -172,6 +172,8 @@ internal static class LibraryEndpoints
                 MinimumImageSsim = parsed.MinimumImageSsim,
                 ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled,
                 VideoQualityStrategy = parsed.VideoQualityStrategy,
+                AdaptiveAudioQuality = parsed.AdaptiveAudioQuality,
+                AdaptiveImageQuality = parsed.AdaptiveImageQuality,
                 WorkPlacement = parsed.WorkPlacement,
                 AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
                 AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
@@ -199,6 +201,8 @@ internal static class LibraryEndpoints
 
             request = request with
             {
+                AdaptiveAudioQuality = request.AdaptiveAudioQuality ?? library.AdaptiveAudioQuality,
+                AdaptiveImageQuality = request.AdaptiveImageQuality ?? library.AdaptiveImageQuality,
                 AudioQualityGateEnabled = request.AudioQualityGateEnabled ?? library.AudioQualityGateEnabled,
                 MaximumAudioQualityDistance = request.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance,
                 SoundtrackQualityGateEnabled = request.SoundtrackQualityGateEnabled ?? library.SoundtrackQualityGateEnabled,
@@ -289,6 +293,8 @@ internal static class LibraryEndpoints
             library.MinimumImageSsim = parsed.MinimumImageSsim;
             library.ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = parsed.VideoQualityStrategy;
+            library.AdaptiveAudioQuality = parsed.AdaptiveAudioQuality;
+            library.AdaptiveImageQuality = parsed.AdaptiveImageQuality;
             library.WorkPlacement = parsed.WorkPlacement;
             library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;

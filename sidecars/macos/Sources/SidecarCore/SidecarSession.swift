@@ -56,6 +56,7 @@ public final class SidecarSession: ObservableObject {
     /// The encoder each running job uses, as the server assigned it ("hevc_videotoolbox").
     @Published public internal(set) var jobEncoders: [Int: String] = [:]
     @Published public internal(set) var audioJobs: Set<Int> = []
+    @Published public internal(set) var imageJobs: Set<Int> = []
 
     /// Free space on the work volume, as this Mac last reported it to the server. Nil until the
     /// first check-in, so the panel shows a dash rather than a zero nobody measured.
@@ -83,6 +84,7 @@ public final class SidecarSession: ObservableObject {
     @Published public private(set) var jobConcurrency: Int
 
     @Published public private(set) var isPaused = false
+    @Published public private(set) var workReadinessNotice: String?
     /// A newer release the server says to install, from the latest check-in; nil while current.
     @Published public internal(set) var availableUpdate: SidecarUpdate?
 
@@ -96,6 +98,8 @@ public final class SidecarSession: ObservableObject {
     private var pausedBeforeShutdown = false
     private var lastDrainedHeartbeat: Date?
     private var unconfirmedResult = false
+    private var unconfirmedClaim = false
+    private let capacityBackoff: CapacityClaimBackoff
     private var shutdownTask: Task<Void, Never>?
     private let requestShutdown: @Sendable () async throws -> Void
 
@@ -140,10 +144,14 @@ public final class SidecarSession: ObservableObject {
             return
         }
         do {
+            var finalCapabilities = capabilities
+            finalCapabilities.freeScratchBytes = max(0, scratchCapacity())
+            finalCapabilities = await refreshNativeResources(finalCapabilities)
+            guard shutdown.armed else { return }
             _ = try await client.heartbeat(
                 serverAddress: pairing.serverAddress, credential: pairing.credential,
-                freeScratchBytes: max(0, scratchCapacity()), maxConcurrency: 0,
-                capabilities: capabilities, load: load.sample())
+                freeScratchBytes: finalCapabilities.freeScratchBytes, maxConcurrency: 0,
+                capabilities: finalCapabilities, load: load.sample())
         } catch {
             if shutdown.armed {
                 lastDrainedHeartbeat = nil
@@ -188,9 +196,19 @@ public final class SidecarSession: ObservableObject {
     /// stack reads of the same item, and so a caller that must decide what to show next can wait
     /// for the answer instead of racing it.
     private var restoreTask: Task<Void, Never>?
+    private var capabilityTask: Task<SidecarCapabilities, Never>?
+    private var connectionGeneration = UUID()
     private let prober: CapabilityProber?
     private let executor: WorkExecutor?
     private let scratchCapacity: @Sendable () -> Int64
+    private let recoverNativeScratch: @Sendable () async -> Void
+    private let nativeRecoveryLocation: @Sendable () -> WorkLocation
+    private var recoveredNativeLocation: WorkLocation?
+    private let nativeResources: @Sendable (SidecarCapabilities) -> SidecarCapabilities
+    private let nativeRuntime: NativeWorkRuntime?
+    private var nativeReadiness: NativeWorkReadiness = .blocked
+    private var nativeQualificationPending = true
+    private var accountingDrained = false
     private var capabilities: SidecarCapabilities
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
@@ -212,9 +230,13 @@ public final class SidecarSession: ObservableObject {
         /// when `executor` is supplied, which only tests do.
         settingsSnapshot: SettingsSnapshot? = nil,
         executor: WorkExecutor? = nil,
+        capacityBackoff: CapacityClaimBackoff = CapacityClaimBackoff(),
         scratchCapacity: @escaping @Sendable () -> Int64 = {
             JobRunner.availableScratchBytes(at: JobRunner.defaultScratchRoot()) ?? 0
         },
+        nativeRuntime: NativeWorkRuntime? = nil,
+        nativeResources: (@Sendable (SidecarCapabilities) -> SidecarCapabilities)? = nil,
+        recoverNativeScratch: (@Sendable () async -> Void)? = nil,
         jobConcurrency: Int = UserDefaults.standard.object(forKey: "jobConcurrency") as? Int ?? 1,
         persistConcurrency: @escaping @Sendable (Int) -> Void = { UserDefaults.standard.set($0, forKey: "jobConcurrency") },
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
@@ -223,16 +245,24 @@ public final class SidecarSession: ObservableObject {
         requestShutdown: @escaping @Sendable () async throws -> Void = { try await SystemShutdown.request() }
     ) {
         self.client = client
+        self.capacityBackoff = capacityBackoff
         self.store = store
         self.capabilities = capabilities
         self.prober = prober
         self.previewGate = previewGate
         // Built here rather than as a default argument so the runner can read the same gate this
         // session hands to the menu.
+        let settings = settingsSnapshot ?? SettingsSnapshot()
         self.executor = executor ?? JobRunner(
             wantsPreviews: { [previewGate] in previewGate.isWanted },
-            settings: settingsSnapshot ?? SettingsSnapshot())
+            settings: settings, nativeTools: nativeRuntime == nil ? nil : NativeQualityTools.bundled(), nativeRuntime: nativeRuntime ?? .shared)
+        self.nativeRuntime = nativeRuntime
         self.scratchCapacity = scratchCapacity
+        self.nativeResources = nativeResources ?? NativeWorkerResources(settings: settings).refresh
+        self.nativeRecoveryLocation = { settings.workLocation }
+        self.recoverNativeScratch = recoverNativeScratch ?? {
+            await NativeScratchRecoveryService.bundled()?.recoverWorkingRoots(settings: settings)
+        }
         self.jobConcurrency = Self.concurrencyRange.contains(jobConcurrency) ? jobConcurrency : 1
         self.persistConcurrency = persistConcurrency
         self.sleep = sleep
@@ -278,6 +308,7 @@ public final class SidecarSession: ObservableObject {
         // item while the first was still outstanding.
         guard restoreTask == nil else { return }
 
+        let generation = connectionGeneration
         restoreTask = Task { [weak self] in
             guard let self else { return }
             // Off this actor entirely. Reading the Keychain can block — on a legacy item written by
@@ -287,8 +318,11 @@ public final class SidecarSession: ObservableObject {
             // it blocks in exactly the same way once it starts. A windowless menu-bar app that
             // freezes here has no window to show for it and looks simply dead, which is what
             // 0.1.7 did.
+            await self.recoverNativeWorkingFiles(force: true)
+            guard !Task.isCancelled, self.connectionGeneration == generation else { return }
             let store = self.store
             let stored = await Task.detached(priority: .userInitiated) { try? store.load() }.value
+            guard !Task.isCancelled, self.connectionGeneration == generation else { return }
             self.finishRestoring(stored)
         }
     }
@@ -320,21 +354,104 @@ public final class SidecarSession: ObservableObject {
         pairing = stored
         serverAddress = stored.serverAddress
         SidecarLog.session.info("Restored pairing with worker \(stored.workerId, privacy: .public)")
-        if let prober {
-            Task { [weak self] in
-                guard let self else { return }
-                let proved = await prober.probe(name: self.capabilities.name, maxConcurrency: self.jobConcurrency)
-                self.capabilities = proved
-                self.startHeartbeat()
-            }
-        } else {
-            startHeartbeat()
+        probeThenHeartbeat()
+    }
+
+    private func probeThenHeartbeat() {
+        let generation = connectionGeneration
+        Task { [weak self] in
+            guard let self, self.connectionGeneration == generation else { return }
+            guard let proved = await self.proveCapabilities(),
+                  self.connectionGeneration == generation, self.pairing != nil else { return }
+            self.capabilities = proved
+            self.startHeartbeat()
         }
+    }
+
+    private func proveCapabilities() async -> SidecarCapabilities? {
+        capabilityTask?.cancel()
+        let name = capabilities.name, concurrency = jobConcurrency
+        let current = capabilities
+        let task = Task {
+            await recoverNativeWorkingFiles(force: true)
+            guard !Task.isCancelled, let prober else { return current }
+            let attempt = await nativeRuntime?.begin(roots: nativeRoots())
+            nativeQualificationPending = nativeRuntime != nil && attempt == nil
+            let proved = await prober.probe(name: name, maxConcurrency: concurrency, nativeAllowed: attempt != nil)
+            if let attempt, let nativeRuntime {
+                _ = await Task.detached { await nativeRuntime.end(attempt, owner: nil) }.value
+            }
+            return proved
+        }
+        capabilityTask = task
+        let proved = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        guard !Task.isCancelled, !task.isCancelled else { return nil }
+        capabilityTask = nil
+        return proved
+    }
+
+    private func invalidatePendingConnectionWork() {
+        connectionGeneration = UUID()
+        restoreTask?.cancel(); restoreTask = nil
+        capabilityTask?.cancel(); capabilityTask = nil
+    }
+
+    private func recoverNativeWorkingFiles(force: Bool = false) async {
+        if let nativeRuntime {
+            nativeReadiness = await nativeRuntime.refresh(roots: nativeRoots())
+            return
+        }
+        let location = nativeRecoveryLocation()
+        guard force || location != recoveredNativeLocation else { return }
+        await recoverNativeScratch()
+        guard !Task.isCancelled else { return }
+        recoveredNativeLocation = location
+    }
+
+    private func refreshNativeResources(_ capabilities: SidecarCapabilities) async -> SidecarCapabilities {
+        await recoverNativeWorkingFiles()
+        var current = capabilities
+        if nativeRuntime != nil, nativeReadiness == .ready, nativeQualificationPending, prober != nil {
+            if let proved = await proveCapabilities() { current = proved }
+            await recoverNativeWorkingFiles()
+        }
+        let refresh = nativeResources
+        // Volume classification can wait for diskutil. Keep that work off the menu's actor.
+        let input = current
+        var refreshed = await Task.detached(priority: .utility) { refresh(input) }.value
+        if let nativeRuntime { nativeReadiness = await nativeRuntime.state() }
+        if nativeReadiness != .ready {
+            refreshed.perceptual?.availableMemoryBytes = nil
+            refreshed.perceptual?.scratchUsesMemory = nil
+        }
+        if let nativeRuntime {
+            if !(await nativeRuntime.allowsClaims()) {
+                accountingDrained = true
+                refreshed.maxConcurrency = 0
+                workReadinessNotice = "Previous working files could not be checked safely. New jobs are paused."
+            } else if accountingDrained {
+                accountingDrained = false
+                workReadinessNotice = nil
+                if refreshed.maxConcurrency == 0,
+                   !refreshed.videoEncoders.isEmpty || !refreshed.audioEncoders.isEmpty || refreshed.perceptual?.imageEncoders.isEmpty == false {
+                    refreshed.maxConcurrency = jobConcurrency
+                }
+            }
+        }
+        return refreshed
+    }
+
+    private func nativeRoots() -> [URL] {
+        var roots = [JobRunner.defaultScratchRoot(), FileManager.default.temporaryDirectory]
+        if case let .folder(folder) = nativeRecoveryLocation() { roots.append(folder) }
+        return roots
     }
 
     /// Redeems a PIN. On success the credential is persisted immediately — the server returns it
     /// exactly once and cannot reissue it, so losing it here would mean pairing again.
     public func pair(serverAddress address: String, pin: String) async {
+        invalidatePendingConnectionWork()
+        let generation = connectionGeneration
         status = .pairing
         serverAddress = address
 
@@ -342,14 +459,17 @@ public final class SidecarSession: ObservableObject {
         // this machine could do just now — a driver or an ffmpeg that changed since startup would
         // otherwise be reported as it was, and a capability the server believes but the machine
         // cannot honour is a job that can only fail.
-        if let prober {
-            capabilities = await prober.probe(name: capabilities.name, maxConcurrency: jobConcurrency)
-        }
+        guard let proved = await proveCapabilities(), connectionGeneration == generation else { return }
+        capabilities = proved
         capabilities.freeScratchBytes = max(0, scratchCapacity())
+        let refreshed = await refreshNativeResources(capabilities)
+        guard !Task.isCancelled, connectionGeneration == generation else { return }
+        capabilities = refreshed
 
         do {
             let result = try await client.pair(
                 serverAddress: address, pin: pin, capabilities: capabilities)
+            guard !Task.isCancelled, connectionGeneration == generation else { return }
 
             let stored = StoredPairing(
                 serverAddress: address, credential: result.credential, workerId: result.workerId)
@@ -358,8 +478,10 @@ public final class SidecarSession: ObservableObject {
 
             startHeartbeat()
         } catch let error as SidecarError {
+            guard connectionGeneration == generation else { return }
             status = Self.describe(error)
         } catch {
+            guard connectionGeneration == generation else { return }
             status = .pairingFailed(reason: error.localizedDescription)
         }
     }
@@ -367,6 +489,7 @@ public final class SidecarSession: ObservableObject {
     /// Forgets the pairing locally. This does not revoke anything server-side: only an operator
     /// can do that, and pretending otherwise would overstate what this app controls.
     public func unpair() {
+        invalidatePendingConnectionWork()
         if shutdown.armed { disarmShutdown(restartHeartbeat: false) }
         heartbeatTask?.cancel()
         heartbeatTask = nil
@@ -379,6 +502,7 @@ public final class SidecarSession: ObservableObject {
         jobTitles = [:]
         jobEncoders = [:]
         audioJobs = []
+        imageJobs = []
         transferRates = [:]
         rateMeters = [:]
         filmStrips = [:]
@@ -405,6 +529,7 @@ public final class SidecarSession: ObservableObject {
     /// the job go back to the queue anyway, two minutes later and with the server unsure why.
     /// Handing it back now is the same outcome, sooner and explained. Check-ins stop until wake.
     public func systemWillSleep() async {
+        invalidatePendingConnectionWork()
         if shutdown.armed {
             lastDrainedHeartbeat = nil
             _ = shutdown.evaluate(at: Date(), ready: false, activeJobs: jobTasks.count)
@@ -421,12 +546,13 @@ public final class SidecarSession: ObservableObject {
     /// Workers tab sees the machine back within seconds and it can take work again.
     public func systemDidWake() {
         guard pairing != nil else { return }
-        startHeartbeat()
+        probeThenHeartbeat()
     }
 
     /// Called before the app exits. The heartbeat stops so the server sees a clean gap rather
     /// than a beat followed by silence, and any job is handed back rather than left to lapse.
     public func prepareToQuit() async {
+        invalidatePendingConnectionWork()
         if shutdown.armed { disarmShutdown(restartHeartbeat: false) }
         heartbeatTask?.cancel()
         heartbeatTask = nil
@@ -464,8 +590,11 @@ public final class SidecarSession: ObservableObject {
 
             do {
                 capabilities.freeScratchBytes = max(0, scratchCapacity())
+                let refreshed = await refreshNativeResources(capabilities)
+                try Task.checkCancellation()
+                capabilities = refreshed
                 freeScratchBytes = capabilities.freeScratchBytes
-                let reportingDrain = shutdown.armed
+                let reportingDrain = shutdown.armed || unconfirmedResult
                 let beat = try await client.heartbeat(
                     serverAddress: pairing.serverAddress,
                     credential: pairing.credential,
@@ -480,7 +609,8 @@ public final class SidecarSession: ObservableObject {
                 availableUpdate = beat.update
                 if reportingDrain && shutdown.armed { lastDrainedHeartbeat = Date() }
                 if jobTasks.isEmpty {
-                    status = .connected(workerId: beat.workerId, lastCheckIn: Date())
+                    status = unconfirmedClaim ? Self.describe(.unconfirmedClaim)
+                        : .connected(workerId: beat.workerId, lastCheckIn: Date())
                 }
                 if !beat.draining && !isPaused && !shutdown.armed {
                     await claimUpToCapacity(pairing: pairing, workerId: beat.workerId)
@@ -515,25 +645,52 @@ public final class SidecarSession: ObservableObject {
     /// The server hands out one job per claim and holds the worker to the concurrency it
     /// reported, so this can never run more than the server believes it can.
     private func claimUpToCapacity(pairing: StoredPairing, workerId: Int) async {
-        guard let executor, capabilities.maxConcurrency > 0 else { return }
+        let generation = connectionGeneration
+        func connectionIsCurrent() -> Bool {
+            !Task.isCancelled && connectionGeneration == generation && self.pairing == pairing
+        }
+        guard let executor, capabilities.maxConcurrency > 0, !unconfirmedResult, !capacityBackoff.isWaiting else { return }
+        if let nativeRuntime, !(await nativeRuntime.allowsClaims()) { return }
+        guard connectionIsCurrent() else { return }
 
-        while !isPaused && !shutdown.armed && jobTasks.count < capabilities.maxConcurrency {
+        while connectionIsCurrent() && !isPaused && !shutdown.armed && !unconfirmedResult && !capacityBackoff.isWaiting && jobTasks.count < capabilities.maxConcurrency {
             let assignment: Assignment?
             do {
                 assignment = try await client.claim(
                     serverAddress: pairing.serverAddress, credential: pairing.credential)
+            } catch SidecarError.unconfirmedClaim {
+                guard connectionIsCurrent() else { return }
+                unconfirmedClaim = true
+                unconfirmedResult = true
+                status = Self.describe(.unconfirmedClaim)
+                return
             } catch {
                 // A failed claim is not a failed check-in. The next beat asks again; a credential
                 // problem surfaces through the heartbeat, which is the path that handles it.
                 return
             }
-            guard let assignment, jobTasks[assignment.jobId] == nil else { return }
-            if isPaused || shutdown.armed {
+            guard let assignment else { return }
+            let accountingBlocked: Bool
+            if connectionIsCurrent(), let nativeRuntime { accountingBlocked = !(await nativeRuntime.allowsClaims()) }
+            else { accountingBlocked = false }
+            let interrupted = !connectionIsCurrent()
+            if interrupted || isPaused || shutdown.armed || unconfirmedResult || capacityBackoff.isWaiting || accountingBlocked {
+                let client = self.client
                 do {
-                    try await client.release(serverAddress: pairing.serverAddress,
-                                             credential: pairing.credential, leaseId: assignment.leaseId)
+                    // A late response can arrive after the heartbeat was cancelled and all jobs
+                    // drained. Its lease still needs an acknowledgement independent of that task.
+                    try await Task.detached {
+                        if interrupted {
+                            try await client.releaseForInterruption(serverAddress: pairing.serverAddress,
+                                credential: pairing.credential, leaseId: assignment.leaseId)
+                        } else {
+                            try await client.release(serverAddress: pairing.serverAddress,
+                                credential: pairing.credential, leaseId: assignment.leaseId, capacityUnavailable: accountingBlocked)
+                        }
+                    }.value
                 } catch {
-                    // The claim may have returned after shutdown was armed. A failed hand-back
+                    guard connectionGeneration == generation, self.pairing == pairing else { return }
+                    // The claim may return after draining or an unconfirmed result. A failed hand-back
                     // leaves a possibly held lease, so the countdown must stay blocked.
                     let reason = "Job \(assignment.jobId): hand-back was not acknowledged: \(error.localizedDescription)"
                     unconfirmedResult = true
@@ -543,11 +700,13 @@ public final class SidecarSession: ObservableObject {
                 return
             }
 
+            guard jobTasks[assignment.jobId] == nil else { return }
             let jobId = assignment.jobId
-            activeJobs[jobId] = .fetchingSource(received: 0, total: assignment.sourceBytes)
+            activeJobs[jobId] = assignment.nativeQuality == nil ? .fetchingSource(received: 0, total: assignment.sourceBytes) : .stageOnly(.measuring)
             jobTitles[jobId] = assignment.title
             jobEncoders[jobId] = assignment.encoder
             if assignment.isAudio { audioJobs.insert(jobId) }
+            if assignment.isImage { imageJobs.insert(jobId) }
             refreshWorkingStatus()
             beginActivity()
             // The task holds the session for the job's duration, which is intended: a job is
@@ -567,6 +726,9 @@ public final class SidecarSession: ObservableObject {
                 }
                 self.finish(outcome, jobId: jobId, workerId: workerId)
             }
+            // Native execution is single-flight. Refresh its grants on the next heartbeat
+            // before another offer can acquire an unnecessary capacity cooldown.
+            if assignment.nativeQuality != nil { return }
         }
     }
 
@@ -697,6 +859,7 @@ public final class SidecarSession: ObservableObject {
     private func finish(_ outcome: JobOutcome, jobId: Int, workerId: Int) {
         lastOutcome = outcome
         if case .unconfirmed = outcome { unconfirmedResult = true }
+        if case .capacityBlocked = outcome { capacityBackoff.block() }
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
         jobStorage[jobId] = nil
@@ -704,6 +867,7 @@ public final class SidecarSession: ObservableObject {
         jobTitles[jobId] = nil
         jobEncoders[jobId] = nil
         audioJobs.remove(jobId)
+        imageJobs.remove(jobId)
         transferRates[jobId] = nil
         rateMeters[jobId] = nil
         filmStrips[jobId] = nil
@@ -730,6 +894,8 @@ public final class SidecarSession: ObservableObject {
             return .revoked
         case let .remoteWorkersDisabled(reason):
             return .disabledOnServer(reason: reason)
+        case .unconfirmedClaim:
+            return .unreachable(reason: "A claimed job could not be read or safely handed back. Check the server before shutting down.")
         case let .unexpectedResponse(status):
             return .pairingFailed(reason: "The server replied unexpectedly (HTTP \(status)).")
         case let .unreachable(description):
@@ -791,18 +957,21 @@ public extension SidecarSession {
         transferRates: [Int: Double] = [:],
         filmStrips: [Int: FilmStrip] = [:],
         audioJobs: Set<Int> = [],
+        imageJobs: Set<Int> = [],
         gpu: GpuUsage? = nil,
         cpu: Double? = nil,
         freeScratchBytes: Int64? = nil,
         lastOutcome: JobOutcome? = nil,
         shutdown: ShutdownCountdown = ShutdownCountdown(),
-        availableUpdate: SidecarUpdate? = nil
+        availableUpdate: SidecarUpdate? = nil,
+        workReadinessNotice: String? = nil
     ) -> SidecarSession {
         let session = SidecarSession(prober: nil, executor: nil,
             jobConcurrency: min(max(activeJobs.count, 1), concurrencyRange.upperBound),
             persistConcurrency: { _ in })
         session.isPosed = true
         session.status = status
+        session.workReadinessNotice = workReadinessNotice
         // A pose of a connected machine is a paired one, so its controls draw as they would.
         switch status {
         case .connected, .working, .unreachable, .disabledOnServer:
@@ -817,6 +986,7 @@ public extension SidecarSession {
         session.transferRates = transferRates
         session.filmStrips = filmStrips
         session.audioJobs = audioJobs
+        session.imageJobs = imageJobs
         session.gpu = gpu
         session.cpu = cpu
         session.freeScratchBytes = freeScratchBytes

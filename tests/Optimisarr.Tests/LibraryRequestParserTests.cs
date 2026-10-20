@@ -5,6 +5,35 @@ namespace Optimisarr.Tests;
 
 public sealed class LibraryRequestParserTests
 {
+    [Fact]
+    public void Audio_quality_search_requires_an_enabled_explicit_target()
+    {
+        var request = Request() with { MediaType = "Music", AdaptiveAudioQuality = true };
+        Assert.False(LibraryRequestParser.TryParse(request, out _, out _));
+        Assert.True(LibraryRequestParser.TryParse(request with { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.02 }, out var parsed, out _));
+        Assert.True(parsed.AdaptiveAudioQuality);
+        Assert.False(LibraryRequestParser.TryParse(request with { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.02, DownmixToStereo = true }, out _, out _));
+    }
+
+    [Fact]
+    public void Image_quality_search_requires_an_enabled_explicit_target_and_no_resize()
+    {
+        var request = Request() with { MediaType = "Photo", AdaptiveImageQuality = true };
+        Assert.False(LibraryRequestParser.TryParse(request, out _, out _));
+        request = request with { ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 85 };
+        Assert.True(LibraryRequestParser.TryParse(request, out var parsed, out _));
+        Assert.True(parsed.AdaptiveImageQuality);
+        Assert.False(LibraryRequestParser.TryParse(request with { ImageDownscaleMode = "Percent", ImageDownscaleValue = 50 }, out _, out _));
+    }
+
+    [Fact]
+    public void Existing_requests_keep_fixed_audio_and_image_encoding()
+    {
+        Assert.True(LibraryRequestParser.TryParse(Request(), out var parsed, out _));
+        Assert.False(parsed.AdaptiveAudioQuality);
+        Assert.False(parsed.AdaptiveImageQuality);
+    }
+
     // A baseline valid request; the path must exist because the parser verifies it.
     private static SaveLibraryRequest Request(
         string? keepAudioLanguages = null,

@@ -136,6 +136,10 @@ public sealed class Job
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
 
+    public int? AdaptiveAudioBitrateKbps { get; set; }
+    public int? AdaptiveImageQuality { get; set; }
+    public string? PerceptualSearchJson { get; set; }
+
     /// <summary>
     /// The operator approved a full encode despite a sample-based size warning. The final size
     /// and quality gates still apply; this only prevents the advisory preflight from holding the

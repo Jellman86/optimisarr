@@ -152,8 +152,9 @@ public sealed class NonFatalEventLogTests
         {
             EventLog.CreateEventSource(source, "Application");
             var notices = new List<EventLogWriteState>();
-            using var provider = new NonFatalEventLogProvider(new NativeEventLogProvider(new EventLogSettings
-            { SourceName = source, LogName = "Application" }), notices.Add, TimeProvider.System);
+            var recorded = new RecordedNativeSink(new NativeEventLogProvider(new EventLogSettings
+            { SourceName = source, LogName = "Application" }));
+            using var provider = new NonFatalEventLogProvider(recorded, notices.Add, TimeProvider.System);
             var registration = provider.CreateLogger("registration");
             // Windows refreshes its registered sources asynchronously. Prove a real
             // write before concurrent entry assertions; an initial refusal must recover
@@ -195,7 +196,11 @@ public sealed class NonFatalEventLogTests
             }
             else
             {
-                Assert.Equal(new EventLogWriteState(false, 5), Assert.Single(notices.Skip(noticesBefore)));
+                var added = notices.Skip(noticesBefore).ToArray();
+                Assert.True(added.Length == 1 && added[0] == new EventLogWriteState(false, 5),
+                    "Concurrent native writes changed sink availability unexpectedly: " + string.Join(", ", added)
+                    + " Published synthetic IDs: " + string.Join(",", written.Order())
+                    + " Native write failures: " + string.Join("\n", recorded.Failures));
                 var recovery = Stopwatch.StartNew();
                 while (recovery.Elapsed < TimeSpan.FromSeconds(40)
                     && !notices.Skip(noticesBefore).Any(notice => notice.Available))
@@ -282,6 +287,37 @@ public sealed class NonFatalEventLogTests
     private sealed class ThrowingScope
     {
         public override string ToString() => throw new IOException("Scope bug");
+    }
+
+    // Only this disposable synthetic source uses exception detail. Production notices retain
+    // safe fields only; recording must not replay dropped IDs or change throttling/readiness.
+    [SupportedOSPlatform("windows")]
+    private sealed class RecordedNativeSink(NativeEventLogProvider native) : ILoggerProvider
+    {
+        private readonly Stopwatch _elapsed = Stopwatch.StartNew();
+        public List<string> Failures { get; } = [];
+        public ILogger CreateLogger(string category) => new RecordedLogger(this, native.CreateLogger(category));
+        public void Dispose() => native.Dispose();
+
+        private sealed class RecordedLogger(RecordedNativeSink owner, ILogger logger) : ILogger, IPreparedEventLogLogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => logger.BeginScope(state);
+            public bool IsEnabled(LogLevel level) => logger.IsEnabled(level);
+            public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter) => PrepareWrite(level, id, formatter(state, exception), exception)();
+            public Action PrepareWrite(LogLevel level, EventId id, string message, Exception? exception)
+            {
+                var write = ((IPreparedEventLogLogger)logger).PrepareWrite(level, id, message, exception);
+                return () => {
+                    try { write(); }
+                    catch (Exception error)
+                    {
+                        owner.Failures.Add($"Synthetic ID {id.Id}, elapsed {owner._elapsed.Elapsed}, thread {Environment.CurrentManagedThreadId}: {error}");
+                        throw;
+                    }
+                };
+            }
+        }
     }
 
     private sealed class ThrowingException : Exception

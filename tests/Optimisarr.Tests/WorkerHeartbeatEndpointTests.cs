@@ -2,6 +2,12 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
+using Optimisarr.Data;
+using Optimisarr.Api.Workers;
 
 namespace Optimisarr.Tests;
 
@@ -66,6 +72,69 @@ public sealed class WorkerHeartbeatEndpointTests
         freeScratchBytes = scratch,
         maxConcurrency = concurrency,
     };
+
+    [Fact]
+    public async Task Native_perceptual_proof_is_persisted_refreshed_and_cleared_when_omitted()
+    {
+        await EnableRemoteWorkers();
+        var pin = await (await Admin().PostAsync("/api/workers/pairing-code", null)).Content.ReadFromJsonAsync<JsonElement>();
+        var proof = new WorkerPerceptualCapabilities(["libwebp", "mjpeg"], true,
+            AudioQualityResultParser.Revision, ImagePerceptualResultParser.Revision);
+        using var paired = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", new
+        {
+            code = pin.GetProperty("code").GetString(), name = "Native quality proof", operatingSystem = "linux", architecture = "x64",
+            protocolMinimum = 1, protocolMaximum = WorkerProtocol.Current, videoEncoders = new[] { "libx265" },
+            audioEncoders = new[] { "aac" }, vmaf = "Cpu", freeScratchBytes = 1024, maxConcurrency = 1, perceptual = proof
+        });
+        paired.EnsureSuccessStatusCode();
+        var pair = await paired.Content.ReadFromJsonAsync<JsonElement>();
+        var id = pair.GetProperty("workerId").GetInt32();
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pair.GetProperty("credential").GetString());
+        async Task<WorkerPerceptualCapabilities?> Read()
+        {
+            await using var scope = _api.Services.CreateAsyncScope();
+            return (await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Workers.SingleAsync(w => w.Id == id)).ToCapabilities().Perceptual;
+        }
+        Assert.Equal(ImagePerceptualResultParser.Revision, (await Read())!.ImageMetricRevision);
+        var changed = proof with { ImageEncoders = [], ImageMetadataSupported = false, ImageMetricRevision = null };
+        using var updated = await client.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 1024, maxConcurrency = 1, protocolMinimum = 1, protocolMaximum = WorkerProtocol.Current, perceptual = changed
+        });
+        updated.EnsureSuccessStatusCode();
+        Assert.Empty((await Read())!.ImageEncoders!);
+        Assert.Null((await Read())!.ImageMetricRevision);
+        using var omitted = await client.PostAsJsonAsync("/api/workers/heartbeat", Beat());
+        omitted.EnsureSuccessStatusCode();
+        Assert.Null(await Read());
+    }
+
+    [Fact]
+    public async Task Invalid_native_capabilities_cannot_mutate_scheduling_capabilities()
+    {
+        await EnableRemoteWorkers();
+        var pin = await (await Admin().PostAsync("/api/workers/pairing-code", null)).Content.ReadFromJsonAsync<JsonElement>();
+        var pair = await (await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", PairBody(pin.GetProperty("code").GetString()!, "Invalid proof")))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var id = pair.GetProperty("workerId").GetInt32();
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pair.GetProperty("credential").GetString());
+        await using var scope = _api.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var before = await db.Workers.AsNoTracking().SingleAsync(w => w.Id == id);
+        foreach (var proof in new[] { new WorkerPerceptualCapabilities(["../ffmpeg"]), new WorkerPerceptualCapabilities(AudioMetricRevision: "unknown"),
+            new WorkerPerceptualCapabilities(Enumerable.Repeat(new string('a', 64), 64).ToArray()) })
+        {
+            using var response = await client.PostAsJsonAsync("/api/workers/heartbeat", new
+            { freeScratchBytes = 9000, maxConcurrency = 3, protocolMinimum = 1, protocolMaximum = WorkerProtocol.Current, perceptual = proof });
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+        var after = await db.Workers.AsNoTracking().SingleAsync(w => w.Id == id);
+        Assert.Equal(before.PerceptualCapabilitiesJson, after.PerceptualCapabilitiesJson);
+        Assert.Equal(before.FreeScratchBytes, after.FreeScratchBytes);
+        Assert.Equal(before.ProtocolVersion, after.ProtocolVersion);
+    }
 
     [Fact]
     public async Task A_paired_worker_can_check_in_until_it_is_revoked()

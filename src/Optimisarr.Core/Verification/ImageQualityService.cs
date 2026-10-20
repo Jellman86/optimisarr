@@ -22,6 +22,20 @@ public sealed class ImageQualityService(string? ffmpegCommand = null)
 {
     private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
 
+    public Task<ImageQualityResult> MeasureSampleAsync(string source, string candidate,
+        ImageQualityMeasurementContext context, CancellationToken token) =>
+        MeasureSampleAsync(source, candidate, context, token, TimeSpan.FromSeconds(90));
+
+    internal async Task<ImageQualityResult> MeasureSampleAsync(string source, string candidate,
+        ImageQualityMeasurementContext context, CancellationToken token, TimeSpan timeout)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(timeout);
+        try { return await MeasureAsync(source, candidate, context, deadline.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { return ImageQualityResult.Failed("Sample SSIM assessment timed out."); }
+    }
+
     public async Task<ImageQualityResult> MeasureAsync(
         string referencePath,
         string distortedPath,
@@ -78,6 +92,9 @@ public sealed class ImageQualityService(string? ffmpegCommand = null)
                 catch (OperationCanceledException)
                 {
                     KillQuietly(process);
+                    await process.WaitForExitAsync(CancellationToken.None);
+                    try { await Task.WhenAll(stdoutTask, stderrTask); }
+                    catch (OperationCanceledException) { }
                     throw;
                 }
 

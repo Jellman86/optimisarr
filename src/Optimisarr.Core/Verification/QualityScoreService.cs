@@ -216,13 +216,15 @@ public sealed class QualityScoreService(
 
             try
             {
-                await process.WaitForExitAsync(stalled.Token);
-                await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(stalled.Token);
-                stderr = await stderrTask;
+                // Pipe reads, watchdog handling and reaping must keep running when the
+                // caller's synchronization context is busy. Buffered progress is not a stall.
+                await process.WaitForExitAsync(stalled.Token).ConfigureAwait(false);
+                await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(stalled.Token).ConfigureAwait(false);
+                stderr = await stderrTask.ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                var reaped = await StopMeasurementAsync(process, readers, stdoutTask, stderrTask);
+                var reaped = await StopMeasurementAsync(process, readers, stdoutTask, stderrTask).ConfigureAwait(false);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -236,7 +238,7 @@ public sealed class QualityScoreService(
             }
             catch
             {
-                await StopMeasurementAsync(process, readers, stdoutTask, stderrTask);
+                await StopMeasurementAsync(process, readers, stdoutTask, stderrTask).ConfigureAwait(false);
                 throw;
             }
 
@@ -434,7 +436,7 @@ public sealed class QualityScoreService(
         var lastElapsed = 0.0;
 
         string? line;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
+        while ((line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)) is not null)
         {
             var decoding = decodeProgress.Observe(line);
             if (decoding != DecodeProgressReading.Unrelated)
@@ -483,9 +485,9 @@ public sealed class QualityScoreService(
         var reaped = false;
         try
         {
-            await process.WaitForExitAsync(cleanup.Token);
+            await process.WaitForExitAsync(cleanup.Token).ConfigureAwait(false);
             reaped = true;
-            await Task.WhenAll(drains).WaitAsync(cleanup.Token);
+            await Task.WhenAll(drains).WaitAsync(cleanup.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { }
         catch (IOException) { }
@@ -493,8 +495,8 @@ public sealed class QualityScoreService(
         {
             // Readers outlive the watchdog so killed children can close both pipes normally.
             // Cancel a remaining read only after the bounded reap/drain attempt.
-            await readers.CancelAsync();
-            try { await Task.WhenAll(drains); }
+            await readers.CancelAsync().ConfigureAwait(false);
+            try { await Task.WhenAll(drains).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
             catch (IOException) { }
         }

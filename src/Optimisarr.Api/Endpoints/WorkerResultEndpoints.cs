@@ -319,6 +319,25 @@ internal static partial class WorkerResultEndpoints
             return new ResolvedLease(ApiErrors.Conflict("worker.result.attemptEnded",
                 "This lease belongs to an earlier execution attempt."), null, null, null);
 
+        if (lease.PerceptualSearchStateJson is { } perceptualJson)
+        {
+            try
+            {
+                var search = JsonSerializer.Deserialize<RemotePerceptualSearchState>(perceptualJson, PerceptualWorkerWork.Json);
+                if (search?.Encoding is null || !search.CanEncode
+                    || !string.Equals(search.SourceSha256, job.SourceSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Unsettled or unbound search.");
+                // Validate the frozen command and final verification intent too. A corrupt
+                // encoding snapshot cannot borrow an otherwise complete search's permission.
+                _ = PerceptualWorkerWork.Complete(lease.VerificationWorkJson, search, PerceptualWorkerWork.Summary(search));
+            }
+            catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException)
+            {
+                return new ResolvedLease(ApiErrors.Conflict("worker.perceptual.notSettled",
+                    "The assigned perceptual search and frozen encode must settle before verification or candidate delivery."), null, null, null);
+            }
+        }
+
         return new ResolvedLease(null, worker, lease, job);
     }
 

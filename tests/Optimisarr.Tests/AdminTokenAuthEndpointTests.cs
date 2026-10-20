@@ -144,7 +144,14 @@ public sealed class AdminTokenAuthEndpointTests
             Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/api/libraries/{libraryId}/duplicates?libraryIds={libraryId}&libraryIds={libraryId}", null)).StatusCode);
             var response = await client.PostAsync($"/api/libraries/{libraryId}/duplicates", null); Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
             ExactDuplicateStatus? status = null;
-            for (var i = 0; i < 100; i++) { status = await client.GetFromJsonAsync<ExactDuplicateStatus>($"/api/libraries/{libraryId}/duplicates"); if (status?.Status == "Completed") break; await Task.Delay(20); }
+            // This checks endpoint policy and inventory scope, not a scan-completion SLO.
+            using var completion = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            while (true)
+            {
+                status = await client.GetFromJsonAsync<ExactDuplicateStatus>($"/api/libraries/{libraryId}/duplicates", completion.Token);
+                if (status?.Status is not ("Queued" or "Running")) break;
+                await Task.Delay(50, completion.Token);
+            }
             Assert.Equal("Completed", status!.Status);
             Assert.Equal(2, status.Result!.Checked); Assert.Equal(2, Assert.Single(status.Result.Groups).Copies.Count);
             var group = Assert.Single(status.Result.Groups);

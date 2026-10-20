@@ -327,6 +327,8 @@
       || Number(form.minimumImageSsim) > 1) {
       return i18n.m.settings.validation_ssim
     }
+    if (showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled && form.imageDownscaleMode !== 'None') return i18n.m.quality_first.image_no_resize
+    if (showAudioOptions && form.adaptiveAudioQuality && form.audioQualityGateEnabled && form.downmixToStereo) return i18n.m.quality_first.audio_no_downmix
     if (showVideoOptions && form.soundtrackQualityGateEnabled
       && (form.maximumSoundtrackQualityDistance == null || !Number.isFinite(Number(form.maximumSoundtrackQualityDistance))
         || Number(form.maximumSoundtrackQualityDistance) < 0 || Number(form.maximumSoundtrackQualityDistance) > 1)) {
@@ -1096,6 +1098,8 @@
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
+      adaptiveAudioQuality: library.adaptiveAudioQuality ?? false,
+      adaptiveImageQuality: library.adaptiveImageQuality ?? false,
       imagePerceptualReportingEnabled: library.imagePerceptualReportingEnabled ?? false,
       imagePerceptualGateEnabled: library.imagePerceptualGateEnabled ?? false,
       minimumImagePerceptualScore: library.minimumImagePerceptualScore ?? null,
@@ -1192,6 +1196,8 @@
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
+      adaptiveAudioQuality: showAudioOptions && form.adaptiveAudioQuality && form.audioQualityGateEnabled,
+      adaptiveImageQuality: showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled,
       imagePerceptualReportingEnabled: showImageOptions && form.imagePerceptualReportingEnabled,
       imagePerceptualGateEnabled: showImageOptions && form.imagePerceptualGateEnabled,
       minimumImagePerceptualScore: toNullableNumber(form.minimumImagePerceptualScore ?? null),
@@ -1879,6 +1885,11 @@
                 <Toggle bind:checked={form.audioQualityGateEnabled}
                   label={i18n.m.audio_quality.gate_label} hint={i18n.m.audio_quality.gate_hint} />
                 {#if form.audioQualityGateEnabled}
+                  <div class="mt-4">
+                    <Toggle bind:checked={form.adaptiveAudioQuality}
+                      label={i18n.m.audio_quality.adaptive_label} hint={i18n.m.audio_quality.adaptive_hint} />
+                    <p class="mt-2 text-xs text-ink-3">{i18n.m.quality_first.local_hint}</p>
+                  </div>
                   {#if room === 'verify/advanced'}
                   <div class="mt-4 min-w-0" data-audio-quality-limit>
                     <label class="label" for="lib-audio-quality-slider">{i18n.m.audio_quality.maximum}
@@ -2055,6 +2066,13 @@
             <div class="mt-4">
               <Toggle bind:checked={form.imagePerceptualGateEnabled}
                 label={i18n.m.image_quality.gate_label} hint={i18n.m.image_quality.gate_hint} />
+              {#if form.imagePerceptualGateEnabled}
+                <div class="mt-4">
+                  <Toggle bind:checked={form.adaptiveImageQuality}
+                    label={i18n.m.image_quality.adaptive_label} hint={i18n.m.image_quality.adaptive_hint} />
+                  <p class="mt-2 text-xs text-ink-3">{i18n.m.quality_first.local_hint}</p>
+                </div>
+              {/if}
             </div>
             {#if form.imagePerceptualGateEnabled}
               <div class="mt-4 max-w-sm">

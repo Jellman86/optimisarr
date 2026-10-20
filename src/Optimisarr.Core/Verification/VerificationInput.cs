@@ -128,4 +128,6 @@ public sealed record VerificationInput(
     string? ExpectedAudioCodec = null,
     bool RequireVideoFrameRetention = false,
     int? OriginalDecodedFrameCount = null,
-    int? OutputDecodedFrameCount = null);
+    int? OutputDecodedFrameCount = null,
+    bool OriginalTruePeakIsSilent = false,
+    bool OutputTruePeakIsSilent = false);
