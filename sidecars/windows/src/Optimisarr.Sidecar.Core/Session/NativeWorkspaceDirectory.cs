@@ -20,7 +20,23 @@ internal sealed class NativeWorkspaceDirectory : IDisposable
     private static bool Windows => OperatingSystem.IsWindows();
     private static bool Darwin => OperatingSystem.IsMacOS();
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private static int DirectoryFlags => (Darwin ? 0x100000 : 0x10000) | (Darwin ? 0x100 : 0x20000) | (Darwin ? 0x1000000 : 0x80000);
+    private static int DirectoryFlags => Darwin ? 0x100000 | 0x100 | 0x1000000
+        : LinuxDirectoryOpenFlags(RuntimeInformation.ProcessArchitecture);
+
+    internal static int LinuxDirectoryOpenFlags(Architecture architecture)
+    {
+        var flags = LinuxNativeOpenFlags.For(architecture);
+        return flags.Directory | flags.NoFollow | 0x80000;
+    }
+
+    internal static int LinuxFileOpenFlags(Architecture architecture, FileMode mode, bool locked, bool inherit)
+    {
+        var flags = (mode == FileMode.Open && !locked ? 0 : 2) | LinuxNativeOpenFlags.For(architecture).NoFollow
+            | (inherit ? 0 : 0x80000) | 0x800;
+        if (mode is FileMode.CreateNew or FileMode.OpenOrCreate) flags |= 0x40;
+        if (mode == FileMode.CreateNew) flags |= 0x80;
+        return flags;
+    }
 
     private NativeWorkspaceDirectory(string path, SafeFileHandle handle, List<SafeFileHandle>? ancestors = null)
     {
@@ -105,10 +121,11 @@ internal sealed class NativeWorkspaceDirectory : IDisposable
         }
         else
         {
-            var flags = (mode == FileMode.Open && !locked ? 0 : 2) | (Darwin ? 0x100 : 0x20000)
-                | (inherit ? 0 : Darwin ? 0x1000000 : 0x80000) | (Darwin ? 4 : 0x800);
-            if (mode is FileMode.CreateNew or FileMode.OpenOrCreate) flags |= Darwin ? 0x200 : 0x40;
-            if (mode == FileMode.CreateNew) flags |= Darwin ? 0x800 : 0x80;
+            var flags = Darwin ? (mode == FileMode.Open && !locked ? 0 : 2) | 0x100
+                | (inherit ? 0 : 0x1000000) | 4
+                : LinuxFileOpenFlags(RuntimeInformation.ProcessArchitecture, mode, locked, inherit);
+            if (Darwin && (mode is FileMode.CreateNew or FileMode.OpenOrCreate)) flags |= 0x200;
+            if (Darwin && mode == FileMode.CreateNew) flags |= 0x800;
             handle = UnixHandle(OpenAt(Descriptor, name, flags, 0x180));
         }
         try

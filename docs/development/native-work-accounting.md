@@ -142,7 +142,10 @@ back to fresh empty authority.
 
 The Linux adapter (`LinuxNativeWorkJournalStorage`) implements this with no-follow owner-only
 directories, `statx` identities, an exclusive coordinator lock and file/directory `fsync` at
-every boundary. Its persisted binding key must survive a remount: Btrfs assigns anonymous
+every boundary. Scratch ownership now uses the same architecture-specific directory/no-follow
+mapping; the [20 October follow-up](../engineering/hardware-validation/2026-10-20-linux-scratch-open-flags.md)
+records pure/native checks and the separate ARM64 emulation limit. The journal's persisted
+binding key must survive a remount: Btrfs assigns anonymous
 `st_dev` numbers per mount (observed `0:51 → 0:34 → 0:51` across three guest boots, with the
 journal bytes intact), so on filesystems whose `fstatfs` `f_fsid` is UUID-derived (ordinary
 Btrfs, ext4) the key is `linux:<f_type>:<f_fsid>:<inode>` and a zero `f_fsid` is refused. XFS

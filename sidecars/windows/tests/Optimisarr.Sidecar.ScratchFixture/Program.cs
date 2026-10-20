@@ -58,6 +58,15 @@ public static class Program
             if (!OperatingSystem.IsLinux()) return 2;
             return await RunPowercutStore(args);
         }
+        if (args[0] == "scratch-fifo")
+        {
+            if (!OperatingSystem.IsLinux() || args.Length != 2) return 2;
+            using var root = NativeWorkspaceDirectory.OpenRoot(args[1], create: false);
+            Console.WriteLine("OPENING");
+            await Console.Out.FlushAsync(token);
+            try { using var file = root.OpenFile("pipe"); return 3; }
+            catch (IOException) { return 0; }
+        }
         if (args[0] == "powercut-calibrate")
         {
             if (!OperatingSystem.IsLinux()) return 2;

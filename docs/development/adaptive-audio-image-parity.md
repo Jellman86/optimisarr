@@ -10,6 +10,12 @@ The operator resumed full parity work after the 14 October pause. [Draft PR #415
 remains unmerged and undeployed. Protocol 10 remains advertised; automatic protocol-11 placement
 stays disabled. No quality target has been calibrated as a universal default.
 
+The 20 October [Linux scratch-open follow-up](../engineering/hardware-validation/2026-10-20-linux-scratch-open-flags.md)
+extends the verified ABI mapping from journal storage to scratch directory/file opens. Pure
+contracts and native Quark tests pass, and an ARM64 syscall probe demonstrates the corrected
+no-follow behavior under emulation. Physical Linux ARM64 execution remains unqualified;
+the Mac and Picard timed out on that day's fresh SSH check.
+
 The Mac package now contains the self-contained shared helper, exact runtime notices and pinned
 ExifTool source/modules using system Perl. Every nested native library is signed before the app;
 Developer ID builds grant JIT only to the managed helper. Development ad-hoc builds retain their

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use the verified Linux ARM64 directory and no-follow flags for native scratch ownership, matching the journal's architecture-aware checks. Scratch directory walks and file opens no longer substitute x86-64 flags on ARM64; unverified Linux architectures refuse those opens. Exclusive creation, inherited writer guards and nonblocking special-file refusal retain their existing behavior. ARM64 syscall behavior is checked under emulation; a physical Linux ARM64 worker remains unqualified.
+
 - Keep VMAF progress reads and decoder cleanup independent of a busy caller's async context. Advancing decodes no longer report a false idle timeout for that scheduling condition, and genuinely stalled decoders can still be stopped promptly. Watchdog deadlines and required quality evidence are unchanged.
 
 - Add 49 native Windows journal process-death regressions covering partial provisioning, both checkpoint writes and interrupted recovery of authorized old/new snapshots. Picard executes the actual killed-process matrix; power-loss durability and standalone wiring remain unqualified, and protocol 11 stays disabled.

@@ -52,7 +52,11 @@ power-cut qualification and package qualification remain open and protocol 11 st
 Picard (Windows/NVIDIA) and Scott's Mac are reachable again at the later 2026-10-19 check.
 Picard passes the [49-case Windows journal process-death matrix](engineering/hardware-validation/2026-10-19-windows-journal-process-death.md);
 physical power-loss and exact-package qualification remain open. Dedupe file actions
-remain deferred behind #332; merged D3 work to date is safety fencing only and enables no
+remain deferred behind #332. The 20 October
+[Linux scratch-open follow-up](engineering/hardware-validation/2026-10-20-linux-scratch-open-flags.md)
+corrects ARM64 directory/no-follow flags with pure/native Quark tests and a separate ARM64
+syscall-emulation probe; physical Linux ARM64 execution remains unqualified. Mac and Picard
+both timed out on the fresh 20 October SSH check. Merged D3 work to date is safety fencing only and enables no
 cleanup action. The 50 fps VMAF report
 ([#406](https://github.com/Jellman86/optimisarr/issues/406)) closed on 2026-10-19 after the
 reporter confirmed both fixes on the exact episode; it ships in the next stable release.
