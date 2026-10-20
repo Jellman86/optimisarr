@@ -14,7 +14,10 @@ The 20 October [Linux scratch-open follow-up](../engineering/hardware-validation
 extends the verified ABI mapping from journal storage to scratch directory/file opens. Pure
 contracts and native Quark tests pass, and an ARM64 syscall probe demonstrates the corrected
 no-follow behavior under emulation. Physical Linux ARM64 execution remains unqualified;
-the Mac and Picard timed out on that day's fresh SSH check.
+both hosts were reachable again at the later 20 October check. Fresh exact-source shared
+suites pass 765 tests on Mac (49 platform skips) and 882 on Picard (26 Linux-only skips),
+with the Mac backend also passing 3,575 tests. These source tests supersede the earlier
+availability blocker without qualifying installed packages or a Linux ARM64 host.
 
 The Mac package now contains the self-contained shared helper, exact runtime notices and pinned
 ExifTool source/modules using system Perl. Every nested native library is signed before the app;

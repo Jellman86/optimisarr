@@ -59,11 +59,30 @@ platform skips), and **31 Linux-sidecar tests**. Solution and Linux-sidecar buil
 warnings; documentation, release metadata and OpenAPI checks pass.
 All **347 browser tests** pass with one worker.
 
-## Limits and host availability
+## Fresh native Mac and Windows follow-up
 
-The Mac and Picard both timed out on the 20 October SSH check; Picard also reported offline
-through Tailscale. Their successful 19 October results remain dated evidence, not fresh
-qualification of this source. CI supplies its own platform build/test evidence separately.
+Both hosts were reachable again at the later **10:00 UTC, 20 October** check. Their installed
+protocol-10 sidecars had fresh server check-ins and were idle. This supersedes the earlier
+SSH timeouts and Picard's earlier offline report.
+
+Isolated native checkouts verify exact source `dacbd438afc04f37ef90affa4c0e655d3ad30969`:
+both hosts use .NET SDK 10.0.402, and the Mac's runtime is native `osx-arm64`.
+
+- Mac: **3,575 backend tests** and **765 shared-worker tests**, with 49 platform skips.
+  Both the solution and shared-worker builds have zero warnings.
+- Picard: **882 shared-worker tests**, with 26 Linux-only skips and a zero-warning build.
+  This includes the Windows journal's 49 forced-process-death cases and the new pure ABI
+  contracts. The test process uses a new owned TEMP/TMP folder, preserving the host's ACLs.
+
+Both hosts verify the Git source archive's SHA-256 as
+`9cb05dd90a19a369a4e613e3c6b7c2312ad24c7200a8dc1c6ae2d53782f0ef41`.
+Archives, native build/test logs and Windows TRX evidence remain outside Git. The installed
+sidecars and their pairing were not changed. CI evidence remains separate from these runs.
+
+## Remaining qualification
+
+The Mac runs Darwin, so these tests do not replace physical Linux ARM64 qualification.
+These are source/API/process tests, not installed-package lifecycle or new GPU media trials.
 No automatic protocol-11 placement or standalone durable journal wiring is enabled by this
 fix. Physical power-loss, package lifecycle and broader audio/image parity remain open in
 the [completion matrix](../../development/adaptive-audio-image-parity.md).
