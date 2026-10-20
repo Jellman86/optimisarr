@@ -4,7 +4,7 @@ Operator priority: **13 October 2026**. Finish quality-first workflows for audio
 images before continuing perceptual dedupe or activating exact-copy file actions.
 Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
-## Active checkpoint, 16 October 2026
+## Active checkpoint, 20 October 2026
 
 The operator resumed full parity work after the 14 October pause. [Draft PR #415](https://github.com/Jellman86/optimisarr/pull/415)
 remains unmerged and undeployed. Protocol 10 remains advertised; automatic protocol-11 placement
@@ -22,12 +22,12 @@ availability blocker without qualifying installed packages or a Linux ARM64 host
 The later 20 October [native image workflow trials](../engineering/hardware-validation/2026-10-20-native-image-workflows.md)
 pass JPEG and WebP on Picard through the production shared runner with live memory,
 committed-response replay, strict final verification, idempotent replacement and exact
-rollback. The temporary fixture service is removed afterward. The current Swift runner
-and helper now pass Developer ID signing, accounting startup and pairing when launched
-from the Mac's unlocked desktop session; SSH observes a different Keychain state.
-The image claim is safely held with only 2.57 GB of live available memory, below its
-3.5 GiB reservation. Positive live Mac image acceptance remains open. These trials
-do not qualify installed package lifecycle.
+rollback. The temporary fixture service is removed afterward. Signed Mac release-library trials
+now pass both JPEG and WebP through the production Swift runtime on disk and actual
+RAM storage, including replay, final verification, repeat replacement and exact
+rollback. Independent ledger checks find no obligations, and both owned RAM volumes
+are retired. The earlier low-memory hold and SSH/desktop Keychain difference remain
+recorded. These trials do not qualify installed package lifecycle.
 
 The Mac package now contains the self-contained shared helper, exact runtime notices and pinned
 ExifTool source/modules using system Perl. Every nested native library is signed before the app;
@@ -56,7 +56,8 @@ cancellation returns the lease without a media refusal or capacity cooldown. Act
 Windows trials survive three parent crashes and then complete the same job with the restored
 worker identity, retained source assessments, independent final verification and exact rollback.
 Fresh Swift pairing and packaged Mac AAC/Opus/MP3/RAM workflows passed on the pre-fix bundle;
-the rebuilt bundle's full crash/image workflows remain constrained by current memory pressure.
+the rebuilt bundle's full crash workflows remain separate. The later 20 October signed
+release-library trials qualify positive image execution on disk and RAM under live memory.
 See the [interruption qualification and exact limits](../engineering/hardware-validation/2026-10-15-native-interruption.md).
 
 Independent Astra review identified Swift pre-run cancellation and helper failure using ordinary
@@ -147,10 +148,10 @@ Check the PR for exact-head CI. Native trial protocol elevation remains fixture-
 Continue with exact-package media lifecycles and broader restart/reconnect qualification.
 Fixed-image worker coverage, adaptive selection for
 every retained re-encoded soundtrack, preview/calibration parity, broader source, reconnect/retry
-and input-format qualification remain required. Positive full-image execution under live Mac
-admission is still unproved: earlier available memory was below the 3.5 GiB budget, and the job
-returned safely before downloading. The current Mac also reports warning memory pressure, which
-correctly prevents a live capacity grant; tool-fixture success does not override admission. The matrix below remains the completion contract. Perceptual
+and input-format qualification remain required. Positive full-image execution under
+live Mac admission now passes for JPEG/WebP on disk and actual RAM storage. Earlier
+low-memory refusals remain valid evidence of conservative admission. Installed package
+lifecycle remains separate. The matrix below remains the completion contract. Perceptual
 dedupe and exact-copy file actions remain behind this work in priority.
 
 ## Completion contract
@@ -178,7 +179,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Area | Current branch | Required before parity is complete |
 | --- | --- | --- |
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests | Positive full-image execution under live Mac admission, packaged Swift advertisement/placement and full job/restart qualification |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests; signed Swift JPEG/WebP jobs pass live admission, verification and rollback on disk and RAM | Packaged Swift advertisement/placement and full job/restart qualification |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims now pass all three codecs under live memory admission | Automatic placement parity, longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |

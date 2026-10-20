@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Record current-source JPEG/WebP workflow acceptance on native Windows with live memory, committed-response replay, final verification, repeat replacement and exact rollback. The Mac desktop session passes signing, accounting startup and pairing; its image claim is safely held below the live memory budget. Installed-package lifecycle and positive Mac image admission remain unqualified.
+- Record current-source JPEG/WebP workflow acceptance on native Windows and the signed Mac runtime with live memory, committed-response replay, final verification, repeat replacement and exact rollback. Mac trials pass on disk and actual RAM storage with retired volumes and empty accounting afterward. Installed-package lifecycle remains unqualified.
 
 - Record fresh native Mac and Picard qualification of the current scratch-ownership source, including the Windows journal process-death matrix. Both hosts are reachable again; physical Linux ARM64 and packaged job lifecycle acceptance remain separate.
 

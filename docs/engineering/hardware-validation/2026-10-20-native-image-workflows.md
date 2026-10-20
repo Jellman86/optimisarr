@@ -66,7 +66,7 @@ even under the disposable service, reproducing the capacity hold. Waiting on the
 process handle instead allows the ordinary native provider to report live memory.
 No product threshold or job-ancestry guard was weakened to admit these trials.
 
-## Mac: desktop-session startup passes; image capacity held
+## Mac: signed JPEG and WebP pass on disk and RAM
 
 The current server and self-contained ARM64 helper build successfully, and the
 release `AcceptanceWorker` links the current production `SidecarCore`. Swift emits
@@ -75,8 +75,7 @@ JPEG/WebP, metric and metadata tools are present.
 
 The initial SSH launch fails Developer ID signing with `errSecInternalComponent`.
 A read-only Keychain status query in that SSH session reports the login keychain
-locked. An ad-hoc development
-signature allows process startup, but production accounting remains blocked during
+locked. An ad-hoc development signature allows process startup, but production accounting remains blocked during
 all three startup attempts, before pairing or media transfer. An independent helper
 recovery request succeeds with no invalid, deferred or busy owners. Live available
 memory is 4,819,982,746 bytes, with no reserved memory; memory is no longer the only
@@ -91,20 +90,55 @@ verification passes for both executable entry points. Production accounting beco
 ready on its first startup attempt, and real capability probing, pairing and
 heartbeat succeed. No password is requested, stored or used by the fixture.
 
-The JPEG trial then advertises only 2,573,441,434 available memory bytes, below the
-3.5 GiB image reservation. The server refuses the claim before source transfer or
-probe reporting. The job remains queued with zero media failures, zero reserved
-memory and clean scratch. This qualifies the capacity hold and desktop-session
-startup, not positive image delivery or installed-package acceptance. The isolated
-fixture remains available for a retry when live memory is sufficient.
+The first desktop JPEG trial advertises only 2,573,441,434 available memory bytes,
+below the 3.5 GiB image reservation. The server refuses the claim before source
+transfer or probe reporting. The job remains queued with zero media failures,
+zero reserved memory and clean scratch. After the operator closes unused apps,
+the live provider reports 5,820,701,082 available bytes and the positive trials resume.
+
+The signed release launcher uses the production Swift capability collection,
+`NativeWorkRuntime`, independent Keychain checkpoint and `NativeQualityJobRunner`
+with the self-contained shared helper's scoped v2 contract. Each trial owns a new
+journal, Keychain service and scratch root. No capacity override is supplied.
+Paired live-memory readings are 5,359,163,802 and 5,334,194,586 bytes for the disk
+runs, and 5,234,153,882 and 5,229,156,762 for the RAM runs.
+
+The Mac's generated 1024×768 PNG is 1,342,945 bytes, with SHA-256
+`ce97093dc6056393ce317d8e213bbc898ebf84afc10aa56b9dd9a9fc1cd9066d`.
+It has the same fixture quality policy as Picard and carries no ICC profile or
+EXIF. Disk and RAM runs produce matching candidate hashes for each codec.
+
+| Output | Storage trials | Selected quality | Output bytes | Final SSIM | Final SSIMULACRA2 |
+| --- | --- | --- | --- | --- | --- |
+| JPEG (`mjpeg`) | Disk and actual RAM | 98 | 130,973 | 0.847330 | 77.7662259972 |
+| WebP (`libwebp`) | Disk and actual RAM | 95 | 209,216 | 0.925160 | 54.1488779499 |
+
+All four searches complete without fallback and deliberately lose one committed
+probe response each. All four jobs deliver sealed uploads, pass all nine final
+worker verification checks accepted by the server, and reach `ReadyToReplace`.
+Each repeats replacement with exactly one record, checks original/quarantine and
+candidate/final hashes, then restores the exact original through rollback.
+
+Both RAM runs report `inMemory=true`; neither uses disk fallback. Completion reports
+zero reserved memory for all four runs. Each persisted ledger's payload checksum
+is independently checked and its obligation list is empty. The owned RAM mount
+paths are absent, `hdiutil info` reports no fixture mounts and no remaining RAM
+images, and worker scratch contains no media or owner records. Strict signature
+verification passes for all 16 native/helper/Swift Mach-O files checked afterward.
+
+These results close the positive full-image trial under live Mac admission on disk
+and RAM. They exercise the signed release library and shared helper through a
+disposable executable; they do not qualify the installed menu-bar app or every
+package lifecycle. Reports, signing logs, generated media and cleanup proof remain
+outside Git.
 
 ## Remaining qualification
 
-These Windows trials prove current shared-runner image workflows with live capacity
-and disk scratch. They do not qualify the installed service's new-feature lifecycle,
-standalone durable-accounting integration, RAM disks, reboot/remount recovery or
-process crashes during these particular image jobs. The Mac's complete image job
-under live admission remains open until sufficient live memory is available.
+These Windows and signed Mac runtime trials prove current image workflows with live
+capacity, final verification and exact rollback. They do not qualify installed
+service/menu-bar lifecycle, standalone durable-accounting integration, Windows RAM
+disks, reboot/remount recovery or process crashes during these particular image
+jobs. The Mac's current release-library trial covers both disk and real RAM storage.
 Automatic protocol-11 placement remains disabled. Wider source coverage, fixed-image
 workers, retained-soundtrack parity and other completion requirements remain in the
 [parity matrix](../../development/adaptive-audio-image-parity.md).

@@ -105,6 +105,10 @@ its empty anchor was removed. Corrected fresh runs pass the complete workflows a
 
 Broaden connected helper-death boundaries and qualify full packaged reconnect/reboot/remount
 behavior. The connected trials above do not prove machine-reboot recovery, every cancellation
-phase or an installed menu-bar app. Positive full-image execution under live Mac admission remains unproved.
+phase or an installed menu-bar app. Positive full-image execution under live Mac admission
+was unproved by these 15 October trials. The later [20 October qualification](2026-10-20-native-image-workflows.md)
+passes signed release-library JPEG/WebP jobs on disk and real RAM, including final verification,
+replacement, exact rollback and empty accounting after retirement. Installed-package lifecycle
+and image-job crash/reboot acceptance remain separate.
 Full-encode process reaping, fixed-image workers, adaptive retained soundtracks and preview/
 calibration/source-history coverage remain in the [parity contract](../../development/adaptive-audio-image-parity.md).
