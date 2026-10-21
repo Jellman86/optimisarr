@@ -872,3 +872,14 @@ search. Complete verification contract version `2` is audio; version `1` remains
 video. Audio evidence includes `sourceAudio` and `candidateAudio` packet spans
 rather than video spans. All required evidence is bound to the frozen contract and
 source/candidate hashes. Missing or contradictory evidence fails closed.
+
+Video previews and video personal quality checks may be claimed by compatible workers. Library
+placement and CPU mode apply to these disposable jobs; they cannot enter replacement. Source size,
+SHA-256, scratch limits and strict verification describe the bounded segment actually transferred,
+including video keyframe pre-roll, rather than the full inventory file. Preview comparisons may
+return `originalUrl` pointing to `/api/preview/{jobId}/reference`; clients should use it when supplied
+with the returned comparison clock. Calibration source and worker-candidate clocks include the same
+scene pre-roll. Closing a comparison ends its jobs and invalidates outstanding leases through the
+existing disposable cleanup lifecycle.
+
+Audio and still-image comparisons keep local execution and need local placement.

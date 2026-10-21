@@ -98,7 +98,7 @@ async function mockPreview(page: Page, preview: unknown = completedPreview) {
     if (path === '/api/preview/41' && route.request().method() === 'DELETE') {
       return route.fulfill({ status: 204 })
     }
-    if (path === '/api/media/7/content' || path === '/api/preview/41/content') {
+    if (path === '/api/media/7/content' || path === '/api/preview/41/content' || path === '/api/preview/41/reference') {
       return route.fulfill({ status: 200, contentType: 'video/mp4', body: '' })
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
@@ -309,4 +309,13 @@ test('previewing another file while minimised replaces the old comparison and di
   await expect(page.getByRole('dialog', { name: /Second Film/ })).toBeVisible()
   await expect(page.locator('video').nth(0)).toHaveAttribute('src', '/api/media/8/content')
   await expect(page.locator('video').nth(1)).toHaveAttribute('src', '/api/preview/42/content')
+})
+
+
+test('a worker preview plays its bounded reference instead of seeking into the full source', async ({ page }) => {
+  await mockPreview(page, { ...completedPreview, originalUrl: '/api/preview/41/reference', clipStartSeconds: 0 })
+  await page.goto('/#/inventory')
+  await page.getByText('Example Film.mkv', { exact: true }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await expect(page.locator('video').first()).toHaveAttribute('src', '/api/preview/41/reference')
 })

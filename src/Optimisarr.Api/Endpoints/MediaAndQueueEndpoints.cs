@@ -243,6 +243,11 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("GetPreviewContent");
 
+        app.MapGet("/api/preview/{jobId:int}/reference", async (
+            int jobId, PreviewService preview, CancellationToken cancellationToken) =>
+            FileServing.ServeFile(await preview.ReferencePathAsync(jobId, cancellationToken)))
+        .WithName("GetPreviewReference");
+
         // The queue feed and the diagnostics list. All query params are optional: status, libraryId, and
         // category (a FailureCategory) narrow the set; since/until (ISO-8601) bound a job's finished/enqueued
         // time; page/pageSize page the result. The body stays a JobDto array (so existing callers are

@@ -34,6 +34,7 @@ public sealed partial class QueueDispatcher(
     IHubContext<JobsHub> hub,
     IHostEnvironment environment,
     VerificationService verification,
+    IWorkerSampleSource workerSamples,
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
     QueuePauseManager pauseManager,
@@ -378,11 +379,10 @@ public sealed partial class QueueDispatcher(
                     job.EnqueuedAt,
                     Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
                     IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
-                    IgnoreLibraryWindow = job.Type == JobType.Preview,
+                    IgnoreLibraryWindow = job.Type != JobType.Normal,
                     QualityChosen = job.AdaptiveVideoQuality != null,
-                    // Only a normal job is ever offered to a worker, so only a normal job can be
-                    // held for one; a calibration or preview is placed exactly as before.
-                    HonoursPlacement = job.Type == JobType.Normal,
+                    HonoursPlacement = true,
+                    Interactive = job.Type != JobType.Normal,
                 })
                 .ToListAsync(stoppingToken))
                 .Where(job => !StartupRecovery.BlocksDispatch(job.Id) && !_nativeCapacityHolds.IsHeld(job.Id, job.ExecutionAttempt))
@@ -398,7 +398,9 @@ public sealed partial class QueueDispatcher(
                         ? placement
                         : WorkPlacement.Anywhere,
                     job.QualityChosen,
-                    job.Kind))
+                    job.Kind,
+                    WorkerRequired: job.Interactive && job.LibraryId is { } requiredId
+                        && placements.GetValueOrDefault(requiredId) == WorkPlacement.WorkerOnly))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -1300,6 +1302,14 @@ public sealed partial class QueueDispatcher(
         }
     }
 
+    internal static VerificationPolicy InteractiveVerificationPolicy(VerificationPolicy policy, bool calibration, MediaKind kind) =>
+        calibration ? policy with
+        {
+            RequireSizeReduction = false, QualityGateEnabled = false, MeasureVmaf = kind == MediaKind.Video,
+            AudioLoudnessGateEnabled = false, AudioClippingGateEnabled = false, AudioQualityGateEnabled = false,
+            SoundtrackQualityGateEnabled = false, ImageQualityGateEnabled = false
+        } : policy with { RequireSizeReduction = false };
+
     internal static bool ShouldSelectAdaptiveQuality(
         VideoQualityStrategy strategy,
         bool hasVideoCodec,
@@ -1356,7 +1366,8 @@ public sealed partial class QueueDispatcher(
         bool AdaptiveImageQuality = false,
         PerceptualSearchSummary? PerceptualSearch = null,
         int PerceptualRetryCount = 0,
-        string? SourcePixelFormat = null)
+        string? SourcePixelFormat = null,
+        PreparedWorkerSample? WorkerSample = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1428,6 +1439,35 @@ public sealed partial class QueueDispatcher(
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
         }
 
+        if (work.IsDisposable && work.Spec.Kind != MediaKind.Video)
+            return RemoteWorkPlan.Refused("Audio and still-image comparisons currently run on this server; choose local placement.");
+
+        if (work.IsDisposable && work.Spec.ClipSeconds is { } seconds)
+        {
+            await using var sampleScope = scopeFactory.CreateAsyncScope();
+            var sampleDb = sampleScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var sampleJob = await sampleDb.Jobs.AsNoTracking().Include(j => j.MediaFile)!.ThenInclude(f => f!.Library)
+                .SingleAsync(j => j.Id == jobId, cancellationToken);
+            PreparedWorkerSample sample;
+            try { sample = await workerSamples.PrepareAsync(sampleJob, seconds, work.Spec.ClipStartSeconds ?? 0, cancellationToken); }
+            catch (Exception error) when (error is InvalidOperationException or IOException)
+            { return RemoteWorkPlan.Refused(error.Message); }
+            var duration = MediaTimelineDuration.Resolve(work.Spec.Kind, sample.Probe.VideoDurationSeconds, sample.Probe.DurationSeconds);
+            var spec = work.Spec with { ClipSeconds = null, ClipStartSeconds = null, InputTimestampOffsetSeconds = 0 };
+            work = work with
+            {
+                Spec = spec,
+                Arguments = FfmpegCommandBuilder.Build(spec, 0, work.VideoEncoder, OptimisedMarkerValue, hardwareDecode: false, hardwareToneMap: false),
+                Original = work.Original with { Path = sample.Path, SizeBytes = sample.Bytes, DurationSeconds = duration,
+                    AudioTrackCount = sample.Probe.AudioTrackCount, SubtitleTrackCount = sample.Probe.SubtitleTrackCount },
+                DurationSeconds = duration, FrameCount = sample.Probe.FrameCount, VideoFrameRate = sample.Probe.VideoFrameRate,
+                UsedHardwareDecode = false, UsedHardwareToneMap = false, WorkerSample = sample,
+                VideoQualityStrategy = VideoQualityStrategy.Fixed
+            };
+        }
+        if (work.IsDisposable)
+            work = work with { VerificationPolicy = InteractiveVerificationPolicy(work.VerificationPolicy, work.IsCalibration, work.Spec.Kind) };
+
         var perceptual = work.Spec.Kind == MediaKind.Audio && work.AdaptiveAudioQuality
             || work.Spec.Kind == MediaKind.Image && work.AdaptiveImageQuality;
         if (perceptual && worker.ProtocolVersion < WorkerProtocol.PerceptualQualityVersion)
@@ -1462,8 +1502,7 @@ public sealed partial class QueueDispatcher(
         }
 
         var strictVerification = perceptual || forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
-        if (strictVerification && work.IsDisposable)
-            return RemoteWorkPlan.Refused("Sidecar-only verification requires a full-file job.");
+
 
         // Video and audio share the transfer lifecycle; remux and image paths stay local.
         if (!(work.Spec.Kind == MediaKind.Image && perceptual) && work.Spec.Kind != MediaKind.Audio && (work.Spec.VideoCodec is null || work.VideoEncoder is null))
@@ -1476,7 +1515,7 @@ public sealed partial class QueueDispatcher(
         // being done here first. The worker measures the candidates this machine chooses, on the
         // encoder that will do the real encode.
         AdaptiveSearchStep? search = null;
-        if (work.Spec.Kind == MediaKind.Video && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
+        if (!work.IsCalibration && work.Spec.Kind == MediaKind.Video && work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
             search = work.VideoQuality is { } baseline
                 ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken, work.Original.VmafModel)
@@ -1506,7 +1545,7 @@ public sealed partial class QueueDispatcher(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var sourceProbe = await scope.ServiceProvider
-                .GetRequiredService<MediaProbeService>()
+                .GetRequiredService<IMediaProbeService>()
                 .ProbeAsync(work.Original.Path, cancellationToken);
             referenceVideoCodec = sourceProbe.VideoCodec;
             referenceContainerLead = ContainerLeadSeconds(sourceProbe);
@@ -1552,7 +1591,7 @@ public sealed partial class QueueDispatcher(
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
             work.VideoQuality?.Mode,
-            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder));
+            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder, work.WorkerSample?.Bytes, work.WorkerSample is null ? null : work.DurationSeconds));
     }
 
     /// <summary>
@@ -1643,7 +1682,7 @@ public sealed partial class QueueDispatcher(
         MediaProbeResult? freshSourceProbe = null;
         if (needsSubtitleProbe || needsLanguageProbe || needsSubtitleLanguageProbe || needsAudioCopyProbe)
         {
-            var probe = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
+            var probe = scope.ServiceProvider.GetRequiredService<IMediaProbeService>();
             freshSourceProbe = await probe.ProbeAsync(media.Path, cancellationToken);
             if (!freshSourceProbe.Success)
             {
@@ -1664,7 +1703,7 @@ public sealed partial class QueueDispatcher(
         if (isPreview && isVideoJob)
         {
             freshSourceProbe ??= await scope.ServiceProvider
-                .GetRequiredService<MediaProbeService>()
+                .GetRequiredService<IMediaProbeService>()
                 .ProbeAsync(media.Path, cancellationToken);
             if (!freshSourceProbe.Success)
             {
@@ -1680,7 +1719,7 @@ public sealed partial class QueueDispatcher(
         if (isVideoJob && rules.MaxFrameRate is not null && rules.TargetVideoCodec is not null)
         {
             freshSourceProbe ??= await scope.ServiceProvider
-                .GetRequiredService<MediaProbeService>()
+                .GetRequiredService<IMediaProbeService>()
                 .ProbeAsync(media.Path, cancellationToken);
             if (!freshSourceProbe.Success)
             {
@@ -2058,7 +2097,7 @@ public sealed partial class QueueDispatcher(
         if (needsHardwareToneMapConfirmation)
         {
             freshSourceProbe ??= await scope.ServiceProvider
-                .GetRequiredService<MediaProbeService>()
+                .GetRequiredService<IMediaProbeService>()
                 .ProbeAsync(media.Path, cancellationToken);
             if (freshSourceProbe.Success)
             {
@@ -3326,11 +3365,11 @@ public sealed partial class QueueDispatcher(
         }, cancellationToken);
         await NotifyAsync();
 
-        await using var sourceGuard = work.IsDisposable ? null : FileContentIdentity.OpenAttemptGuard(work.Original.Path, "The source is unavailable for verification.");
-        await using var outputGuard = work.IsDisposable ? null : FileContentIdentity.OpenAttemptGuard(outputPath, "The candidate is unavailable for verification.");
+        await using var sourceGuard = work.IsDisposable && work.WorkerSample is null ? null : FileContentIdentity.OpenAttemptGuard(work.Original.Path, "The source is unavailable for verification.");
+        await using var outputGuard = work.IsDisposable && work.WorkerSample is null ? null : FileContentIdentity.OpenAttemptGuard(outputPath, "The candidate is unavailable for verification.");
         string? verifiedSource = null;
         string? verifiedOutput = null;
-        if (!work.IsDisposable)
+        if (!work.IsDisposable || work.WorkerSample is not null)
         {
             await using var identityScope = scopeFactory.CreateAsyncScope();
             var identityDb = identityScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -3344,23 +3383,7 @@ public sealed partial class QueueDispatcher(
 
         var settings = await GetQueueSettingsAsync(cancellationToken);
         var policy = work.VerificationPolicy;
-        if (work.IsCalibration)
-        {
-            policy = policy with
-            {
-                RequireSizeReduction = false,
-                QualityGateEnabled = false,
-                // The quality lab reveals VMAF as objective evidence after the user's blind
-                // ratings. It is deliberately measure-only: a score never rejects a sample or
-                // overrides the user's preference.
-                MeasureVmaf = work.Spec.Kind == MediaKind.Video,
-                AudioLoudnessGateEnabled = false,
-                AudioClippingGateEnabled = false,
-                AudioQualityGateEnabled = false,
-                SoundtrackQualityGateEnabled = false,
-                ImageQualityGateEnabled = false
-            };
-        }
+        if (work.IsDisposable) policy = InteractiveVerificationPolicy(policy, work.IsCalibration, work.Spec.Kind);
         var clip = BuildVerificationClip(
             work.IsDisposable,
             work.IsCalibration,
@@ -3402,7 +3425,7 @@ public sealed partial class QueueDispatcher(
                 remoteEvidence,
                 referenceScratch is null ? null : new VerificationScratchCallbacks(referenceScratch.Capture, referenceScratch.TryDeleteAsync));
         }
-        if (!work.IsDisposable)
+        if (!work.IsDisposable || work.WorkerSample is not null)
         {
             await FileContentIdentity.RequireMatchAsync(work.Original.Path, verifiedSource,
                 "The source changed or became unavailable during verification.", cancellationToken);
@@ -3440,7 +3463,7 @@ public sealed partial class QueueDispatcher(
             job.VerifiedSourceSha256 = outcome.Report.Passed ? verifiedSource : null;
             job.VerifiedOutputSha256 = outcome.Report.Passed ? verifiedOutput : null;
             job.CalibrationReferenceStartSeconds = work.IsCalibration
-                ? outcome.ReferenceStartSeconds
+                ? work.WorkerSample?.PresentationOffset ?? outcome.ReferenceStartSeconds
                 : null;
             job.VerifiedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
@@ -3798,10 +3821,12 @@ public sealed partial class QueueDispatcher(
             scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(), now, cancellationToken);
         var remoteWorkersOn = availability.RemoteWorkersOn;
         var scheduled = queued.Select(job => new QueuedJob(job.Id, job.LibraryId, 0,
-            job.EnqueuedAt, IgnoreLibraryWindow: job.Type == JobType.Preview,
-            Placement: job.Type == JobType.Normal && job.LibraryId is { } id
+            job.EnqueuedAt, IgnoreLibraryWindow: job.Type != JobType.Normal,
+            Placement: job.LibraryId is { } id
                 && libraries.TryGetValue(id, out var library) ? library.WorkPlacement : WorkPlacement.Anywhere,
-            Kind: job.Kind)).ToList();
+            Kind: job.Kind,
+            WorkerRequired: job.Type != JobType.Normal && job.LibraryId is { } requiredId
+                && libraries.TryGetValue(requiredId, out var requiredLibrary) && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly)).ToList();
         var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
             .ToDictionary(library => library.Id,
                 library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));
@@ -4110,7 +4135,7 @@ public sealed partial class QueueDispatcher(
         Func<QueuedJob, bool> aWorkerCouldTakeIt,
         DateTimeOffset nowUtc) =>
         withinWindow
-            .Where(job => WorkPlacementPolicy.MayRunLocally(
+            .Where(job => !job.WorkerRequired && WorkPlacementPolicy.MayRunLocally(
                 job.Placement,
                 remoteWorkersEnabled,
                 aWorkerCouldTakeIt(job),

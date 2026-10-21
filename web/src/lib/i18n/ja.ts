@@ -288,7 +288,7 @@ export const ja: Messages = {
     result_none: '現在の品質を維持',
     image_quality_value: '品質 {quality}',
     waiting: '空き処理スロットを待っています',
-    waiting_hint: '別のキュージョブが使用可能な処理スロットを使用中です。キャリブレーションは次に自動で開始します。',
+    waiting_hint: "ライブラリの配置設定で許可された互換ワーカーの空きを待っています。準備が始まらない場合はワーカーを確認してください。",
     choose_image: '代表的な静止画を選択', source_image: '元の画像', preparing_image_hint: 'ロスレス PNG 参照画像と 5 段階の画質を準備しています。', image_alt: 'ブラインド比較画像 {slot}', image_viewport: 'ブラインド画像比較表示', image_zoom_controls: '画像の拡大と移動', zoom_out: '縮小', zoom_in: '拡大', zoom_reset: '表示をリセット', image_quality: '品質', result_caveat_image: 'これは、この画像、画面、表示倍率に対する個人的な結果です。ライブラリ全体の設定にする前に、複数の代表的な画像を確認してください。',
     choose_audio: '代表的な音声を選択', source_audio: '元の音声', preparing_audio_hint: '各ビットレートで短い 3 つの抜粋をエンコードし、音量から答えが分からないよう測定しています。', result_caveat_audio: 'これは、この抜粋、再生機器、視聴環境に対する個人的な結果です。二つのエンコードが同一であることを証明するものではありません。',
     hdr_title: 'HDR 再生の確認', hdr_body: 'ブラウザーは HDR 対応の表示経路を検出しました。普段の HDR 視聴環境で比較してください。', hdr_confirm: '比較に使う画面で、このブラウザーが HDR 表示になっていることを確認しました。', hdr_unsupported: 'ブラウザーが HDR 対応の表示経路を検出できないため、HDR キャリブレーションは利用できません。',

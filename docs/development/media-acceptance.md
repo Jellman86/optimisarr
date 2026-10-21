@@ -361,7 +361,8 @@ worker's result; this is test evidence, not production server verification.
 
 This does not make the server idle. Scanning, initial probing, assignment preparation (including
 filter planning), transfers and hashes, database updates, policy evaluation and replacement still
-run there. Preview, calibration, remux and image jobs retain their existing local paths.
+run there. Video/audio previews and calibration can use bounded complete-source worker segments. Remux and
+fixed-image jobs retain their existing local paths.
 Fresh installations default to strict worker verification; the harness fleet tier also defaults to strict mode. Existing saved policies are preserved. Preserve an already selected
 strict policy during upgrades; unsupported workers cannot claim its assignments.
 
@@ -606,3 +607,22 @@ scratch/dashboard observations that cannot inspect the remote host. The adapter 
 termination to its own disposable process, preserve the acceptance environment, and make the
 server reachable; use `--listen 0.0.0.0` only on a trusted test network. This option cannot be
 combined with `--require-worker-ram`, whose local observations would be invalid for that worker.
+
+### Interactive sample regression
+
+Use `--regression interactive-samples` for a generated 64-second source, saved-codec calibration,
+preview delivery, browser reference identity and strict worker evidence. The default quality ladder
+requires the selected-settings calibration change (#430). A smoke run checks the local HEVC path;
+a fleet run requires explicit `--expected-worker` names and tests each worker's proved encoder.
+Workers must be acceptance launchers paired only to the isolated instance. The independent oracle
+checks every decoded frame and copied audio of each complete transferred source segment. Video
+segments can retain keyframe pre-roll; browser scene clocks are checked separately from full-segment
+verification. Keep reports outside the repository and use a new root for every run.
+
+Use `--regression interactive-lifecycle --tier fleet` with the same explicit workers for a
+shorter lifecycle run: queued and active preview cancellation, released leases, and idle server
+restart with unchanged worker identities. A `libx265` worker also exercises a deliberately
+rejected normal job and its one higher-quality retry under CPU/WorkerOnly policy. Both attempts
+must stay on that worker and encoder, with unchanged original bytes and no replacement history.
+These tests do not certify a long network partition during an active encode or installed-package
+upgrade behavior.

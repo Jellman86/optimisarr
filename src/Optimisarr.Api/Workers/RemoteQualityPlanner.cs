@@ -1,4 +1,5 @@
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 
@@ -33,7 +34,7 @@ internal static class RemoteQualityPlanner
         string? referenceVideoCodec = null,
         string? modelVersion = null)
     {
-        if (!policy.QualityGateEnabled || referenceWidth <= 0 || referenceHeight <= 0)
+        if (!policy.RequiresVmaf(MediaKind.Video, true) || referenceWidth <= 0 || referenceHeight <= 0)
         {
             return null;
         }

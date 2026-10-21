@@ -4,6 +4,24 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("decode keeps every picture on its demuxer clock without repairing candidate timestamps")
+    func decodeClock() {
+        let path = "/candidate ' [字幕].mkv"
+        let args = FullVerification.decodeArguments(file: URL(fileURLWithPath: path))
+        #expect(args.contains(path))
+        #expect(args.contains("0:V?"))
+        #expect(args.contains("0:a?"))
+        #expect(args.contains("-xerror"))
+        #expect(args.contains("-fps_mode:v"))
+        #expect(args.contains("passthrough"))
+        #expect(args.contains("-enc_time_base:v"))
+        #expect(args.contains("demux"))
+        for flag in ["-r", "-fflags", "-err_detect", "-ss", "-t"] {
+            #expect(!args.contains(flag))
+        }
+        #expect(Array(args.suffix(3)) == ["-f", "null", "-"])
+    }
+
     @Test("the final loudness summary cannot borrow an earlier graph's values")
     func incompleteFinalLoudness() {
         let log = "Summary:\n I: -23.0 LUFS\n True peak:\n Peak: -1.0 dBFS\nSummary:\n I: -inf LUFS\n True peak:\n Peak: invalid dBFS"

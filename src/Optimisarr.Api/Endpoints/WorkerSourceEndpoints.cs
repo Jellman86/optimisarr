@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Queue;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Workers;
@@ -29,6 +30,7 @@ internal static class WorkerSourceEndpoints
             HttpResponse response,
             SettingsStore settings,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
@@ -77,7 +79,16 @@ internal static class WorkerSourceEndpoints
                     "The source for that lease is no longer on disk.");
             }
 
-            var stream = FileServing.OpenLibraryRead(path, job.MediaFile?.Library?.Path);
+            var readRoot = job.MediaFile?.Library?.Path;
+            if (job.Type != JobType.Normal)
+            {
+                var sample = WorkerSampleSource.FromLease(job, lease, WorkPaths.Resolve(environment));
+                if (sample is null)
+                    return ApiErrors.Conflict("worker.source.sampleMissing", "This interactive assignment has no frozen source sample.");
+                path = sample.Path;
+                readRoot = WorkerJobPaths.Root(WorkPaths.Resolve(environment), job);
+            }
+            var stream = FileServing.OpenLibraryRead(path, readRoot);
             if (stream is null)
                 return ApiErrors.NotFound("worker.source.missing", "The source path is no longer available safely.");
             try
@@ -92,7 +103,7 @@ internal static class WorkerSourceEndpoints
                     await db.SaveChangesAsync(cancellationToken);
                 }
 
-                if (!LibraryPathSafety.IsSafeFile(path, job.MediaFile?.Library?.Path))
+                if (!LibraryPathSafety.IsSafeFile(path, readRoot))
                 {
                     await stream.DisposeAsync();
                     return ApiErrors.NotFound("worker.source.missing", "The source path is no longer available safely.");
@@ -119,6 +130,7 @@ internal static class WorkerSourceEndpoints
             HttpRequest http,
             SettingsStore settings,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             ArtworkService artwork,
             CancellationToken cancellationToken) =>
         {

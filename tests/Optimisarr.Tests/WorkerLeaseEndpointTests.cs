@@ -87,6 +87,100 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private Task<HttpClient> PairCapableWorker(string name, int concurrency = 1) =>
         PairWorkerWithEncoders(name, concurrency, "libx265");
 
+    [Theory]
+    [InlineData(JobType.Preview, false)]
+    [InlineData(JobType.Calibration, false)]
+    [InlineData(JobType.Preview, true)]
+    [InlineData(JobType.Calibration, true)]
+    public async Task Interactive_jobs_can_be_claimed_without_becoming_normal_jobs(JobType type, bool strict)
+    {
+        await EnableRemoteWorkers(strict);
+        var worker = await PairCapableWorker("Interactive " + type);
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.FindAsync(id);
+            job!.Type = type;
+            job.CalibrationSessionId = type == JobType.Calibration ? Guid.NewGuid() : null;
+            job.RequestedVideoQuality = 24;
+            job.RequestedRuleProfile = type == JobType.Calibration ? RuleProfile.ConservativeHevc : null;
+            job.CalibrationClipSeconds = 12;
+            job.CalibrationClipStartSeconds = 24;
+            await db.SaveChangesAsync();
+        }
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.FindAsync(id);
+        Assert.Equal(type, saved!.Type);
+        Assert.Equal(JobStatus.Leased, saved.Status);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetGuid();
+        Assert.Equal(4, assignment.GetProperty("sourceBytes").GetInt64());
+        Assert.Equal(strict, assignment.GetProperty("fullVerification").ValueKind != JsonValueKind.Null);
+        if (strict) Assert.True(assignment.GetProperty("fullVerification").GetProperty("countVideoFrames").GetBoolean());
+        var arguments = assignment.GetProperty("arguments").EnumerateArray().Select(v => v.GetString()).ToArray();
+        Assert.DoesNotContain("-t", arguments);
+        Assert.DoesNotContain("-ss", arguments);
+        using var source = await worker.GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.OK, source.StatusCode);
+        Assert.Equal(new byte[] { 1, 3, 5, 7 }, await source.Content.ReadAsByteArrayAsync());
+        var sourceHash = source.Headers.GetValues("X-Optimisarr-Source-Sha256").Single();
+        var database = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = await database.JobLeases.FindAsync(leaseId);
+        var frozen = lease!.VerificationWorkJson;
+        var tampered = System.Text.Json.Nodes.JsonNode.Parse(frozen!)!;
+        var originalPath = await database.MediaFiles.Where(media => media.Id == saved.MediaFileId).Select(media => media.Path).SingleAsync();
+        tampered["workerSample"]!["path"] = originalPath;
+        tampered["original"]!["path"] = originalPath;
+        lease.VerificationWorkJson = tampered.ToJsonString();
+        await database.SaveChangesAsync();
+        using var refused = await worker.GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        lease.VerificationWorkJson = frozen;
+        await database.SaveChangesAsync();
+        var bytes = new byte[] { 2, 4, 6, 8 };
+        using var upload = new HttpRequestMessage(HttpMethod.Post, $"/api/workers/leases/{leaseId}/result");
+        upload.Headers.Add("X-Optimisarr-Source-Sha256", sourceHash);
+        upload.Headers.Add("X-Optimisarr-Candidate-Sha256", Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant());
+        upload.Content = new ByteArrayContent(bytes);
+        using var delivered = await worker.SendAsync(upload);
+        Assert.Equal(HttpStatusCode.Accepted, delivered.StatusCode);
+        await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Entry(saved).ReloadAsync();
+        Assert.Equal(JobStatus.AwaitingVerification, saved.Status);
+        var expectedRoot = Optimisarr.Api.Queue.WorkerJobPaths.Root(
+            Optimisarr.Api.Queue.WorkPaths.Resolve(check.ServiceProvider.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>()), saved);
+        Assert.Equal(Path.GetFullPath(expectedRoot), Path.GetDirectoryName(saved.WorkOutputPath!));
+        Assert.Equal(type, saved.Type);
+        File.Delete(saved.WorkOutputPath!);
+    }
+
+    [Theory]
+    [InlineData(JobType.Preview)]
+    [InlineData(JobType.Calibration)]
+    public async Task Interactive_audio_keeps_its_local_path_instead_of_entering_a_worker_search(JobType type)
+    {
+        await EnableRemoteWorkers(strict: true);
+        var worker = await PairWorker("Audio interactive", 1, [], [], ["aac"], protocolMaximum: WorkerProtocol.Current);
+        var id = await QueueAJob(videoEncoder: null, placement: WorkPlacement.WorkerOnly, fileName: "track.flac");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == id);
+            job.Type = type;
+            job.CalibrationSessionId = type == JobType.Calibration ? Guid.NewGuid() : null;
+            job.RequestedAudioBitrateKbps = 128;
+            var media = job.MediaFile!;
+            media.MediaKind = MediaKind.Audio; media.VideoCodec = null; media.Width = null; media.Height = null;
+            media.AudioCodecs = "flac"; media.AudioTrackCount = 1; media.MaxAudioChannels = 2;
+            media.Library!.AudioTargetCodec = "aac";
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
     [Fact]
     public async Task A_previous_worker_cannot_claim_strict_picture_retention_work()
     {

@@ -307,8 +307,7 @@ internal sealed class BlindCalibrationService(
                 var job = new Job
                 {
                     MediaFileId = media.Id,
-                    // Interactive work must not be held by a library's automatic overnight window.
-                    LibraryId = null,
+                    LibraryId = media.LibraryId,
                     Type = JobType.Calibration,
                     Status = JobStatus.Queued,
                     Priority = int.MaxValue,
@@ -413,6 +412,17 @@ internal sealed class BlindCalibrationService(
             .AsNoTracking()
             .Where(job => job.CalibrationSessionId == id)
             .ToListAsync(cancellationToken);
+
+        var jobIds = jobs.Select(job => job.Id).ToList();
+        var sampleLeases = await db.JobLeases.AsNoTracking()
+            .Where(lease => jobIds.Contains(lease.JobId) && lease.DeliveredSha256 != null)
+            .ToListAsync(cancellationToken);
+        foreach (var lease in sampleLeases.OrderBy(lease => lease.AcquiredAt))
+        {
+            var sampleJob = jobs.Single(job => job.Id == lease.JobId);
+            if (WorkerSampleSource.FromLease(sampleJob, lease, _workRoot) is { } sample)
+                session.RemoteSamples[sampleJob.Id] = sample;
+        }
 
         if (session.MediaKind == MediaKind.Audio
             && jobs.Count == session.Candidates.Count
@@ -641,9 +651,17 @@ internal sealed class BlindCalibrationService(
             return null;
         }
 
+        var remoteLeases = await db.JobLeases.AsNoTracking()
+            .Where(lease => lease.JobId == candidate.Job.Id && lease.DeliveredSha256 != null)
+            .ToListAsync(cancellationToken);
+        var remoteLease = remoteLeases.OrderByDescending(lease => lease.AcquiredAt).FirstOrDefault();
+        var completedJob = await db.Jobs.AsNoTracking().SingleAsync(job => job.Id == candidate.Job.Id, cancellationToken);
+        var remoteSample = remoteLease is null ? null : WorkerSampleSource.FromLease(completedJob, remoteLease, _workRoot);
+
         // Serve the verifier's short reference for the explicitly marked original variant.
         // The DTO supplies its pre-roll offset so the shared timeline still selects matching frames.
-        var path = variant.IsOriginal
+        var path = variant.IsOriginal && remoteSample is not null ? remoteSample.Path
+            : variant.IsOriginal
             ? Path.Combine(
                 Path.GetDirectoryName(outputPath)!,
                 session.MediaKind switch
@@ -764,9 +782,9 @@ internal sealed class BlindCalibrationService(
                     throw new InvalidOperationException("An audio calibration candidate has no output path.");
                 }
 
-                var referencePath = Path.Combine(
-                    Path.GetDirectoryName(sampleJobs[0].WorkOutputPath)!,
-                    ".optimisarr-comparison-reference.flac");
+                var referencePath = session.RemoteSamples.TryGetValue(sampleJobs[0].Id, out var remoteSample)
+                    ? remoteSample.Path
+                    : Path.Combine(Path.GetDirectoryName(sampleJobs[0].WorkOutputPath)!, ".optimisarr-comparison-reference.flac");
                 var original = await loudness.MeasureAsync(referencePath, cancellationToken);
                 var candidateLevels = new List<double>();
                 foreach (var job in sampleJobs)
@@ -981,7 +999,7 @@ internal sealed class BlindCalibrationService(
                 session.Plan.Samples.Count,
                 sample.DurationSeconds,
                 $"/api/calibration/{session.Id}/variants/{variant.Name}/samples/{sample.Index}/content",
-                variant.IsOriginal ? job?.CalibrationReferenceStartSeconds ?? 0 : 0,
+                variant.IsOriginal || session.RemoteSamples.ContainsKey(job?.Id ?? 0) ? job?.CalibrationReferenceStartSeconds ?? 0 : 0,
                 variant.IsOriginal ? levels.OriginalGainDb : levels.CandidateGainDb);
         }).ToList();
         CalibrationVariantDiagnosticsDto? diagnostics = null;
@@ -1064,6 +1082,7 @@ internal sealed class BlindCalibrationService(
         public List<Candidate> Candidates { get; } = candidates;
         public List<Variant> Variants { get; } = variants;
         public bool DiagnosticsEnabled { get; } = diagnosticsEnabled;
+        public ConcurrentDictionary<int, PreparedWorkerSample> RemoteSamples { get; } = new();
         public double HighestPreparationProgress { get; set; }
         public DateTimeOffset ExpiresAt { get; set; } = expiresAt;
         public SessionStatus Status { get; set; } = SessionStatus.Preparing;

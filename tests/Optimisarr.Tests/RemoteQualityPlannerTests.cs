@@ -6,6 +6,15 @@ namespace Optimisarr.Tests;
 
 public sealed class RemoteQualityPlannerTests
 {
+    [Fact]
+    public void Calibration_measure_only_policy_still_requests_worker_vmaf()
+    {
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = false, MeasureVmaf = true };
+        var contract = RemoteQualityPlanner.Plan(policy, 640, 360, false, false, 12, 24, 0, null, null);
+        Assert.NotNull(contract);
+        Assert.NotEmpty(contract.Commands);
+    }
+
     [Theory]
     [InlineData(true, 16)]
     [InlineData(false, 600)]
