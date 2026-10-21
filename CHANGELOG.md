@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Personal quality checks now compare quality levels using the saved video codec, container and settings by default. Applying a result changes only quality. The previous cross-codec comparison is available through an explicit Compare presets option; stale results are rejected if resolved library settings change. Fixes #427.
+- Allow video previews and video personal quality samples to run on compatible workers using the library placement and CPU policy. Workers receive bounded source segments and verify every transferred frame; disposable outputs stay separate from replaceable work. Fixes #428. Worker-only interactive jobs wait when workers are unavailable, and browser comparisons use the same bounded reference as the worker.
+- Preserve the demuxer video clock during full decode health checks so valid VideoToolbox output cannot fail because the null muxer rounds timestamps. Full decoded-picture counts and candidate packet-timestamp gates still apply.
 
 - Skip symbolic links and linked directories during library scans, and recheck saved source paths before media reads, worker transfers, probes, work preparation and replacement/rollback recovery. Blocked paths retain their inventory and recovery records. Library roots must be real directories; operator-owned ancestors above a configured root remain trusted. These checks reject visible aliases but do not prevent concurrent filesystem path swaps; the remaining confinement work and broader security priorities are recorded in the roadmap.
 

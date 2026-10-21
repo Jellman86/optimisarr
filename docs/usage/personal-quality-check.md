@@ -16,6 +16,19 @@ must be long enough for three excerpts. Animated images and Dolby Vision video a
 The source remains read-only. Optimisarr creates disposable jobs under `/work/calibration`; they
 cannot replace, move, or delete media and do not appear in the normal Queue.
 
+## Where samples run
+
+Video samples can use compatible workers according to the library's placement policy.
+CPU encoder mode also applies to worker samples. Worker-only checks wait for compatible capacity;
+they do not fall back to server encoding, including when remote workers are disabled. Audio and still-image
+checks keep their local path and need local placement.
+
+The server prepares a bounded reference segment. Video references retain the preceding keyframe
+and any decode pre-roll; the worker encodes and verifies that complete segment. The comparison
+players use the same scene offset for the reference and worker candidate. Strict worker verification
+remains strict, including decoded picture counts, hashes and the applicable quality measurements.
+Preparing and transferring references still uses server disk and media tools.
+
 ## Start a check
 
 1. Open **Libraries**, configure a saved library, and select **Personal quality check**.

@@ -206,7 +206,7 @@
             {mediaKind}
             left={{
               label: i18n.m.shared.original,
-              url: api.mediaContentUrl(mediaFileId),
+              url: preview.originalUrl ?? api.mediaContentUrl(mediaFileId),
               sizeBytes: preview.original?.sizeBytes,
               startSeconds: preview.clipStartSeconds,
             }}

@@ -88,7 +88,7 @@ class Harness:
         self.configure(remoteWorkersEnabled=bool(self.workers))
 
     def create_job(self, name, fixture, *, encoder="libx265", worker=None, strategy="Fixed", gates=None,
-                   overrides=None, expected_ineligible=None):
+                   overrides=None, expected_ineligible=None, enqueue=True):
         codec = CODECS.get(encoder, encoder.split("_")[0])
         case_root = inside(self.root / "data", self.root / "data" / name)
         case_root.mkdir(parents=True, exist_ok=False)
@@ -123,6 +123,10 @@ class Harness:
             return {"libraryId": library_id, "mediaId": files[0]["id"],
                     "eligibility": candidates[0], "sourceUnchanged": True}
         require(len(candidates) == 1 and candidates[0]["eligible"], f"Fixture ineligible: {candidates}")
+        if not enqueue:
+            return {"libraryId": library_id, "mediaId": files[0]["id"], "source": source,
+                    "sourceSha256": sha256(source), "settings": body,
+                    "workerId": worker["id"] if worker else None}
         self.api.post(f"/api/libraries/{library_id}/enqueue")
         jobs = self.api.request(f"/api/jobs?libraryId={library_id}")
         require(len(jobs) == 1, f"Expected one enqueued job, got {jobs}")
@@ -856,6 +860,10 @@ class Harness:
         self.configure(workerVerificationRequired=strict_worker_verification)
         self.report.environment["strictWorkerVerification"] = strict_worker_verification
         try:
+            if regression in ("interactive-samples", "interactive-lifecycle"):
+                from .interactive import run_interactive_matrix
+                run_interactive_matrix(self, tier=tier, expected_workers=expected_workers, lifecycle_only=regression == "interactive-lifecycle")
+                return self.report.exit_code
             if regression == "quality-first-source":
                 self.report.case("image-quality-first-source", lambda: self.image_perceptual(unsupported=True, adaptive=True))
                 return self.report.exit_code

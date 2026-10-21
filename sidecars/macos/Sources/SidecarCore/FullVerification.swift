@@ -98,6 +98,14 @@ public struct FullVerification: Sendable {
     let runner: any TranscodeRunner
     public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner }
 
+    static func decodeArguments(file: URL) -> [String] {
+        // Keep the null muxer from rounding valid pictures onto a coarse output clock.
+        // Candidate packet timestamps are checked independently, without repairing them.
+        ["-nostdin", "-xerror", "-v", "error", "-i", file.path,
+         "-map", "0:V?", "-map", "0:a?",
+         "-fps_mode:v", "passthrough", "-enc_time_base:v", "demux", "-f", "null", "-"]
+    }
+
     public func measure(contract: FullVerificationContract, ffmpeg: URL, ffprobe: URL?, source: URL,
                         candidate: URL, scratch: URL, sourceHash: String, candidateHash: String) async throws -> FullVerificationEvidence {
         var evidence = FullVerificationEvidence(contractId: contract.id, sourceSha256: sourceHash, candidateSha256: candidateHash)
@@ -107,8 +115,7 @@ public struct FullVerification: Sendable {
             evidence.candidateProbe = try await probe(ffprobe, file: candidate, scratch: scratch, name: "candidate")
             // The runner retains a bounded diagnostic tail. Stop on decode errors so a later
             // flood of harmless muxer notes cannot evict corruption and produce a false pass.
-            let decoded = try await runner.run(ffmpeg, ["-nostdin", "-xerror", "-v", "error", "-i", candidate.path,
-                "-map", "0:v?", "-map", "0:a?", "-f", "null", "-"]) { _ in }
+            let decoded = try await runner.run(ffmpeg, Self.decodeArguments(file: candidate)) { _ in }
             evidence.decode = Self.parseDecode(decoded.stderr, exitCode: decoded.exitCode)
             evidence.sourceAudio = try await timestamps(ffprobe, file: source, stream: "a:0", scratch: scratch, name: "source-audio")
             if contract.version == 2 {

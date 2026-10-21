@@ -1,4 +1,5 @@
 using Optimisarr.Api.Workers;
+using Optimisarr.Api.Queue;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -841,7 +842,7 @@ public sealed class AdminTokenAuthEndpointTests
             Assert.All(jobs, job =>
             {
                 Assert.Equal(JobType.Calibration, job.Type);
-                Assert.Null(job.LibraryId);
+                Assert.Equal(libraryId, job.LibraryId);
                 Assert.Equal(12, job.CalibrationClipSeconds);
                 Assert.NotNull(job.RequestedVideoQuality);
                 Assert.NotNull(job.RequestedRuleProfile);
@@ -1150,7 +1151,7 @@ public sealed class AdminTokenAuthEndpointTests
                 jobs.Select(job => job.RequestedAudioBitrateKbps!.Value).Distinct().Order().ToArray());
             Assert.All(jobs, job =>
             {
-                Assert.Null(job.LibraryId);
+                Assert.Equal(libraryId, job.LibraryId);
                 Assert.Null(job.RequestedVideoQuality);
                 Assert.Equal(15, job.CalibrationClipSeconds);
             });
@@ -1228,7 +1229,7 @@ public sealed class AdminTokenAuthEndpointTests
                 jobs.Select(job => job.RequestedImageQuality!.Value).Order().ToArray());
             Assert.All(jobs, job =>
             {
-                Assert.Null(job.LibraryId);
+                Assert.Equal(libraryId, job.LibraryId);
                 Assert.Null(job.RequestedVideoQuality);
                 Assert.Null(job.RequestedAudioBitrateKbps);
                 Assert.Equal(0, job.CalibrationClipSeconds);
@@ -1327,6 +1328,7 @@ public sealed class AdminTokenAuthEndpointTests
                 }
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
                 services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
+                services.AddSingleton<IWorkerSampleSource, FixtureWorkerSampleSource>();
                 services.AddSingleton<ISourceWindowBytesProbe, FixedSourceWindowBytes>();
                 foreach (var preflight in services
                     .Where(service => service.ServiceType == typeof(ISourceTimelinePreflight))
@@ -1372,6 +1374,25 @@ public sealed class AdminTokenAuthEndpointTests
         private sealed class FixedCalibrationRandomizer : ICalibrationRandomizer
         {
             public int Next(int exclusiveMaximum) => 0;
+        }
+
+        private sealed class FixtureWorkerSampleSource(IHostEnvironment environment, IMediaProbeService probe) : IWorkerSampleSource, IDisposable
+        {
+            private readonly HashSet<string> _owned = [];
+            public async Task<PreparedWorkerSample> PrepareAsync(Job job, int seconds, int start, CancellationToken token)
+            {
+                var root = WorkerJobPaths.Root(WorkPaths.Resolve(environment), job);
+                Directory.CreateDirectory(root);
+                var path = Path.Combine(root, ".worker-source-fixture.mkv");
+                await File.WriteAllBytesAsync(path, [1, 3, 5, 7], token);
+                _owned.Add(path);
+                return new(path, 4, (await probe.ProbeAsync(path, token)) with
+                { DurationSeconds = seconds, VideoDurationSeconds = seconds, FrameCount = seconds * 24, VideoFrameRate = 24 }, 0.25);
+            }
+            public void Dispose()
+            {
+                foreach (var path in _owned) if (File.Exists(path)) File.Delete(path);
+            }
         }
 
         private sealed class CalibrationMediaProbe : IMediaProbeService

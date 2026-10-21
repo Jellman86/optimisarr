@@ -473,14 +473,14 @@ internal static partial class WorkerResultEndpoints
 
     private static string FinalPathFor(IHostEnvironment environment, Job job, JobLease lease)
     {
-        var outputRoot = WorkOutputRoot.ForMediaFile(WorkPaths.Resolve(environment), job.MediaFileId);
+        var outputRoot = WorkerJobPaths.Root(WorkPaths.Resolve(environment), job);
         return RemoteCandidate.PathFor(outputRoot, job.Id, $".{lease.Id:N}." + (lease.OutputExtension ?? "candidate").TrimStart('.'));
     }
 
     /// <summary>Named by lease, so a resumed upload can only continue its own transfer.</summary>
     private static string StagingPathFor(IHostEnvironment environment, Job job, JobLease lease) =>
         Path.Combine(
-            WorkOutputRoot.ForMediaFile(WorkPaths.Resolve(environment), job.MediaFileId),
+            WorkerJobPaths.Root(WorkPaths.Resolve(environment), job),
             $"{RemoteCandidate.Prefix}{job.Id}.{lease.Id:N}.partial");
 
     private static long StagedBytes(string stagingPath) =>

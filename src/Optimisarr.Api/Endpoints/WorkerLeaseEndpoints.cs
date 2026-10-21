@@ -270,7 +270,7 @@ internal static class WorkerLeaseEndpoints
             // encoders, local-only jobs and recent handbacks must not hide later video work.
             var queued = await db.Jobs
                 .AsNoTracking()
-                .Where(job => job.Status == JobStatus.Queued && job.Type == JobType.Normal
+                .Where(job => job.Status == JobStatus.Queued
                     && !db.Exclusions.Any(exclusion => exclusion.Path == job.MediaFile!.Path))
                 .Select(job => new { job.Id, job.LibraryId, job.Priority, job.EnqueuedAt })
                 .ToListAsync(cancellationToken);
@@ -356,7 +356,7 @@ internal static class WorkerLeaseEndpoints
                     }
 
                     // Share the local dispatcher's current rules, including durable exclusions.
-                    if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
+                    if (job.Type == JobType.Normal && await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
                         is { IsEligible: false } verdict)
                     {
                         skipped++;
@@ -416,10 +416,10 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
-                    var maximumOutputBytes = SizeBudget.MaxCandidateBytes(job.MediaFile.SizeBytes,
+                    var maximumOutputBytes = SizeBudget.MaxCandidateBytes(assignment.SourceBytes ?? job.MediaFile.SizeBytes,
                         assignment.Verification.RequireSizeReduction, job.Type is JobType.Preview or JobType.Calibration,
                         assignment.Verification.MinimumSizeSavingPercent);
-                    var scratchBytes = WorkerScratchBudget.RequiredBytes(job.MediaFile.SizeBytes, maximumOutputBytes, assignment.PerceptualSearch?.Contract);
+                    var scratchBytes = WorkerScratchBudget.RequiredBytes(assignment.SourceBytes ?? job.MediaFile.SizeBytes, maximumOutputBytes, assignment.PerceptualSearch?.Contract);
                     if (scratchBytes is null)
                     {
                         skipped++; lastReason = "A bounded working-space requirement could not be calculated for this job.";
@@ -460,12 +460,12 @@ internal static class WorkerLeaseEndpoints
                         // Track only the job about to be claimed; skipped batches stay untracked.
                         db.Entry(job).State = EntityState.Unchanged;
                         await db.Entry(job).ReloadAsync(cancellationToken);
-                        if (job.Status != JobStatus.Queued)
+                        if (db.Entry(job).State == EntityState.Detached || job.Status != JobStatus.Queued)
                         {
                             db.Entry(job).State = EntityState.Detached;
                             return new ClaimAttempt(null);
                         }
-                        if (await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
+                        if (job.Type == JobType.Normal && await eligibility.EvaluateFileAsync(job.MediaFileId, cancellationToken)
                             is { IsEligible: false })
                         {
                             db.Entry(job).State = EntityState.Detached;
@@ -473,11 +473,11 @@ internal static class WorkerLeaseEndpoints
                         }
                         var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
                         var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
-                            job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                            assignment.SourceBytes ?? job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
                             job.Type is JobType.Preview or JobType.Calibration,
                             assignment.Verification.MinimumSizeSavingPercent);
                         var minCandidateBytes = SizeBudget.MinCandidateBytes(
-                            job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                            assignment.SourceBytes ?? job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
                             job.Type is JobType.Preview or JobType.Calibration,
                             assignment.Verification.MaximumSizeSavingPercent);
 
@@ -572,7 +572,7 @@ internal static class WorkerLeaseEndpoints
                             // The file name rather than the whole relative path: the worker shows this in
                             // a narrow menu, and the folders above it are the server's business.
                             Path.GetFileName(job.MediaFile.RelativePath),
-                            job.MediaFile.SizeBytes,
+                            assignment.SourceBytes ?? job.MediaFile.SizeBytes,
                             assignment.VideoEncoder,
                             requirements.Vmaf.ToString(),
                             lease.ExpiresUtc,
@@ -594,7 +594,7 @@ internal static class WorkerLeaseEndpoints
                             maxCandidateBytes,
                             minCandidateBytes,
                             new WorkerMediaInfo(job.MediaFile.VideoCodec, job.MediaFile.Width, job.MediaFile.Height,
-                                job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
+                                assignment.SourceDurationSeconds ?? job.MediaFile.DurationSeconds, job.MediaFile.Container, job.MediaFile.AudioCodecs,
                                 job.MediaFile.PixelFormat), assignment.Kind, assignment.AudioEncoder, assignment.PerceptualSearch, assignment.ImageEncoder,
                             assignment.PerceptualSearch is null ? null : scratchBytes));
                     }, cancellationToken);
@@ -654,7 +654,8 @@ internal static class WorkerLeaseEndpoints
                     if (request?.EncodedSeconds is { } encoded && encoded >= 0)
                     {
                         stored.EncodedSeconds = encoded;
-                        if (job.MediaFile?.DurationSeconds is { } duration && duration > 0)
+                        var sample = WorkerSampleSource.FromLease(job, stored, WorkPaths.Resolve(app.Environment));
+                        if ((sample?.Probe.DurationSeconds ?? job.MediaFile?.DurationSeconds) is { } duration && duration > 0)
                         {
                             // Held under 100% until the candidate is actually delivered, the same
                             // convention the local encode uses so a bar never sits at "done".
@@ -1359,6 +1360,7 @@ internal static class WorkerLeaseEndpoints
     {
         var media = job.MediaFile!;
         var library = media.Library;
+        if (job.Type != JobType.Normal && media.MediaKind != MediaKind.Video) return false;
         if (library is not null && !WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement))
         {
             return false;
@@ -1370,7 +1372,9 @@ internal static class WorkerLeaseEndpoints
         // needs the source's picture and duration, which this cheap pre-filter does not load —
         // PrepareRemoteWorkAsync decides that, and refuses the job there if it cannot.
 
-        var rules = LibraryRuleResolution.Resolve(library);
+        var rules = job.Type == JobType.Calibration && job.RequestedRuleProfile is { } profile
+            ? LibraryRuleResolution.ResolveVideoPreset(library!, profile)
+            : LibraryRuleResolution.Resolve(library);
         if (media.MediaKind == MediaKind.Image)
             return library?.AdaptiveImageQuality == true && capabilities.ProtocolVersion >= WorkerProtocol.PerceptualQualityVersion
                 && capabilities.Perceptual?.ImageMetadataSupported == true && capabilities.Perceptual.ImageMetricRevision == ImagePerceptualResultParser.Revision

@@ -8757,6 +8757,34 @@
         ]
       }
     },
+    "/api/preview/{jobId}/reference": {
+      "get": {
+        "operationId": "GetPreviewReference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
     "/api/queue/pause": {
       "post": {
         "operationId": "PauseQueue",

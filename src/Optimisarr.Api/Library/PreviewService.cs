@@ -34,7 +34,8 @@ public sealed record PreviewComparison(
     int? ClipStartSeconds,
     int? ClipDurationSeconds,
     bool? VerificationPassed,
-    string? VerificationReportJson);
+    string? VerificationReportJson,
+    string? OriginalUrl = null);
 
 /// <summary>
 /// Drives throwaway "preview" jobs: a one-off transcode of a single file with its library's
@@ -108,11 +109,13 @@ public sealed class PreviewService(
         MediaSideStats? encoded = null;
         double? saving = null;
         var clipped = false;
+        PreparedWorkerSample? workerSample = null;
 
         // Probe both sides only once the preview has finished, so polling while it runs stays cheap.
         if (job.Status is JobStatus.Completed or JobStatus.Failed)
         {
-            original = await ProbeSideAsync(media.Path, cancellationToken);
+            workerSample = await WorkerSampleAsync(job, cancellationToken);
+            original = await ProbeSideAsync(workerSample?.Path ?? media.Path, cancellationToken);
             if (job.Status == JobStatus.Completed && job.WorkOutputPath is { } output && File.Exists(output))
             {
                 encoded = await ProbeSideAsync(output, cancellationToken);
@@ -120,7 +123,7 @@ public sealed class PreviewService(
 
             // A video preview only encodes a sample, so its output is materially shorter than the
             // source. Compare by bitrate in that case so the saving figure is representative.
-            clipped = original?.DurationSeconds is { } od and > 0
+            clipped = workerSample is not null || original?.DurationSeconds is { } od and > 0
                 && encoded?.DurationSeconds is { } ed
                 && ed < od - 1.0;
             saving = clipped
@@ -139,10 +142,11 @@ public sealed class PreviewService(
             encoded,
             saving,
             clipped,
-            clipped ? PreviewClipPolicy.Plan(media.DurationSeconds).StartSeconds : null,
-            clipped ? PreviewClipPolicy.DurationSeconds : null,
+            workerSample is not null ? 0 : clipped ? PreviewClipPolicy.Plan(media.DurationSeconds).StartSeconds : null,
+            workerSample?.Probe.DurationSeconds is > 0 ? (int)Math.Ceiling(workerSample.Probe.DurationSeconds.Value) : clipped ? PreviewClipPolicy.DurationSeconds : null,
             job.VerificationPassed,
-            job.VerificationReportJson);
+            job.VerificationReportJson,
+            workerSample is not null ? $"/api/preview/{jobId}/reference" : null);
     }
 
     /// <summary>
@@ -196,6 +200,22 @@ public sealed class PreviewService(
         await write.CommitAsync(cancellationToken);
 
         return true;
+    }
+
+    public async Task<string?> ReferencePathAsync(int jobId, CancellationToken token)
+    {
+        var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(
+            job => job.Id == jobId && job.Type == JobType.Preview && job.Status == JobStatus.Completed, token);
+        var sample = job is null ? null : await WorkerSampleAsync(job, token);
+        return sample is not null && LibraryPathSafety.IsSafeFile(sample.Path, WorkerJobPaths.Root(_workRoot, job!)) ? sample.Path : null;
+    }
+
+    private async Task<PreparedWorkerSample?> WorkerSampleAsync(Job job, CancellationToken token)
+    {
+        var leases = await db.JobLeases.AsNoTracking().Where(lease => lease.JobId == job.Id && lease.DeliveredSha256 != null)
+            .ToListAsync(token);
+        var lease = leases.OrderByDescending(lease => lease.AcquiredAt).FirstOrDefault();
+        return lease is null ? null : WorkerSampleSource.FromLease(job, lease, _workRoot);
     }
 
     private async Task<MediaSideStats?> ProbeSideAsync(string path, CancellationToken cancellationToken)

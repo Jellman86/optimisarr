@@ -8,6 +8,16 @@ namespace Optimisarr.Tests;
 
 public sealed class QueueDispatcherSafetyTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Worker_only_interactive_work_never_falls_back_to_local_execution(bool workersEnabled)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var sample = new QueuedJob(1, 1, int.MaxValue, now, Placement: WorkPlacement.WorkerOnly, WorkerRequired: true);
+        Assert.Empty(QueueDispatcher.SelectLocallyRunnable([sample], new Dictionary<int, DateTimeOffset>(), workersEnabled, _ => true, now));
+    }
+
     [Fact]
     public void Predicted_size_failure_is_terminal_without_claiming_a_finished_output()
     {

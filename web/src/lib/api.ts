@@ -603,6 +603,7 @@ export type MediaSideStats = {
 }
 
 export type PreviewComparison = {
+  originalUrl?: string | null
   jobId: number
   mediaFileId: number
   mediaKind: string
