@@ -616,7 +616,7 @@ class Harness:
             "-vf", "noise=alls=40:allf=t", "-pix_fmt", "bgr24" if unsupported else "rgb24", "-frames:v", "1", self.tools.path(fixture)])
         if metadata:
             add_synthetic_image_metadata(fixture, Path(__file__).resolve().parents[2] / "tools/image-quality-native/fixtures/icc.webp")
-        case = self.create_job(name, fixture, overrides={"mediaType": "Photo", "targetImageFormat": target,
+        case = self.create_job(name, fixture, worker=worker, overrides={"mediaType": "Photo", "targetImageFormat": target,
             "imageQuality": 10 if reject else 95, "reencodeLossyImages": True, "vmafQualityGateEnabled": False,
             "imageQualityGateEnabled": True, "minimumImageSsim": 0, "imageMetadataGateEnabled": True,
             "requireSizeReduction": False, "imagePerceptualReportingEnabled": reporting,
@@ -646,7 +646,8 @@ class Harness:
         if adaptive and unsupported:
             require(image is None, "Source qualification was incorrectly presented as a candidate measurement")
         elif reporting or gate:
-            require(image is not None and image["measurementLocation"] == "Server", "Missing server image evidence")
+            location = "Worker" if worker and self.strict_worker_verification else "Server"
+            require(image is not None and image["measurementLocation"] == location, f"Missing {location.lower()} image evidence")
             if unsupported:
                 require(image["measurement"] is None and image["error"], "Unsupported image received a score")
             else:
@@ -674,7 +675,7 @@ class Harness:
         else:
             self.replace_restore(case, self.output(case))
         return {"originalUnchanged": True, "gateBlocked": failed, "restoredOriginal": not failed,
-                "report": image, "scope": "Synthetic stills; CPU image encoding and server-local assessment", "iccSha256": icc_hash,
+                "report": image, "scope": "Synthetic stills; CPU image encoding and " + ("worker" if worker else "server-local") + " assessment", "iccSha256": icc_hash,
                 "exifArtistPreserved": metadata}
 
     def calibration(self):
@@ -905,6 +906,9 @@ class Harness:
                 return self.report.exit_code
             if regression == "quality-first-ownership":
                 self.report.case("audio-quality-first-ownership", self.quality_first_ownership)
+                return self.report.exit_code
+            if regression == "quality-first-workers":
+                self.quality_first_workers(tier)
                 return self.report.exit_code
             if regression == "quality-first":
                 self.report.case("image-quality-first", lambda: self.image_perceptual(adaptive=True))

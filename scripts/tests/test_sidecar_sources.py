@@ -47,7 +47,7 @@ class SidecarSourceTests(unittest.TestCase):
                         + ''.join(f'{name} pinned {"b" * 64}\n' for name in source.MAC_ARCHIVES))
         revisions = source.mac_release_revisions(info, 'c' * 40)
         self.assertEqual('c' * 40, revisions['optimisarr'])
-        self.assertEqual(source.MAC_METADATA_SOURCES['exiftool'][1], revisions['exiftool'])
+        self.assertEqual(source.METADATA_SOURCES['exiftool'][1], revisions['exiftool'])
         for name, (_, revision) in source.IMAGE_SOURCES.items():
             self.assertEqual(revision, revisions[name])
 

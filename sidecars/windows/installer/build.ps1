@@ -58,6 +58,19 @@ try {
     $imageLicences = Join-Path $payload 'licenses\image-quality'
     New-Item -ItemType Directory -Force $imageLicences | Out-Null
     Copy-Item (Join-Path $imageInstall 'share\optimisarr-image-quality\*') $imageLicences -Recurse
+    # Image jobs must preserve EXIF/ICC metadata, and Windows has no system Perl. The official
+    # self-contained build matches the ExifTool revision pinned for the Mac and server packages.
+    $exifZip = Join-Path $work 'exiftool.zip'
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest 'https://downloads.sourceforge.net/project/exiftool/exiftool-13.55_64.zip' -OutFile $exifZip -TimeoutSec 600 -UserAgent 'Wget'
+    if ((Get-FileHash $exifZip -Algorithm SHA256).Hash -ne '9FADAF5221DCB07A5D018E21C8529E257917D2FAD1FDFC8E64855C4FB73293DF') { throw 'ExifTool checksum mismatch' }
+    Expand-Archive $exifZip (Join-Path $work 'exiftool')
+    $exifRoot = Join-Path $work 'exiftool\exiftool-13.55_64'
+    # Renaming drops the "(-k)" suffix, which would otherwise wait for a keypress on exit.
+    Copy-Item -LiteralPath (Join-Path $exifRoot 'exiftool(-k).exe') (Join-Path $payload 'exiftool.exe')
+    Copy-Item (Join-Path $exifRoot 'exiftool_files') $payload -Recurse
+    & (Join-Path $payload 'exiftool.exe') -ver
+    Assert-Exit 'ExifTool validation'
     $zip = Join-Path $work 'runtime.zip'
     $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest $runtimeUrl -OutFile $zip -TimeoutSec 600
@@ -79,6 +92,8 @@ Pinned source and wrapper build: https://github.com/Jellman86/optimisarr/tree/ma
 libjxl, WebP and their pinned dependencies: licences are in licenses/image-quality.
 Pinned source and wrapper build: https://github.com/Jellman86/optimisarr/tree/main/tools/image-quality-native
 FFmpeg: GPL build pinned in BUILD-INFO.txt. Copyright the FFmpeg contributors.
+ExifTool 13.55: Phil Harvey, Perl Artistic Licence or GPL. The official Windows build
+bundles a Perl runtime; its licence is in exiftool_files/LICENSE. https://exiftool.org
 Build scripts and corresponding upstream build-source release:
 https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-30-13-08
 https://github.com/BtbN/FFmpeg-Builds
