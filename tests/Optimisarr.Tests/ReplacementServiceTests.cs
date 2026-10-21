@@ -14,6 +14,89 @@ namespace Optimisarr.Tests;
 
 public sealed class ReplacementServiceTests : IDisposable
 {
+    [PosixFact]
+    public async Task Rollback_and_recovery_keep_the_record_and_both_files_when_a_library_parent_is_linked()
+    {
+        var (original, output) = WriteFiles("movie.avi", "movie.mkv", "ORIGINAL", "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: false);
+        var replaced = (await ReplaceAsync(id)).Replacement!;
+        var moved = _dataDir + "-moved";
+        Directory.Move(_dataDir, moved);
+        Directory.CreateSymbolicLink(_dataDir, moved);
+
+        var rollback = await RollbackAsync(replaced.Id);
+
+        Assert.Equal(ReplacementResultKind.Deferred, rollback.Kind);
+        Assert.Equal("VERIFIED", File.ReadAllText(Path.Combine(moved, "movie.mkv")));
+        Assert.Equal("ORIGINAL", File.ReadAllText(replaced.QuarantinePath));
+        await SetReplacementStatusAsync(replaced.Id, ReplacementStatus.RollbackPending);
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(0, await NewService(db).RecoverPendingAsync(default));
+        Assert.Equal(ReplacementStatus.RollbackPending, (await db.Replacements.SingleAsync()).Status);
+        Assert.Equal("VERIFIED", File.ReadAllText(Path.Combine(moved, "movie.mkv")));
+        Assert.Equal("ORIGINAL", File.ReadAllText(replaced.QuarantinePath));
+    }
+
+    [PosixFact]
+    public async Task Replacement_refuses_an_existing_inventory_path_through_a_linked_directory()
+    {
+        var outside = Path.Combine(_root, "outside");
+        Directory.CreateDirectory(outside);
+        var target = Path.Combine(outside, "movie.avi");
+        File.WriteAllText(target, "ORIGINAL");
+        var alias = Path.Combine(_dataDir, "alias");
+        Directory.CreateSymbolicLink(alias, outside);
+        var original = Path.Combine(alias, "movie.avi");
+        var output = Path.Combine(_workDir, "movie.mkv");
+        File.WriteAllText(output, "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: false);
+
+        var result = await ReplaceAsync(id);
+
+        Assert.Equal(ReplacementResultKind.Deferred, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(target));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+        Assert.False(File.Exists(Path.Combine(outside, "movie.mkv")));
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Empty(await db.Replacements.ToListAsync());
+    }
+
+    [PosixFact]
+    public async Task Replacement_rechecks_links_after_preparation_before_recording_or_moving()
+    {
+        var folder = Path.Combine(_dataDir, "folder");
+        var renamed = Path.Combine(_root, "renamed");
+        Directory.CreateDirectory(folder);
+        var original = Path.Combine(folder, "movie.avi");
+        File.WriteAllText(original, "ORIGINAL");
+        var output = Path.Combine(_workDir, "movie.mkv");
+        File.WriteAllText(output, "VERIFIED");
+        var id = await SeedReadyJobAsync(original, output, true);
+        await AttachLibraryAsync(id, MediaType.Film, autoReplace: false);
+        await SetCrossFilesystemReplacementAsync(false);
+        var switched = false;
+
+        var result = await ReplaceAsync(id, canMoveAtomically: (_, _) =>
+        {
+            if (!switched)
+            {
+                Directory.Move(folder, renamed);
+                Directory.CreateSymbolicLink(folder, renamed);
+                switched = true;
+            }
+            return true;
+        });
+
+        Assert.True(switched);
+        Assert.Equal(ReplacementResultKind.Deferred, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(Path.Combine(renamed, "movie.avi")));
+        Assert.Equal("VERIFIED", File.ReadAllText(output));
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Empty(await db.Replacements.ToListAsync());
+    }
+
     [Fact]
     public async Task A_shared_path_claim_prevents_replacement_even_with_a_different_inventory_id()
     {

@@ -4,6 +4,7 @@ using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Core.Library;
 using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Stats;
@@ -344,6 +345,9 @@ public sealed class ReplacementService
                 $"The original file no longer exists: {media.Path}", permanent: true);
         }
 
+        if (!LibraryPathSafety.IsSafeFile(media.Path, media.Library?.Path))
+            return ReplacementActionResult.Deferred(LibraryPathSafety.Refusal);
+
         // The link count recorded at scan time decided whether to *encode* this file. Whether to
         // *replace* it is a different question asked at a different moment, and a download client
         // can hardlink a file at any point in between. Re-read it live, against the file that is
@@ -418,6 +422,9 @@ public sealed class ReplacementService
             }
         }
 
+        if (!LibraryPathSafety.IsSafeFile(media.Path, media.Library?.Path))
+            return ReplacementActionResult.Deferred(LibraryPathSafety.Refusal);
+
         if (!FileContentIdentity.IsHash(job.VerifiedSourceSha256) || !FileContentIdentity.IsHash(job.VerifiedOutputSha256))
             return await RefuseIdentityAsync(job,
                 "This historical output has no verified file identity. The original was left untouched; retry to create a fresh verified attempt.", automatic, cancellationToken);
@@ -440,6 +447,9 @@ public sealed class ReplacementService
         // Record the rollback path durably before the first filesystem mutation. If the process
         // stops at any later instruction, startup recovery can restore the quarantined original or
         // finalize a completed pair of moves from this Pending row.
+        if (!LibraryPathSafety.IsSafeFile(media.Path, media.Library?.Path))
+            return ReplacementActionResult.Deferred(LibraryPathSafety.Refusal);
+
         var replacement = new ReplacementEntity
         {
             JobId = job.Id,
@@ -459,6 +469,8 @@ public sealed class ReplacementService
 
         try
         {
+            if (!LibraryPathSafety.IsSafeFile(media.Path, media.Library?.Path))
+                throw new IOException(LibraryPathSafety.Refusal);
             // Step 1: preserve the original by quarantining it. From here the original is safe and
             // every ordinary failure restores it; a process crash is handled by Pending recovery.
             var quarantineMove = _moveFile(media.Path, plan.QuarantinePath);
@@ -470,6 +482,8 @@ public sealed class ReplacementService
                 throw new IOException("A new file appeared at the original path after quarantine. Both originals are preserved; inspect the pending rollback before retrying.");
 
             // Step 2: move the verified output into the original's place.
+            if (!LibraryPathSafety.IsSafeFile(plan.FinalPath, media.Library?.Path, allowMissingLeaf: true))
+                throw new IOException(LibraryPathSafety.Refusal);
             var move = _moveFile(job.WorkOutputPath, plan.FinalPath);
             replacement.CrossFilesystem = quarantineMove.CrossFilesystem || move.CrossFilesystem;
 
@@ -484,7 +498,7 @@ public sealed class ReplacementService
         }
         catch (Exception ex)
         {
-            var restored = await RestoreFromQuarantineAsync(plan, media.Path, replacement.OutputSha256, replacement.OriginalSha256);
+            var restored = await RestoreFromQuarantineAsync(plan, media.Path, replacement.OutputSha256, replacement.OriginalSha256, media.Id);
             if (restored)
             {
                 _db.Replacements.Remove(replacement);
@@ -563,6 +577,12 @@ public sealed class ReplacementService
 
         foreach (var replacement in pending)
         {
+            if (!await AreLibraryPathsSafeAsync(replacement.MediaFileId,
+                    [replacement.OriginalPath, replacement.FinalPath, RollbackStagingPath(replacement)], cancellationToken))
+            {
+                LogUnrecoverablePending(replacement);
+                continue;
+            }
             var keys = FileOperationClaims.Keys(replacement.MediaFileId, replacement.OriginalPath,
                 replacement.QuarantinePath, replacement.FinalPath);
             if (!await _coordinator.TryBeginAsync(replacement.JobId, replacement.MediaFileId, cancellationToken, keys)) continue;
@@ -625,6 +645,10 @@ public sealed class ReplacementService
             return ReplacementActionResult.Failed(
                 $"The quarantined original is missing, so it cannot be restored: {replacement.QuarantinePath}");
         }
+
+        if (!await AreLibraryPathsSafeAsync(replacement.MediaFileId,
+                [replacement.OriginalPath, replacement.FinalPath, RollbackStagingPath(replacement)], cancellationToken))
+            return ReplacementActionResult.Deferred(LibraryPathSafety.Refusal);
 
         replacement.Status = ReplacementStatus.RollbackPending;
         await _db.SaveChangesAsync(cancellationToken);
@@ -722,8 +746,18 @@ public sealed class ReplacementService
         }
     }
 
-    private async Task<bool> RestoreFromQuarantineAsync(ReplacementPlan plan, string originalPath, string? expectedOutputHash, string? expectedOriginalHash)
+    private async Task<bool> AreLibraryPathsSafeAsync(int mediaFileId, IEnumerable<string> paths, CancellationToken cancellationToken)
     {
+        var source = await _db.MediaFiles.AsNoTracking().Where(file => file.Id == mediaFileId)
+            .Select(file => new { Root = file.Library == null ? null : file.Library.Path })
+            .FirstOrDefaultAsync(cancellationToken);
+        return source is not null && paths.All(path => LibraryPathSafety.IsSafeFile(path, source.Root, allowMissingLeaf: true));
+    }
+
+    private async Task<bool> RestoreFromQuarantineAsync(ReplacementPlan plan, string originalPath, string? expectedOutputHash, string? expectedOriginalHash, int mediaFileId)
+    {
+        if (!await AreLibraryPathsSafeAsync(mediaFileId, [originalPath, plan.FinalPath], CancellationToken.None))
+            return false;
         // The original is only safe to restore if it actually reached quarantine. If the
         // quarantine move itself failed, the original is still at its own path — leave it be.
         if (!File.Exists(plan.QuarantinePath))
@@ -790,7 +824,7 @@ public sealed class ReplacementService
                 replacement.OriginalPath,
                 replacement.FinalPath,
                 replacement.QuarantinePath);
-            if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256))
+            if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256, replacement.MediaFileId))
             {
                 _db.Replacements.Remove(replacement);
                 await _db.SaveChangesAsync(cancellationToken);
@@ -869,7 +903,7 @@ public sealed class ReplacementService
                 replacement.OriginalPath,
                 replacement.FinalPath,
                 replacement.QuarantinePath);
-            if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256))
+            if (await RestoreFromQuarantineAsync(plan, replacement.OriginalPath, replacement.OutputSha256, replacement.OriginalSha256, replacement.MediaFileId))
             {
                 await FinalizeRecoveredRollbackAsync(replacement, cancellationToken);
                 return true;

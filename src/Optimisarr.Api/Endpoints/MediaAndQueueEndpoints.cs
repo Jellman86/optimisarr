@@ -221,11 +221,11 @@ internal static class MediaAndQueueEndpoints
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
         {
-            var path = await db.MediaFiles
+            var source = await db.MediaFiles.AsNoTracking()
                 .Where(file => file.Id == id)
-                .Select(file => file.Path)
+                .Select(file => new { file.Path, LibraryRoot = file.Library == null ? null : file.Library.Path })
                 .FirstOrDefaultAsync(cancellationToken);
-            return FileServing.ServeFile(path);
+            return source is null ? Results.NotFound() : FileServing.ServeLibraryFile(source.Path, source.LibraryRoot);
         })
         .WithName("GetMediaContent");
 

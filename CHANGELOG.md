@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip symbolic links and linked directories during library scans, and recheck saved source paths before media reads, worker transfers, probes, work preparation and replacement/rollback recovery. Blocked paths retain their inventory and recovery records. Library roots must be real directories; operator-owned ancestors above a configured root remain trusted. These checks reject visible aliases but do not prevent concurrent filesystem path swaps; the remaining confinement work and broader security priorities are recorded in the roadmap.
+
 - Record current-source JPEG/WebP workflow acceptance on native Windows and the signed Mac runtime with live memory, committed-response replay, final verification, repeat replacement and exact rollback. Mac trials pass on disk and actual RAM storage with retired volumes and empty accounting afterward. Installed-package lifecycle remains unqualified.
 
 - Record fresh native Mac and Picard qualification of the current scratch-ownership source, including the Windows journal process-death matrix. Both hosts are reachable again; physical Linux ARM64 and packaged job lifecycle acceptance remain separate.

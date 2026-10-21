@@ -17,9 +17,9 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it. The converse matters too: an entry left
   describing finished work as outstanding sends effort at an item that has none.
-- Status claims last verified against the repository: **2026-10-18**.
+- Status claims last verified against the repository: **2026-10-21**.
 
-## Current hardening follow-up, reviewed 2026-10-18
+## Current hardening follow-up, reviewed 2026-10-21
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
 trial and pairing records with current implementation. Priorities are retained real-source playback evidence and broader quality coverage.
@@ -32,10 +32,10 @@ which distinguishes installed fleet checks from disposable media tests and recor
 pending Mac upgrade. Audio reports and explicit gates are implemented in
 development. Experimental SDR still-image reports and explicit SSIMULACRA2 gates are
 implemented in this development slice; see [qualification and limits](engineering/hardware-validation/2026-10-10-image-perceptual-quality.md).
-Draft [PR #415](https://github.com/Jellman86/optimisarr/pull/415) adds bounded audio/image
-quality selection, shared native execution, conditional Swift proof, live admission, neutral
-capacity returns and audio assessment input restrictions. It remains unmerged and undeployed,
-with automatic protocol-11 placement disabled. Full parity work resumed on 15 October;
+[PR #415](https://github.com/Jellman86/optimisarr/pull/415) merged into `dev` as
+`2bfdc99b`, adding bounded audio/image quality selection, shared native execution, conditional
+Swift proof, live admission, neutral capacity returns and audio assessment input restrictions.
+The merge is not installed-fleet acceptance; automatic protocol-11 placement remains disabled. Full parity work resumed on 15 October;
 the [parity checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-15-october-2026)
 records signed Mac helper/metadata packaging, verified coverage and the remaining work. Complete native packaging, restart recovery and
 the remaining audio/image parity before returning to perceptual dedupe or exact-copy actions.
@@ -44,9 +44,9 @@ or VMAF v0 policy as current behavior.
 Investigation-grade diagnostics ([#242](https://github.com/Jellman86/optimisarr/issues/242))
 closed as complete on 2026-10-18 against the shipped schema-v4 capture documented in
 [troubleshooting](troubleshooting/diagnostics.md). The active feature priority is audio/image
-quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), draft
+quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), merged
 [#415](https://github.com/Jellman86/optimisarr/pull/415)): the Linux native-work journal
-storage and an unconnected Linux-only bootstrap/restoration foundation are now on that branch
+storage and an unconnected Linux-only bootstrap/restoration foundation are now in `dev`
 with Quark test evidence, while standalone service bootstrap/admission wiring, physical
 power-cut qualification and package qualification remain open and protocol 11 stays disabled.
 Picard (Windows/NVIDIA) and Scott's Mac are reachable again at the later 2026-10-19 check.
@@ -63,7 +63,67 @@ cleanup action. The 50 fps VMAF report
 ([#406](https://github.com/Jellman86/optimisarr/issues/406)) closed on 2026-10-19 after the
 reporter confirmed both fixes on the exact episode; it ships in the next stable release.
 
-## Up next (priority order, updated 2026-10-18)
+The [20 October native image workflow acceptance](engineering/hardware-validation/2026-10-20-native-image-workflows.md)
+records JPEG/WebP on Picard and the signed Mac runtime, including actual Mac disk and RAM
+runs, response replay, final verification, repeat replacement and exact rollback. These are
+isolated generated-fixture trials, not installed-package lifecycle or physical power-cut proof.
+
+## Security hardening priorities, reviewed 2026-10-21
+
+These are independently assessed recommendations, not blanket acceptance of a review's
+proposed fixes. Deliver bounded slices alongside the remaining #332 qualification; none
+authorises deployment changes or enables protocol 11.
+
+1. **Library path safety: first slice in development.** Skip linked files and linked-directory
+   descent, and refuse visible aliases in existing inventory before source reads, worker
+   transfers, probes, work preparation and replacement/rollback recovery. Preserve blocked
+   inventory and recovery evidence. The [path policy and limits](development/library-path-safety.md)
+   define operator-owned roots and legacy inventory behavior. Acceptance includes real link
+   fixtures, aged targets, cycles, saved paths, range requests, cached transfer hashes and
+   original/candidate preservation. **Further work remains:** design and prove handle-pinned
+   traversal and mutations against concurrent ancestor swaps on Linux, macOS and Windows,
+   covering the full decode/verification/recovery lifecycle. Point-in-time checks alone do not
+   establish race-resistant confinement. Hard links and operator-controlled mounts need an
+   explicit policy, not a misleading claim of physical containment.
+2. **Bound candidate ingestion.** Enforce a server-owned cumulative byte budget per lease/upload
+   generation for both single-shot and resumable transfers, plus a free-space reserve and
+   bounded idle time. Acceptance: over-limit and overlapping/replayed chunks cannot grow staged
+   data past the budget; rejected generations retain safe cleanup/retry semantics; valid large
+   and intentionally expanding outputs still work. Concurrent job limits are not byte limits.
+3. **Share provider-aware validation.** Use the same domain validation for REST saves and config
+   imports, with field-specific errors and backup compatibility tests. HTTP(S) watcher/Arr URLs
+   and Telegram numeric chat IDs or `@channel` names have different contracts; a generic URL
+   validator must not reject valid notification destinations.
+4. **Response and build hardening.** Add frame and content-type protections, test a suitable CSP
+   against the actual SPA, SignalR, media/range playback and exports before enforcing it, and
+   keep public readiness failures generic while protected diagnostics retain detail. Pin external
+   actions and image inputs to immutable versions with the existing Dependabot maintenance
+   flows. Acceptance covers reusable/local actions, Docker build-stage references and passing
+   package/image CI; pinning without maintained updates is incomplete.
+5. **Design authentication, sessions and worker dashboard access together.** Define secure
+   bootstrap without an anonymous first-claimer, explicit consent to unauthenticated operation,
+   upgrade/recovery behavior, protected expiring sessions and bounded admin-auth failure
+   throttling. Preserve intentional private-LAN and authenticated-proxy deployments and valid
+   worker heartbeat/transfer traffic. Give dashboards their own scoped access and pairing
+   authority; never expose the server-issued worker credential to the browser. Test proxy/TLS,
+   session expiry/revocation and reconnect/logging behavior before replacing SignalR token
+   fallback. Container listeners must remain reachable through supported bridge/proxy networks;
+   local-only publication is a host port-binding policy. Folder discovery must still let an
+   operator add a library before any library exists; optional allowed storage roots are a
+   separate policy.
+6. **Design secret storage and portable exports with recovery.** Separate redacted sharing from
+   encrypted full backups. Specify key custody outside stolen database/export material, rotation,
+   missing-key behavior, migration and restore on another host. Acceptance: no silent loss of
+   integrations, no plaintext secrets in redacted exports, and tested recovery with independent
+   keys. Encrypting database columns does not secure a decrypted export.
+7. **Make verification trust clear.** Document compromised-worker consequences and improve
+   consistent evidence attribution without claiming attestation. Ordinary server verification
+   and report `verificationLocation` already exist; stronger per-library policies need explicit
+   acceptance criteria for which metrics are independently recomputed. Preserve deliberate
+   sidecar-only operation and current stricter native audio/image rules. Quarantine is a
+   recovery window, not proof that worker measurements are truthful.
+
+## Up next (priority order, updated 2026-10-21)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
