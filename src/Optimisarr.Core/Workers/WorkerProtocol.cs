@@ -23,7 +23,7 @@ public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
     // Protocol 10 adds opt-in correlated diagnostic capture; media verification contracts are unchanged.
-    public const int Current = 10;
+    public const int Current = 11;
 
     // Advertise this only once all native runners and strict verification implement the contract.
     public const int PerceptualQualityVersion = 11;

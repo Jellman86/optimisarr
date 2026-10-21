@@ -47,8 +47,11 @@ closed as complete on 2026-10-18 against the shipped schema-v4 capture documente
 quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), merged
 [#415](https://github.com/Jellman86/optimisarr/pull/415)): the Linux native-work journal
 storage and an unconnected Linux-only bootstrap/restoration foundation are now in `dev`
-with Quark test evidence, while standalone service bootstrap/admission wiring, physical
-power-cut qualification and package qualification remain open and protocol 11 stays disabled.
+with Quark test evidence. **Operator decision, 21 October 2026:** Optimisarr is a home-lab
+application, so crash and restart recovery is the worker qualification bar. Power-loss
+durability is a recorded limit rather than a release gate, the durable journal stays unwired,
+and protocol 11 is enabled on workers using their existing in-process accounting and owned-scratch
+recovery. Replacement remains gated by the server's independent final verification.
 Picard (Windows/NVIDIA) and Scott's Mac are reachable again at the later 2026-10-19 check.
 Picard passes the [49-case Windows journal process-death matrix](engineering/hardware-validation/2026-10-19-windows-journal-process-death.md);
 physical power-loss and exact-package qualification remain open. Dedupe file actions

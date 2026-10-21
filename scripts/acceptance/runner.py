@@ -531,6 +531,25 @@ class Harness:
         require(failures == 0, "Ownership refusal spent the source's failure/exclusion budget")
         return {"originalUnchanged": True, "unrelatedEvidenceRetained": True, "failureCount": failures}
 
+    def quality_first_workers(self, tier):
+        usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
+        if tier == "fleet" and not usable:
+            self.report.case("quality-first-workers", lambda: (_ for _ in ()).throw(Blocked("No quality-first workers paired")))
+        for worker in usable:
+            prefix = f"worker-{worker['id']}-"
+            for codec, encoder in (("aac", "aac"), ("opus", "libopus"), ("mp3", "libmp3lame")):
+                if encoder not in worker["audioEncoders"]:
+                    self.report.case(prefix + "audio-quality-first-" + codec,
+                                     lambda e=encoder: (_ for _ in ()).throw(Blocked(f"Audio encoder {e} was not proved")))
+                    continue
+                self.report.case(prefix + "audio-quality-first-" + codec, lambda c=codec, w=worker: self.audio(c, w, adaptive=True))
+            self.report.case(prefix + "audio-quality-first-reject", lambda w=worker: self.audio("aac", w, adaptive=True, reject=True))
+            for target in ("jpeg", "webp"):
+                self.report.case(prefix + "image-quality-first-" + target,
+                                 lambda t=target, w=worker: self.image_perceptual(t, adaptive=True, worker=w))
+            self.report.case(prefix + "image-quality-first-metadata", lambda w=worker: self.image_perceptual(adaptive=True, metadata=True, worker=w))
+            self.report.case(prefix + "image-quality-first-reject", lambda w=worker: self.image_perceptual(adaptive=True, reject=True, worker=w))
+
     def preview(self, fixture):
         self.select_worker(None)
         # Keep the short-preview regression even when the main corpus is lengthened for soak.
@@ -586,9 +605,10 @@ class Harness:
         return {"ssim": float(match[1]), "restoredOriginal": True,
                 "scope": "Opaque BMP to JPEG; metadata-free generated source"}
 
-    def image_perceptual(self, target="jpeg", *, reject=False, reporting=True, gate=True, unsupported=False, adaptive=False, metadata=False):
-        self.select_worker(None)
-        name = f"image-perceptual-{target}-{'unsupported' if unsupported else 'reject' if reject else 'gate' if gate else 'report' if reporting else 'off'}"
+    def image_perceptual(self, target="jpeg", *, reject=False, reporting=True, gate=True, unsupported=False, adaptive=False, metadata=False,
+                         worker=None):
+        self.select_worker(worker)
+        name = (f"worker-{worker['id']}-" if worker else "") + f"image-perceptual-{target}-{'unsupported' if unsupported else 'reject' if reject else 'gate' if gate else 'report' if reporting else 'off'}"
         if adaptive: name += "-quality-first"
         if metadata: name += "-metadata"
         fixture = self.root / "fixtures" / (name + (".bmp" if unsupported else ".png"))
@@ -609,6 +629,10 @@ class Harness:
         require(job["status"] == ("Failed" if failed else "ReadyToReplace"), f"Unexpected image verdict: {job['errorMessage']}")
         require(job.get("verificationReportJson"), "Image verification did not produce a report")
         report = json.loads(job["verificationReportJson"])
+        if worker and not unsupported:
+            require(job["workerName"] == worker["name"], "Image ran on the wrong host")
+            if self.strict_worker_verification and not failed:
+                require(report.get("context", {}).get("verificationLocation") == "Worker", "Image verification fell back to the server")
         if adaptive:
             decision = validate_search(report.get("perceptualSearch"), "Image", case["sourceSha256"], 10 if reject else 95)
             require(decision["fellBack"] == (reject or unsupported), "Image search reported the wrong fallback outcome")
@@ -892,6 +916,7 @@ class Harness:
                 self.report.case("audio-quality-first-mp3", lambda: self.audio("mp3", adaptive=True))
                 self.report.case("audio-quality-first-reject", lambda: self.audio("opus", adaptive=True, reject=True))
                 self.report.case("audio-quality-first-final-retry", self.audio_final_quality_retry)
+                self.quality_first_workers(tier)
                 return self.report.exit_code
             if regression == "image-quality":
                 self.report.case("image-perceptual-jpeg", lambda: self.image_perceptual("jpeg"))
