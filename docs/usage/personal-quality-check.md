@@ -32,19 +32,21 @@ optimisation work remains paused. Encoding can still compete with playback for C
 bandwidth, so use the option only when that trade-off is acceptable.
 
 Optimisarr prepares one unmodified reference and the candidates relevant to that media type. Video
-uses the four complete named video preset outputs; audio and still images use five-setting quality
-ladders. It structurally verifies every candidate before the comparison becomes available. For HDR
+uses up to five quality levels around the saved library quality, keeping its codec, container and
+other settings. Audio and still images use five-setting quality ladders. Select **Compare presets**
+explicitly to compare all four named video presets, including AV1; applying that comparison changes
+the library preset and codec. It structurally verifies every candidate before the comparison becomes available. For HDR
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
 
-Each video candidate starts from that named preset's complete server-owned bundle: video codec,
+In **Compare presets** mode, each video candidate starts from the named preset's complete server-owned bundle: video codec,
 container, HDR handling, video-audio codec and bitrate, and stereo downmix policy. Settings stored
 for the library's current preset do not carry into a different candidate. Optimisarr can still
 safely change the final container when retained streams require it—for example, an MP4 preset falls
 back to MKV rather than discarding Blu-ray/DVD image subtitles. The revealed diagnostics report the
 format that was actually produced.
 
-Each video preset uses its concrete configured quality for all three scenes. A library configured
+Each tested quality is held constant across all three scenes. Preset comparisons use each preset's concrete configured quality. A library configured
 for **Adaptive per-title VMAF** still uses adaptive selection for normal optimisation jobs, but the
 personal check does not start another early/middle/late quality search inside every comparison
 scene. That would change the preset being judged and multiply a short check into dozens of unrelated
@@ -93,8 +95,10 @@ the setting behind every candidate, your classifications, estimated
 savings, and the most compressed candidate you considered Indistinguishable or Acceptable. If every
 candidate was Visibly worse, it recommends keeping the current setting.
 
-**Use this quality for the library** selects the saved video preset and its complete current
-codec/container/HDR/video-audio/downmix bundle, audio bitrate, or image quality. It does not scan,
+**Use this setting for the library** changes only video quality in the default mode, retaining the
+saved codec and other settings. In **Compare presets** mode it selects the recommended video preset
+and its complete codec/container/HDR/video-audio/downmix bundle. Audio and image checks apply
+audio bitrate or image quality. It does not scan,
 enqueue, replace, move, or delete media. Optimisarr refuses a stale result
 if the relevant library codec, preset, or quality changed during the session.
 
@@ -102,7 +106,7 @@ if the relevant library codec, preset, or quality changed during the session.
 
 | Media | Prepared comparison | Applied setting |
 |---|---|---|
-| Video | One frame-aligned original plus the four complete library-slider presets across three 12-second scenes. | Video rule preset. |
+| Video | One frame-aligned original plus up to five quality levels across three 12-second scenes. Optional Compare presets uses the four complete presets. | Quality only; video preset only when explicitly comparing presets. |
 | Audio | One lossless reference plus five codec-appropriate bitrates across three level-matched 15-second excerpts. | Audio bitrate in kbps. |
 | Still image | One lossless PNG reference plus five output-quality levels in a synchronized zoom/pan viewport. | Image quality. |
 
@@ -119,7 +123,7 @@ if the relevant library codec, preset, or quality changed during the session.
 | A comparison stream cannot play | Return to the library and retry with a supported browser, codec, or source rather than guessing. |
 | A/V sync fails | The prepared candidate exceeded the strict sync tolerance after exact clipping; inspect its structured failure rather than rating a desynchronised sample. |
 
-For video sources above 8-bit, the quality check omits Compatibility H.264 because H.264 High 10 is
+In **Compare presets** mode, sources above 8-bit omit Compatibility H.264 because H.264 High 10 is
 not the preset's broad 8-bit playback target. The HEVC, AV1, and Scott's Settings candidates remain
 available and preserve the source bit depth.
 

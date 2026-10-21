@@ -251,6 +251,11 @@ export const ja: Messages = {
     change: "変更", skipped: "スキップ — 後で追加", receipt_heading: "セットアップを安全に適用しました", receipt_body: "{count} 件のライブラリを利用できます。スキャン、エンコード、置換、削除は開始されていません。", review_candidates: "候補を確認", open_dashboard: "ダッシュボードを開く"
   },
   calibration: {
+    compare_presets: "プリセットを比較",
+    compare_presets_hint: "AV1 を含む4つの動画プリセットを比較します。結果を適用するとライブラリのプリセットとコーデックが変わります。",
+    selected_settings_hint: "通常は保存済みのコーデック、コンテナー、設定で画質を比較します。結果の適用では画質だけが変わります。",
+    preparing_quality_hint: "保存済み設定で各画質の短い3シーンを準備しています。このページを離れるとセッションが中止され、サンプルが削除されます。",
+
     lab_intro: 'どの設定で作られたかを知らないまま短いテストエンコードを元と比較し、自分に合う品質を明らかにします。',
     back_to_library: 'ライブラリに戻る',
     library_missing: 'このライブラリは存在しません。',

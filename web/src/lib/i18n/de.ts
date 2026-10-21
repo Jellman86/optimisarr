@@ -260,6 +260,11 @@ export const de: Messages = {
     change: 'Ändern', skipped: 'Übersprungen — später hinzufügen', receipt_heading: 'Einrichtung wurde sicher angewendet', receipt_body: '{count} Bibliothek(en) sind bereit. Es wurde kein Scan, keine Kodierung, kein Austausch und keine Löschung gestartet.', review_candidates: 'Kandidaten prüfen', open_dashboard: 'Dashboard öffnen',
   },
   calibration: {
+    compare_presets: "Voreinstellungen vergleichen",
+    compare_presets_hint: "Alle vier Videovoreinstellungen einschließlich AV1 vergleichen. Das Anwenden ändert die Voreinstellung und den Codec der Bibliothek.",
+    selected_settings_hint: "Standardmäßig werden Qualitätsstufen mit dem gespeicherten Codec, Container und den Bibliothekseinstellungen verglichen. Das Anwenden ändert nur die Qualität.",
+    preparing_quality_hint: "Drei kurze Szenen pro Qualitätsstufe werden mit den gespeicherten Einstellungen vorbereitet. Beim Verlassen werden die Sitzung abgebrochen und die Proben entfernt.",
+
     lab_intro: 'Vergleiche kurze Testkodierungen mit dem Original, ohne zu wissen, welche Einstellung sie erzeugt hat, und decke dann auf, welche Qualität zu dir passt.',
     back_to_library: 'Zurück zur Bibliothek',
     library_missing: 'Diese Bibliothek existiert nicht mehr.',

@@ -469,11 +469,15 @@ reserved descendant. Resolve the operation or reservation and retry. Starting a 
 return the same conflict when an earlier preview cannot be removed. Expired calibration sessions
 remain listed with their files and diagnostic references; expiration retries on later sweeps.
 
-Video calibration creates three 12-second scenes for the four shuffled library-slider presets plus one marked original reference.
+Video calibration defaults to three 12-second scenes at up to five quality levels around the saved
+library quality, plus one marked original reference. Codec, container and other library settings
+are retained, and Apply changes only `QualityCrf`. Set `compareVideoPresets: true` in the start request
+to explicitly compare the four shuffled library-slider presets; Apply then changes the video preset
+and its complete bundle. Unsupported encoder execution is not silently replaced with another codec.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
 preceding keyframe, its sample `startSeconds` identifies the matching presentation window. Video
-samples retain the complete preset output, including its container, audio contract, and concrete
-configured quality. Calibration deliberately bypasses the library's Adaptive per-title VMAF search:
+samples retain the selected settings or complete preset output, including container and audio
+contract, with one concrete quality per candidate. Calibration deliberately bypasses the library's Adaptive per-title VMAF search:
 normal jobs retain that path, while a personal check measures VMAF once on each completed 12-second
 scene instead of recursively preparing three 40-second quality-search windows inside every scene.
 Scores remain absent from the API until classifications reveal the lineup;

@@ -340,6 +340,11 @@ export const en = {
     open_dashboard: 'Open dashboard',
   },
   calibration: {
+    compare_presets: "Compare presets",
+    compare_presets_hint: "Compare all four video presets, including AV1. Applying a result changes the library preset and codec.",
+    selected_settings_hint: "By default, compare quality levels using the saved library codec, container and settings. Applying a result changes only quality.",
+    preparing_quality_hint: "Preparing three short scenes at each quality level using the saved library settings. Leaving this page cancels the session and cleans up the samples.",
+
     eyebrow: 'Personal quality check',
     diag_verify_label: 'Temporary stream verification',
     diag_verify_hint: 'Uses one native video player and exposes its exact media resource, so the comparison will not be blind.',

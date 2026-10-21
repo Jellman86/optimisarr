@@ -192,7 +192,8 @@ internal sealed class BlindCalibrationService(
         bool hdrPlaybackConfirmed,
         bool diagnosticsEnabled,
         bool ignoreActiveStreams,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool compareVideoPresets = false)
     {
         await RemoveExpiredAsync(cancellationToken);
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -263,13 +264,14 @@ internal sealed class BlindCalibrationService(
         {
             MediaKind.Audio => BlindCalibrationPolicy.AudioPlan(duration, rules.TargetAudioCodec),
             MediaKind.Image => BlindCalibrationPolicy.ImagePlan(),
+            _ when !compareVideoPresets => BlindCalibrationPolicy.VideoQualityPlan(duration, currentQuality),
             _ => BlindCalibrationPolicy.VideoPlan(
                 duration,
                 PixelFormatInfo.Parse(
                     sourceProbe?.PixelFormat ?? media.PixelFormat,
                     sourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth)
         };
-        if (media.MediaKind == MediaKind.Video)
+        if (media.MediaKind == MediaKind.Video && compareVideoPresets)
         {
             plan = plan with
             {
@@ -566,6 +568,10 @@ internal sealed class BlindCalibrationService(
         else if (session.MediaKind == MediaKind.Image)
         {
             library.ImageQuality = session.RecommendedSetting.Quality;
+        }
+        else if (session.RecommendedSetting.VideoProfile is null)
+        {
+            library.QualityCrf = session.RecommendedSetting.Quality;
         }
         else
         {
@@ -904,7 +910,7 @@ internal sealed class BlindCalibrationService(
         IReadOnlyList<Job> jobs,
         CalibrationSetting setting) =>
         jobs.Where(job => (session.MediaKind == MediaKind.Video
-                ? job.RequestedRuleProfile == setting.VideoProfile
+                ? job.RequestedRuleProfile == setting.VideoProfile && job.RequestedVideoQuality == setting.Quality
                 : (session.MediaKind == MediaKind.Audio
                     ? job.RequestedAudioBitrateKbps
                     : job.RequestedImageQuality) == setting.Quality)
@@ -1093,7 +1099,8 @@ internal sealed class BlindCalibrationService(
         bool DownmixToStereo,
         ImageDownscaleMode ImageDownscaleMode,
         int ImageDownscaleValue,
-        int InitialQuality)
+        int InitialQuality,
+        string ResolvedRules)
     {
         public static Fingerprint From(
             Optimisarr.Data.Library library,
@@ -1114,7 +1121,8 @@ internal sealed class BlindCalibrationService(
             rules.DownmixToStereo,
             rules.ImageDownscaleMode,
             rules.ImageDownscaleValue,
-            quality);
+            quality,
+            JsonSerializer.Serialize(rules));
 
         public bool Matches(
             Optimisarr.Data.Library library,
@@ -1141,7 +1149,8 @@ internal sealed class BlindCalibrationService(
             && DownmixToStereo == rules.DownmixToStereo
             && ImageDownscaleMode == rules.ImageDownscaleMode
             && ImageDownscaleValue == rules.ImageDownscaleValue
-            && InitialQuality == quality;
+            && InitialQuality == quality
+            && ResolvedRules == JsonSerializer.Serialize(rules);
     }
 }
 

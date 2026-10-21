@@ -256,6 +256,11 @@ export const es: Messages = {
     change: 'Cambiar', skipped: 'Omitido — añadir después', receipt_heading: 'La configuración se aplicó de forma segura', receipt_body: '{count} biblioteca(s) están listas. No se inició ningún análisis, codificación, sustitución ni eliminación.', review_candidates: 'Revisar candidatos', open_dashboard: 'Abrir panel',
   },
   calibration: {
+    compare_presets: "Comparar preajustes",
+    compare_presets_hint: "Comparar los cuatro preajustes de vídeo, incluido AV1. Aplicar un resultado cambia el preajuste y el códec de la biblioteca.",
+    selected_settings_hint: "Por defecto se comparan niveles de calidad con el códec, contenedor y ajustes guardados. Aplicar un resultado solo cambia la calidad.",
+    preparing_quality_hint: "Preparando tres escenas por nivel de calidad con los ajustes guardados. Al salir se cancela la sesión y se eliminan las muestras.",
+
     lab_intro: 'Compara codificaciones de prueba cortas con el original sin saber qué ajuste produjo cada una y luego descubre qué calidad te conviene.',
     back_to_library: 'Volver a la biblioteca',
     library_missing: 'Esta biblioteca ya no existe.',
