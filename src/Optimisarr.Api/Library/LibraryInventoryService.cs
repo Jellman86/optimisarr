@@ -15,7 +15,7 @@ public sealed record ScanSummary(int Discovered, int Added, int Updated, int Rem
 public sealed class LibraryInventoryService(
     OptimisarrDbContext db,
     LibraryScanner scanner,
-    MediaProbeService probe,
+    IMediaProbeService probe,
     ImageMarkerService imageMarker)
 {
     /// <summary>Scans every enabled library and returns the combined summary.</summary>
@@ -124,7 +124,7 @@ public sealed class LibraryInventoryService(
             }
         }
 
-        var removed = await PruneVanishedFilesAsync(existingByPath, result.Files, cancellationToken);
+        var removed = await PruneVanishedFilesAsync(existingByPath, result.Files, library.Path, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -143,12 +143,14 @@ public sealed class LibraryInventoryService(
     private async Task<int> PruneVanishedFilesAsync(
         IReadOnlyDictionary<string, MediaFile> existingByPath,
         IReadOnlyList<ScannedFile> scannedFiles,
+        string libraryRoot,
         CancellationToken cancellationToken)
     {
         var scannedPaths = scannedFiles.Select(file => file.AbsolutePath).ToHashSet(StringComparer.Ordinal);
 
         var candidates = existingByPath.Values
-            .Where(file => !scannedPaths.Contains(file.Path) && !File.Exists(file.Path))
+            .Where(file => !scannedPaths.Contains(file.Path)
+                && LibraryPathSafety.IsSafeToPruneMissingFile(file.Path, libraryRoot))
             .ToList();
         if (candidates.Count == 0)
         {
@@ -213,13 +215,16 @@ public sealed class LibraryInventoryService(
 
     public async Task<MediaFile?> ProbeAsync(int mediaFileId, CancellationToken cancellationToken)
     {
-        var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == mediaFileId, cancellationToken);
+        var file = await db.MediaFiles.Include(f => f.Library)
+            .FirstOrDefaultAsync(f => f.Id == mediaFileId, cancellationToken);
         if (file is null)
         {
             return null;
         }
 
-        var result = await probe.ProbeAsync(file.Path, cancellationToken);
+        var result = LibraryPathSafety.IsSafeFile(file.Path, file.Library?.Path)
+            ? await probe.ProbeAsync(file.Path, cancellationToken)
+            : MediaProbeResult.Failure(LibraryPathSafety.Refusal);
         file.ProbedAt = DateTimeOffset.UtcNow;
         file.UpdatedAt = DateTimeOffset.UtcNow;
 

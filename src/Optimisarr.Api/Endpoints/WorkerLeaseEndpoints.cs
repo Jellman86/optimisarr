@@ -7,6 +7,7 @@ using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Verification;
@@ -321,6 +322,14 @@ internal static class WorkerLeaseEndpoints
                 {
                     if (job.MediaFile is null)
                     {
+                        continue;
+                    }
+
+                    if (File.Exists(job.MediaFile.Path)
+                        && !LibraryPathSafety.IsSafeFile(job.MediaFile.Path, job.MediaFile.Library?.Path))
+                    {
+                        skipped++;
+                        lastReason = LibraryPathSafety.Refusal;
                         continue;
                     }
 

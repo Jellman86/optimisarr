@@ -342,6 +342,10 @@ internal static class LibraryEndpoints
                 return ApiErrors.BadRequest("library.pathMissing", $"Library path does not exist: {library.Path}", new { path = library.Path });
             }
 
+            if (!LibraryPathSafety.IsSafeDirectory(library.Path))
+                return ApiErrors.BadRequest("library.pathUnsafe",
+                    "Library root must be a real, accessible directory without a symbolic link or reparse point. Configure the target directory as the library root.");
+
             var summary = await inventory.ScanAsync(library, cancellationToken);
             return Results.Ok(summary);
         })

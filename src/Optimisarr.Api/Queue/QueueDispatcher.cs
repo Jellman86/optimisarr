@@ -1591,6 +1591,10 @@ public sealed partial class QueueDispatcher(
 
         var media = job.MediaFile;
         var library = media.Library;
+        // Offline/missing files retain the existing planning/error behavior. An existing path
+        // must be checked before preparation can pass it to any probe or decoder.
+        if (File.Exists(media.Path) && !LibraryPathSafety.IsSafeFile(media.Path, library?.Path))
+            throw new JobNoLongerEligibleException(LibraryPathSafety.Refusal);
         var rules = LibraryRuleResolution.Resolve(library);
         var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
         var queueSettings = await settings.GetQueueSettingsAsync(cancellationToken);

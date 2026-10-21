@@ -54,6 +54,71 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         Assert.Equal(0, second.Updated);
     }
 
+    [PosixFact]
+    public async Task Probe_refuses_a_previously_scanned_file_after_its_parent_becomes_a_link()
+    {
+        var original = WriteMediaFile("folder/movie.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+        var folder = Path.GetDirectoryName(original)!;
+        var moved = Path.Combine(_root, "moved");
+        Directory.Move(folder, moved);
+        Directory.CreateSymbolicLink(folder, moved);
+        await using var db = new OptimisarrDbContext(_options);
+        var media = await db.MediaFiles.SingleAsync();
+        var probe = new RefusingProbe();
+        var service = new LibraryInventoryService(db, new LibraryScanner(), probe, new ImageMarkerService());
+
+        var result = await service.ProbeAsync(media.Id, CancellationToken.None);
+
+        Assert.False(probe.Called);
+        Assert.Equal(MediaFileStatus.ProbeFailed, result!.Status);
+        Assert.Contains("link", result.ProbeError!, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("content", File.ReadAllText(Path.Combine(moved, "movie.mkv")));
+        Assert.Single(await db.MediaFiles.ToListAsync());
+    }
+
+    [PosixFact]
+    public async Task Rescan_keeps_inventory_and_jobs_for_broken_links_but_prunes_truly_vanished_directories()
+    {
+        var linkedLeaf = WriteMediaFile("leaf.mkv");
+        var linkedParent = WriteMediaFile("linked/movie.mkv");
+        var vanished = WriteMediaFile("vanished/movie.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var files = await db.MediaFiles.ToListAsync();
+            db.Jobs.AddRange(files.Select(file => new Job { MediaFileId = file.Id, Status = JobStatus.Queued }));
+            await db.SaveChangesAsync();
+        }
+        File.Delete(linkedLeaf);
+        File.CreateSymbolicLink(linkedLeaf, Path.Combine(_root, "absent.mkv"));
+        Directory.Delete(Path.GetDirectoryName(linkedParent)!, recursive: true);
+        Directory.CreateSymbolicLink(Path.GetDirectoryName(linkedParent)!, Path.Combine(_root, "absent-directory"));
+        Directory.Delete(Path.GetDirectoryName(vanished)!, recursive: true);
+
+        var result = await ScanAsync(library);
+
+        Assert.Equal(1, result.Removed);
+        await using var read = new OptimisarrDbContext(_options);
+        Assert.Equal(2, await read.MediaFiles.CountAsync());
+        Assert.Equal(2, await read.Jobs.CountAsync());
+        Assert.Contains(await read.MediaFiles.ToListAsync(), file => file.Path == linkedLeaf);
+        Assert.Contains(await read.MediaFiles.ToListAsync(), file => file.Path == linkedParent);
+        Assert.Equal(0, (await ScanAsync(library)).Removed);
+    }
+
+    private sealed class RefusingProbe : IMediaProbeService
+    {
+        public bool Called { get; private set; }
+        public Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken)
+        {
+            Called = true;
+            return Task.FromResult(MediaProbeResult.Failure("Test probe must not be called for a linked source."));
+        }
+    }
+
     [Fact]
     public async Task Deleting_a_library_cascades_to_its_media_files()
     {
