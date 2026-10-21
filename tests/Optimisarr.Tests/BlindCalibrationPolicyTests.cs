@@ -6,6 +6,29 @@ namespace Optimisarr.Tests;
 public sealed class BlindCalibrationPolicyTests
 {
     [Theory]
+    [InlineData(24, new[] { 32, 28, 24, 20, 16 })]
+    [InlineData(0, new[] { 8, 4, 0 })]
+    [InlineData(51, new[] { 51, 47, 43 })]
+    [InlineData(63, new[] { 51, 47, 43 })]
+    public void Selected_video_settings_vary_only_quality_in_most_compressed_first_order(int quality, int[] expected)
+    {
+        var plan = BlindCalibrationPolicy.VideoQualityPlan(1_200, quality);
+
+        Assert.Equal(expected, plan.Settings.Select(setting => setting.Quality));
+        Assert.All(plan.Settings, setting => Assert.Null(setting.VideoProfile));
+        Assert.Equal(plan.Settings.Count, plan.Settings.Select(setting => setting.Key).Distinct().Count());
+        Assert.Equal(3, plan.Samples.Count);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(64)]
+    public void Selected_video_settings_reject_an_invalid_quality(int quality)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => BlindCalibrationPolicy.VideoQualityPlan(1_200, quality));
+    }
+
+    [Theory]
     [InlineData(false, false, HdrHandling.Exclude, false, true)]
     [InlineData(true, false, HdrHandling.Preserve, true, true)]
     [InlineData(true, false, HdrHandling.Preserve, false, false)]

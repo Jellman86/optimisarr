@@ -253,6 +253,11 @@ export const fr: Messages = {
     change: 'Modifier', skipped: 'Ignoré — à ajouter plus tard', receipt_heading: 'La configuration est appliquée en toute sécurité', receipt_body: '{count} médiathèque(s) sont prêtes. Aucun scan, encodage, remplacement ni suppression n’a démarré.', review_candidates: 'Examiner les candidats', open_dashboard: 'Ouvrir le tableau de bord',
   },
   calibration: {
+    compare_presets: "Comparer les préréglages",
+    compare_presets_hint: "Comparer les quatre préréglages vidéo, dont AV1. Appliquer un résultat modifie le préréglage et le codec de la bibliothèque.",
+    selected_settings_hint: "Par défaut, comparez les niveaux de qualité avec le codec, le conteneur et les réglages enregistrés. Appliquer un résultat ne change que la qualité.",
+    preparing_quality_hint: "Préparation de trois scènes par niveau de qualité avec les réglages enregistrés. Quitter la page annule la session et supprime les extraits.",
+
     lab_intro: 'Comparez de courts encodages de test à l’original sans savoir quel réglage a produit chacun, puis découvrez la qualité qui vous convient.',
     back_to_library: 'Retour à la bibliothèque',
     library_missing: 'Cette bibliothèque n’existe plus.',

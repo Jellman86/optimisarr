@@ -251,6 +251,11 @@ export const pt: Messages = {
     change: "Alterar", skipped: "Ignorado — adicionar depois", receipt_heading: "Configuração aplicada em segurança", receipt_body: "{count} biblioteca(s) estão prontas. Nenhuma análise, codificação, substituição ou eliminação foi iniciada.", review_candidates: "Rever candidatos", open_dashboard: "Abrir painel"
   },
   calibration: {
+    compare_presets: "Comparar predefinições",
+    compare_presets_hint: "Comparar as quatro predefinições de vídeo, incluindo AV1. Aplicar um resultado altera a predefinição e o codec da biblioteca.",
+    selected_settings_hint: "Por padrão, compare níveis de qualidade com o codec, contentor e definições guardados. Aplicar um resultado altera apenas a qualidade.",
+    preparing_quality_hint: "A preparar três cenas por nível de qualidade com as definições guardadas. Sair da página cancela a sessão e elimina as amostras.",
+
     lab_intro: 'Compare codificações de teste curtas com o original sem saber que definição produziu cada uma e depois descubra que qualidade lhe convém.',
     back_to_library: 'Voltar à biblioteca',
     library_missing: 'Esta biblioteca já não existe.',

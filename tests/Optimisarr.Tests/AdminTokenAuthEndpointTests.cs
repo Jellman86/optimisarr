@@ -642,6 +642,111 @@ public sealed class AdminTokenAuthEndpointTests
         Assert.Equal("original-must-not-change", await File.ReadAllTextAsync(sourcePath));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Default_video_calibration_keeps_the_saved_codec_and_applies_only_quality(bool changeSettings)
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var directory = Path.Combine(Path.GetDirectoryName(_api.LibraryDirectory)!, "selected-quality-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var source = Path.Combine(directory, "source.mkv");
+        await File.WriteAllTextAsync(source, "original-is-unchanged");
+        int libraryId;
+        int mediaFileId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = new Data.Library
+            {
+                Name = "Selected settings", Path = directory, RuleProfile = RuleProfile.ExperimentalAv1,
+                TargetVideoCodec = "hevc", TargetContainer = "mkv", QualityCrf = 24,
+                VideoAudioCodec = "aac", VideoAudioBitrateKbps = 128, DownmixToStereo = true,
+                EncoderPreset = "balanced", HdrHandling = HdrHandling.Preserve
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            libraryId = library.Id;
+            var media = new MediaFile
+            {
+                LibraryId = library.Id, Path = source, RelativePath = "source.mkv",
+                SizeBytes = new FileInfo(source).Length, ModifiedAt = DateTimeOffset.UtcNow,
+                Status = MediaFileStatus.Probed, MediaKind = MediaKind.Video, DurationSeconds = 300,
+                VideoCodec = "h264", Width = 1920, Height = 1080, PixelFormat = "yuv420p", BitsPerRawSample = 8
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaFileId = media.Id;
+        }
+        using var started = await client.PostAsJsonAsync($"/api/libraries/{libraryId}/calibration", new { mediaFileId, diagnosticsEnabled = true });
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        var id = JsonNode.Parse(await started.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var jobs = db.Jobs.Where(job => job.CalibrationSessionId == id).ToList();
+            Assert.Equal(15, jobs.Count);
+            Assert.All(jobs, job => Assert.Null(job.RequestedRuleProfile));
+            Assert.Equal(new[] { 16, 20, 24, 28, 32 }, jobs.Select(job => job.RequestedVideoQuality!.Value).Distinct().Order());
+            foreach (var job in jobs)
+            {
+                var work = Path.Combine(directory, "job-" + job.Id);
+                Directory.CreateDirectory(work);
+                job.WorkOutputPath = Path.Combine(work, "candidate.mkv");
+                await File.WriteAllTextAsync(job.WorkOutputPath, "quality-" + job.RequestedVideoQuality);
+                await File.WriteAllTextAsync(Path.Combine(work, ".optimisarr-comparison-reference.mkv"), "reference");
+                job.Status = JobStatus.Completed;
+                job.Progress = 1;
+                job.OutputSizeBytes = job.RequestedVideoQuality * 1000;
+                job.VideoEncoder = "libx265";
+                job.EffectiveVideoQuality = job.RequestedVideoQuality;
+                job.VideoQualityMode = "CRF";
+            }
+            await db.SaveChangesAsync();
+        }
+        var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{id}"))!;
+        var variants = session["variants"]!.AsArray().Where(v => !v!["isOriginal"]!.GetValue<bool>()).ToList();
+        Assert.Equal(5, variants.Count);
+        Assert.All(variants, v => Assert.Equal("hevc", v!["diagnostics"]!["codec"]!.GetValue<string>()));
+        using var classified = await client.PostAsJsonAsync($"/api/calibration/{id}/classifications", new
+        {
+            classifications = variants.ToDictionary(v => v!["name"]!.GetValue<string>(), _ => "Acceptable")
+        });
+        Assert.Equal(HttpStatusCode.OK, classified.StatusCode);
+        var result = JsonNode.Parse(await classified.Content.ReadAsStringAsync())!["result"]!;
+        Assert.Equal(32, result["recommendedQuality"]!.GetValue<int>());
+        Assert.Null(result["recommendedProfile"]);
+        Assert.Equal(5, result["variants"]!.AsArray().Where(v => !v!["isOriginal"]!.GetValue<bool>())
+            .Select(v => v!["estimatedSavingPercent"]!.GetValue<double>()).Distinct().Count());
+        if (changeSettings)
+        {
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Libraries.Single(l => l.Id == libraryId).VideoAudioBitrateKbps = 192;
+            await db.SaveChangesAsync();
+        }
+        using var applied = await client.PostAsync($"/api/calibration/{id}/apply", null);
+        Assert.Equal(changeSettings ? HttpStatusCode.Conflict : HttpStatusCode.OK, applied.StatusCode);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = db.Libraries.Single(l => l.Id == libraryId);
+            Assert.Equal(changeSettings ? 24 : 32, library.QualityCrf);
+            Assert.Equal(RuleProfile.ExperimentalAv1, library.RuleProfile);
+            Assert.Equal("hevc", library.TargetVideoCodec);
+            Assert.Equal("mkv", library.TargetContainer);
+            Assert.Equal("aac", library.VideoAudioCodec);
+            Assert.Equal(changeSettings ? 192 : 128, library.VideoAudioBitrateKbps);
+            Assert.True(library.DownmixToStereo);
+            Assert.Equal("balanced", library.EncoderPreset);
+            Assert.False(db.Jobs.Any(j => j.MediaFileId == mediaFileId && j.Type == JobType.Normal));
+        }
+        using var deleted = await client.DeleteAsync($"/api/calibration/{id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal("original-is-unchanged", await File.ReadAllTextAsync(source));
+    }
+
     [Fact]
     public async Task Calibration_creates_only_disposable_clipped_jobs_and_delete_cleans_the_session()
     {
@@ -697,7 +802,7 @@ public sealed class AdminTokenAuthEndpointTests
 
         using var started = await client.PostAsJsonAsync(
             $"/api/libraries/{libraryId}/calibration",
-            new { mediaFileId, diagnosticsEnabled = true, ignoreActiveStreams = true });
+            new { mediaFileId, diagnosticsEnabled = true, ignoreActiveStreams = true, compareVideoPresets = true });
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         var startedSession = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
         var sessionId = startedSession["id"]!.GetValue<Guid>();
@@ -957,7 +1062,7 @@ public sealed class AdminTokenAuthEndpointTests
 
         using var started = await client.PostAsJsonAsync(
             $"/api/libraries/{libraryId}/calibration",
-            new { mediaFileId, ignoreActiveStreams = true });
+            new { mediaFileId, ignoreActiveStreams = true, compareVideoPresets = true });
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         var session = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
         var sessionId = session["id"]!.GetValue<Guid>();

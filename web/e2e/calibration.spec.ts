@@ -351,3 +351,16 @@ test('audio quality uses the same anonymous classification model with audio play
   await expect(page.getByRole('button', { name: 'Inspect video full screen' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Reveal samples and result' })).toBeDisabled()
 })
+
+for (const compareVideoPresets of [false, true]) {
+  test(`video check explicitly requests preset comparison: ${compareVideoPresets}`, async ({ page }) => {
+    await mockApp(page, 'Video', false, true)
+    await page.goto('/#/libraries/1/quality-check')
+    const checkbox = page.getByRole('checkbox', { name: /Compare presets/ })
+    await expect(checkbox).not.toBeChecked()
+    if (compareVideoPresets) await checkbox.check()
+    const request = page.waitForRequest(r => r.method() === 'POST' && new URL(r.url()).pathname === '/api/libraries/1/calibration')
+    await page.getByRole('button', { name: 'Prepare blind samples', exact: true }).click()
+    expect((await request).postDataJSON().compareVideoPresets).toBe(compareVideoPresets)
+  })
+}

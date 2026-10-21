@@ -5478,6 +5478,10 @@
       },
       "StartCalibrationRequest": {
         "properties": {
+          "compareVideoPresets": {
+            "default": false,
+            "type": "boolean"
+          },
           "diagnosticsEnabled": {
             "default": false,
             "type": "boolean"

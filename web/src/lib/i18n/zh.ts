@@ -251,6 +251,11 @@ export const zh: Messages = {
     change: "更改", skipped: "已跳过 — 稍后添加", receipt_heading: "设置已安全应用", receipt_body: "{count} 个媒体库已准备就绪。未启动扫描、编码、替换或删除。", review_candidates: "查看候选项", open_dashboard: "打开仪表板"
   },
   calibration: {
+    compare_presets: "比较预设",
+    compare_presets_hint: "比较包括 AV1 在内的四种视频预设。应用结果会更改媒体库的预设和编解码器。",
+    selected_settings_hint: "默认使用媒体库保存的编解码器、容器和设置比较质量级别。应用结果仅更改质量。",
+    preparing_quality_hint: "正在使用保存的设置为每个质量级别准备三个短场景。离开此页面将取消会话并清理样本。",
+
     lab_intro: '在不知道每个样本使用了哪种设置的情况下，将简短的测试编码与原片对比，然后揭晓最适合你的质量。',
     back_to_library: '返回媒体库',
     library_missing: '此媒体库已不存在。',

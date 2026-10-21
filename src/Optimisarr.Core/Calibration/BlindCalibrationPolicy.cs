@@ -73,6 +73,23 @@ public static class BlindCalibrationPolicy
         return new BlindCalibrationPlan(settings, RepresentativeSamples(durationSeconds, SampleSeconds));
     }
 
+    public static BlindCalibrationPlan VideoQualityPlan(double durationSeconds, int currentQuality)
+    {
+        if (!double.IsFinite(durationSeconds) || durationSeconds < SampleSeconds * 4)
+            throw new ArgumentOutOfRangeException(nameof(durationSeconds), "Video calibration needs at least 48 seconds.");
+        if (currentQuality is < 0 or > 63)
+            throw new ArgumentOutOfRangeException(nameof(currentQuality));
+
+        // Use the queue's shared requested-quality scale; hardware translation remains encoder-owned.
+        var baseline = Math.Clamp(currentQuality, 0, 51);
+        var settings = new[] { 8, 4, 0, -4, -8 }
+            .Select(offset => Math.Clamp(baseline + offset, 0, 51))
+            .Distinct()
+            .Select(quality => new CalibrationSetting(quality.ToString(System.Globalization.CultureInfo.InvariantCulture), quality))
+            .ToList();
+        return new BlindCalibrationPlan(settings, RepresentativeSamples(durationSeconds, SampleSeconds));
+    }
+
     public static BlindCalibrationPlan AudioPlan(
         double durationSeconds,
         string targetCodec)

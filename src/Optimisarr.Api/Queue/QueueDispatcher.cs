@@ -1604,15 +1604,15 @@ public sealed partial class QueueDispatcher(
         var isDisposable = isPreview || isCalibration;
         if (isCalibration && (job.CalibrationSessionId is null
             || media.MediaKind == MediaKind.Video
-                && (job.RequestedVideoQuality is null || job.RequestedRuleProfile is null)
+                && job.RequestedVideoQuality is null
             || media.MediaKind == MediaKind.Audio && job.RequestedAudioBitrateKbps is null
             || media.MediaKind == MediaKind.Image && job.RequestedImageQuality is null))
         {
             throw new InvalidOperationException("Calibration job is missing its session or requested quality.");
         }
-        if (isCalibration && media.MediaKind == MediaKind.Video)
+        if (isCalibration && media.MediaKind == MediaKind.Video && job.RequestedRuleProfile is { } calibrationProfile)
         {
-            rules = LibraryRuleResolution.ResolveVideoPreset(library!, job.RequestedRuleProfile!.Value);
+            rules = LibraryRuleResolution.ResolveVideoPreset(library!, calibrationProfile);
         }
         else if (isCalibration && media.MediaKind == MediaKind.Audio)
         {

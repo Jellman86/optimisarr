@@ -6,7 +6,8 @@ internal sealed record StartCalibrationRequest(
     int MediaFileId,
     bool HdrPlaybackConfirmed = false,
     bool DiagnosticsEnabled = false,
-    bool IgnoreActiveStreams = false);
+    bool IgnoreActiveStreams = false,
+    bool CompareVideoPresets = false);
 internal sealed record CalibrationClassificationsRequest(
     IReadOnlyDictionary<string, string>? Classifications);
 
@@ -41,7 +42,8 @@ internal static class CalibrationEndpoints
                     request.HdrPlaybackConfirmed,
                     request.DiagnosticsEnabled,
                     request.IgnoreActiveStreams,
-                    cancellationToken));
+                    cancellationToken,
+                    request.CompareVideoPresets));
             }
             catch (KeyNotFoundException exception)
             {

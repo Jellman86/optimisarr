@@ -251,6 +251,11 @@ export const it: Messages = {
     change: 'Modifica', skipped: 'Saltato — aggiungi in seguito', receipt_heading: 'Configurazione applicata in sicurezza', receipt_body: '{count} libreria/e sono pronte. Non è stata avviata alcuna scansione, codifica, sostituzione o eliminazione.', review_candidates: 'Controlla candidati', open_dashboard: 'Apri dashboard',
   },
   calibration: {
+    compare_presets: "Confronta preimpostazioni",
+    compare_presets_hint: "Confronta le quattro preimpostazioni video, incluso AV1. Applicare un risultato cambia la preimpostazione e il codec della libreria.",
+    selected_settings_hint: "Per impostazione predefinita si confrontano livelli di qualità con codec, contenitore e impostazioni salvati. Applicare un risultato cambia solo la qualità.",
+    preparing_quality_hint: "Preparazione di tre scene per livello di qualità con le impostazioni salvate. Uscire dalla pagina annulla la sessione ed elimina i campioni.",
+
     lab_intro: 'Confronta brevi codifiche di prova con l’originale senza sapere quale impostazione le ha prodotte, poi scopri quale qualità fa per te.',
     back_to_library: 'Torna alla raccolta',
     library_missing: 'Questa raccolta non esiste più.',

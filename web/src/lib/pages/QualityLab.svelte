@@ -45,6 +45,7 @@
   let browserStreamUrl = $state('')
   let diagnosticsEnabled = $state(false)
   let ignoreActiveStreams = $state(false)
+  let compareVideoPresets = $state(false)
   let viewer = $state<HTMLElement | null>(null)
   let fullscreen = $state(false)
   let hdrDisplaySupported = $state(false)
@@ -116,6 +117,7 @@
         selected?.isHdr === true && hdrReady,
         diagnosticsEnabled,
         ignoreActiveStreams,
+        selected?.mediaKind === 'Video' && compareVideoPresets,
       )
       activeName = 'ORIGINAL'
       activeScene = 0
@@ -560,6 +562,13 @@
           <select id="quality-source" class="input" bind:value={selectedSource}>
             {#each sources as source}<option value={source.mediaFileId}>{sourceLabel(source)}</option>{/each}
           </select>
+          {#if selected?.mediaKind === 'Video'}
+            <p class="mt-4 text-sm text-ink-2">{i18n.m.calibration.selected_settings_hint}</p>
+            <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-sm text-ink">
+              <input class="mt-1" type="checkbox" bind:checked={compareVideoPresets} />
+              <span><strong class="block">{i18n.m.calibration.compare_presets}</strong><span class="mt-0.5 block text-xs text-ink-2">{i18n.m.calibration.compare_presets_hint}</span></span>
+            </label>
+          {/if}
           {#if selected?.isHdr}
             <div class="callout tone-warn mt-5 rounded-xl p-4">
               <p class="font-semibold">{i18n.m.calibration.hdr_title}</p>
@@ -591,7 +600,7 @@
     <section class="card mx-auto max-w-2xl p-6 sm:p-8">
       <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-ink">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-accent">{Math.round(session.preparationProgress * 100)}%</span></div>
       <div class="mt-5 h-2 overflow-hidden rounded-full bg-sunken"><div class="h-full rounded-full bg-accent-fill transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
-      <p class="mt-4 text-sm leading-relaxed text-ink-2">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : i18n.m.calibration.preparing_hint}</p>
+      <p class="mt-4 text-sm leading-relaxed text-ink-2">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : compareVideoPresets ? i18n.m.calibration.preparing_hint : i18n.m.calibration.preparing_quality_hint}</p>
       <div class="mt-6 border-t border-line pt-5">
         <div class="mb-3 flex items-center gap-2">
           <Icon name="gpu" class="h-4 w-4 text-ink-4" />
