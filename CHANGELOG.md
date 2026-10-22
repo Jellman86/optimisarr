@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make the Mac helper-shutdown regression check actual process death and reject the fixture's natural-exit fallback, avoiding a CI scheduling failure at a six-second wall-clock cutoff. Runtime shutdown deadlines and resource-retirement rules are unchanged.
+
 - Run remote Mac acceptance without unlocking the login keychain: disposable workers use a process-owned checkpoint keychain and recover only isolated test scratch roots. Signed builds can explicitly select a temporary signing keychain loaded from the authorized certificate backup, without changing the user's default keychain or search list. A locked or missing checkpoint keychain still blocks work.
 
 - Prepare worker preview and Personal quality check samples in the background instead of inside the worker's request for work. On very large originals (30–50 GB) the old in-request preparation outlived the worker's 30-second request limit, was discarded, and restarted on every poll, so the sample never started. The sample is also identified by size and modification time instead of hashing the whole original twice; it is disposable and can never replace the original. Fixes the follow-up reported on #428.

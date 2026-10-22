@@ -67,3 +67,19 @@ The source baseline is rebased PR #432 at `328ac0e9`, plus the keychain and
 acceptance changes in this record's commit. Detailed logs and generated media
 are retained outside Git under Quark's SSD artifact directory
 `optimisarr-qualification-20261022`; no credentials are included in this record.
+
+## CI timing regression follow-up
+
+The first CI run at `bf0c6d01` failed an existing retirement test because its
+elapsed-time assertion observed 6.013 seconds against a six-second cutoff.
+The runtime still uses the original three-second service timeout and one-second
+TERM/KILL waits. The test now checks the safety outcome directly: the published
+helper PID must be absent when retirement returns, and a marker written only
+on its ten-second natural-exit fallback must not exist. Fixture readiness waits
+for the complete PID, and failed assertions still stop the owned helper.
+
+A mutation trial omitting only the helper's forced kill fails both output-open
+and output-closed variants on the new liveness assertion. Restoring the unchanged
+production source makes the entire 493-test Mac suite pass. This replaces a
+scheduler-sensitive performance assertion with process-lifecycle evidence;
+no runtime grace period, admission rule or retirement acknowledgment changed.
