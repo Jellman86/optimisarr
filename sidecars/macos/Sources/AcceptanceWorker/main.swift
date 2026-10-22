@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import SidecarCore
 
 private struct AcceptancePairingRequest: Decodable {
@@ -13,6 +14,21 @@ struct AcceptanceWorker {
     @MainActor
     static func main() async throws {
         let env = ProcessInfo.processInfo.environment
+        // A process-owned keychain avoids both login prompts and persistent credentials.
+        // Native accounting still uses a real Keychain anchor and fails closed on errors.
+        var checkpointKeychain: SecKeychain?
+        defer { if let checkpointKeychain { SecKeychainDelete(checkpointKeychain) } }
+        func isolatedCheckpointStore(root: URL, service: String) throws -> KeychainNativeWorkCheckpointStore {
+            guard service.hasPrefix("uk.optimisarr.acceptance."), service.utf8.count <= 200 else { throw NativeQualityHostError() }
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let path = root.appendingPathComponent("checkpoint-" + UUID().uuidString + ".keychain-db")
+            let password = UUID().uuidString + UUID().uuidString
+            let status = password.withCString { bytes in
+                SecKeychainCreate(path.path, UInt32(password.utf8.count), bytes, false, nil, &checkpointKeychain)
+            }
+            guard status == errSecSuccess, checkpointKeychain != nil else { throw NativeQualityHostError() }
+            return KeychainNativeWorkCheckpointStore(service: service, fileBasedKeychain: path)
+        }
         if CommandLine.arguments.contains("--memory-capacity") {
             let value: Any = MacMemoryAvailability.read().map { $0 as Any } ?? NSNull()
             let data = try JSONSerialization.data(withJSONObject: ["availableMemoryBytes": value,
@@ -107,7 +123,7 @@ struct AcceptanceWorker {
             let accountingService = try required("OPTIMISARR_NATIVE_ACCOUNTING_SERVICE")
             guard accountingService.hasPrefix("uk.optimisarr.acceptance."), accountingService.utf8.count <= 200 else { throw NativeQualityHostError() }
             let runtime = NativeWorkRuntime(directory: accountingRoot,
-                checkpointStore: KeychainNativeWorkCheckpointStore(service: accountingService, backend: .fileBased), tools: tools)
+                checkpointStore: try isolatedCheckpointStore(root: accountingRoot.deletingLastPathComponent(), service: accountingService), tools: tools)
             let mountParent = accountingRoot.deletingLastPathComponent().appendingPathComponent("native-ram", isDirectory: true)
             try FileManager.default.createDirectory(at: mountParent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             var readiness = NativeWorkReadiness.blocked
@@ -226,7 +242,14 @@ struct AcceptanceWorker {
         let ffmpeg = URL(fileURLWithPath: try required("OPTIMISARR_FFMPEG"))
         let ffprobe = URL(fileURLWithPath: try required("OPTIMISARR_FFPROBE"))
         let name = env["OPTIMISARR_ACCEPTANCE_NAME"] ?? "macOS acceptance"
-        var capabilities = await CapabilityProber(ffmpeg: ffmpeg).probe(name: name, maxConcurrency: 1)
+        let nativeTools = env["OPTIMISARR_NATIVE_HOST"].map { host in
+            NativeQualityTools(host: URL(fileURLWithPath: host), ffmpeg: ffmpeg,
+                imageMetric: env["OPTIMISARR_IMAGE_QUALITY"].map { URL(fileURLWithPath: $0) },
+                audioMetric: env["OPTIMISARR_AUDIO_QUALITY"].map { URL(fileURLWithPath: $0) },
+                metadataTool: env["OPTIMISARR_EXIFTOOL"].map { URL(fileURLWithPath: $0) })
+        }
+        var capabilities = await CapabilityProber(ffmpeg: ffmpeg,
+            native: nativeTools.map { NativeQualityCapabilityProber(tools: $0) }).probe(name: name, maxConcurrency: 1)
         if CommandLine.arguments.contains("--discover") {
             let data = try JSONSerialization.data(withJSONObject: ["videoEncoders": capabilities.videoEncoders,
                                                                    "operatingSystem": "macos"])
@@ -249,12 +272,26 @@ struct AcceptanceWorker {
         }
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         let client = SidecarClient()
-        let runner = JobRunner(client: client, ffmpeg: ffmpeg, ffprobe: ffprobe, scratchRoot: scratch)
+        let settings = SettingsSnapshot(workLocation: .folder(scratch),
+            memoryBudgetBytes: WorkLocationPolicy.defaultBudget(physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory)))
+        let runtime: NativeWorkRuntime?
+        if let nativeTools {
+            let root = URL(fileURLWithPath: try required("OPTIMISARR_NATIVE_ACCOUNTING_ROOT"))
+            runtime = NativeWorkRuntime(directory: root,
+                checkpointStore: try isolatedCheckpointStore(root: root.deletingLastPathComponent(),
+                    service: required("OPTIMISARR_NATIVE_ACCOUNTING_SERVICE")), tools: nativeTools)
+        } else { runtime = nil }
+        let runner = JobRunner(client: client, ffmpeg: ffmpeg, ffprobe: ffprobe, scratchRoot: scratch,
+            settings: settings, nativeTools: nativeTools, nativeRuntime: runtime ?? .shared)
         // Exercise the same recovery and concurrent heartbeat loop as the installed app.
         let session = SidecarSession(client: client, store: InMemoryCredentialStore(),
-            capabilities: capabilities, prober: nil, executor: runner,
+            capabilities: capabilities, prober: nil, settingsSnapshot: settings, executor: runner,
             scratchCapacity: { JobRunner.availableScratchBytes(at: scratch) ?? 0 },
-            jobConcurrency: 1, persistConcurrency: { _ in })
+            nativeRuntime: runtime, nativeScratchRoots: [scratch, FileManager.default.temporaryDirectory],
+            nativeResources: NativeWorkerResources(settings: settings, scratchRoot: scratch).refresh,
+            recoverNativeScratch: {
+                if let nativeTools { _ = try? await NativeScratchRecoveryService(tools: nativeTools).recover(root: scratch) }
+            }, jobConcurrency: 1, persistConcurrency: { _ in })
         await session.pair(serverAddress: server, pin: try required("OPTIMISARR_ACCEPTANCE_PIN"))
         guard session.isPaired else {
             throw NSError(domain: "AcceptanceWorker", code: 4,

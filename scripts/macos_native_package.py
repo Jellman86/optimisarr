@@ -129,7 +129,7 @@ def publish(destination):
     validate_runtime(destination)
 
 
-def sign_bundle(app, identity, run=subprocess.run):
+def sign_bundle(app, identity, run=subprocess.run, keychain=None):
     contents = app / 'Contents'
     native = contents / 'Resources/native-quality'
     validate_runtime(native)
@@ -142,13 +142,13 @@ def sign_bundle(app, identity, run=subprocess.run):
     binaries = [path for path in paths if path.is_file() and is_mach_o(path)
                 and path != main]
     for binary in binaries:
-        args = ['codesign', '--force', '--sign', identity]
+        args = ['codesign', '--force', '--sign', identity, *(['--keychain', str(keychain)] if keychain else [])]
         if identity != '-':
             args.extend(['--options', 'runtime', '--timestamp'])
             if binary == native / HOST:
                 args.extend(['--entitlements', str(ENTITLEMENTS)])
         run([*args, str(binary)], check=True)
-    args = ['codesign', '--force', '--sign', identity]
+    args = ['codesign', '--force', '--sign', identity, *(['--keychain', str(keychain)] if keychain else [])]
     if identity != '-':
         args.extend(['--options', 'runtime', '--timestamp'])
     run([*args, str(app)], check=True)
@@ -163,6 +163,7 @@ if __name__ == '__main__':
     sign_parser = subparsers.add_parser('sign')
     sign_parser.add_argument('bundle', type=Path)
     sign_parser.add_argument('--identity', default='-')
+    sign_parser.add_argument('--keychain', type=Path)
     check_parser = subparsers.add_parser('check')
     check_parser.add_argument('bundle', type=Path)
     smoke_parser = subparsers.add_parser('smoke')
@@ -171,7 +172,7 @@ if __name__ == '__main__':
     if arguments.action == 'publish':
         publish(arguments.destination.resolve())
     elif arguments.action == 'sign':
-        sign_bundle(arguments.bundle.resolve(), arguments.identity)
+        sign_bundle(arguments.bundle.resolve(), arguments.identity, keychain=arguments.keychain)
     elif arguments.action == 'check':
         validate_runtime(arguments.bundle.resolve() / 'Contents/Resources/native-quality')
     else:

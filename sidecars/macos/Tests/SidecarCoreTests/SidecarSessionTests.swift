@@ -377,6 +377,26 @@ struct SidecarSessionTests {
         session.unpair()
     }
 
+    @Test("an isolated session recovers only its explicitly owned scratch roots")
+    func isolatedNativeRecoveryRoots() async throws {
+        let accounting = try NativeRuntimeTestFixture(); defer { accounting.close() }
+        let owned = accounting.root.appendingPathComponent("owned-scratch")
+        let transport = ScriptedTransport([
+            .init(status: 200, json: ["workerId": 11, "credential": "fixture", "protocolVersion": 11, "heartbeatIntervalSeconds": 30]),
+        ])
+        let runtime = accounting.runtime { root in
+            #expect(root == owned)
+            return NativeScratchRecovery()
+        }
+        let session = SidecarSession(client: SidecarClient(transport: transport), store: InMemoryCredentialStore(),
+            capabilities: SidecarCapabilities(name: "Fixture"), prober: nil,
+            nativeRuntime: runtime, nativeScratchRoots: [owned], recoverNativeScratch: {}, persistConcurrency: { _ in })
+        await session.pair(serverAddress: "localhost:8787", pin: "fixture")
+        #expect(session.isPaired)
+        #expect(await runtime.state() == .ready)
+        session.unpair()
+    }
+
     @Test("pairing and every heartbeat refresh native resources independently of tool qualification")
     func nativeResourcesStayFresh() async throws {
         let accounting = try NativeRuntimeTestFixture(); defer { accounting.close() }
