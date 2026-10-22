@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make the interactive worker-claim regression accept a sample that finishes preparing on the first request. The test retains and verifies that lease instead of discarding it because preparation completed faster than expected; production dispatch behavior is unchanged.
+
 - Make the Mac helper-shutdown regression check actual process death and reject the fixture's natural-exit fallback, avoiding a CI scheduling failure at a six-second wall-clock cutoff. Runtime shutdown deadlines and resource-retirement rules are unchanged.
 
 - Run remote Mac acceptance without unlocking the login keychain: disposable workers use a process-owned checkpoint keychain and recover only isolated test scratch roots. Signed builds can explicitly select a temporary signing keychain loaded from the authorized certificate backup, without changing the user's default keychain or search list. A locked or missing checkpoint keychain still blocks work.

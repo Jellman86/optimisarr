@@ -109,9 +109,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             job.CalibrationClipStartSeconds = 24;
             await db.SaveChangesAsync();
         }
-        // The sample is prepared off the claim request (#428), so the first claim only starts it.
-        using (var preparing = await worker.PostAsJsonAsync("/api/workers/claim", new { }))
-            Assert.Equal(HttpStatusCode.NoContent, preparing.StatusCode);
+        // Preparation runs outside the request (#428); a fast fixture may already be ready
+        // on the first claim. Keep that response so a successfully acquired lease is not lost.
         using var claim = await ClaimWhenReady(worker);
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         using var check = _api.Services.CreateScope();
