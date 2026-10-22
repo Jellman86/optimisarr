@@ -78,29 +78,12 @@ receipts as jobs. Component tests pass actual parent death with surviving probe 
 and Quark. Standalone startup, capability admission and durable charge reconciliation remain
 unconnected; this prerequisite does not establish standalone restart accounting.
 
-The shared .NET [accounting format and checkpoint rules](native-work-accounting.md) now freeze
-immutable obligations and forward transitions, and accept only independently recorded old/new
-snapshots after an interrupted save. A fixed physical-ID pool now prevents mixed path/ID
-accounting namespaces. The shared transaction boundary now serializes preparation, actual work
-and finalization, fences uncertain commits and retains ownership through shutdown. Its injected
-storage tests do not establish physical durability. Physical identity/capacity capture, durable OS
-storage, first-start bootstrap and coordinator effect ordering remain required before standalone integration.
-Linux durable storage has since landed on this branch. Independent design reviews on 19 October 2026
-rejected the first Windows storage design (shared-workspace foundation, directory `FlushFileBuffers`,
-path-based replace) and then allowed a revised NTFS-only handle-scoped design only as an
-unconnected experimental candidate. That candidate is now implemented with Windows-gated tests
-(private creation-time ACLs, pinned 128-bit identities, exclusive coordinator, cross-process
-forced-death lock release, lost-acknowledgement phases). It claims no directory synchronization
-or power-loss durability; physical power-cut qualification and standalone wiring remain open.
-Fresh Picard execution on 19 October also passes the
-[49-case process-death matrix](../engineering/hardware-validation/2026-10-19-windows-journal-process-death.md),
-including provisioning, commits and interrupted pending old/new recovery. Mac and Picard are
-reachable again; this supersedes their earlier offline status without qualifying power loss.
-An unconnected Linux-only bootstrap/restoration module now separates explicit operator
-provisioning from normal opening and restores exact physical charges into an unpublished pool;
-it has no service callers and does not provide startup admission or reporting integration.
-A checksum-verified Fedora 44 cloud guest also boots under KVM on Quark, but no storage
-power-cut trial has run in it. See the [accounting record](native-work-accounting.md).
+**Archived 22 October 2026.** The unconnected durable .NET journal, its Linux and Windows
+storage adapters, bootstrap, physical-volume pool mode and power-cut fixtures were removed after
+the 21 October operator decision that crash and restart recovery is the worker qualification bar.
+Standalone workers use in-process reservations, owned-scratch recovery and live capacity readings;
+see the [accounting record](native-work-accounting.md). The code is preserved at the
+`archive/dotnet-native-work-journal` Git tag.
 
 The shared helper now has a version-2, parent-bound retirement contract with pinned physical
 scope, inherited-guard exclusion, durable retirement receipts and replayable consumption.
