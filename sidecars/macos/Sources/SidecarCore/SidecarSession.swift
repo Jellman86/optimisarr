@@ -206,6 +206,7 @@ public final class SidecarSession: ObservableObject {
     private var recoveredNativeLocation: WorkLocation?
     private let nativeResources: @Sendable (SidecarCapabilities) -> SidecarCapabilities
     private let nativeRuntime: NativeWorkRuntime?
+    private let nativeScratchRoots: [URL]?
     private var nativeReadiness: NativeWorkReadiness = .blocked
     private var nativeQualificationPending = true
     private var accountingDrained = false
@@ -235,6 +236,7 @@ public final class SidecarSession: ObservableObject {
             JobRunner.availableScratchBytes(at: JobRunner.defaultScratchRoot()) ?? 0
         },
         nativeRuntime: NativeWorkRuntime? = nil,
+        nativeScratchRoots: [URL]? = nil,
         nativeResources: (@Sendable (SidecarCapabilities) -> SidecarCapabilities)? = nil,
         recoverNativeScratch: (@Sendable () async -> Void)? = nil,
         jobConcurrency: Int = UserDefaults.standard.object(forKey: "jobConcurrency") as? Int ?? 1,
@@ -257,6 +259,7 @@ public final class SidecarSession: ObservableObject {
             wantsPreviews: { [previewGate] in previewGate.isWanted },
             settings: settings, nativeTools: nativeRuntime == nil ? nil : NativeQualityTools.bundled(), nativeRuntime: nativeRuntime ?? .shared)
         self.nativeRuntime = nativeRuntime
+        self.nativeScratchRoots = nativeScratchRoots
         self.scratchCapacity = scratchCapacity
         self.nativeResources = nativeResources ?? NativeWorkerResources(settings: settings).refresh
         self.nativeRecoveryLocation = { settings.workLocation }
@@ -442,6 +445,7 @@ public final class SidecarSession: ObservableObject {
     }
 
     private func nativeRoots() -> [URL] {
+        if let nativeScratchRoots { return nativeScratchRoots }
         var roots = [JobRunner.defaultScratchRoot(), FileManager.default.temporaryDirectory]
         if case let .folder(folder) = nativeRecoveryLocation() { roots.append(folder) }
         return roots

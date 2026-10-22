@@ -8,9 +8,9 @@ from pathlib import Path, PurePosixPath
 import tarfile
 import urllib.request
 
-from package_sidecar_sources import MAC_METADATA_SOURCES
+from package_sidecar_sources import METADATA_SOURCES
 
-REVISION = MAC_METADATA_SOURCES['exiftool'][1]
+REVISION = METADATA_SOURCES['exiftool'][1]
 SOURCE_URL = f'https://codeload.github.com/exiftool/exiftool/tar.gz/{REVISION}'
 SOURCE_SHA256 = 'fbda54fe81de806214f050bdc6a9d4dc27f314a969bcd863fe191c419620d7ea'
 
@@ -54,7 +54,7 @@ def extract(data, destination, expected_hash=SOURCE_SHA256):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
         target.chmod(0o755 if name == 'exiftool' else 0o644)
-    (destination / 'source.json').write_text(json.dumps({'repository': MAC_METADATA_SOURCES['exiftool'][0],
+    (destination / 'source.json').write_text(json.dumps({'repository': METADATA_SOURCES['exiftool'][0],
         'revision': REVISION, 'archiveSha256': expected_hash, 'interpreter': '/usr/bin/perl'}, indent=2) + '\n')
 
 

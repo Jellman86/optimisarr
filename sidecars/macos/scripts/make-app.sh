@@ -111,7 +111,9 @@ echo '</plist>' >> "${BUNDLE}/Contents/Info.plist"
 
 # Sign every runtime library and tool before sealing the app. Only the managed helper
 # needs JIT; the Swift app and media tools retain the ordinary hardened runtime.
-python3 ../../scripts/macos_native_package.py sign "${BUNDLE}" --identity "${SIGNING_IDENTITY:--}"
+signing_args=(--identity "${SIGNING_IDENTITY:--}")
+if [[ -n "${SIGNING_KEYCHAIN:-}" ]]; then signing_args+=(--keychain "$SIGNING_KEYCHAIN"); fi
+python3 ../../scripts/macos_native_package.py sign "${BUNDLE}" "${signing_args[@]}"
 
 echo "Built ${BUNDLE}"
 echo "Run it with: open ${BUNDLE}"

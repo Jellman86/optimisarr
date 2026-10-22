@@ -72,6 +72,7 @@ struct NativeResourceRetirementServiceTests {
         try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixture) }
         let ready = fixture.appendingPathComponent("ignoring-termination")
+        let escaped = fixture.appendingPathComponent("exited-without-being-stopped")
         let executable = fixture.appendingPathComponent("native-helper")
         let barrier = fixture.appendingPathComponent("blocked-open")
         try #require(mkfifo(barrier.path, 0o600) == 0)
@@ -84,19 +85,27 @@ struct NativeResourceRetirementServiceTests {
             printf '%s\\n' '{"version":2,"type":"scope","accountingScope":{"root":"darwin:1:2","control":"darwin:1:3","gate":"darwin:1:4"}}'
             exec 1>&-
         fi
-        printf ready > \(quoted(ready.path))
+        printf '%s' "$$" > \(quoted(ready.path))
         exec 3<> \(quoted(barrier.path))
         IFS= read -r -t 10 released <&3
+        printf escaped > \(quoted(escaped.path))
         """
         try Data(source.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         let service = NativeResourceRetirementService(tools: NativeQualityTools(host: executable,
             ffmpeg: fixture.appendingPathComponent("missing-ffmpeg")), timeout: .seconds(3))
-        let started = Date()
         let task = Task { try await service.prepareScope(root: fixture.appendingPathComponent("work")) }
-        try await waitFor("the real helper to install its termination handler") { FileManager.default.fileExists(atPath: ready.path) }
+        try await waitFor("the real helper to install its termination handler and publish its PID") {
+            guard let text = try? String(contentsOf: ready, encoding: .utf8) else { return false }
+            return Int32(text) != nil
+        }
+        let pid = try #require(Int32(String(contentsOf: ready, encoding: .utf8)))
+        defer { if kill(pid, 0) == 0 { _ = kill(pid, SIGKILL) } }
         await #expect(throws: NativeQualityHostError.self) { try await task.value }
-        #expect(Date().timeIntervalSince(started) < 6)
+        // A live helper means retirement returned early; the marker means it only returned
+        // after the fixture escaped naturally. Neither is proof of bounded owned shutdown.
+        #expect(kill(pid, 0) == -1 && errno == ESRCH)
+        #expect(!FileManager.default.fileExists(atPath: escaped.path))
     }
 }
 

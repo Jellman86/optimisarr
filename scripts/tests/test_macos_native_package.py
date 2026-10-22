@@ -115,6 +115,16 @@ class NativePackageTests(unittest.TestCase):
         self.assertTrue(all('--options' in args and 'runtime' in args for args in signed))
         self.assertTrue(all('--timestamp' in args for args in signed))
 
+    def test_explicit_keychain_is_used_for_every_signature_without_global_preferences(self):
+        calls = []
+        keychain = self.root / 'signing.keychain-db'
+        package.sign_bundle(self.app, 'Developer ID Application: Fixture', keychain=keychain,
+                            run=lambda args, **kwargs: calls.append(args))
+        signed = [args for args in calls if '--sign' in args]
+        self.assertTrue(signed)
+        self.assertTrue(all(args[args.index('--keychain') + 1] == str(keychain) for args in signed))
+        self.assertFalse(any(args[0] == 'security' for args in calls))
+
     def test_ad_hoc_development_signing_does_not_enable_team_based_library_validation(self):
         calls = []
         package.sign_bundle(self.app, '-', run=lambda args, **kwargs: calls.append(args))

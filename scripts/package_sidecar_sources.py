@@ -28,7 +28,7 @@ AUDIO_SOURCES = {
     'highway': ('https://github.com/google/highway.git', '7fff3c667fb62475cdfb2b6c441452c8223c1a67'),
 }
 IMAGE_SOURCES = json.loads((ROOT / 'tools/image-quality-native/sources.json').read_text())
-MAC_METADATA_SOURCES = {
+METADATA_SOURCES = {
     'exiftool': ('https://github.com/exiftool/exiftool.git', 'de11d240cf7e521e939a0575a128ffe01b63be05'),
 }
 MAC_ARCHIVES = {
@@ -70,7 +70,7 @@ def read_mac_revisions(path):
 def mac_release_revisions(build_info, app_revision):
     revisions = read_mac_revisions(build_info)
     revisions.update({name: revision for name, (_, revision) in
-                      (AUDIO_SOURCES | IMAGE_SOURCES | MAC_METADATA_SOURCES).items()})
+                      (AUDIO_SOURCES | IMAGE_SOURCES | METADATA_SOURCES).items()})
     return revisions | {'optimisarr': app_revision}
 
 
@@ -255,9 +255,7 @@ def main():
                 copy_licenses(archive, args.output / 'licenses')
                 files.append(archive)
                 records.append({'name': name, 'repository': url, 'revision': resolved, 'sha256': sha256(archive)})
-        extra_sources = AUDIO_SOURCES | IMAGE_SOURCES
-        if args.platform == 'macos':
-            extra_sources |= MAC_METADATA_SOURCES
+        extra_sources = AUDIO_SOURCES | IMAGE_SOURCES | METADATA_SOURCES
         for name, (url, revision) in extra_sources.items():
             archive, resolved = git_source(name, url, revision, stage)
             copy_licenses(archive, args.output / 'licenses')

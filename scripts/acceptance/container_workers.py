@@ -12,11 +12,13 @@ from .workers import Workers, free_port
 
 
 class ContainerWorkers(Workers):
-    def __init__(self, api, root, server, image, *, devices=(), gpus=None):
+    def __init__(self, api, root, server, image, *, devices=(), gpus=None, memory="2g"):
         super().__init__(api, root, server, "/usr/lib/jellyfin-ffmpeg/ffmpeg",
                          "/usr/lib/jellyfin-ffmpeg/ffprobe", require_ram=True)
         self.image = image
         self.devices, self.gpus = devices, gpus
+        require(re.fullmatch(r"[1-9][0-9]*[mg]", memory), "Worker memory must look like 2g or 512m")
+        self.memory = memory
         self.containers = []
 
     def docker_options(self):
@@ -59,7 +61,7 @@ class ContainerWorkers(Workers):
         self.api.request("/api/settings", "PUT", settings)
         env = {**os.environ, "OPTIMISARR_PAIRING_CODE": self.api.post("/api/workers/pairing-code")["code"]}
         args = ["docker", "run", "-d", "--name", container, "--network", "host",
-                "--memory", "2g", "--memory-swap", "2g", "--tmpfs", "/work:size=1g,mode=0700,uid=1000,gid=1000",
+                "--memory", self.memory, "--memory-swap", self.memory, "--tmpfs", "/work:size=1g,mode=0700,uid=1000,gid=1000",
                 "-v", f"{config}:/config", "-e", "OPTIMISARR_PAIRING_CODE",
                 "-e", f"OPTIMISARR_SERVER={self.server}", "-e", f"OPTIMISARR_WORKER_NAME={name}",
                 "-e", f"OPTIMISARR_ENCODER={encoder}", "-e", "OPTIMISARR_WEB_ENABLED=true",

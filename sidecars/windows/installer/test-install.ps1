@@ -86,6 +86,9 @@ try {
     $service = Get-CimInstance Win32_Service -Filter "Name='OptimisarrSidecar'"
     if (!$service -or $service.StartName -ne 'LocalSystem' -or $service.State -ne 'Stopped') { throw 'Unexpected service registration/state' }
     if (!(Test-Path (Join-Path $directory 'Optimisarr.Sidecar.Tray.exe'))) { throw 'Tray executable missing' }
+    # Without ExifTool the worker cannot prove image metadata preservation and is never offered image jobs.
+    $exifVersion = & (Join-Path $directory 'exiftool.exe') -ver
+    if ($LASTEXITCODE -ne 0 -or "$exifVersion".Trim() -ne '13.55') { throw "Bundled ExifTool failed or changed version: $exifVersion" }
     & (Join-Path $directory 'runtime\dotnet.exe') --list-runtimes
     if ($LASTEXITCODE -ne 0) { throw 'Bundled runtime failed' }
     & (Join-Path $directory 'runtime\dotnet.exe') (Join-Path $directory 'Optimisarr.Sidecar.Tray.dll') --render-monitor (Join-Path $logRoot 'ui')

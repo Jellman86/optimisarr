@@ -64,20 +64,35 @@ public struct KeychainNativeWorkCheckpointStore: NativeWorkCheckpointStore {
     private let service: String
     private let account: String
     private let accessGroup: String?
+    private let fileBasedKeychain: URL?
 
     public init(service: String = "uk.optimisarr.sidecar.native-work", account: String = "journal-checkpoint",
-                accessGroup: String? = nil, backend: Backend = .fileBased) {
+                accessGroup: String? = nil, backend: Backend = .fileBased, fileBasedKeychain: URL? = nil) {
         self.backend = backend
+        self.fileBasedKeychain = fileBasedKeychain
         self.service = service; self.account = account; self.accessGroup = accessGroup
     }
 
-    private var query: [String: Any] {
+    private func query(inserting: Bool = false) throws -> [String: Any] {
         var value: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: account,
             kSecUseDataProtectionKeychain as String: backend == .dataProtection, kSecAttrSynchronizable as String: false]
         if backend == .dataProtection {
             let context = LAContext(); context.interactionNotAllowed = true
             value[kSecUseAuthenticationContext as String] = context
+        }
+        if let fileBasedKeychain {
+            guard backend == .fileBased,
+                  try fileBasedKeychain.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]).isRegularFile == true,
+                  try fileBasedKeychain.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+                throw NativeWorkJournalError.unavailable
+            }
+            var keychain: SecKeychain?
+            let status = SecKeychainOpen(fileBasedKeychain.path, &keychain)
+            guard status == errSecSuccess, let keychain else { throw KeychainError.unexpectedStatus(status) }
+            // An explicit store never searches or writes the user's default keychain.
+            if inserting { value[kSecUseKeychain as String] = keychain }
+            else { value[kSecMatchSearchList as String] = [keychain] }
         }
         if let accessGroup { value[kSecAttrAccessGroup as String] = accessGroup }
         return value
@@ -86,7 +101,7 @@ public struct KeychainNativeWorkCheckpointStore: NativeWorkCheckpointStore {
     public func read() throws -> NativeWorkCheckpoint? { try Self.gate.lock.withLock { try readUnlocked() } }
 
     private func readUnlocked() throws -> NativeWorkCheckpoint? {
-        var search = query
+        var search = try query()
         search[kSecReturnData as String] = true
         search[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
@@ -108,12 +123,13 @@ public struct KeychainNativeWorkCheckpointStore: NativeWorkCheckpointStore {
             guard try readUnlocked() == expected else { throw NativeWorkJournalError.changed }
             let status: OSStatus
             if expected == nil {
-                var insert = query
+                var insert = try query(inserting: true)
                 insert[kSecValueData as String] = data
                 if backend == .dataProtection { insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly }
                 status = try perform { SecItemAdd(insert as CFDictionary, nil) }
             } else {
-                status = try perform { SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary) }
+                let update = try query()
+                status = try perform { SecItemUpdate(update as CFDictionary, [kSecValueData as String: data] as CFDictionary) }
             }
             guard status == errSecSuccess else { throw KeychainError.unexpectedStatus(status) }
             guard try readUnlocked() == value else { throw NativeWorkJournalError.changed }
