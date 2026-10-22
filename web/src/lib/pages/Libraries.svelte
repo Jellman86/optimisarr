@@ -213,6 +213,32 @@
     if (!audioDifferenceCustomSelected) form.maximumAudioQualityDistance = audioDifferenceStops[index]
   }
 
+  // SSIMULACRA2's authors publish these anchors (very high, high, medium, low quality); they
+  // name the metric's scale, not an Optimisarr default.
+  const imageScoreStops = [90, 70, 50, 30] as const
+  let imageScoreCustomSelected = $state(false)
+  const imageScoreStop = $derived.by(() => {
+    if (imageScoreCustomSelected) return imageScoreStops.length
+    if (form.minimumImagePerceptualScore == null) return -1
+    const index = imageScoreStops.findIndex(value => value === Number(form.minimumImagePerceptualScore))
+    return index < 0 ? imageScoreStops.length : index
+  })
+  function setImageScoreStop(index: number) {
+    imageScoreCustomSelected = index === imageScoreStops.length
+    if (!imageScoreCustomSelected) form.minimumImagePerceptualScore = imageScoreStops[index]
+  }
+
+  // A quality target needs its measurement and gate, so choosing it turns all three on together;
+  // choosing a fixed setting only stops the search and leaves any report or gate as configured.
+  function setAudioQualityTarget(enabled: boolean) {
+    form.adaptiveAudioQuality = enabled
+    if (enabled) { form.audioQualityReportingEnabled = true; form.audioQualityGateEnabled = true }
+  }
+  function setImageQualityTarget(enabled: boolean) {
+    form.adaptiveImageQuality = enabled
+    if (enabled) { form.imagePerceptualReportingEnabled = true; form.imagePerceptualGateEnabled = true }
+  }
+
   let soundtrackDifferenceCustomSelected = $state(false)
   const soundtrackDifferenceStop = $derived.by(() => {
     if (soundtrackDifferenceCustomSelected) return audioDifferenceStops.length
@@ -734,6 +760,8 @@
   // libraries (a mixed "Other" library keeps video presets and sets the format on its Images page).
   const imageFormats = ['jpeg', 'webp'] as const
   const showImagePreset = $derived(isImageType(form.mediaType) && !isVideoType(form.mediaType))
+  // Video has its fixed/adaptive path; standalone audio and stills choose fixed or quality-target encoding.
+  const hasQualityRoom = $derived(!isTrackCleanupProfile && (showVideoOptions && !isNoEncodeProfile || showAudioOptions || showImageOptions))
   const imageStop = $derived(Math.max(0, imageFormats.indexOf((form.targetImageFormat ?? 'jpeg') as (typeof imageFormats)[number])))
   function setImageStop(value: string) {
     form.targetImageFormat = imageFormats[Number(value)] ?? 'jpeg'
@@ -788,7 +816,7 @@
     source: i18n.m.libraryWorkflow.choose,
     'source/advanced': i18n.m.libraryWorkflow.source_advanced,
     encode: i18n.m.libraryWorkflow.encode,
-    'encode/quality': i18n.m.libraries.quality_strategy,
+    'encode/quality': showVideoOptions ? i18n.m.libraries.quality_strategy : i18n.m.quality_first.strategy_title,
     'encode/video': i18n.m.libraryWorkflow.video,
     'encode/video/advanced': i18n.m.libraryWorkflow.encoding_advanced,
     'encode/audio': i18n.m.libraryWorkflow.audio,
@@ -806,7 +834,7 @@
   const room = $derived.by((): LibraryRoom => {
     if (embedded) return embeddedRoom
     const segment = router.path.slice(editorBase.length + 1)
-    if (segment === 'encode/quality' && (!showVideoOptions || isNoEncodeProfile)) return 'encode'
+    if (segment === 'encode/quality' && !hasQualityRoom) return 'encode'
     if (segment.startsWith('encode/video') && (!showVideoOptions || isTrackCleanupProfile)) return 'encode'
     if (segment.startsWith('encode/audio') && !showVideoOptions && !showAudioOptions) return 'encode'
     if (segment === 'encode/audio/advanced' && isNoEncodeProfile && !showAudioOptions) return 'encode/audio'
@@ -818,7 +846,8 @@
   const roomParents = $derived(room === 'overview' ? [] : room.split('/').slice(0, -1).map((_, index) => room.split('/').slice(0, index + 1).join('/') as LibraryRoom))
   const workflowStages = $derived([
     { room: 'source' as const, title: roomNames.source, icon: 'folder' as const, summary: `${mediaTypeLabel(form.mediaType, i18n.m)} · ${i18n.m.libraries.queue_priority}: ${priorityLabel(form.priority)}` },
-    { room: 'encode' as const, title: roomNames.encode, icon: 'sliders' as const, summary: showVideoOptions ? isCustom ? i18n.m.libraries.stop_custom : profileLabel(form.ruleProfile) : showImageOptions ? (form.targetImageFormat ?? 'jpeg').toUpperCase() : (form.audioTargetCodec ?? 'aac').toUpperCase() },
+    { room: 'encode' as const, title: roomNames.encode, icon: 'sliders' as const, summary: showVideoOptions ? isCustom ? i18n.m.libraries.stop_custom : profileLabel(form.ruleProfile) : (showImageOptions ? (form.targetImageFormat ?? 'jpeg').toUpperCase() : (form.audioTargetCodec ?? 'aac').toUpperCase())
+      + ((showImageOptions ? form.adaptiveImageQuality : form.adaptiveAudioQuality) ? ` · ${i18n.m.quality_first.summary_target}` : '') },
     { room: 'verify' as const, title: roomNames.verify, icon: 'shield-check' as const, summary: (showVideoOptions && !isNoEncodeProfile ? `${i18n.m.settings.vmaf_label}: ${vmafMode === 'off' ? i18n.m.common.off : form.minVmafHarmonicMean}` : showImageOptions ? `${i18n.m.settings.ssim_label}: ${form.imageQualityGateEnabled ? form.minimumImageSsim : i18n.m.common.off}` : i18n.m.settings.always_on) + (showAudioOptions && form.audioQualityGateEnabled ? ` · ${i18n.m.audio_quality.gate_label}: ${form.maximumAudioQualityDistance ?? '?'}` : '') },
     { room: 'automate' as const, title: roomNames.automate, icon: 'clock' as const, summary: scheduleLabel(form as Library) },
   ])
@@ -1473,7 +1502,7 @@
 {#snippet roomLink(target: LibraryRoom)}
   <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-20 w-full items-center gap-4 p-5 text-left" aria-label={roomNames[target]} onclick={() => goRoom(target)}>
     <Icon name={target.includes('advanced') ? 'sliders' : 'arrow-right'} class="h-5 w-5 shrink-0 text-accent" />
-    <span class="min-w-0 flex-1"><span class="flex flex-wrap items-center gap-2 text-sm font-semibold">{roomNames[target]}{#if overrideCount(target)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(target) })}</span>{/if}</span><span class="mt-1 block text-xs leading-relaxed text-ink-3">{target.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : target === 'encode/quality' ? i18n.m.libraryWorkflow.quality_summary : target === 'encode/audio' ? i18n.m.libraryWorkflow.audio_summary : target === 'encode/images' ? i18n.m.libraries.downscale_tip : i18n.m.libraryWorkflow.video_summary}</span></span>
+    <span class="min-w-0 flex-1"><span class="flex flex-wrap items-center gap-2 text-sm font-semibold">{roomNames[target]}{#if overrideCount(target)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(target) })}</span>{/if}</span><span class="mt-1 block text-xs leading-relaxed text-ink-3">{target.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : target === 'encode/quality' ? (showVideoOptions ? i18n.m.libraryWorkflow.quality_summary : i18n.m.quality_first.strategy_intro) : target === 'encode/audio' ? i18n.m.libraryWorkflow.audio_summary : target === 'encode/images' ? i18n.m.libraries.downscale_tip : i18n.m.libraryWorkflow.video_summary}</span></span>
     <Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" />
   </button>
 {/snippet}
@@ -1657,8 +1686,8 @@
 {/snippet}
 
 {#snippet qualityFields()}
+{#if showVideoOptions && !isNoEncodeProfile}
 <ConfigSection id="library-quality" title={i18n.m.libraries.quality_strategy} description={i18n.m.libraries.quality_strategy_intro}>
-  {#if showVideoOptions && !isNoEncodeProfile}
     <div>
       <fieldset aria-label={i18n.m.libraries.quality_strategy}>
 
@@ -1774,9 +1803,109 @@
         <p id="lib-vmaf-error" class="mt-3 text-xs text-bad" role="alert">{vmafError}</p>
       {/if}
     </div>
-  {/if}
 
 </ConfigSection>
+{/if}
+{#if showAudioOptions}
+  {@render qualityTarget('audio')}
+{/if}
+{#if showImageOptions && !isTrackCleanupProfile}
+  {@render qualityTarget('image')}
+{/if}
+{/snippet}
+
+{#snippet qualityTarget(kind: 'audio' | 'image')}
+  {@const target = kind === 'audio' ? form.adaptiveAudioQuality : form.adaptiveImageQuality}
+  {@const choose = kind === 'audio' ? setAudioQualityTarget : setImageQualityTarget}
+  <ConfigSection id="library-{kind}-quality-target" title={kind === 'audio' ? i18n.m.libraries.audio : i18n.m.libraries.images}
+    description={i18n.m.quality_first.strategy_intro}>
+    <fieldset aria-label={i18n.m.quality_first.strategy_title}>
+      <div class="grid w-full gap-3 md:grid-cols-2" data-testid="{kind}-quality-strategies">
+        <label class="relative choice flex min-h-36 flex-col rounded-xl p-4 {!target ? 'choice-selected' : ''}">
+          <div class="flex items-start gap-3">
+            <input type="radio" name="{kind}-quality-strategy" class="mt-0.5 h-5 w-5 flex-shrink-0 accent-accent-fill"
+              checked={!target} onchange={() => choose(false)} />
+            <div>
+              <span class="font-semibold text-ink">{i18n.m.quality_first.fixed_label}</span>
+              <p class="mt-1 text-sm leading-relaxed text-ink-2">{i18n.m.quality_first.fixed_desc}</p>
+            </div>
+          </div>
+          <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-ink-2">
+            <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_selected_quality}</span>
+            <span aria-hidden="true" class="text-ink-4">→</span>
+            <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_full_encode}</span>
+            <span aria-hidden="true" class="text-ink-4">→</span>
+            <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_verify}</span>
+          </div>
+        </label>
+        <label class="relative choice flex min-h-36 flex-col rounded-xl p-4 {target ? 'choice-selected' : ''}">
+          <div class="flex items-start gap-3">
+            <input type="radio" name="{kind}-quality-strategy" class="mt-0.5 h-5 w-5 flex-shrink-0 accent-accent-fill"
+              checked={target} onchange={() => choose(true)} />
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold text-ink">{i18n.m.quality_first.target_label}</span>
+                <span class="badge tone-warn">{i18n.m.libraries.experimental}</span>
+              </div>
+              <p class="mt-1 text-sm leading-relaxed text-ink-2">{i18n.m.quality_first.target_desc}</p>
+            </div>
+          </div>
+          <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-ink-2">
+            <span class="rounded-md bg-raised px-2 py-1">{i18n.m.quality_first.path_samples}</span>
+            <span aria-hidden="true" class="text-ink-4">→</span>
+            <span class="rounded-md bg-raised px-2 py-1">{i18n.m.quality_first.path_smallest}</span>
+            <span aria-hidden="true" class="text-ink-4">→</span>
+            <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_verify}</span>
+          </div>
+        </label>
+      </div>
+    </fieldset>
+
+    {#if target}
+      {@const stops = kind === 'audio' ? audioDifferenceStops.map(String) : [i18n.m.quality_first.image_very_high, i18n.m.quality_first.image_high, i18n.m.quality_first.image_medium, i18n.m.quality_first.image_low]}
+      <!-- No target yet: nothing is selected, so the operator must choose one explicitly. -->
+      {@const selected = kind === 'audio' ? (form.maximumAudioQualityDistance == null && !audioDifferenceCustomSelected ? -1 : audioDifferenceStop) : imageScoreStop}
+      {@const pick = kind === 'audio' ? setAudioDifferenceStop : setImageScoreStop}
+      <div class="mt-5 border-t border-line pt-5" data-quality-target={kind}>
+        <p class="label" id="lib-{kind}-target-label">{kind === 'audio' ? i18n.m.quality_first.audio_target : i18n.m.quality_first.image_target}</p>
+        <div class="grid grid-cols-3 gap-2 {kind === 'audio' ? 'sm:grid-cols-6' : 'sm:grid-cols-5'}" role="group" aria-labelledby="lib-{kind}-target-label">
+          {#each [...stops, i18n.m.libraries.stop_custom] as label, index}
+            <button type="button" class="choice flex min-h-14 flex-col items-center justify-center rounded-lg px-1 text-xs {selected === index ? 'choice-selected text-accent' : 'text-ink-2'}"
+              aria-pressed={selected === index} onclick={() => pick(index)}>
+              <span class="font-semibold tabular-nums">{label}</span>
+              {#if kind === 'image' && index < imageScoreStops.length}<span class="mt-0.5 tabular-nums text-ink-3">{imageScoreStops[index]}</span>{/if}
+            </button>
+          {/each}
+        </div>
+        {#if kind === 'audio'}
+          <div class="mt-1.5 flex justify-between text-[11px] text-ink-4" aria-hidden="true"><span>{i18n.m.quality_first.stricter}</span><span>{i18n.m.quality_first.smaller_files}</span></div>
+        {/if}
+        {#if selected === stops.length}
+          <div class="mt-3 max-w-xs">
+            {#if kind === 'audio'}
+              <label class="label" for="lib-audio-target-custom">{i18n.m.libraries.stop_custom}</label>
+              <input id="lib-audio-target-custom" class="input w-full" type="number" min="0" max="1" step="any"
+                aria-invalid={verificationError === i18n.m.audio_quality.validation} aria-describedby="lib-audio-target-help lib-verification-error"
+                bind:value={form.maximumAudioQualityDistance} />
+            {:else}
+              <label class="label" for="lib-image-target-custom">{i18n.m.libraries.stop_custom}</label>
+              <input id="lib-image-target-custom" class="input w-full" type="number" min="0" max="100" step="0.1"
+                aria-invalid={verificationError === i18n.m.image_quality.validation} aria-describedby="lib-image-target-help lib-verification-error"
+                bind:value={form.minimumImagePerceptualScore} />
+            {/if}
+          </div>
+        {/if}
+        {#if selected === -1}<p class="mt-3 text-xs font-medium text-warn">{i18n.m.quality_first.choose_target}</p>{/if}
+        <p id="lib-{kind}-target-help" class="mt-3 text-xs leading-relaxed text-ink-3">{kind === 'audio' ? i18n.m.quality_first.audio_scale : i18n.m.quality_first.image_scale}</p>
+        <p class="mt-2 text-xs leading-relaxed text-ink-3">{kind === 'audio' ? i18n.m.audio_quality.adaptive_hint : i18n.m.image_quality.adaptive_hint}</p>
+        {#if kind === 'image' && form.imageQualityGateEnabled}
+          <p class="callout tone-warn mt-3 text-xs">{t(i18n.m.quality_first.ssim_also, { value: form.minimumImageSsim })}</p>
+        {/if}
+        {#if kind === 'image'}<p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.image_quality.limits}</p>{/if}
+        {#if kind === 'audio'}<p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>{/if}
+      </div>
+    {/if}
+  </ConfigSection>
 {/snippet}
 
 {#snippet verifyFields()}
@@ -1876,20 +2005,16 @@
 
           {#if showAudioOptions}
             <div class="mb-5 border-b border-line pb-4">
-              <Toggle bind:checked={form.audioQualityReportingEnabled}
+              <Toggle bind:checked={form.audioQualityReportingEnabled} disabled={form.adaptiveAudioQuality}
                 label={i18n.m.audio_quality.title} hint={i18n.m.audio_quality.hint} />
               {#if form.audioQualityReportingEnabled && !form.audioQualityGateEnabled}
                 <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
               {/if}
               <div class="mt-4 border-t border-line-soft pt-4">
-                <Toggle bind:checked={form.audioQualityGateEnabled}
+                <Toggle bind:checked={form.audioQualityGateEnabled} disabled={form.adaptiveAudioQuality}
                   label={i18n.m.audio_quality.gate_label} hint={i18n.m.audio_quality.gate_hint} />
+                {#if form.adaptiveAudioQuality}<p class="mt-2 text-xs text-ink-3">{i18n.m.quality_first.required_by_target}</p>{/if}
                 {#if form.audioQualityGateEnabled}
-                  <div class="mt-4">
-                    <Toggle bind:checked={form.adaptiveAudioQuality}
-                      label={i18n.m.audio_quality.adaptive_label} hint={i18n.m.audio_quality.adaptive_hint} />
-                    <p class="mt-2 text-xs text-ink-3">{i18n.m.quality_first.local_hint}</p>
-                  </div>
                   {#if room === 'verify/advanced'}
                   <div class="mt-4 min-w-0" data-audio-quality-limit>
                     <label class="label" for="lib-audio-quality-slider">{i18n.m.audio_quality.maximum}
@@ -1930,7 +2055,11 @@
                   </div>
                   {:else}
                     {#if form.maximumAudioQualityDistance != null}<p class="mt-3 text-xs leading-relaxed text-ink-3">{t(i18n.m.audio_quality.gate_limit, { limit: form.maximumAudioQualityDistance })}</p>{/if}
-                    <button type="button" class="btn mt-3 min-h-11" onclick={() => goRoom('verify/advanced')}>{i18n.m.audio_encoding.set_limit}</button>
+                    {#if form.adaptiveAudioQuality}
+                      <button type="button" class="btn mt-3 min-h-11" onclick={() => goRoom('encode/quality')}>{i18n.m.quality_first.strategy_title}</button>
+                    {:else}
+                      <button type="button" class="btn mt-3 min-h-11" onclick={() => goRoom('verify/advanced')}>{i18n.m.audio_encoding.set_limit}</button>
+                    {/if}
                   {/if}
                   <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
                 {/if}
@@ -2061,18 +2190,12 @@
           </legend>
 
           <div class="mb-5 border-b border-line pb-5">
-            <Toggle bind:checked={form.imagePerceptualReportingEnabled}
+            <Toggle bind:checked={form.imagePerceptualReportingEnabled} disabled={form.adaptiveImageQuality}
               label={i18n.m.image_quality.title} hint={i18n.m.image_quality.report_hint} />
             <div class="mt-4">
-              <Toggle bind:checked={form.imagePerceptualGateEnabled}
+              <Toggle bind:checked={form.imagePerceptualGateEnabled} disabled={form.adaptiveImageQuality}
                 label={i18n.m.image_quality.gate_label} hint={i18n.m.image_quality.gate_hint} />
-              {#if form.imagePerceptualGateEnabled}
-                <div class="mt-4">
-                  <Toggle bind:checked={form.adaptiveImageQuality}
-                    label={i18n.m.image_quality.adaptive_label} hint={i18n.m.image_quality.adaptive_hint} />
-                  <p class="mt-2 text-xs text-ink-3">{i18n.m.quality_first.local_hint}</p>
-                </div>
-              {/if}
+              {#if form.adaptiveImageQuality}<p class="mt-2 text-xs text-ink-3">{i18n.m.quality_first.required_by_target}</p>{/if}
             </div>
             {#if form.imagePerceptualGateEnabled}
               <div class="mt-4 max-w-sm">
@@ -2695,6 +2818,13 @@
               {#each options.imageFormats as format}<option value={format}>{format.toUpperCase()}</option>{/each}
             </select>
           </div>
+          {:else}
+          <!-- The preset sets format and quality; show them here rather than only under Advanced. -->
+          <div class="flex flex-wrap gap-2 text-xs" data-image-output-summary>
+            <span class="badge tone-neutral">{i18n.m.libraries.target_format}: {(form.targetImageFormat ?? 'jpeg').toUpperCase()}</span>
+            <span class="badge tone-neutral">{i18n.m.libraries.quality}: {form.imageQuality ?? 80}</span>
+            {#if form.adaptiveImageQuality}<span class="badge tone-accent">{i18n.m.quality_first.summary_target}</span>{/if}
+          </div>
           {/if}
         <!-- Downscale: optional dimension reduction. Aspect ratio is always kept and images are
              never enlarged; an intentional downscale is allowed past verification. -->
@@ -2804,7 +2934,7 @@
     {:else if room === 'encode'}
       <div class="grid gap-4 {showVideoOptions && !isNoEncodeProfile ? showImageOptions ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-3' : showVideoOptions && showImageOptions ? 'sm:grid-cols-2' : ''}">
         {#if showVideoOptions && !isTrackCleanupProfile}{@render roomLink('encode/video')}{/if}
-        {#if showVideoOptions && !isNoEncodeProfile}{@render roomLink('encode/quality')}{/if}
+        {#if hasQualityRoom}{@render roomLink('encode/quality')}{/if}
         {#if showVideoOptions || showAudioOptions}{@render roomLink('encode/audio')}{/if}
         {#if showImageOptions && !isTrackCleanupProfile}{@render roomLink('encode/images')}{/if}
       </div>
