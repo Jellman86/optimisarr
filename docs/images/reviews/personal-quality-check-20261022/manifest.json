@@ -1,0 +1,128 @@
+{
+  "source": "c4470601d7f6783aa3dad24d33e8fc3c7549a127",
+  "synthetic": true,
+  "description": "Actual current Svelte UI; API responses and media are controlled fixtures, not measured quality results.",
+  "captures": [
+    {
+      "kind": "Video",
+      "stage": "setup",
+      "mobile": false,
+      "file": "video-setup.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Video",
+      "stage": "compare",
+      "mobile": false,
+      "file": "video-compare.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Video",
+      "stage": "compare",
+      "mobile": true,
+      "file": "video-compare-mobile.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "kind": "Video",
+      "stage": "results",
+      "mobile": false,
+      "file": "video-results.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Image",
+      "stage": "setup",
+      "mobile": false,
+      "file": "image-setup.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Image",
+      "stage": "compare",
+      "mobile": false,
+      "file": "image-compare.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Image",
+      "stage": "compare",
+      "mobile": true,
+      "file": "image-compare-mobile.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "kind": "Image",
+      "stage": "results",
+      "mobile": false,
+      "file": "image-results.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Audio",
+      "stage": "setup",
+      "mobile": false,
+      "file": "audio-setup.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Audio",
+      "stage": "compare",
+      "mobile": false,
+      "file": "audio-compare.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    },
+    {
+      "kind": "Audio",
+      "stage": "compare",
+      "mobile": true,
+      "file": "audio-compare-mobile.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "kind": "Audio",
+      "stage": "results",
+      "mobile": false,
+      "file": "audio-results.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      }
+    }
+  ],
+  "errors": []
+}
