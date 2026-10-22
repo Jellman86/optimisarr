@@ -23,6 +23,8 @@
   let summaryElement: HTMLElement
   onDestroy(() => { disposed = true })
   let savedChoice = $derived(group.decision?.choice)
+  // Name the group after the copy in the library being reviewed; other libraries hold the extras.
+  let displayName = $derived((group.copies.find(c => c.libraryId === libraryId) ?? group.copies[0]).relativePath.split(/[\\/]/).at(-1))
   let canSave = $derived(group.canDecide === true && !disabled && !saving)
   $effect.pre(() => {
     const key = `${group.reviewKey}:${group.decision?.savedAt}:${group.decision?.choice}`
@@ -60,11 +62,10 @@
   <summary bind:this={summaryElement} class="focus-ring flex min-w-0 items-center gap-4 p-5 sm:p-6">
     <Thumbnail mediaFileId={group.copies[0].id} shape={['Film','Tv'].includes(group.copies[0].libraryType ?? '') ? 'portrait' : 'square'} size="md" />
     <div class="min-w-0 flex-1">
-      <div class="flex flex-wrap items-center gap-2"><h2 class="text-base font-semibold text-ink">{t(i18n.m.duplicates.copies,{count:group.totalCopies || group.copies.length})}</h2>
+      <div class="flex flex-wrap items-center gap-2"><h2 class="break-words text-base font-semibold text-ink">{displayName}</h2>
         {#if group.reviewKey}<span class="badge" class:badge-ok={savedChoice === 'Keep'}>{savedChoice === 'Keep' ? i18n.m.duplicates.kept : savedChoice === 'Ignore' ? i18n.m.duplicates.ignored : i18n.m.duplicates.unreviewed}</span>{/if}
       </div>
-      <p class="mt-1 text-sm text-ink-3">{formatSize(group.sizeBytes)} · {i18n.m.duplicates.fullBytes}</p>
-      <code class="mt-2 block break-all text-xs text-ink-4" title={group.sha256}>SHA-256 {group.sha256.slice(0,16)}…</code>
+      <p class="mt-1 text-sm text-ink-3" title={`SHA-256 ${group.sha256}`}>{t(i18n.m.duplicates.copies,{count:group.totalCopies || group.copies.length})} · {formatSize(group.sizeBytes)} · {i18n.m.duplicates.fullBytes}</p>
     </div>
     <Icon name="chevron" class="h-4 w-4 shrink-0 text-ink-3" />
   </summary>
@@ -89,11 +90,10 @@
               {#if copy.libraryName}<span class="badge mb-2">{copy.libraryName}</span>{/if}
               <h3 class="break-words text-sm font-semibold leading-relaxed text-ink">{copy.relativePath.split(/[\\/]/).at(-1)}</h3>
               <p class="mt-2 text-sm text-ink-3">{formatSize(group.sizeBytes)}</p>
-              <p class="mt-2 text-xs leading-relaxed text-ink-3">{copy.hardLinkCount !== null && copy.hardLinkCount > 1 ? t(i18n.m.duplicates.linked,{count:copy.hardLinkCount}) : copy.hardLinkCount === null ? i18n.m.duplicates.unknown : i18n.m.duplicates.independent}</p>
+              {#if copy.hardLinkCount === null || copy.hardLinkCount > 1}<p class="mt-2 text-xs leading-relaxed text-ink-3">{copy.hardLinkCount === null ? i18n.m.duplicates.unknown : t(i18n.m.duplicates.linked,{count:copy.hardLinkCount})}</p>{/if}
             </div>
           </div>
           {#if /[\\/]/.test(copy.relativePath)}<p class="mt-4 break-all font-mono text-sm leading-relaxed text-ink">{copy.relativePath}</p>{/if}
-          {#if copy.checkedAt}<p class="mt-2 text-xs leading-relaxed text-ink-3">{t(i18n.m.duplicates.contentRead, { date: new Date(copy.checkedAt).toLocaleString() })}{#if copy.reused} · {i18n.m.duplicates.cached}{/if}</p>{/if}
           {#if copy.aliases?.length}
             <div class="mt-4 border-t border-line pt-3"><p class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.aliases}</p>
               {#each copy.aliases as alias (alias.id)}<p class="mt-2 break-all text-xs leading-relaxed text-ink-3">{alias.libraryName} · {alias.relativePath}</p>{/each}
@@ -132,7 +132,7 @@
   .copy-kept { border-color:var(--accent-line); background:var(--accent-soft); }
   .badge { color:var(--ink-2); background:var(--panel); }
   .badge-ok { color:var(--accent-strong); background:var(--accent-soft); }
-  .copy-card h3 { overflow-wrap:anywhere; }
+  .copy-card h3, summary h2 { overflow-wrap:anywhere; min-width:0; max-width:100%; }
   @container (max-width:14rem) { .copy-heading { flex-direction:column; } }
   .keep-control:has(input:disabled) { cursor:default; }
   button { min-width:0; max-width:100%; min-height:2.75rem; overflow-wrap:anywhere; }
