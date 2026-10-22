@@ -68,7 +68,10 @@ internal sealed class WorkerSampleSource(
             using (held)
             await using (var sourceGuard = FileContentIdentity.OpenAttemptGuard(source, "The sample source is unavailable."))
             {
-                var hash = Convert.ToHexString(await SHA256.HashDataAsync(sourceGuard, token)).ToLowerInvariant();
+                // A disposable sample can never replace the original, so a cheap identity is enough to
+                // name it and to notice a change mid-cut. Hashing a 50 GB original twice was not (#428).
+                var identity = SampleIdentity(source);
+                var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
                 var extension = Path.GetExtension(source).ToLowerInvariant();
                 if (extension.Length is < 2 or > 12 || extension.Skip(1).Any(c => !char.IsAsciiLetterOrDigit(c)))
                     throw new InvalidOperationException("The source has no safe media extension for a bounded sample.");
@@ -91,7 +94,8 @@ internal sealed class WorkerSampleSource(
                         var run = await verification.RunReferenceClipAsync(["-nostdin", "-xerror", .. arguments], timeout.Token);
                         if (run.ExitCode != 0)
                             throw new InvalidOperationException($"Could not prepare the worker's source sample: {run.Error}");
-                        await FileContentIdentity.RequireMatchAsync(source, hash, "The source changed during sample preparation.", token);
+                        if (SampleIdentity(source) != identity)
+                            throw new InvalidOperationException("The source changed during sample preparation.");
                         File.Move(temporary, path);
                     }
                     finally
@@ -114,6 +118,12 @@ internal sealed class WorkerSampleSource(
             }
         }
         finally { _preparation.Release(); }
+    }
+
+    private static string SampleIdentity(string path)
+    {
+        var file = new FileInfo(path);
+        return $"{file.FullName}|{file.Length}|{file.LastWriteTimeUtc.Ticks}";
     }
 }
 

@@ -109,7 +109,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             job.CalibrationClipStartSeconds = 24;
             await db.SaveChangesAsync();
         }
-        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        // The sample is prepared off the claim request (#428), so the first claim only starts it.
+        using (var preparing = await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            Assert.Equal(HttpStatusCode.NoContent, preparing.StatusCode);
+        using var claim = await ClaimWhenReady(worker);
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         using var check = _api.Services.CreateScope();
         var saved = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.FindAsync(id);
@@ -2311,5 +2314,16 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, claim.StatusCode);
 
         await EnableRemoteWorkers();
+    }
+
+    private static async Task<HttpResponseMessage> ClaimWhenReady(HttpClient worker)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            if (claim.StatusCode != HttpStatusCode.NoContent || attempt == 100) return claim;
+            claim.Dispose();
+            await Task.Delay(20);
+        }
     }
 }

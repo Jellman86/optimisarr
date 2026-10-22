@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare worker preview and Personal quality check samples in the background instead of inside the worker's request for work. On very large originals (30–50 GB) the old in-request preparation outlived the worker's 30-second request limit, was discarded, and restarted on every poll, so the sample never started. The sample is also identified by size and modification time instead of hashing the whole original twice; it is disposable and can never replace the original. Fixes the follow-up reported on #428.
+
 - Personal quality checks now compare quality levels using the saved video codec, container and settings by default. Applying a result changes only quality. The previous cross-codec comparison is available through an explicit Compare presets option; stale results are rejected if resolved library settings change. Fixes #427.
 - Allow video previews and video personal quality samples to run on compatible workers using the library placement and CPU policy. Workers receive bounded source segments and verify every transferred frame; disposable outputs stay separate from replaceable work. Fixes #428. Worker-only interactive jobs wait when workers are unavailable, and browser comparisons use the same bounded reference as the worker.
 - Preserve the demuxer video clock during full decode health checks so valid VideoToolbox output cannot fail because the null muxer rounds timestamps. Full decoded-picture counts and candidate packet-timestamp gates still apply.
