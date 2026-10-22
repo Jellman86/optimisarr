@@ -99,6 +99,7 @@ builder.Services.AddSingleton(_ =>
 });
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddSingleton<IWorkerSampleSource, WorkerSampleSource>();
+builder.Services.AddSingleton<WorkerSamplePreparations>();
 builder.Services.AddSingleton(_ =>
 {
     var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY"),

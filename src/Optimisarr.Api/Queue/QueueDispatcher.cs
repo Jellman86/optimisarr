@@ -34,7 +34,7 @@ public sealed partial class QueueDispatcher(
     IHubContext<JobsHub> hub,
     IHostEnvironment environment,
     VerificationService verification,
-    IWorkerSampleSource workerSamples,
+    WorkerSamplePreparations workerSamples,
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
     QueuePauseManager pauseManager,
@@ -1448,10 +1448,10 @@ public sealed partial class QueueDispatcher(
             var sampleDb = sampleScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var sampleJob = await sampleDb.Jobs.AsNoTracking().Include(j => j.MediaFile)!.ThenInclude(f => f!.Library)
                 .SingleAsync(j => j.Id == jobId, cancellationToken);
-            PreparedWorkerSample sample;
-            try { sample = await workerSamples.PrepareAsync(sampleJob, seconds, work.Spec.ClipStartSeconds ?? 0, cancellationToken); }
-            catch (Exception error) when (error is InvalidOperationException or IOException)
-            { return RemoteWorkPlan.Refused(error.Message); }
+            var availability = workerSamples.TryTake(sampleJob, seconds, work.Spec.ClipStartSeconds ?? 0);
+            if (availability.Refusal is { } refusal) return RemoteWorkPlan.Refused(refusal);
+            if (availability.Sample is not { } sample)
+                return RemoteWorkPlan.Refused("Preparing a short source sample for workers; it will be offered when ready.");
             var duration = MediaTimelineDuration.Resolve(work.Spec.Kind, sample.Probe.VideoDurationSeconds, sample.Probe.DurationSeconds);
             var spec = work.Spec with { ClipSeconds = null, ClipStartSeconds = null, InputTimestampOffsetSeconds = 0 };
             work = work with
