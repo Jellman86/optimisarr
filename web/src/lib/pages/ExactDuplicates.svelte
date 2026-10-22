@@ -19,7 +19,8 @@
   let forceRefresh = $state(false)
   let compareIds = $state<number[]>([])
   let restoreScope = false
-  let scopeExpanded = $state(false)
+  // Comparing across libraries is the common case, so the choice starts visible.
+  let scopeExpanded = $state(true)
   let disposed = false
   let revision = 0
   let loadRequest = 0
@@ -60,7 +61,7 @@
     const value = (event.currentTarget as HTMLSelectElement).value
     if (routeLibraryId !== null) { router.go(value ? `/libraries/${Number(value)}/duplicates` : '/inventory/duplicates'); return }
     revision++; clearTimeout(timer); report = null; error = null
-    forceRefresh = false; compareIds = []; restoreScope = true; scopeExpanded = false
+    forceRefresh = false; compareIds = []; restoreScope = true; scopeExpanded = true
     libraryId = value ? Number(value) : null
     if (libraryId !== null) { loading = true; void load(libraryId) }
   }

@@ -55,13 +55,13 @@ for (const width of [375, 812, 1440, 2048]) for (const theme of ['light', 'dark'
     expect(writes).toContainEqual({ reviewKey: 'b'.repeat(64), choice: 'Keep', keepIds: [1, 2] })
     await page.reload(); await page.getByLabel('Library', { exact: true }).selectOption('1')
     await expect(keepers.nth(0)).toBeChecked(); await expect(keepers.nth(1)).toBeChecked()
-    await page.getByText('Compare with other libraries (1)', { exact: true }).click()
+    // Comparison scope is open by default.
     await page.getByRole('checkbox', { name: 'Photos', exact: true }).check()
     await expect(page.getByText(/Your library selection differs/)).toBeVisible()
     await expect(group.getByRole('button', { name: 'Save keep choices', exact: true })).toBeDisabled()
     await page.getByRole('checkbox', { name: 'Photos', exact: true }).uncheck()
     await expect(group.getByRole('button', { name: 'Save keep choices', exact: true })).toBeEnabled()
-    await page.getByText('Compare with other libraries (1)', { exact: true }).click()
+    // Comparison scope is open by default.
     const violations = (await new AxeBuilder({ page }).include('.duplicate-view').withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations
     expect(violations).toEqual([])
     expect(await page.locator('main').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
@@ -123,7 +123,7 @@ test('a deleted comparison library stays explicit until removed and rescanned', 
       : path === '/api/libraries' ? [{ id: 1, name: 'Films' }] : path === '/api/jobs' ? [] : {} })
   })
   await page.goto('/#/libraries/1/duplicates')
-  await page.getByText('Compare with other libraries (1)', { exact: true }).click()
+    // Comparison scope is open by default.
   const removed = page.getByRole('checkbox', { name: /Deleted archive/ })
   await expect(removed).toBeChecked(); await expect(removed).toBeEnabled()
   await expect(page.getByText('Libraries in this report', { exact: true })).toBeVisible()
