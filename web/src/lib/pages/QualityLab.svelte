@@ -578,14 +578,18 @@
               {:else}<p class="mt-1 leading-relaxed">{i18n.m.calibration.hdr_unsupported}</p>{/if}
             </div>
           {/if}
-          <label class="callout tone-warn mt-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl p-3">
-            <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
-            <span><strong class="block">{i18n.m.calibration.diag_verify_label}</strong><span class="mt-0.5 block text-xs opacity-80">{i18n.m.calibration.diag_verify_hint}</span></span>
-          </label>
-          <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-sm text-ink">
+          <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-sm text-ink">
             <input class="mt-1" type="checkbox" bind:checked={ignoreActiveStreams} />
             <span><strong class="block">{i18n.m.calibration.ignore_streams_label}</strong><span class="mt-0.5 block text-xs text-ink-2">{i18n.m.calibration.ignore_streams_hint}</span></span>
           </label>
+          <!-- A debugging aid that breaks blindness; kept out of the way unless already chosen. -->
+          <details class="mt-3 text-sm" open={diagnosticsEnabled}>
+            <summary class="focus-ring cursor-pointer py-2 text-ink-3">{i18n.m.calibration.troubleshooting}</summary>
+            <label class="mt-2 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl p-3 {diagnosticsEnabled ? 'callout tone-warn' : 'border border-line'}">
+              <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
+              <span><strong class="block">{i18n.m.calibration.diag_verify_label}</strong><span class="mt-0.5 block text-xs opacity-80">{i18n.m.calibration.diag_verify_hint}</span></span>
+            </label>
+          </details>
           <button class="btn btn-primary mt-6 min-h-11" disabled={busy || !hdrReady} onclick={start}>
             {busy ? i18n.m.calibration.starting : i18n.m.calibration.start}
           </button>

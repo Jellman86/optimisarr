@@ -2789,9 +2789,8 @@
       </div>{/if}      {#if !isTrackCleanupProfile && ((showVideoOptions && !isRemuxProfile) || showAudioOptions)}
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
-      <section class="space-y-4">
-        <h3 class="text-xs font-semibold text-ink-3">{i18n.m.libraries.audio_channels}</h3>
-        <p class="mt-0.5 mb-3 text-xs text-ink-4">{i18n.m.libraries.audio_channels_desc}</p>
+      <section class="mt-4 space-y-3 rounded-lg border border-line bg-lit p-4">
+        <h3 class="text-sm font-medium text-ink">{i18n.m.libraries.audio_channels}</h3>
         <label class="flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
           <span>
