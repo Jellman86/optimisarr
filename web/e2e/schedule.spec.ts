@@ -73,7 +73,7 @@ test('schedule lists each playback holding the queue, a hidden viewer showing th
   await page.goto('/#/schedule')
   const playing = page.getByRole('list', { name: 'Playing now' })
   await expect(playing.getByRole('listitem')).toHaveText([
-    'Plex · Example Song by Example Artist · kim on Kitchen (paused)',
-    'Jellyfin · Example Show · S1E1 · Pilot',
+    'Example Song by Example Artist · kim on Kitchen · Plex · Paused',
+    'Example Show · S1E1 · Pilot · Jellyfin · Playing',
   ])
 })

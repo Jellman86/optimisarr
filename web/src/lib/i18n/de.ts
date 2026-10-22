@@ -749,6 +749,10 @@ export const de: Messages = {
     waiting_window:
       '{reason} — setzen Sie das Fenster auf 00:00–00:00 (ganztägig) oder deaktivieren Sie „Automatisch optimieren“ für die Bibliothek, um jetzt auszuführen.',
     playback_status: 'Wiedergabe ({count}): {summary}',
+    playback_waiting_title: "Warten, bis die Wiedergabe endet",
+    playback_waiting_hint: "Neue Aufträge starten, sobald niemand mehr schaut. Laufende Aufträge werden fortgesetzt.",
+    playback_state_playing: "Wird abgespielt",
+    playback_state_paused: "Pausiert",
     playback_heading: "Läuft gerade",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title} ({year})",

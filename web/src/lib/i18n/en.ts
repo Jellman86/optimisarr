@@ -885,6 +885,10 @@ export const en = {
     waiting_window:
       '{reason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.',
     playback_status: 'Playback ({count}): {summary}',
+    playback_waiting_title: "Waiting for playback to finish",
+    playback_waiting_hint: "New jobs start once nobody is watching. Jobs already running carry on.",
+    playback_state_playing: "Playing",
+    playback_state_paused: "Paused",
     playback_heading: "Playing now",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title} ({year})",
