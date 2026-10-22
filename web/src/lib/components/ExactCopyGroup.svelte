@@ -132,7 +132,7 @@
   .copy-kept { border-color:var(--accent-line); background:var(--accent-soft); }
   .badge { color:var(--ink-2); background:var(--panel); }
   .badge-ok { color:var(--accent-strong); background:var(--accent-soft); }
-  .copy-card h3 { overflow-wrap:anywhere; }
+  .copy-card h3, summary h2 { overflow-wrap:anywhere; min-width:0; max-width:100%; }
   @container (max-width:14rem) { .copy-heading { flex-direction:column; } }
   .keep-control:has(input:disabled) { cursor:default; }
   button { min-width:0; max-width:100%; min-height:2.75rem; overflow-wrap:anywhere; }
