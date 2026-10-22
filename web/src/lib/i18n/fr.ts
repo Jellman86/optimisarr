@@ -742,6 +742,10 @@ dispatch_paused:
 waiting_window:
   '{reason} — définissez la plage sur 00:00–00:00 (toute la journée) ou désactivez “Optimiser automatiquement” sur la médiathèque pour exécuter maintenant.',
 playback_status: 'Lecture ({count}) : {summary}',
+playback_waiting_title: "En attente de la fin de la lecture",
+playback_waiting_hint: "Les nouvelles tâches démarrent quand plus personne ne regarde. Les tâches en cours continuent.",
+playback_state_playing: "En lecture",
+playback_state_paused: "En pause",
 playback_heading: "Lecture en cours",
 playback_episode_number: "S{season}E{episode}",
 playback_with_year: "{title} ({year})",

@@ -745,6 +745,10 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     waiting_window:
       '{reason} — ajusta la ventana a 00:00–00:00 (todo el día) o desactiva “Optimizar automáticamente” en la biblioteca para ejecutar ahora.',
     playback_status: 'Reproducción ({count}): {summary}',
+    playback_waiting_title: "Esperando a que termine la reproducción",
+    playback_waiting_hint: "Los trabajos nuevos empiezan cuando nadie esté viendo. Los que ya se ejecutan continúan.",
+    playback_state_playing: "Reproduciendo",
+    playback_state_paused: "En pausa",
     playback_heading: "Reproduciendo ahora",
     playback_episode_number: "T{season}E{episode}",
     playback_with_year: "{title} ({year})",

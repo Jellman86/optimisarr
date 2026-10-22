@@ -740,6 +740,10 @@ quarantine: {
     waiting_window:
       '{reason} — imposta la finestra su 00:00–00:00 (tutto il giorno) o disattiva “Ottimizza automaticamente” sulla libreria per avviare ora.',
     playback_status: 'Riproduzione ({count}): {summary}',
+    playback_waiting_title: "In attesa che finisca la riproduzione",
+    playback_waiting_hint: "Le nuove attività partono quando nessuno sta guardando. Quelle già in corso proseguono.",
+    playback_state_playing: "In riproduzione",
+    playback_state_paused: "In pausa",
     playback_heading: "In riproduzione",
     playback_episode_number: "S{season}E{episode}",
     playback_with_year: "{title} ({year})",

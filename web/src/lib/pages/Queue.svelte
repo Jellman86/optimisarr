@@ -588,7 +588,12 @@
   </div>
 {:else if queueStatus && !queueStatus.canStart}
   <div class="card tone-warn mb-4 p-3 text-sm">
-    {t(i18n.m.queue.dispatch_paused, { reason: (queueStatus.blockedReason ?? '').replace(/\.$/, '') })}
+    {#if queueStatus.playbackHolds?.length}
+      <p class="font-semibold">{i18n.m.queue.playback_waiting_title}</p>
+      <p class="mt-0.5 text-xs">{i18n.m.queue.playback_waiting_hint}</p>
+    {:else}
+      {t(i18n.m.queue.dispatch_paused, { reason: (queueStatus.blockedReason ?? '').replace(/\.$/, '') })}
+    {/if}
     <PlaybackHolds holds={queueStatus.playbackHolds ?? []} />
   </div>
 {:else if queueStatus?.waitingReason}

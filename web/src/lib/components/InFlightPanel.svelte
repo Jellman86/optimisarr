@@ -7,6 +7,8 @@
   import { router } from '../stores/ui.svelte'
   import type { DashboardState } from '../dashboard-state'
   import { jobLocation, verificationPhase } from '../job-presentation'
+  import { counts } from '../stores/counts.svelte'
+  import PlaybackHolds from './PlaybackHolds.svelte'
 
   let { jobs, state: queueState, lastResult = null }: {
     jobs: Job[]
@@ -82,6 +84,15 @@
     <!-- An empty list is not an error, and it is not the same as an idle server. The status bar
          has already said which; this repeats the consequence where a reader is looking for work,
          rather than leaving a blank panel. -->
+    {@const holds = queueState?.kind === 'blocked' ? counts.queue?.playbackHolds ?? [] : []}
+    {#if holds.length > 0}
+      <!-- Playback is the reason nothing runs, so show what is playing rather than a sentence about it. -->
+      <div class="px-4 pt-5" class:pb-5={!lastResult}>
+        <p class="text-sm font-semibold text-ink">{i18n.m.queue.playback_waiting_title}</p>
+        <p class="mt-0.5 text-xs text-ink-3">{i18n.m.queue.playback_waiting_hint}</p>
+        <PlaybackHolds {holds} />
+      </div>
+    {:else}
     <p class="px-4 pt-5 text-sm text-ink-3" class:pb-5={!lastResult}>
       {#if queueState?.kind === 'idle'}
         {i18n.m.dashboard.in_flight_idle}
@@ -91,6 +102,7 @@
         {i18n.m.dashboard.in_flight_none}
       {/if}
     </p>
+    {/if}
     {#if lastResult && lastTitle}
       <!-- While nothing runs, the last finished title stands in for the work, so the panel
            answers "what has it been doing?" instead of sitting empty. -->
