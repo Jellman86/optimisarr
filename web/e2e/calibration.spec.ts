@@ -134,6 +134,7 @@ async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', de
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/quality-check$/)
   if (enableDiagnostics) {
+    await page.getByText('Troubleshooting options', { exact: true }).click()
     await page.getByRole('checkbox', { name: 'Temporary stream verification' }).check()
   }
   await page.getByRole('button', { name: 'Prepare blind samples' }).click()
@@ -232,6 +233,9 @@ test('temporary stream verification is opt-in', async ({ page }) => {
   await mockApp(page)
   await page.goto('/#/libraries/1/configure/encode')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
+  // The option breaks blindness, so it starts hidden in a collapsed section.
+  await expect(page.getByRole('checkbox', { name: 'Temporary stream verification' })).toBeHidden()
+  await page.getByText('Troubleshooting options', { exact: true }).click()
   const proof = page.getByRole('checkbox', { name: 'Temporary stream verification' })
   await expect(proof).not.toBeChecked()
   const requested = page.waitForRequest((request) =>
