@@ -680,7 +680,9 @@
             {@const story = jobFailureStory(selectedJob.failureCategory, selectedJob.errorMessage, fullReport(selectedJob)?.checks, i18n.m)}
             <div class="callout tone-bad mt-4 p-4" role="status">
               <p class="font-semibold">{story.headline}</p>
-              {#if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
+              <!-- "Retry at higher quality" is wrong advice once a search has already tried its highest setting. -->
+              {#if searchReport(selectedJob)?.result?.decision?.fellBack === true}<p class="mt-1 text-xs leading-relaxed">{i18n.m.quality_first.hint_none_met}</p>
+              {:else if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
               {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.join(' · ') })}</p>{/if}
             </div>
             {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
@@ -694,6 +696,7 @@
           <div class="queue-detail-specs">
       <!-- Details -->
       <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 ">
+        {#if selectedJob.videoEncoder != null || selectedJob.videoQualityMode != null}
         <div class="flex justify-between gap-4">
           <dt class="text-ink-3">{i18n.m.queue.detail_encoder}</dt>
           <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-ink-4">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
@@ -709,6 +712,7 @@
             {:else}—{/if}
           </dd>
         </div>
+        {/if}
         <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes != null ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>

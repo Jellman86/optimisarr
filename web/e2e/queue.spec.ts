@@ -718,11 +718,11 @@ for (const width of [375, 1440]) {
         await page.getByRole('button', { name: 'View job', exact: true }).click()
         const panel = page.getByRole('region', { name: 'Image quality report', exact: true })
         if (available) {
-          await expect(panel).toContainText('82.125')
+          await expect(panel).toContainText('82.1')
           await expect(panel).toContainText('96 × 64')
         } else {
           await expect(panel).toContainText('Animated images are unsupported.')
-          await expect(panel).not.toContainText('82.125')
+          await expect(panel).not.toContainText('82.1')
         }
         await expect(panel).toContainText('Every configured check must pass')
         expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
@@ -750,8 +750,8 @@ for (const width of [375, 1440]) {
       await page.goto('/#/queue')
       await page.getByRole('button', { name: 'View job', exact: true }).click()
       const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
-      await expect(panel).toContainText('0.001234')
-      await expect(panel).toContainText('0.005678')
+      await expect(panel).toContainText('0.00123')
+      await expect(panel).toContainText('0.00568')
       await expect(panel).toContainText('Report only')
       expect(await panel.locator('dl > div').first().evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(12)
       await panel.scrollIntoViewIfNeeded()

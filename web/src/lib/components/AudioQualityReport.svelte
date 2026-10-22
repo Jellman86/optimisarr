@@ -9,7 +9,7 @@
   let channels = $derived(measured ? assessment!.windows[0]?.distances?.channelDistances?.length ?? 0 : 0)
   function distance(channel: number) {
     const values = assessment?.windows.map(sample => sample.distances.channelDistances[channel]) ?? []
-    return values.length && values.every(value => Number.isFinite(value)) ? Number(Math.max(...values).toPrecision(6)).toString() : '—'
+    return values.length && values.every(value => Number.isFinite(value)) ? Number(Math.max(...values).toPrecision(3)).toString() : '—'
   }
 </script>
 

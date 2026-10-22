@@ -6,7 +6,7 @@
   let measurement = $derived(report?.measurement)
   let measured = $derived(!report?.error && measurement && Number.isFinite(measurement.score)
     && Number.isFinite(measurement.maximumAlphaError) && measurement.width > 0 && measurement.height > 0)
-  function number(value: number) { return Number(value.toPrecision(6)).toString() }
+  function number(value: number) { return Number(value.toFixed(1)).toString() }
 </script>
 
 {#if report}
