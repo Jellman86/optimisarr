@@ -95,7 +95,9 @@ public sealed record CalibrationResultDto(
     double? EstimatedSavingPercent,
     string Outcome,
     bool Applied,
-    IReadOnlyList<CalibrationVariantResultDto> Variants);
+    IReadOnlyList<CalibrationVariantResultDto> Variants,
+    int CurrentQuality,
+    string? CurrentProfile);
 
 public sealed record CalibrationSessionDto(
     Guid Id,
@@ -920,7 +922,9 @@ internal sealed class BlindCalibrationService(
             recommended?.EstimatedSavingPercent,
             recommended is null ? "NoAcceptableSetting" : "PreferenceFound",
             false,
-            variants);
+            variants,
+            session.Fingerprint.InitialQuality,
+            session.MediaKind == MediaKind.Video ? session.Fingerprint.Profile.ToString() : null);
     }
 
     private static List<Job> JobsForSetting(

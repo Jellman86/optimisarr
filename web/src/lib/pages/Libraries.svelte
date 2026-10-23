@@ -15,6 +15,7 @@
   import ActionMenu from '../components/ActionMenu.svelte'
   import AudioEncodingPreset from '../components/AudioEncodingPreset.svelte'
   import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
+  import { ruleProfileLabel } from '../rule-profile-label'
 
   let {
     embeddedEditorId = null,
@@ -101,18 +102,8 @@
   ])
   const customStopIndex = encodeProfiles.length
 
-  // Friendly display names for raw rule-profile ids so a badge reads "Scott's Settings", not the
-  // PascalCase enum name "ScottsSettings".
-  const profileLabels: Record<string, string> = $derived({
-    ConservativeHevc: i18n.m.libraries.profile_conservative_hevc,
-    CompatibilityH264: i18n.m.libraries.profile_compatibility_h264,
-    ExperimentalAv1: i18n.m.libraries.profile_experimental_av1,
-    RemuxCleanup: i18n.m.libraries.profile_remux_cleanup,
-    ScottsSettings: i18n.m.libraries.profile_scotts_settings,
-    TrackCleanup: i18n.m.libraries.profile_track_cleanup,
-  })
   function profileLabel(profile: string): string {
-    return profileLabels[profile] ?? profile
+    return ruleProfileLabel(profile, i18n.m.libraries)
   }
 
   // Friendly display names for raw codec ids so a badge reads "HEVC (H.265)", not "hevc".

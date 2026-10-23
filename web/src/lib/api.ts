@@ -710,6 +710,8 @@ export type CalibrationResult = {
   outcome: string
   applied: boolean
   variants: CalibrationVariantResult[]
+  currentQuality: number
+  currentProfile: string | null
 }
 
 export type CalibrationSession = {

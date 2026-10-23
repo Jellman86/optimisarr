@@ -718,6 +718,9 @@ public sealed class AdminTokenAuthEndpointTests
         var result = JsonNode.Parse(await classified.Content.ReadAsStringAsync())!["result"]!;
         Assert.Equal(32, result["recommendedQuality"]!.GetValue<int>());
         Assert.Null(result["recommendedProfile"]);
+        // The result names the saved setting Apply would replace, so the change is visible before Apply.
+        Assert.Equal(24, result["currentQuality"]!.GetValue<int>());
+        Assert.Equal("ExperimentalAv1", result["currentProfile"]!.GetValue<string>());
         Assert.Equal(5, result["variants"]!.AsArray().Where(v => !v!["isOriginal"]!.GetValue<bool>())
             .Select(v => v!["estimatedSavingPercent"]!.GetValue<double>()).Distinct().Count());
         if (changeSettings)
