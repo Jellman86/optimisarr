@@ -466,6 +466,21 @@ uses the same effective value. MP3 requires stereo downmix for sources above two
 Opus accept up to eight retained channels. Post-encode verification independently rejects any
 unrequested channel loss.
 
+### Opus surround layout
+
+Opus writes surround channels in the standard 5.1 order. A source whose audio declares the
+side-surround layout `5.1(side)` therefore ends up with its surround channels in a different place
+than the file's own layout claims. When Optimisarr re-encodes such a source to Opus, it maps the
+channels onto the standard 5.1 order with the `channelmap=channel_layout=5.1` audio filter, so the
+encoded track matches the layout its container advertises.
+
+Only the channel order changes. No audio is mixed, remapped, or dropped, and the output keeps the
+source's six channels. **Normalise Opus surround layout** (**Encode → Audio & subtitles**) turns the
+conversion off for a library that wants the source's own surround placement. Optimisarr leaves the
+audio alone when the encoder is not Opus, when the source is downmixed to stereo, when the source
+reports no channel layout, or when its tracks disagree about that layout. Each job records the audio
+filter it applied, shown next to its FFmpeg command in the queue detail.
+
 **Keep audio languages** (**Encode → Audio & subtitles**) removes unwanted audio tracks while a
 video is optimised or remuxed. Enter comma-separated ISO 639 codes (e.g. `eng, jpn`);
 the field validates the syntax before Save, then lower-cases and de-duplicates the

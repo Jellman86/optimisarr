@@ -49,6 +49,7 @@ public static class RuleResolver
             VideoAudioCodec = ResolveVideoAudioCodec(overrides.VideoAudioCodec, settings.VideoAudioCodec),
             VideoAudioBitrateKbps = overrides.VideoAudioBitrateKbps ?? settings.VideoAudioBitrateKbps,
             DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo,
+            NormalizeOpusChannelLayout = overrides.NormalizeOpusChannelLayout ?? settings.NormalizeOpusChannelLayout,
             KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
             KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages,
             ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,

@@ -393,6 +393,7 @@ Create and update library bodies use the same shape. Common fields:
   "audioTargetCodec": null,
   "audioBitrateKbps": null,
   "downmixToStereo": false,
+  "normalizeOpusChannelLayout": true,
   "targetImageFormat": null,
   "imageQuality": null,
   "autoEnqueueEnabled": false,
@@ -532,7 +533,8 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/jobs/clear?scope=errored` | Clear failed jobs. Scope can be `errored`, `finished`, or `all`. |
 | `POST` | `/api/jobs/clear-pending` | Clear queued and ready-to-replace jobs and stop running work. |
 
-Job responses include status, progress, priority, FFmpeg arguments, selected
+Job responses include status, progress, priority, FFmpeg arguments, the audio filter the command
+applied (`appliedAudioFilter`, null when it applied none), selected
 encoder, output size, verification result, verification report JSON, the
 classified failure category (when failed), and timestamps. When paging is used,
 the total number of matches before paging is returned in the `X-Total-Count`

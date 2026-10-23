@@ -31,6 +31,47 @@ public sealed class MediaProbeParseTests
         Assert.Equal(new int?[] { null }, result.SubtitleStreamIndexes);
     }
 
+    [Fact]
+    public void Parse_records_the_declared_audio_channel_layout()
+    {
+        var result = MediaProbeService.Parse("""
+            {"streams":[
+                {"codec_type":"audio","codec_name":"ac3","channels":6,"channel_layout":"5.1(side)"}
+            ]}
+            """);
+
+        Assert.Equal("5.1(side)", result.AudioTracks[0].ChannelLayout);
+        Assert.Equal("5.1(side)", result.UniformAudioChannelLayout);
+    }
+
+    [Fact]
+    public void Parse_leaves_the_layout_unknown_when_the_audio_tracks_disagree()
+    {
+        // A filter applies to every re-encoded track, so a file whose tracks differ in layout
+        // cannot be mapped as a whole.
+        var result = MediaProbeService.Parse("""
+            {"streams":[
+                {"codec_type":"audio","codec_name":"ac3","channels":6,"channel_layout":"5.1(side)"},
+                {"codec_type":"audio","codec_name":"aac","channels":2,"channel_layout":"stereo"}
+            ]}
+            """);
+
+        Assert.Null(result.UniformAudioChannelLayout);
+    }
+
+    [Fact]
+    public void Parse_leaves_the_layout_unknown_when_a_track_does_not_report_one()
+    {
+        var result = MediaProbeService.Parse("""
+            {"streams":[
+                {"codec_type":"audio","codec_name":"ac3","channels":6,"channel_layout":"5.1(side)"},
+                {"codec_type":"audio","codec_name":"aac","channels":2}
+            ]}
+            """);
+
+        Assert.Null(result.UniformAudioChannelLayout);
+    }
+
     private const string SampleJson = """
     {
       "streams": [

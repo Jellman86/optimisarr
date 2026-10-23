@@ -751,6 +751,15 @@
         </details>
       {/if}
 
+      <!-- The audio filter this job's command actually applied, so the operator can see what was
+           done to the audio without reading the whole command. -->
+      {#if selectedJob.appliedAudioFilter}
+        <p class="mt-3 text-xs text-ink-3">
+          <span class="font-medium">{i18n.m.queue.applied_audio_filter}:</span>
+          <span class="font-mono">{selectedJob.appliedAudioFilter}</span>
+        </p>
+      {/if}
+
       <!-- Verification report, when one exists -->
       {#if parseReport(selectedJob)}
         {@const checks = parseReport(selectedJob)}

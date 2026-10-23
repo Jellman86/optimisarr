@@ -132,6 +132,7 @@ internal static class LibraryEndpoints
                 VideoAudioCodec = parsed.VideoAudioCodec,
                 VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
                 DownmixToStereo = parsed.DownmixToStereo,
+                NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout,
                 KeepAudioLanguages = parsed.KeepAudioLanguages,
                 KeepSubtitleLanguages = parsed.KeepSubtitleLanguages,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
@@ -209,7 +210,10 @@ internal static class LibraryEndpoints
                 MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance,
                 ImagePerceptualReportingEnabled = request.ImagePerceptualReportingEnabled ?? library.ImagePerceptualReportingEnabled,
                 ImagePerceptualGateEnabled = request.ImagePerceptualGateEnabled ?? library.ImagePerceptualGateEnabled,
-                MinimumImagePerceptualScore = request.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore
+                MinimumImagePerceptualScore = request.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore,
+                // An update that leaves the field out keeps the library's stored choice; only an
+                // explicit false turns the automatic conversion off.
+                NormalizeOpusChannelLayout = request.NormalizeOpusChannelLayout ?? library.NormalizeOpusChannelLayout
             };
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
@@ -253,6 +257,7 @@ internal static class LibraryEndpoints
             library.VideoAudioCodec = parsed.VideoAudioCodec;
             library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
             library.DownmixToStereo = parsed.DownmixToStereo;
+            library.NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout;
             library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.KeepSubtitleLanguages = parsed.KeepSubtitleLanguages;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;

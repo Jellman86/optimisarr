@@ -163,6 +163,15 @@ public sealed record RuleSettings
     public bool DownmixToStereo { get; init; }
 
     /// <summary>
+    /// When <c>true</c> (the default), an Opus re-encode maps a source that declares the
+    /// side-surround layout onto the standard 5.1 order Opus writes, so the encoded track's
+    /// channel order matches the layout its container advertises. Only the channel order
+    /// changes — no content is mixed, remapped, or dropped. Turn it off to keep the source's
+    /// own surround placement.
+    /// </summary>
+    public bool NormalizeOpusChannelLayout { get; init; } = true;
+
+    /// <summary>
     /// The audio languages a video job keeps (ISO 639 codes, e.g. "eng"); tracks in any other
     /// language are removed from the output. Empty (the default) keeps every track. Tracks
     /// whose language is unknown are always kept, and when no track matches a kept language

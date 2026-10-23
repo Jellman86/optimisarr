@@ -51,7 +51,18 @@ public sealed record TranscodeSpec(
     // How a video re-encode thins its frames under a library's frame-rate cap, or null to keep
     // the source cadence. Always a clean halving of the source (see FrameRatePlanner), and the
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
-    FrameRateDecimation? FrameRate = null)
+    FrameRateDecimation? FrameRate = null,
+    // The channel layout the source's audio tracks declare, or null when it was not reported.
+    // Opus writes surround in the standard 5.1 order, so a source that declares the side
+    // variant is mapped onto it (see AudioChannelLayoutPolicy).
+    string? SourceAudioChannelLayout = null,
+    // Whether the automatic surround-layout conversion runs for this encode. On by default:
+    // it only reorders channels, and it is the difference between an encoded track whose
+    // channel order matches the layout its container advertises and one that does not.
+    bool NormalizeOpusChannelLayout = true,
+    // An audio filter chain set for this transcode. The automatic surround-layout map is never
+    // added on top of it: an explicit filter keeps the chain, and the conflict is reported.
+    string? AudioFilter = null)
 {
     /// <summary>Disposable audio quality probes exclude artwork and timed lyrics from their size and encode cost.</summary>
     public bool AudioSampleOnly { get; init; }
@@ -529,6 +540,7 @@ public static class FfmpegCommandBuilder
         }
 
         AppendDownmix(args, spec);
+        AppendAudioFilter(args, spec);
     }
 
     // A stereo downmix is only meaningful on a re-encode (a copied track keeps its layout),
@@ -540,6 +552,37 @@ public static class FfmpegCommandBuilder
             args.Add("-ac");
             args.Add("2");
         }
+    }
+
+    /// <summary>
+    /// The audio filter this command applies, and what became of the source's surround layout.
+    /// An explicitly set filter keeps the chain to itself: the automatic surround-layout map is
+    /// added only when the chain is free, and a conflict is reported rather than resolved.
+    /// </summary>
+    public static AudioFilterResolution ResolveAudioFilter(TranscodeSpec spec)
+    {
+        var explicitFilter = string.IsNullOrWhiteSpace(spec.AudioFilter) ? null : spec.AudioFilter.Trim();
+        var layout = AudioChannelLayoutPolicy.Plan(
+            spec.AudioEncoder,
+            spec.SourceAudioChannelLayout,
+            spec.DownmixToStereo,
+            explicitFilter,
+            spec.NormalizeOpusChannelLayout);
+
+        return new(layout.Applies ? layout.Filter : explicitFilter, layout);
+    }
+
+    private static void AppendAudioFilter(List<string> args, TranscodeSpec spec)
+    {
+        var resolution = ResolveAudioFilter(spec);
+        if (resolution.Chain is null)
+        {
+            return;
+        }
+
+        // The filter is its own argument, so the chain never reaches a shell string.
+        args.Add("-af");
+        args.Add(resolution.Chain);
     }
 
     private static void AppendAudioArguments(List<string> args, TranscodeSpec spec)
@@ -577,6 +620,7 @@ public static class FfmpegCommandBuilder
         }
 
         AppendDownmix(args, spec);
+        AppendAudioFilter(args, spec);
 
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
         // containers cannot, and their candidates are rejected when such a stream exists.

@@ -158,6 +158,8 @@ export type LibraryRules = {
   videoAudioCodec: string | null
   videoAudioBitrateKbps: number | null
   downmixToStereo: boolean
+  /** Map a 5.1(side) source onto the standard 5.1 order Opus writes. */
+  normalizeOpusChannelLayout: boolean
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
@@ -280,6 +282,7 @@ export function newLibraryDefaults(): SaveLibrary {
     videoAudioCodec: null,
     videoAudioBitrateKbps: null,
     downmixToStereo: false,
+    normalizeOpusChannelLayout: true,
     keepAudioLanguages: null,
     keepSubtitleLanguages: null,
     reencodeLossyAudio: false,
@@ -740,6 +743,8 @@ export type Job = {
   enqueueReason: string | null
   failureCategory: string | null
   ffmpegArguments: string | null
+  /** The audio filter chain the job's command applied, or null when it applied none. */
+  appliedAudioFilter: string | null
   videoEncoder: string | null
   requestedVideoQuality: number | null
   effectiveVideoQuality: number | null

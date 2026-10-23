@@ -1915,6 +1915,12 @@
       },
       "JobDto": {
         "properties": {
+          "appliedAudioFilter": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "attemptHistoryJson": {
             "type": [
               "null",
@@ -2530,6 +2536,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "normalizeOpusChannelLayout": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           },
           "optimiseDolbyVision": {
             "type": [
@@ -4679,6 +4691,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "normalizeOpusChannelLayout": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "optimiseDolbyVision": {

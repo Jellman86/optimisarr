@@ -1411,4 +1411,126 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-ac", FfmpegCommandBuilder.Build(AudioReencode()));
         Assert.DoesNotContain("-ac", FfmpegCommandBuilder.Build(Reencode()));
     }
+
+    [Fact]
+    public void BuildCommand_InjectsChannelMap_ForOpusWith51Side()
+    {
+        var spec = AudioReencode() with
+        {
+            OutputPath = "/work/Track.opus",
+            AudioEncoder = "libopus",
+            SourceAudioChannelLayout = "5.1(side)"
+        };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        var filterIndex = IndexOf(args, "-af");
+        Assert.True(filterIndex > 0);
+        Assert.Equal("channelmap=channel_layout=5.1", args[filterIndex + 1]);
+        // The filter belongs to the output, after the input it applies to.
+        Assert.True(filterIndex > IndexOf(args, "-i"));
+    }
+
+    [Fact]
+    public void BuildCommand_InjectsChannelMap_ForAVideoJobWith51Side()
+    {
+        var spec = Reencode() with { AudioEncoder = "libopus", SourceAudioChannelLayout = "5.1(side)" };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.Equal("libopus", args[IndexOf(args, "-c:a") + 1]);
+        Assert.Equal("channelmap=channel_layout=5.1", args[IndexOf(args, "-af") + 1]);
+    }
+
+    [Theory]
+    [InlineData("5.1")]
+    [InlineData("stereo")]
+    [InlineData("mono")]
+    [InlineData("7.1")]
+    public void BuildCommand_DoesNotInjectChannelMap_ForALayoutOpusEncodesAsItIs(string layout)
+    {
+        var spec = AudioReencode() with
+        {
+            OutputPath = "/work/Track.opus",
+            AudioEncoder = "libopus",
+            SourceAudioChannelLayout = layout
+        };
+
+        Assert.DoesNotContain("-af", FfmpegCommandBuilder.Build(spec));
+    }
+
+    [Theory]
+    [InlineData("aac")]
+    [InlineData("libmp3lame")]
+    public void BuildCommand_DoesNotInjectChannelMap_ForANonOpusEncoder(string encoder)
+    {
+        var spec = AudioReencode() with { AudioEncoder = encoder, SourceAudioChannelLayout = "5.1(side)" };
+
+        Assert.DoesNotContain("-af", FfmpegCommandBuilder.Build(spec));
+    }
+
+    [Fact]
+    public void BuildCommand_DoesNotInjectChannelMap_WhenTheLibraryTurnsTheConversionOff()
+    {
+        var spec = AudioReencode() with
+        {
+            OutputPath = "/work/Track.opus",
+            AudioEncoder = "libopus",
+            SourceAudioChannelLayout = "5.1(side)",
+            NormalizeOpusChannelLayout = false
+        };
+
+        Assert.DoesNotContain("-af", FfmpegCommandBuilder.Build(spec));
+    }
+
+    [Fact]
+    public void BuildCommand_DoesNotInjectChannelMap_ForAStereoDownmix()
+    {
+        var spec = AudioReencode() with
+        {
+            OutputPath = "/work/Track.opus",
+            AudioEncoder = "libopus",
+            SourceAudioChannelLayout = "5.1(side)",
+            DownmixToStereo = true
+        };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.DoesNotContain("-af", args);
+        Assert.Equal("2", args[IndexOf(args, "-ac") + 1]);
+    }
+
+    [Fact]
+    public void BuildCommand_KeepsAnExplicitAudioFilterInsteadOfOverridingIt()
+    {
+        var spec = AudioReencode() with
+        {
+            OutputPath = "/work/Track.opus",
+            AudioEncoder = "libopus",
+            SourceAudioChannelLayout = "5.1(side)",
+            AudioFilter = "loudnorm=I=-16"
+        };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.Equal("loudnorm=I=-16", args[IndexOf(args, "-af") + 1]);
+    }
+
+    [Fact]
+    public void TheAppliedAudioFilter_MatchesTheFilterTheCommandCarries()
+    {
+        var spec = AudioReencode() with
+        {
+            OutputPath = "/work/Track.opus",
+            AudioEncoder = "libopus",
+            SourceAudioChannelLayout = "5.1(side)"
+        };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+        var resolution = FfmpegCommandBuilder.ResolveAudioFilter(spec);
+
+        Assert.Equal("channelmap=channel_layout=5.1", resolution.Chain);
+        Assert.Equal("channelmap=channel_layout=5.1", args[IndexOf(args, "-af") + 1]);
+        Assert.Equal(AudioChannelLayoutOutcome.Normalised, resolution.Layout.Outcome);
+    }
 }
