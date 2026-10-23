@@ -298,6 +298,8 @@ test('video switching replaces one native player resource and preserves its matc
   const exactResource = page.getByRole('link', { name: 'Open exact video resource' })
   await expect(exactResource).toHaveAttribute('href', await video.evaluate((element) => (element as HTMLVideoElement).currentSrc))
   await expect(page.getByRole('button', { name: 'Inspect video full screen' })).toBeVisible()
+  // Native controls own the picture in verification mode, so the close-up controls stay away.
+  await expect(page.getByRole('group', { name: 'Video zoom and pan controls' })).toHaveCount(0)
 })
 
 test('rapid sample clicks keep the full hit target active and switch to the latest choice', async ({ page }) => {
@@ -336,6 +338,142 @@ test('rapid sample clicks keep the full hit target active and switch to the late
   await expect(video).toHaveJSProperty('seeking', true)
   await video.dispatchEvent('seeked')
   await expect(page.getByRole('button', { name: 'B', exact: true })).toHaveAttribute('aria-pressed', 'true')
+})
+
+// The fixture streams are empty, so stand in for the browser loading the chosen resource. The
+// seek stays pending until the test dispatches `seeked`, like a real stream fetching its frame.
+async function loadPendingVideo(video: ReturnType<Page['locator']>, size = { width: 1920, height: 1080 }) {
+  await video.evaluate((element, { width, height }) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 0
+    let paused = true
+    let seeking = false
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'videoWidth', { configurable: true, get: () => width })
+    Object.defineProperty(player, 'videoHeight', { configurable: true, get: () => height })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeking = true } })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => paused })
+    Object.defineProperty(player, 'seeking', { configurable: true, get: () => seeking })
+    player.pause = () => { paused = true }
+    player.play = async () => { paused = false }
+    player.addEventListener('seeked', () => { seeking = false })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  }, size)
+}
+
+test('video close-up zoom and pan stay matched when switching samples', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video, { width: 3840, height: 2160 })
+  await video.dispatchEvent('seeked')
+
+  await expect(page.getByRole('button', { name: 'Fit the whole picture in view' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  await expect(page.getByText('Zoom 150%')).toBeVisible()
+  await expect(video).toHaveAttribute('style', /scale\(1\.5\)/)
+  const stage = page.getByRole('group', { name: 'Blind comparison streams' })
+  const box = (await stage.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 20)
+  await page.mouse.up()
+  await expect(video).toHaveAttribute('style', /translate\(40px, 20px\) scale\(1\.5\)/)
+
+  await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/A/samples/0/content`)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await expect(page.getByRole('button', { name: 'A', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(video).toHaveAttribute('style', /translate\(40px, 20px\) scale\(1\.5\)/)
+
+  // 1:1 follows the original's picture size, so a 4K reference needs more than the fitted view.
+  await page.getByRole('button', { name: 'Show actual pixels (1:1)' }).click()
+  const scale = await video.evaluate((element) => Number(/scale\(([\d.e-]+)\)/.exec(element.getAttribute('style') ?? '')?.[1]))
+  expect(scale).toBeGreaterThan(2)
+  await page.getByRole('button', { name: 'Fit the whole picture in view' }).click()
+  await expect(video).toHaveAttribute('style', /translate\(0px, 0px\) scale\(1\)/)
+})
+
+test('full screen keeps a sample switcher and shortcut keys that wait for the matching frame', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await video.evaluate((element) => { (element as HTMLVideoElement).currentTime = 2.751 })
+  await video.dispatchEvent('seeked')
+
+  await page.getByRole('button', { name: 'Inspect video full screen' }).click()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true)
+  const switcher = page.getByRole('group', { name: 'Switch sample' })
+  await expect(switcher.getByRole('button')).toHaveText(['O', 'A', 'B', 'C', 'D'])
+  await expect(switcher.getByRole('button', { name: 'Show original' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+
+  await page.keyboard.press('b')
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/B/samples/0/content`)
+  await loadPendingVideo(video)
+  // B has loaded but not yet reached the frame, so the original stays named and B is not shown.
+  await expect(switcher.getByRole('button', { name: 'Show original' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Loading exact video resource…')).toBeVisible()
+  await expect(video).toHaveJSProperty('currentTime', 2)
+  await video.dispatchEvent('seeked')
+  await expect(switcher.getByRole('button', { name: 'Show sample B' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Loading exact video resource…')).toHaveCount(0)
+  await expect(video).toHaveAttribute('style', /scale\(1\.25\)/)
+
+  await switcher.getByRole('button', { name: 'Show original' }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/ORIGINAL/samples/0/content`)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await expect(video).toHaveJSProperty('currentTime', 2.751)
+  await expect(switcher.getByRole('button', { name: 'Show original' })).toHaveAttribute('aria-pressed', 'true')
+  expect(await page.evaluate(() => document.fullscreenElement !== null)).toBe(true)
+})
+
+test('pausing a video settles its picture on the exact frame other samples will seek to', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await page.getByRole('button', { name: 'Play sample' }).click()
+  await expect(page.getByRole('button', { name: 'Pause sample' })).toBeVisible()
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 4.2
+    let seeks = 0
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeks++; player.dataset.seeks = String(seeks) } })
+  })
+  await page.getByRole('button', { name: 'Pause sample' }).click()
+  await expect(video).toHaveAttribute('data-seeks', '1')
+  await expect(video).toHaveJSProperty('currentTime', 4.2)
+  await expect(page.getByRole('button', { name: 'Play sample' })).toBeVisible()
+})
+
+test('a seek the browser clamps is reported instead of shown as the matched frame', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await video.evaluate((element) => { (element as HTMLVideoElement).currentTime = 5.751 })
+  await video.dispatchEvent('seeked')
+
+  await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/A/samples/0/content`)
+  // An unseekable resource finishes "seeking" at the start instead of the requested time.
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => 0, set: () => undefined })
+    Object.defineProperty(player, 'seeking', { configurable: true, get: () => false })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  })
+  await expect(page.getByText('could not play one of the native comparison streams', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'A', exact: true })).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('image quality uses one zoomable viewport and six anonymous variants', async ({ page }) => {

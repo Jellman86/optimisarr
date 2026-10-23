@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { actualPixelsZoom, nextUnratedName, settingChange } from './calibration-presentation.ts'
+import { actualPixelsZoom, nextUnratedName, sampleForKey, settingChange } from './calibration-presentation.ts'
 
 const result = { recommendedQuality: 28, recommendedProfile: null, currentQuality: 24, currentProfile: 'ConservativeHevc' }
 
@@ -50,4 +50,20 @@ test('actual pixels zoom undoes the fit-to-view scale', () => {
   assert.equal(actualPixelsZoom(480, 270, 960, 540), 0.5)
   assert.equal(actualPixelsZoom(0, 0, 960, 540), null)
   assert.equal(actualPixelsZoom(1920, 1080, 0, 0), null)
+})
+
+test('sample shortcut keys pick the original with O and a candidate by its letter', () => {
+  const names = ['ORIGINAL', 'A', 'B', 'C', 'D']
+  assert.equal(sampleForKey('o', names), 'ORIGINAL')
+  assert.equal(sampleForKey('O', names), 'ORIGINAL')
+  assert.equal(sampleForKey('b', names), 'B')
+  assert.equal(sampleForKey('D', names), 'D')
+})
+
+test('sample shortcut keys ignore letters without a sample and named keys', () => {
+  const names = ['ORIGINAL', 'A', 'B']
+  assert.equal(sampleForKey('e', names), null)
+  assert.equal(sampleForKey('Enter', names), null)
+  assert.equal(sampleForKey(' ', names), null)
+  assert.equal(sampleForKey('o', ['A', 'B']), null)
 })

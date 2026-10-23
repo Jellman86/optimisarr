@@ -37,3 +37,11 @@ export function actualPixelsZoom(naturalWidth: number, naturalHeight: number, vi
   if (naturalWidth <= 0 || naturalHeight <= 0 || viewWidth <= 0 || viewHeight <= 0) return null
   return 1 / Math.min(viewWidth / naturalWidth, viewHeight / naturalHeight)
 }
+
+// O always means the original reference; every other key must be a candidate's own blind letter.
+export function sampleForKey(key: string, names: string[]): string | null {
+  if (key.length !== 1) return null
+  const letter = key.toUpperCase()
+  if (letter === 'O') return names.includes('ORIGINAL') ? 'ORIGINAL' : null
+  return names.find((name) => name === letter) ?? null
+}
