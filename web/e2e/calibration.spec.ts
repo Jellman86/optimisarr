@@ -416,6 +416,13 @@ test('rating unlocks only after a pending switch has shown the chosen sample', a
   await expect(ratings.getByRole('button', { name: /Acceptable/ })).toBeEnabled()
   await ratings.getByRole('button', { name: /Acceptable/ }).click()
   await expect(page.getByText('1 of 4 samples classified')).toBeVisible()
+  // Switching away from a candidate leaves its rating controls visible until the new sample
+  // is ready. They must not accept a rating intended for the pending sample.
+  await page.getByRole('button', { name: 'C', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/C/samples/0/content`)
+  await expect(ratings.getByRole('button', { name: /Acceptable/ })).toBeDisabled()
+  await expect(page.getByText('Rating unlocks when the selected sample has loaded.')).toBeVisible()
+  await expect(page.getByText('1 of 4 samples classified')).toBeVisible()
 })
 
 test('rating can step straight to the next unrated sample', async ({ page }) => {
@@ -446,6 +453,8 @@ test('photo inspection switches between fit and actual pixels with matched zoom'
   await page.getByRole('button', { name: 'Show actual pixels (1:1)' }).click()
   const scale = await original.evaluate((image) => Number(/scale\(([\d.e-]+)\)/.exec(image.getAttribute('style') ?? '')?.[1]))
   expect(scale).toBeLessThan(0.01)
+  await page.getByRole('button', { name: 'Zoom out' }).click()
+  await expect(original).toHaveAttribute('style', new RegExp(`scale\\(${scale}\\)`))
   await page.getByRole('button', { name: 'C', exact: true }).click()
   await expect(viewport.getByRole('img', { name: 'Blind comparison image C' })).toHaveAttribute('style', new RegExp(`scale\\(${scale}\\)`))
 })

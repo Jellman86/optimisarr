@@ -499,7 +499,8 @@
   }
 
   function zoom(delta: number) {
-    imageZoom = Math.max(1, Math.min(Math.max(4, actualImageZoom() ?? 1), imageZoom + delta))
+    const actual = actualImageZoom() ?? 1
+    imageZoom = Math.max(Math.min(1, actual), Math.min(Math.max(4, actual), imageZoom + delta))
     if (imageZoom === 1) {
       imagePanX = 0
       imagePanY = 0
