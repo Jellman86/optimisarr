@@ -9,7 +9,7 @@
     type Library,
   } from '../api'
   import { formatDuration } from '../format'
-  import { actualPixelsZoom, nextUnratedName, settingChange, type CalibrationSetting } from '../calibration-presentation'
+  import { actualPixelsZoom, nextUnratedName, sampleForKey, settingChange, type CalibrationSetting } from '../calibration-presentation'
   import { ruleProfileLabel } from '../rule-profile-label'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { activity } from '../stores/activity.svelte'
@@ -52,12 +52,12 @@
   let fullscreen = $state(false)
   let hdrDisplaySupported = $state(false)
   let hdrViewingConfirmed = $state(false)
-  let imageZoom = $state(1)
-  let imagePanX = $state(0)
-  let imagePanY = $state(0)
-  let imageDrag = $state<{ x: number, y: number, panX: number, panY: number } | null>(null)
-  let imageStage = $state<HTMLElement | null>(null)
-  let imageNatural = $state<{ width: number, height: number } | null>(null)
+  let viewZoom = $state(1)
+  let panX = $state(0)
+  let panY = $state(0)
+  let panDrag = $state<{ x: number, y: number, panX: number, panY: number } | null>(null)
+  let comparisonStage = $state<HTMLElement | null>(null)
+  let pictureSize = $state<{ width: number, height: number } | null>(null)
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let closed = false
 
@@ -196,6 +196,9 @@
   function registerVideoPlayer(name: string, event: Event) {
     const player = event.currentTarget as HTMLVideoElement
     videoPlayer = player
+    if (variants.find((variant) => variant.name === name)?.isOriginal && player.videoWidth > 0) {
+      pictureSize = { width: player.videoWidth, height: player.videoHeight }
+    }
     preparePlayer(name, player)
     if (!switching && name === activeName) browserStreamUrl = player.currentSrc
   }
@@ -219,6 +222,15 @@
       const onSeeked = () => finish(true)
       player.addEventListener('seeked', onSeeked, { once: true })
     })
+  }
+
+  // A browser that cannot seek a resource (no range support, data not yet seekable) clamps the
+  // position instead of failing, so a finished seek only counts if it landed where it was sent.
+  // Landing on the end is allowed: an encode may be a frame shorter than its scene.
+  async function seekTo(player: HTMLMediaElement, time: number): Promise<boolean> {
+    player.currentTime = time
+    const reachable = Number.isFinite(player.duration) ? Math.min(time, player.duration) : time
+    return await waitForSeek(player) && Math.abs(player.currentTime - reachable) < 0.05
   }
 
   function waitForMetadata(player: HTMLMediaElement): Promise<boolean> {
@@ -294,8 +306,7 @@
       playbackError = true
       return
     }
-    target.currentTime = targetSample.startSeconds + switchPosition
-    const frameReady = await waitForSeek(target)
+    const frameReady = await seekTo(target, targetSample.startSeconds + switchPosition)
     if (sequence !== switchSequence) return
     if (!frameReady) {
       playbackError = true
@@ -334,9 +345,8 @@
       playbackPosition = Math.max(0, current.currentTime - currentSample.startSeconds)
       current.pause()
     }
-    target.currentTime = targetSample.startSeconds + playbackPosition
     target.volume = Math.min(1, Math.pow(10, targetSample.gainDb / 20))
-    const frameReady = await waitForSeek(target)
+    const frameReady = await seekTo(target, targetSample.startSeconds + playbackPosition)
     if (sequence !== switchSequence) return
     if (!frameReady) {
       playbackError = true
@@ -364,9 +374,9 @@
     players = {}
     videoPlayer = null
     browserStreamUrl = ''
-    imageZoom = 1
-    imagePanX = 0
-    imagePanY = 0
+    viewZoom = 1
+    panX = 0
+    panY = 0
     await tick()
     if (!switchingVideo || sequence !== switchSequence) return
     const player = await waitForVideoPlayer(activeName, sequence)
@@ -376,8 +386,7 @@
       switching = false
       return
     }
-    player.currentTime = sample.startSeconds
-    const frameReady = await waitForSeek(player)
+    const frameReady = await seekTo(player, sample.startSeconds)
     if (!frameReady) playbackError = true
     browserStreamUrl = player.currentSrc
     switching = false
@@ -405,6 +414,9 @@
     if (!player.paused) {
       player.pause()
       playing = false
+      // The picture left on screen at pause can run a frame ahead of currentTime. Seeking to
+      // that time shows the frame every other sample will seek to, so stills compare alike.
+      if (session?.mediaKind === 'Video' && !await seekTo(player, player.currentTime)) playbackError = true
       return
     }
     if (playbackPosition >= sample.durationSeconds - 0.05) {
@@ -422,8 +434,7 @@
     if (session?.mediaKind === 'Video') {
       const sample = sampleFor(activeName)
       if (!videoPlayer || !sample) return
-      videoPlayer.currentTime = sample.startSeconds + position
-      if (!await waitForSeek(videoPlayer)) playbackError = true
+      if (!await seekTo(videoPlayer, sample.startSeconds + position)) playbackError = true
       return
     }
     const waits: Promise<boolean>[] = []
@@ -431,8 +442,7 @@
       const player = players[variant.name]
       const sample = sampleFor(variant.name)
       if (!player || !sample) continue
-      player.currentTime = sample.startSeconds + position
-      waits.push(waitForSeek(player))
+      waits.push(seekTo(player, sample.startSeconds + position))
     }
     const ready = await Promise.all(waits)
     if (ready.some((value) => !value)) playbackError = true
@@ -488,7 +498,8 @@
     players = {}
     videoPlayer = null
     error = null
-    fitImage()
+    pictureSize = null
+    fitView()
     if (finished) await api.deleteCalibration(finished.id).catch(() => undefined)
   }
 
@@ -499,48 +510,64 @@
   }
 
   function zoom(delta: number) {
-    const actual = actualImageZoom() ?? 1
-    imageZoom = Math.max(Math.min(1, actual), Math.min(Math.max(4, actual), imageZoom + delta))
-    if (imageZoom === 1) {
-      imagePanX = 0
-      imagePanY = 0
+    const actual = actualPixelsScale() ?? 1
+    viewZoom = Math.max(Math.min(1, actual), Math.min(Math.max(4, actual), viewZoom + delta))
+    if (viewZoom === 1) {
+      panX = 0
+      panY = 0
     }
   }
 
-  function fitImage() {
-    imageZoom = 1
-    imagePanX = 0
-    imagePanY = 0
+  function fitView() {
+    viewZoom = 1
+    panX = 0
+    panY = 0
   }
 
-  function actualImageZoom(): number | null {
-    if (!imageNatural || !imageStage) return null
-    return actualPixelsZoom(imageNatural.width, imageNatural.height, imageStage.clientWidth, imageStage.clientHeight)
+  function actualPixelsScale(): number | null {
+    if (!pictureSize || !comparisonStage) return null
+    return actualPixelsZoom(pictureSize.width, pictureSize.height, comparisonStage.clientWidth, comparisonStage.clientHeight)
   }
 
   function showActualPixels() {
-    const actual = actualImageZoom()
+    const actual = actualPixelsScale()
     if (actual === null) return
-    imageZoom = actual
-    imagePanX = 0
-    imagePanY = 0
+    viewZoom = actual
+    panX = 0
+    panY = 0
   }
 
   function recordImageSize(isOriginal: boolean, event: Event) {
     const image = event.currentTarget as HTMLImageElement
-    if (isOriginal) imageNatural = { width: image.naturalWidth, height: image.naturalHeight }
+    if (isOriginal) pictureSize = { width: image.naturalWidth, height: image.naturalHeight }
   }
 
-  function startImageDrag(event: PointerEvent) {
-    if (imageZoom <= 1) return
-    imageDrag = { x: event.clientX, y: event.clientY, panX: imagePanX, panY: imagePanY }
+  function startPan(event: PointerEvent) {
+    if (viewZoom <= 1) return
+    panDrag = { x: event.clientX, y: event.clientY, panX, panY }
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   }
 
-  function moveImage(event: PointerEvent) {
-    if (!imageDrag) return
-    imagePanX = imageDrag.panX + event.clientX - imageDrag.x
-    imagePanY = imageDrag.panY + event.clientY - imageDrag.y
+  function movePan(event: PointerEvent) {
+    if (!panDrag) return
+    panX = panDrag.panX + event.clientX - panDrag.x
+    panY = panDrag.panY + event.clientY - panDrag.y
+  }
+
+  // Switching by key keeps the eyes on the picture, including in full screen where the sample
+  // deck is out of view. Keys typed into a form field stay with that field.
+  function switchSampleByKey(event: KeyboardEvent) {
+    if (!session || session.status === 'Preparing' || session.status === 'Failed') return
+    if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || typingInto(event.target)) return
+    const name = sampleForKey(event.key, variants.map((variant) => variant.name))
+    if (!name) return
+    event.preventDefault()
+    void chooseVariant(name)
+  }
+
+  function typingInto(target: EventTarget | null): boolean {
+    return target instanceof HTMLElement && (target.isContentEditable
+      || target.matches('textarea, select, input:not([type="range"], [type="checkbox"], [type="radio"], [type="button"])'))
   }
 
   function ratingLabel(rating: CalibrationClassification): string {
@@ -596,6 +623,8 @@
     return [identity, activeDiagnostics.codec, activeDiagnostics.container, quality].filter(Boolean).join(' · ')
   }
 </script>
+
+<svelte:window onkeydown={switchSampleByKey} />
 
 <svelte:head>
   <title>{i18n.m.calibration.eyebrow} · Optimisarr</title>
@@ -743,11 +772,11 @@
               {/if}
             </div>
           </div>
-          <div class="comparison-stage relative flex w-full items-center justify-center overflow-hidden bg-black" class:aspect-video={session.mediaKind !== 'Audio'} class:cursor-grab={session.mediaKind === 'Image' && imageZoom > 1} class:cursor-grabbing={imageDrag !== null} role="group" aria-label={session.mediaKind === 'Image' ? i18n.m.calibration.image_viewport : i18n.m.calibration.switch_label} bind:this={imageStage} onpointerdown={startImageDrag} onpointermove={moveImage} onpointerup={() => (imageDrag = null)} onpointercancel={() => (imageDrag = null)}>
+          <div class="comparison-stage relative flex w-full items-center justify-center overflow-hidden bg-black" class:aspect-video={session.mediaKind !== 'Audio'} class:cursor-grab={session.mediaKind !== 'Audio' && viewZoom > 1} class:cursor-grabbing={panDrag !== null} class:touch-none={viewZoom > 1} role="group" aria-label={session.mediaKind === 'Image' ? i18n.m.calibration.image_viewport : i18n.m.calibration.switch_label} bind:this={comparisonStage} onpointerdown={startPan} onpointermove={movePan} onpointerup={() => (panDrag = null)} onpointercancel={() => (panDrag = null)}>
             {#key activeScene}
               {#if session.mediaKind === 'Image'}
                 {#each variants as variant}
-                  <img src={variant.samples[activeScene]?.url} alt={variant.isOriginal ? i18n.m.calibration.original_reference : t(i18n.m.calibration.image_alt, { slot: variant.name })} draggable="false" class="absolute inset-0 h-full w-full select-none object-contain" class:invisible={variant.name !== activeName} style:transform={`translate(${imagePanX}px, ${imagePanY}px) scale(${imageZoom})`} onload={(event: Event) => recordImageSize(variant.isOriginal, event)} onerror={() => (playbackError = true)} />
+                  <img src={variant.samples[activeScene]?.url} alt={variant.isOriginal ? i18n.m.calibration.original_reference : t(i18n.m.calibration.image_alt, { slot: variant.name })} draggable="false" class="absolute inset-0 h-full w-full select-none object-contain" class:invisible={variant.name !== activeName} style:transform={`translate(${panX}px, ${panY}px) scale(${viewZoom})`} onload={(event: Event) => recordImageSize(variant.isOriginal, event)} onerror={() => (playbackError = true)} />
                 {/each}
               {:else if session.mediaKind === 'Video' && videoSample}
                 {#key videoSample.url}
@@ -760,6 +789,7 @@
                     controls={diagnosticsEnabled}
                     class="absolute inset-0 h-full w-full object-contain"
                     class:invisible={switching}
+                    style:transform={`translate(${panX}px, ${panY}px) scale(${viewZoom})`}
                     onloadedmetadata={(event: Event) => registerVideoPlayer(videoName, event)}
                     ontimeupdate={updatePosition}
                     onplay={() => pendingName === null && (playing = true)}
@@ -783,20 +813,27 @@
               {/if}
             {/key}
           </div>
-          <div class="border-t border-slate-800 px-4 py-3">
+          <div class="space-y-3 border-t border-slate-800 px-4 py-3">
             {#if session.mediaKind === 'Image'}
-              <div class="flex flex-wrap items-center justify-center gap-2" role="group" aria-label={i18n.m.calibration.image_zoom_controls}>
-                <button class="btn min-h-11" aria-label={i18n.m.calibration.fit_view_label} aria-pressed={imageZoom === 1} onclick={fitImage}>{i18n.m.calibration.fit_view}</button>
-                <button class="btn min-h-11 min-w-11" aria-label={i18n.m.calibration.zoom_out} onclick={() => zoom(-0.25)}>−</button>
-                <span class="min-w-14 text-center font-mono text-xs text-white/75" aria-live="polite">{t(i18n.m.calibration.zoom_level, { percent: Math.round(imageZoom * 100) })}</span>
-                <button class="btn min-h-11 min-w-11" aria-label={i18n.m.calibration.zoom_in} onclick={() => zoom(0.25)}>+</button>
-                <button class="btn min-h-11" aria-label={i18n.m.calibration.actual_pixels_label} disabled={!imageNatural} onclick={showActualPixels}>{i18n.m.calibration.actual_pixels}</button>
-              </div>
-              {#if imageZoom > 1}<p class="mt-2 text-center text-xs text-white/60">{i18n.m.calibration.pan_hint}</p>{/if}
+              {@render zoomControls(i18n.m.calibration.image_zoom_controls, i18n.m.calibration.fit_view_label, i18n.m.calibration.pan_hint)}
             {:else if activeSample && !(session.mediaKind === 'Video' && diagnosticsEnabled)}
               <div class="flex items-center gap-3"><button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-accent-fill text-accent-on hover:brightness-110" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="min-h-11 min-w-0 flex-1 accent-accent" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-ink-4">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
+              {#if session.mediaKind === 'Video'}
+                {@render zoomControls(i18n.m.calibration.video_zoom_controls, i18n.m.calibration.fit_picture_label, i18n.m.calibration.video_pan_hint)}
+              {/if}
             {:else if activeSample}
               <p class="text-center text-xs text-ink-4">{i18n.m.calibration.native_controls_note}</p>
+            {/if}
+            {#if fullscreen}
+              <!-- Full screen hides the sample deck, so the viewer carries its own switcher. -->
+              <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                <div class="flex flex-wrap items-center justify-center gap-1.5" role="group" aria-label={i18n.m.calibration.switch_sample}>
+                  {#each variants as variant}
+                    <button class="min-h-11 min-w-11 rounded-full px-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-accent {activeName === variant.name ? 'bg-accent-fill text-accent-on' : 'bg-white/10 text-white hover:bg-white/20'}" aria-pressed={activeName === variant.name} aria-label={variant.isOriginal ? i18n.m.calibration.show_original : t(i18n.m.calibration.show_sample, { name: variant.name })} aria-keyshortcuts={variant.isOriginal ? 'O' : variant.name} onclick={() => chooseVariant(variant.name)}>{variant.isOriginal ? 'O' : variant.name}</button>
+                  {/each}
+                </div>
+                <span class="text-xs text-white/60">{i18n.m.calibration.shortcut_hint}</span>
+              </div>
             {/if}
           </div>
           {#if activeDiagnostics && activeSample}
@@ -824,7 +861,7 @@
         {/if}
 
         <section class="card p-4 sm:p-5">
-          <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h2 class="font-semibold text-ink">{i18n.m.calibration.sample_deck}</h2><p class="mt-1 text-sm text-ink-3">{i18n.m.calibration.sample_deck_hint}</p></div><span class="text-xs text-ink-4">{i18n.m.calibration.select_then_rate}</span></div>
+          <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h2 class="font-semibold text-ink">{i18n.m.calibration.sample_deck}</h2><p class="mt-1 text-sm text-ink-3">{i18n.m.calibration.sample_deck_hint}</p><p class="mt-1 text-xs text-ink-4">{i18n.m.calibration.shortcut_hint}</p></div><span class="text-xs text-ink-4">{i18n.m.calibration.select_then_rate}</span></div>
           <div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
@@ -916,13 +953,24 @@
   {/if}
 </div>
 
+{#snippet zoomControls(label: string, fitLabel: string, panHint: string)}
+  <div class="flex flex-wrap items-center justify-center gap-2" role="group" aria-label={label}>
+    <button class="btn min-h-11" aria-label={fitLabel} aria-pressed={viewZoom === 1} onclick={fitView}>{i18n.m.calibration.fit_view}</button>
+    <button class="btn min-h-11 min-w-11" aria-label={i18n.m.calibration.zoom_out} onclick={() => zoom(-0.25)}>−</button>
+    <span class="min-w-14 text-center font-mono text-xs text-white/75" aria-live="polite">{t(i18n.m.calibration.zoom_level, { percent: Math.round(viewZoom * 100) })}</span>
+    <button class="btn min-h-11 min-w-11" aria-label={i18n.m.calibration.zoom_in} onclick={() => zoom(0.25)}>+</button>
+    <button class="btn min-h-11" aria-label={i18n.m.calibration.actual_pixels_label} disabled={!pictureSize} onclick={showActualPixels}>{i18n.m.calibration.actual_pixels}</button>
+  </div>
+  {#if viewZoom > 1}<p class="text-center text-xs text-white/60">{panHint}</p>{/if}
+{/snippet}
+
 <style>
   .quality-lab { container-type: inline-size; }
   .quality-columns { display: grid; gap: 1.25rem; }
   @container (min-width: 60rem) {
     .quality-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); }
   }
-  .quality-lab :global(:fullscreen) { width: 100vw; height: 100vh; border-radius: 0; }
-  .quality-lab :global(:fullscreen .comparison-stage) { height: calc(100vh - 7.5rem); min-height: 0; aspect-ratio: auto; }
+  .quality-lab :global(:fullscreen) { display: flex; flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; }
+  .quality-lab :global(:fullscreen .comparison-stage) { flex: 1 1 auto; height: auto; min-height: 0; aspect-ratio: auto; }
   @media (prefers-reduced-motion: reduce) { .quality-lab * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
 </style>
