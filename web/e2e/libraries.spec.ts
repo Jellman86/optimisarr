@@ -8,6 +8,7 @@ const library = {
   targetContainer: null, hdrHandling: null, optimiseDolbyVision: false, excludePaths: null,
   qualityCrf: null, encoderPreset: null, audioTargetCodec: null, audioBitrateKbps: null,
   videoAudioCodec: null, videoAudioBitrateKbps: null, downmixToStereo: false,
+  normalizeOpusChannelLayout: true,
   keepAudioLanguages: null, keepSubtitleLanguages: null, reencodeLossyAudio: false,
   targetImageFormat: null, imageQuality: null, reencodeLossyImages: false,
   imageDownscaleMode: 'None', imageDownscaleValue: 0, moveOnComplete: false,
@@ -387,6 +388,24 @@ test('ordinary controls and advanced pages have distinct homes for every media k
   await page.getByRole('button', { name: 'Images', exact: true }).click()
   await expect(page.locator('#lib-image-downscale')).toBeVisible()
   await expect(page.locator('#lib-image-quality')).toHaveCount(0)
+})
+
+test('the Opus surround-layout conversion is on by default and can be turned off', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/encode/audio')
+  const toggle = page.locator('#lib-normalize-opus-layout')
+  await expect(toggle).toBeVisible()
+  await expect(toggle).toBeChecked()
+
+  await toggle.uncheck()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ normalizeOpusChannelLayout: false })
+
+  await toggle.check()
+  const resaved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await resaved).postDataJSON()).toMatchObject({ normalizeOpusChannelLayout: true })
 })
 
 test('audio encoding presets change the codec budget while leaving the quality gate unchanged', async ({ page }) => {

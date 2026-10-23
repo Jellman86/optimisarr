@@ -1096,7 +1096,7 @@ public sealed partial class QueueDispatcher(
                     ? preparedWork.VerificationPolicy.MaximumSizeSavingPercent : null);
             await BeginTranscodeAsync(
                 jobId,
-                spec.OutputPath,
+                spec,
                 arguments,
                 preparedWork.VideoEncoder,
                 preparedWork.VideoQuality,
@@ -1147,7 +1147,7 @@ public sealed partial class QueueDispatcher(
                 arguments = softwareArguments;
                 await BeginTranscodeAsync(
                     jobId,
-                    spec.OutputPath,
+                    spec,
                     arguments,
                     preparedWork.VideoEncoder,
                     preparedWork.VideoQuality,
@@ -1239,7 +1239,7 @@ public sealed partial class QueueDispatcher(
                     };
                     await BeginTranscodeAsync(
                         jobId,
-                        spec.OutputPath,
+                        spec,
                         arguments,
                         preparedWork.VideoEncoder,
                         preparedWork.VideoQuality,
@@ -1774,6 +1774,30 @@ public sealed partial class QueueDispatcher(
             }
         }
 
+        // Opus writes surround in the standard 5.1 order, so a source that declares the side
+        // variant is mapped onto it. Only a six-channel source can carry that variant, so the
+        // layout is read from a probe only where the answer can change the command. A source
+        // whose tracks disagree about their layout keeps the layout it has.
+        string? sourceAudioChannelLayout = null;
+        if (rules.NormalizeOpusChannelLayout
+            && media.MaxAudioChannels == AudioChannelLayoutPolicy.StandardSurroundChannelCount
+            && AudioChannelLayoutPolicy.IsOpusEncoder(
+                TranscodeSpecResolver.AudioEncoderFor(rules, media.MediaKind)))
+        {
+            freshSourceProbe ??= await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            sourceAudioChannelLayout = freshSourceProbe.Success
+                ? freshSourceProbe.UniformAudioChannelLayout
+                : null;
+            if (!freshSourceProbe.Success)
+            {
+                logger.LogInformation(
+                    "Job {JobId} keeps its source surround layout: the layout probe failed ({Error})",
+                    job.Id, freshSourceProbe.Error ?? "no detail available");
+            }
+        }
+
         var spec = TranscodeSpecResolver.Resolve(
             rules,
             media.Path,
@@ -1802,7 +1826,8 @@ public sealed partial class QueueDispatcher(
             sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             sourceSubtitleCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.SubtitleCodecs : null,
             sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null,
-            adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true);
+            adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true,
+            sourceAudioChannelLayout: sourceAudioChannelLayout);
 
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
         {
@@ -3127,16 +3152,27 @@ public sealed partial class QueueDispatcher(
 
     private async Task BeginTranscodeAsync(
         int jobId,
-        string outputPath,
+        TranscodeSpec spec,
         IReadOnlyList<string> arguments,
         string? videoEncoder,
         EncoderQuality? videoQuality,
         CancellationToken cancellationToken)
     {
+        // The audio filter the command actually carries, recorded on the job so the queue can
+        // show what was done to the audio without the operator reading the whole command.
+        var audioFilter = FfmpegCommandBuilder.ResolveAudioFilter(spec);
+        if (audioFilter.Layout.Blocked)
+        {
+            logger.LogInformation(
+                "Job {JobId} keeps the source surround layout: {Reason}",
+                jobId, audioFilter.Layout.Reason);
+        }
+
         await WithJobAsync(jobId, job =>
         {
-            job.WorkOutputPath = outputPath;
+            job.WorkOutputPath = spec.OutputPath;
             job.FfmpegArguments = string.Join(' ', arguments);
+            job.AppliedAudioFilter = audioFilter.Chain;
             job.VideoEncoder = videoEncoder;
             job.RequestedVideoQuality = videoQuality?.Requested;
             job.EffectiveVideoQuality = videoQuality?.Effective;

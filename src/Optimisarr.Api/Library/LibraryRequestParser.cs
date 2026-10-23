@@ -83,7 +83,9 @@ internal readonly record struct ParsedLibrary(
     bool ImagePerceptualGateEnabled = false,
     double? MinimumImagePerceptualScore = null,
     bool AdaptiveAudioQuality = false,
-    bool AdaptiveImageQuality = false);
+    bool AdaptiveImageQuality = false,
+    // The automatic surround-layout conversion is on unless the request turns it off.
+    bool NormalizeOpusChannelLayout = true);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -614,7 +616,8 @@ internal static class LibraryRequestParser
             request.ImagePerceptualGateEnabled ?? false,
             request.MinimumImagePerceptualScore,
             request.AdaptiveAudioQuality ?? false,
-            request.AdaptiveImageQuality ?? false);
+            request.AdaptiveImageQuality ?? false,
+            request.NormalizeOpusChannelLayout ?? true);
         error = null;
         return true;
     }

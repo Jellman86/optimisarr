@@ -51,6 +51,8 @@ public sealed record JobDto(
     bool Finalizing = false,
     /// <summary>Completed search probes while final verification has not produced its own report.</summary>
     string? PerceptualSearchJson = null,
+    /// <summary>The audio filter chain the job's command applied, or null when it applied none.</summary>
+    string? AppliedAudioFilter = null,
     /// <summary>A temporary local memory/workspace hold; an eligible worker may still claim it.</summary>
     bool WaitingForResources = false);
 
@@ -168,8 +170,14 @@ public static class JobQueries
                 job.ExecutionAttempt,
                 job.RetryReason,
                 job.AttemptHistoryJson,
-                null, null, false, false, false,
-                job.VerificationReportJson == null ? job.PerceptualSearchJson : null))
+                // The remote-worker facts are filled in below, once the leases are read.
+                null,
+                null,
+                false,
+                false,
+                false,
+                job.VerificationReportJson == null ? job.PerceptualSearchJson : null,
+                job.AppliedAudioFilter))
             .ToListAsync(cancellationToken);
 
         var pageIds = jobs.Select(job => job.Id).ToArray();

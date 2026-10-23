@@ -13,6 +13,7 @@ function job(id: number, status: string, verificationPassed: boolean | null) {
     enqueueReason: null,
     failureCategory: null,
     ffmpegArguments: null,
+    appliedAudioFilter: null,
     videoEncoder: 'libx265',
     requestedVideoQuality: 24,
     effectiveVideoQuality: 24,
@@ -903,6 +904,22 @@ test('a finished job says how big it was before and after', async ({ page }) => 
   await expect(details).not.toContainText('smaller')
 })
 
+
+test('a job shows the audio filter its command applied beside the FFmpeg command', async ({ page }) => {
+  await mockQueue(page)
+  const remapped = {
+    ...job(61, 'Completed', true),
+    ffmpegArguments: '-i /media/Film 61.mkv -c:a libopus -af channelmap=channel_layout=5.1 /work/61.mkv',
+    appliedAudioFilter: 'channelmap=channel_layout=5.1',
+  }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [remapped]))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-61').click()
+  const details = page.locator('#queue-job-dialog')
+  await expect(details).toContainText('Audio filter:')
+  await expect(details).toContainText('channelmap=channel_layout=5.1')
+})
 
 test('retained capture shows historical gates after a newer capture targets another job', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false)] })

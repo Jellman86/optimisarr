@@ -35,6 +35,31 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void Carries_the_source_channel_layout_into_an_opus_encode()
+    {
+        var rules = Hevc with { VideoAudioCodec = "opus" };
+
+        var spec = TranscodeSpecResolver.Resolve(rules, "/data/film.mkv", "film.mkv", "/work",
+            false, 23, "medium", sourceAudioChannelLayout: "5.1(side)");
+
+        Assert.Equal("5.1(side)", spec.SourceAudioChannelLayout);
+        var args = FfmpegCommandBuilder.Build(spec);
+        Assert.Equal("channelmap=channel_layout=5.1", args[Array.IndexOf(args.ToArray(), "-af") + 1]);
+    }
+
+    [Fact]
+    public void Leaves_the_channel_layout_alone_when_the_library_turns_the_conversion_off()
+    {
+        var rules = Hevc with { VideoAudioCodec = "opus", NormalizeOpusChannelLayout = false };
+
+        var spec = TranscodeSpecResolver.Resolve(rules, "/data/film.mkv", "film.mkv", "/work",
+            false, 23, "medium", sourceAudioChannelLayout: "5.1(side)");
+
+        Assert.False(spec.NormalizeOpusChannelLayout);
+        Assert.DoesNotContain("-af", FfmpegCommandBuilder.Build(spec));
+    }
+
+    [Fact]
     public void Output_goes_under_the_work_root_with_the_target_container_extension()
     {
         var spec = TranscodeSpecResolver.Resolve(

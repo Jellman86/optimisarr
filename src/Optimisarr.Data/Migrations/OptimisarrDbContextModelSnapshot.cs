@@ -15,7 +15,7 @@ namespace Optimisarr.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
             modelBuilder.Entity("Optimisarr.Data.ActivityWatcher", b =>
                 {
@@ -687,6 +687,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("AdaptiveVideoQuality")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AppliedAudioFilter")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Attempt")
                         .HasColumnType("INTEGER");
 
@@ -1185,6 +1188,9 @@ namespace Optimisarr.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("NormalizeOpusChannelLayout")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("OptimiseDolbyVision")
                         .HasColumnType("INTEGER");

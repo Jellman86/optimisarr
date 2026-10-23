@@ -1087,6 +1087,9 @@
       videoAudioCodec: library.videoAudioCodec,
       videoAudioBitrateKbps: library.videoAudioBitrateKbps,
       downmixToStereo: library.downmixToStereo,
+      // A server that predates this setting never sends the field, and the conversion is on by
+      // default — so an absent value means "on", not "off".
+      normalizeOpusChannelLayout: library.normalizeOpusChannelLayout ?? true,
       keepAudioLanguages: library.keepAudioLanguages,
       keepSubtitleLanguages: library.keepSubtitleLanguages,
       reencodeLossyAudio: library.reencodeLossyAudio,
@@ -2788,6 +2791,15 @@
             {i18n.m.libraries.downmix_label} <InfoTip text={i18n.m.libraries.downmix_hint} />
             <span class="mt-0.5 block text-xs font-normal text-ink-4">
               {i18n.m.libraries.downmix_hint}
+            </span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-2 text-sm">
+          <input id="lib-normalize-opus-layout" type="checkbox" class="checkbox mt-0.5" bind:checked={form.normalizeOpusChannelLayout} />
+          <span>
+            {i18n.m.libraries.normalize_opus_layout_label} <InfoTip text={i18n.m.libraries.normalize_opus_layout_hint} />
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
+              {i18n.m.libraries.normalize_opus_layout_hint}
             </span>
           </span>
         </label>

@@ -102,6 +102,7 @@
 
 ### Added
 
+- Opus re-encodes now map a source that declares the `5.1(side)` surround layout onto the standard 5.1 order, so the encoded track's surround channels sit where the file's own layout says they do. Only the channel order changes: no audio is mixed, remapped or dropped, and the output keeps the source's six channels. **Normalise Opus surround layout** (**Configure → Encode → Audio & subtitles**) turns the conversion off per library. Non-Opus encoders, stereo downmixes, and sources that report no layout or disagree between tracks are left alone, and every job records the audio filter it applied next to its FFmpeg command.
 - Mac FFmpeg now bundles the pinned WebP encoder. Package acceptance proves JPEG/WebP metadata round trips, exact alpha in both WebP modes and exact lossless colour. Corresponding-source archives now accept immutable annotated-tag object pins while refusing moving tag names; completed media-tool checks precede publication of build provenance.
 
 

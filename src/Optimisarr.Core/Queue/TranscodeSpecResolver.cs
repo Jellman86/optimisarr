@@ -45,7 +45,10 @@ public static class TranscodeSpecResolver
         IReadOnlyList<string>? sourceAudioCodecs = null,
         // Explicit quality-first opt-in permits perceptually gated lossy WebP from lossless stills.
         // Fixed settings retain the existing lossless-source preservation rule.
-        bool adaptiveImageQuality = false)
+        bool adaptiveImageQuality = false,
+        // The channel layout the source's audio tracks declare, or null when it was not probed.
+        // An Opus re-encode maps the side-surround variant onto the standard one.
+        string? sourceAudioChannelLayout = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -81,7 +84,9 @@ public static class TranscodeSpecResolver
                 AudioEncoder: audio.Encoder,
                 AudioBitrateKbps: AudioTarget.EffectiveBitrateKbps(
                     rules.AudioBitrateKbps, sourceMaxAudioChannels, rules.DownmixToStereo),
-                DownmixToStereo: rules.DownmixToStereo);
+                DownmixToStereo: rules.DownmixToStereo,
+                SourceAudioChannelLayout: sourceAudioChannelLayout,
+                NormalizeOpusChannelLayout: rules.NormalizeOpusChannelLayout);
         }
 
         // MP4 can only carry text subtitles (mov_text) and has no tag for some Blu-ray audio formats
@@ -153,13 +158,30 @@ public static class TranscodeSpecResolver
             // A copied stream keeps its cadence too; only a re-encode can drop frames.
             FrameRate: rules.TargetVideoCodec is null
                 ? null
-                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate, sourceIsVariableFrameRate))
+                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate, sourceIsVariableFrameRate),
+            SourceAudioChannelLayout: sourceAudioChannelLayout,
+            NormalizeOpusChannelLayout: rules.NormalizeOpusChannelLayout)
         { SourceSubtitleCodecs = sourceSubtitleCodecs };
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>
     public static bool IsMp4Container(string? container) =>
         container?.TrimStart('.').ToLowerInvariant() is "mp4" or "m4v" or "mov";
+
+    /// <summary>
+    /// The ffmpeg audio encoder this library's rules will use for the given job kind, or null
+    /// when the audio is copied untouched or the chosen codec is not one Optimisarr supports.
+    /// </summary>
+    public static string? AudioEncoderFor(RuleSettings rules, MediaKind kind)
+    {
+        var codec = kind == MediaKind.Audio
+            ? rules.TargetAudioCodec
+            : rules.VideoAudioCodec;
+
+        return codec is not null && AudioTarget.IsSupportedTarget(codec)
+            ? AudioTarget.Resolve(codec).Encoder
+            : null;
+    }
 
     private static string BuildOutputPath(string workRoot, string relativePath, string targetContainer)
     {

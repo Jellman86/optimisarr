@@ -7,7 +7,7 @@ using Optimisarr.Core.Domain;
 namespace Optimisarr.Core.Library;
 
 /// <summary>One audio stream's shape, in the file's stream order (index = audio-relative position).</summary>
-public sealed record AudioTrackInfo(string? Language, int Channels, int SampleRate, string? Codec);
+public sealed record AudioTrackInfo(string? Language, int Channels, int SampleRate, string? Codec, string? ChannelLayout = null);
 
 public sealed record MediaProbeResult(
     bool Success,
@@ -56,6 +56,43 @@ public sealed record MediaProbeResult(
     public IReadOnlyList<int?> SubtitleStreamIndexes { get; init; } = [];
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RawJson { get; init; }
+
+    /// <summary>
+    /// The channel layout every audio track shares, or null when the tracks differ or any of
+    /// them does not report one. A filter applies to the whole file, so a source whose tracks
+    /// do not agree on their layout cannot be mapped as one.
+    /// </summary>
+    public string? UniformAudioChannelLayout
+    {
+        get
+        {
+            if (AudioTracks.Count == 0)
+            {
+                return null;
+            }
+
+            string? layout = null;
+            foreach (var track in AudioTracks)
+            {
+                if (string.IsNullOrWhiteSpace(track.ChannelLayout))
+                {
+                    return null;
+                }
+
+                var declared = track.ChannelLayout.Trim();
+                if (layout is null)
+                {
+                    layout = declared;
+                }
+                else if (!layout.Equals(declared, StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+            }
+
+            return layout;
+        }
+    }
 
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
@@ -323,7 +360,8 @@ public sealed class MediaProbeService : IMediaProbeService
                             ReadLanguageTag(stream),
                             audioChannels,
                             audioSampleRate,
-                            codecName));
+                            codecName,
+                            ReadString(stream, "channel_layout")));
                         break;
                     case "subtitle":
                         subtitleCount++;
