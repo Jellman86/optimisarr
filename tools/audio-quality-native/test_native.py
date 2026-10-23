@@ -2,6 +2,7 @@
 import json
 import math
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -70,6 +71,53 @@ class NativeAssessmentTests(unittest.TestCase):
         args[-1] = str(self.reference)
         self.assertNotEqual(subprocess.run(args, capture_output=True, timeout=30).returncode, 0)
         self.assertEqual(self.reference.read_bytes(), original)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows extended-length paths")
+    def test_long_unicode_inputs_and_reports_preserve_identity_and_exclusive_creation(self):
+        directory = self.root
+        while len(str(directory.relative_to(self.root))) < 300:
+            directory /= "quality assessment 日本語 " + "x" * 24
+        extended = Path("\\\\?\\" + str(directory))
+        extended.mkdir(parents=True)
+        self.addCleanup(shutil.rmtree, Path("\\\\?\\" + str(self.root)))
+        reference = extended / "reference 日本語.raw"
+        candidate = extended / "candidate.raw"
+        self.write(reference, self.samples)
+        self.write(candidate, self.samples)
+        original = reference.read_bytes()
+
+        for form in ("absolute", "relative", "extended", "unc", "extended-unc"):
+            with self.subTest(form=form):
+                share = "\\\\localhost\\" + directory.drive[0] + "$"
+                if form in ("unc", "extended-unc") and not Path(share).is_dir():
+                    self.skipTest("Loopback administrative share is unavailable")
+
+                def argument(name):
+                    if form == "extended":
+                        return str(extended / name)
+                    if form in ("unc", "extended-unc"):
+                        path = share + str(directory)[len(directory.drive):] + "\\" + name
+                        return "\\\\?\\UNC\\" + path[2:] if form == "extended-unc" else path
+                    path = directory / name
+                    return str(path.relative_to(self.root) if form == "relative" else path)
+
+                report_name = f"report 日本語-{form}.json"
+                args = [EXECUTABLE, argument(reference.name), argument(candidate.name), "2",
+                        "--report", argument(report_name)]
+                result = subprocess.run(args, cwd=self.root, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["distances"], [0, 0])
+                report = extended / report_name
+                self.assertEqual(json.loads(report.read_text()), json.loads(result.stdout))
+                saved = report.read_bytes()
+                self.assertNotEqual(subprocess.run(args, cwd=self.root, capture_output=True,
+                                                   timeout=30).returncode, 0)
+                self.assertEqual(report.read_bytes(), saved)
+                args[-1] = argument(reference.name)
+                self.assertNotEqual(subprocess.run(args, cwd=self.root, capture_output=True,
+                                                   timeout=30).returncode, 0)
+                self.assertEqual(reference.read_bytes(), original)
+                self.assertEqual(candidate.read_bytes(), original)
 
     @unittest.skipUnless(sys.platform == "darwin", "Mach-O deployment metadata")
     def test_macos_binary_matches_the_sidecars_supported_deployment_floor(self):
