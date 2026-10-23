@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Polish Personal quality check for video, photos and music (#441). A step indicator shows where you are. Music asks how a sample *sounds*, rates "Audibly worse" and uses excerpts and a compact listening header instead of an empty video stage. Rating waits until a sample switch has finished, so it always applies to the sample on screen; unrated samples are marked and "Next unrated sample" steps through them. Photos gain explicit Fit and 1:1 controls. Results lead with the recommendation and how your ratings chose it. They show the exact library setting before and after Apply, label the saving as an estimate, and say that Apply only changes that setting for future work. VMAF is marked as reference evidence. "Check another file" starts over after a result or failure. The revealed result now reports the saved setting it would replace; blind labels, verification, freshness checks and original-file safety are unchanged.
+
 - Record the current Personal quality check UI for video, photos and music as a Playwright-captured baseline for the planned usability polish; application behavior is unchanged.
 
 - Make the interactive worker-claim regression accept a sample that finishes preparing on the first request. The test retains and verifies that lease instead of discarding it because preparation completed faster than expected; production dispatch behavior is unchanged.

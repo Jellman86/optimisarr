@@ -1,0 +1,177 @@
+{
+  "source": "branch feat/personal-quality-check-polish on dev 7740a88d",
+  "synthetic": true,
+  "description": "Updated Svelte UI from the polish branch; API responses and media are controlled fixtures, not measured quality results. compare-zoom200 uses a 720 x 700 CSS viewport, equivalent to 200% browser zoom of 1440 x 1400.",
+  "captures": [
+    {
+      "kind": "Video",
+      "stage": "setup",
+      "mobile": false,
+      "theme": "dark",
+      "file": "video-setup.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Video",
+      "stage": "compare",
+      "mobile": false,
+      "theme": "dark",
+      "file": "video-compare.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Video",
+      "stage": "compare",
+      "mobile": true,
+      "theme": "dark",
+      "file": "video-compare-mobile.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Video",
+      "stage": "results",
+      "mobile": false,
+      "theme": "dark",
+      "file": "video-results.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Image",
+      "stage": "setup",
+      "mobile": false,
+      "theme": "dark",
+      "file": "image-setup.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Image",
+      "stage": "compare",
+      "mobile": false,
+      "theme": "dark",
+      "file": "image-compare.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Image",
+      "stage": "compare",
+      "mobile": true,
+      "theme": "dark",
+      "file": "image-compare-mobile.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Image",
+      "stage": "results",
+      "mobile": false,
+      "theme": "dark",
+      "file": "image-results.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Audio",
+      "stage": "setup",
+      "mobile": false,
+      "theme": "dark",
+      "file": "audio-setup.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Audio",
+      "stage": "compare",
+      "mobile": false,
+      "theme": "dark",
+      "file": "audio-compare.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Audio",
+      "stage": "compare",
+      "mobile": true,
+      "theme": "dark",
+      "file": "audio-compare-mobile.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Audio",
+      "stage": "compare",
+      "mobile": true,
+      "theme": "dark",
+      "file": "audio-compare-mobile-rating.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "scrolledTo": "rating panel"
+    },
+    {
+      "kind": "Audio",
+      "stage": "results",
+      "mobile": false,
+      "theme": "dark",
+      "file": "audio-results.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    },
+    {
+      "kind": "Video",
+      "stage": "results",
+      "mobile": false,
+      "theme": "light",
+      "file": "video-results-light.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1400
+      },
+      "horizontalOverflow": false
+    }
+  ],
+  "errors": [],
+  "note": "Versioned subset of the 23 captures; zoom200 and remaining mobile results captures stay in the SSD artifact store personal-quality-check-ui-20261023. Every capture reported zero runtime errors and no horizontal overflow."
+}
