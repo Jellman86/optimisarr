@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.2.24 - 2026-10-24
+
+Protocol 11 audio/image worker placement is enabled in this release. Entries below
+also retain intermediate development milestones: earlier statements about disabled
+placement or unconnected journals describe those stages, not the final release.
+The unused .NET durable journal was archived; Windows/Linux workers retain live
+resource admission and owned-scratch recovery. Full audio/image parity and
+power-loss durability are not release claims.
 
 - Fix Windows audio quality measurement under long scratch paths (#447). The native helper now uses extended-length paths for PCM inputs and its report, retaining Unicode names, exclusive report creation and all quality gates.
 
