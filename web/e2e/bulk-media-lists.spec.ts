@@ -390,12 +390,17 @@ test('the inventory drops the selection when the filter or the library changes',
 })
 
 test('picking and clearing rows asks the server for nothing', async ({ page }) => {
-  // Thumbnails are loaded by the rows themselves, so they are not counted: what must not happen
-  // is a pick, an un-pick or a clear sending a request of its own.
-  let calls = 0
+  // Only the requests the selection could cause are counted: the list itself, a probe, or a
+  // batch. The app's background polling of the queue is none of the selection's business.
+  const caused: string[] = []
+  const selectionRequest = (path: string) =>
+    path === '/api/inventory'
+    || path.startsWith('/api/media/batch')
+    || (path.startsWith('/api/media/') && !path.endsWith('/thumbnail'))
+    || path.startsWith('/api/exclusions')
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
-    if (!path.endsWith('/thumbnail')) calls += 1
+    if (selectionRequest(path)) caused.push(path)
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/libraries') return json(route, [library])
@@ -412,8 +417,8 @@ test('picking and clearing rows asks the server for nothing', async ({ page }) =
 
   await page.goto('/#/inventory')
   await expect(page.getByRole('button', { name: /a\.mkv/ })).toBeVisible()
-  await expect.poll(() => calls).toBeGreaterThan(0)
-  const before = calls
+  // The list itself is fetched once, to show the page.
+  await expect.poll(() => caused.length).toBe(1)
 
   // Picking, un-picking, picking again and clearing are all local decisions.
   const row = page.getByRole('checkbox', { name: 'Select a.mkv' })
@@ -425,5 +430,44 @@ test('picking and clearing rows asks the server for nothing', async ({ page }) =
   await page.locator('[data-selection-toolbar]').getByRole('button', { name: 'Clear selection' }).click()
   await expect(page.locator('[data-selection-toolbar]')).toBeHidden()
 
-  expect(calls).toBe(before)
+  expect(caused).toEqual(['/api/inventory'])
+})
+
+test('a batch that fails says so and keeps the rows picked', async ({ page }) => {
+  await page.route('**/api/**', async (route: Route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
+    if (path === '/api/libraries') return json(route, [library])
+    if (path.endsWith('/thumbnail')) return route.fulfill({ status: 404 })
+    if (path === '/api/inventory') {
+      return json(route, {
+        items: [inventoryRow(1, 'a.mkv'), inventoryRow(2, 'b.mkv')],
+        total: 2,
+        counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0 },
+      })
+    }
+    if (path === '/api/media/batch/exclude') {
+      // The server refused the whole batch.
+      return route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'batch.failed', error: 'The batch could not be started.' }),
+      })
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+
+  await page.goto('/#/inventory')
+  await expect(page.getByRole('button', { name: /a\.mkv/ })).toBeVisible()
+  await page.getByRole('checkbox', { name: 'Select a.mkv' }).check()
+  await page.locator('[data-selection-toolbar]').getByRole('button', { name: 'Exclude' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Exclude' }).click()
+
+  // The failure is reported, nothing is claimed to have succeeded, and the rows stay picked so
+  // the operator can try again.
+  await expect(page.getByText('The batch could not be started.')).toBeVisible()
+  await expect(page.getByText(/succeeded/)).toHaveCount(0)
+  await expect(page.getByText('1 of 2 selected', { exact: true })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Select a.mkv' })).toBeChecked()
 })
