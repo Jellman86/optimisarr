@@ -33,7 +33,7 @@ export async function mockInventory(page: Page) {
 test('Index opens an artwork-led modal by keyboard and restores focus on close', async ({ page }) => {
   await mockInventory(page)
   await page.goto('/#/inventory')
-  await expect(page.getByRole('columnheader')).toHaveText(['File', 'Size', 'Format', 'Rule verdict'])
+  await expect(page.getByRole('columnheader')).toHaveText(['', 'File', 'Size', 'Format', 'Rule verdict'])
   const file = page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ })
   await file.focus()
   await page.keyboard.press('Enter')

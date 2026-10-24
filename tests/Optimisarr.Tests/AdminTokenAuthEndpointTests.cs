@@ -1314,6 +1314,10 @@ public sealed class AdminTokenAuthEndpointTests
                 {
                     services.Remove(hosted);
                 }
+                // The probe batch worker is the one background service the batch tests need: it is
+                // what works through a batch the operator asked for. It only acts on a batch that
+                // was queued, so it stays quiet for every other test.
+                services.AddHostedService<MediaProbeBatchWorker>();
                 foreach (var randomizer in services
                     .Where(service => service.ServiceType == typeof(ICalibrationRandomizer))
                     .ToList())

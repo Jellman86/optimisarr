@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type WorkPlacement } from '../api'
-  import { i18n, mediaTypeLabel, t } from '../i18n/i18n.svelte'
+  import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -11,9 +11,14 @@
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
+  import BatchResult from '../components/BatchResult.svelte'
+  import ConfirmDialog from '../components/ConfirmDialog.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ActionMenu from '../components/ActionMenu.svelte'
   import AudioEncodingPreset from '../components/AudioEncodingPreset.svelte'
+  import SelectionCheckbox from '../components/SelectionCheckbox.svelte'
+  import SelectionToolbar from '../components/SelectionToolbar.svelte'
+  import { createSelection } from '../selection.svelte'
   import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
   import { ruleProfileLabel } from '../rule-profile-label'
 
@@ -464,6 +469,14 @@
   let editorExclusions = $state<Exclusion[]>([])
   let editorExclusionsLoading = $state(false)
   let editorExclusionsError = $state<string | null>(null)
+  // The Excluded tab's own selection: which of the shown exclusions are marked for removal.
+  // It is reset whenever a different library is opened, so ids from one library are never
+  // carried into another.
+  const exclusionSelection = createSelection()
+  let exclusionConfirmOpen = $state(false)
+  let exclusionBusy = $state(false)
+  let exclusionOutcome = $state<{ succeeded: number; failures: { id: number; code: string; message: string }[] } | null>(null)
+  let exclusionIds = $derived(editorExclusions.map((exclusion) => exclusion.id))
   // Per-library eligible/skipped tallies for the list cards (counts only — see /api/candidates/summary).
   let summaries = $state<Record<number, { eligible: number; skipped: number }>>({})
   let form = $state<SaveLibrary>(blankForm())
@@ -1022,6 +1035,48 @@
     }
   }
 
+  // The Excluded tab's selection. Shift-clicking extends the range over the shown rows, and the
+  // header checkbox picks every shown row — the whole list, because this list is not paged.
+  function toggleExclusionSelection(id: number, extend: boolean) {
+    exclusionSelection.toggle(id, exclusionIds, extend)
+  }
+
+  function toggleSelectAllExclusions() {
+    if (exclusionSelection.isEverySelected(exclusionIds)) exclusionSelection.clear()
+    else exclusionSelection.selectAll(exclusionIds)
+  }
+
+  function askRemoveExclusions() {
+    if (exclusionSelection.count === 0 || exclusionBusy) return
+    exclusionOutcome = null
+    exclusionConfirmOpen = true
+  }
+
+  async function runRemoveExclusions() {
+    if (exclusionSelection.count === 0 || exclusionBusy) return
+    const ids = [...exclusionSelection.ids]
+    exclusionBusy = true
+    editorExclusionsError = null
+    try {
+      const result = await api.batchRemoveExclusions(ids)
+      const removed = new Set(result.succeeded)
+      // The rows that were lifted leave the list; the ones that failed stay picked, so the
+      // operator can try them again without picking them a second time.
+      editorExclusions = editorExclusions.filter((exclusion) => !removed.has(exclusion.id))
+      exclusionSelection.remove([...removed])
+      exclusionOutcome = { succeeded: result.succeeded.length, failures: result.failures }
+      if (editingId) {
+        // A file that is no longer excluded may be offered for optimisation again.
+        await loadEditorCandidates(editingId)
+      }
+    } catch (err) {
+      editorExclusionsError = err instanceof Error ? err.message : i18n.m.libraries.error_remove_exclusion
+    } finally {
+      exclusionBusy = false
+      exclusionConfirmOpen = false
+    }
+  }
+
   function startAdd() {
     form = blankForm()
     if (options.mediaTypes.length) form.mediaType = options.mediaTypes[0]
@@ -1165,6 +1220,9 @@
     markPristine()
     editorCandidates = []
     editorExclusions = []
+    // A new library has its own exclusions, so the previous library's selection is dropped.
+    exclusionSelection.clear()
+    exclusionOutcome = null
     void loadEditorCandidates(library.id)
     void loadEditorExclusions(library.id)
   }
@@ -1172,6 +1230,9 @@
   function cancelEdit() {
     if (!confirmDiscardIfDirty()) return
     markPristine()
+    // Leaving the editor drops the Excluded tab's selection with it.
+    exclusionSelection.clear()
+    exclusionOutcome = null
     if (embedded) onEmbeddedClose?.()
     else router.go('/libraries')
   }
@@ -3032,17 +3093,46 @@
     {/if}
   {:else}
     {#if editorExclusionsError}<Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>{/if}
+    {#if exclusionOutcome}
+      <BatchResult
+        succeeded={exclusionOutcome.succeeded}
+        failures={exclusionOutcome.failures}
+        title={i18n.m.libraries.batch_unexclude_result}
+        ondismiss={() => (exclusionOutcome = null)}
+      />
+    {/if}
     <p class="mb-3 text-xs text-ink-3">{i18n.m.libraries.excluded_desc_1}<strong>{i18n.m.libraries.excluded_desc_exclude}</strong>{i18n.m.libraries.excluded_desc_2}</p>
     {#if editorExclusionsLoading}
       <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else if editorExclusions.length === 0}
       <div class="rounded-lg border border-dashed border-line p-8 text-center text-sm text-ink-4">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
     {:else}
+      {#if exclusionSelection.count > 0}
+        <SelectionToolbar count={exclusionSelection.count} total={exclusionIds.length} onclear={() => exclusionSelection.clear()}>
+          {#snippet actions()}
+            <button type="button" class="btn" disabled={exclusionBusy} onclick={askRemoveExclusions}>{i18n.m.libraries.batch_unexclude}</button>
+          {/snippet}
+        </SelectionToolbar>
+      {/if}
       <div class="divide-y divide-line-soft rounded-lg border border-line divide-line">
+        <div class="flex items-center gap-3 bg-raised px-3 py-2">
+          <SelectionCheckbox
+            checked={exclusionSelection.isEverySelected(exclusionIds)}
+            indeterminate={!exclusionSelection.isEverySelected(exclusionIds) && exclusionSelection.isSomeSelected(exclusionIds)}
+            label={i18n.m.selection.select_all}
+            onchange={toggleSelectAllExclusions}
+          />
+          <span class="text-xs text-ink-3">{i18n.m.libraries.excluded_select_hint}</span>
+        </div>
         {#each editorExclusions as ex (ex.id)}
           {@const auto = ex.source === 'RepeatedFailures'}
-          <div class="flex items-center justify-between gap-3 px-3 py-2">
-            <div class="min-w-0">
+          <div class="flex items-center gap-3 px-3 py-2">
+            <SelectionCheckbox
+              checked={exclusionSelection.isSelected(ex.id)}
+              label={t(i18n.m.selection.select_row, { name: ex.relativePath ?? ex.path })}
+              onchange={(extend) => toggleExclusionSelection(ex.id, extend)}
+            />
+            <div class="min-w-0 flex-1">
               <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
               <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
             </div>
@@ -3142,6 +3232,24 @@
     </button>
   </EmptyState>
 {/if}
+
+<ConfirmDialog
+  bind:open={exclusionConfirmOpen}
+  title={plural(
+    exclusionSelection.count,
+    i18n.m.libraries.batch_unexclude_title_one,
+    i18n.m.libraries.batch_unexclude_title_other,
+    exclusionSelection.count.toLocaleString(),
+  )}
+  confirmLabel={i18n.m.libraries.batch_unexclude}
+  busy={exclusionBusy}
+  onconfirm={runRemoveExclusions}
+  oncancel={() => { exclusionConfirmOpen = false }}
+>
+  {#snippet body()}
+    <p>{i18n.m.libraries.batch_unexclude_body}</p>
+  {/snippet}
+</ConfirmDialog>
 
 <style>
   /* Match Settings' readable labels and comfortable control targets while retaining

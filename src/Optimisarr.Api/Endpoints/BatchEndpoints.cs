@@ -20,6 +20,10 @@ public sealed record BatchRetryRequest(int[]? Ids, bool HigherQuality = false);
 
 public sealed record BatchExcludeRequest(int[]? MediaFileIds, string? Reason = null);
 
+public sealed record BatchUnexcludeRequest(int[]? Ids);
+
+public sealed record BatchProbeRequest(int[]? Ids);
+
 /// <summary>
 /// The batch counterparts of the single-item Queue and Library actions. Each one applies the
 /// same per-item rules as the single action it stands in for — the rules live in
@@ -105,6 +109,60 @@ internal static class BatchEndpoints
         })
         .WithName("BatchExcludeMedia");
 
+        // Lift several exclusions at once, so a library that was excluded by mistake or has since
+        // been fixed can be offered again without removing the rows one by one.
+        app.MapPost("/api/exclusions/batch/remove", async (
+            BatchUnexcludeRequest request,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var ids = Normalise(request.Ids);
+            if (ids.Length > MaxBatchSize) return TooLarge(ids.Length);
+            var succeeded = new List<int>();
+            var failures = new List<BatchFailure>();
+            foreach (var id in ids)
+            {
+                var outcome = await ExclusionOperations.UndoAsync(db, id, cancellationToken);
+                if (outcome.Succeeded) succeeded.Add(id);
+                else failures.Add(new BatchFailure(id, outcome.Code, outcome.Message));
+                db.ChangeTracker.Clear();
+            }
+            return Results.Ok(new BatchResult(ids.Length, succeeded.ToArray(), failures.ToArray()));
+        })
+        .WithName("BatchRemoveExclusions");
+
+        // Inspect several files again with ffprobe. A probe is a process per file, so the work goes
+        // to a background batch that the operator can watch, instead of a request that stays open
+        // until the last file is done.
+        app.MapPost("/api/media/batch/probe", (BatchProbeRequest request, MediaProbeBatches batches) =>
+        {
+            var ids = Normalise(request.Ids);
+            if (ids.Length > MaxBatchSize) return TooLarge(ids.Length);
+            return Results.Ok(batches.Start(ids));
+        })
+        .WithName("BatchProbeMedia");
+
+        // How a probe batch stands, and what became of every file in it.
+        app.MapGet("/api/media/batch/probe/{id:int}", (int id, MediaProbeBatches batches) =>
+        {
+            var batch = batches.Get(id);
+            return batch is null
+                ? ApiErrors.NotFound("batch.notFound", $"No probe batch with id {id}.", new { id })
+                : Results.Ok(batch);
+        })
+        .WithName("GetBatchProbeMedia");
+
+        // Stop a running probe batch. The file it is on finishes; the rest are left alone.
+        app.MapDelete("/api/media/batch/probe/{id:int}", (int id, MediaProbeBatches batches) =>
+        {
+            if (!batches.Cancel(id))
+            {
+                return ApiErrors.NotFound("batch.notFound", $"No probe batch with id {id} is running.", new { id });
+            }
+
+            return Results.NoContent();
+        })
+        .WithName("CancelBatchProbeMedia");
     }
 
     /// <summary>Distinct, positive ids in the order the operator selected them.</summary>

@@ -1,13 +1,18 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
-  import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type Library, type MediaFile } from '../api'
+  import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type Library, type MediaFile, type MediaProbeBatch } from '../api'
   import { formatSize } from '../format'
-  import { i18n, t } from '../i18n/i18n.svelte'
+  import { i18n, plural, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
+  import BatchResult from '../components/BatchResult.svelte'
+  import ConfirmDialog from '../components/ConfirmDialog.svelte'
   import Icon from '../components/Icon.svelte'
   import InventoryDetail from '../components/InventoryDetail.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
+  import SelectionCheckbox from '../components/SelectionCheckbox.svelte'
+  import SelectionToolbar from '../components/SelectionToolbar.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
+  import { createSelection } from '../selection.svelte'
 
   let libraries = $state<Library[]>([])
   let rows = $state<InventoryRow[]>([])
@@ -28,6 +33,19 @@
   let loading = $state(true)
   let requestId = 0
   let disposed = false
+
+  // The bulk selection covers the rows on the page being shown. The header checkbox picks exactly
+  // those, and a change of filter, library, or page drops the selection, so a pick made under one
+  // filter is never carried into another.
+  const selection = createSelection()
+  let bulkBusy = $state(false)
+  let bulkAction = $state<'exclude' | 'reprobe' | null>(null)
+  let bulkOutcomeKind = $state<'exclude' | 'reprobe'>('exclude')
+  let bulkOutcome = $state<{ succeeded: number; skipped: number; failures: { id: number; code: string; message: string }[] } | null>(null)
+  let probeBatch = $state<MediaProbeBatch | null>(null)
+  let probeBatchId = $state<number | null>(null)
+  let rowIds = $derived(rows.map((row) => row.file.id))
+  let bulkOutcomeTitle = $derived(bulkOutcomeKind === 'exclude' ? i18n.m.shared.batch_exclude : i18n.m.inventory.batch_reprobe_result)
 
   $effect(() => { void loadLibraries() })
   $effect(() => { void loadInventory(selectedLibrary, show, page) })
@@ -80,15 +98,111 @@
     }
   }
 
+  // --- Bulk actions on the rows shown on this page ---
+
+  function toggleRowSelection(id: number, extend: boolean) {
+    selection.toggle(id, rowIds, extend)
+  }
+
+  function toggleSelectAllRows() {
+    if (selection.isEverySelected(rowIds)) selection.clear()
+    else selection.selectAll(rowIds)
+  }
+
+  function askBulkAction(action: 'exclude' | 'reprobe') {
+    if (selection.count === 0 || bulkBusy) return
+    bulkAction = action
+    bulkOutcome = null
+  }
+
+  async function runBulkExclude() {
+    if (selection.count === 0 || bulkBusy) return
+    const ids = [...selection.ids]
+    bulkBusy = true
+    probeError = null
+    probeMessage = null
+    try {
+      const result = await api.batchExcludeFiles(ids)
+      const excluded = new Set(result.succeeded)
+      // The excluded files leave the list; the ones that failed stay picked, so they can be tried
+      // again without being picked a second time.
+      selection.remove([...excluded])
+      bulkOutcomeKind = 'exclude'
+      bulkOutcome = { succeeded: result.succeeded.length, skipped: 0, failures: result.failures }
+      await loadInventory(selectedLibrary, show, page)
+    } catch (err) {
+      if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
+    } finally {
+      bulkBusy = false
+      bulkAction = null
+    }
+  }
+
+  async function runBulkReprobe() {
+    if (selection.count === 0 || bulkBusy) return
+    const ids = [...selection.ids]
+    bulkBusy = true
+    probeError = null
+    probeMessage = null
+    try {
+      const started = await api.batchProbeFiles(ids)
+      probeBatchId = started.id
+      probeBatch = started
+      await followProbeBatch(started.id)
+    } catch (err) {
+      if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
+    } finally {
+      bulkBusy = false
+      bulkAction = null
+    }
+  }
+
+  /**
+   * Follows a probe batch until it is done. The batch is worked on in the background, so the page
+   * polls it and shows how far it has got rather than holding a request open.
+   */
+  async function followProbeBatch(batchId: number) {
+    for (;;) {
+      if (disposed) return
+      let batch: MediaProbeBatch
+      try {
+        batch = await api.probeBatch(batchId)
+      } catch (err) {
+        if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
+        return
+      }
+      probeBatch = batch
+      if (batch.state === 'Completed' || batch.state === 'Cancelled' || batch.state === 'Failed') break
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+
+    const batch = probeBatch
+    if (!batch || disposed) return
+    const failures = batch.items
+      .filter((item) => item.outcome === 'Failed' || item.outcome === 'Skipped')
+      .map((item) => ({
+        id: item.mediaFileId,
+        code: item.outcome === 'Skipped' ? 'media.notFound' : 'media.probeFailed',
+        message: item.error ?? (item.outcome === 'Skipped' ? 'The file is no longer in the inventory.' : 'The file could not be inspected.'),
+      }))
+    bulkOutcomeKind = 'reprobe'
+    bulkOutcome = { succeeded: batch.succeeded, skipped: batch.skipped, failures }    // The rows that were inspected now carry their new metadata, so the list is read again.
+    await loadInventory(selectedLibrary, show, page)
+    if (batch.state === 'Cancelled' && !disposed) probeMessage = i18n.m.inventory.batch_reprobe_cancelled
+  }
+
   function fileName(path: string) { return path.split(/[\\/]/).pop() || path }
   function libraryName(file: MediaFile) { return libraries.find(l => l.id === file.libraryId)?.name ?? i18n.m.inventory.library_label }
+
   function selectLibrary(event: Event) {
     const value = (event.currentTarget as HTMLSelectElement).value
     selectedLibrary = value === 'all' ? 'all' : Number(value)
     page = 1
     selected = null
+    // Another library shows different files, so the picks made under the old one are dropped.
+    selection.clear()
   }
-  function selectFilter(value: InventoryFilter) { show = value; page = 1; selected = null }
+  function selectFilter(value: InventoryFilter) { show = value; page = 1; selected = null; selection.clear() }
   function selectRow(row: InventoryRow) { selected = row; probeError = null; probeMessage = null }
   async function closeDetails() {
     const id = selected?.file.id
@@ -107,7 +221,7 @@
     if (!selected && previewSource) selected = rows.find(row => row.file.id === previewSource?.file.id) ?? null
     previewSource = null
   }
-  function goToPage(next: number) { page = Math.max(1, Math.min(next, pageCount)); selected = null }
+  function goToPage(next: number) { page = Math.max(1, Math.min(next, pageCount)); selected = null; selection.clear() }
   let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)))
   let pageStart = $derived((Math.min(page, pageCount) - 1) * pageSize)
   let filters = $derived([
@@ -131,12 +245,35 @@
     <div class="inventory-filters">{#each filters as filter}<button class="focus-ring" class:filter-active={show === filter.key} aria-pressed={show === filter.key} onclick={() => selectFilter(filter.key)}>{filter.label}</button>{/each}</div>
     <div class="flex flex-wrap items-center gap-3"><span class="inventory-loading" role="status">{loading ? i18n.m.common.loading_short : ''}</span><a class="btn btn-ghost" href="#/inventory/duplicates">{i18n.m.duplicates.title}<Icon name="arrow-right" /></a></div>
   </div>
+  {#if bulkOutcome}
+    <BatchResult
+      succeeded={bulkOutcome.succeeded}
+      skipped={bulkOutcome.skipped}
+      failures={bulkOutcome.failures}
+      title={bulkOutcomeTitle}
+      ondismiss={() => (bulkOutcome = null)}
+    />
+  {/if}
+  {#if selection.count > 0}
+    <SelectionToolbar count={selection.count} total={rowIds.length} onclear={() => selection.clear()}>
+      {#snippet actions()}
+        <button type="button" class="btn" disabled={bulkBusy} onclick={() => askBulkAction('exclude')}>{i18n.m.shared.batch_exclude}</button>
+        <button type="button" class="btn" disabled={bulkBusy} onclick={() => askBulkAction('reprobe')}>{i18n.m.inventory.batch_reprobe}</button>
+      {/snippet}
+    </SelectionToolbar>
+  {/if}
+  {#if probeBatch && probeBatch.state !== 'Completed' && probeBatch.state !== 'Cancelled' && probeBatch.state !== 'Failed'}
+    <p class="callout mb-4" role="status">
+      {t(i18n.m.inventory.batch_reprobe_running, { done: probeBatch.completed.toLocaleString(), total: probeBatch.total.toLocaleString() })}
+    </p>
+  {/if}
   <div class="inventory-surface" aria-busy={loading}>
     {#if rows.length}
       <table class="inventory-table">
-        <thead><tr><th scope="col">{i18n.m.inventory.col_file}</th><th scope="col" class="size-column">{i18n.m.inventory.col_size}</th><th scope="col" class="format-column">{i18n.m.inventory.col_format}</th><th scope="col">{i18n.m.inventory.rule_verdict}</th></tr></thead>
+        <thead><tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(rowIds)} indeterminate={!selection.isEverySelected(rowIds) && selection.isSomeSelected(rowIds)} label={i18n.m.inventory.select_all_page} onchange={toggleSelectAllRows} /></th><th scope="col">{i18n.m.inventory.col_file}</th><th scope="col" class="size-column">{i18n.m.inventory.col_size}</th><th scope="col" class="format-column">{i18n.m.inventory.col_format}</th><th scope="col">{i18n.m.inventory.rule_verdict}</th></tr></thead>
         <tbody>{#each rows as row (row.file.id)}{@const file = row.file}
           <tr class:selected-row={selected?.file.id === file.id}>
+            <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(file.id)} label={t(i18n.m.selection.select_row, { name: fileName(file.relativePath) })} onchange={(extend) => toggleRowSelection(file.id, extend)} /></td>
             <td><button id={`inventory-file-${file.id}`} class="inventory-file focus-ring" onclick={() => selectRow(row)}>
               <Thumbnail mediaFileId={file.id} />
               <span class="inventory-file-name"><span class="inventory-file-title">{fileName(file.relativePath)}</span><span class="inventory-file-meta">{libraryName(file)}{#if file.mediaKind && file.mediaKind !== 'Unknown'}{` · ${file.mediaKind}`}{/if}<span class="mobile-size"> · {formatSize(file.sizeBytes)}</span></span></span>
@@ -170,13 +307,39 @@
   {/key}
 {/if}
 
+<ConfirmDialog
+  open={bulkAction === 'exclude'}
+  title={plural(selection.count, i18n.m.shared.batch_confirm_exclude_title_one, i18n.m.shared.batch_confirm_exclude_title_other, selection.count.toLocaleString())}
+  confirmLabel={i18n.m.shared.batch_exclude}
+  busy={bulkBusy}
+  onconfirm={runBulkExclude}
+  oncancel={() => { bulkAction = null }}
+>
+  {#snippet body()}
+    <p>{i18n.m.shared.batch_confirm_exclude_body}</p>
+  {/snippet}
+</ConfirmDialog>
+
+<ConfirmDialog
+  open={bulkAction === 'reprobe'}
+  title={plural(selection.count, i18n.m.inventory.batch_reprobe_title_one, i18n.m.inventory.batch_reprobe_title_other, selection.count.toLocaleString())}
+  confirmLabel={i18n.m.inventory.batch_reprobe}
+  busy={bulkBusy}
+  onconfirm={runBulkReprobe}
+  oncancel={() => { bulkAction = null }}
+>
+  {#snippet body()}
+    <p>{i18n.m.inventory.batch_reprobe_body}</p>
+  {/snippet}
+</ConfirmDialog>
+
 <style>
 
   .inventory-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
   .inventory-heading > div:first-child { flex: 1; min-width: 16rem; }.inventory-library { min-width: 12rem; }.inventory-library .label { text-transform: none; letter-spacing: 0; font-size: .75rem; }
   .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }.inventory-filters { display: flex; flex-wrap: wrap; gap: .375rem; }.inventory-filters button { padding: .625rem .875rem; border-radius: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-filters button:hover { color: var(--ink); background: var(--lit); }.inventory-filters button.filter-active { color: var(--ink); background: var(--raised); box-shadow: var(--lift-1); }.inventory-loading { font-size: .75rem; color: var(--ink-3); }
-  .inventory-surface { background: var(--panel); border-radius: .875rem; box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); overflow: clip; }.inventory-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.inventory-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.inventory-table th:first-child { width: 47%; }.inventory-table th:nth-child(2) { width: 13%; }.inventory-table th:nth-child(3) { width: 21%; }.inventory-table th:last-child { width: 19%; }.inventory-table td { padding: .875rem 1rem; border-top: 1px solid var(--divide-soft); font-size: .8125rem; color: var(--ink-2); vertical-align: middle; }.inventory-table tr:hover td, .inventory-table tr.selected-row td { background: var(--lit); }
-  .inventory-file { display: flex; align-items: center; gap: .875rem; text-align: left; width: 100%; min-width: 0; border-radius: .375rem; }.inventory-file-name { min-width: 0; }.inventory-file-title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font-size: .8125rem; font-weight: 500; line-height: 1.5; }.inventory-file:hover .inventory-file-title { color: var(--accent); }.inventory-file-meta { display: block; margin-top: .375rem; color: var(--ink-3); font-size: .6875rem; }.inventory-size { font-variant-numeric: tabular-nums; white-space: nowrap; }.inventory-codec { overflow-wrap: anywhere; }.inventory-resolution { display: block; color: var(--ink-3); font-size: .6875rem; margin-top: .25rem; }.inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ok); }.verdict-unprobed { color: var(--warn); }.mobile-size { display: none; }.inventory-reason { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: .25rem; color: var(--ink-4); font-size: .6875rem; line-height: 1.4; }
+  .inventory-surface { background: var(--panel); border-radius: .875rem; box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); overflow: clip; }.inventory-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.inventory-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.inventory-table th:first-child { width: 2.75rem; }.inventory-table th:nth-child(2) { width: 44%; }.inventory-table th:nth-child(3) { width: 13%; }.inventory-table th:nth-child(4) { width: 21%; }.inventory-table th:last-child { width: 19%; }.inventory-table td { padding: .875rem 1rem; border-top: 1px solid var(--divide-soft); font-size: .8125rem; color: var(--ink-2); vertical-align: middle; }.inventory-table tr:hover td, .inventory-table tr.selected-row td { background: var(--lit); }
+  .inventory-table .selection-column { padding-left: .75rem; padding-right: .25rem; }.inventory-file { display: flex; align-items: center; gap: .875rem; text-align: left; width: 100%; min-width: 0; border-radius: .375rem; }.inventory-file-name { min-width: 0; }.inventory-file-title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font-size: .8125rem; font-weight: 500; line-height: 1.5; }.inventory-file:hover .inventory-file-title { color: var(--accent); }.inventory-file-meta { display: block; margin-top: .375rem; color: var(--ink-3); font-size: .6875rem; }.inventory-size { font-variant-numeric: tabular-nums; white-space: nowrap; }.inventory-codec { overflow-wrap: anywhere; }.inventory-resolution { display: block; color: var(--ink-3); font-size: .6875rem; margin-top: .25rem; }.inventory-verdict { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink-3); font-size: .75rem; }.inventory-verdict::before { content: ''; display: block; flex-shrink: 0; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }.verdict-eligible { color: var(--ok); }.verdict-unprobed { color: var(--warn); }.mobile-size { display: none; }.inventory-reason { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: .25rem; color: var(--ink-4); font-size: .6875rem; line-height: 1.4; }
   .inventory-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-3); font-size: .875rem; display: grid; justify-items: center; gap: 1rem; }.inventory-pagination { margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--ink-3); font-size: .75rem; }.inventory-pagination > div { display: flex; align-items: center; gap: .625rem; }.inventory-pagination .btn { min-width: 2.5rem; min-height: 2.5rem; }
-  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.inventory-filters { gap: .125rem; }.inventory-filters button { padding: .75rem .625rem; }.format-column,.size-column { display: none; }.inventory-table th:first-child { width: 72%; }.inventory-table th:last-child { width: 28%; }.inventory-table td,.inventory-table th { padding: .875rem .75rem; }.inventory-file { gap: .625rem; }.inventory-file-title { font-size: .75rem; }.inventory-verdict { font-size: .6875rem; gap: .375rem; }.mobile-size { display: inline; } }
+  @media (max-width: 639px) { .inventory-heading { margin-bottom: 1.25rem; }.inventory-library { width: 100%; }.inventory-filters { gap: .125rem; }.inventory-filters button { padding: .75rem .625rem; }.format-column,.size-column { display: none; }.inventory-table th:first-child { width: 2.5rem; }.inventory-table th:nth-child(2) { width: 70%; }.inventory-table th:last-child { width: 28%; }.inventory-table td,.inventory-table th { padding: .875rem .75rem; }.inventory-file { gap: .625rem; }.inventory-file-title { font-size: .75rem; }.inventory-verdict { font-size: .6875rem; gap: .375rem; }.mobile-size { display: inline; } }
 </style>

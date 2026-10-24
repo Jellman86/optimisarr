@@ -167,6 +167,8 @@ builder.Services.AddHostedService<TimedCleanupWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
 builder.Services.AddHostedService<LibraryScanWorker>();
 builder.Services.AddHostedService<MediaProbeWorker>();
+builder.Services.AddSingleton<MediaProbeBatches>();
+builder.Services.AddHostedService<MediaProbeBatchWorker>();
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
