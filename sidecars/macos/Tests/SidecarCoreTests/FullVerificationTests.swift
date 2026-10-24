@@ -4,6 +4,44 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("decode keeps every picture on its demuxer clock without repairing candidate timestamps")
+    func decodeClock() {
+        let path = "/candidate ' [字幕].mkv"
+        let args = FullVerification.decodeArguments(file: URL(fileURLWithPath: path))
+        #expect(args.contains(path))
+        #expect(args.contains("0:V?"))
+        #expect(args.contains("0:a?"))
+        #expect(args.contains("-xerror"))
+        #expect(args.contains("-fps_mode:v"))
+        #expect(args.contains("passthrough"))
+        #expect(args.contains("-enc_time_base:v"))
+        #expect(args.contains("demux"))
+        for flag in ["-r", "-fflags", "-err_detect", "-ss", "-t"] {
+            #expect(!args.contains(flag))
+        }
+        #expect(Array(args.suffix(3)) == ["-f", "null", "-"])
+    }
+
+    @Test("the final loudness summary cannot borrow an earlier graph's values")
+    func incompleteFinalLoudness() {
+        let log = "Summary:\n I: -23.0 LUFS\n True peak:\n Peak: -1.0 dBFS\nSummary:\n I: -inf LUFS\n True peak:\n Peak: invalid dBFS"
+        let result = FullVerification.parseLoudness(log, exitCode: 0)
+        #expect(!result.measured)
+        #expect(result.integratedLufs == nil)
+        #expect(result.truePeakDbtp == nil)
+    }
+
+    @Test("true peak is distinct from sample peak and measured silence is explicit")
+    func truePeakAndSilence() {
+        let log = "Summary:\n I: -23.0 LUFS\n Sample peak:\n Peak: -3.0 dBFS\n True peak:\n Peak: -inf dBFS"
+        let result = FullVerification.parseLoudness(log, exitCode: 0)
+        #expect(result.measured)
+        #expect(result.truePeakDbtp == nil)
+        #expect(result.truePeakIsSilent == true)
+        let numeric = FullVerification.parseLoudness(log.replacingOccurrences(of: "-inf", with: "0.2"), exitCode: 0)
+        #expect(numeric.truePeakDbtp == 0.2)
+        #expect(numeric.truePeakIsSilent != true)
+    }
     @Test("video contracts return decoded counts and fail closed if a count cannot be read")
     func requiredPictureEvidence() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

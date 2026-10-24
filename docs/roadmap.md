@@ -17,20 +17,116 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it. The converse matters too: an entry left
   describing finished work as outstanding sends effort at an item that has none.
-- Status claims last verified against the repository: **2026-08-24**.
+- Status claims last verified against the repository: **2026-10-21**.
 
-## Current hardening follow-up, reviewed 2026-10-09
+## Current hardening follow-up, reviewed 2026-10-21
 
 The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
-trial and pairing records with current implementation. Priorities are checked Windows
-upgrades, retained real-source playback evidence and broader quality coverage.
-Correlated opt-in diagnostic capture and local exports are implemented in development; see the
-[9 October acceptance](engineering/hardware-validation/2026-10-09-correlated-diagnostics.md). Audio reports and explicit gates are implemented in
-development; image perceptual assessment and broader audio/dedupe coverage remain planned.
+trial and pairing records with current implementation. Priorities are retained real-source playback evidence and broader quality coverage.
+Windows installer signing is deferred indefinitely: a certificate is outside the operator's
+budget and the SignPath application was declined. Unsigned preview distribution continues;
+signing is not a release blocker.
+Correlated opt-in diagnostic capture, local exports and playback artwork shipped in 0.2.23;
+see the [release acceptance](engineering/hardware-validation/2026-10-09-release-0.2.23.md),
+which distinguishes installed fleet checks from disposable media tests and records the
+pending Mac upgrade. Audio reports and explicit gates are implemented in
+development. Experimental SDR still-image reports and explicit SSIMULACRA2 gates are
+implemented in this development slice; see [qualification and limits](engineering/hardware-validation/2026-10-10-image-perceptual-quality.md).
+[PR #415](https://github.com/Jellman86/optimisarr/pull/415) merged into `dev` as
+`2bfdc99b`, adding bounded audio/image quality selection, shared native execution, conditional
+Swift proof, live admission, neutral capacity returns and audio assessment input restrictions.
+The merge is not installed-fleet acceptance; automatic protocol-11 placement remains disabled. Full parity work resumed on 15 October;
+the [parity checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-15-october-2026)
+records signed Mac helper/metadata packaging, verified coverage and the remaining work. Complete native packaging, restart recovery and
+the remaining audio/image parity before returning to perceptual dedupe or exact-copy actions.
 Completed slices belong in the changelog; do not treat the historical trial's size holds
 or VMAF v0 policy as current behavior.
+Investigation-grade diagnostics ([#242](https://github.com/Jellman86/optimisarr/issues/242))
+closed as complete on 2026-10-18 against the shipped schema-v4 capture documented in
+[troubleshooting](troubleshooting/diagnostics.md). The active feature priority is audio/image
+quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), merged
+[#415](https://github.com/Jellman86/optimisarr/pull/415)): the Linux native-work journal
+storage and an unconnected Linux-only bootstrap/restoration foundation are now in `dev`
+with Quark test evidence. **Operator decision, 21 October 2026:** Optimisarr is a home-lab
+application, so crash and restart recovery is the worker qualification bar. Power-loss
+durability is a recorded limit rather than a release gate, the durable journal stays unwired,
+and protocol 11 is enabled on workers using their existing in-process accounting and owned-scratch
+recovery. Replacement remains gated by the server's independent final verification.
+Picard (Windows/NVIDIA) and Scott's Mac are reachable again at the later 2026-10-19 check.
+Picard passes the [49-case Windows journal process-death matrix](engineering/hardware-validation/2026-10-19-windows-journal-process-death.md);
+physical power-loss and exact-package qualification remain open. Dedupe file actions
+remain deferred behind #332. The 20 October
+[Linux scratch-open follow-up](engineering/hardware-validation/2026-10-20-linux-scratch-open-flags.md)
+corrects ARM64 directory/no-follow flags with pure/native Quark tests and a separate ARM64
+syscall-emulation probe; physical Linux ARM64 execution remains unqualified. Mac and Picard
+are reachable again at the later 20 October check and pass fresh exact-source shared suites
+(Mac 765, Picard 882); the qualification record distinguishes this from installed-package
+and physical Linux ARM64 acceptance. Merged D3 work to date is safety fencing only and enables no
+cleanup action. The 50 fps VMAF report
+([#406](https://github.com/Jellman86/optimisarr/issues/406)) closed on 2026-10-19 after the
+reporter confirmed both fixes on the exact episode; it ships in the next stable release.
 
-## Up next (priority order, updated 2026-08-24)
+The [20 October native image workflow acceptance](engineering/hardware-validation/2026-10-20-native-image-workflows.md)
+records JPEG/WebP on Picard and the signed Mac runtime, including actual Mac disk and RAM
+runs, response replay, final verification, repeat replacement and exact rollback. These are
+isolated generated-fixture trials, not installed-package lifecycle or physical power-cut proof.
+
+## Security hardening priorities, reviewed 2026-10-21
+
+These are independently assessed recommendations, not blanket acceptance of a review's
+proposed fixes. Deliver bounded slices alongside the remaining #332 qualification; none
+authorises deployment changes or enables protocol 11.
+
+1. **Library path safety: first slice in development.** Skip linked files and linked-directory
+   descent, and refuse visible aliases in existing inventory before source reads, worker
+   transfers, probes, work preparation and replacement/rollback recovery. Preserve blocked
+   inventory and recovery evidence. The [path policy and limits](development/library-path-safety.md)
+   define operator-owned roots and legacy inventory behavior. Acceptance includes real link
+   fixtures, aged targets, cycles, saved paths, range requests, cached transfer hashes and
+   original/candidate preservation. **Further work remains:** design and prove handle-pinned
+   traversal and mutations against concurrent ancestor swaps on Linux, macOS and Windows,
+   covering the full decode/verification/recovery lifecycle. Point-in-time checks alone do not
+   establish race-resistant confinement. Hard links and operator-controlled mounts need an
+   explicit policy, not a misleading claim of physical containment.
+2. **Bound candidate ingestion.** Enforce a server-owned cumulative byte budget per lease/upload
+   generation for both single-shot and resumable transfers, plus a free-space reserve and
+   bounded idle time. Acceptance: over-limit and overlapping/replayed chunks cannot grow staged
+   data past the budget; rejected generations retain safe cleanup/retry semantics; valid large
+   and intentionally expanding outputs still work. Concurrent job limits are not byte limits.
+3. **Share provider-aware validation.** Use the same domain validation for REST saves and config
+   imports, with field-specific errors and backup compatibility tests. HTTP(S) watcher/Arr URLs
+   and Telegram numeric chat IDs or `@channel` names have different contracts; a generic URL
+   validator must not reject valid notification destinations.
+4. **Response and build hardening.** Add frame and content-type protections, test a suitable CSP
+   against the actual SPA, SignalR, media/range playback and exports before enforcing it, and
+   keep public readiness failures generic while protected diagnostics retain detail. Pin external
+   actions and image inputs to immutable versions with the existing Dependabot maintenance
+   flows. Acceptance covers reusable/local actions, Docker build-stage references and passing
+   package/image CI; pinning without maintained updates is incomplete.
+5. **Design authentication, sessions and worker dashboard access together.** Define secure
+   bootstrap without an anonymous first-claimer, explicit consent to unauthenticated operation,
+   upgrade/recovery behavior, protected expiring sessions and bounded admin-auth failure
+   throttling. Preserve intentional private-LAN and authenticated-proxy deployments and valid
+   worker heartbeat/transfer traffic. Give dashboards their own scoped access and pairing
+   authority; never expose the server-issued worker credential to the browser. Test proxy/TLS,
+   session expiry/revocation and reconnect/logging behavior before replacing SignalR token
+   fallback. Container listeners must remain reachable through supported bridge/proxy networks;
+   local-only publication is a host port-binding policy. Folder discovery must still let an
+   operator add a library before any library exists; optional allowed storage roots are a
+   separate policy.
+6. **Design secret storage and portable exports with recovery.** Separate redacted sharing from
+   encrypted full backups. Specify key custody outside stolen database/export material, rotation,
+   missing-key behavior, migration and restore on another host. Acceptance: no silent loss of
+   integrations, no plaintext secrets in redacted exports, and tested recovery with independent
+   keys. Encrypting database columns does not secure a decrypted export.
+7. **Make verification trust clear.** Document compromised-worker consequences and improve
+   consistent evidence attribution without claiming attestation. Ordinary server verification
+   and report `verificationLocation` already exist; stronger per-library policies need explicit
+   acceptance criteria for which metrics are independently recomputed. Preserve deliberate
+   sidecar-only operation and current stricter native audio/image rules. Quarantine is a
+   recovery window, not proof that worker measurements are truthful.
+
+## Up next (priority order, updated 2026-10-21)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -1086,7 +1182,7 @@ or VMAF v0 policy as current behavior.
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: audio and video soundtrack reporting and explicit gates implemented in development; broader work planned, 2026-10-02.** Add
+14. **Perceptual quality for audio and still images: reports/gates in development, adaptive standalone audio/image workflows in draft #415; active with parity incomplete, 2026-10-15.** Add
     understandable, optional quality evidence alongside the existing structural, timing,
     loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
     An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with
@@ -1098,7 +1194,11 @@ or VMAF v0 policy as current behavior.
     records the sources, tradeoffs and platform qualification still needed.
     Track delivery in [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 
-    - **Image direction:** prefer SSIMULACRA2 for SDR compression checks; compare against the
+    - **Image status:** experimental server-local SSIMULACRA2 reports and separate explicit gates
+      are implemented for bounded same-size 8-bit sRGB PNG/JPEG/WebP stills. Animation, other
+      profiles/depths and orientation transforms fail closed. Native tools are packaged across
+      platforms; automatic image worker placement remains disabled pending full parity. Broader photographs, colour
+      and human-viewing calibration remain planned. Compare against the
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
       HDR or transparent-image fidelity from one perceptual score.
@@ -1111,8 +1211,15 @@ or VMAF v0 policy as current behavior.
     - **Encoding presets:** codec-aware bitrate starting points are implemented in development
       for standalone audio and explicitly re-encoded video soundtracks. They preserve existing
       settings and never choose a quality gate limit. A bounded sample search for a suitable
-      bitrate remains planned; include cancellation, cost reporting, source-bitrate and size
-      checks, and final verification before replacement.
+      bitrate is implemented for standalone audio in draft #415, with measured candidates,
+      bounded execution, source/size checks and independent final verification. Adaptive
+      retained soundtracks and the remaining [parity qualification](development/adaptive-audio-image-parity.md)
+      are still outstanding.
+    - **Native Mac lifetime:** app/session/runner wiring now restores independently anchored
+      accounting before claims and uses scoped helper execution with positive writer/RAM retirement.
+      Signed release-library trials cover AAC/Opus/MP3, actual RAM, busy delivery and parent-kill/
+      same-identity replay. Installed-package and reboot/remount qualification remain open; see the
+      [runtime evidence and limits](engineering/hardware-validation/2026-10-15-native-work-runtime.md).
     - **Video soundtracks:** opt-in reporting and a separate explicit gate are implemented in
       development for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
       source tracks to output order, with language/title/commentary identity and timing checks.
@@ -1132,12 +1239,27 @@ or VMAF v0 policy as current behavior.
       Thresholds are explicit policies, not a conversion from VMAF or SSIM's numeric scale.
       No listening-panel programme or promised release date is required.
 
-15. **Duplicate detection and safe dedupe for every library type: first read-only slice
-    implemented, broader matching and cleanup planned, 2026-10-02.** The manual
-    [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within one
-    selected library. Scans are cancellable, rate limited and bounded; reports remain until
-    restart or eviction after ten libraries. It makes no changes to media. Persistent caching,
-    incremental indexing, cross-library scope and safe cleanup remain future work.
+15. **Duplicate detection and safe dedupe for every library type: durable exact-copy
+    review in development, broader matching and cleanup planned, 2026-10-11.** The manual
+    [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within explicitly
+    selected libraries. Development adds durable results, versioned incremental hashes, completed-file
+    checkpoints, explicit full-content refresh, original read dates and result pagination. Scans
+    remain cancellable, rate limited and bounded, and make no changes to media. Libraries now
+    provide a direct review entry, explicit cross-library scope, physical-reference deduplication
+    and generation-bound keeper/ignore preferences. Manual, keep-all and preferred-library
+    choices are available; quality/size strategies await non-identical matching. Safe cleanup
+    remains future work. D3a adds a separate durable intent journal, retained reservations and
+    shared replacement/rollback claims; it enables no file action. D3b fencing since then —
+    most recently owned verification scratch in
+    [#414](https://github.com/Jellman86/optimisarr/pull/414) (merged 2026-10-18) — hardens
+    cleanup ownership without enabling any file action, and further D3 work stays deferred
+    behind #332. The
+    [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
+    separate this groundwork from qualified quarantine and restore. The staged research and
+    implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
+    Further dedupe implementation is paused behind audio/image parity in #332/#415, following
+    the operator's 13 October priority and 14 October pause. Existing read-only review and
+    qualified ownership foundations remain available; no cleanup action is enabled by this work.
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.
@@ -1148,8 +1270,8 @@ or VMAF v0 policy as current behavior.
       incremental indexing and cancellable background work. Keep exact copies, matching
       content and related versions clearly labelled. Recheck identities before acting.
     - **Images:** qualify PDQ perceptual hashes with one consistent image-decoding path.
-      Evaluate optional local SigLIP 2 image features for harder candidate searches, then
-      verify visual correspondence. Protect bursts, crops, edits, RAW/JPEG pairs, Live Photos,
+      Evaluate optional copy-specific SSCD/RDCD features for harder candidate searches, then
+      verify visual correspondence. Semantic embeddings are not the default duplicate verifier. Protect bursts, crops, edits, RAW/JPEG pairs, Live Photos,
       animation, colour profiles and metadata. A similar scene is a suggestion to review.
     - **Audio:** qualify local Chromaprint matching for near-identical recordings, backed by
       duration, channel/track and metadata checks. Protect remasters, live performances,

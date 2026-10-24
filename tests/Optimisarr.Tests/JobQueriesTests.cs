@@ -14,6 +14,30 @@ public sealed class JobQueriesTests : IDisposable
     private readonly DbContextOptions<OptimisarrDbContext> _options;
 
     [Theory]
+    [InlineData(JobStatus.Probing, null, "{\"partial\":true}")]
+    [InlineData(JobStatus.Cancelled, null, "{\"partial\":true}")]
+    [InlineData(JobStatus.Verifying, null, "{\"partial\":true}")]
+    [InlineData(JobStatus.Completed, "{\"checks\":[]}", null)]
+    public async Task Search_evidence_is_available_before_final_verification_without_duplicating_the_final_report(
+        JobStatus status, string? report, string? expected)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Photos", Path = "/data/photos" };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(MediaFile(library.Id, 1));
+        await db.SaveChangesAsync();
+        var job = Job(1, 1, DateTimeOffset.UtcNow);
+        job.Status = status;
+        job.VerificationReportJson = report;
+        job.PerceptualSearchJson = "{\"partial\":true}";
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        var listed = Assert.Single(await JobQueries.ListAsync(db, CancellationToken.None));
+        Assert.Equal(expected, listed.PerceptualSearchJson);
+    }
+
+    [Theory]
     [InlineData(JobStatus.ReadyToReplace)]
     [InlineData(JobStatus.Completed)]
     [InlineData(JobStatus.Failed)]

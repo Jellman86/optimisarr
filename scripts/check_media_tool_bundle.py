@@ -1,10 +1,53 @@
 #!/usr/bin/env python3
-"""Verify a sidecar's AV1 software decode and 10-bit HEVC round trip using owned fixtures."""
+"""Verify AV1, 10-bit HEVC, VMAF models and WebP alpha/lossless colour using owned fixtures."""
 import argparse
 import json
 from pathlib import Path
 import subprocess
 import tempfile
+
+
+def webp_fixture():
+    # Nonzero alpha keeps lossless colour equality meaningful even behind transparency.
+    return bytes(value for y in range(64) for x in range(64)
+                 for value in (x * 4, y * 4, (x + y) * 2, (64, 128, 255)[(x + y) % 3]))
+
+
+def check_webp(ffmpeg, ffprobe, run=subprocess.run):
+    failures = []
+    reference = webp_fixture()
+    with tempfile.TemporaryDirectory(prefix='optimisarr-webp-bundle-') as scratch:
+        root = Path(scratch)
+        source = root / 'source.rgba'
+        source.write_bytes(reference)
+        for lossless in (False, True):
+            mode = 'lossless' if lossless else 'lossy'
+            candidate = root / f'{mode}.webp'
+            encoded = run([str(ffmpeg), '-nostdin', '-v', 'error', '-xerror', '-n', '-f', 'rawvideo',
+                           '-pixel_format', 'rgba', '-video_size', '64x64', '-i', str(source),
+                           '-frames:v', '1', '-c:v', 'libwebp', '-lossless', '1' if lossless else '0',
+                           '-quality', '100' if lossless else '75', str(candidate)],
+                          capture_output=True, timeout=120)
+            if encoded.returncode:
+                failures.append(f'WebP {mode}: encoder failed with exit {encoded.returncode}')
+                continue
+            probe = run([str(ffprobe), '-v', 'error', '-show_streams', '-of', 'json', str(candidate)],
+                        capture_output=True, timeout=120)
+            try:
+                streams = json.loads(probe.stdout).get('streams', []) if probe.returncode == 0 else []
+                valid = len(streams) == 1 and streams[0].get('codec_name') == 'webp' \
+                    and streams[0].get('width') == 64 and streams[0].get('height') == 64
+            except (ValueError, TypeError, AttributeError):
+                valid = False
+            decoded = run([str(ffmpeg), '-nostdin', '-v', 'error', '-xerror', '-i', str(candidate),
+                           '-frames:v', '1', '-pix_fmt', 'rgba', '-f', 'rawvideo', '-'],
+                          capture_output=True, timeout=120)
+            if (not valid or decoded.returncode or len(decoded.stdout) != len(reference)
+                    or decoded.stdout[3::4] != reference[3::4]
+                    or lossless and decoded.stdout != reference):
+                required = 'complete 64x64 decode and exact alpha' + (' and colour' if lossless else '')
+                failures.append(f'WebP {mode}: {required} are required')
+    return failures
 
 
 def check(ffmpeg, ffprobe):
@@ -39,7 +82,7 @@ def check(ffmpeg, ffprobe):
                 scores = [frame.get('metrics', {}).get('vmaf') for frame in evidence.get('frames', [])]
             if len(scores) != 6 or any(not isinstance(score, (int, float)) or not 0 <= score <= 100 for score in scores):
                 failures.append(f'{model}: six finite 10-bit frame scores required; exit={result.returncode}; {result.stderr}')
-    return failures
+    return failures + check_webp(ffmpeg, ffprobe)
 
 
 if __name__ == '__main__':
@@ -50,5 +93,5 @@ if __name__ == '__main__':
     failures = check(args.ffmpeg, args.ffprobe)
     for failure in failures:
         print(failure)
-    print(f'{4 - len(failures)}/4 bundled codec/model checks passed')
+    print(f'{6 - len(failures)}/6 bundled codec/model checks passed')
     raise SystemExit(bool(failures))

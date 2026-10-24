@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// A RAM-backed volume, created for one job and destroyed when it ends.
@@ -11,6 +12,38 @@ import Foundation
 /// Carries the child's output back from the reading thread.
 private final class OutputBox: @unchecked Sendable {
     var data = Data()
+    var exceeded = false
+    var reachedEOF = false
+}
+
+private final class CommandDrainLifetime: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stopped = false
+    private var sources: [Int32: any DispatchSourceProtocol] = [:]
+    let deadline: DispatchTime
+
+    init(timeout: TimeInterval) { deadline = .now() + timeout }
+    func add(_ source: any DispatchSourceProtocol, key: Int32) {
+        let cancelled = lock.withLock {
+            source.activate()
+            if stopped { return true }
+            sources[key] = source
+            return false
+        }
+        // Activation precedes cancellation, including a deadline reached during setup.
+        if cancelled { source.cancel() }
+    }
+    func end(_ key: Int32) { lock.withLock { sources.removeValue(forKey: key) }?.cancel() }
+    func stop() {
+        let active = lock.withLock {
+            stopped = true
+            let active = Array(sources.values)
+            sources.removeAll()
+            return active
+        }
+        for source in active { source.cancel() }
+    }
+    var shouldStop: Bool { lock.withLock { stopped || DispatchTime.now() >= deadline } }
 }
 
 public struct RamDisk: Sendable {
@@ -25,47 +58,110 @@ public struct RamDisk: Sendable {
     /// job slot for ever — which is exactly what happened on 2026-09-13, leaving a sidecar that
     /// checked in cheerfully and never asked for work again.
     /// Runs a command and returns its trimmed output, or nil if it failed or took too long.
-    static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20) -> String? {
+    static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20,
+                    maximumOutputBytes: Int = 1024 * 1024,
+                    standardInput: FileHandle? = nil,
+                    launchProcess: (@Sendable (Process) throws -> Void)? = nil,
+                    onReaderStopped: (@Sendable () -> Void)? = nil) -> String? {
+        guard maximumOutputBytes > 0, timeout.isFinite, timeout > 0, timeout <= 3600 else { return nil }
+        let lifetime = CommandDrainLifetime(timeout: timeout)
+        defer { lifetime.stop() }
         let process = Process()
-        let pipe = Pipe()
+        let pipe = Pipe(), errors = Pipe()
         pipe.sealFromOtherChildren()
+        errors.sealFromOtherChildren()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errors
+        if let standardInput { process.standardInput = standardInput }
         let finished = DispatchGroup()
         finished.enter()
         process.terminationHandler = { _ in finished.leave() }
-        do { try process.run() } catch {
+        do {
+            if let launchProcess { try launchProcess(process) }
+            else { try process.run() }
+        } catch {
             process.terminationHandler = nil
             finished.leave()
             SidecarLog.storage.error("\(path, privacy: .public) could not be launched")
             return nil
         }
 
-        // Read on another thread so a child that holds the pipe open cannot block the wait, and
-        // wait with a deadline so nothing here can hang the job that called it.
-        // Foundation can strand waitUntilExit on a different thread from process.run,
-        // even after the child has exited. Its termination callback is independent of
-        // that thread's run loop. Wait for both exit and output without moving the wait.
-        let box = OutputBox()
-        finished.enter()
-        DispatchQueue.global(qos: .utility).async {
-            box.data = pipe.fileHandleForReading.readDataToEndOfFile()
-            finished.leave()
+        // Nonblocking readiness handlers leave shared threads idle while descendants retain a
+        // pipe. Cancellation handlers exclusively close descriptors; cross-thread FileHandle
+        // closure cannot safely interrupt Foundation's blocking read locks.
+        // The termination callback avoids waitUntilExit's cross-thread run-loop dependency.
+        let box = OutputBox(), errorBox = OutputBox()
+        let drainQueue = DispatchQueue(label: "uk.optimisarr.ram-command-output", qos: .utility)
+        func read(_ pipe: Pipe, into output: OutputBox) {
+            finished.enter()
+            let fd = pipe.fileHandleForReading.fileDescriptor
+            let flags = fcntl(fd, F_GETFL)
+            guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
+                try? pipe.fileHandleForReading.close()
+                onReaderStopped?()
+                finished.leave()
+                lifetime.stop()
+                if process.isRunning { process.terminate() }
+                return
+            }
+            let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: drainQueue)
+            source.setCancelHandler {
+                try? pipe.fileHandleForReading.close()
+                onReaderStopped?()
+                finished.leave()
+            }
+            source.setEventHandler {
+                var bytes = [UInt8](repeating: 0, count: 8192)
+                while !lifetime.shouldStop {
+                    let count = bytes.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
+                    if count == 0 {
+                        output.reachedEOF = true
+                        lifetime.end(fd)
+                        return
+                    }
+                    if count > 0 {
+                        guard count <= maximumOutputBytes - output.data.count else {
+                            output.exceeded = true
+                            lifetime.stop()
+                            if process.isRunning { process.terminate() }
+                            return
+                        }
+                        output.data.append(contentsOf: bytes.prefix(count))
+                        continue
+                    }
+                    if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { return }
+                    lifetime.stop()
+                    if process.isRunning { process.terminate() }
+                    return
+                }
+                lifetime.stop()
+            }
+            lifetime.add(source, key: fd)
         }
+        read(pipe, into: box)
+        read(errors, into: errorBox)
+        let timer = DispatchSource.makeTimerSource(queue: drainQueue)
+        timer.schedule(deadline: lifetime.deadline)
+        timer.setEventHandler { lifetime.stop() }
+        lifetime.add(timer, key: -1)
 
-        guard finished.wait(timeout: .now() + timeout) == .success else {
+        guard finished.wait(timeout: lifetime.deadline) == .success else {
             SidecarLog.storage.error(
                 "\(path, privacy: .public) did not finish within \(timeout)s; giving up on it")
+            lifetime.stop()
             if process.isRunning { process.terminate() }
             if finished.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
                 kill(process.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + 1)
             }
             return nil
         }
 
-        guard process.terminationStatus == 0 else {
+        guard process.terminationStatus == 0, box.reachedEOF, errorBox.reachedEOF,
+              !box.exceeded, !errorBox.exceeded else {
             SidecarLog.storage.error(
                 "\(path, privacy: .public) exited \(process.terminationStatus)")
             return nil
@@ -117,11 +213,11 @@ public struct RamDisk: Sendable {
         return RamDisk(mountPoint: mountPoint, device: device)
     }
 
-    /// Ejects it. Forced, because a job that has just failed may still hold a file handle and the
-    /// alternative to forcing is leaking the memory until reboot.
+    /// A surviving writer must veto ejection. Callers retain the RAM reservation when
+    /// detaching fails, so an interrupted native helper cannot lose its working volume.
     @discardableResult
     public func destroy() -> Bool {
-        Self.run("/usr/bin/hdiutil", ["detach", device, "-force"]) != nil
+        Self.run("/usr/bin/hdiutil", ["detach", device]) != nil
     }
 
     /// Ejects anything left behind by a previous run that did not exit cleanly.

@@ -121,7 +121,40 @@ public sealed class ExactDuplicateTests : IDisposable
         Assert.True(OperatingSystem.IsWindows() ? CreateHardLink(path, a.Path, IntPtr.Zero) : Link(a.Path, path) == 0);
         var b = a with { Id = 2, Path = path, RelativePath = "b.wav" };
         var result = await new ExactDuplicateScanner(TimeSpan.Zero).ScanAsync(_root, [a, b], _ => { }, default);
-        Assert.Null(Assert.Single(result.Groups).ExtraCopyBytes);
+        Assert.Empty(result.Groups);
+        var c = await File(3, "independent.wav", [1, 2, 3]);
+        result = await new ExactDuplicateScanner(TimeSpan.Zero).ScanAsync(_root, [a, b, c], _ => { }, default);
+        var group = Assert.Single(result.Groups);
+        Assert.Equal(2, group.TotalCopies);
+        Assert.Single(group.Copies[0].Aliases!);
+        Assert.Null(group.ExtraCopyBytes);
+    }
+
+    [Fact]
+    public async Task Open_handle_identity_matches_its_file_and_survives_path_replacement()
+    {
+        var a = await File(1, "identity", [1, 2, 3]);
+        using var handle = System.IO.File.OpenHandle(a.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var original = ExactFileIdentity.Read(a.Path);
+        Assert.NotNull(original);
+        Assert.Equal(original, ExactFileIdentity.Read(handle));
+        var replacement = Path.Combine(_root, "replacement");
+        await System.IO.File.WriteAllBytesAsync(replacement, [3, 2, 1]);
+        if (OperatingSystem.IsWindows())
+        {
+            var blocked = Record.Exception(() => System.IO.File.Move(replacement, a.Path, true));
+            Assert.True(blocked is IOException or UnauthorizedAccessException);
+            Assert.Equal(original, ExactFileIdentity.Read(handle));
+            handle.Dispose();
+            System.IO.File.Move(replacement, a.Path, true);
+            Assert.NotEqual(original, ExactFileIdentity.Read(a.Path));
+        }
+        else
+        {
+            System.IO.File.Move(replacement, a.Path, true);
+            Assert.NotEqual(original, ExactFileIdentity.Read(a.Path));
+            Assert.Equal(original, ExactFileIdentity.Read(handle));
+        }
     }
 
     [DllImport("libc", EntryPoint = "link", SetLastError = true)] private static extern int Link(string source, string target);

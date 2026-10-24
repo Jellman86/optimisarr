@@ -1,0 +1,34 @@
+{
+  "image-libjxl": [
+    "https://github.com/libjxl/libjxl.git",
+    "a7a9c787341cf703dede03c2009fa460cae5e5df"
+  ],
+  "image-webp": [
+    "https://chromium.googlesource.com/webm/libwebp",
+    "b7e29b9d75bd31422b00c2a446d49d7af06c328d"
+  ],
+  "image-highway": [
+    "https://github.com/google/highway",
+    "457c891775a7397bdb0376bb1031e6e027af1c48"
+  ],
+  "image-brotli": [
+    "https://github.com/google/brotli",
+    "028fb5a23661f123017c060daa546b55cf4bde29"
+  ],
+  "image-lcms": [
+    "https://github.com/mm2/Little-CMS",
+    "5176347635785e53ee5cee92328f76fda766ecc6"
+  ],
+  "image-libpng": [
+    "https://github.com/glennrp/libpng.git",
+    "872555f4ba910252783af1507f9e7fe1653be252"
+  ],
+  "image-zlib": [
+    "https://github.com/madler/zlib.git",
+    "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"
+  ],
+  "image-libjpeg-turbo": [
+    "https://github.com/libjpeg-turbo/libjpeg-turbo.git",
+    "8ecba3647edb6dd940463fedf38ca33a8e2a73d1"
+  ]
+}

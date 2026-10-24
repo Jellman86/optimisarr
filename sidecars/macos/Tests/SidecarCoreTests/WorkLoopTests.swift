@@ -533,6 +533,26 @@ struct TimelineLeadShiftTests {
 
 @Suite("Work location in a real job")
 struct WorkLocationJobTests {
+    @Test("unknown or exhausted live RAM uses disk before creating a volume", arguments: [Int64?.none, Int64?(1)])
+    func liveMemoryFallback(_ available: Int64?) async {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
+        let budget = MemoryWorkBudget()
+        let storage = StorageRecorder()
+        let root = scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
+            memoryBudget: budget, availableMemory: { available },
+            makeRamDisk: { _ in Issue.record("must not allocate without live capacity"); return nil })
+        let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
+            pairing: pairing, progress: { _ in }, storage: storage.record)
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(budget.reservedBytes == 0)
+        #expect(storage.value?.inMemory == false)
+        #expect(storage.value?.fallbackReason?.contains("available memory") == true)
+    }
+
     @Test("failed RAM creation frees its reservation and reports disk fallback")
     func failedCreationFallsBack() async {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
@@ -543,7 +563,7 @@ struct WorkLocationJobTests {
         let runner = JobRunner(client: SidecarClient(transport: server),
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
             settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
-            memoryBudget: budget, makeRamDisk: { _ in nil })
+            memoryBudget: budget, availableMemory: { Int64.max }, makeRamDisk: { _ in nil })
         let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
             pairing: pairing, progress: { _ in }, storage: storage.record)
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
@@ -557,7 +577,7 @@ struct WorkLocationJobTests {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 200))
         let budget = MemoryWorkBudget()
         let limit: Int64 = 200 * 1024 * 1024
-        let reservation = budget.reserve(bytes: limit, limit: limit)
+        let reservation = budget.reserve(nativeBytes: 0, ramBytes: limit, ramLimit: limit, availableMemory: limit)
         let token = try #require(reservation)
         defer { budget.release(token) }
         let storage = StorageRecorder()
@@ -566,7 +586,7 @@ struct WorkLocationJobTests {
         let runner = JobRunner(client: SidecarClient(transport: server),
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"), runner: FakeTranscodeRunner(), scratchRoot: root,
             settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 200 * 1024 * 1024),
-            memoryBudget: budget, makeRamDisk: { _ in Issue.record("must not create an over-budget volume"); return nil })
+            memoryBudget: budget, availableMemory: { Int64.max }, makeRamDisk: { _ in Issue.record("must not create an over-budget volume"); return nil })
         let outcome = await runner.execute(assignment(sourceBytes: 200, maxCandidateBytes: 180),
             pairing: pairing, progress: { _ in }, storage: storage.record)
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
@@ -1376,7 +1396,7 @@ struct MeasurementCommandTests {
 
 @Suite("Measurement in the job flow")
 struct MeasurementFlowTests {
-    /// The output limit a command ran with: 5 for an alignment probe, 40 for a window.
+    /// The output limit a command ran with. Probes also cover the bounded window.
     static func limit(of arguments: [String]) -> String? {
         arguments.firstIndex(of: "-t").map { arguments[$0 + 1] }
     }
@@ -1433,14 +1453,14 @@ struct MeasurementFlowTests {
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
         let report = try #require(server.qualityReport)
         #expect((report["logs"] as? [String])?.count == 1)
-        // Tried, not derived: the server's own measurement, cut to a few seconds, once per
+        // Tried, not derived: the server's own measurement with sparse scoring, once per
         // candidate offset. A probe with a graph of its own chose offsets that were a frame wrong
         // for the measurement that followed, and failed clean encodes at harmonic 9.
-        let probes = recorder.all.filter { Self.limit(of: $0) == "5" }
+        let probes = recorder.all.filter { $0.contains(where: { $0.contains("n_subsample=5:") }) }
         #expect(probes.count == TimelineAlignment.framesToTry.count)
         #expect(probes.allSatisfy { $0[5] == "113.008875" && $0[13].contains(",fps=fps=23.976023976023978:start_time=0,trim=") })
-        // One frame either way at the fake source's 25 fps.
-        #expect(probes.map { Self.shift(in: $0) } == ["0", "0.04", "-0.04"])
+        // Use the command's frozen average rate, even when ffprobe declares 25 fps.
+        #expect(probes.map { Self.shift(in: $0) } == ["0", "0.041708", "-0.041708"])
 
         let measurement = try #require(recorder.all.last { Self.limit(of: $0) == "40" })
         // Every offset scores alike against this fake, so the one that changes nothing wins.
@@ -1505,7 +1525,7 @@ struct MeasurementFlowTests {
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
         // Each window is probed where it will be scored, because a frame lost between windows
         // moves the later one and not the earlier.
-        let probes = recorder.all.filter { Self.limit(of: $0) == "5" }
+        let probes = recorder.all.filter { $0.contains(where: { $0.contains("n_subsample=5:") }) }
         #expect(probes.count == 2 * TimelineAlignment.framesToTry.count)
         #expect(probes[0][probes[0].firstIndex(of: "-ss")! + 1] == "113.008875")
         #expect(probes[3][probes[3].firstIndex(of: "-ss")! + 1] == "1414.996917")
@@ -1790,15 +1810,6 @@ struct TimelineAlignmentChoiceTests {
         // A full-file measurement has no limit of its own, so one is added before the output.
         #expect(TimelineAlignment.truncate(["-i", "cand.mp4", "-lavfi", "graph", "-f", "null", "-"], seconds: 5)
             == ["-i", "cand.mp4", "-lavfi", "graph", "-t", "5", "-f", "null", "-"])
-    }
-
-    @Test("a clearly better offset wins, and a near tie keeps the unshifted timeline")
-    func choosesWithAMargin() {
-        #expect(TimelineAlignment.choose([(0, 96.2), (1, 19.7), (-1, 20.1)]) == 0)
-        #expect(TimelineAlignment.choose([(0, 0.2), (1, 92.3), (-1, 0.3)]) == 1)
-        // A static shot scores alike at every shift; noise must not move the whole window.
-        #expect(TimelineAlignment.choose([(0, 95.1), (1, 96.4), (-1, 94.8)]) == 0)
-        #expect(TimelineAlignment.choose([]) == nil)
     }
 
     @Test("both sidecars and the server try the same offsets for the same time")

@@ -80,6 +80,7 @@ internal static class LibraryRuleResolution
             VideoAudioCodec = library.VideoAudioCodec,
             VideoAudioBitrateKbps = library.VideoAudioBitrateKbps,
             DownmixToStereo = library.DownmixToStereo,
+            NormalizeOpusChannelLayout = library.NormalizeOpusChannelLayout,
             KeepAudioLanguages = string.IsNullOrWhiteSpace(library.KeepAudioLanguages)
                 ? null
                 : TrackLanguages.ParseLanguageList(library.KeepAudioLanguages),

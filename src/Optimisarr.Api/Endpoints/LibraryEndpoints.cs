@@ -132,6 +132,7 @@ internal static class LibraryEndpoints
                 VideoAudioCodec = parsed.VideoAudioCodec,
                 VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
                 DownmixToStereo = parsed.DownmixToStereo,
+                NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout,
                 KeepAudioLanguages = parsed.KeepAudioLanguages,
                 KeepSubtitleLanguages = parsed.KeepSubtitleLanguages,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
@@ -166,9 +167,14 @@ internal static class LibraryEndpoints
                 MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance,
                 MaxTruePeakDbtp = parsed.MaxTruePeakDbtp,
                 ImageQualityGateEnabled = parsed.ImageQualityGateEnabled,
+                ImagePerceptualReportingEnabled = parsed.ImagePerceptualReportingEnabled,
+                ImagePerceptualGateEnabled = parsed.ImagePerceptualGateEnabled,
+                MinimumImagePerceptualScore = parsed.MinimumImagePerceptualScore,
                 MinimumImageSsim = parsed.MinimumImageSsim,
                 ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled,
                 VideoQualityStrategy = parsed.VideoQualityStrategy,
+                AdaptiveAudioQuality = parsed.AdaptiveAudioQuality,
+                AdaptiveImageQuality = parsed.AdaptiveImageQuality,
                 WorkPlacement = parsed.WorkPlacement,
                 AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
                 AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
@@ -196,10 +202,18 @@ internal static class LibraryEndpoints
 
             request = request with
             {
+                AdaptiveAudioQuality = request.AdaptiveAudioQuality ?? library.AdaptiveAudioQuality,
+                AdaptiveImageQuality = request.AdaptiveImageQuality ?? library.AdaptiveImageQuality,
                 AudioQualityGateEnabled = request.AudioQualityGateEnabled ?? library.AudioQualityGateEnabled,
                 MaximumAudioQualityDistance = request.MaximumAudioQualityDistance ?? library.MaximumAudioQualityDistance,
                 SoundtrackQualityGateEnabled = request.SoundtrackQualityGateEnabled ?? library.SoundtrackQualityGateEnabled,
-                MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance
+                MaximumSoundtrackQualityDistance = request.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance,
+                ImagePerceptualReportingEnabled = request.ImagePerceptualReportingEnabled ?? library.ImagePerceptualReportingEnabled,
+                ImagePerceptualGateEnabled = request.ImagePerceptualGateEnabled ?? library.ImagePerceptualGateEnabled,
+                MinimumImagePerceptualScore = request.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore,
+                // An update that leaves the field out keeps the library's stored choice; only an
+                // explicit false turns the automatic conversion off.
+                NormalizeOpusChannelLayout = request.NormalizeOpusChannelLayout ?? library.NormalizeOpusChannelLayout
             };
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
@@ -243,6 +257,7 @@ internal static class LibraryEndpoints
             library.VideoAudioCodec = parsed.VideoAudioCodec;
             library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
             library.DownmixToStereo = parsed.DownmixToStereo;
+            library.NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout;
             library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.KeepSubtitleLanguages = parsed.KeepSubtitleLanguages;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;
@@ -277,9 +292,14 @@ internal static class LibraryEndpoints
             library.MaximumSoundtrackQualityDistance = parsed.MaximumSoundtrackQualityDistance;
             library.MaxTruePeakDbtp = parsed.MaxTruePeakDbtp;
             library.ImageQualityGateEnabled = parsed.ImageQualityGateEnabled;
+            library.ImagePerceptualReportingEnabled = request.ImagePerceptualReportingEnabled ?? library.ImagePerceptualReportingEnabled;
+            library.ImagePerceptualGateEnabled = request.ImagePerceptualGateEnabled ?? library.ImagePerceptualGateEnabled;
+            library.MinimumImagePerceptualScore = request.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore;
             library.MinimumImageSsim = parsed.MinimumImageSsim;
             library.ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = parsed.VideoQualityStrategy;
+            library.AdaptiveAudioQuality = parsed.AdaptiveAudioQuality;
+            library.AdaptiveImageQuality = parsed.AdaptiveImageQuality;
             library.WorkPlacement = parsed.WorkPlacement;
             library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
@@ -326,6 +346,10 @@ internal static class LibraryEndpoints
             {
                 return ApiErrors.BadRequest("library.pathMissing", $"Library path does not exist: {library.Path}", new { path = library.Path });
             }
+
+            if (!LibraryPathSafety.IsSafeDirectory(library.Path))
+                return ApiErrors.BadRequest("library.pathUnsafe",
+                    "Library root must be a real, accessible directory without a symbolic link or reparse point. Configure the target directory as the library root.");
 
             var summary = await inventory.ScanAsync(library, cancellationToken);
             return Results.Ok(summary);

@@ -1,5 +1,4 @@
-using System.Diagnostics;
-using System.Text;
+using Optimisarr.Core.Tools;
 
 namespace Optimisarr.Core.Library;
 
@@ -50,67 +49,9 @@ public sealed class ImageMarkerService(string? exiftoolCommand = null)
     private async Task<(int ExitCode, string Stdout)?> RunAsync(
         IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        try
-        {
-            var command = ExifToolCommand.Build(arguments, OperatingSystem.IsWindows());
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = _exiftool,
-                RedirectStandardInput = command.StandardInput is not null,
-                StandardInputEncoding = command.StandardInput is not null ? new UTF8Encoding(false) : null,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            foreach (var argument in command.Arguments)
-            {
-                process.StartInfo.ArgumentList.Add(argument);
-            }
-
-            process.Start();
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-
-            try
-            {
-                if (command.StandardInput is { } input)
-                {
-                    await process.StandardInput.WriteAsync(input.AsMemory(), cancellationToken);
-                    process.StandardInput.Close();
-                }
-                await process.WaitForExitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                KillQuietly(process);
-                throw;
-            }
-
-            var stdout = await stdoutTask;
-            await stderrTask;
-            return (process.ExitCode, stdout.Trim());
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            // exiftool not installed or could not start — best-effort, so report failure.
-            return null;
-        }
-    }
-
-    private static void KillQuietly(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (Exception)
-        {
-            // Best effort; the process is exiting anyway.
-        }
+        var command = ExifToolCommand.Build(arguments, OperatingSystem.IsWindows());
+        var result = await BoundedToolProcess.RunWithInputAsync(_exiftool, command.Arguments, command.StandardInput,
+            cancellationToken, TimeSpan.FromSeconds(90));
+        return result.ExitCode == 0 ? (result.ExitCode, result.Output.Trim()) : null;
     }
 }

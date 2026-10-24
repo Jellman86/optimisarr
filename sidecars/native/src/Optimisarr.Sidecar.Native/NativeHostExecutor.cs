@@ -1,0 +1,64 @@
+using System.Text.Json;
+using Optimisarr.Sidecar.Core.Capabilities;
+using Optimisarr.Sidecar.Core.Session;
+
+namespace Optimisarr.Sidecar.Native;
+
+internal static class NativeHostExecutor
+{
+    public static async Task<NativeHostEvent> RunAsync(NativeHostRequest request, Action<NativeHostEvent> report, CancellationToken token)
+    {
+        // A parsed run already owns a lease. Let the runner acknowledge even an early stop.
+        if (request.Mode != "run") token.ThrowIfCancellationRequested();
+        if (request.Mode == "scope")
+            return new("scope", Version: request.Version, AccountingScope: NativeScratchWorkspace.PrepareAccountingScope(request.ScratchRoot));
+        if (request.Mode == "retire")
+        {
+            var owner = request.AccountedOwner!;
+            return new("retired", owner.JobId, Version: request.Version,
+                Retirement: NativeScratchWorkspace.RetireAccountedJob(request.ScratchRoot, owner.JobId, owner.LeaseId, owner.Owner, token, request.AccountingScope));
+        }
+        if (request.Mode == "forget")
+        {
+            var owner = request.AccountedOwner!;
+            return new("forgotten", owner.JobId, Version: request.Version,
+                Consumption: NativeScratchWorkspace.ForgetRetiredJob(request.ScratchRoot, owner.JobId, owner.LeaseId, owner.Owner, request.AccountingScope));
+        }
+        if (request.Mode == "recover")
+            return new("recovered", Version: request.Version, Recovery: NativeScratchWorkspace.Recover(request.ScratchRoot,
+                afterOwner: request.RecoveryAfterOwner, cancellationToken: token, expectedScope: request.AccountingScope));
+        if (request.Mode == "requirements")
+        {
+            var planned = request.Assignment!.Value.Deserialize<Assignment>(NativeHostProtocol.Json)!;
+            return new("requirements", planned.JobId,
+                Version: request.Version,
+                NativeMemoryBytes: Optimisarr.Core.Workers.PerceptualResourceBudget.MemoryBytes(planned.Kind, planned.RequiredScratchBytes!.Value, false),
+                RequiredScratchBytes: planned.RequiredScratchBytes);
+        }
+        Environment.SetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY", request.ImageMetric);
+        Environment.SetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY", request.AudioMetric);
+        Environment.SetEnvironmentVariable("OPTIMISARR_EXIFTOOL", request.MetadataTool);
+        if (request.Mode == "capabilities")
+        {
+            var proof = await PerceptualCapabilityProber.ForFfmpeg(request.FfmpegPath).ProbeAsync(request.ScratchRoot, token);
+            return new("capabilities", Capabilities: proof);
+        }
+        var assignment = request.Assignment!.Value.Deserialize<Assignment>(NativeHostProtocol.Json)!;
+        using var control = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        using var transfers = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        var client = new SidecarClient(control);
+        var runtime = PerceptualJobRuntime.Native(request.FfmpegPath, freeMemory: () => request.GrantedMemoryBytes);
+        bool? workspaceCreated = null, resourcesRetired = null;
+        var runner = new JobRunner(client, new JobTransfer(transfers, client.Diagnostics), new ProcessTranscoder(),
+            request.FfmpegPath, request.ScratchRoot, () => null,
+            report: detail => report(new("status", assignment.JobId, Detail: detail)),
+            observe: job => report(new("progress", job.JobId, job.Stage.ToString(), job.EncodedSeconds)), perceptual: runtime,
+            accountedOwner: request.AccountedOwner?.Owner,
+            reportNativeRetirement: (created, retired) => { workspaceCreated = created; resourcesRetired = retired; },
+            accountingScope: request.AccountingScope);
+        var outcome = await runner.RunAsync(request.Pairing!, assignment, token);
+        return new("completed", assignment.JobId, Outcome: outcome, Version: request.Version,
+            NativeWorkspaceCreated: request.Version == 2 ? workspaceCreated : null,
+            NativeResourcesRetired: request.Version == 2 ? resourcesRetired : null);
+    }
+}

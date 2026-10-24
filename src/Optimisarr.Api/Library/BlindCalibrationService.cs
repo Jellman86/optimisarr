@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
@@ -94,7 +95,9 @@ public sealed record CalibrationResultDto(
     double? EstimatedSavingPercent,
     string Outcome,
     bool Applied,
-    IReadOnlyList<CalibrationVariantResultDto> Variants);
+    IReadOnlyList<CalibrationVariantResultDto> Variants,
+    int CurrentQuality,
+    string? CurrentProfile);
 
 public sealed record CalibrationSessionDto(
     Guid Id,
@@ -132,7 +135,8 @@ internal sealed class BlindCalibrationService(
     TimeProvider timeProvider,
     ICalibrationRandomizer randomizer,
     IMediaProbeService mediaProbe,
-    LoudnessService loudness) : BackgroundService
+    LoudnessService loudness,
+    FileOperationClaims claims) : BackgroundService
 {
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(2);
     private readonly ConcurrentDictionary<Guid, Session> _sessions = new();
@@ -190,7 +194,8 @@ internal sealed class BlindCalibrationService(
         bool hdrPlaybackConfirmed,
         bool diagnosticsEnabled,
         bool ignoreActiveStreams,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool compareVideoPresets = false)
     {
         await RemoveExpiredAsync(cancellationToken);
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -204,6 +209,8 @@ internal sealed class BlindCalibrationService(
         {
             throw new KeyNotFoundException("The calibration source or library no longer exists.");
         }
+        if (await db.IsFileReservedAsync(media.Id, [media.Path], cancellationToken))
+            throw new DedupeReservationConflictException();
         if (media.Status != MediaFileStatus.Probed
             || media.MediaKind is not (MediaKind.Video or MediaKind.Audio or MediaKind.Image))
         {
@@ -259,13 +266,14 @@ internal sealed class BlindCalibrationService(
         {
             MediaKind.Audio => BlindCalibrationPolicy.AudioPlan(duration, rules.TargetAudioCodec),
             MediaKind.Image => BlindCalibrationPolicy.ImagePlan(),
+            _ when !compareVideoPresets => BlindCalibrationPolicy.VideoQualityPlan(duration, currentQuality),
             _ => BlindCalibrationPolicy.VideoPlan(
                 duration,
                 PixelFormatInfo.Parse(
                     sourceProbe?.PixelFormat ?? media.PixelFormat,
                     sourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth)
         };
-        if (media.MediaKind == MediaKind.Video)
+        if (media.MediaKind == MediaKind.Video && compareVideoPresets)
         {
             plan = plan with
             {
@@ -301,8 +309,7 @@ internal sealed class BlindCalibrationService(
                 var job = new Job
                 {
                     MediaFileId = media.Id,
-                    // Interactive work must not be held by a library's automatic overnight window.
-                    LibraryId = null,
+                    LibraryId = media.LibraryId,
                     Type = JobType.Calibration,
                     Status = JobStatus.Queued,
                     Priority = int.MaxValue,
@@ -407,6 +414,17 @@ internal sealed class BlindCalibrationService(
             .AsNoTracking()
             .Where(job => job.CalibrationSessionId == id)
             .ToListAsync(cancellationToken);
+
+        var jobIds = jobs.Select(job => job.Id).ToList();
+        var sampleLeases = await db.JobLeases.AsNoTracking()
+            .Where(lease => jobIds.Contains(lease.JobId) && lease.DeliveredSha256 != null)
+            .ToListAsync(cancellationToken);
+        foreach (var lease in sampleLeases.OrderBy(lease => lease.AcquiredAt))
+        {
+            var sampleJob = jobs.Single(job => job.Id == lease.JobId);
+            if (WorkerSampleSource.FromLease(sampleJob, lease, _workRoot) is { } sample)
+                session.RemoteSamples[sampleJob.Id] = sample;
+        }
 
         if (session.MediaKind == MediaKind.Audio
             && jobs.Count == session.Candidates.Count
@@ -563,6 +581,10 @@ internal sealed class BlindCalibrationService(
         {
             library.ImageQuality = session.RecommendedSetting.Quality;
         }
+        else if (session.RecommendedSetting.VideoProfile is null)
+        {
+            library.QualityCrf = session.RecommendedSetting.Quality;
+        }
         else
         {
             library.RuleProfile = session.RecommendedSetting.VideoProfile!.Value;
@@ -631,9 +653,17 @@ internal sealed class BlindCalibrationService(
             return null;
         }
 
+        var remoteLeases = await db.JobLeases.AsNoTracking()
+            .Where(lease => lease.JobId == candidate.Job.Id && lease.DeliveredSha256 != null)
+            .ToListAsync(cancellationToken);
+        var remoteLease = remoteLeases.OrderByDescending(lease => lease.AcquiredAt).FirstOrDefault();
+        var completedJob = await db.Jobs.AsNoTracking().SingleAsync(job => job.Id == candidate.Job.Id, cancellationToken);
+        var remoteSample = remoteLease is null ? null : WorkerSampleSource.FromLease(completedJob, remoteLease, _workRoot);
+
         // Serve the verifier's short reference for the explicitly marked original variant.
         // The DTO supplies its pre-roll offset so the shared timeline still selects matching frames.
-        var path = variant.IsOriginal
+        var path = variant.IsOriginal && remoteSample is not null ? remoteSample.Path
+            : variant.IsOriginal
             ? Path.Combine(
                 Path.GetDirectoryName(outputPath)!,
                 session.MediaKind switch
@@ -648,13 +678,18 @@ internal sealed class BlindCalibrationService(
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        if (!_sessions.TryRemove(id, out _))
+        if (!_sessions.ContainsKey(id))
         {
             return false;
         }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
+        // Another deletion may have completed while this request waited for the writer.
+        if (!_sessions.ContainsKey(id)) return false;
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+            ?? throw new FileCleanupDeferredException();
         var jobs = await db.Jobs
             .Where(job => job.CalibrationSessionId == id)
             .ToListAsync(cancellationToken);
@@ -693,6 +728,8 @@ internal sealed class BlindCalibrationService(
         }
         db.Jobs.RemoveRange(jobs.Except(retainedFailures));
         await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
+        _sessions.TryRemove(id, out _);
         return true;
     }
 
@@ -711,7 +748,14 @@ internal sealed class BlindCalibrationService(
             .ToList();
         foreach (var id in expired)
         {
-            await DeleteAsync(id, cancellationToken);
+            try
+            {
+                await DeleteAsync(id, cancellationToken);
+            }
+            catch (FileCleanupDeferredException)
+            {
+                // Keep the expired session and its evidence for the next expiration sweep.
+            }
         }
     }
 
@@ -740,9 +784,9 @@ internal sealed class BlindCalibrationService(
                     throw new InvalidOperationException("An audio calibration candidate has no output path.");
                 }
 
-                var referencePath = Path.Combine(
-                    Path.GetDirectoryName(sampleJobs[0].WorkOutputPath)!,
-                    ".optimisarr-comparison-reference.flac");
+                var referencePath = session.RemoteSamples.TryGetValue(sampleJobs[0].Id, out var remoteSample)
+                    ? remoteSample.Path
+                    : Path.Combine(Path.GetDirectoryName(sampleJobs[0].WorkOutputPath)!, ".optimisarr-comparison-reference.flac");
                 var original = await loudness.MeasureAsync(referencePath, cancellationToken);
                 var candidateLevels = new List<double>();
                 foreach (var job in sampleJobs)
@@ -878,7 +922,9 @@ internal sealed class BlindCalibrationService(
             recommended?.EstimatedSavingPercent,
             recommended is null ? "NoAcceptableSetting" : "PreferenceFound",
             false,
-            variants);
+            variants,
+            session.Fingerprint.InitialQuality,
+            session.MediaKind == MediaKind.Video ? session.Fingerprint.Profile.ToString() : null);
     }
 
     private static List<Job> JobsForSetting(
@@ -886,7 +932,7 @@ internal sealed class BlindCalibrationService(
         IReadOnlyList<Job> jobs,
         CalibrationSetting setting) =>
         jobs.Where(job => (session.MediaKind == MediaKind.Video
-                ? job.RequestedRuleProfile == setting.VideoProfile
+                ? job.RequestedRuleProfile == setting.VideoProfile && job.RequestedVideoQuality == setting.Quality
                 : (session.MediaKind == MediaKind.Audio
                     ? job.RequestedAudioBitrateKbps
                     : job.RequestedImageQuality) == setting.Quality)
@@ -957,7 +1003,7 @@ internal sealed class BlindCalibrationService(
                 session.Plan.Samples.Count,
                 sample.DurationSeconds,
                 $"/api/calibration/{session.Id}/variants/{variant.Name}/samples/{sample.Index}/content",
-                variant.IsOriginal ? job?.CalibrationReferenceStartSeconds ?? 0 : 0,
+                variant.IsOriginal || session.RemoteSamples.ContainsKey(job?.Id ?? 0) ? job?.CalibrationReferenceStartSeconds ?? 0 : 0,
                 variant.IsOriginal ? levels.OriginalGainDb : levels.CandidateGainDb);
         }).ToList();
         CalibrationVariantDiagnosticsDto? diagnostics = null;
@@ -1040,6 +1086,7 @@ internal sealed class BlindCalibrationService(
         public List<Candidate> Candidates { get; } = candidates;
         public List<Variant> Variants { get; } = variants;
         public bool DiagnosticsEnabled { get; } = diagnosticsEnabled;
+        public ConcurrentDictionary<int, PreparedWorkerSample> RemoteSamples { get; } = new();
         public double HighestPreparationProgress { get; set; }
         public DateTimeOffset ExpiresAt { get; set; } = expiresAt;
         public SessionStatus Status { get; set; } = SessionStatus.Preparing;
@@ -1075,7 +1122,8 @@ internal sealed class BlindCalibrationService(
         bool DownmixToStereo,
         ImageDownscaleMode ImageDownscaleMode,
         int ImageDownscaleValue,
-        int InitialQuality)
+        int InitialQuality,
+        string ResolvedRules)
     {
         public static Fingerprint From(
             Optimisarr.Data.Library library,
@@ -1096,7 +1144,8 @@ internal sealed class BlindCalibrationService(
             rules.DownmixToStereo,
             rules.ImageDownscaleMode,
             rules.ImageDownscaleValue,
-            quality);
+            quality,
+            JsonSerializer.Serialize(rules));
 
         public bool Matches(
             Optimisarr.Data.Library library,
@@ -1123,7 +1172,8 @@ internal sealed class BlindCalibrationService(
             && DownmixToStereo == rules.DownmixToStereo
             && ImageDownscaleMode == rules.ImageDownscaleMode
             && ImageDownscaleValue == rules.ImageDownscaleValue
-            && InitialQuality == quality;
+            && InitialQuality == quality
+            && ResolvedRules == JsonSerializer.Serialize(rules);
     }
 }
 

@@ -217,6 +217,63 @@ async function waitForAuditedContent(page: Page, name: string) {
   if (selector[name]) await expect(page.locator(selector[name]).first()).toBeVisible()
 }
 
+for (const viewport of [
+  { name: 'wide desktop dark', width: 2048, height: 1167, theme: 'dark' },
+  { name: 'ultrawide light', width: 2560, height: 1440, theme: 'light' },
+  { name: 'small phone dark', width: 375, height: 812, theme: 'dark' },
+]) {
+  test(`library pages fill the available content width: ${viewport.name}`, async ({ page }, testInfo) => {
+    test.setTimeout(120_000)
+    await page.setViewportSize(viewport)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), viewport.theme)
+    const unexpected = await mockApp(page)
+
+    async function expectFullWidth() {
+      const measurements = await page.locator('main').evaluate(main => {
+        const bounds = main.getBoundingClientRect()
+        const style = getComputedStyle(main)
+        const left = bounds.left + Number.parseFloat(style.paddingLeft)
+        const right = bounds.left + main.clientWidth - Number.parseFloat(style.paddingRight)
+        const frame = main.querySelector<HTMLElement>('.page-frame')!
+        return [frame, ...frame.querySelectorAll<HTMLElement>(':scope > header, :scope > .status-strip, [data-library-workflow]')]
+          .map(element => {
+            const box = element.getBoundingClientRect()
+            return { element: element.className, leftGap: box.left - left, rightGap: right - box.right }
+          })
+      })
+      for (const measurement of measurements) {
+        expect(Math.abs(measurement.leftGap), JSON.stringify(measurement)).toBeLessThanOrEqual(2)
+        expect(Math.abs(measurement.rightGap), JSON.stringify(measurement)).toBeLessThanOrEqual(2)
+      }
+    }
+
+    for (const [name, route] of [...routes.filter(([, route]) => route.startsWith('/libraries') && !route.endsWith('/quality-check')), ['new library', '/libraries/new']]) {
+      await page.goto(`/#${route}`)
+      await expect(page.locator('main h1')).toBeVisible()
+      if (route !== '/libraries') await expect(page.locator('[data-library-workflow]')).toBeVisible()
+      await expectFullWidth()
+      const layout = await measure(page)
+      expect(layout.documentOverflow, name).toBeLessThanOrEqual(2)
+      expect(layout.mainOverflow, name).toBeLessThanOrEqual(2)
+      expect(layout.escapedCards, name).toEqual([])
+      expect(layout.clippedCards, name).toEqual([])
+      if (['library overview', 'library source', 'library verification advanced'].includes(name)) {
+        await page.screenshot({ path: testInfo.outputPath(`${name.replaceAll(' ', '-')}.png`), animations: 'disabled' })
+      }
+    }
+
+    await page.goto('/#/libraries/1/configure')
+    await expect(page.locator('[data-library-workflow]')).toBeVisible()
+    for (const tab of ['Candidates', 'Excluded']) {
+      await page.getByRole('button', { name: new RegExp(`^${tab} \\(`) }).click()
+      await expect(page.locator('main h1')).toHaveText(tab)
+      await expectFullWidth()
+    }
+    expect([...unexpected], 'unmocked API requests').toEqual([])
+  })
+}
+
 for (const viewport of viewports) {
   test(`layout inventory: ${viewport.name}`, async ({ page }, testInfo: TestInfo) => {
     test.setTimeout(180_000)

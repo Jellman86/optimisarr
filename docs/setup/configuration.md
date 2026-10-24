@@ -108,7 +108,7 @@ the former global policy into each existing library so behaviour does not change
 | Primary media slots | Bounds video encodes and full container media verification. Audio/image work can use a free slot. Advanced workload lanes provide independent extra audio/image and strict sidecar-evidence capacity. |
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
-| Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
+| Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. CPU is a software-encoding policy and also binds remote workers: they use their proved CPU encoder, and a worker that proved none is not offered video re-encodes. A vendor mode names this server's GPU family only; workers then use the best hardware they proved, as under Auto. |
 | Hardware decoding | Uses GPU decode with hardware encoders when possible, including eligible SDR VMAF passes. Runtime failures fall back to CPU decode, and a below-floor accelerated VMAF result is confirmed in software before rejection. |
 | HDR tone-map engine | Software is the compatible default. Hardware uses Intel QSV or VA-API for a freshly confirmed non-Dolby-Vision HDR10/PQ source under an existing **Tone-map to SDR** library rule when hardware decoding is active, and retries once with software if that path fails. HLG, Dolby Vision, unknown transfer metadata, VMAF-gated work, and disposable comparisons retain the software transform. |
 
@@ -177,6 +177,7 @@ the selected media type:
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | On, 0.95 |
 | Image metadata | Images | On |
+| SSIMULACRA2 perceptual image quality | Supported still images | Off, no preset score |
 
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
@@ -270,8 +271,8 @@ is no persistent link to a preset after saving.
 When an explicit saved bitrate matches the profile default, the control explains that it
 remains saved. Choose **Default** to clear that override and follow future profile changes.
 
-Presets do not enable or change the audio quality gate. They use the existing fixed-bitrate
-encode path, with no automatic sample search or quality retry. Copied video audio is unchanged.
+Presets do not enable or change the audio quality gate. They use fixed bitrate unless the
+separate experimental **Audio quality first** control is enabled. Copied video audio is unchanged.
 For explicitly re-encoded video audio, configure the separate soundtrack report and gate below.
 
 ![Audio encoding settings showing named presets, the actual Opus bitrate and output format](../images/optimisarr-audio-encoding-presets-dark.png)
@@ -375,6 +376,66 @@ search or retry. Replacement still quarantines the original before installing th
 candidate; quarantine is not a backup, and approval or retention purge removes rollback ability.
 Dry-run blocks replacement and purge while allowing encoding and verification.
 
+## Perceptual image quality reports and gates (development)
+
+The current quality-first development branch adds independent **Image quality first** and
+**Audio quality first** controls beneath their enabled quality gates. Both start off and require
+an explicit target. Local searches test at most four settings, choose the smallest measured
+passing candidate, and retain the samples and selection reason separately from final
+verification. Images compare the whole supported still and preserve the saved SSIM floor;
+standalone mono/stereo audio compares up to three disjoint windows totalling at most 90 seconds.
+Every probe comes from the original. Neither search permits replacement or weakens any final
+check. A missing/noisy measurement falls back to the saved setting and still requires final
+quality evidence. Resizing and downmixing are outside the current search contract.
+Enabling image quality first permits lossy WebP from lossless originals, judged against the
+explicit target and all final gates. Fixed WebP settings continue preserving lossless sources.
+
+Completed probes appear in the queue while searching and survive an interrupted search.
+Only a finished search displays a selected setting. If only the final perceptual gate fails,
+one higher-fidelity retry can run; both final verdicts remain in attempt history. Failures of
+size, decode, timing, metadata or other independent checks cannot trigger that retry.
+
+Worker search and adaptive soundtracks remain under implementation.
+Current workers refuse quality-first jobs rather than ignore the search;
+worker-only libraries wait. See the [parity completion matrix](../development/adaptive-audio-image-parity.md).
+
+In a photo or mixed library, open **Verify**, then **Advanced verification**. Enable
+**Image quality report** for optional SSIMULACRA2 evidence. Reporting alone does not block
+replacement. Enable the separate perceptual image gate and enter a minimum score from 0 to
+100 to require it before replacement. There is no default or calibrated universal threshold;
+the score of 80 in the screenshots illustrates a saved operator policy.
+
+![Image quality settings with separate reporting and gate controls and an explicit score](../images/optimisarr-image-quality-settings-dark.png)
+
+Scores can be negative, and 100 represents identical decoded pixels. The gate compares the
+lowest score across the two backgrounds used for transparency and separately requires an
+unchanged alpha channel. Every other configured decode, SSIM, metadata and size check must
+also pass. Missing or unsupported evidence blocks an enabled gate, leaves the source intact
+and never selects a substitute metric. Existing SSIM floors are preserved without conversion.
+
+![Image report with the measured score, selected minimum, dimensions and alpha difference](../images/optimisarr-image-quality-report-dark.png)
+
+This first experimental slice supports same-size, straight-alpha, 8-bit SDR sRGB still PNG,
+JPEG and WebP images. Each file must be at most 128 MiB. PNG profile/text/EXIF metadata
+shares a combined 4 MiB budget, including container bytes and expanded payloads; JPEG/WebP
+profiles are limited to 4 MiB each. Dimensions must be at least 8 by 8 and at
+most 16 megapixels. Animation, resizing, non-identity EXIF orientation, other colour profiles,
+HDR, higher bit depths and malformed or ambiguous metadata are unavailable. An untagged RGB
+image uses the decoder's sRGB interpretation. A declared profile must be recognised as sRGB;
+it cannot silently fall back after a parse failure. Image metadata preservation remains a
+separate check.
+
+Image jobs and measurements currently run on the server. Sidecars package the same helper
+for platform qualification but do not advertise image work. The server runs one image metric
+at a time with a 90-second process deadline and cancellation. A 16-megapixel synthetic
+comparison used about 2.3 GiB of resident memory on both the development Mac and Quark,
+with a Mac peak memory footprint of 2.8 GiB. Allow adequate memory alongside encoding.
+See [hardware qualification and its limits](../engineering/hardware-validation/2026-10-10-image-perceptual-quality.md). No measurement reads or runtime downloads occur when both
+controls are off. Successful evidence records source, candidate and metric SHA-256 hashes
+before and after measurement. Configuration backups use format 4, and older backups preserve
+saved image choices where applicable. From-source servers can set `OPTIMISARR_IMAGE_QUALITY`
+to the qualified helper; a missing tool is shown as unavailable.
+
 ## Rule profiles (presets)
 
 Each library picks an **optimisation preset** that sets its codec, container, and a
@@ -404,6 +465,21 @@ chosen for stereo from starving retained surround channels, and the candidate sa
 uses the same effective value. MP3 requires stereo downmix for sources above two channels; AAC and
 Opus accept up to eight retained channels. Post-encode verification independently rejects any
 unrequested channel loss.
+
+### Opus surround layout
+
+Opus writes surround channels in the standard 5.1 order. A source whose audio declares the
+side-surround layout `5.1(side)` therefore ends up with its surround channels in a different place
+than the file's own layout claims. When Optimisarr re-encodes such a source to Opus, it maps the
+channels onto the standard 5.1 order with the `channelmap=channel_layout=5.1` audio filter, so the
+encoded track matches the layout its container advertises.
+
+Only the channel order changes. No audio is mixed, remapped, or dropped, and the output keeps the
+source's six channels. **Normalise Opus surround layout** (**Encode → Audio & subtitles**) turns the
+conversion off for a library that wants the source's own surround placement. Optimisarr leaves the
+audio alone when the encoder is not Opus, when the source is downmixed to stereo, when the source
+reports no channel layout, or when its tracks disagree about that layout. Each job records the audio
+filter it applied, shown next to its FFmpeg command in the queue detail.
 
 **Keep audio languages** (**Encode → Audio & subtitles**) removes unwanted audio tracks while a
 video is optimised or remuxed. Enter comma-separated ISO 639 codes (e.g. `eng, jpn`);

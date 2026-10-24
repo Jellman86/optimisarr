@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
@@ -33,7 +34,8 @@ public sealed record PreviewComparison(
     int? ClipStartSeconds,
     int? ClipDurationSeconds,
     bool? VerificationPassed,
-    string? VerificationReportJson);
+    string? VerificationReportJson,
+    string? OriginalUrl = null);
 
 /// <summary>
 /// Drives throwaway "preview" jobs: a one-off transcode of a single file with its library's
@@ -44,13 +46,15 @@ public sealed class PreviewService(
     OptimisarrDbContext db,
     MediaProbeService probe,
     QueueDispatcher dispatcher,
-    IHostEnvironment environment)
+    IHostEnvironment environment,
+    FileOperationClaims claims)
 {
     private readonly string _workRoot = WorkPaths.Resolve(environment);
 
     /// <summary>Queues a fresh preview for a file, replacing any earlier preview of it.</summary>
     public async Task<int?> CreateAsync(int mediaFileId, CancellationToken cancellationToken)
     {
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
         var media = await db.MediaFiles
             .Include(file => file.Library)
             .FirstOrDefaultAsync(file => file.Id == mediaFileId, cancellationToken);
@@ -58,6 +62,8 @@ public sealed class PreviewService(
         {
             return null;
         }
+        if (await db.IsFileReservedAsync(mediaFileId, [media.Path], cancellationToken))
+            throw new DedupeReservationConflictException();
 
         var existing = await db.Jobs
             .Where(job => job.Type == JobType.Preview && job.MediaFileId == mediaFileId)
@@ -80,6 +86,7 @@ public sealed class PreviewService(
         };
         db.Jobs.Add(job);
         await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
 
         dispatcher.Wake();
         return job.Id;
@@ -102,11 +109,13 @@ public sealed class PreviewService(
         MediaSideStats? encoded = null;
         double? saving = null;
         var clipped = false;
+        PreparedWorkerSample? workerSample = null;
 
         // Probe both sides only once the preview has finished, so polling while it runs stays cheap.
         if (job.Status is JobStatus.Completed or JobStatus.Failed)
         {
-            original = await ProbeSideAsync(media.Path, cancellationToken);
+            workerSample = await WorkerSampleAsync(job, cancellationToken);
+            original = await ProbeSideAsync(workerSample?.Path ?? media.Path, cancellationToken);
             if (job.Status == JobStatus.Completed && job.WorkOutputPath is { } output && File.Exists(output))
             {
                 encoded = await ProbeSideAsync(output, cancellationToken);
@@ -114,7 +123,7 @@ public sealed class PreviewService(
 
             // A video preview only encodes a sample, so its output is materially shorter than the
             // source. Compare by bitrate in that case so the saving figure is representative.
-            clipped = original?.DurationSeconds is { } od and > 0
+            clipped = workerSample is not null || original?.DurationSeconds is { } od and > 0
                 && encoded?.DurationSeconds is { } ed
                 && ed < od - 1.0;
             saving = clipped
@@ -133,10 +142,11 @@ public sealed class PreviewService(
             encoded,
             saving,
             clipped,
-            clipped ? PreviewClipPolicy.Plan(media.DurationSeconds).StartSeconds : null,
-            clipped ? PreviewClipPolicy.DurationSeconds : null,
+            workerSample is not null ? 0 : clipped ? PreviewClipPolicy.Plan(media.DurationSeconds).StartSeconds : null,
+            workerSample?.Probe.DurationSeconds is > 0 ? (int)Math.Ceiling(workerSample.Probe.DurationSeconds.Value) : clipped ? PreviewClipPolicy.DurationSeconds : null,
             job.VerificationPassed,
-            job.VerificationReportJson);
+            job.VerificationReportJson,
+            workerSample is not null ? $"/api/preview/{jobId}/reference" : null);
     }
 
     /// <summary>
@@ -145,12 +155,18 @@ public sealed class PreviewService(
     /// </summary>
     public async Task<bool> DeleteAsync(int jobId, CancellationToken cancellationToken)
     {
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
         var job = await db.Jobs.FirstOrDefaultAsync(
             j => j.Id == jobId && j.Type == JobType.Preview, cancellationToken);
         if (job is null)
         {
             return false;
         }
+
+        await db.Entry(job).ReloadAsync(cancellationToken);
+        if (db.Entry(job).State == EntityState.Detached || job.Type != JobType.Preview) return false;
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+            ?? throw new FileCleanupDeferredException();
 
         dispatcher.RequestCancel(jobId);
 
@@ -181,8 +197,25 @@ public sealed class PreviewService(
             db.Jobs.Remove(job);
         }
         await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
 
         return true;
+    }
+
+    public async Task<string?> ReferencePathAsync(int jobId, CancellationToken token)
+    {
+        var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(
+            job => job.Id == jobId && job.Type == JobType.Preview && job.Status == JobStatus.Completed, token);
+        var sample = job is null ? null : await WorkerSampleAsync(job, token);
+        return sample is not null && LibraryPathSafety.IsSafeFile(sample.Path, WorkerJobPaths.Root(_workRoot, job!)) ? sample.Path : null;
+    }
+
+    private async Task<PreparedWorkerSample?> WorkerSampleAsync(Job job, CancellationToken token)
+    {
+        var leases = await db.JobLeases.AsNoTracking().Where(lease => lease.JobId == job.Id && lease.DeliveredSha256 != null)
+            .ToListAsync(token);
+        var lease = leases.OrderByDescending(lease => lease.AcquiredAt).FirstOrDefault();
+        return lease is null ? null : WorkerSampleSource.FromLease(job, lease, _workRoot);
     }
 
     private async Task<MediaSideStats?> ProbeSideAsync(string path, CancellationToken cancellationToken)

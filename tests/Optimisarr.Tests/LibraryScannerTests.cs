@@ -97,6 +97,54 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.Throws<DirectoryNotFoundException>(() => _scanner.Scan(missing, new LibraryScanOptions(), _now));
     }
 
+    [PosixFact]
+    public void Scan_skips_leaf_and_directory_links_even_when_targets_are_settled()
+    {
+        var original = WriteFile("real/movie.mkv", modifiedMinutesAgo: 30);
+        File.CreateSymbolicLink(Path.Combine(_root, "leaf.mkv"), original);
+        Directory.CreateSymbolicLink(Path.Combine(_root, "alias"), Path.GetDirectoryName(original)!);
+        using var outside = new TemporaryDirectory();
+        var outsideFile = Path.Combine(outside.Path, "outside.mkv");
+        File.WriteAllText(outsideFile, "outside");
+        File.SetLastWriteTimeUtc(outsideFile, _now.UtcDateTime.AddHours(-1));
+        Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), outside.Path);
+
+        var result = _scanner.Scan(_root, new LibraryScanOptions(), _now);
+
+        Assert.Equal(original, Assert.Single(result.Files).AbsolutePath);
+    }
+
+    [PosixFact]
+    public void Scan_does_not_descend_into_a_directory_cycle()
+    {
+        var original = WriteFile("movie.mkv", modifiedMinutesAgo: 30);
+        Directory.CreateSymbolicLink(Path.Combine(_root, "cycle"), _root);
+        Assert.Equal(original, Assert.Single(_scanner.Scan(_root, new LibraryScanOptions(), _now).Files).AbsolutePath);
+    }
+
+    [PosixFact]
+    public void Scan_skips_file_links_even_without_a_settling_period()
+    {
+        var original = WriteFile("movie.mkv", modifiedMinutesAgo: 30);
+        File.CreateSymbolicLink(Path.Combine(_root, "link.mkv"), original);
+        var options = new LibraryScanOptions { SettlingPeriod = TimeSpan.Zero };
+        Assert.Equal(original, Assert.Single(_scanner.Scan(_root, options, _now).Files).AbsolutePath);
+    }
+
+    [PosixFact]
+    public void Scan_refuses_a_linked_library_root()
+    {
+        WriteFile("movie.mkv", modifiedMinutesAgo: 30);
+        var alias = _root + "-alias";
+        Directory.CreateSymbolicLink(alias, _root);
+        try
+        {
+            Assert.Throws<IOException>(() => _scanner.Scan(alias, new LibraryScanOptions(), _now));
+            Assert.Throws<IOException>(() => _scanner.Scan(alias + Path.DirectorySeparatorChar, new LibraryScanOptions(), _now));
+        }
+        finally { Directory.Delete(alias); }
+    }
+
     private string WriteFile(string relativePath, int modifiedMinutesAgo)
     {
         var fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -107,4 +155,10 @@ public sealed class LibraryScannerTests : IDisposable
     }
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public string Path { get; } = Directory.CreateTempSubdirectory("optimisarr-scan-outside-").FullName;
+        public void Dispose() => Directory.Delete(Path, recursive: true);
+    }
 }

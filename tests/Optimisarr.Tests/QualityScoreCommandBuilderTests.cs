@@ -37,7 +37,7 @@ public sealed class QualityScoreCommandBuilderTests
     };
 
     [Fact]
-    public void Equal_frame_vc1_windows_decode_sequentially_and_select_absolute_frame_numbers()
+    public void Equal_frame_windows_decode_sequentially_for_every_codec()
     {
         var context = Legacy(new QualityMeasurementContext(576, 432, false, false,
             ReferenceStartSeconds: 635, DistortedStartSeconds: 635, MeasureDurationSeconds: 10,
@@ -48,7 +48,8 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Contains("sequential", command.Preprocessing);
         var ordinary = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json",
             context with { ReferenceVideoCodec = "h264" }, 2);
-        Assert.Contains("-ss", ordinary.Arguments);
+        Assert.DoesNotContain("-ss", ordinary.Arguments);
+        Assert.Equal(command.FilterGraph, ordinary.FilterGraph);
     }
 
     [Fact]
@@ -287,62 +288,22 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.DoesNotContain("[1:v]settb=AVTB,setpts=PTS-{{distortedShift}}", command.FilterGraph);
     }
 
-    [Fact]
-    public void A_frame_paired_window_numbers_both_streams_on_one_integer_step_instead_of_the_cadence_grid()
+    [Theory]
+    [InlineData(50, 5900, 7900)]
+    [InlineData(25, 2950, 3950)]
+    [InlineData(23.976023976023978, 2829, 3788)]
+    public void Equal_frame_windows_use_absolute_indices_and_never_guess_a_visual_shift(double rate, long first, long end)
     {
-        // #269: a candidate with every frame of its source can still stamp stretches of them a
-        // frame early. Rounding those timestamps onto a cadence grid then pairs each picture with
-        // its neighbour for the rest of the stretch. When both files hold the same frames, frame k
-        // is compared with frame k instead.
-        var command = QualityScoreCommandBuilder.Build(
-            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
-            Legacy(new QualityMeasurementContext(
-                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
-                ReferenceFrameRate: 24000d / 1001d,
-                ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041,
-                PairFramesByNumber: true)),
-            threads: 4);
-
-        Assert.DoesNotContain("fps=fps", command.FilterGraph);
-        Assert.Equal("113.008875", ValueAfter(command.Arguments, "-ss", occurrence: 1));
-        // The window is cut by time with two frames to spare either side, renumbered on a whole
-        // microsecond step so both sides carry identical timestamps, then cut to the same 959
-        // frame numbers on each side, half a step clear of any frame.
-        Assert.Contains(
-            "[0:v]settb=AVTB,setpts=PTS-0.02*1000000,trim=start=4.907708:duration=40.166833," +
-            "settb=AVTB,setpts=PTS-STARTPTS,setpts=N*41708," +
-            "trim=start=0.062562:duration=39.997972,setpts=PTS-STARTPTS,",
-            command.FilterGraph);
-        Assert.Contains(
-            "[1:v]settb=AVTB,trim=start=4.907708:duration=40.166833," +
-            "settb=AVTB,setpts=PTS-STARTPTS,setpts=N*41708," +
-            "trim=start=0.062562:duration=39.997972,setpts=PTS-STARTPTS,",
-            command.FilterGraph);
-        Assert.Contains("frames paired by number", command.Preprocessing);
-    }
-
-    [Fact]
-    public void A_frame_paired_window_moves_the_candidate_by_whole_frames_after_numbering()
-    {
-        // Where the candidate's timestamps skip a slot, moving its timeline by a frame's worth of
-        // time selects the same first picture as not moving it, so the probe could never choose
-        // the offset it needed. After numbering, one step is exactly one frame.
-        var command = QualityScoreCommandBuilder.Build(
-            "{{distorted}}", "{{reference}}", "{{log}}",
-            Legacy(new QualityMeasurementContext(
-                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
-                ReferenceFrameRate: 24000d / 1001d,
-                ReferenceContainerLeadSeconds: 0.021, DistortedShiftToken: "{{distortedShift}}",
-                PairFramesByNumber: true)),
-            threads: 8);
-
-        Assert.Contains(
-            "settb=AVTB,setpts=PTS-STARTPTS,setpts=(N-round({{distortedShift}}*23.976023976023978))*41708,trim=",
-            command.FilterGraph);
-        Assert.DoesNotContain("setpts=PTS-{{distortedShift}}", command.FilterGraph);
-        Assert.Single(command.FilterGraph.Split("{{distortedShift}}").Skip(1));
+        var command = QualityScoreCommandBuilder.Build("candidate.mkv", "source.mkv", "scores.json",
+            Legacy(new QualityMeasurementContext(1920, 1080, false, false,
+                ReferenceStartSeconds:118, DistortedStartSeconds:118, MeasureDurationSeconds:40,
+                ReferenceFrameRate:rate, ReferenceContainerLeadSeconds:0.021,
+                DistortedContainerLeadSeconds:0.041, DistortedShiftToken:"{{distortedShift}}", PairFramesByNumber:true)), 4);
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.DoesNotContain("fps=", command.FilterGraph);
+        Assert.DoesNotContain("{{distortedShift}}", command.FilterGraph);
+        Assert.Equal(2, command.FilterGraph.Split($"trim=start_frame={first}:end_frame={end}").Length - 1);
+        Assert.Contains("sequential decode", command.Preprocessing);
     }
 
     [Fact]

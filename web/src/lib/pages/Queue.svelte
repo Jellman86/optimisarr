@@ -7,7 +7,7 @@
   import PosterGlow from '../components/PosterGlow.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
-  import { api, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize, savedPercent } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
@@ -21,6 +21,8 @@
   import VerificationChecks from '../components/VerificationChecks.svelte'
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
+  import ImagePerceptualReport from '../components/ImagePerceptualReport.svelte'
+  import PerceptualSearchReport from '../components/PerceptualSearchReport.svelte'
   import FailuresPanel from '../components/FailuresPanel.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import PlaybackHolds from '../components/PlaybackHolds.svelte'
@@ -466,6 +468,15 @@
     return fullReport(job)?.checks ?? null
   }
 
+  function searchReport(job: Job): PerceptualSearchSummary | null {
+    const final = fullReport(job)?.perceptualSearch
+    if (final) return final
+    try {
+      const partial = JSON.parse(job.perceptualSearchJson ?? 'null') as PerceptualSearchSummary | null
+      return partial?.result?.decision ? partial : null
+    } catch { return null }
+  }
+
   function attemptHistory(job: Job): JobAttemptSnapshot[] {
     if (!job.attemptHistoryJson) return []
     try {
@@ -577,7 +588,12 @@
   </div>
 {:else if queueStatus && !queueStatus.canStart}
   <div class="card tone-warn mb-4 p-3 text-sm">
-    {t(i18n.m.queue.dispatch_paused, { reason: (queueStatus.blockedReason ?? '').replace(/\.$/, '') })}
+    {#if queueStatus.playbackHolds?.length}
+      <p class="font-semibold">{i18n.m.queue.playback_waiting_title}</p>
+      <p class="mt-0.5 text-xs">{i18n.m.queue.playback_waiting_hint}</p>
+    {:else}
+      {t(i18n.m.queue.dispatch_paused, { reason: (queueStatus.blockedReason ?? '').replace(/\.$/, '') })}
+    {/if}
     <PlaybackHolds holds={queueStatus.playbackHolds ?? []} />
   </div>
 {:else if queueStatus?.waitingReason}
@@ -639,6 +655,12 @@
           <button class="btn btn-ghost" onclick={closeDetails} aria-label={i18n.m.queue.close_details}><Icon name="x" /></button>
         </header>
         <div class="queue-detail-body">
+          {#if selectedJob.status === 'Queued' && selectedJob.waitingForResources}
+            <div class="callout tone-warn mb-4 p-4" role="status">
+              <p class="font-semibold">{i18n.m.queue.waiting_resources_title}</p>
+              <p class="mt-1 text-xs leading-relaxed">{i18n.m.queue.waiting_resources_detail}</p>
+            </div>
+          {/if}
           {#if error}<Banner kind="error" class="mb-4">{error}</Banner>{/if}
           {#if selectedJob.retryReason === 'SoftwareDecode' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
             <div class="callout tone-warn mb-4 p-4" role="status">
@@ -663,7 +685,9 @@
             {@const story = jobFailureStory(selectedJob.failureCategory, selectedJob.errorMessage, fullReport(selectedJob)?.checks, i18n.m)}
             <div class="callout tone-bad mt-4 p-4" role="status">
               <p class="font-semibold">{story.headline}</p>
-              {#if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
+              <!-- "Retry at higher quality" is wrong advice once a search has already tried its highest setting. -->
+              {#if searchReport(selectedJob)?.result?.decision?.fellBack === true}<p class="mt-1 text-xs leading-relaxed">{i18n.m.quality_first.hint_none_met}</p>
+              {:else if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
               {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.join(' · ') })}</p>{/if}
             </div>
             {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
@@ -677,6 +701,7 @@
           <div class="queue-detail-specs">
       <!-- Details -->
       <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 ">
+        {#if selectedJob.videoEncoder != null || selectedJob.videoQualityMode != null}
         <div class="flex justify-between gap-4">
           <dt class="text-ink-3">{i18n.m.queue.detail_encoder}</dt>
           <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-ink-4">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
@@ -692,6 +717,7 @@
             {:else}—{/if}
           </dd>
         </div>
+        {/if}
         <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes != null ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
@@ -725,6 +751,15 @@
         </details>
       {/if}
 
+      <!-- The audio filter this job's command actually applied, so the operator can see what was
+           done to the audio without reading the whole command. -->
+      {#if selectedJob.appliedAudioFilter}
+        <p class="mt-3 text-xs text-ink-3">
+          <span class="font-medium">{i18n.m.queue.applied_audio_filter}:</span>
+          <span class="font-mono">{selectedJob.appliedAudioFilter}</span>
+        </p>
+      {/if}
+
       <!-- Verification report, when one exists -->
       {#if parseReport(selectedJob)}
         {@const checks = parseReport(selectedJob)}
@@ -732,8 +767,10 @@
           {#if checks}<VerificationChecks {checks} />{/if}
           <AudioQualityReport report={fullReport(selectedJob)?.audioQuality ?? null} />
           <SoundtrackQualityReport report={fullReport(selectedJob)?.soundtrackQuality ?? null} />
+          <ImagePerceptualReport report={fullReport(selectedJob)?.imagePerceptualQuality ?? null} />
         </div>
       {/if}
+      <PerceptualSearchReport report={searchReport(selectedJob)} active={selectedJob.status === 'Probing' || selectedJob.status === 'Leased'} />
       {#if earlierAttempts.length > 0}
         <section class="attempt-timeline" aria-label={i18n.m.queue.attempts}>
           <h3>{i18n.m.queue.attempts}</h3>
@@ -876,7 +913,7 @@
           <tbody>{#each pagedJobs as job (job.id)}
             <tr class:selected-row={selectedJobId === job.id}>
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
-              <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
+              <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
               <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>

@@ -79,9 +79,11 @@
 
 <!-- Off-canvas drawer below md (fixed, slides in over a backdrop). At md+ it is an island: a
      raised card floating on the ground beside the page's tray, its own height, with the
-     collapse-to-icons rail still available. -->
+     collapse-to-icons rail still available. Relative + z-10 at md+ keeps the rail's stacking
+     context above the tray's <main> (itself relative, so it would otherwise paint over the
+     language menu where the menu overlaps the tray). -->
 <aside
-  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 md:rounded-[22px] md:transition-[width] {layout.mobileOpen
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:relative md:z-10 md:h-auto md:translate-x-0 md:rounded-[22px] md:transition-[width] {layout.mobileOpen
  ? 'translate-x-0'
  : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >

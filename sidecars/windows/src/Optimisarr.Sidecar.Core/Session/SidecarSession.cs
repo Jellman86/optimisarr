@@ -48,8 +48,14 @@ public sealed class SidecarSession(
     Func<MachineLoad?> load,
     Func<TimeSpan, CancellationToken, Task> delay,
     Action<SessionStatus>? report = null,
-    Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null, Func<long>? availableScratchBytes = null)
+    Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null, Func<long>? availableScratchBytes = null,
+    Func<Capabilities.SidecarCapabilities, Capabilities.SidecarCapabilities>? refreshCapabilities = null, TimeProvider? clock = null)
 {
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+    private long _capacityBlockedAt;
+    private int _capacityBlocked;
+    private bool ClaimsHeldForCapacity => Volatile.Read(ref _capacityBlocked) != 0
+        && _clock.GetElapsedTime(Interlocked.Read(ref _capacityBlockedAt)) < TimeSpan.FromSeconds(30);
     private int _paused;
     public bool ServerDraining { get; private set; }
     public bool IsPaused => Volatile.Read(ref _paused) != 0;
@@ -177,6 +183,8 @@ public sealed class SidecarSession(
             {
                 if (availableScratchBytes is not null)
                     capabilities = capabilities with { FreeScratchBytes = Math.Max(0, availableScratchBytes()) };
+                capabilities = refreshCapabilities?.Invoke(capabilities) ?? capabilities;
+                _runningCapabilities = capabilities;
                 var reportingDrain = ShutdownArmed;
                 var beat = await client.HeartbeatAsync(pairing,
                     reportingDrain ? capabilities with { MaxConcurrency = 0 } : capabilities,
@@ -206,6 +214,7 @@ public sealed class SidecarSession(
                     && !beat.Draining
                     && !IsPaused
                     && !ShutdownArmed
+                    && !ClaimsHeldForCapacity
                     && Running < capabilities.MaxConcurrency
                     && !cancellationToken.IsCancellationRequested)
                 {
@@ -334,6 +343,11 @@ public sealed class SidecarSession(
                 try
                 {
                     var outcome = await run(pairing, assignment, cancellationToken);
+                    if (outcome.CapacityBlocked && !outcome.Delivered)
+                    {
+                        Interlocked.Exchange(ref _capacityBlockedAt, _clock.GetTimestamp());
+                        Volatile.Write(ref _capacityBlocked, 1);
+                    }
                     Finish($"Job {outcome.JobId}: {outcome.Detail}", assignment.JobId);
                 }
                 catch (OperationCanceledException)

@@ -1,5 +1,234 @@
 # Changelog
 
+## 0.2.24 - 2026-10-24
+
+Protocol 11 audio/image worker placement is enabled in this release. Entries below
+also retain intermediate development milestones: earlier statements about disabled
+placement or unconnected journals describe those stages, not the final release.
+The unused .NET durable journal was archived; Windows/Linux workers retain live
+resource admission and owned-scratch recovery. Full audio/image parity and
+power-loss durability are not release claims.
+
+- Fix Windows audio quality measurement under long scratch paths (#447). The native helper now uses extended-length paths for PCM inputs and its report, retaining Unicode names, exclusive report creation and all quality gates.
+
+- Personal quality check video can now be inspected close up and compared quickly (#441). Video has the same Fit, zoom, 1:1 and drag-to-pan controls as photos. Zoom, position and playback time carry over when you switch samples. Full screen now has its own O/A/B/C/D switcher, and pressing O or a sample's letter switches from anywhere on the page. A switch still shows the new sample only after it has loaded and reached the same moment. Pausing now settles the picture on the exact frame other samples will seek to, and a seek the browser cannot complete is reported as a playback error instead of being shown as a matched frame. Blind labels, diagnostics, rating, encoding and original-file safety are unchanged.
+- Polish Personal quality check for video, photos and music (#441). A step indicator shows where you are. Music asks how a sample *sounds*, rates "Audibly worse" and uses excerpts and a compact listening header instead of an empty video stage. Rating waits until a sample switch has finished, so it always applies to the sample on screen; unrated samples are marked and "Next unrated sample" steps through them. Photos gain explicit Fit and 1:1 controls. Results lead with the recommendation and how your ratings chose it. They show the exact library setting before and after Apply, label the saving as an estimate, and say that Apply only changes that setting for future work. VMAF is marked as reference evidence. "Check another file" starts over after a result or failure. The revealed result now reports the saved setting it would replace; blind labels, verification, freshness checks and original-file safety are unchanged.
+
+- Record the current Personal quality check UI for video, photos and music as a Playwright-captured baseline for the planned usability polish; application behavior is unchanged.
+
+- Make the interactive worker-claim regression accept a sample that finishes preparing on the first request. The test retains and verifies that lease instead of discarding it because preparation completed faster than expected; production dispatch behavior is unchanged.
+
+- Make the Mac helper-shutdown regression check actual process death and reject the fixture's natural-exit fallback, avoiding a CI scheduling failure at a six-second wall-clock cutoff. Runtime shutdown deadlines and resource-retirement rules are unchanged.
+
+- Run remote Mac acceptance without unlocking the login keychain: disposable workers use a process-owned checkpoint keychain and recover only isolated test scratch roots. Signed builds can explicitly select a temporary signing keychain loaded from the authorized certificate backup, without changing the user's default keychain or search list. A locked or missing checkpoint keychain still blocks work.
+
+- Prepare worker preview and Personal quality check samples in the background instead of inside the worker's request for work. On very large originals (30–50 GB) the old in-request preparation outlived the worker's 30-second request limit, was discarded, and restarted on every poll, so the sample never started. The sample is also identified by size and modification time instead of hashing the whole original twice; it is disposable and can never replace the original. Fixes the follow-up reported on #428.
+
+- Archive the never-connected durable .NET native-work journal: the ledger and checkpoint, Linux and experimental Windows storage adapters, bootstrap, physical-volume pool mode and power-cut/process-death fixtures (about 216 shared-worker and 35 backend tests). No worker used it; Windows and Linux workers keep in-process reservations, owned-scratch crash recovery and live capacity readings. The code is preserved at the `archive/dotnet-native-work-journal` tag. The macOS sidecar's Swift accounting journal is unaffected and remains in use.
+
+- Choose how music and photo libraries pick quality under **Encode → How quality is chosen**, matching video: a fixed setting, or the smallest file that meets a quality target (experimental). Choosing a target turns on its measurement and gate and sets the target in the same place; Verify keeps those checks locked on with a pointer back. Photo targets show the SSIMULACRA2 authors' published scale (90 very high, 70 high, 50 medium, 30 low), audio targets keep explicit uncalibrated limits, and a configured SSIM floor that can block every setting is called out up front. The photo Images page now shows the preset's output format and quality, and the Encode summary notes a quality target.
+
+- Audio and image job details lead with the outcome of a quality-first search ("Chose 64 kbps, the smallest of 4 tested settings that met your target"), mark the chosen candidate and list candidates in order. When no tested setting met the target, the failure no longer advises retrying at higher quality; it says the highest setting was already tried and suggests lowering the target or SSIM floor. Video-only Encoder and Video quality rows are hidden when empty, and quality scores show useful precision (three significant figures for audio distances, one decimal for SSIMULACRA2).
+
+- Find duplicates is easier to read: each group is named after the file (from the library being reviewed) with its copy count and size, the SHA-256 moves to a tooltip, the library comparison choice starts open, and per-copy "one file name reported" and content-read timestamps are no longer shown. The page now uses the same "Find duplicates" name as the button that opens it.
+
+- Personal quality check explains an empty source list truthfully: files need to be probed, and videos at least 48 seconds or audio at least 60 seconds long (previously it only said to scan and probe). Temporary stream verification, which breaks blindness, now sits in a collapsed Troubleshooting options section and no longer refers to a video player for audio. The audio Encode page's Audio channels group gets its own box instead of a stray heading and repeated description.
+
+- Redesign the "paused for playback" panel. When Plex, Jellyfin or Emby playback holds the queue, the Queue and Dashboard now say "Waiting for playback to finish" with a one-line explanation, and each session card shows the title, who is watching and where, and chips for the server and Playing/Paused state. The Dashboard's In flight card shows these sessions instead of a single sentence. Screen readers still hear each card as one line.
+
+- Bundle ExifTool 13.55 (official self-contained Windows build, pinned by SHA-256) in the Windows sidecar installer. Without it Windows workers could not prove image metadata preservation and were never offered image jobs. The installer smoke test checks the bundled version, and the Windows corresponding-source package now includes the ExifTool source.
+
+- Enable protocol 11 so quality-first audio and still-image jobs can run on compatible paired workers. The server, Windows/Linux sidecars and Mac sidecar now advertise it; older workers keep refusing these jobs and they stay on the server or wait under worker-only placement. Workers use their existing in-process resource accounting and owned-scratch crash recovery. The server's independent final verification still gates every replacement. Operator decision, 21 October 2026: crash and restart recovery is the qualification bar for this home-lab worker path; power-loss durability is a recorded limit, not a release gate, and the unconnected journal storage stays unwired.
+
+- Personal quality checks now compare quality levels using the saved video codec, container and settings by default. Applying a result changes only quality. The previous cross-codec comparison is available through an explicit Compare presets option; stale results are rejected if resolved library settings change. Fixes #427.
+- Allow video previews and video personal quality samples to run on compatible workers using the library placement and CPU policy. Workers receive bounded source segments and verify every transferred frame; disposable outputs stay separate from replaceable work. Fixes #428. Worker-only interactive jobs wait when workers are unavailable, and browser comparisons use the same bounded reference as the worker.
+- Preserve the demuxer video clock during full decode health checks so valid VideoToolbox output cannot fail because the null muxer rounds timestamps. Full decoded-picture counts and candidate packet-timestamp gates still apply.
+
+- Skip symbolic links and linked directories during library scans, and recheck saved source paths before media reads, worker transfers, probes, work preparation and replacement/rollback recovery. Blocked paths retain their inventory and recovery records. Library roots must be real directories; operator-owned ancestors above a configured root remain trusted. These checks reject visible aliases but do not prevent concurrent filesystem path swaps; the remaining confinement work and broader security priorities are recorded in the roadmap.
+
+- Record current-source JPEG/WebP workflow acceptance on native Windows and the signed Mac runtime with live memory, committed-response replay, final verification, repeat replacement and exact rollback. Mac trials pass on disk and actual RAM storage with retired volumes and empty accounting afterward. Installed-package lifecycle remains unqualified.
+
+- Record fresh native Mac and Picard qualification of the current scratch-ownership source, including the Windows journal process-death matrix. Both hosts are reachable again; physical Linux ARM64 and packaged job lifecycle acceptance remain separate.
+
+- Use the verified Linux ARM64 directory and no-follow flags for native scratch ownership, matching the journal's architecture-aware checks. Scratch directory walks and file opens no longer substitute x86-64 flags on ARM64; unverified Linux architectures refuse those opens. Exclusive creation, inherited writer guards and nonblocking special-file refusal retain their existing behavior. ARM64 syscall behavior is checked under emulation; a physical Linux ARM64 worker remains unqualified.
+
+- Keep VMAF progress reads and decoder cleanup independent of a busy caller's async context. Advancing decodes no longer report a false idle timeout for that scheduling condition, and genuinely stalled decoders can still be stopped promptly. Watchdog deadlines and required quality evidence are unchanged.
+
+- Add 49 native Windows journal process-death regressions covering partial provisioning, both checkpoint writes and interrupted recovery of authorized old/new snapshots. Picard executes the actual killed-process matrix; power-loss durability and standalone wiring remain unqualified, and protocol 11 stays disabled.
+
+- Fix the Linux native-work journal's persisted identity so a store reopens after a Btrfs or ext4 remount/reboot: the binding key now uses the volume's UUID-derived `f_fsid` instead of the per-mount anonymous device number that changed between boots and refused an intact journal. XFS and ZFS keep device-bound keys and fail closed on a changed device; their remount stability remains unqualified. Same-process identity checks are unchanged, stores provisioned under the old key format refuse rather than migrate, and protocol 11 stays disabled.
+
+- Add an unconnected Linux-only native-work journal bootstrap/restoration foundation: normal opening never creates or repairs authority, explicit operator provisioning is a separate call, and every unreleased obligation is restored into an unpublished physical-ID pool before the journal and pool can be used together. It has no standalone service or admission callers, refuses Windows/Darwin before filesystem access, and does not establish power-loss qualification or enable protocol 11.
+
+- Add an unconnected experimental Windows native-work journal storage candidate for NTFS: journal-specific no-follow handle walk with retained ancestors, private protected ACLs created with each object, 128-bit file identities, an exclusive coordinator handle, write-through temporary files renamed by pinned handles, and exact readback at every boundary. Independent review rejected an earlier directory-flush design; this candidate claims same-OS identity, security and fail-closed recovery only — power-loss durability through the rename sequence is not established and needs physical power-cut qualification before standalone wiring. Protocol 11 stays disabled.
+
+- Add durable Linux native-work journal storage with ABI-correct open flags (x86-64 and arm64; unverified ABIs fail closed), private owner-only journal/checkpoint directories, an exclusive coordinator lock, and fsync-ordered replacement with exact readback. Standalone bootstrap/admission wiring, other-platform durable adapters and package qualification remain unfinished; protocol 11 stays disabled.
+
+- Separate missing-VMAF-report qualification from short startup watchdog timing. Native Windows logging failures now retain synthetic write IDs and exception evidence without replaying entries or relaxing the exact-entry assertion; the latest access-denied cause remains unconfirmed.
+
+- Add a serialized shared native-work journal transaction boundary. Uncertain writes stop further effects, expired write scopes cannot authorize work, and shutdown retains ownership through actual body completion and retirement. Durable OS storage is provided for Linux (above); Windows/macOS durable adapters, bootstrap and standalone integration remain pending.
+
+- Add explicit physical-volume resource pools with bounded opaque IDs. Path and physical-ID APIs cannot mix accounting namespaces, and refused restoration cannot silently discard existing charges. Physical capacity capture and standalone coordinator wiring remain pending.
+
+- Add an immutable, bounded shared native-work ledger and independent-checkpoint transition rules. Unsafe phase changes, rewritten obligations, overflow and older ledger copies are refused. Durable Linux storage is provided (above); Windows/macOS durable storage and standalone startup integration remain pending.
+
+- Add scoped, accounted capability workspaces with replayable retirement receipts. Surviving probe tools retain ownership after parent death, and generic cleanup cannot erase their accounting evidence. Standalone durable coordinator integration remains pending.
+
+- Make live RAM retirement qualification replay the original physical receipt after unmount and retain the full receipt when cleanup is unconfirmed. Mounted-volume and wrong-owner refusal checks remain mandatory; production retirement behavior is unchanged.
+
+- Add owner-keyed, idempotent resource restoration as a foundation for standalone worker recovery. Conflicting charges and overflow are refused, and volume-path separators cannot hide disk reservations. Durable persistence and worker integration remain pending.
+
+- Make worker shutdown qualification reliable under load: readiness records become visible only when complete, and RAM tests distinguish queued work from an operation already in flight. Production retirement deadlines are unchanged.
+
+- Shared worker encodes and probes now retain process ownership until confirmed direct-child exit, including cancellation, reader failure and failed tree termination. Progress observer failures no longer stop pipe drainage, captured text is bounded, and incomplete probe or capability output cannot count as successful evidence. Descendant retirement and standalone durable resource accounting remain separate qualification work.
+
+- Connect native Mac startup and job execution to one independently anchored accounting runtime. Unconfirmed recovery pauses new claims, surviving tools retain resource charges, and RAM/disk work uses registry-backed helper scopes. Recovery holds missing or recreated coordinator metadata; late claims after disconnect acknowledge interruption independently. Full packaged lifecycle and parity qualification remain pending; protocol 11 stays disabled.
+
+- Add registry-backed native Mac RAM creation with durable allocation and mount checkpoints. Cancellation retains the original device pin and accounting until owned commands actually end; recovery can retire a mounted volume before helper preparation. Signed hard-exit fixtures cover both boundaries. Connected runtime and packaged lifecycle qualification remain pending.
+
+- Preserve native Mac RAM allocations interrupted before filesystem preparation. Owner-bound partial receipts retain accounting through uncertain cleanup and cannot authorize formatting or unmounting. Journal close explicitly releases its coordinator lock across transient inherited descriptors. Full connected runtime qualification remains pending.
+
+- Add an independent Keychain checkpoint for native Mac accounting. Interrupted writes reconcile only their recorded old/new snapshots, while missing anchors and older ledger copies cannot discard outstanding work. Legacy credential and accounting operations share verified prompt suppression. Connected runtime and packaged lifecycle qualification remain pending.
+
+- Add identity-bound Mac RAM retirement using retained device and volume handles, with explicit RAM-source provenance. Busy writers veto cleanup, reused disk names cannot redirect it, and interrupted unmount/eject operations replay without forcing removal. OS-tool output and inherited pipe readers are bounded; idle pipes no longer occupy shared worker threads. Physical component tests pass; full connected runtime and packaged app-crash qualification remain pending.
+
+- Add the Swift foundation for durable native-work accounting: restart restores outstanding grants, busy or uncertain owners stay charged, and replay reconciles receipts before RAM retirement. Atomic journal updates fail closed on changed files or unconfirmed durability. Connected runtime qualification remains pending; protocol 11 stays disabled.
+
+- Add a replayable native-helper retirement contract bound to the parent's run and physical workspace. Surviving tools, changed ownership and missing evidence cannot confirm cleanup. Connected runtime and packaged lifecycle qualification remain in progress; protocol 11 stays disabled.
+
+- Mac native jobs now acknowledge cancellation and helper failure as an interruption, including stops during requirements, ownership recovery and RAM preparation. The final request runs independently of job cancellation; failed acknowledgements remain unconfirmed. Surviving-tool resource accounting remains under qualification before protocol 11 can be enabled.
+
+- Local audio/image quality-first jobs now wait for available memory and working space, preserve retry minima and resume after capacity returns. Queue details explain the wait in every language.
+
+
+- Sources or candidates changed or removed during quality search, upload or final verification now stop the attempt without increasing media failures or spending another quality retry; saved diagnostics remain available.
+
+
+- Native Linux quality-first workers now resolve the actual memory-controller mount and respect legacy/hybrid hierarchies, visible parent limits and v2 pressure limits; unresolved capacity holds work.
+
+
+- Worker uploads now fence staging creation, bounded appends and interrupted cleanup against duplicate reservations and changed assignments. Persistent completion seals prevent another coordinator changing staged bytes during hashing, and resumable retries preserve and finish promoted candidates after an interrupted commit.
+
+### Added
+
+- Opus re-encodes now map a source that declares the `5.1(side)` surround layout onto the standard 5.1 order, so the encoded track's surround channels sit where the file's own layout says they do. Only the channel order changes: no audio is mixed, remapped or dropped, and the output keeps the source's six channels. **Normalise Opus surround layout** (**Configure → Encode → Audio & subtitles**) turns the conversion off per library. Non-Opus encoders, stereo downmixes, and sources that report no layout or disagree between tracks are left alone, and every job records the audio filter it applied next to its FFmpeg command.
+- Mac FFmpeg now bundles the pinned WebP encoder. Package acceptance proves JPEG/WebP metadata round trips, exact alpha in both WebP modes and exact lossless colour. Corresponding-source archives now accept immutable annotated-tag object pins while refusing moving tag names; completed media-tool checks precede publication of build provenance.
+
+
+- Mac app builds now include the self-contained native quality helper, exact runtime notices and pinned ExifTool modules. Nested native code is signed before the app, with JIT limited to the helper in hardened builds. Relocated package checks exercise JPEG metadata preservation, both metrics and managed startup without Homebrew or an installed .NET runtime. Full packaged-job, restart and remaining parity gates still keep protocol 11 disabled.
+
+
+- Audio quality qualification and measurement now restrict FFmpeg/ffprobe to local media containers before opening originals or candidates. Playlist sources cannot use secondary files to pass a file-bound assessment; supported soundtrack containers and independent verification gates remain intact.
+
+- Mac workers collect image and audio tool proof through the shared native helper when bundled, refresh live memory and chosen-disk capacity at pairing and each check-in, and subtract active app reservations. Missing or ambiguous proof cannot advertise native tools. Unpairing, sleeping and quitting cancel pending native qualification; protocol 11 remains disabled pending package and workflow qualification.
+
+- The Mac job runner now routes native audio/image searches through the shared engine, preserving the frozen contract and checking its lease before media work. Live memory and shared disk/RAM reservations govern admission; failed RAM ejection retains its allocation. Capacity hand-backs pause claims while check-ins continue, and progress never invents missing byte counts. Automatic protocol-11 placement remains disabled pending capability, restart and package qualification.
+
+- Native clients can ask the shared helper for a validated job's memory/workspace requirements without sending credentials or starting media tools. Swift consumes this bounded reply, keeping resource policy in the shared engine. Its frame parser now has an explicit initializer compatible with the CI Swift compiler.
+
+- Add the Swift bridge for the shared native quality helper, with private bounded requests, matching terminal/exit checks and cancellable pipes. A shared RAM/native ledger and live Mac memory estimate prevent double allocation; existing RAM jobs use disk when live capacity is unavailable. Automatic claims and signed native bundles remain gated.
+
+- Add a self-contained native-client helper that reuses the shared audio/image search and verification engine through bounded private pipes. Parent exit, stop signals and blocked console pipes cancel owned work and clean scratch. Swift integration and signed bundle qualification remain in progress; protocol 11 stays disabled.
+
+- Shared .NET workers qualify native image encoders, pinned audio/image metrics, compressed ICC/EXIF copying and marker readback on synthetic fixtures. Pairing and heartbeats report that proof plus current memory and working-space capacity. Native assignment accounts for RAM-backed scratch and waits when capacity is unknown or insufficient; a resource refusal briefly holds further claims while heartbeats continue. Automatic protocol-11 placement remains disabled pending the remaining clients and packages.
+
+- Experimental local image and standalone audio quality-first searches test up to four compression settings against explicit perceptual targets before the final encode. Search evidence remains separate from final verification; existing libraries keep fixed settings. Worker search and soundtrack selection remain under implementation.
+- Add bounded worker capability and lease-search storage, replay-safe perceptual search rules and strict image verification evidence as a worker foundation. Native search placement remains disabled until all clients implement it.
+- Add the server-side audio/image search exchange with frozen encoder commands, source and attempt fences, replay-safe progress, measurement workspace admission and delivery blocked until selection settles. Protocol 11 stays disabled pending native clients.
+- Add native audio/image probe execution with original qualification before encoding, canonical bounded commands, lossless audio references, raw auxiliary measurements and disposable scratch cleanup. The shared .NET reporting transport bounds requests/responses and distinguishes replayable network interruptions from terminal refusals; worker-loop integration remains gated.
+- Add the shared native search session: replay committed measurements after a lost response, bound repeated outages, reject changed contracts or premature selection, and independently compare the final command with its frozen claim. It remains unconnected to automatic worker claims pending capability and resource admission.
+- Connect the shared .NET job runner to native audio/image selection under lease renewal, with independent final verification, image metadata and markers prepared before hashing, exact source-transfer limits and peak memory/workspace reservations. Unknown capacity holds the job before fetching. Automatic placement remains disabled pending capability collection, placement, Swift and package qualification.
+- Completed quality probes are retained during a search and after cancellation. A sole final perceptual-quality failure can trigger one higher-fidelity retry, preserving the rejected attempt and every independent safety check.
+
+- Add the first exact-copy cleanup safety foundation: durable rollback intent, independent retention and reservations that survive restart. File actions remain unavailable while D3 concurrency and recovery qualification continues.
+
+- Libraries offer **Find duplicates**, with explicit cross-library scope and artwork-rich physical-copy review. Keeper choices can be selected manually, kept in full or chosen by preferred library, then saved; ignored groups and choices survive unchanged rescans. Changed evidence invalidates choices. Overlapping roots and hard-link aliases do not inflate copy counts. These are review preferences only; no media files are changed.
+
+- Exact copies reviews retain their latest results across server restarts, reuse unchanged complete SHA-256 reads and offer a full-content refresh. Reports show original content-read dates, reused counts, changed-inventory warnings and paginated groups. Interrupted scans retain completed checkpoints for the next explicit scan. Detection remains read-only.
+
+- Experimental image quality reports use pinned SSIMULACRA2 for supported SDR PNG, JPEG and WebP stills. Photo and mixed libraries can separately enable a replacement gate with an explicit minimum score. Reports show complete dimensions and independent transparency checks; unavailable evidence blocks an enabled gate. Existing SSIM and metadata settings remain unchanged, and both new controls start off.
+
+
+### Documentation
+
+- Reconcile audio/image parity and dedupe tracking with delivered draft work, current test evidence, remaining qualification and the paused handoff.
+
+- Record 0.2.23 package, installed fleet and physical media acceptance separately from development tests, and synchronize the released screenshot gallery and capture manifests.
+
+- Refresh the roadmap status to 2026-10-18: diagnostics #242 closed as shipped, audio/image parity #332 remains the active priority with Picard and Mac test hosts reachable again, and dedupe file actions remain deferred with no cleanup enabled.
+
+### Development tools
+
+- Update the pinned VMAF FFmpeg base image to 9.0.2-1, Playwright to 1.64, Svelte and Vite patches, the xUnit Visual Studio runner to 4.0.1, and the CI runner-hardening action to 2.22.1. Verification thresholds and media behaviour are unchanged.
+
+### Fixed
+
+- Interrupted native audio/image work now returns its lease promptly, including when its parent exits or cancels before execution. A replay-safe interruption reason preserves committed reports and retry intent without counting crashes as file refusals or delaying a restored worker with a capacity cooldown. Failed hand-back acknowledgements remain unconfirmed.
+
+
+- Native audio/image work now keeps an inherited ownership guard through search and verification. Restart recovery preserves surviving writers, refuses redirected or shared files and resumes recorded partial cleanup. Mac startup and folder changes recover owned work before capacity checks; busy RAM volumes retain their allocation instead of being forcibly detached. Package checks permit only the empty persistent coordinator and retain working files after a failed helper.
+
+
+- Temporary worker capacity returns now retain their retry pause without counting as permanent file-refusal opinions. Three low-memory workers can no longer bar a job from every worker. Capacity returns are replay-safe, preserve cancellation and retry intent, and keep the original release API intact.
+
+- The Mac worker now refuses unreadable or unsupported quality-search instructions as a whole. It confirms the hand-back before treating that claim as finished; an unconfirmed claim drains new work and blocks automatic shutdown while check-ins continue. In-flight claims are also handed back when another job becomes unconfirmed.
+
+- Native Windows quality work now waits when process-job ancestry prevents proving available memory. Physical nested-job tests caught an inner limit hiding a stricter outer limit; unresolved capacity no longer borrows the host estimate.
+
+- Higher-quality audio/image retries now search again on the current encoder above their retained fidelity minimum. Changed sources or targets and missing retry intent hold safely; reports distinguish the minimum from the measured selection in every locale.
+- The browser graphics-loss fixture deliberately retains a retired context and injects failure only into live renderers, preserving its fallback and no-recreation checks.
+
+- Worker image-search reports consistently identify the worker as the measurement location, including original assessments and nested probe details. The receiver determines provenance rather than accepting a raw tool label.
+
+- The decoder-output stress test uses a separate bounded drain deadline, avoiding spurious watchdog failures under CI load while preserving dedicated stall checks.
+
+- Final image verification checks the frozen target format as well as readability, dimensions and quality; a different codec under the requested filename cannot pass.
+
+- Native tool capture decodes UTF-8 explicitly on Windows. Metadata acceptance fixtures prepare an atomic replacement so container ownership cannot prevent qualification.
+
+- Required image metadata inspection uses grouped JSON, rejects incomplete tool output and qualifies quality-first sources before encoding without spending media failure counts. Container builds explicitly include and check compressed-metadata support.
+- Image metadata copying preserves the complete binary ICC profile. Copying its individual read-only fields could report success while dropping the profile; colour-profile and EXIF retention now have independent real-media regression coverage.
+
+- Image metric instances share one memory lane per process. Image metadata reads and writes bound tool output and reap stopped children before returning from cancellation.
+
+- Standalone audio quality checks preserve decoder priming and exact window samples at zero and fractional seeks; video soundtracks retain their demuxer-relative picture origin. Loudness checks use the finished measurement summary and distinguish measured silence from missing true-peak evidence.
+- Owned preparation refusals retain files and diagnostics without spending the source's failure/exclusion budget or a quality retry.
+- Remote workers now honour the queue's **CPU** encoder mode (#425): a worker that proved both a CPU and a hardware encoder is given its CPU encoder (for example `libx265` instead of `hevc_nvenc`), and a worker with no proved CPU encoder is not offered video re-encodes while CPU mode is set. Vendor modes still describe the server's GPU, so under Auto or a vendor mode each worker keeps the best hardware it proved.
+
+- Library probing now refuses indirect playlist/manifest formats (such as DASH or HLS files carrying a media extension). A manifest's referenced segments live outside the hashed original, so they can no longer supply probe facts for a file they are not part of; every supported single-file container continues to probe normally.
+
+- Diagnostic exports retain the typed image perceptual-quality policy (reporting, gate and minimum score) captured with each attempt, so an exported snapshot still shows the complete gate policy after library settings change. Unknown and free-text fields remain excluded.
+
+- Simplified Chinese terminology is consistent for secrets, dry-run, duplicates and remote workers, correcting machine-translation errors (for example "token" no longer reads as a cryptocurrency token). The Recent results savings column and the quality-slider endpoint are also worded as space saved and higher quality rather than file saving and sharpening.
+
+- Adaptive samples and disposable preview references use owned workspaces. Cleanup retains reserved, changed or shared files and unknown folder contents. Reference encoding rejects input-path collisions and waits for cancellation to finish before cleanup; retained calibration references keep their existing lifecycle.
+
+- Automatic decoder and higher-quality retries stop if candidate cleanup is blocked, retaining files, evidence and the retry budget. Failure and cancellation cleanup use the same reservation guard. Stale cleanup callbacks preserve newer outputs, and cleanup conflicts do not auto-exclude media.
+
+- Queue Remove, Retry, Clear finished and Clear pending retain reserved or shared outputs and their diagnostics. Cleanup also protects live worker files, recovery paths and linked sources; deferred jobs can be retried after the conflict is resolved.
+
+- Final VMAF sample verification recognises advancing decoding before a late sample begins, avoiding false five-minute stall failures. Stalled decoding and scoring still time out; cancellation reaps FFmpeg, and missing quality evidence still blocks replacement.
+
+- Compare equal-frame video samples by absolute decoded picture number across all codecs, preventing seek-boundary mismatches such as 50 fps VMAF false rejections. Timestamp-based alignment checks the bounded window and refuses conflicting scene offsets; final quality and timing gates are unchanged.
+
+- Startup cleanup preserves reserved and leased work for retry, recovers only the jobs captured at startup and leaves new comparisons intact. Failed cleanup keeps output references and diagnostics; current jobs, sources and rollback paths protect old scratch directories.
+
+- Preview and personal quality-check cleanup defer while a file operation or unresolved duplicate reservation is active, preserving scratch files, sessions and failed-job diagnostics for retry. Expiration retries deferred sessions automatically.
+
+- Retention cleanup and worker candidate promotion check duplicate reservations before deleting or moving files. Reserved files and failed-job diagnostics remain intact; leased and unknown active jobs also protect retained outputs.
+
+- Job admission, retries, local claims and worker leases respect durable duplicate reservations in the same database write transaction. Previews and calibration are covered too; held candidates explain the reservation, and preparation refuses active outputs and retained replacement paths.
+
+- Replacement, rollback and interrupted replacement recovery share physical-file and path claims, so aliases with different inventory IDs cannot run overlapping operations. Unresolved dedupe reservations defer replacement without changing files.
+
+- Exact-copy review headings, controls and status labels wrap within the page at enlarged text sizes; narrow copy cards stack artwork and details.
+
+- Library configuration, creation, Candidates and Excluded views use the full available page width, matching the rest of the interface while retaining readable form controls. Documentation captures now show configuration on a wide desktop.
+
+- Diagnostic concurrency tests tolerate a scheduled outer writer on busy Windows runners while retaining bounded deadlock checks and exact capture-limit assertions.
+
+- The queue page no longer adds scrollable height to the document. Its table header carries screen-reader-only text that the page's scroll container could not clip, so on a short window the page scrolled roughly 140px past its content into blank background. The document is now exactly one viewport tall and only the queue tray scrolls.
+
 ## 0.2.23 - 2026-10-09
 
 ### Fixed

@@ -7,7 +7,7 @@ using Optimisarr.Core.Domain;
 namespace Optimisarr.Core.Library;
 
 /// <summary>One audio stream's shape, in the file's stream order (index = audio-relative position).</summary>
-public sealed record AudioTrackInfo(string? Language, int Channels, int SampleRate, string? Codec);
+public sealed record AudioTrackInfo(string? Language, int Channels, int SampleRate, string? Codec, string? ChannelLayout = null);
 
 public sealed record MediaProbeResult(
     bool Success,
@@ -57,6 +57,43 @@ public sealed record MediaProbeResult(
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RawJson { get; init; }
 
+    /// <summary>
+    /// The channel layout every audio track shares, or null when the tracks differ or any of
+    /// them does not report one. A filter applies to the whole file, so a source whose tracks
+    /// do not agree on their layout cannot be mapped as one.
+    /// </summary>
+    public string? UniformAudioChannelLayout
+    {
+        get
+        {
+            if (AudioTracks.Count == 0)
+            {
+                return null;
+            }
+
+            string? layout = null;
+            foreach (var track in AudioTracks)
+            {
+                if (string.IsNullOrWhiteSpace(track.ChannelLayout))
+                {
+                    return null;
+                }
+
+                var declared = track.ChannelLayout.Trim();
+                if (layout is null)
+                {
+                    layout = declared;
+                }
+                else if (!layout.Equals(declared, StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+            }
+
+            return layout;
+        }
+    }
+
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
             0, 0, Array.Empty<string?>(), false, false, false, 0, 0, null,
@@ -75,6 +112,26 @@ public interface IMediaProbeService
 
 public sealed class MediaProbeService : IMediaProbeService
 {
+    // Single-file container demuxers for every inventoried extension family. Indirect
+    // formats (dash, hls, concat, playlists) are deliberately absent: hashing or probing
+    // a manifest does not bind the media it references outside the original file.
+    private const string LocalMediaFormats =
+        "matroska,mov,avi,asf,mpegts,flv,mpeg," +
+        "wav,flac,mp3,aac,ogg,aiff,ape,wv,dsf,iff," +
+        "image2,png_pipe,jpeg_pipe,webp_pipe,gif,bmp_pipe,tiff_pipe,jpegxl_pipe,jpegxl_anim";
+
+    /// <summary>The exact ffprobe argument list for one inventory probe.</summary>
+    public static IReadOnlyList<string> ProbeArguments(string path) =>
+    [
+        "-v", "error",
+        "-protocol_whitelist", "file",
+        "-format_whitelist", LocalMediaFormats,
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        path
+    ];
+
     private readonly string _ffprobe;
 
     public MediaProbeService(string? ffprobeCommand = null)
@@ -99,19 +156,13 @@ public sealed class MediaProbeService : IMediaProbeService
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _ffprobe,
-                ArgumentList =
-                {
-                    "-v", "error",
-                    "-print_format", "json",
-                    "-show_format",
-                    "-show_streams",
-                    path
-                },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            foreach (var argument in ProbeArguments(path))
+                process.StartInfo.ArgumentList.Add(argument);
 
             process.Start();
 
@@ -309,7 +360,8 @@ public sealed class MediaProbeService : IMediaProbeService
                             ReadLanguageTag(stream),
                             audioChannels,
                             audioSampleRate,
-                            codecName));
+                            codecName,
+                            ReadString(stream, "channel_layout")));
                         break;
                     case "subtitle":
                         subtitleCount++;

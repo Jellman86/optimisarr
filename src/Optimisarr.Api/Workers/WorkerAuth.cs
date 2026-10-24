@@ -21,7 +21,7 @@ internal static class WorkerAuth
     public static async Task<Worker?> ResolveAsync(
         HttpRequest request,
         OptimisarrDbContext db,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool recordSeen = true)
     {
         var credential = BearerCredential(request);
         if (string.IsNullOrWhiteSpace(credential))
@@ -69,8 +69,11 @@ internal static class WorkerAuth
         // a renewal for a lease that has gone returns 404 and writes nothing — and those are
         // exactly the requests a struggling worker makes most. One narrow update against a row
         // this request has already loaded, on a path that was already writing one every check-in.
-        worker.LastSeenAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        if (recordSeen)
+        {
+            worker.LastSeenAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+        }
         return worker;
     }
 

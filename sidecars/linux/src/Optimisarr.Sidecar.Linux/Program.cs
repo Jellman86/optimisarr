@@ -29,6 +29,9 @@ Task<SidecarCapabilities>? probing = null;
 async Task<SidecarCapabilities> Prove()
 {
     var proved = await prober.ProbeAsync(options.Name, options.Ffmpeg, FreeBytes(), options.Concurrency, token);
+    var native = await PerceptualCapabilityProber.ForFfmpeg(options.Ffmpeg).ProbeAsync(options.Scratch, token);
+    proved = proved with { Perceptual = native,
+        MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? options.Concurrency : 0 };
     if (options.Encoder is { Length: > 0 } encoder)
     {
         if (!proved.VideoEncoders.Contains(encoder)) throw new InvalidOperationException("Configured encoder failed its real capability probe.");
@@ -42,7 +45,7 @@ async Task<SidecarCapabilities> Probe(CancellationToken ct)
     Task<SidecarCapabilities> task;
     lock (probeGate)
         task = probing = probing is null || probing.IsFaulted || probing.IsCanceled ? Prove() : probing;
-    return (await task.WaitAsync(ct)) with { FreeScratchBytes = FreeBytes() };
+    return NativeWorkerResources.Refresh(await task.WaitAsync(ct), options.Scratch);
 }
 if (args.Contains("--discover"))
 {
@@ -85,11 +88,11 @@ session = new SidecarSession(client, store, Probe, metrics.Load, Task.Delay,
     },
     runJob: async (pairing, assignment, ct) =>
     {
-        if (assignment.SourceBytes <= 0 || assignment.SourceBytes > long.MaxValue / 2
-            || FreeBytes() < assignment.SourceBytes * 2)
+        var required = assignment.RequiredScratchBytes ?? (assignment.SourceBytes is > 0 and <= long.MaxValue / 2 ? assignment.SourceBytes * 2 : long.MaxValue);
+        if (assignment.SourceBytes <= 0 || required <= 0 || FreeBytes() < required)
         {
             await client.ReleaseAsync(pairing, assignment.LeaseId, ct);
-            return new JobOutcome(assignment.JobId, false, "Insufficient scratch capacity or invalid source size.");
+            return new JobOutcome(assignment.JobId, false, "Insufficient scratch capacity or invalid source size.", CapacityBlocked: true);
         }
         dashboard.Start(assignment);
         _ = ShowArtworkAsync(pairing, assignment, ct);
@@ -101,7 +104,7 @@ session = new SidecarSession(client, store, Probe, metrics.Load, Task.Delay,
             return outcome;
         }
         finally { dashboard.Finish(assignment.JobId, succeeded); }
-    }, availableScratchBytes: FreeBytes);
+    }, availableScratchBytes: FreeBytes, refreshCapabilities: cap => NativeWorkerResources.Refresh(cap, options.Scratch));
 try
 {
     // A code from the environment is one-time, so it is tried once per process at most.

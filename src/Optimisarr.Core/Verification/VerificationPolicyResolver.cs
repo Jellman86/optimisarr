@@ -31,7 +31,10 @@ public sealed record VerificationPolicyOverrides(
     double? MaximumAudioQualityDistance = null,
     bool? SoundtrackQualityReportingEnabled = null,
     bool? SoundtrackQualityGateEnabled = null,
-    double? MaximumSoundtrackQualityDistance = null);
+    double? MaximumSoundtrackQualityDistance = null,
+    bool? ImagePerceptualReportingEnabled = null,
+    bool? ImagePerceptualGateEnabled = null,
+    double? MinimumImagePerceptualScore = null);
 
 public static class VerificationPolicyResolver
 {
@@ -41,6 +44,9 @@ public static class VerificationPolicyResolver
     {
         return baseline with
         {
+            ImagePerceptualReportingEnabled = overrides.ImagePerceptualReportingEnabled ?? baseline.ImagePerceptualReportingEnabled,
+            ImagePerceptualGateEnabled = overrides.ImagePerceptualGateEnabled ?? baseline.ImagePerceptualGateEnabled,
+            MinimumImagePerceptualScore = overrides.MinimumImagePerceptualScore ?? baseline.MinimumImagePerceptualScore,
             SoundtrackQualityReportingEnabled = overrides.SoundtrackQualityReportingEnabled ?? baseline.SoundtrackQualityReportingEnabled,
             SoundtrackQualityGateEnabled = overrides.SoundtrackQualityGateEnabled ?? baseline.SoundtrackQualityGateEnabled,
             MaximumSoundtrackQualityDistance = overrides.MaximumSoundtrackQualityDistance ?? baseline.MaximumSoundtrackQualityDistance,

@@ -314,13 +314,10 @@ p {
 /* Operational component classes, shared across the app: grouped surfaces, capsule
    controls, one accent for the primary action and "on" states, ink for everything else. */
 @layer components {
-  /* The page's frame. Lists and dashboards use the whole width; forms keep a
-     readable measure (see layout.ts). The status strip opens every page. */
+  /* Every page shares the available width. Individual controls and descriptions
+     keep their own readable measure. The status strip opens every page. */
   .page-frame {
     @apply w-full;
-  }
-  .page-frame-reading {
-    @apply mx-auto max-w-6xl;
   }
   .page-frame > .status-strip {
     @apply mb-6;

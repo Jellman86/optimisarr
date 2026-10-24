@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Optimisarr.Api.Deduplication;
 
 namespace Optimisarr.Api.Replacement;
 
@@ -13,8 +14,10 @@ namespace Optimisarr.Api.Replacement;
 /// lost even though the original is safely restored. This is a process-wide, singleton claim
 /// set: a caller that does not win the claim must not proceed.
 /// </summary>
-public sealed class ReplacementCoordinator
+public sealed class ReplacementCoordinator(FileOperationClaims? fileClaims = null)
 {
+    private readonly FileOperationClaims _fileClaims = fileClaims ?? new();
+    private readonly ConcurrentDictionary<int, IDisposable> _filesInFlight = new();
     public const int Capacity = 2;
     private readonly ConcurrentDictionary<int, byte> _jobsInFlight = new();
     private readonly ConcurrentDictionary<int, byte> _activeJobs = new();
@@ -31,7 +34,7 @@ public sealed class ReplacementCoordinator
     /// Attempts to claim both the job and its source. A losing source claim gives the job claim
     /// back, so a later cycle can retry without ever overlapping another replacement or rollback.
     /// </summary>
-    public async Task<bool> TryBeginAsync(int jobId, int mediaFileId, CancellationToken cancellationToken)
+    public async Task<bool> TryBeginAsync(int jobId, int mediaFileId, CancellationToken cancellationToken, IReadOnlyList<string>? fileKeys = null)
     {
         if (!_jobsInFlight.TryAdd(jobId, 0)) return false;
         if (!_mediaInFlight.TryAdd(mediaFileId, 0))
@@ -39,6 +42,14 @@ public sealed class ReplacementCoordinator
             _jobsInFlight.TryRemove(jobId, out _);
             return false;
         }
+        var files = _fileClaims.TryAcquire((fileKeys ?? []).Append($"media:{mediaFileId}"));
+        if (files is null)
+        {
+            _mediaInFlight.TryRemove(mediaFileId, out _);
+            _jobsInFlight.TryRemove(jobId, out _);
+            return false;
+        }
+        _filesInFlight[jobId] = files;
         Interlocked.Increment(ref _waiting);
         try
         {
@@ -49,6 +60,7 @@ public sealed class ReplacementCoordinator
         }
         catch
         {
+            if (_filesInFlight.TryRemove(jobId, out var filesClaim)) filesClaim.Dispose();
             _mediaInFlight.TryRemove(mediaFileId, out _);
             _jobsInFlight.TryRemove(jobId, out _);
             throw;
@@ -62,6 +74,7 @@ public sealed class ReplacementCoordinator
     /// <summary>Releases the bounded finalisation slot and both source claims.</summary>
     public void End(int jobId, int mediaFileId)
     {
+        if (_filesInFlight.TryRemove(jobId, out var filesClaim)) filesClaim.Dispose();
         _activeJobs.TryRemove(jobId, out _);
         _mediaInFlight.TryRemove(mediaFileId, out _);
         _jobsInFlight.TryRemove(jobId, out _);

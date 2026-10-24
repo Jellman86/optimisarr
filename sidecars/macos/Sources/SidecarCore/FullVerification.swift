@@ -27,6 +27,7 @@ public struct VerificationLoudness: Codable, Sendable, Equatable {
     public let integratedLufs: Double?
     public let truePeakDbtp: Double?
     public let error: String?
+    public var truePeakIsSilent: Bool? = nil
 }
 
 public struct FullVerificationEvidence: Codable, Sendable {
@@ -97,6 +98,14 @@ public struct FullVerification: Sendable {
     let runner: any TranscodeRunner
     public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner }
 
+    static func decodeArguments(file: URL) -> [String] {
+        // Keep the null muxer from rounding valid pictures onto a coarse output clock.
+        // Candidate packet timestamps are checked independently, without repairing them.
+        ["-nostdin", "-xerror", "-v", "error", "-i", file.path,
+         "-map", "0:V?", "-map", "0:a?",
+         "-fps_mode:v", "passthrough", "-enc_time_base:v", "demux", "-f", "null", "-"]
+    }
+
     public func measure(contract: FullVerificationContract, ffmpeg: URL, ffprobe: URL?, source: URL,
                         candidate: URL, scratch: URL, sourceHash: String, candidateHash: String) async throws -> FullVerificationEvidence {
         var evidence = FullVerificationEvidence(contractId: contract.id, sourceSha256: sourceHash, candidateSha256: candidateHash)
@@ -106,8 +115,7 @@ public struct FullVerification: Sendable {
             evidence.candidateProbe = try await probe(ffprobe, file: candidate, scratch: scratch, name: "candidate")
             // The runner retains a bounded diagnostic tail. Stop on decode errors so a later
             // flood of harmless muxer notes cannot evict corruption and produce a false pass.
-            let decoded = try await runner.run(ffmpeg, ["-nostdin", "-xerror", "-v", "error", "-i", candidate.path,
-                "-map", "0:v?", "-map", "0:a?", "-f", "null", "-"]) { _ in }
+            let decoded = try await runner.run(ffmpeg, Self.decodeArguments(file: candidate)) { _ in }
             evidence.decode = Self.parseDecode(decoded.stderr, exitCode: decoded.exitCode)
             evidence.sourceAudio = try await timestamps(ffprobe, file: source, stream: "a:0", scratch: scratch, name: "source-audio")
             if contract.version == 2 {
@@ -258,15 +266,23 @@ public struct FullVerification: Sendable {
     }
 
     static func parseLoudness(_ text: String, exitCode: Int32) -> VerificationLoudness {
-        func last(_ expression: String) -> Double? {
+        let summary = text.range(of: "Summary:", options: [.backwards, .caseInsensitive])
+            .map { String(text[$0.lowerBound...]) } ?? text
+        let peakText = summary.range(of: "True peak:", options: [.backwards, .caseInsensitive])
+            .map { String(summary[$0.lowerBound...]) } ?? summary
+        func last(_ expression: String, in section: String) -> Double? {
             guard let regex = try? NSRegularExpression(pattern: expression),
-                  let match = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
-                  let range = Range(match.range(at: 1), in: text), let number = Double(text[range]), number.isFinite else { return nil }
+                  let match = regex.matches(in: section, range: NSRange(section.startIndex..., in: section)).last,
+                  let range = Range(match.range(at: 1), in: section), let number = Double(section[range]), number.isFinite else { return nil }
             return number
         }
-        let lufs = last(#"I:\s+(-?[\d.]+) LUFS"#), peak = last(#"Peak:\s+(-?[\d.]+) dBFS"#)
+        let lufs = last(#"(?im)^\s*I:\s*(-?\d+(?:\.\d+)?)\s*LUFS\s*$"#, in: summary)
+        let peak = last(#"(?im)^\s*Peak:\s*(-?\d+(?:\.\d+)?)\s*dBFS\s*$"#, in: peakText)
+        let silent = summary.range(of: "True peak:", options: .caseInsensitive) != nil
+            && peakText.range(of: #"(?im)^\s*Peak:\s*-inf\s*dBFS\s*$"#, options: .regularExpression) != nil
         return VerificationLoudness(measured: exitCode == 0 && lufs != nil, integratedLufs: lufs,
-            truePeakDbtp: peak, error: exitCode == 0 && lufs != nil ? nil : "No complete EBU R128 measurement.")
+            truePeakDbtp: peak, error: exitCode == 0 && lufs != nil ? nil : "No complete EBU R128 measurement.",
+            truePeakIsSilent: silent ? true : nil)
     }
 
     static func parseDecode(_ text: String, exitCode: Int32) -> VerificationDecode {

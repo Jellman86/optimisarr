@@ -24,6 +24,10 @@ COPY src/Optimisarr.Data/Optimisarr.Data.csproj src/Optimisarr.Data/
 COPY tests/Optimisarr.Tests/Optimisarr.Tests.csproj tests/Optimisarr.Tests/
 COPY tools/Optimisarr.VmafStudy/Optimisarr.VmafStudy.csproj tools/Optimisarr.VmafStudy/
 COPY tools/Optimisarr.AudioStudy/Optimisarr.AudioStudy.csproj tools/Optimisarr.AudioStudy/
+COPY tools/Optimisarr.ExactCopyStudy/Optimisarr.ExactCopyStudy.csproj tools/Optimisarr.ExactCopyStudy/
+COPY tools/Optimisarr.UploadStudy/Optimisarr.UploadStudy.csproj tools/Optimisarr.UploadStudy/
+COPY sidecars/windows/src/Optimisarr.Sidecar.Core/Optimisarr.Sidecar.Core.csproj sidecars/windows/src/Optimisarr.Sidecar.Core/
+COPY sidecars/native/src/Optimisarr.Sidecar.Native/Optimisarr.Sidecar.Native.csproj sidecars/native/src/Optimisarr.Sidecar.Native/
 RUN dotnet restore
 COPY . .
 COPY --from=web-build /src/src/Optimisarr.Api/wwwroot/ src/Optimisarr.Api/wwwroot/
@@ -36,7 +40,7 @@ RUN dotnet publish src/Optimisarr.Api/Optimisarr.Api.csproj \
 # (linux/amd64 + linux/arm64), includes libvmaf, and is pinned by manifest digest so an upstream
 # tag change cannot silently alter Optimisarr's verification toolchain. 9.0.2 embeds libvmaf 3.2.1,
 # including the thread-pool backpressure fix required for bounded v1 measurement.
-FROM mwader/static-ffmpeg:9.0.2@sha256:7d9bdaaf887f7e6ce6151f67325c344074b5ff1fb75316011c3376503e449a7b AS vmaf-ffmpeg
+FROM mwader/static-ffmpeg:9.0.2-1@sha256:f5d100184884eb3e82b0eb14bb5ebf98da99826ac824989720297fb9ef21c822 AS vmaf-ffmpeg
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS sidecar-build
 WORKDIR /src
@@ -56,6 +60,14 @@ COPY tools/audio-quality-native/ tools/audio-quality-native/
 COPY scripts/build_audio_quality.sh scripts/build_audio_quality.sh
 RUN bash scripts/build_audio_quality.sh /audio-build /audio-install
 
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS image-quality-build
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends cmake make g++ git python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY tools/image-quality-native/ tools/image-quality-native/
+COPY scripts/build_image_quality.sh scripts/build_image_quality.sh
+RUN bash scripts/build_image_quality.sh /image-build /image-install
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS media-runtime
 WORKDIR /app
 
@@ -71,8 +83,10 @@ RUN apt-get update \
         gnupg \
         gosu \
         libimage-exiftool-perl \
+        libio-compress-perl \
         passwd \
         tzdata \
+    && perl -MCompress::Zlib -e 'exit 0' \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
         | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg \
@@ -86,6 +100,8 @@ RUN apt-get update \
 
 COPY --from=audio-quality-build /audio-install/bin/optimisarr-audio-quality /app/optimisarr-audio-quality
 COPY --from=audio-quality-build /audio-install/share/optimisarr-audio-quality/ /app/licenses/audio-quality/
+COPY --from=image-quality-build /image-install/bin/optimisarr-image-quality /app/optimisarr-image-quality
+COPY --from=image-quality-build /image-install/share/optimisarr-image-quality/ /app/licenses/image-quality/
 COPY --from=vmaf-ffmpeg /ffmpeg /usr/local/lib/optimisarr/ffmpeg-vmaf
 RUN /usr/local/lib/optimisarr/ffmpeg-vmaf -hide_banner -filters 2>&1 \
     | grep -Eq '^[[:space:]].*[[:space:]]libvmaf[[:space:]]'
@@ -98,6 +114,7 @@ ENV OPTIMISARR_CONFIG_DIR=/config \
     OPTIMISARR_SIDECAR_WORK=/work \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
+    OPTIMISARR_IMAGE_QUALITY=/app/optimisarr-image-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
     PUID=1000 PGID=1000 UMASK=077 \
     OPTIMISARR_WEB_ENABLED=true ASPNETCORE_URLS=http://0.0.0.0:8788
@@ -118,6 +135,7 @@ ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     OPTIMISARR_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe \
     OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
+    OPTIMISARR_IMAGE_QUALITY=/app/optimisarr-image-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
     PUID=1000 \
     PGID=1000 \

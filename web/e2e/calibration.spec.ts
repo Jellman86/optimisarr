@@ -69,6 +69,8 @@ function revealedSession(mediaKind: CalibrationMediaKind) {
       qualityMode: mediaKind === 'Audio' ? 'kbps' : mediaKind === 'Image' ? 'quality' : 'CRF',
       effectiveQuality: mediaKind === 'Audio' ? 128 : mediaKind === 'Image' ? 70 : 30,
       estimatedSavingPercent: 42.5, outcome: 'PreferenceFound', applied: false,
+      currentQuality: mediaKind === 'Audio' ? 160 : mediaKind === 'Image' ? 80 : 24,
+      currentProfile: mediaKind === 'Video' ? 'ConservativeHevc' : null,
       variants: variantNames.map((name, index) => ({
         name, isOriginal: index === 0,
         profile: index === 0 || mediaKind !== 'Video' ? null : videoProfiles[index - 1],
@@ -134,6 +136,7 @@ async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', de
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/quality-check$/)
   if (enableDiagnostics) {
+    await page.getByText('Troubleshooting options', { exact: true }).click()
     await page.getByRole('checkbox', { name: 'Temporary stream verification' }).check()
   }
   await page.getByRole('button', { name: 'Prepare blind samples' }).click()
@@ -232,6 +235,9 @@ test('temporary stream verification is opt-in', async ({ page }) => {
   await mockApp(page)
   await page.goto('/#/libraries/1/configure/encode')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
+  // The option breaks blindness, so it starts hidden in a collapsed section.
+  await expect(page.getByRole('checkbox', { name: 'Temporary stream verification' })).toBeHidden()
+  await page.getByText('Troubleshooting options', { exact: true }).click()
   const proof = page.getByRole('checkbox', { name: 'Temporary stream verification' })
   await expect(proof).not.toBeChecked()
   const requested = page.waitForRequest((request) =>
@@ -292,6 +298,8 @@ test('video switching replaces one native player resource and preserves its matc
   const exactResource = page.getByRole('link', { name: 'Open exact video resource' })
   await expect(exactResource).toHaveAttribute('href', await video.evaluate((element) => (element as HTMLVideoElement).currentSrc))
   await expect(page.getByRole('button', { name: 'Inspect video full screen' })).toBeVisible()
+  // Native controls own the picture in verification mode, so the close-up controls stay away.
+  await expect(page.getByRole('group', { name: 'Video zoom and pan controls' })).toHaveCount(0)
 })
 
 test('rapid sample clicks keep the full hit target active and switch to the latest choice', async ({ page }) => {
@@ -332,6 +340,142 @@ test('rapid sample clicks keep the full hit target active and switch to the late
   await expect(page.getByRole('button', { name: 'B', exact: true })).toHaveAttribute('aria-pressed', 'true')
 })
 
+// The fixture streams are empty, so stand in for the browser loading the chosen resource. The
+// seek stays pending until the test dispatches `seeked`, like a real stream fetching its frame.
+async function loadPendingVideo(video: ReturnType<Page['locator']>, size = { width: 1920, height: 1080 }) {
+  await video.evaluate((element, { width, height }) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 0
+    let paused = true
+    let seeking = false
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'videoWidth', { configurable: true, get: () => width })
+    Object.defineProperty(player, 'videoHeight', { configurable: true, get: () => height })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeking = true } })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => paused })
+    Object.defineProperty(player, 'seeking', { configurable: true, get: () => seeking })
+    player.pause = () => { paused = true }
+    player.play = async () => { paused = false }
+    player.addEventListener('seeked', () => { seeking = false })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  }, size)
+}
+
+test('video close-up zoom and pan stay matched when switching samples', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video, { width: 3840, height: 2160 })
+  await video.dispatchEvent('seeked')
+
+  await expect(page.getByRole('button', { name: 'Fit the whole picture in view' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  await expect(page.getByText('Zoom 150%')).toBeVisible()
+  await expect(video).toHaveAttribute('style', /scale\(1\.5\)/)
+  const stage = page.getByRole('group', { name: 'Blind comparison streams' })
+  const box = (await stage.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 20)
+  await page.mouse.up()
+  await expect(video).toHaveAttribute('style', /translate\(40px, 20px\) scale\(1\.5\)/)
+
+  await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/A/samples/0/content`)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await expect(page.getByRole('button', { name: 'A', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(video).toHaveAttribute('style', /translate\(40px, 20px\) scale\(1\.5\)/)
+
+  // 1:1 follows the original's picture size, so a 4K reference needs more than the fitted view.
+  await page.getByRole('button', { name: 'Show actual pixels (1:1)' }).click()
+  const scale = await video.evaluate((element) => Number(/scale\(([\d.e-]+)\)/.exec(element.getAttribute('style') ?? '')?.[1]))
+  expect(scale).toBeGreaterThan(2)
+  await page.getByRole('button', { name: 'Fit the whole picture in view' }).click()
+  await expect(video).toHaveAttribute('style', /translate\(0px, 0px\) scale\(1\)/)
+})
+
+test('full screen keeps a sample switcher and shortcut keys that wait for the matching frame', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await video.evaluate((element) => { (element as HTMLVideoElement).currentTime = 2.751 })
+  await video.dispatchEvent('seeked')
+
+  await page.getByRole('button', { name: 'Inspect video full screen' }).click()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true)
+  const switcher = page.getByRole('group', { name: 'Switch sample' })
+  await expect(switcher.getByRole('button')).toHaveText(['O', 'A', 'B', 'C', 'D'])
+  await expect(switcher.getByRole('button', { name: 'Show original' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+
+  await page.keyboard.press('b')
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/B/samples/0/content`)
+  await loadPendingVideo(video)
+  // B has loaded but not yet reached the frame, so the original stays named and B is not shown.
+  await expect(switcher.getByRole('button', { name: 'Show original' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Loading exact video resource…')).toBeVisible()
+  await expect(video).toHaveJSProperty('currentTime', 2)
+  await video.dispatchEvent('seeked')
+  await expect(switcher.getByRole('button', { name: 'Show sample B' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Loading exact video resource…')).toHaveCount(0)
+  await expect(video).toHaveAttribute('style', /scale\(1\.25\)/)
+
+  await switcher.getByRole('button', { name: 'Show original' }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/ORIGINAL/samples/0/content`)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await expect(video).toHaveJSProperty('currentTime', 2.751)
+  await expect(switcher.getByRole('button', { name: 'Show original' })).toHaveAttribute('aria-pressed', 'true')
+  expect(await page.evaluate(() => document.fullscreenElement !== null)).toBe(true)
+})
+
+test('pausing a video settles its picture on the exact frame other samples will seek to', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await page.getByRole('button', { name: 'Play sample' }).click()
+  await expect(page.getByRole('button', { name: 'Pause sample' })).toBeVisible()
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 4.2
+    let seeks = 0
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeks++; player.dataset.seeks = String(seeks) } })
+  })
+  await page.getByRole('button', { name: 'Pause sample' }).click()
+  await expect(video).toHaveAttribute('data-seeks', '1')
+  await expect(video).toHaveJSProperty('currentTime', 4.2)
+  await expect(page.getByRole('button', { name: 'Play sample' })).toBeVisible()
+})
+
+test('a seek the browser clamps is reported instead of shown as the matched frame', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await loadPendingVideo(video)
+  await video.dispatchEvent('seeked')
+  await video.evaluate((element) => { (element as HTMLVideoElement).currentTime = 5.751 })
+  await video.dispatchEvent('seeked')
+
+  await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/A/samples/0/content`)
+  // An unseekable resource finishes "seeking" at the start instead of the requested time.
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => 0, set: () => undefined })
+    Object.defineProperty(player, 'seeking', { configurable: true, get: () => false })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  })
+  await expect(page.getByText('could not play one of the native comparison streams', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'A', exact: true })).toHaveAttribute('aria-pressed', 'false')
+})
+
 test('image quality uses one zoomable viewport and six anonymous variants', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await openLab(page, 'Image')
@@ -350,4 +494,170 @@ test('audio quality uses the same anonymous classification model with audio play
   await expect(page.getByText('Listen under your normal conditions')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Inspect video full screen' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Reveal samples and result' })).toBeDisabled()
+})
+
+test('music comparison uses listening language throughout', async ({ page }) => {
+  await openLab(page, 'Audio')
+  await expect(page.getByRole('navigation', { name: 'Listening excerpts' }).getByRole('button')).toHaveText(['Excerpt 1', 'Excerpt 2', 'Excerpt 3'])
+  // The fixture streams are empty, so stand in for the browser reporting each excerpt as loaded.
+  await page.locator('audio').evaluateAll((players) => players.forEach((player) => {
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12 })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  }))
+  await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'A', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('heading', { name: 'How does this sample sound?' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Audibly worse/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /I cannot reliably hear a difference/ })).toBeVisible()
+  await expect(page.getByText(/Visibly|look\?|see a difference|Scene/)).toHaveCount(0)
+})
+
+for (const [mediaKind, copy] of [['Video', 'disposable clips'], ['Audio', 'disposable excerpts'], ['Image', 'disposable test images']] as const) {
+  test(`setup safety copy names the temporary ${mediaKind.toLowerCase()} media`, async ({ page }) => {
+    await mockApp(page, mediaKind)
+    await page.goto('/#/libraries/1/quality-check')
+    await expect(page.getByText(copy)).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Quality check progress' }).locator('[aria-current="step"]')).toContainText('Choose source')
+  })
+}
+
+test('rating unlocks only after a pending switch has shown the chosen sample', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => true })
+  })
+  await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/A/samples/0/content`)
+  // The original is still on screen, so no rating is offered for any sample yet.
+  await expect(page.getByRole('button', { name: 'Original reference', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'B', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/B/samples/0/content`)
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    let seeking = false
+    let currentTime = 0
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeking = true } })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => true })
+    Object.defineProperty(player, 'seeking', { configurable: true, get: () => seeking })
+    player.addEventListener('seeked', () => { seeking = false })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  })
+  await expect(page.getByRole('button', { name: 'B', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await video.dispatchEvent('seeked')
+  await expect(page.getByRole('button', { name: 'B', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const ratings = page.getByRole('group', { name: 'Rate sample B' })
+  await expect(ratings.getByRole('button', { name: /Acceptable/ })).toBeEnabled()
+  await ratings.getByRole('button', { name: /Acceptable/ }).click()
+  await expect(page.getByText('1 of 4 samples classified')).toBeVisible()
+  // Switching away from a candidate leaves its rating controls visible until the new sample
+  // is ready. They must not accept a rating intended for the pending sample.
+  await page.getByRole('button', { name: 'C', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/C/samples/0/content`)
+  await expect(ratings.getByRole('button', { name: /Acceptable/ })).toBeDisabled()
+  await expect(page.getByText('Rating unlocks when the selected sample has loaded.')).toBeVisible()
+  await expect(page.getByText('1 of 4 samples classified')).toBeVisible()
+})
+
+test('rating can step straight to the next unrated sample', async ({ page }) => {
+  await openLab(page, 'Image')
+  await expect(page.getByRole('button', { name: 'A', exact: true })).toContainText('Not rated')
+  await page.getByRole('button', { name: 'Next unrated sample: A' }).click()
+  await expect(page.getByRole('button', { name: 'A', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  for (const name of names.slice(1)) {
+    await page.getByRole('group', { name: `Rate sample ${name}` }).getByRole('button', { name: /Acceptable/ }).click()
+    await expect(page.getByRole('button', { name, exact: true })).toContainText('Acceptable')
+    if (name !== 'E') await page.getByRole('button', { name: `Next unrated sample: ${names[names.indexOf(name) + 1]}` }).click()
+  }
+  await expect(page.getByText('Every sample is rated.', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reveal samples and result' })).toBeEnabled()
+})
+
+test('photo inspection switches between fit and actual pixels with matched zoom', async ({ page }) => {
+  await openLab(page, 'Image')
+  const viewport = page.getByRole('group', { name: 'Blind comparison image viewport' })
+  const original = viewport.getByRole('img', { name: 'Original reference' })
+  await expect(page.getByRole('button', { name: 'Fit the whole image in view' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  await expect(page.getByText('Zoom 125%')).toBeVisible()
+  await expect(page.getByText('Drag to pan.', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Fit the whole image in view' }).click()
+  await expect(original).toHaveAttribute('style', /scale\(1\)/)
+  // The fixture is a single pixel, so 1:1 is far smaller than the fitted view.
+  await page.getByRole('button', { name: 'Show actual pixels (1:1)' }).click()
+  const scale = await original.evaluate((image) => Number(/scale\(([\d.e-]+)\)/.exec(image.getAttribute('style') ?? '')?.[1]))
+  expect(scale).toBeLessThan(0.01)
+  await page.getByRole('button', { name: 'Zoom out' }).click()
+  await expect(original).toHaveAttribute('style', new RegExp(`scale\\(${scale}\\)`))
+  await page.getByRole('button', { name: 'C', exact: true }).click()
+  await expect(viewport.getByRole('img', { name: 'Blind comparison image C' })).toHaveAttribute('style', new RegExp(`scale\\(${scale}\\)`))
+})
+
+test('results lead with the recommendation and the exact library change before Apply', async ({ page }) => {
+  await openLab(page, 'Video', false, false, true)
+  await expect(page.getByRole('heading', { name: 'Your most efficient acceptable setting' })).toBeVisible()
+  await expect(page.getByText('Chosen from your ratings', { exact: false })).toBeVisible()
+  const change = page.getByRole('heading', { name: 'What Apply changes' }).locator('..')
+  await expect(change.getByRole('definition')).toHaveText(['Conservative HEVC · CRF 24', 'Experimental AV1 · CRF 30'])
+  await expect(change).toContainText('It queues no work and replaces no file.')
+  await expect(change).toContainText('Choosing a preset also adopts')
+  await expect(change).toContainText('Estimated from these short samples')
+  await expect(page.getByText('They did not choose the recommendation.', { exact: false })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Quality check progress' }).locator('[aria-current="step"]')).toContainText('Reveal and apply')
+  await page.getByRole('button', { name: 'Use this setting for the library' }).click()
+  await expect(page.getByRole('button', { name: 'Setting applied — no work was queued' })).toBeDisabled()
+})
+
+test('music results describe the bitrate change without a preset', async ({ page }) => {
+  await openLab(page, 'Audio', false, false, true)
+  const change = page.getByRole('heading', { name: 'What Apply changes' }).locator('..')
+  await expect(change.getByRole('definition')).toHaveText(['160 kbps', '128 kbps'])
+  await expect(change).not.toContainText('Choosing a preset')
+  await expect(page.getByText('this playback equipment', { exact: false })).toBeVisible()
+})
+
+test('check another file discards the session and returns to source selection', async ({ page }) => {
+  await openLab(page, 'Image', false, false, true)
+  const discarded = page.waitForRequest((request) => request.method() === 'DELETE' && new URL(request.url()).pathname === `/api/calibration/${id}`)
+  await page.getByRole('button', { name: 'Check another file' }).click()
+  await discarded
+  await expect(page.getByRole('button', { name: 'Prepare blind samples' })).toBeVisible()
+})
+
+for (const compareVideoPresets of [false, true]) {
+  test(`video check explicitly requests preset comparison: ${compareVideoPresets}`, async ({ page }) => {
+    await mockApp(page, 'Video', false, true)
+    await page.goto('/#/libraries/1/quality-check')
+    const checkbox = page.getByRole('checkbox', { name: /Compare presets/ })
+    await expect(checkbox).not.toBeChecked()
+    if (compareVideoPresets) await checkbox.check()
+    const request = page.waitForRequest(r => r.method() === 'POST' && new URL(r.url()).pathname === '/api/libraries/1/calibration')
+    await page.getByRole('button', { name: 'Prepare blind samples', exact: true }).click()
+    expect((await request).postDataJSON().compareVideoPresets).toBe(compareVideoPresets)
+  })
+}
+
+test('no acceptable candidate keeps the library unchanged and offers another check', async ({ page }) => {
+  await mockApp(page, 'Image')
+  const revealed = revealedSession('Image')
+  const noPreference = {
+    ...revealed,
+    result: {
+      ...revealed.result, recommendedQuality: null, estimatedSavingPercent: null, outcome: 'NoAcceptableSetting',
+      variants: revealed.result.variants.map((variant) => ({ ...variant, classification: 'VisiblyWorse', recommended: false })),
+    },
+  }
+  await page.route('**/api/libraries/1/calibration', (route) => json(route, noPreference))
+  await page.goto('/#/libraries/1/quality-check')
+  await page.getByRole('button', { name: 'Prepare blind samples' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Keep the current quality' })).toBeVisible()
+  await expect(page.getByText('the library stays unchanged', { exact: false })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'What Apply changes' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Use this setting for the library' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Check another file' })).toBeVisible()
 })

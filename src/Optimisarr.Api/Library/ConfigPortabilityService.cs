@@ -238,6 +238,13 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.MaximumSoundtrackQualityDistance = snapshot.MaximumSoundtrackQualityDistance ?? library.MaximumSoundtrackQualityDistance;
             library.MaxTruePeakDbtp = snapshot.MaxTruePeakDbtp
                 ?? legacyVerificationPolicy.MaxTruePeakDbtp;
+            var imageSupported = library.MediaType is MediaType.Photo or MediaType.Other;
+            library.ImagePerceptualReportingEnabled = imageSupported && (snapshot.ImagePerceptualReportingEnabled ?? library.ImagePerceptualReportingEnabled);
+            library.ImagePerceptualGateEnabled = imageSupported && (snapshot.ImagePerceptualGateEnabled ?? library.ImagePerceptualGateEnabled);
+            library.MinimumImagePerceptualScore = snapshot.MinimumImagePerceptualScore ?? library.MinimumImagePerceptualScore;
+            // A backup taken before the setting existed leaves it out, which means the library
+            // keeps its stored choice.
+            library.NormalizeOpusChannelLayout = snapshot.NormalizeOpusChannelLayout ?? library.NormalizeOpusChannelLayout;
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
                 ?? legacyVerificationPolicy.ImageQualityGateEnabled;
             library.MinimumImageSsim = snapshot.MinimumImageSsim
@@ -245,6 +252,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.ImageMetadataGateEnabled = snapshot.ImageMetadataGateEnabled
                 ?? legacyVerificationPolicy.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = ParseEnum<VideoQualityStrategy>(snapshot.VideoQualityStrategy);
+            library.AdaptiveAudioQuality = snapshot.AdaptiveAudioQuality ?? library.AdaptiveAudioQuality;
+            library.AdaptiveImageQuality = snapshot.AdaptiveImageQuality ?? library.AdaptiveImageQuality;
             library.WorkPlacement = snapshot.WorkPlacement is null
                 ? WorkPlacement.Anywhere
                 : ParseEnum<WorkPlacement>(snapshot.WorkPlacement);
@@ -567,7 +576,13 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MaximumAudioQualityDistance,
         library.SoundtrackQualityReportingEnabled,
         library.SoundtrackQualityGateEnabled,
-        library.MaximumSoundtrackQualityDistance);
+        library.MaximumSoundtrackQualityDistance,
+        library.ImagePerceptualReportingEnabled,
+        library.ImagePerceptualGateEnabled,
+        library.MinimumImagePerceptualScore,
+        library.AdaptiveAudioQuality,
+        library.AdaptiveImageQuality,
+        library.NormalizeOpusChannelLayout);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

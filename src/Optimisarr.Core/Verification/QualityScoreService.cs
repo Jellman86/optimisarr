@@ -29,7 +29,14 @@ public sealed class QualityScoreService(
     string? ffmpegCommand = null,
     string? cudaFfmpegCommand = null)
 {
-    private static readonly TimeSpan MeasurementProgressTimeout = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _measurementProgressTimeout = TimeSpan.FromMinutes(5);
+
+    internal QualityScoreService(string ffmpegCommand, TimeSpan progressTimeout) : this(ffmpegCommand)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(progressTimeout, TimeSpan.Zero);
+        _measurementProgressTimeout = progressTimeout;
+    }
+
     private static readonly TimeSpan AlignmentProbeTimeout = TimeSpan.FromMinutes(2);
     // VMAF needs an ffmpeg built with libvmaf, which may differ from the transcoding
     // binary; the composition layer can point this at one (e.g. jellyfin-ffmpeg).
@@ -114,6 +121,14 @@ public sealed class QualityScoreService(
             // rerun the canonical software graph so a hardware limitation cannot fail verification.
             DeleteQuietly(logPath);
             var fallbackContext = context with { Acceleration = VmafAcceleration.None };
+            if (fallbackContext.DistortedShiftToken is null or { Length: 0 })
+            {
+                fallbackContext = fallbackContext with
+                {
+                    DistortedShiftToken = await ChooseAlignmentAsync(_ffmpeg, referencePath, distortedPath,
+                        fallbackContext, threads, cancellationToken)
+                };
+            }
             var fallbackCommand = BuildCommand(
                 distortedPath,
                 referencePath,
@@ -159,7 +174,7 @@ public sealed class QualityScoreService(
             context,
             threads);
 
-    private static async Task<QualityResult> RunMeasurementAsync(
+    private async Task<QualityResult> RunMeasurementAsync(
         string executable,
         QualityScoreCommand command,
         string logPath,
@@ -172,35 +187,59 @@ public sealed class QualityScoreService(
 
         try
         {
-            using var process = CreateProcess(executable, command.Arguments);
+            var tracked = VmafDecodeProgress.Prepare(command, context);
+            var referenceDecode = new VmafDecodedFrameProgress("reference", tracked.ReferenceEndFrame);
+            var candidateDecode = new VmafDecodedFrameProgress("candidate", tracked.CandidateEndFrame);
+            using var process = CreateProcess(executable, tracked.Command.Arguments);
             process.Start();
             using var stalled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            stalled.CancelAfter(MeasurementProgressTimeout);
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(stalled.Token);
+            using var readers = new CancellationTokenSource();
+            stalled.CancelAfter(_measurementProgressTimeout);
+            void renewDeadline()
+            {
+                if (!stalled.IsCancellationRequested) stalled.CancelAfter(_measurementProgressTimeout);
+            }
+            long outputMicroseconds = 0;
+            var stdoutTask = ReadMeasurementOutputAsync(process.StandardOutput, referenceDecode,
+                null, null, readers.Token, renewDeadline, _ => { }, captureErrors: false);
             // When clip-VMAF caps the measurement, progress is a fraction of the clip, not the file.
             var measuredSeconds = (double?)context.MeasureDurationSeconds ?? context.ReferenceDurationSeconds;
-            var stderrTask = ReadStderrWithProgressAsync(
+            var stderrTask = ReadMeasurementOutputAsync(
                 process.StandardError,
+                candidateDecode,
                 measuredSeconds,
                 progress,
-                stalled.Token,
-                () => stalled.CancelAfter(MeasurementProgressTimeout));
+                readers.Token,
+                renewDeadline,
+                elapsed => Interlocked.Exchange(ref outputMicroseconds, (long)(elapsed * 1_000_000)),
+                captureErrors: true);
 
             try
             {
-                await process.WaitForExitAsync(stalled.Token);
-                await stdoutTask;
-                stderr = await stderrTask;
+                // Pipe reads, watchdog handling and reaping must keep running when the
+                // caller's synchronization context is busy. Buffered progress is not a stall.
+                await process.WaitForExitAsync(stalled.Token).ConfigureAwait(false);
+                await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(stalled.Token).ConfigureAwait(false);
+                stderr = await stderrTask.ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                KillQuietly(process);
+                var reaped = await StopMeasurementAsync(process, readers, stdoutTask, stderrTask).ConfigureAwait(false);
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    throw;
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
-                return QualityResult.Failed(
-                    $"FFmpeg made no VMAF progress for {MeasurementProgressTimeout.TotalMinutes:0} minutes; measurement stopped to protect the host.");
+                var window = FormattableString.Invariant($"window at {context.ReferenceStartSeconds ?? 0:0.###}s");
+                var position = FormattableString.Invariant(
+                    $"decoded reference/candidate frames {referenceDecode.LastFrame}/{candidateDecode.LastFrame}, VMAF output {Interlocked.Read(ref outputMicroseconds) / 1_000_000.0:0.###}s");
+                return QualityResult.Failed(FormattableString.Invariant(
+                    $"FFmpeg made no decoding or VMAF progress for {_measurementProgressTimeout.TotalSeconds:0.###} seconds ({window}; {position}); measurement stopped to protect the host.")
+                    + (reaped ? "" : " Process cleanup could not be confirmed."));
+            }
+            catch
+            {
+                await StopMeasurementAsync(process, readers, stdoutTask, stderrTask).ConfigureAwait(false);
+                throw;
             }
 
             exitCode = process.ExitCode;
@@ -239,9 +278,8 @@ public sealed class QualityScoreService(
     }
 
     /// <summary>
-    /// Runs the measurement itself, cut short, at each offset and returns the one that matched
-    /// best, or null when none could be scored — in which case the builder falls back to what the
-    /// containers claim, which is what it always did.
+    /// Runs the bounded measurement window at each offset and returns a correction only when
+    /// the evidence is consistent across its scenes. Missing baseline evidence returns null.
     /// </summary>
     private static async Task<string?> ChooseAlignmentAsync(
         string executable,
@@ -251,12 +289,19 @@ public sealed class QualityScoreService(
         int threads,
         CancellationToken cancellationToken)
     {
+        if (QualityScoreCommandBuilder.UsesAbsoluteFramePairing(context))
+        {
+            // Absolute decoded indices already determine correspondence. A visual-score search
+            // would hide a real content shift, and decoding three probes would add no evidence.
+            return "0";
+        }
         if (TimelineAlignmentProbe.FrameSeconds(context.ReferenceFrameRate) is not { } frameSeconds)
         {
             return null;
         }
 
-        var scored = new List<(int Frames, double Mean)>(TimelineAlignmentProbe.FramesToTry.Count);
+        var scored = new List<(int Frames, IReadOnlyList<AlignmentScore> Scores)>();
+        double duration = TimelineAlignmentProbe.ProbeSeconds;
         foreach (var frames in TimelineAlignmentProbe.FramesToTry)
         {
             var log = Path.Combine(Path.GetTempPath(), $"optimisarr-align-{Guid.NewGuid():N}.json");
@@ -272,7 +317,8 @@ public sealed class QualityScoreService(
                 probeTimeout.CancelAfter(AlignmentProbeTimeout);
                 using var process = CreateProcess(
                     executable,
-                    TimelineAlignmentProbe.Truncate(measurement.Arguments, TimelineAlignmentProbe.ProbeSeconds));
+                    TimelineAlignmentProbe.Prepare(measurement.Arguments));
+                duration = TimelineAlignmentProbe.Duration(measurement.Arguments);
                 process.Start();
                 var stderr = process.StandardError.ReadToEndAsync(probeTimeout.Token);
                 try
@@ -295,9 +341,9 @@ public sealed class QualityScoreService(
                     continue;
                 }
 
-                if (TimelineAlignmentProbe.MeanScore(await File.ReadAllTextAsync(log, cancellationToken)) is { } mean)
+                if (TimelineAlignmentProbe.ReadScores(await File.ReadAllTextAsync(log, cancellationToken)) is { } scores)
                 {
-                    scored.Add((frames, mean));
+                    scored.Add((frames, scores));
                 }
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
@@ -311,7 +357,7 @@ public sealed class QualityScoreService(
             }
         }
 
-        return TimelineAlignmentProbe.Choose(scored) is { } chosen
+        return TimelineAlignmentProbe.ChooseWindow(scored, context.ReferenceFrameRate!.Value, duration) is { } chosen
             ? TimelineAlignmentProbe.Format(chosen * frameSeconds)
             : null;
     }
@@ -375,26 +421,39 @@ public sealed class QualityScoreService(
     // libvmaf prints per-frame "time=" stats to stderr (enabled with -stats). Translate that into a
     // 0..1 fraction of the reference runtime so the queue can show real verification progress, while
     // still collecting the non-progress lines so a failure keeps its readable ffmpeg reason.
-    private static async Task<string> ReadStderrWithProgressAsync(
+    private static async Task<string> ReadMeasurementOutputAsync(
         StreamReader reader,
+        VmafDecodedFrameProgress decodeProgress,
         double? durationSeconds,
         IProgress<double>? progress,
         CancellationToken cancellationToken,
-        Action onProgress)
+        Action onProgress,
+        Action<double> onOutputProgress,
+        bool captureErrors)
     {
         var builder = new StringBuilder();
         var lastReported = 0.0;
-        var lastElapsed = -1.0;
+        var lastElapsed = 0.0;
 
         string? line;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
+        while ((line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)) is not null)
         {
+            var decoding = decodeProgress.Observe(line);
+            if (decoding != DecodeProgressReading.Unrelated)
+            {
+                if (decoding == DecodeProgressReading.Advanced) onProgress();
+                continue;
+            }
+            // stdout carries only reference counters. Only FFmpeg's stderr stats can
+            // advance scoring progress; unrelated stdout is drained without retaining it.
+            if (!captureErrors) continue;
             var sample = FfmpegProgressParser.Parse(line);
             if (sample.ElapsedSeconds is { } elapsed)
             {
                 if (elapsed > lastElapsed)
                 {
                     lastElapsed = elapsed;
+                    onOutputProgress(elapsed);
                     onProgress();
                 }
                 if (progress is not null && durationSeconds is > 0)
@@ -411,10 +470,37 @@ public sealed class QualityScoreService(
                 continue;
             }
 
-            builder.AppendLine(line);
+            // Keep diagnostics bounded even when a broken decoder floods stderr.
+            if (captureErrors && builder.Length < 65_536)
+                builder.Append(line.AsSpan(0, Math.Min(line.Length, 65_536 - builder.Length))).AppendLine();
         }
 
         return builder.ToString();
+    }
+
+    private static async Task<bool> StopMeasurementAsync(Process process, CancellationTokenSource readers, params Task[] drains)
+    {
+        KillQuietly(process);
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var reaped = false;
+        try
+        {
+            await process.WaitForExitAsync(cleanup.Token).ConfigureAwait(false);
+            reaped = true;
+            await Task.WhenAll(drains).WaitAsync(cleanup.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        catch (IOException) { }
+        finally
+        {
+            // Readers outlive the watchdog so killed children can close both pipes normally.
+            // Cancel a remaining read only after the bounded reap/drain attempt.
+            await readers.CancelAsync().ConfigureAwait(false);
+            try { await Task.WhenAll(drains).ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+            catch (IOException) { }
+        }
+        return reaped;
     }
 
     private static void KillQuietly(Process process)

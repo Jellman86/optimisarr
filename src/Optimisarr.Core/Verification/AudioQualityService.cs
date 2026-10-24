@@ -73,8 +73,8 @@ public sealed class AudioQualityService
             var hashes = snapshot ?? await ReadHashesAsync(referencePath, candidatePath, token);
             referenceHash = hashes.Reference; candidateHash = hashes.Candidate;
             metricHash = hashes.Metric; ffmpegHash = hashes.Ffmpeg; ffprobeHash = hashes.Ffprobe;
-            var a = await _run(_ffprobe, ProbeArguments(referencePath), token, TimeSpan.FromSeconds(30));
-            var b = await _run(_ffprobe, ProbeArguments(candidatePath), token, TimeSpan.FromSeconds(30));
+            var a = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(referencePath, referenceAudioIndex is not null), token, TimeSpan.FromSeconds(30));
+            var b = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(candidatePath, candidateAudioIndex is not null), token, TimeSpan.FromSeconds(30));
             reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(a.Output, ai) : AudioQualityInput.Parse(a.Output) : null;
             candidate = b.ExitCode == 0 ? candidateAudioIndex is { } bi ? AudioQualityInput.ParseTrack(b.Output, bi) : AudioQualityInput.Parse(b.Output) : null;
             if (reference is null || candidate is null)
@@ -163,9 +163,6 @@ public sealed class AudioQualityService
     private async Task<FileHashes> ReadHashesAsync(string source, string candidate, CancellationToken token) =>
         new(await _hash(source, token), await _hash(candidate, token), await _hash(_metric, token),
             await _hash(_ffmpeg, token), await _hash(_ffprobe, token));
-
-    private static IReadOnlyList<string> ProbeArguments(string path) =>
-        ["-v", "error", "-show_streams", "-show_format", "-of", "json", path];
 
     private static async Task<string> HashAsync(string path, CancellationToken token)
     {

@@ -1,0 +1,223 @@
+{
+  "source": "feat/quality-check-video-close-compare on dev f9957842 (working tree)",
+  "synthetic": true,
+  "description": "Synthetic 1280x720 VP9 clips rendered for UI review: the original is crisp and A/C/B/D are deliberately softened, banded or blocky. API responses are fixtures. Screens show interface behaviour, not measured quality, HDR or colour fidelity.",
+  "captures": [
+    {
+      "file": "video-zoom-original.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1100
+      },
+      "fullscreen": false
+    },
+    {
+      "file": "video-zoom-a.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1100
+      },
+      "fullscreen": false
+    },
+    {
+      "file": "video-zoom-c.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1100
+      },
+      "fullscreen": false
+    },
+    {
+      "file": "video-fullscreen-zoom.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1100
+      },
+      "fullscreen": true
+    },
+    {
+      "file": "video-fullscreen-paused.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1100
+      },
+      "fullscreen": true
+    },
+    {
+      "file": "video-compare.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 1100
+      },
+      "fullscreen": false
+    },
+    {
+      "file": "video-compare-mobile.jpg",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "fullscreen": false
+    }
+  ],
+  "checks": [
+    {
+      "name": "reference shows scene frame 120 at 5 s",
+      "ok": true,
+      "detail": {
+        "code": 120,
+        "time": 5.75,
+        "src": "ORIGINAL",
+        "seeking": false,
+        "readyState": 4,
+        "paused": true
+      }
+    },
+    {
+      "name": "key A shows the same scene frame",
+      "ok": true,
+      "detail": {
+        "code": 120,
+        "time": 5,
+        "src": "A",
+        "seeking": false,
+        "readyState": 4,
+        "paused": true
+      }
+    },
+    {
+      "name": "key A keeps zoom and pan",
+      "ok": true,
+      "detail": "transform: translate(73.8px, -182.655px) scale(2);"
+    },
+    {
+      "name": "key C shows the same scene frame",
+      "ok": true,
+      "detail": {
+        "code": 120,
+        "time": 5,
+        "src": "C",
+        "seeking": false,
+        "readyState": 4,
+        "paused": true
+      }
+    },
+    {
+      "name": "key C keeps zoom and pan",
+      "ok": true,
+      "detail": "transform: translate(73.8px, -182.655px) scale(2);"
+    },
+    {
+      "name": "full screen O returns to the reference frame",
+      "ok": true,
+      "detail": {
+        "code": 120,
+        "time": 5.75,
+        "src": "ORIGINAL",
+        "seeking": false,
+        "readyState": 4,
+        "paused": true
+      }
+    },
+    {
+      "name": "rapid keys settle on B at the matched frame",
+      "ok": true,
+      "detail": {
+        "code": 120,
+        "time": 5,
+        "src": "B",
+        "seeking": false,
+        "readyState": 4,
+        "paused": true
+      }
+    },
+    {
+      "name": "no playback error after rapid keys",
+      "ok": true
+    },
+    {
+      "name": "switching while playing resumes playback",
+      "ok": true
+    },
+    {
+      "name": "paused mid-play: A shows the reference's scene frame 160",
+      "ok": true,
+      "detail": {
+        "reference": {
+          "code": 160,
+          "time": 7.4335,
+          "src": "ORIGINAL",
+          "seeking": false,
+          "readyState": 4,
+          "paused": true
+        },
+        "shown": {
+          "code": 160,
+          "time": 6.6835,
+          "src": "A",
+          "seeking": false,
+          "readyState": 4,
+          "paused": true
+        }
+      }
+    },
+    {
+      "name": "paused mid-play: D shows the reference's scene frame 160",
+      "ok": true,
+      "detail": {
+        "reference": {
+          "code": 160,
+          "time": 7.4335,
+          "src": "ORIGINAL",
+          "seeking": false,
+          "readyState": 4,
+          "paused": true
+        },
+        "shown": {
+          "code": 160,
+          "time": 6.6835,
+          "src": "D",
+          "seeking": false,
+          "readyState": 4,
+          "paused": true
+        }
+      }
+    },
+    {
+      "name": "paused mid-play: O shows the reference's scene frame 160",
+      "ok": true,
+      "detail": {
+        "reference": {
+          "code": 160,
+          "time": 7.4335,
+          "src": "ORIGINAL",
+          "seeking": false,
+          "readyState": 4,
+          "paused": true
+        },
+        "shown": {
+          "code": 160,
+          "time": 7.4335,
+          "src": "ORIGINAL",
+          "seeking": false,
+          "readyState": 4,
+          "paused": true
+        }
+      }
+    },
+    {
+      "name": "no playback error after play and pause",
+      "ok": true
+    },
+    {
+      "name": "narrow layout has no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "an unseekable stream reports a playback error instead of a matched frame",
+      "ok": true,
+      "detail": 0
+    }
+  ],
+  "errors": []
+}

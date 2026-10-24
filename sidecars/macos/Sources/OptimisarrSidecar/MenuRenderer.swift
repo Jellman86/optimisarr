@@ -63,10 +63,17 @@ enum MenuRenderer {
             gpu: GpuUsage(device: 0.02, memoryInUse: 400_000_000), cpu: 0.18, freeScratchBytes: 459_561_500_672)
         let poses: [(String, SidecarSession)] = [
             ("audio", audio),
+            ("image-quality", .posed(
+                status: .working(jobId: 5850, progress: .stageOnly(.measuring)),
+                activeJobs: [5850: .stageOnly(.measuring)], jobTitles: [5850: "Garden Study · Generated image"],
+                jobEncoders: [5850: "mjpeg"], imageJobs: [5850],
+                lastOutcome: .delivered(jobId: 5849, bytes: nil))),
             ("unpaired", .posed(status: .unpaired, serverAddress: "")),
             ("connected-idle", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()),
                 lastOutcome: .delivered(jobId: 5845, bytes: 394_256_442))),
+            ("accounting-paused", .posed(status: .connected(workerId: 1, lastCheckIn: Date()),
+                workReadinessNotice: "Previous working files could not be checked safely. New jobs are paused.")),
             ("update-available", .posed(
                 status: .connected(workerId: 1, lastCheckIn: Date()),
                 availableUpdate: SidecarUpdate(

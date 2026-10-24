@@ -8,6 +8,7 @@ const library = {
   targetContainer: null, hdrHandling: null, optimiseDolbyVision: false, excludePaths: null,
   qualityCrf: null, encoderPreset: null, audioTargetCodec: null, audioBitrateKbps: null,
   videoAudioCodec: null, videoAudioBitrateKbps: null, downmixToStereo: false,
+  normalizeOpusChannelLayout: true,
   keepAudioLanguages: null, keepSubtitleLanguages: null, reencodeLossyAudio: false,
   targetImageFormat: null, imageQuality: null, reencodeLossyImages: false,
   imageDownscaleMode: 'None', imageDownscaleValue: 0, moveOnComplete: false,
@@ -66,6 +67,27 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
 function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
+
+test('library cards and overview open exact-copy review with that library selected', async ({ page }) => {
+  await mockLibraries(page)
+  const scanPosts: string[] = []
+  await page.route('**/api/libraries/1/duplicates', route => {
+    if (route.request().method() === 'POST') scanPosts.push(route.request().method())
+    return json(route, { libraryId: 1, status: 'NotStarted', result: null, error: null,
+      progress: { checked: 0, skipped: 0, total: 0, bytesRead: 0 } })
+  })
+  await page.goto('/#/libraries')
+  await page.locator('[data-library-card="1"]').getByRole('link', { name: 'Find duplicates', exact: true }).click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/duplicates$/)
+  await expect(page.getByLabel('Library', { exact: true })).toHaveValue('1')
+  await page.getByRole('link', { name: 'Films', exact: true }).click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/configure$/)
+  await page.getByRole('button', { name: 'Find duplicates', exact: true }).click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/duplicates$/)
+  await page.reload()
+  await expect(page.getByLabel('Library', { exact: true })).toHaveValue('1')
+  expect(scanPosts).toEqual([])
+})
 
 for (const mediaType of ['Film', 'TV', 'Music', 'Photo', 'Other']) {
   test(`${mediaType} auto-accept needs risk acknowledgement and confirmation before saving`, async ({ page }) => {
@@ -368,6 +390,24 @@ test('ordinary controls and advanced pages have distinct homes for every media k
   await expect(page.locator('#lib-image-quality')).toHaveCount(0)
 })
 
+test('the Opus surround-layout conversion is on by default and can be turned off', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/encode/audio')
+  const toggle = page.locator('#lib-normalize-opus-layout')
+  await expect(toggle).toBeVisible()
+  await expect(toggle).toBeChecked()
+
+  await toggle.uncheck()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ normalizeOpusChannelLayout: false })
+
+  await toggle.check()
+  const resaved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await resaved).postDataJSON()).toMatchObject({ normalizeOpusChannelLayout: true })
+})
+
 test('audio encoding presets change the codec budget while leaving the quality gate unchanged', async ({ page }) => {
   await mockLibraries(page, { ...library, mediaType: 'Music', audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.005 })
   await page.goto('/#/libraries/1/configure/encode/audio')
@@ -613,7 +653,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const width = (await workflow.boundingBox())!.width
       if (!referenceWidth) referenceWidth = width
       expect(width, room).toBe(referenceWidth)
-      expect(width).toBe(1152)
+      const availableWidth = await page.locator('main').evaluate(main => {
+        const style = getComputedStyle(main)
+        return main.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+      })
+      expect(width).toBe(availableWidth)
       const card = workflow.locator('.card-interactive, [data-config-section]').first()
       await page.mouse.move(0, 0)
       const surface = await card.evaluate(element => ({
@@ -650,6 +694,26 @@ test('unknown bookmarked stages return to the overview instead of rendering an e
   await page.goto('/#/libraries/1/configure/constructor')
   await expect(page.getByRole('button', { name: /Choose files/ })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Films', exact: true, level: 1 })).toBeVisible()
+})
+
+test('image perceptual reporting and gates are separate opt-in controls and preserve SSIM', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Photo', minimumImageSsim: 0.97 })
+  await page.goto('/#/libraries/1/configure/verify')
+  const report = page.getByRole('checkbox', { name: 'Image quality report', exact: true })
+  const gate = page.getByRole('checkbox', { name: 'Require perceptual image quality', exact: true })
+  await expect(report).not.toBeChecked()
+  await expect(gate).not.toBeChecked()
+  await report.check()
+  await gate.check()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.getByLabel('Minimum SSIMULACRA2 score', { exact: true }).fill('80')
+  await page.getByRole('button', { name: 'Advanced verification', exact: true }).click()
+  await expect(report).toBeChecked()
+  await expect(gate).toBeChecked()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ imagePerceptualReportingEnabled: true,
+    imagePerceptualGateEnabled: true, minimumImagePerceptualScore: 80, minimumImageSsim: 0.97 })
 })
 
 test('audio quality reporting is opt-in and persists across verification breadcrumbs', async ({ page }) => {
@@ -890,4 +954,44 @@ test('disabling the soundtrack gate discards an invalid unsaved custom limit', a
   const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ soundtrackQualityGateEnabled: false, maximumSoundtrackQualityDistance: null })
+})
+
+test('image quality target is chosen in Encode, requires a target and enables its gate', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Photo' })
+  await page.goto('/#/libraries/1/configure/encode/quality')
+  await expect(page.getByRole('radio', { name: /Fixed setting/ })).toBeChecked()
+  await page.getByRole('radio', { name: /Smallest file that meets a quality target/ }).check()
+  await expect(page.getByText('With WebP, this permits lossy output from lossless originals.', { exact: false })).toBeVisible()
+  await expect(page.getByText('Choose a target to finish setting this up.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Custom', exact: true }).click()
+  await page.getByRole('spinbutton', { name: 'Custom', exact: true }).fill('85')
+  await stage(page, 'Verify').click()
+  const gate = page.getByRole('checkbox', { name: 'Require perceptual image quality', exact: true })
+  await expect(gate).toBeChecked()
+  await expect(gate).toBeDisabled()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ adaptiveImageQuality: true, adaptiveAudioQuality: false,
+    imagePerceptualReportingEnabled: true, imagePerceptualGateEnabled: true, minimumImagePerceptualScore: 85 })
+})
+
+test('audio quality target keeps its choice across navigation and a fixed setting keeps the gate', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Music' })
+  await page.goto('/#/libraries/1/configure/encode/quality')
+  await page.getByRole('radio', { name: /Smallest file that meets a quality target/ }).check()
+  await page.getByRole('button', { name: '0.01', exact: true }).click()
+  await stage(page, 'Verify').click()
+  await expect(page.getByRole('checkbox', { name: 'Require audio quality', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'How quality is chosen', exact: true }).click()
+  await expect(page.getByRole('button', { name: '0.01', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  let saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ adaptiveAudioQuality: true, adaptiveImageQuality: false,
+    audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.01 })
+  await page.getByRole('radio', { name: /Fixed setting/ }).check()
+  saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ adaptiveAudioQuality: false,
+    audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.01 })
 })

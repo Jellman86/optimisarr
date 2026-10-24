@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Queue;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Workers;
+using Optimisarr.Core.Library;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Endpoints;
@@ -28,6 +30,7 @@ internal static class WorkerSourceEndpoints
             HttpResponse response,
             SettingsStore settings,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
@@ -44,6 +47,7 @@ internal static class WorkerSourceEndpoints
             var lease = await db.JobLeases
                 .Include(l => l.Job)
                 .ThenInclude(job => job!.MediaFile)
+                .ThenInclude(file => file!.Library)
                 .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
 
             if (lease is null)
@@ -68,43 +72,52 @@ internal static class WorkerSourceEndpoints
 
             var job = lease.Job;
             var path = job?.MediaFile?.Path;
-            if (job is null || string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            if (job is null || string.IsNullOrWhiteSpace(path)
+                || !LibraryPathSafety.IsSafeFile(path, job.MediaFile?.Library?.Path))
             {
                 return ApiErrors.NotFound("worker.source.missing",
                     "The source for that lease is no longer on disk.");
             }
 
-            // Hashed once and remembered. Repeating it per request would re-read gigabytes every
-            // time a transfer resumed, and the value is what later proves a returned candidate was
-            // encoded from these exact bytes rather than some other version of the file.
-            if (string.IsNullOrWhiteSpace(job.SourceSha256))
+            var readRoot = job.MediaFile?.Library?.Path;
+            if (job.Type != JobType.Normal)
             {
-                job.SourceSha256 = await ComputeSha256Async(path, cancellationToken);
-                await db.SaveChangesAsync(cancellationToken);
+                var sample = WorkerSampleSource.FromLease(job, lease, WorkPaths.Resolve(environment));
+                if (sample is null)
+                    return ApiErrors.Conflict("worker.source.sampleMissing", "This interactive assignment has no frozen source sample.");
+                path = sample.Path;
+                readRoot = WorkerJobPaths.Root(WorkPaths.Resolve(environment), job);
             }
+            var stream = FileServing.OpenLibraryRead(path, readRoot);
+            if (stream is null)
+                return ApiErrors.NotFound("worker.source.missing", "The source path is no longer available safely.");
+            try
+            {
+                // Hash and transfer the same open file. Remembering the hash avoids re-reading
+                // gigabytes on each resumed request; it is not evidence that the path is still safe.
+                if (string.IsNullOrWhiteSpace(job.SourceSha256))
+                {
+                    var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+                    job.SourceSha256 = Convert.ToHexString(hash).ToLowerInvariant();
+                    stream.Position = 0;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
 
-            // Let the worker verify what it received without a second pass over the network, and
-            // let it compare against what it will later be held to.
-            response.Headers["X-Optimisarr-Source-Sha256"] = job.SourceSha256;
-            response.Headers["X-Optimisarr-Job-Id"] = job.Id.ToString();
-
-            var stream = new FileStream(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                // Shared so a scan or probe reading the same original is not blocked by a transfer
-                // that may take minutes.
-                FileShare.Read,
-                bufferSize: 128 * 1024,
-                useAsync: true);
-
-            // enableRangeProcessing is what makes a large transfer resumable: a worker whose
-            // connection drops resumes with a Range header instead of pulling the whole file again.
-            return Results.File(
-                stream,
-                contentType: "application/octet-stream",
-                fileDownloadName: Path.GetFileName(path),
-                enableRangeProcessing: true);
+                if (!LibraryPathSafety.IsSafeFile(path, readRoot))
+                {
+                    await stream.DisposeAsync();
+                    return ApiErrors.NotFound("worker.source.missing", "The source path is no longer available safely.");
+                }
+                response.Headers["X-Optimisarr-Source-Sha256"] = job.SourceSha256;
+                response.Headers["X-Optimisarr-Job-Id"] = job.Id.ToString();
+                return Results.File(stream, contentType: "application/octet-stream",
+                    fileDownloadName: Path.GetFileName(path), enableRangeProcessing: true);
+            }
+            catch
+            {
+                await stream.DisposeAsync();
+                throw;
+            }
         })
         .WithName("FetchLeaseSource")
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
@@ -117,6 +130,7 @@ internal static class WorkerSourceEndpoints
             HttpRequest http,
             SettingsStore settings,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             ArtworkService artwork,
             CancellationToken cancellationToken) =>
         {
@@ -157,13 +171,5 @@ internal static class WorkerSourceEndpoints
         .Produces<ApiError>(StatusCodes.Status401Unauthorized)
         .Produces<ApiError>(StatusCodes.Status403Forbidden)
         .Produces<ApiError>(StatusCodes.Status409Conflict);
-    }
-
-    private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
-    {
-        await using var stream = new FileStream(
-            path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 1024 * 1024, useAsync: true);
-        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
-        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

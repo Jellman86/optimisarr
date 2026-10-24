@@ -16,13 +16,26 @@ namespace {
 constexpr char revision[] = "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3";
 constexpr size_t rate = 48000;
 
+std::filesystem::path NativePath(const std::filesystem::path& path) {
+#ifdef _WIN32
+  // Owned assessment paths must work without changing machine-wide long-path policy.
+  auto value = std::filesystem::absolute(path).lexically_normal().make_preferred().native();
+  if (value.rfind(L"\\\\?\\", 0) == 0 || value.rfind(L"\\\\.\\", 0) == 0) return value;
+  if (value.rfind(L"\\\\", 0) == 0) return L"\\\\?\\UNC\\" + value.substr(2);
+  return L"\\\\?\\" + value;
+#else
+  return path;
+#endif
+}
+
 std::vector<std::vector<float>> Read(const std::filesystem::path& path, size_t channels) {
-  const auto bytes = std::filesystem::file_size(path);
+  const auto native_path = NativePath(path);
+  const auto bytes = std::filesystem::file_size(native_path);
   const auto stride = 4 * channels;
   if (bytes % stride != 0 || bytes < rate * stride || bytes > 30 * rate * stride)
     throw std::runtime_error("PCM must contain 1 to 30 seconds of complete frames.");
   const size_t frames = static_cast<size_t>(bytes / stride);
-  std::ifstream input(path, std::ios::binary);
+  std::ifstream input(native_path, std::ios::binary);
   if (!input) throw std::runtime_error("Cannot read PCM.");
   std::vector<std::vector<float>> result(channels, std::vector<float>(frames));
   for (size_t frame = 0; frame < frames; ++frame) {
@@ -79,10 +92,11 @@ int Assess(const std::vector<std::filesystem::path>& args) {
     const auto output = json.str();
     if (args.size() == 5) {
       FILE* report = nullptr;
+      const auto report_path = NativePath(args[4]);
 #ifdef _WIN32
-      _wfopen_s(&report, args[4].c_str(), L"wx");
+      _wfopen_s(&report, report_path.c_str(), L"wx");
 #else
-      report = std::fopen(args[4].c_str(), "wx");
+      report = std::fopen(report_path.c_str(), "wx");
 #endif
       if (!report) throw std::runtime_error("Cannot create report; the destination must not exist.");
       const auto written = std::fwrite(output.data(), 1, output.size(), report);

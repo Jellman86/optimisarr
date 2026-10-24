@@ -9,6 +9,8 @@ import shutil
 import time
 
 from .core import Blocked, inside, quality_failures, require, save, sha256
+from .quality_first import validate_search, validate_image_command
+from .image_metadata import add_synthetic_image_metadata, read_icc_profile
 from .media import compare_report, validate_shadow_report, validate_soundtrack_report
 
 TERMINAL = {"ReadyToReplace", "Completed", "Failed", "Cancelled"}
@@ -86,7 +88,7 @@ class Harness:
         self.configure(remoteWorkersEnabled=bool(self.workers))
 
     def create_job(self, name, fixture, *, encoder="libx265", worker=None, strategy="Fixed", gates=None,
-                   overrides=None, expected_ineligible=None):
+                   overrides=None, expected_ineligible=None, enqueue=True):
         codec = CODECS.get(encoder, encoder.split("_")[0])
         case_root = inside(self.root / "data", self.root / "data" / name)
         case_root.mkdir(parents=True, exist_ok=False)
@@ -121,6 +123,10 @@ class Harness:
             return {"libraryId": library_id, "mediaId": files[0]["id"],
                     "eligibility": candidates[0], "sourceUnchanged": True}
         require(len(candidates) == 1 and candidates[0]["eligible"], f"Fixture ineligible: {candidates}")
+        if not enqueue:
+            return {"libraryId": library_id, "mediaId": files[0]["id"], "source": source,
+                    "sourceSha256": sha256(source), "settings": body,
+                    "workerId": worker["id"] if worker else None}
         self.api.post(f"/api/libraries/{library_id}/enqueue")
         jobs = self.api.request(f"/api/jobs?libraryId={library_id}")
         require(len(jobs) == 1, f"Expected one enqueued job, got {jobs}")
@@ -398,9 +404,10 @@ class Harness:
         self.replace_restore(case, candidate)
         return {"originalUnchanged": True, "restoredOriginal": True, "tracks": len(tracks), "copied": copied}
 
-    def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False):
+    def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False, adaptive=False, reject=False):
         self.select_worker(worker)
         name = f"worker-{worker['id']}-audio-{codec}" if worker else f"audio-{codec}"
+        if adaptive: name += "-quality-first-reject" if reject else "-quality-first"
         if artwork: name += "-artwork"
         if downmix: name += "-downmix"
         fixture = self.root / "fixtures" / f"{name}.flac"
@@ -416,9 +423,22 @@ class Harness:
         case = self.create_job(name, fixture, worker=worker, overrides={"mediaType": "Music", "audioTargetCodec": codec,
             "downmixToStereo": downmix,
             "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "audioLoudnessGateEnabled": True,
-            "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0})
+            "maxLoudnessDriftLufs": 1, "audioClippingGateEnabled": True, "maxTruePeakDbtp": 0,
+            "adaptiveAudioQuality": adaptive, "audioQualityGateEnabled": adaptive,
+            "audioQualityReportingEnabled": adaptive, "maximumAudioQualityDistance": 0 if reject else 1 if adaptive else None})
         job = self.wait_job(case)
         save(self.report.root / name / "job.json", job)
+        if adaptive:
+            require(sha256(case["source"]) == case["sourceSha256"], "Audio search changed the original")
+            verification = json.loads(job["verificationReportJson"] or "{}")
+            decision = validate_search(verification.get("perceptualSearch"), "Audio", case["sourceSha256"], 128)
+            if reject:
+                require(job["status"] == "Failed" and decision["fellBack"], "Zero-distance lossy audio was not rejected")
+                require(verification["audioQuality"]["gatePassed"] is False, "Final audio gate did not independently reject")
+                require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Rejected audio acquired replacement history")
+                return {"originalUnchanged": True, "gateBlocked": True, "search": verification["perceptualSearch"]}
+            require(not decision["fellBack"] and decision["selectedValue"] < 128, "Audio search did not select a measured smaller setting")
+            require(f"-b:a {decision['selectedValue']}k " in job["ffmpegArguments"], "Full audio encode ignored the selection")
         require(job["status"] == "ReadyToReplace", f"Audio failed: {job['errorMessage']}")
         candidate = self.output(case)
         before, after = self.tools.loudness(case["source"]), self.tools.loudness(candidate)
@@ -441,6 +461,94 @@ class Harness:
         save(self.report.root / name / "independent-audio.json", {"source": before, "candidate": after, "probe": probe})
         self.replace_restore(case, candidate)
         return {"original": before, "encoded": after, "restoredOriginal": True}
+
+    def audio_final_quality_retry(self):
+        self.select_worker(None)
+        name = "audio-quality-first-final-retry"
+        fixture = self.root / "fixtures" / (name + ".wav")
+        # Search cuts end at whole seconds; final verification includes this
+        # fractional tail. A zero-distance policy deliberately exposes the
+        # sample/final disagreement without corrupting or editing a candidate.
+        self.tools.encode(["-f", "lavfi", "-i",
+            r"anoisesrc=color=pink:amplitude=0.3:duration=95.5:sample_rate=48000:seed=42,aeval=if(gte(t\,95)\,val(0)\,0)",
+            "-ac", "2", "-c:a", "pcm_f32le", self.tools.path(fixture)])
+        case = self.create_job(name, fixture, overrides={"mediaType": "Music", "audioTargetCodec": "aac",
+            "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
+            "audioLoudnessGateEnabled": False, "audioClippingGateEnabled": False,
+            "adaptiveAudioQuality": True, "audioQualityGateEnabled": True, "maximumAudioQualityDistance": 0})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        require(sha256(case["source"]) == case["sourceSha256"], "Quality retry changed the original")
+        require(job["status"] == "Failed" and job["qualityRetryCount"] == 1, "Final disagreement did not exhaust exactly one quality retry")
+        report = json.loads(job["verificationReportJson"])
+        search = report["perceptualSearch"]
+        history = json.loads(job["attemptHistoryJson"])
+        require(len(history) == 1 and history[0]["reason"] == "HigherPerceptualQualityRetry", "Rejected attempt evidence was not retained")
+        earlier = json.loads(history[0]["verificationReportJson"])
+        first = validate_search(earlier["perceptualSearch"], "Audio", case["sourceSha256"], 128)
+        decision = validate_search(search, "Audio", case["sourceSha256"], 128)
+        require(not decision["fellBack"] and search["minimumValue"] > first["selectedValue"]
+                and decision["selectedValue"] >= search["minimumValue"] and search.get("retryValue") is None,
+                "Retry did not measure again above the rejected attempt's selection")
+        require(report["audioQuality"]["gatePassed"] is False
+                and report["audioQuality"]["evidence"]["assessment"]["worstChannelDistance"] > 0,
+                "The final retry bypassed its required zero-distance gate")
+        require(f"-b:a {decision['selectedValue']}k " in job["ffmpegArguments"], "Retried encode ignored its newly measured setting")
+        require(earlier["audioQuality"]["gatePassed"] is False, "History lost the first final rejection")
+        require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Rejected retry acquired replacement history")
+        return {"originalUnchanged": True, "retryCount": 1, "search": search}
+
+    def quality_first_ownership(self):
+        import sqlite3
+        require(not self.tools.container and os.name != "nt", "Ownership regression requires a native POSIX test instance")
+        self.select_worker(None)
+        name = "audio-quality-first-ownership"
+        fixture = self.root / "fixtures" / (name + ".flac")
+        self.tools.encode(["-f", "lavfi", "-i", "anoisesrc=color=pink:duration=45:sample_rate=48000:seed=42",
+            "-ac", "2", "-c:a", "flac", self.tools.path(fixture)])
+        self.api.post("/api/queue/pause")
+        try:
+            case = self.create_job(name, fixture, overrides={"mediaType": "Music", "audioTargetCodec": "aac",
+                "audioBitrateKbps": 128, "vmafQualityGateEnabled": False, "adaptiveAudioQuality": True,
+                "audioQualityGateEnabled": True, "maximumAudioQualityDistance": 1})
+            retained = self.root / "retained-evidence"
+            retained.mkdir()
+            note = retained / "operator-note.txt"
+            note.write_text("Preserve evidence owned outside the job workspace.\n")
+            note_hash = sha256(note)
+            parent = self.root / "work" / str(case["mediaId"])
+            parent.symlink_to(retained, target_is_directory=True)
+        finally:
+            self.api.post("/api/queue/resume")
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        require(job["status"] == "Failed" and "Cleanup is deferred" in job["errorMessage"], "Redirected scratch was not held safely")
+        require(not job["ffmpegArguments"] and job["qualityRetryCount"] == 0, "Ownership refusal reached encoding or spent a retry")
+        require(parent.is_symlink() and sha256(note) == note_hash, "Ownership refusal changed unrelated evidence")
+        require(sha256(case["source"]) == case["sourceSha256"], "Ownership refusal changed the original")
+        with sqlite3.connect((self.root / "config" / "optimisarr.db").as_uri() + "?mode=ro", uri=True) as db:
+            failures = db.execute('SELECT FailureCount FROM MediaFiles WHERE Id = ?', (case["mediaId"],)).fetchone()[0]
+        require(failures == 0, "Ownership refusal spent the source's failure/exclusion budget")
+        return {"originalUnchanged": True, "unrelatedEvidenceRetained": True, "failureCount": failures}
+
+    def quality_first_workers(self, tier):
+        usable = [worker for worker in self.workers if worker["online"] and not worker["revokedAt"]]
+        if tier == "fleet" and not usable:
+            self.report.case("quality-first-workers", lambda: (_ for _ in ()).throw(Blocked("No quality-first workers paired")))
+        for worker in usable:
+            prefix = f"worker-{worker['id']}-"
+            for codec, encoder in (("aac", "aac"), ("opus", "libopus"), ("mp3", "libmp3lame")):
+                if encoder not in worker["audioEncoders"]:
+                    self.report.case(prefix + "audio-quality-first-" + codec,
+                                     lambda e=encoder: (_ for _ in ()).throw(Blocked(f"Audio encoder {e} was not proved")))
+                    continue
+                self.report.case(prefix + "audio-quality-first-" + codec, lambda c=codec, w=worker: self.audio(c, w, adaptive=True))
+            self.report.case(prefix + "audio-quality-first-reject", lambda w=worker: self.audio("aac", w, adaptive=True, reject=True))
+            for target in ("jpeg", "webp"):
+                self.report.case(prefix + "image-quality-first-" + target,
+                                 lambda t=target, w=worker: self.image_perceptual(t, adaptive=True, worker=w))
+            self.report.case(prefix + "image-quality-first-metadata", lambda w=worker: self.image_perceptual(adaptive=True, metadata=True, worker=w))
+            self.report.case(prefix + "image-quality-first-reject", lambda w=worker: self.image_perceptual(adaptive=True, reject=True, worker=w))
 
     def preview(self, fixture):
         self.select_worker(None)
@@ -496,6 +604,79 @@ class Harness:
         self.replace_restore(case, candidate)
         return {"ssim": float(match[1]), "restoredOriginal": True,
                 "scope": "Opaque BMP to JPEG; metadata-free generated source"}
+
+    def image_perceptual(self, target="jpeg", *, reject=False, reporting=True, gate=True, unsupported=False, adaptive=False, metadata=False,
+                         worker=None):
+        self.select_worker(worker)
+        name = (f"worker-{worker['id']}-" if worker else "") + f"image-perceptual-{target}-{'unsupported' if unsupported else 'reject' if reject else 'gate' if gate else 'report' if reporting else 'off'}"
+        if adaptive: name += "-quality-first"
+        if metadata: name += "-metadata"
+        fixture = self.root / "fixtures" / (name + (".bmp" if unsupported else ".png"))
+        self.tools.encode(["-f", "lavfi", "-i", "testsrc2=size=512x512:rate=1:duration=1",
+            "-vf", "noise=alls=40:allf=t", "-pix_fmt", "bgr24" if unsupported else "rgb24", "-frames:v", "1", self.tools.path(fixture)])
+        if metadata:
+            add_synthetic_image_metadata(fixture, Path(__file__).resolve().parents[2] / "tools/image-quality-native/fixtures/icc.webp")
+        case = self.create_job(name, fixture, worker=worker, overrides={"mediaType": "Photo", "targetImageFormat": target,
+            "imageQuality": 10 if reject else 95, "reencodeLossyImages": True, "vmafQualityGateEnabled": False,
+            "imageQualityGateEnabled": True, "minimumImageSsim": 0, "imageMetadataGateEnabled": True,
+            "requireSizeReduction": False, "imagePerceptualReportingEnabled": reporting,
+            "imagePerceptualGateEnabled": gate, "minimumImagePerceptualScore": 100 if reject else 0 if gate else None,
+            "adaptiveImageQuality": adaptive})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        require(sha256(case["source"]) == case["sourceSha256"], "Image assessment changed the source")
+        failed = reject or unsupported
+        require(job["status"] == ("Failed" if failed else "ReadyToReplace"), f"Unexpected image verdict: {job['errorMessage']}")
+        require(job.get("verificationReportJson"), "Image verification did not produce a report")
+        report = json.loads(job["verificationReportJson"])
+        if worker and not unsupported:
+            require(job["workerName"] == worker["name"], "Image ran on the wrong host")
+            if self.strict_worker_verification and not failed:
+                require(report.get("context", {}).get("verificationLocation") == "Worker", "Image verification fell back to the server")
+        if adaptive:
+            decision = validate_search(report.get("perceptualSearch"), "Image", case["sourceSha256"], 10 if reject else 95)
+            require(decision["fellBack"] == (reject or unsupported), "Image search reported the wrong fallback outcome")
+            if unsupported:
+                require(not job.get("ffmpegArguments"), "Unsupported source reached the encoder before required assessment")
+                require(report["perceptualSearch"].get("preparationBlocked") is True, "Source preparation refusal was not recorded")
+            if not (reject or unsupported):
+                require(decision["selectedValue"] < 95, "Image search did not choose more compression")
+                validate_image_command(target, decision["selectedValue"], job["ffmpegArguments"])
+        image = report.get("imagePerceptualQuality")
+        if adaptive and unsupported:
+            require(image is None, "Source qualification was incorrectly presented as a candidate measurement")
+        elif reporting or gate:
+            location = "Worker" if worker and self.strict_worker_verification else "Server"
+            require(image is not None and image["measurementLocation"] == location, f"Missing {location.lower()} image evidence")
+            if unsupported:
+                require(image["measurement"] is None and image["error"], "Unsupported image received a score")
+            else:
+                measurement = image["measurement"]
+                require(measurement and measurement["width"] == 512 and measurement["height"] == 512, "Incomplete image coverage")
+                require(image["revision"] == "a7a9c787341cf703dede03c2009fa460cae5e5df", "Wrong metric revision")
+                require(image["sourceSha256"].lower() == case["sourceSha256"].lower(), "Evidence source hash differs")
+                require(image["candidateSha256"].lower() == sha256(self.output(case)).lower(), "Evidence candidate hash differs")
+            require(image["gateEnabled"] == gate and (not gate or image["gatePassed"] == (not failed)), "Incorrect image gate attribution")
+        else:
+            require(image is None, "Disabled image reporting still ran")
+        icc_hash = None
+        if metadata:
+            candidate = self.output(case)
+            profile = read_icc_profile(case["source"])
+            require(profile is not None and profile == read_icc_profile(candidate), "Final image lost or changed the complete ICC profile")
+            import hashlib
+            icc_hash = hashlib.sha256(profile).hexdigest()
+            exiftool = "exiftool" if self.tools.container else os.environ.get("OPTIMISARR_EXIFTOOL", "exiftool")
+            artist = self.tools.run(exiftool, ["-s3", "-EXIF:Artist", self.tools.path(candidate)])
+            require(artist.strip() == "Optimisarr acceptance", "Final image lost the original EXIF artist")
+            require(any(c["name"] == "Image metadata (EXIF/ICC)" and c["outcome"] == "Passed" for c in report["checks"]), "Metadata gate did not independently pass")
+        if failed:
+            require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Rejected image acquired replacement history")
+        else:
+            self.replace_restore(case, self.output(case))
+        return {"originalUnchanged": True, "gateBlocked": failed, "restoredOriginal": not failed,
+                "report": image, "scope": "Synthetic stills; CPU image encoding and " + ("worker" if worker else "server-local") + " assessment", "iccSha256": icc_hash,
+                "exifArtistPreserved": metadata}
 
     def calibration(self):
         self.select_worker(None)
@@ -704,6 +885,51 @@ class Harness:
         self.configure(workerVerificationRequired=strict_worker_verification)
         self.report.environment["strictWorkerVerification"] = strict_worker_verification
         try:
+            if regression in ("interactive-samples", "interactive-lifecycle"):
+                from .interactive import run_interactive_matrix
+                run_interactive_matrix(self, tier=tier, expected_workers=expected_workers, lifecycle_only=regression == "interactive-lifecycle")
+                return self.report.exit_code
+            if regression == "quality-first-source":
+                self.report.case("image-quality-first-source", lambda: self.image_perceptual(unsupported=True, adaptive=True))
+                return self.report.exit_code
+            if regression == "quality-first-metadata":
+                self.report.case("image-quality-first-metadata", lambda: self.image_perceptual(adaptive=True, metadata=True))
+                return self.report.exit_code
+            if regression == "quality-first-webp":
+                self.report.case("image-quality-first-webp", lambda: self.image_perceptual("webp", adaptive=True))
+                self.report.case("image-quality-first-webp-reject", lambda: self.image_perceptual("webp", adaptive=True, reject=True))
+                self.report.case("image-quality-first-webp-metadata", lambda: self.image_perceptual("webp", adaptive=True, metadata=True))
+                self.report.case("audio-quality-first-artwork", lambda: self.audio("mp3", adaptive=True, artwork=True))
+                return self.report.exit_code
+            if regression == "quality-first-retry":
+                self.report.case("audio-quality-first-final-retry", self.audio_final_quality_retry)
+                return self.report.exit_code
+            if regression == "quality-first-ownership":
+                self.report.case("audio-quality-first-ownership", self.quality_first_ownership)
+                return self.report.exit_code
+            if regression == "quality-first-workers":
+                self.quality_first_workers(tier)
+                return self.report.exit_code
+            if regression == "quality-first":
+                self.report.case("image-quality-first", lambda: self.image_perceptual(adaptive=True))
+                self.report.case("image-quality-first-metadata", lambda: self.image_perceptual(adaptive=True, metadata=True))
+                self.report.case("image-quality-first-reject", lambda: self.image_perceptual(adaptive=True, reject=True))
+                self.report.case("image-quality-first-source", lambda: self.image_perceptual(unsupported=True, adaptive=True))
+                self.report.case("audio-quality-first-aac", lambda: self.audio("aac", adaptive=True))
+                self.report.case("audio-quality-first-opus", lambda: self.audio("opus", adaptive=True))
+                self.report.case("audio-quality-first-mp3", lambda: self.audio("mp3", adaptive=True))
+                self.report.case("audio-quality-first-reject", lambda: self.audio("opus", adaptive=True, reject=True))
+                self.report.case("audio-quality-first-final-retry", self.audio_final_quality_retry)
+                self.quality_first_workers(tier)
+                return self.report.exit_code
+            if regression == "image-quality":
+                self.report.case("image-perceptual-jpeg", lambda: self.image_perceptual("jpeg"))
+                self.report.case("image-perceptual-webp", lambda: self.image_perceptual("webp"))
+                self.report.case("image-perceptual-reject", lambda: self.image_perceptual(reject=True))
+                self.report.case("image-perceptual-report", lambda: self.image_perceptual(gate=False))
+                self.report.case("image-perceptual-off", lambda: self.image_perceptual(reporting=False, gate=False))
+                self.report.case("image-perceptual-unsupported", lambda: self.image_perceptual(unsupported=True))
+                return self.report.exit_code
             fixture_dir = self.root / "fixtures"
             variants = variants or (["sdr"] if tier == "smoke" else ["sdr", "vfr", "offset", "ten-bit"])
             if regression == "fractional-timing" and "fractional" not in variants:

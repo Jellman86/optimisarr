@@ -137,8 +137,12 @@ Production full-file VMAF also uses sequential picture comparison when source an
 decoded counts are equal and the encode keeps the source frame rate. Workers receive this
 alternative and select it only after measuring both counts. Missing or unequal counts retain
 the previous comparison, and the picture-retention gate still fails. Previews and intentional
-frame-rate conversions retain their own preparation. Sampled windows keep their existing
-selection. Timing and quality are separate checks; equal counts alone do not prove identity.
+frame-rate conversions retain their own preparation. Sampled windows also select absolute decoded
+picture indices on both inputs, for every codec.
+They decode from the beginning and do not choose an offset by maximising a visual score. This
+prevents independent seek boundaries from changing the first picture and preserves evidence of
+actual duplicated/replaced pictures even when total counts match. Timing and quality remain
+separate checks; equal counts alone do not prove identity.
 
 Hardware checks on 3 October 2026 retained all 400 generated pictures using Mac VideoToolbox,
 Windows NVIDIA NVENC, Intel QSV in the server container and libx265 in the Linux worker.
@@ -357,7 +361,8 @@ worker's result; this is test evidence, not production server verification.
 
 This does not make the server idle. Scanning, initial probing, assignment preparation (including
 filter planning), transfers and hashes, database updates, policy evaluation and replacement still
-run there. Preview, calibration, remux and image jobs retain their existing local paths.
+run there. Video/audio previews and calibration can use bounded complete-source worker segments. Remux and
+fixed-image jobs retain their existing local paths.
 Fresh installations default to strict worker verification; the harness fleet tier also defaults to strict mode. Existing saved policies are preserved. Preserve an already selected
 strict policy during upgrades; unsupported workers cannot claim its assignments.
 
@@ -427,9 +432,31 @@ python3 scripts/diagnose_frame_pairing.py \
 
 VC-1 Matroska regression: a retained equal-frame candidate scored 9.49 in a sought 10-second
 window and 94.25 when decoded sequentially. Three absolute-frame windows scored 94–95.
-The shared production command therefore avoids input seeking for complete, equal-frame VC-1
-comparisons. Other sources and disposable cut clips keep their existing policies. Sequential
-comparison costs more decoding time, especially for late windows.
+The shared production command now avoids input seeking for all complete, equal-frame
+comparisons (#406), including H.264 and 50 fps sources. Sequential comparison costs more decoding
+time, especially for late windows; VMAF still assesses only the selected window, and no alignment
+probes are run for this deterministic path. Disposable cut clips retain their own policy.
+
+The local server's five-minute idle watchdog counts advancing decoded-frame counters while
+each input approaches a sequential sample. Counters stop at the sample boundary, where actual
+VMAF output must advance. Repeated counters, repeated output time and ordinary process activity
+cannot extend the deadline. Decoding does not advance the displayed scoring percentage or
+substitute for a valid score. Timeout diagnostics identify the window and last observed counters;
+cancellation and timeout terminate and reap FFmpeg before scratch cleanup. Worker commands and
+their existing contracts are unchanged. See the
+[13 October watchdog acceptance record](../engineering/hardware-validation/2026-10-13-vmaf-decode-watchdog.md).
+
+When frame counts are unequal or unavailable, timestamp comparison retains a bounded ±1-frame
+alignment search. Its sparse probes cover the window (up to 40 seconds), rather than only its
+first five seconds. Five-second blocks must support one consistent correction; conflicting blocks,
+incomplete coverage and mismatched sampled frame identities keep the baseline. Final measurement
+uses the original model and sampling settings, with no per-scene offset splicing or threshold
+changes. Missing baseline evidence cannot authorise a correction. Hardware-to-software fallback
+reassesses alignment using the actual software decoder.
+
+The [12 October acceptance record](../engineering/hardware-validation/2026-10-12-vmaf-window-alignment.md)
+contains the timestamp-step reproduction, negative controls, retained-media scores and native
+Windows NVENC results, with the sequential-decoding cost and unqualified cases made explicit.
 
 A separate Mac candidate had 32,283 packets but only 32,282 decoded frames. Packet equality must
 not select frame-number pairing. That candidate remained below the quality gate after a diagnostic
@@ -580,3 +607,22 @@ scratch/dashboard observations that cannot inspect the remote host. The adapter 
 termination to its own disposable process, preserve the acceptance environment, and make the
 server reachable; use `--listen 0.0.0.0` only on a trusted test network. This option cannot be
 combined with `--require-worker-ram`, whose local observations would be invalid for that worker.
+
+### Interactive sample regression
+
+Use `--regression interactive-samples` for a generated 64-second source, saved-codec calibration,
+preview delivery, browser reference identity and strict worker evidence. The default quality ladder
+requires the selected-settings calibration change (#430). A smoke run checks the local HEVC path;
+a fleet run requires explicit `--expected-worker` names and tests each worker's proved encoder.
+Workers must be acceptance launchers paired only to the isolated instance. The independent oracle
+checks every decoded frame and copied audio of each complete transferred source segment. Video
+segments can retain keyframe pre-roll; browser scene clocks are checked separately from full-segment
+verification. Keep reports outside the repository and use a new root for every run.
+
+Use `--regression interactive-lifecycle --tier fleet` with the same explicit workers for a
+shorter lifecycle run: queued and active preview cancellation, released leases, and idle server
+restart with unchanged worker identities. A `libx265` worker also exercises a deliberately
+rejected normal job and its one higher-quality retry under CPU/WorkerOnly policy. Both attempts
+must stay on that worker and encoder, with unchanged original bytes and no replacement history.
+These tests do not certify a long network partition during an active encode or installed-package
+upgrade behavior.

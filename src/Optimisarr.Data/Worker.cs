@@ -53,6 +53,9 @@ public sealed class Worker
     /// </summary>
     public string AudioEncoders { get; set; } = string.Empty;
 
+    /// <summary>Optional native metric/image proof. Null keeps legacy workers off the new search contract.</summary>
+    public string? PerceptualCapabilitiesJson { get; set; }
+
     public string HardwareDecoders { get; set; } = string.Empty;
 
     public VmafCapability Vmaf { get; set; } = VmafCapability.None;

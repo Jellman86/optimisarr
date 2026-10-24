@@ -6,6 +6,27 @@ namespace Optimisarr.Tests;
 
 public sealed class ReviewToolProcessTests
 {
+    [Fact]
+    public async Task Tool_standard_input_preserves_unicode_and_closes_before_waiting_for_exit()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "optimisarr-input-probe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var windows = OperatingSystem.IsWindows();
+            var script = Path.Combine(root, windows ? "input.ps1" : "input.py");
+            await File.WriteAllTextAsync(script, windows
+                ? "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Console]::Out.Write([Console]::In.ReadToEnd())"
+                : "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())");
+            var input = "-TagsFromFile\n写真 [1] café.png\n";
+            var result = await BoundedToolProcess.RunWithInputAsync(windows ? "pwsh.exe" : "/usr/bin/python3",
+                windows ? ["-NoProfile", "-NonInteractive", "-File", script] : [script], input, default, TimeSpan.FromSeconds(15));
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(input, result.Output);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -13,6 +13,7 @@ function job(id: number, status: string, verificationPassed: boolean | null) {
     enqueueReason: null,
     failureCategory: null,
     ffmpegArguments: null,
+    appliedAudioFilter: null,
     videoEncoder: 'libx265',
     requestedVideoQuality: 24,
     effectiveVideoQuality: 24,
@@ -569,6 +570,32 @@ test('job dialog contains keyboard focus and keeps artwork and actions visible i
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })
 
+test('a short window scrolls the queue inside the tray instead of growing the page', async ({ page }) => {
+  // The table header's screen-reader label is absolutely positioned, so it only stays inside
+  // the tray's scroll range while main is the containing block for it. Without that, its box
+  // lands below the fold, escapes the scroll container, and the document grows a scroll range
+  // that shows nothing but blank background.
+  await page.setViewportSize({ width: 812, height: 375 })
+  await mockWorkingQueue(page, { jobs: [
+    job(1, 'ReadyToReplace', true),
+    job(2, 'Queued', null),
+    job(3, 'Queued', null),
+    job(4, 'Queued', null),
+  ] })
+  await page.goto('/#/queue')
+  await expect(page.locator('#queue-list')).toBeVisible()
+  // The section renders before its table; measure only once the rows (and the sr-only
+  // header label above them) exist, or the assertions describe the loading layout.
+  await expect(page.locator('#queue-list tbody tr')).toHaveCount(4)
+  const pageRange = await page.evaluate(() => ({
+    scrollable: document.documentElement.scrollHeight,
+    viewport: window.innerHeight,
+  }))
+  expect(pageRange.scrollable, 'the document must not scroll past the viewport').toBeLessThanOrEqual(pageRange.viewport)
+  const tray = await page.locator('main').evaluate(el => ({ scrollable: el.scrollHeight, visible: el.clientHeight }))
+  expect(tray.scrollable, 'the tray is what scrolls, not the document').toBeGreaterThan(tray.visible)
+})
+
 test('loaded queue artwork stays visible across progress updates and queue refreshes', async ({ page }) => {
   const fixture = { jobs: [
     { ...job(1, 'Transcoding', null), progress: .3 },
@@ -636,6 +663,77 @@ test('a missing working poster stays settled through refreshes and recovers for 
 })
 
 for (const width of [375, 1440]) {
+  for (const theme of ['light', 'dark']) {
+    for (const kind of ['Audio', 'Image']) {
+      test(`fresh retry ${kind} distinguishes measured selection from its minimum at ${width}px ${theme}`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.emulateMedia({ colorScheme: theme as 'light' | 'dark', reducedMotion: 'reduce' })
+        await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), theme)
+        const minimum = kind === 'Audio' ? 112 : 70
+        const selected = kind === 'Audio' ? 128 : 85
+        const search = { kind, encoder: kind === 'Audio' ? 'aac' : 'libwebp', sourceSha256: 'a'.repeat(64),
+          measurementLocation: 'Worker', minimumValue: minimum, minimumImageScore: 85, maximumAudioDistance: 0.02,
+          audioWindows: [], result: { decision: { selectedValue: selected, nextValue: null, fellBack: false, reason: 'Measured again on the current encoding host.' },
+            probes: [{ value: selected, encodedBytes: 1000, measurement: { available: true, meetsTarget: true, score: kind === 'Audio' ? 0.01 : 90 } }] } }
+        await mockWorkingQueue(page, { jobs: [{ ...job(31, 'Failed', false), relativePath: 'Fresh retry fixture',
+          verificationReportJson: JSON.stringify({ checks: [], perceptualSearch: search }) }] })
+        await page.goto('/#/queue')
+        await page.getByRole('button', { name: /^Fresh retry fixture/ }).click()
+        const panel = page.getByRole('region', { name: 'Quality-first search', exact: true })
+        const suffix = kind === 'Audio' ? ' kbps' : ''
+        await expect(panel).toContainText(`Selected setting: ${selected}${suffix}`)
+        await expect(panel).toContainText(`Minimum setting for the retry: ${minimum}${suffix}`)
+        await expect(panel).toContainText('Higher-quality retry')
+        expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+        await panel.screenshot({ path: testInfo.outputPath('fresh-retry-report.png') })
+      })
+    }
+  }
+}
+
+test('a pending quality retry labels the earlier selection separately from the upcoming minimum', async ({ page }) => {
+  const search = { kind: 'Audio', encoder: 'aac', sourceSha256: 'a'.repeat(64), measurementLocation: 'Server',
+    retryValue: 112, minimumImageScore: null, maximumAudioDistance: 0.02, audioWindows: [],
+    result: { decision: { selectedValue: 96, nextValue: null, fellBack: false, reason: 'Previous attempt selected 96 kbps.' }, probes: [] } }
+  await mockWorkingQueue(page, { jobs: [{ ...job(32, 'Queued', false), relativePath: 'Pending retry fixture', perceptualSearchJson: JSON.stringify(search) }] })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: /^Pending retry fixture/ }).click()
+  const panel = page.getByRole('region', { name: 'Quality-first search', exact: true })
+  await expect(panel).toContainText('Previous selected setting: 96 kbps')
+  await expect(panel).toContainText('Minimum setting for the retry: 112 kbps')
+  await expect(panel).not.toContainText('Selected setting: 112 kbps')
+})
+
+for (const width of [375, 1440]) {
+  for (const theme of ['dark', 'light']) {
+    for (const available of [true, false]) {
+      test(`image quality ${available ? 'measured' : 'unavailable'} report at ${width}px in ${theme}`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)
+        const image = { measurement: available ? { width: 96, height: 64, alpha: true, maximumAlphaError: 0, score: 82.125,
+          backgroundScores: [82.125, 84] } : null, error: available ? null : 'Animated images are unsupported.',
+          gateEnabled: true, minimumScore: 80, gatePassed: available }
+        await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Verifying', null), relativePath: 'Synthetic.webp',
+          verificationReportJson: JSON.stringify({ checks: [], imagePerceptualQuality: image }) }] })
+        await page.goto('/#/queue')
+        await page.getByRole('button', { name: 'View job', exact: true }).click()
+        const panel = page.getByRole('region', { name: 'Image quality report', exact: true })
+        if (available) {
+          await expect(panel).toContainText('82.1')
+          await expect(panel).toContainText('96 × 64')
+        } else {
+          await expect(panel).toContainText('Animated images are unsupported.')
+          await expect(panel).not.toContainText('82.1')
+        }
+        await expect(panel).toContainText('Every configured check must pass')
+        expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+        await panel.screenshot({ path: testInfo.outputPath('image-report.png') })
+      })
+    }
+  }
+}
+
+for (const width of [375, 1440]) {
   for (const theme of ['dark', 'light']) {
     test(`audio report fits the job dialog at ${width}px in ${theme}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 })
@@ -653,8 +751,8 @@ for (const width of [375, 1440]) {
       await page.goto('/#/queue')
       await page.getByRole('button', { name: 'View job', exact: true }).click()
       const panel = page.getByRole('region', { name: 'Audio quality report', exact: true })
-      await expect(panel).toContainText('0.001234')
-      await expect(panel).toContainText('0.005678')
+      await expect(panel).toContainText('0.00123')
+      await expect(panel).toContainText('0.00568')
       await expect(panel).toContainText('Report only')
       expect(await panel.locator('dl > div').first().evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(12)
       await panel.scrollIntoViewIfNeeded()
@@ -807,6 +905,22 @@ test('a finished job says how big it was before and after', async ({ page }) => 
 })
 
 
+test('a job shows the audio filter its command applied beside the FFmpeg command', async ({ page }) => {
+  await mockQueue(page)
+  const remapped = {
+    ...job(61, 'Completed', true),
+    ffmpegArguments: '-i /media/Film 61.mkv -c:a libopus -af channelmap=channel_layout=5.1 /work/61.mkv',
+    appliedAudioFilter: 'channelmap=channel_layout=5.1',
+  }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [remapped]))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-61').click()
+  const details = page.locator('#queue-job-dialog')
+  await expect(details).toContainText('Audio filter:')
+  await expect(details).toContainText('channelmap=channel_layout=5.1')
+})
+
 test('retained capture shows historical gates after a newer capture targets another job', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false)] })
   const older = { id: 'retained', status: 'Stopped', scopedJobId: 8, eventsStored: 1, startedAt: '2026-10-01T10:00:00Z', retainUntil: '2026-11-01T10:00:00Z' }
@@ -847,4 +961,78 @@ for (const clipboard of ['missing', 'denied']) {
     await expect(details.getByText('No events were captured for this job.', { exact: true })).toBeVisible()
     await expect(details.locator('.queue-diagnostic-action')).not.toContainText('146 events')
   })
+}
+
+for (const width of [375, 1440]) {
+  for (const kind of ['Audio', 'Image']) {
+    test(`quality-first ${kind} evidence remains separate from final verification at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      const theme = width === 375 ? 'dark' : 'light'
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+      await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), theme)
+      const baseline = kind === 'Audio' ? 128 : 80
+      const selected = kind === 'Audio' ? 96 : 60
+      const search = { kind, encoder: kind === 'Audio' ? 'aac' : 'mjpeg', sourceSha256: 'a'.repeat(64),
+        measurementLocation: 'Server', minimumImageScore: 80, maximumAudioDistance: 0.01,
+        audioWindows: kind === 'Audio' ? [{ startSeconds: 0, durationSeconds: 30 }] : [],
+        result: { decision: { selectedValue: selected, nextValue: null, fellBack: false, reason: 'The smallest measured passing candidate was selected.' },
+          probes: [baseline, selected].map((value, index) => ({ value, encodedBytes: 1000 - index * 200,
+            measurement: { available: true, meetsTarget: true, score: kind === 'Audio' ? 0.005 : 85.2, error: null } })) } }
+      await mockWorkingQueue(page, { jobs: [{ ...job(15, 'Failed', false), relativePath: 'Synthetic source',
+        verificationReportJson: JSON.stringify({ checks: [{ name: 'Final quality', outcome: 'Failed', detail: 'The finished candidate missed the required target.' }], perceptualSearch: search }) }] })
+      await page.goto('/#/queue')
+      await page.getByRole('button', { name: /^Synthetic source/ }).click()
+      const panel = page.getByRole('region', { name: 'Quality-first search', exact: true })
+      await expect(panel).toContainText(`Selected setting: ${selected}${kind === 'Audio' ? ' kbps' : ''}`)
+      await expect(panel).toContainText(kind === 'Audio' ? 'Zimtohrli ≤ 0.01' : 'SSIMULACRA2 ≥ 80')
+      await expect(panel).toContainText('Final verification decides replacement.')
+      await expect(page.getByText('The finished candidate missed the required target.', { exact: true })).toBeVisible()
+      expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+      await panel.screenshot({ path: testInfo.outputPath('quality-first-report.png') })
+    })
+  }
+}
+
+for (const state of ['Probing', 'Cancelled']) {
+  test(`quality-first retains completed probes during ${state.toLowerCase()} without claiming selection`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 375, height: 900 })
+    await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' })
+    await page.addInitScript(() => localStorage.setItem('optimisarr.theme', 'light'))
+    const search = { kind: 'Audio', encoder: 'aac', sourceSha256: 'a'.repeat(64), measurementLocation: 'Server',
+      minimumImageScore: null, maximumAudioDistance: 0.01, audioWindows: [{ startSeconds: 0, durationSeconds: 30 }],
+      result: { decision: { selectedValue: 128, nextValue: 112, fellBack: false, reason: 'Try stronger compression while the target is met.' },
+        probes: [{ value: 128, encodedBytes: 1000, measurement: { available: true, meetsTarget: true, score: 0.005, error: null } }] } }
+    await mockWorkingQueue(page, { jobs: [{ ...job(15, state, null), relativePath: 'Audio probe', perceptualSearchJson: JSON.stringify(search) }] })
+    await page.goto('/#/queue')
+    if (state === 'Probing') await page.getByRole('button', { name: 'View job', exact: true }).click()
+    else await page.getByRole('button', { name: /^Audio probe/ }).click()
+    const panel = page.getByRole('region', { name: 'Quality-first search', exact: true })
+    await expect(panel).toContainText('Candidate: 128 kbps')
+    await expect(panel).not.toContainText('Selected setting:')
+    await expect(panel).toContainText(state === 'Probing' ? 'Searching for a setting' : 'Search stopped before selection')
+    await expect(panel).toContainText('Final verification decides replacement.')
+    expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    await panel.screenshot({ path: testInfo.outputPath('quality-first-partial-light.png') })
+  })
+}
+
+for (const width of [375, 1440]) {
+  for (const theme of ['light', 'dark']) {
+    test(`resource wait preserves the queued state at ${width}px ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.emulateMedia({ colorScheme: theme as 'light' | 'dark', reducedMotion: 'reduce' })
+      await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), theme)
+      await mockWorkingQueue(page, { jobs: [{ ...job(46, 'Queued', null), relativePath: 'Image waiting safely', videoEncoder: null, requestedVideoQuality: null, effectiveVideoQuality: null, videoQualityMode: null, outputSizeBytes: null, waitingForResources: true }] })
+      await page.goto('/#/queue')
+      await expect(page.getByText('waiting for memory or space…')).toBeVisible()
+      await page.getByRole('button', { name: /^Image waiting safely/ }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByText('Waiting for memory or working space')).toBeVisible()
+      await expect(dialog.getByText(/Your original and retry settings are preserved/)).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0)
+      await expect(dialog.getByText('Queued', { exact: true })).toBeVisible()
+      expect(await page.locator('body').evaluate(el => el.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath('resource-wait.png'), fullPage: true })
+    })
+  }
 }

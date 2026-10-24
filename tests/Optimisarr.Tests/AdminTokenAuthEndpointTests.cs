@@ -1,4 +1,5 @@
 using Optimisarr.Api.Workers;
+using Optimisarr.Api.Queue;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -139,11 +140,27 @@ public sealed class AdminTokenAuthEndpointTests
         {
             using var client = _api.CreateClient(); client.DefaultRequestHeaders.Authorization = new("Bearer", TokenedApi.Token);
             Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/libraries/2147483647/duplicates", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/api/libraries/{libraryId}/duplicates?libraryIds=2147483647", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/api/libraries/{libraryId}/duplicates?libraryIds={libraryId}&libraryIds=2147483647", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/api/libraries/{libraryId}/duplicates?libraryIds={libraryId}&libraryIds={libraryId}", null)).StatusCode);
             var response = await client.PostAsync($"/api/libraries/{libraryId}/duplicates", null); Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
             ExactDuplicateStatus? status = null;
-            for (var i = 0; i < 100; i++) { status = await client.GetFromJsonAsync<ExactDuplicateStatus>($"/api/libraries/{libraryId}/duplicates"); if (status?.Status == "Completed") break; await Task.Delay(20); }
+            // This checks endpoint policy and inventory scope, not a scan-completion SLO.
+            using var completion = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            while (true)
+            {
+                status = await client.GetFromJsonAsync<ExactDuplicateStatus>($"/api/libraries/{libraryId}/duplicates", completion.Token);
+                if (status?.Status is not ("Queued" or "Running")) break;
+                await Task.Delay(50, completion.Token);
+            }
             Assert.Equal("Completed", status!.Status);
             Assert.Equal(2, status.Result!.Checked); Assert.Equal(2, Assert.Single(status.Result.Groups).Copies.Count);
+            var group = Assert.Single(status.Result.Groups);
+            Assert.True(group.CanDecide);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync($"/api/libraries/{libraryId}/duplicates/review",
+                new { reviewKey = group.ReviewKey, choice = "Keep", keepIds = new[] { group.Copies[0].Id } })).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/libraries/{libraryId}/duplicates/review",
+                new { reviewKey = group.ReviewKey, choice = "Keep", keepIds = new[] { 2147483647 } })).StatusCode);
             for (var i = 0; i < 3; i++) Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(Path.Combine(root, i + ".wav")));
         }
         finally
@@ -626,6 +643,114 @@ public sealed class AdminTokenAuthEndpointTests
         Assert.Equal("original-must-not-change", await File.ReadAllTextAsync(sourcePath));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Default_video_calibration_keeps_the_saved_codec_and_applies_only_quality(bool changeSettings)
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var directory = Path.Combine(Path.GetDirectoryName(_api.LibraryDirectory)!, "selected-quality-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var source = Path.Combine(directory, "source.mkv");
+        await File.WriteAllTextAsync(source, "original-is-unchanged");
+        int libraryId;
+        int mediaFileId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = new Data.Library
+            {
+                Name = "Selected settings", Path = directory, RuleProfile = RuleProfile.ExperimentalAv1,
+                TargetVideoCodec = "hevc", TargetContainer = "mkv", QualityCrf = 24,
+                VideoAudioCodec = "aac", VideoAudioBitrateKbps = 128, DownmixToStereo = true,
+                EncoderPreset = "balanced", HdrHandling = HdrHandling.Preserve
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            libraryId = library.Id;
+            var media = new MediaFile
+            {
+                LibraryId = library.Id, Path = source, RelativePath = "source.mkv",
+                SizeBytes = new FileInfo(source).Length, ModifiedAt = DateTimeOffset.UtcNow,
+                Status = MediaFileStatus.Probed, MediaKind = MediaKind.Video, DurationSeconds = 300,
+                VideoCodec = "h264", Width = 1920, Height = 1080, PixelFormat = "yuv420p", BitsPerRawSample = 8
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaFileId = media.Id;
+        }
+        using var started = await client.PostAsJsonAsync($"/api/libraries/{libraryId}/calibration", new { mediaFileId, diagnosticsEnabled = true });
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        var id = JsonNode.Parse(await started.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var jobs = db.Jobs.Where(job => job.CalibrationSessionId == id).ToList();
+            Assert.Equal(15, jobs.Count);
+            Assert.All(jobs, job => Assert.Null(job.RequestedRuleProfile));
+            Assert.Equal(new[] { 16, 20, 24, 28, 32 }, jobs.Select(job => job.RequestedVideoQuality!.Value).Distinct().Order());
+            foreach (var job in jobs)
+            {
+                var work = Path.Combine(directory, "job-" + job.Id);
+                Directory.CreateDirectory(work);
+                job.WorkOutputPath = Path.Combine(work, "candidate.mkv");
+                await File.WriteAllTextAsync(job.WorkOutputPath, "quality-" + job.RequestedVideoQuality);
+                await File.WriteAllTextAsync(Path.Combine(work, ".optimisarr-comparison-reference.mkv"), "reference");
+                job.Status = JobStatus.Completed;
+                job.Progress = 1;
+                job.OutputSizeBytes = job.RequestedVideoQuality * 1000;
+                job.VideoEncoder = "libx265";
+                job.EffectiveVideoQuality = job.RequestedVideoQuality;
+                job.VideoQualityMode = "CRF";
+            }
+            await db.SaveChangesAsync();
+        }
+        var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{id}"))!;
+        var variants = session["variants"]!.AsArray().Where(v => !v!["isOriginal"]!.GetValue<bool>()).ToList();
+        Assert.Equal(5, variants.Count);
+        Assert.All(variants, v => Assert.Equal("hevc", v!["diagnostics"]!["codec"]!.GetValue<string>()));
+        using var classified = await client.PostAsJsonAsync($"/api/calibration/{id}/classifications", new
+        {
+            classifications = variants.ToDictionary(v => v!["name"]!.GetValue<string>(), _ => "Acceptable")
+        });
+        Assert.Equal(HttpStatusCode.OK, classified.StatusCode);
+        var result = JsonNode.Parse(await classified.Content.ReadAsStringAsync())!["result"]!;
+        Assert.Equal(32, result["recommendedQuality"]!.GetValue<int>());
+        Assert.Null(result["recommendedProfile"]);
+        // The result names the saved setting Apply would replace, so the change is visible before Apply.
+        Assert.Equal(24, result["currentQuality"]!.GetValue<int>());
+        Assert.Equal("ExperimentalAv1", result["currentProfile"]!.GetValue<string>());
+        Assert.Equal(5, result["variants"]!.AsArray().Where(v => !v!["isOriginal"]!.GetValue<bool>())
+            .Select(v => v!["estimatedSavingPercent"]!.GetValue<double>()).Distinct().Count());
+        if (changeSettings)
+        {
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Libraries.Single(l => l.Id == libraryId).VideoAudioBitrateKbps = 192;
+            await db.SaveChangesAsync();
+        }
+        using var applied = await client.PostAsync($"/api/calibration/{id}/apply", null);
+        Assert.Equal(changeSettings ? HttpStatusCode.Conflict : HttpStatusCode.OK, applied.StatusCode);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = db.Libraries.Single(l => l.Id == libraryId);
+            Assert.Equal(changeSettings ? 24 : 32, library.QualityCrf);
+            Assert.Equal(RuleProfile.ExperimentalAv1, library.RuleProfile);
+            Assert.Equal("hevc", library.TargetVideoCodec);
+            Assert.Equal("mkv", library.TargetContainer);
+            Assert.Equal("aac", library.VideoAudioCodec);
+            Assert.Equal(changeSettings ? 192 : 128, library.VideoAudioBitrateKbps);
+            Assert.True(library.DownmixToStereo);
+            Assert.Equal("balanced", library.EncoderPreset);
+            Assert.False(db.Jobs.Any(j => j.MediaFileId == mediaFileId && j.Type == JobType.Normal));
+        }
+        using var deleted = await client.DeleteAsync($"/api/calibration/{id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal("original-is-unchanged", await File.ReadAllTextAsync(source));
+    }
+
     [Fact]
     public async Task Calibration_creates_only_disposable_clipped_jobs_and_delete_cleans_the_session()
     {
@@ -681,7 +806,7 @@ public sealed class AdminTokenAuthEndpointTests
 
         using var started = await client.PostAsJsonAsync(
             $"/api/libraries/{libraryId}/calibration",
-            new { mediaFileId, diagnosticsEnabled = true, ignoreActiveStreams = true });
+            new { mediaFileId, diagnosticsEnabled = true, ignoreActiveStreams = true, compareVideoPresets = true });
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         var startedSession = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
         var sessionId = startedSession["id"]!.GetValue<Guid>();
@@ -720,7 +845,7 @@ public sealed class AdminTokenAuthEndpointTests
             Assert.All(jobs, job =>
             {
                 Assert.Equal(JobType.Calibration, job.Type);
-                Assert.Null(job.LibraryId);
+                Assert.Equal(libraryId, job.LibraryId);
                 Assert.Equal(12, job.CalibrationClipSeconds);
                 Assert.NotNull(job.RequestedVideoQuality);
                 Assert.NotNull(job.RequestedRuleProfile);
@@ -941,7 +1066,7 @@ public sealed class AdminTokenAuthEndpointTests
 
         using var started = await client.PostAsJsonAsync(
             $"/api/libraries/{libraryId}/calibration",
-            new { mediaFileId, ignoreActiveStreams = true });
+            new { mediaFileId, ignoreActiveStreams = true, compareVideoPresets = true });
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         var session = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
         var sessionId = session["id"]!.GetValue<Guid>();
@@ -1029,7 +1154,7 @@ public sealed class AdminTokenAuthEndpointTests
                 jobs.Select(job => job.RequestedAudioBitrateKbps!.Value).Distinct().Order().ToArray());
             Assert.All(jobs, job =>
             {
-                Assert.Null(job.LibraryId);
+                Assert.Equal(libraryId, job.LibraryId);
                 Assert.Null(job.RequestedVideoQuality);
                 Assert.Equal(15, job.CalibrationClipSeconds);
             });
@@ -1107,7 +1232,7 @@ public sealed class AdminTokenAuthEndpointTests
                 jobs.Select(job => job.RequestedImageQuality!.Value).Order().ToArray());
             Assert.All(jobs, job =>
             {
-                Assert.Null(job.LibraryId);
+                Assert.Equal(libraryId, job.LibraryId);
                 Assert.Null(job.RequestedVideoQuality);
                 Assert.Null(job.RequestedAudioBitrateKbps);
                 Assert.Equal(0, job.CalibrationClipSeconds);
@@ -1206,6 +1331,7 @@ public sealed class AdminTokenAuthEndpointTests
                 }
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
                 services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
+                services.AddSingleton<IWorkerSampleSource, FixtureWorkerSampleSource>();
                 services.AddSingleton<ISourceWindowBytesProbe, FixedSourceWindowBytes>();
                 foreach (var preflight in services
                     .Where(service => service.ServiceType == typeof(ISourceTimelinePreflight))
@@ -1251,6 +1377,25 @@ public sealed class AdminTokenAuthEndpointTests
         private sealed class FixedCalibrationRandomizer : ICalibrationRandomizer
         {
             public int Next(int exclusiveMaximum) => 0;
+        }
+
+        private sealed class FixtureWorkerSampleSource(IHostEnvironment environment, IMediaProbeService probe) : IWorkerSampleSource, IDisposable
+        {
+            private readonly HashSet<string> _owned = [];
+            public async Task<PreparedWorkerSample> PrepareAsync(Job job, int seconds, int start, CancellationToken token)
+            {
+                var root = WorkerJobPaths.Root(WorkPaths.Resolve(environment), job);
+                Directory.CreateDirectory(root);
+                var path = Path.Combine(root, ".worker-source-fixture.mkv");
+                await File.WriteAllBytesAsync(path, [1, 3, 5, 7], token);
+                _owned.Add(path);
+                return new(path, 4, (await probe.ProbeAsync(path, token)) with
+                { DurationSeconds = seconds, VideoDurationSeconds = seconds, FrameCount = seconds * 24, VideoFrameRate = 24 }, 0.25);
+            }
+            public void Dispose()
+            {
+                foreach (var path in _owned) if (File.Exists(path)) File.Delete(path);
+            }
         }
 
         private sealed class CalibrationMediaProbe : IMediaProbeService

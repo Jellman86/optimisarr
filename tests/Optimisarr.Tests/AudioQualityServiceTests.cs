@@ -27,7 +27,11 @@ public sealed class AudioQualityServiceTests : IDisposable
         _called.Add(Path.GetFileName(command));
         Assert.NotNull(timeout);
         if (command == Tool("ffprobe"))
+        {
+            Assert.Contains("-protocol_whitelist", args);
+            Assert.Contains("-format_whitelist", args);
             return Task.FromResult(new ToolProcessResult(0, """{"streams":[{"codec_type":"audio","channels":2,"sample_rate":"48000","duration":"3"}],"format":{"duration":"3"}}""", null));
+        }
         if (command == Tool("ffmpeg"))
         {
             Assert.Contains("-n", args);

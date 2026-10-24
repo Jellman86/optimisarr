@@ -8,15 +8,16 @@ namespace Optimisarr.Tests;
 public sealed class DiagnosticWriteConcurrencyTests
 {
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task An_outer_transaction_can_commit_while_another_job_save_waits_for_the_database(bool capturing, bool finalSlot)
+    [InlineData(false, false, 0)]
+    [InlineData(true, false, 0)]
+    [InlineData(true, true, 0)]
+    [InlineData(true, true, 1500)]
+    public async Task An_outer_transaction_can_commit_while_another_job_save_waits_for_the_database(bool capturing, bool finalSlot, int outerWriteDelayMilliseconds)
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
-            .UseSqlite($"Data Source={Path.Combine(directory, "test.db")};Default Timeout=1;Pooling=False").Options;
+            .UseSqlite($"Data Source={Path.Combine(directory, "test.db")};Pooling=False").Options;
         try
         {
             await using var first = new OptimisarrDbContext(options);
@@ -37,12 +38,16 @@ public sealed class DiagnosticWriteConcurrencyTests
             second.Database.GetDbConnection().StateChange += (_, e) => { if (e.CurrentState == ConnectionState.Open) opened.TrySetResult(); };
             await using var transaction = await first.Database.BeginTransactionAsync();
             secondJob.Status = JobStatus.Failed;
-            var pending = Task.Run(() => second.SaveChangesAsync());
+            // SQLite waits synchronously for the writer; a dedicated contender avoids starving
+            // the continuation that must release the outer transaction on a busy test runner.
+            var pending = Task.Factory.StartNew(() => second.SaveChangesAsync(), CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
             await opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Delay(outerWriteDelayMilliseconds);
             a.Status = JobStatus.Failed;
-            await first.SaveChangesAsync();
-            await transaction.CommitAsync();
-            await pending;
+            await first.SaveChangesAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await transaction.CommitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await pending.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(2, await first.Jobs.CountAsync(j => j.Status == JobStatus.Failed));
             if (capturing)
             {

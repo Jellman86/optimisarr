@@ -44,24 +44,13 @@ public sealed class DecodeHealthCheck
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _ffmpeg,
-                ArgumentList =
-                {
-                    "-nostdin",
-                    "-v", "error",
-                    "-nostats",
-                    "-progress", "pipe:1",
-                    "-threads", "4",
-                    "-i", path,
-                    "-map", "0:V?", "-map", "0:a?",
-                    "-f", "null",
-                    "-"
-                },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
 
+            foreach (var argument in BuildArguments(path)) process.StartInfo.ArgumentList.Add(argument);
             process.Start();
             using var stalled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             stalled.CancelAfter(DecodeProgressTimeout);
@@ -106,6 +95,17 @@ public sealed class DecodeHealthCheck
                     : integrity.FirstError!,
                 integrity.ErrorCount);
     }
+
+    internal static string[] BuildArguments(string path) =>
+    [
+        "-nostdin", "-v", "error", "-nostats", "-progress", "pipe:1",
+        "-threads", "4", "-i", path,
+        "-map", "0:V?", "-map", "0:a?",
+        // A coarse null-output clock can invent duplicate DTS for valid decoded pictures.
+        // Preserve their source clock and cadence; the packet timestamp gate remains separate.
+        "-fps_mode:v", "passthrough", "-enc_time_base:v", "demux",
+        "-f", "null", "-"
+    ];
 
     private static async Task ReadProgressAsync(
         StreamReader reader,

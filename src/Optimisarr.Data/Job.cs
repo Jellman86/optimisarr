@@ -109,6 +109,12 @@ public sealed class Job
     public string? FfmpegArguments { get; set; }
 
     /// <summary>
+    /// The audio filter chain this job's command applied, or null when it applied none. Shown
+    /// beside the command so the operator can see what was done to the audio.
+    /// </summary>
+    public string? AppliedAudioFilter { get; set; }
+
+    /// <summary>
     /// The resolved video encoder for this job (e.g. <c>hevc_nvenc</c>, <c>libx265</c>), so the UI
     /// can show whether it ran on the GPU or CPU. Null for a remux/audio/image job.
     /// </summary>
@@ -135,6 +141,10 @@ public sealed class Job
     /// silently reverting to the library baseline.
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
+
+    public int? AdaptiveAudioBitrateKbps { get; set; }
+    public int? AdaptiveImageQuality { get; set; }
+    public string? PerceptualSearchJson { get; set; }
 
     /// <summary>
     /// The operator approved a full encode despite a sample-based size warning. The final size

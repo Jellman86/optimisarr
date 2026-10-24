@@ -1,14 +1,19 @@
 // Fabricated documentation fixtures. No production endpoints, credentials, media or artwork.
+export const duplicateArchive = { id: 5, name: 'Film archive', path: '/data/archive', mediaType: 'Film' }
 export const duplicateReport = {
   libraryId: 1, status: 'Completed', startedAt: '2026-09-17T11:30:00Z', finishedAt: '2026-09-17T11:47:00Z',
-  progress: { checked: 12, skipped: 1, total: 13, bytesRead: 8_400_000_000 }, error: null,
-  result: { checked: 12, skipped: 1, total: 13, bytesRead: 8_400_000_000, truncated: false, groups: [
-    { sha256: 'a'.repeat(64), sizeBytes: 2_100_000_000, extraCopyBytes: 2_100_000_000, copies: [
-      { id: 1, relativePath: 'Lumen Coast/Lumen Coast.mkv', hardLinkCount: 1 },
-      { id: 3, relativePath: 'Archive/Lumen Coast copy.mkv', hardLinkCount: 1 }] },
-    { sha256: 'b'.repeat(64), sizeBytes: 780_000_000, extraCopyBytes: null, copies: [
-      { id: 2, relativePath: 'Night Survey/Night Survey.mkv', hardLinkCount: 2 },
-      { id: 4, relativePath: 'Shared/Night Survey.mkv', hardLinkCount: 2 }] }
+  libraries: [{ id: 1, name: 'Documentary films', root: '/data/films', mediaType: 'Film' }, { ...duplicateArchive, root: duplicateArchive.path }],
+  progress: { checked: 12, skipped: 1, total: 13, bytesRead: 4_200_000_000, reused: 6 }, error: null,
+  result: { checked: 12, skipped: 1, total: 13, bytesRead: 4_200_000_000, reused: 6, truncated: false, totalGroups: 2, page: 0, hasMore: false, groups: [
+    { sha256: 'a'.repeat(64), reviewKey: 'c'.repeat(64), canDecide: true, decision: null, totalCopies: 2,
+      sizeBytes: 2_100_000_000, extraCopyBytes: 2_100_000_000, copies: [
+      { id: 1, libraryId: 1, libraryName: 'Documentary films', libraryType: 'Film', relativePath: 'Lumen Coast/Lumen Coast.mkv', hardLinkCount: 1, checkedAt: '2026-09-17T11:42:00Z', reused: false },
+      { id: 3, libraryId: 5, libraryName: 'Film archive', libraryType: 'Film', relativePath: 'Archive/Lumen Coast copy.mkv', hardLinkCount: 1, checkedAt: '2026-09-17T11:42:00Z', reused: false }] },
+    { sha256: 'b'.repeat(64), reviewKey: 'd'.repeat(64), canDecide: true, decision: null, totalCopies: 2,
+      sizeBytes: 780_000_000, extraCopyBytes: null, copies: [
+      { id: 2, libraryId: 1, libraryName: 'Documentary films', libraryType: 'Film', relativePath: 'Night Survey/Night Survey.mkv', hardLinkCount: 2, checkedAt: '2026-09-16T10:00:00Z', reused: true,
+        aliases: [{ id: 9, libraryId: 5, libraryName: 'Film archive', relativePath: 'Linked/Night Survey.mkv' }] },
+      { id: 4, libraryId: 5, libraryName: 'Film archive', libraryType: 'Film', relativePath: 'Shared/Night Survey.mkv', hardLinkCount: 1, checkedAt: '2026-09-16T10:00:00Z', reused: true }] }
   ] }
 }
 import { readFileSync } from 'node:fs'
@@ -104,7 +109,7 @@ export const titles = ['Lumen Coast', 'The Glass Observatory', 'Amber Transit', 
 export const libraries = [library,
   { ...library, id: 2, name: 'Nature series', path: '/data/series', mediaType: 'Tv', fileCount: 126, autoEnqueueEnabled: true, autoEnqueueWindowStart: '01:00', autoEnqueueWindowEnd: '06:00' },
   { ...library, id: 3, name: 'Field recordings', path: '/data/audio', mediaType: 'Music', fileCount: 64, audioTargetCodec: 'opus', audioBitrateKbps: 128, audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.005 },
-  { ...library, id: 4, name: 'Landscape studies', path: '/data/photos', mediaType: 'Photo', fileCount: 240, targetImageFormat: 'webp', imageQuality: 82 },
+  { ...library, id: 4, name: 'Landscape studies', path: '/data/photos', mediaType: 'Photo', fileCount: 240, targetImageFormat: 'webp', imageQuality: 82, imagePerceptualReportingEnabled: true, imagePerceptualGateEnabled: true, minimumImagePerceptualScore: 80 },
 ]
 export const options = {
   mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
@@ -208,3 +213,8 @@ export const soundtrackJob = { ...jobs[1], id: 41, mediaFileId: 41, status: "Ver
     }
   }))
 } }) }
+
+export const imageQualityJob = { ...jobs[1], id: 42, mediaFileId: 42, status: 'Verifying', relativePath: 'Lumen landscape.webp',
+ verificationReportJson: JSON.stringify({ checks: [{name:'Decode health',outcome:'Passed',detail:'Decoded cleanly.'}],
+ imagePerceptualQuality: {measurement:{width:1920,height:1080,alpha:true,maximumAlphaError:0,score:86.412,backgroundScores:[86.412,87.008]},
+ error:null,gateEnabled:true,minimumScore:80,gatePassed:true,measurementLocation:'Server'} }) }

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api;
 using Optimisarr.Api.Diagnostics;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Endpoints;
 using Optimisarr.Api.Library;
@@ -21,6 +22,7 @@ using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +77,14 @@ builder.Services.AddSingleton(services => new VmafShadowService(
         .MeasureAsync(source, candidate, context, token)));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
+builder.Services.AddSingleton(_ =>
+{
+    var metric = Environment.GetEnvironmentVariable("OPTIMISARR_IMAGE_QUALITY")
+        ?? Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows()
+            ? "optimisarr-image-quality.exe" : "optimisarr-image-quality");
+    var service = File.Exists(metric) ? new ImagePerceptualQualityService(metric) : null;
+    return new ImagePerceptualObservationService(service is null ? null : service.MeasureAsync);
+});
 builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpeg));
 // The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
 // -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
@@ -88,6 +98,8 @@ builder.Services.AddSingleton(_ =>
     return new AudioQualityObservationService(service is null ? null : service.MeasureAsync);
 });
 builder.Services.AddSingleton<VerificationService>();
+builder.Services.AddSingleton<IWorkerSampleSource, WorkerSampleSource>();
+builder.Services.AddSingleton<WorkerSamplePreparations>();
 builder.Services.AddSingleton(_ =>
 {
     var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY"),
@@ -100,6 +112,11 @@ builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<SidecarDiagnosticStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
+builder.Services.AddSingleton<Optimisarr.Api.Deduplication.FileOperationClaims>();
+builder.Services.AddSingleton<IFileReservationKeys>(sp => sp.GetRequiredService<Optimisarr.Api.Deduplication.FileOperationClaims>());
+builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeJournalStore>();
+builder.Services.AddHostedService<Optimisarr.Api.Deduplication.DedupeJournalRecovery>();
+builder.Services.AddSingleton<ExactDuplicateStore>();
 builder.Services.AddSingleton<ExactDuplicateScanner>();
 builder.Services.AddSingleton<ExactDuplicateCoordinator>();
 builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordinator>());
@@ -140,6 +157,8 @@ builder.Services.AddSingleton<QueuePauseManager>();
 builder.Services.AddSingleton<ArtworkService>();
 builder.Services.AddSingleton<INotificationArtworkProvider>(
     services => services.GetRequiredService<ArtworkService>());
+builder.Services.AddSingleton(new PerceptualResourceAdmission(
+    root => NativeWorkingVolume.Read(root, LinuxMemoryAvailability.ReadCurrent), PerceptualJobResourcePool.Shared));
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BlindCalibrationService>());
@@ -252,6 +271,18 @@ app.Use(async (context, next) =>
 });
 
 app.UseDiagnosticTransferCapture();
+app.Use(async (context, next) =>
+{
+    try { await next(); }
+    catch (DedupeReservationConflictException exception) when (!context.Response.HasStarted)
+    {
+        await ApiErrors.Conflict("dedupe.reserved", exception.Message).ExecuteAsync(context);
+    }
+    catch (FileCleanupDeferredException exception) when (!context.Response.HasStarted)
+    {
+        await ApiErrors.Conflict("work.cleanupDeferred", exception.Message).ExecuteAsync(context);
+    }
+});
 app.MapHealthEndpoints(adminToken, configDirectory);
 
 app.MapSystemEndpoints();
@@ -272,6 +303,8 @@ app.MapReplacementEndpoints();
 app.MapWorkerEndpoints();
 
 app.MapWorkerLeaseEndpoints();
+
+app.MapWorkerPerceptualSearchEndpoints();
 
 app.MapWorkerSourceEndpoints();
 
@@ -466,7 +499,13 @@ internal sealed record SaveLibraryRequest(
     double? MaximumAudioQualityDistance = null,
     bool? SoundtrackQualityReportingEnabled = null,
     bool? SoundtrackQualityGateEnabled = null,
-    double? MaximumSoundtrackQualityDistance = null);
+    double? MaximumSoundtrackQualityDistance = null,
+    bool? ImagePerceptualReportingEnabled = null,
+    bool? ImagePerceptualGateEnabled = null,
+    double? MinimumImagePerceptualScore = null,
+    bool? AdaptiveAudioQuality = null,
+    bool? AdaptiveImageQuality = null,
+    bool? NormalizeOpusChannelLayout = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -557,7 +596,13 @@ internal sealed record LibraryDto(
     bool AutoReplace,
     int FileCount,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    bool ImagePerceptualReportingEnabled,
+    bool ImagePerceptualGateEnabled,
+    double? MinimumImagePerceptualScore,
+    bool AdaptiveAudioQuality,
+    bool AdaptiveImageQuality,
+    bool NormalizeOpusChannelLayout)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -637,7 +682,13 @@ internal sealed record LibraryDto(
         library.AutoReplace,
         fileCount,
         library.CreatedAt,
-        library.UpdatedAt);
+        library.UpdatedAt,
+        library.ImagePerceptualReportingEnabled,
+        library.ImagePerceptualGateEnabled,
+        library.MinimumImagePerceptualScore,
+        library.AdaptiveAudioQuality,
+        library.AdaptiveImageQuality,
+        library.NormalizeOpusChannelLayout);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

@@ -28,6 +28,7 @@ public sealed record RuleOverrides
     public string? VideoAudioCodec { get; init; }
     public int? VideoAudioBitrateKbps { get; init; }
     public bool? DownmixToStereo { get; init; }
+    public bool? NormalizeOpusChannelLayout { get; init; }
     public IReadOnlyList<string>? KeepAudioLanguages { get; init; }
     public IReadOnlyList<string>? KeepSubtitleLanguages { get; init; }
     public bool? ReencodeLossyAudio { get; init; }

@@ -11,11 +11,18 @@
          construction and version formatting are worth pinning, and neither belongs on the public
          surface of a client whose job is to pair and check in. -->
     <InternalsVisibleTo Include="Optimisarr.Sidecar.Core.Tests" />
+    <!-- The process fixture provisions and holds internal storage so cross-process
+         ownership tests exercise real process lifetimes, not in-process stand-ins. -->
+    <InternalsVisibleTo Include="Optimisarr.Sidecar.ScratchFixture" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../../../src/Optimisarr.Core/Optimisarr.Core.csproj" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Capabilities/Fixtures/profile.png" LogicalName="Optimisarr.CapabilityProfile.png" />
   </ItemGroup>
 
 </Project>

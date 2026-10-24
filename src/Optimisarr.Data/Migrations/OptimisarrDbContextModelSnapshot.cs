@@ -15,7 +15,7 @@ namespace Optimisarr.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
             modelBuilder.Entity("Optimisarr.Data.ActivityWatcher", b =>
                 {
@@ -117,6 +117,135 @@ namespace Optimisarr.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("ArrConnections");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AttentionReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Contract")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PlanHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Retention")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LibraryId", "State");
+
+                    b.ToTable("DedupeActions");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeActionFile", b =>
+                {
+                    b.Property<Guid>("ActionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Identity")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsKeeper")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ModifiedUtcTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QuarantinePath")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ActionId", "MediaFileId");
+
+                    b.HasIndex("MediaFileId");
+
+                    b.HasIndex("QuarantinePath")
+                        .IsUnique();
+
+                    b.ToTable("DedupeActionFiles", t =>
+                        {
+                            t.HasCheckConstraint("CK_DedupeActionFiles_RollbackPath", "(IsKeeper = 1 AND QuarantinePath IS NULL) OR (IsKeeper = 0 AND QuarantinePath IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeFileClaim", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ActionId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ActionId");
+
+                    b.ToTable("DedupeFileClaims");
                 });
 
             modelBuilder.Entity("Optimisarr.Data.DiagnosticCaptureSession", b =>
@@ -270,6 +399,239 @@ namespace Optimisarr.Data.Migrations
                     b.ToTable("DiagnosticWorkerReceipts");
                 });
 
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateObservation", b =>
+                {
+                    b.Property<long>("ScanId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("HardLinkCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Identity")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ModifiedUtcTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Reused")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ScanId", "MediaFileId");
+
+                    b.HasIndex("ScanId", "SizeBytes", "Sha256");
+
+                    b.ToTable("ExactDuplicateObservations");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateReviewDecision", b =>
+                {
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ScopeKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Choice")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeepIds")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("SavedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("LibraryId", "ScopeKey", "Sha256", "SizeBytes");
+
+                    b.ToTable("ExactDuplicateReviewDecisions");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScan", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ActiveSlot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("BytesRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Checked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ForceRefresh")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Reused")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScopeSignature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActiveSlot")
+                        .IsUnique();
+
+                    b.HasIndex("LibraryId")
+                        .IsUnique();
+
+                    b.ToTable("ExactDuplicateScans");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScanLibrary", b =>
+                {
+                    b.Property<long>("ScanId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ScanId", "LibraryId");
+
+                    b.ToTable("ExactDuplicateScanLibraries");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactFileFingerprint", b =>
+                {
+                    b.Property<int>("MediaFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Contract")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Identity")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ModifiedUtcTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Root")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("MediaFileId");
+
+                    b.ToTable("ExactFileFingerprints");
+                });
+
             modelBuilder.Entity("Optimisarr.Data.Exclusion", b =>
                 {
                     b.Property<int>("Id")
@@ -316,8 +678,17 @@ namespace Optimisarr.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("AdaptiveAudioBitrateKbps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("AdaptiveImageQuality")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("AdaptiveVideoQuality")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("AppliedAudioFilter")
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("Attempt")
                         .HasColumnType("INTEGER");
@@ -380,6 +751,10 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<long?>("OutputSizeBytes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("PerceptualSearchJson")
+                        .HasMaxLength(262144)
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("PreferSoftwareDecode")
                         .HasColumnType("INTEGER");
@@ -492,7 +867,10 @@ namespace Optimisarr.Data.Migrations
                     b.HasIndex("Type", "Priority", "QueueEnqueuedUtcTicks", "Id")
                         .IsDescending(false, true, false, false);
 
-                    b.ToTable("Jobs");
+                    b.ToTable("Jobs", t =>
+                        {
+                            t.HasCheckConstraint("CK_Jobs_PerceptualSearch", "(AdaptiveAudioBitrateKbps IS NULL OR AdaptiveAudioBitrateKbps BETWEEN 8 AND 512)\nAND (AdaptiveImageQuality IS NULL OR AdaptiveImageQuality BETWEEN 0 AND 100)\nAND (PerceptualSearchJson IS NULL OR length(PerceptualSearchJson) <= 262144)");
+                        });
                 });
 
             modelBuilder.Entity("Optimisarr.Data.JobLease", b =>
@@ -555,6 +933,10 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PerceptualSearchStateJson")
+                        .HasMaxLength(262144)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("QualityCandidateSha256")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
@@ -568,6 +950,20 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("QualitySourceSha256")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("ResultUploadBinding")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ResultUploadGeneration")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResultUploadPath")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ResultUploadSealedBytes")
+                        .HasColumnType("INTEGER");
 
                     b.Property<long?>("SizeBudgetExceededAtBytes")
                         .HasColumnType("INTEGER");
@@ -606,13 +1002,24 @@ namespace Optimisarr.Data.Migrations
 
                     b.HasIndex("JobId", "AcquiredUtcTicks", "Id");
 
-                    b.ToTable("JobLeases");
+                    b.ToTable("JobLeases", t =>
+                        {
+                            t.HasCheckConstraint("CK_JobLeases_PerceptualSearch", "\"PerceptualSearchStateJson\" IS NULL OR\n(length(\"PerceptualSearchStateJson\") <= 262144 AND json_valid(\"PerceptualSearchStateJson\"))");
+
+                            t.HasCheckConstraint("CK_JobLeases_ResultUpload", "(\"ResultUploadGeneration\" IS NULL AND \"ResultUploadPath\" IS NULL AND \"ResultUploadBinding\" IS NULL AND \"ResultUploadSealedBytes\" IS NULL)\nOR (\"ResultUploadGeneration\" IS NOT NULL AND \"ResultUploadPath\" IS NOT NULL AND \"ResultUploadBinding\" IS NOT NULL\n    AND (\"ResultUploadSealedBytes\" IS NULL OR \"ResultUploadSealedBytes\" >= 0))");
+                        });
                 });
 
             modelBuilder.Entity("Optimisarr.Data.Library", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AdaptiveAudioQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AdaptiveImageQuality")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("AudioBitrateKbps")
@@ -695,6 +1102,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("ImageMetadataGateEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ImagePerceptualGateEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ImagePerceptualReportingEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("ImageQuality")
                         .HasColumnType("INTEGER");
 
@@ -756,6 +1169,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<double?>("MinVmafMin")
                         .HasColumnType("REAL");
 
+                    b.Property<double?>("MinimumImagePerceptualScore")
+                        .HasColumnType("REAL");
+
                     b.Property<double>("MinimumImageSsim")
                         .HasColumnType("REAL");
 
@@ -772,6 +1188,9 @@ namespace Optimisarr.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("NormalizeOpusChannelLayout")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("OptimiseDolbyVision")
                         .HasColumnType("INTEGER");
@@ -1185,6 +1604,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset>("PairedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PerceptualCapabilitiesJson")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("ProtocolVersion")
                         .HasColumnType("INTEGER");
 
@@ -1210,7 +1633,28 @@ namespace Optimisarr.Data.Migrations
                     b.HasIndex("CredentialFingerprint")
                         .IsUnique();
 
-                    b.ToTable("Workers");
+                    b.ToTable("Workers", t =>
+                        {
+                            t.HasCheckConstraint("CK_Workers_PerceptualCapabilities", "\"PerceptualCapabilitiesJson\" IS NULL OR\n(length(\"PerceptualCapabilitiesJson\") <= 4096 AND json_valid(\"PerceptualCapabilitiesJson\"))");
+                        });
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeActionFile", b =>
+                {
+                    b.HasOne("Optimisarr.Data.DedupeAction", null)
+                        .WithMany()
+                        .HasForeignKey("ActionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.DedupeFileClaim", b =>
+                {
+                    b.HasOne("Optimisarr.Data.DedupeAction", null)
+                        .WithMany()
+                        .HasForeignKey("ActionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Optimisarr.Data.DiagnosticEvent", b =>
@@ -1227,6 +1671,51 @@ namespace Optimisarr.Data.Migrations
                     b.HasOne("Optimisarr.Data.DiagnosticCaptureSession", null)
                         .WithMany()
                         .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateObservation", b =>
+                {
+                    b.HasOne("Optimisarr.Data.ExactDuplicateScan", null)
+                        .WithMany()
+                        .HasForeignKey("ScanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateReviewDecision", b =>
+                {
+                    b.HasOne("Optimisarr.Data.Library", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScan", b =>
+                {
+                    b.HasOne("Optimisarr.Data.Library", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactDuplicateScanLibrary", b =>
+                {
+                    b.HasOne("Optimisarr.Data.ExactDuplicateScan", null)
+                        .WithMany()
+                        .HasForeignKey("ScanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.ExactFileFingerprint", b =>
+                {
+                    b.HasOne("Optimisarr.Data.MediaFile", null)
+                        .WithMany()
+                        .HasForeignKey("MediaFileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

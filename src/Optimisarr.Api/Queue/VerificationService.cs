@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Optimisarr.Api.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
@@ -71,6 +72,9 @@ public sealed record VerificationClip(
         : Seconds;
 }
 
+/// <summary>The caller proves ownership before requesting cleanup of a disposable reference.</summary>
+public sealed record VerificationScratchCallbacks(Action<string> Capture, Func<string, Task<bool>> DeleteAsync);
+
 internal static class VerificationClipLifecycle
 {
     public static bool DeleteReferenceAfterVerification(VerificationClip clip) =>
@@ -95,7 +99,8 @@ public sealed class VerificationService(
     TranscodeOptions transcodeOptions,
     VmafShadowService? shadow = null,
     AudioQualityObservationService? audioQuality = null,
-    SoundtrackQualityObservationService? soundtrackQuality = null)
+    SoundtrackQualityObservationService? soundtrackQuality = null,
+    ImagePerceptualObservationService? imagePerceptualQuality = null)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -106,26 +111,30 @@ public sealed class VerificationService(
         IProgress<double>? qualityProgress = null,
         VmafAcceleration vmafAcceleration = VmafAcceleration.None,
         RemoteQuality? remoteQuality = null,
-        RemoteVerificationEvidence? remoteEvidence = null)
+        RemoteVerificationEvidence? remoteEvidence = null,
+        VerificationScratchCallbacks? scratch = null)
     {
         if (remoteEvidence is not null)
         {
             var objections = RemoteVerificationEvidenceValidator.ValidateMeasurements(remoteEvidence,
                 policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled, original.Kind,
-                original.Kind == MediaKind.Video && original.FrameRate is null);
+                original.Kind == MediaKind.Video && original.FrameRate is null,
+                original.Kind == MediaKind.Image ? new(policy.ImageQualityGateEnabled, policy.ImageMetadataGateEnabled,
+                    policy.RequiresImagePerceptualQuality(original.Kind)) : null);
             if (objections.Count > 0)
                 throw new InvalidOperationException("Sidecar-only verification evidence is incomplete; server fallback is disabled. "
                     + string.Join(" ", objections));
         }
-        if (remoteEvidence is not null && original.Kind is not (MediaKind.Video or MediaKind.Audio))
-            throw new InvalidOperationException("This sidecar verification contract supports video and audio assignments only.");
+        if (remoteEvidence is not null && original.Kind is not (MediaKind.Video or MediaKind.Audio or MediaKind.Image))
+            throw new InvalidOperationException("This sidecar verification contract does not support this media kind.");
         if (remoteEvidence is not null && clip is not null)
             throw new InvalidOperationException("Sidecar-only verification does not accept disposable reference clips.");
         if (remoteEvidence is not null && policy.RequiresVmaf(original.Kind, original.VideoReencoded) && remoteQuality is null)
             throw new InvalidOperationException("Sidecar-only verification requires complete worker VMAF evidence; server fallback is disabled.");
+        if (clip is not null) ValidateReferenceDestination(original.Path, outputPath, clip.ReferencePath);
         var preparedReference = clip is null
             ? new PreparedReference(original, 0)
-            : await CreateReferenceClipAsync(original, clip, cancellationToken);
+            : await CreateReferenceClipAsync(original, clip, cancellationToken, scratch?.Capture);
         var reference = preparedReference.Snapshot;
 
         try
@@ -136,7 +145,7 @@ public sealed class VerificationService(
             // read both large files repeatedly after an AV1 parser error on the server.
             var inspectFullFile = decodeResult.Healthy || remoteEvidence is not null;
             // Strict audio evidence has its own packet scan; legacy local audio keeps its existing path.
-            var timestampResult = (reference.Kind == MediaKind.Audio ? remoteEvidence?.CandidateAudio : remoteEvidence?.CandidateVideo) ?? (!inspectFullFile || reference.Kind == MediaKind.Audio
+            var timestampResult = (reference.Kind == MediaKind.Audio ? remoteEvidence?.CandidateAudio : remoteEvidence?.CandidateVideo) ?? (!inspectFullFile || reference.Kind != MediaKind.Video
                 ? TimestampCheckResult.NotMeasured
                 : await timestamps.CheckAsync(outputPath, cancellationToken));
             var outputProbe = remoteEvidence is null
@@ -278,7 +287,7 @@ public sealed class VerificationService(
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
             // image job when enabled (the safe default), since it runs an extra ffmpeg pass.
             var imageQualityResult = policy.ImageQualityGateEnabled && reference.Kind == MediaKind.Image
-                ? await imageQuality.MeasureAsync(
+                ? remoteEvidence is not null ? remoteEvidence.Image!.Ssim : await imageQuality.MeasureAsync(
                     reference.Path,
                     outputPath,
                     new ImageQualityMeasurementContext(
@@ -294,8 +303,10 @@ public sealed class VerificationService(
             ImageMetadataResult? outputMetadata = null;
             if (policy.ImageMetadataGateEnabled && reference.Kind == MediaKind.Image)
             {
-                originalMetadata = await imageMetadata.ReadAsync(reference.Path, cancellationToken);
-                outputMetadata = await imageMetadata.ReadAsync(outputPath, cancellationToken);
+                originalMetadata = remoteEvidence is not null ? remoteEvidence.Image!.SourceMetadata
+                    : await imageMetadata.ReadAsync(reference.Path, cancellationToken);
+                outputMetadata = remoteEvidence is not null ? remoteEvidence.Image!.CandidateMetadata
+                    : await imageMetadata.ReadAsync(outputPath, cancellationToken);
             }
 
             var imageMetadataMeasured = originalMetadata is { Measured: true } && outputMetadata is { Measured: true };
@@ -304,7 +315,7 @@ public sealed class VerificationService(
             // measurement runs when either is enabled; both are opt-in for the extra passes.
             LoudnessResult? originalLoudness = null;
             LoudnessResult? outputLoudness = null;
-            if (inspectFullFile && (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled))
+            if (inspectFullFile && reference.Kind != MediaKind.Image && (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled))
             {
                 originalLoudness = remoteEvidence?.SourceLoudness ?? await loudness.MeasureAsync(reference.Path, cancellationToken);
                 outputLoudness = remoteEvidence?.CandidateLoudness ?? await loudness.MeasureAsync(outputPath, cancellationToken);
@@ -314,8 +325,8 @@ public sealed class VerificationService(
             var loudnessError = originalLoudness?.Error ?? outputLoudness?.Error;
 
             var truePeakMeasured = loudnessMeasured
-                && originalLoudness?.TruePeakDbtp is not null
-                && outputLoudness?.TruePeakDbtp is not null;
+                && originalLoudness?.HasTruePeak == true
+                && outputLoudness?.HasTruePeak == true;
             var truePeakError = loudnessMeasured
                 ? "ebur128 produced no true-peak reading."
                 : loudnessError;
@@ -362,6 +373,8 @@ public sealed class VerificationService(
                 TruePeakError: truePeakError,
                 OriginalTruePeakDbtp: originalLoudness?.TruePeakDbtp,
                 OutputTruePeakDbtp: outputLoudness?.TruePeakDbtp,
+                OriginalTruePeakIsSilent: originalLoudness?.TruePeakIsSilent ?? false,
+                OutputTruePeakIsSilent: outputLoudness?.TruePeakIsSilent ?? false,
                 OriginalColorPrimaries: originalProbe.ColorPrimaries,
                 OutputColorPrimaries: outputProbe.ColorPrimaries,
                 OriginalColorTransfer: originalProbe.ColorTransfer,
@@ -479,6 +492,12 @@ public sealed class VerificationService(
                 policy.RequiresAudioQuality(reference.Kind), reference.Kind, decodeResult.Healthy, clip is not null,
                 reference.Path, outputPath, remoteEvidence, cancellationToken) };
             report = AudioQualityGate.Apply(report, reference.Kind, policy, preview: clip is not null);
+            report = report with { ImagePerceptualQuality = remoteEvidence is not null && reference.Kind == MediaKind.Image
+                ? policy.RequiresImagePerceptualQuality(reference.Kind) ? remoteEvidence.Image!.Perceptual!.Assessment with { MeasurementLocation = "Worker" } : null
+                : await (imagePerceptualQuality ?? new ImagePerceptualObservationService(null)).ObserveAsync(
+                policy.RequiresImagePerceptualQuality(reference.Kind), reference.Kind, decodeResult.Healthy, clip is not null,
+                remoteEvidence is not null, reference.Path, outputPath, cancellationToken) };
+            report = ImagePerceptualQualityGate.Apply(report, reference.Kind, policy, clip is not null);
             if (reference.Kind == MediaKind.Video)
             {
                 var soundtrackReencoded = reference.AudioReencoded && reference.AudioTrackCount > (reference.RemovedAudioStreamIndexes?.Count ?? 0);
@@ -498,9 +517,9 @@ public sealed class VerificationService(
         }
         finally
         {
-            if (clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip))
+            if (clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip) && scratch is not null)
             {
-                TryDelete(reference.Path);
+                await scratch.DeleteAsync(reference.Path);
             }
         }
     }
@@ -640,10 +659,22 @@ public sealed class VerificationService(
             target.Report(Math.Clamp((index + value) / count, 0, 0.999));
     }
 
+    private static void ValidateReferenceDestination(string original, string candidate, string reference)
+    {
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var target = Path.GetFullPath(reference);
+        if (new[] { original, candidate }.Any(input => string.Equals(Path.GetFullPath(input), target, comparison)))
+            throw new InvalidOperationException("A verification reference cannot overwrite either verification input.");
+        if (ExactFileIdentity.Read(reference) is { } identity
+            && new[] { original, candidate }.Any(input => ExactFileIdentity.Read(input) == identity))
+            throw new InvalidOperationException("A verification reference aliases an input file; the original and candidate were retained.");
+    }
+
     private async Task<PreparedReference> CreateReferenceClipAsync(
         OriginalSnapshot original,
         VerificationClip clip,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string>? capture)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(clip.ReferencePath)!);
         var args = original.Kind == MediaKind.Audio
@@ -652,7 +683,9 @@ public sealed class VerificationService(
             : PreviewReferenceClipCommandBuilder.Build(
                 original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds, clip.VideoOnly);
 
-        var run = await RunReferenceClipAsync(args, cancellationToken);
+        (int ExitCode, string? Error) run;
+        try { run = await RunReferenceClipAsync(args, cancellationToken); }
+        finally { capture?.Invoke(clip.ReferencePath); }
         if (run.ExitCode != 0)
         {
             throw new InvalidOperationException(
@@ -692,7 +725,7 @@ public sealed class VerificationService(
         OriginalSnapshot Snapshot,
         double PresentationOffsetSeconds);
 
-    private async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
+    internal async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
@@ -718,9 +751,13 @@ public sealed class VerificationService(
         {
             await process.WaitForExitAsync(cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
             TryKill(process);
+            try { await process.WaitForExitAsync(CancellationToken.None); }
+            catch (InvalidOperationException) { }
+            try { await Task.WhenAll(stdoutTask, stderrTask); }
+            catch (Exception ex) when (ex is OperationCanceledException or IOException) { }
             throw;
         }
 
@@ -763,21 +800,6 @@ public sealed class VerificationService(
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .TakeLast(maxLines);
         return string.Join('\n', lines);
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (IOException)
-        {
-            // Best-effort cleanup; preview scratch is purged on startup and when the panel closes.
-        }
     }
 
     private static void TryKill(Process process)

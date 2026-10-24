@@ -51,8 +51,22 @@ public sealed record TranscodeSpec(
     // How a video re-encode thins its frames under a library's frame-rate cap, or null to keep
     // the source cadence. Always a clean halving of the source (see FrameRatePlanner), and the
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
-    FrameRateDecimation? FrameRate = null)
+    FrameRateDecimation? FrameRate = null,
+    // The channel layout the source's audio tracks declare, or null when it was not reported.
+    // Opus writes surround in the standard 5.1 order, so a source that declares the side
+    // variant is mapped onto it (see AudioChannelLayoutPolicy).
+    string? SourceAudioChannelLayout = null,
+    // Whether the automatic surround-layout conversion runs for this encode. On by default:
+    // it only reorders channels, and it is the difference between an encoded track whose
+    // channel order matches the layout its container advertises and one that does not.
+    bool NormalizeOpusChannelLayout = true,
+    // An audio filter chain set for this transcode. The automatic surround-layout map is never
+    // added on top of it: an explicit filter keeps the chain, and the conflict is reported.
+    string? AudioFilter = null)
 {
+    /// <summary>Disposable audio quality probes exclude artwork and timed lyrics from their size and encode cost.</summary>
+    public bool AudioSampleOnly { get; init; }
+
     /// <summary>Source subtitle codecs in subtitle-relative stream order, from a fresh probe.</summary>
     public IReadOnlyList<string?>? SourceSubtitleCodecs { get; init; }
 
@@ -244,14 +258,13 @@ public static class FfmpegCommandBuilder
             return new ClipSeek(null, null);
         }
 
-        if (spec.Kind != MediaKind.Video)
+        if (spec.Kind != MediaKind.Video && !spec.AudioSampleOnly)
         {
             return new ClipSeek(start, null);
         }
 
-        // Input seeking alone is accurate for the re-encoded picture but preserves keyframe
-        // pre-roll for copied audio/subtitles. Decode at most a short lead-in, then apply an
-        // output-side exact seek so every mapped stream starts on the same requested timeline.
+        // Decode a short lead-in before the exact cut. Video copied streams need keyframe
+        // pre-roll removed; audio probes need decoder priming preserved at the cut.
         var inputStart = Math.Max(0, start - ExactClipSeekDecodeSeconds);
         return new ClipSeek(
             inputStart > 0 ? inputStart : null,
@@ -527,6 +540,7 @@ public static class FfmpegCommandBuilder
         }
 
         AppendDownmix(args, spec);
+        AppendAudioFilter(args, spec);
     }
 
     // A stereo downmix is only meaningful on a re-encode (a copied track keeps its layout),
@@ -540,6 +554,37 @@ public static class FfmpegCommandBuilder
         }
     }
 
+    /// <summary>
+    /// The audio filter this command applies, and what became of the source's surround layout.
+    /// An explicitly set filter keeps the chain to itself: the automatic surround-layout map is
+    /// added only when the chain is free, and a conflict is reported rather than resolved.
+    /// </summary>
+    public static AudioFilterResolution ResolveAudioFilter(TranscodeSpec spec)
+    {
+        var explicitFilter = string.IsNullOrWhiteSpace(spec.AudioFilter) ? null : spec.AudioFilter.Trim();
+        var layout = AudioChannelLayoutPolicy.Plan(
+            spec.AudioEncoder,
+            spec.SourceAudioChannelLayout,
+            spec.DownmixToStereo,
+            explicitFilter,
+            spec.NormalizeOpusChannelLayout);
+
+        return new(layout.Applies ? layout.Filter : explicitFilter, layout);
+    }
+
+    private static void AppendAudioFilter(List<string> args, TranscodeSpec spec)
+    {
+        var resolution = ResolveAudioFilter(spec);
+        if (resolution.Chain is null)
+        {
+            return;
+        }
+
+        // The filter is its own argument, so the chain never reaches a shell string.
+        args.Add("-af");
+        args.Add(resolution.Chain);
+    }
+
     private static void AppendAudioArguments(List<string> args, TranscodeSpec spec)
     {
         // Preserve all tags/metadata and re-encode only the audio. Any embedded cover art is
@@ -551,7 +596,7 @@ public static class FfmpegCommandBuilder
         // AAC and Opus candidates with attached pictures are rejected before dispatch because
         // their muxers cannot safely translate inherited FLAC/MP3 picture streams in this build.
         // Map MP3's picture before the audio and target its output stream explicitly.
-        if (Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
+        if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
         {
             args.Add("-map");
             args.Add("0:v?");
@@ -575,10 +620,11 @@ public static class FfmpegCommandBuilder
         }
 
         AppendDownmix(args, spec);
+        AppendAudioFilter(args, spec);
 
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
         // containers cannot, and their candidates are rejected when such a stream exists.
-        if (Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        if (!spec.AudioSampleOnly && Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
         {
             args.Add("-map");
             args.Add("0:s?");
@@ -635,11 +681,13 @@ public static class FfmpegCommandBuilder
             // libwebp takes 0–100 directly (higher is better).
             "libwebp" => new[] { "-quality", q.ToString() },
             // mjpeg uses -q:v 2 (best) … 31 (worst); invert and scale our 0–100 onto that range.
-            "mjpeg" => new[] { "-q:v", MapToRange(q, bestAt100: 2, worstAt0: 31).ToString() },
+            "mjpeg" => new[] { "-q:v", JpegQuantizer(q).ToString() },
             _ => throw new NotSupportedException(
                 $"Image encoding for encoder '{encoder}' is not implemented yet.")
         };
     }
+
+    internal static int JpegQuantizer(int quality) => MapToRange(quality, bestAt100: 2, worstAt0: 31);
 
     // Linearly map a 0–100 quality (higher = better) onto an encoder scale where a lower number is
     // better: quality 100 → bestAt100, quality 0 → worstAt0.

@@ -128,4 +128,44 @@ struct AdaptiveSearchDecodingTests {
         #expect(Assignment(json: json) == nil)
     }
 
+    @Test("legacy assignment decoding cannot discard native quality-search intent")
+    func nativeSearchCannotBecomeFixedEncode() {
+        let base: [String: Any] = [
+            "leaseId": UUID().uuidString, "jobId": 7, "sourceBytes": 4096,
+            "renewWithinSeconds": 30, "arguments": ["-i", "{{input}}", "{{output}}.opus"],
+            "outputExtension": "opus", "kind": 2, "audioEncoder": "libopus",
+            "quality": ["measure": false, "model": "vmaf_v0.6.1", "frameSubsample": 1,
+                "clipVmaf": false, "minimumHarmonicMean": 0.0, "minimumMinimum": 0.0],
+        ]
+        #expect(Assignment(json: base) != nil)
+        var ordinary = base
+        ordinary["perceptualSearch"] = NSNull()
+        #expect(Assignment(json: ordinary) != nil)
+        for raw: Any in [["version": 1], [:], "unreadable", false, 1] {
+            var native = base
+            native["perceptualSearch"] = raw
+            #expect(Assignment(json: native) == nil)
+        }
+    }
+
+    @Test("an unreadable VMAF search refuses the whole assignment rather than a fixed encode")
+    func unreadableSearchCannotBecomeFixedEncode() {
+        let base: [String: Any] = [
+            "leaseId": UUID().uuidString, "jobId": 7, "sourceBytes": 4096,
+            "videoEncoder": "hevc_videotoolbox", "renewWithinSeconds": 30,
+            "arguments": ["-i", "{{input}}", "{{output}}.mkv"], "outputExtension": "mkv",
+            "quality": ["measure": false, "model": "vmaf_v0.6.1", "frameSubsample": 1,
+                "clipVmaf": false, "minimumHarmonicMean": 0.0, "minimumMinimum": 0.0],
+        ]
+        #expect(Assignment(json: base) != nil)
+        var ordinary = base
+        ordinary["search"] = NSNull()
+        #expect(Assignment(json: ordinary) != nil)
+        for raw: Any in [["quality": 24], [:], "unreadable", false, 1] {
+            var invalid = base
+            invalid["search"] = raw
+            #expect(Assignment(json: invalid) == nil)
+        }
+    }
+
 }

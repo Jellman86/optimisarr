@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
@@ -20,7 +21,24 @@ internal static class WorkerCapabilityMapping
         worker.FreeScratchBytes,
         worker.MaxConcurrency,
         worker.SidecarVersion,
-        worker.ProtocolVersion);
+        worker.ProtocolVersion,
+        ReadPerceptual(worker.PerceptualCapabilitiesJson));
+
+    internal static readonly JsonSerializerOptions PerceptualJson = new(JsonSerializerDefaults.Web);
+
+    internal static string? WritePerceptual(WorkerPerceptualCapabilities? proof) =>
+        proof is null ? null : JsonSerializer.Serialize(proof, PerceptualJson);
+
+    private static WorkerPerceptualCapabilities? ReadPerceptual(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json.Length > 4096) return null;
+        try
+        {
+            var proof = JsonSerializer.Deserialize<WorkerPerceptualCapabilities>(json, PerceptualJson);
+            return proof?.Valid() == true ? proof : null;
+        }
+        catch (JsonException) { return null; }
+    }
 
     private static IReadOnlyList<string> Split(string value) =>
         string.IsNullOrWhiteSpace(value)

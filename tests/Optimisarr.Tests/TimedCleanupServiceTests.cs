@@ -2,8 +2,10 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Data;
+using Optimisarr.Core.Workers;
 
 namespace Optimisarr.Tests;
 
@@ -27,6 +29,147 @@ public sealed class TimedCleanupServiceTests : IDisposable
         _workDir = Path.Combine(Path.GetTempPath(), "optimisarr-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_trashDir);
         Directory.CreateDirectory(_workDir);
+    }
+
+    [Theory]
+    [InlineData("media")]
+    [InlineData("path")]
+    [InlineData("identity")]
+    public async Task Reserved_quarantine_is_excluded_from_preview_and_preserved_by_both_purge_routes(string keyKind)
+    {
+        await SetRetentionDaysAsync(7);
+        var (id, path) = await SeedQuarantinedAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await using var db = new OptimisarrDbContext(_options);
+        var replacement = await db.Replacements.SingleAsync(r => r.Id == id);
+        await ReserveAsync(db, replacement.MediaFileId, path, keyKind);
+
+        Assert.Equal(0, (await PreviewAsync()).QuarantinedOriginalCount);
+        Assert.Equal(0, await PurgeAsync());
+        Assert.Equal(ReplacementResultKind.Deferred, (await PurgeOneAsync(id)).Kind);
+        Assert.Equal("ORIGINAL-DATA", await File.ReadAllTextAsync(path));
+        Assert.Equal(ReplacementStatus.Replaced, await StatusOfAsync(id));
+    }
+
+    [Theory]
+    [InlineData("media")]
+    [InlineData("path")]
+    [InlineData("identity")]
+    public async Task Reserved_failed_output_keeps_its_bytes_reference_and_diagnostics(string keyKind)
+    {
+        await SetRetentionDaysAsync(7);
+        var (id, path) = await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await using var db = new OptimisarrDbContext(_options);
+        var job = await db.Jobs.SingleAsync(j => j.Id == id);
+        await ReserveAsync(db, job.MediaFileId, path, keyKind);
+
+        Assert.Equal(0, (await PreviewAsync()).FailedOutputCount);
+        Assert.Equal(0, await PurgeAsync());
+        Assert.Equal("candidate", await File.ReadAllTextAsync(path));
+        await db.Entry(job).ReloadAsync();
+        Assert.Equal(path, job.WorkOutputPath);
+        Assert.Equal("ffmpeg diagnostic output", job.ProcessLog);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Process_claims_defer_cleanup_until_the_other_operation_finishes(bool quarantine)
+    {
+        await SetRetentionDaysAsync(7);
+        var (id, path) = quarantine
+            ? await SeedQuarantinedAsync(DateTimeOffset.UtcNow.AddDays(-8))
+            : await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await using var db = new OptimisarrDbContext(_options);
+        var mediaId = quarantine ? (await db.Replacements.SingleAsync(r => r.Id == id)).MediaFileId
+            : (await db.Jobs.SingleAsync(j => j.Id == id)).MediaFileId;
+        var claims = new FileOperationClaims();
+        var service = new TimedCleanupService(db, new SettingsStore(db), _workDir,
+            NullLogger<TimedCleanupService>.Instance, claims);
+        using (claims.TryAcquire(FileOperationClaims.Keys(mediaId, path)))
+        {
+            Assert.Equal(0, await service.PurgeExpiredAsync(default));
+            if (quarantine) Assert.Equal(ReplacementResultKind.Deferred, (await service.PurgeOneAsync(id, default)).Kind);
+            Assert.True(File.Exists(path));
+        }
+        Assert.Equal(1, await service.PurgeExpiredAsync(default));
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public async Task A_reservation_added_after_confirmation_changes_the_plan_without_deleting_other_files()
+    {
+        await SetRetentionDaysAsync(7);
+        var (id, path) = await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        var (_, otherPath) = await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        var preview = await PreviewAsync();
+        await using var db = new OptimisarrDbContext(_options);
+        await ReserveAsync(db, (await db.Jobs.SingleAsync(j => j.Id == id)).MediaFileId, path, "path");
+
+        var attempt = await RunConfirmedAsync(preview);
+        Assert.Null(attempt.Result);
+        Assert.Equal(1, attempt.CurrentPreview.TotalCount);
+        Assert.True(File.Exists(path));
+        Assert.True(File.Exists(otherPath));
+        Assert.Equal(1, await PurgeAsync());
+        Assert.True(File.Exists(path));
+        Assert.False(File.Exists(otherPath));
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Leased)]
+    [InlineData((JobStatus)999)]
+    public async Task Cleanup_preserves_an_output_referenced_by_a_leased_or_unknown_active_job(JobStatus status)
+    {
+        await SetRetentionDaysAsync(7);
+        var (_, path) = await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await SeedFailedJobAsync(path, DateTimeOffset.UtcNow.AddDays(-8), status);
+        Assert.Equal(0, (await PreviewAsync()).FailedOutputCount);
+        Assert.Equal(0, await PurgeAsync());
+        Assert.True(File.Exists(path));
+    }
+
+    [Fact]
+    public async Task A_held_lease_protects_its_failed_jobs_output_independently_of_job_status()
+    {
+        await SetRetentionDaysAsync(7);
+        var (id, path) = await SeedFailedWorkOutputAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await using var db = new OptimisarrDbContext(_options);
+        var worker = new Worker { Name = "Held fixture", CredentialFingerprint = new('e', 64) };
+        db.Workers.Add(worker);
+        await db.SaveChangesAsync();
+        db.JobLeases.Add(new() { Id = Guid.NewGuid(), WorkerId = worker.Id, JobId = id, State = LeaseState.Held });
+        await db.SaveChangesAsync();
+        Assert.Equal(0, (await PreviewAsync()).FailedOutputCount);
+        Assert.Equal(0, await PurgeAsync());
+        Assert.True(File.Exists(path));
+    }
+
+    [Fact]
+    public async Task Manual_purge_rechecks_a_previously_tracked_replacement_under_the_writer()
+    {
+        var (id, path) = await SeedQuarantinedAsync(DateTimeOffset.UtcNow.AddDays(-8));
+        await using var stale = new OptimisarrDbContext(_options);
+        await stale.Replacements.SingleAsync(r => r.Id == id);
+        await using (var change = new OptimisarrDbContext(_options))
+        {
+            (await change.Replacements.SingleAsync(r => r.Id == id)).Status = ReplacementStatus.RolledBack;
+            await change.SaveChangesAsync();
+        }
+        var service = new TimedCleanupService(stale, new SettingsStore(stale), _workDir, NullLogger<TimedCleanupService>.Instance);
+        Assert.Equal(ReplacementResultKind.Invalid, (await service.PurgeOneAsync(id, default)).Kind);
+        Assert.True(File.Exists(path));
+        Assert.Equal(ReplacementStatus.RolledBack, await StatusOfAsync(id));
+    }
+
+    private static async Task ReserveAsync(OptimisarrDbContext db, int mediaId, string path, string keyKind)
+    {
+        // Even incomplete legacy rollback evidence must keep its durable reservations effective.
+        var action = new DedupeAction { Id = Guid.NewGuid(), ReviewKey = new('a', 64),
+            ScopeKey = new('b', 64), PlanHash = new('c', 64) };
+        db.DedupeActions.Add(action);
+        var key = Assert.Single(FileOperationClaims.Keys(mediaId, path), key => key.StartsWith(keyKind + ":"));
+        db.DedupeFileClaims.Add(new() { ActionId = action.Id, Key = key });
+        await db.SaveChangesAsync();
     }
 
     [Theory]

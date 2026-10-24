@@ -8,7 +8,7 @@ import Foundation
 /// working across a server upgrade.
 public enum WorkerProtocol {
     public static let minimum = 1
-    public static let maximum = 10
+    public static let maximum = 11
 }
 
 /// What this machine has *proved* it can do.
@@ -40,6 +40,7 @@ public struct SidecarCapabilities: Sendable, Equatable {
     public var vmaf: VmafCapability
     public var freeScratchBytes: Int64
     public var maxConcurrency: Int
+    public var perceptual: WorkerPerceptualCapabilities?
 
     public init(
         name: String,
@@ -50,7 +51,8 @@ public struct SidecarCapabilities: Sendable, Equatable {
         hardwareDecoders: [String] = [],
         vmaf: VmafCapability = .none,
         freeScratchBytes: Int64 = 0,
-        maxConcurrency: Int = 0
+        maxConcurrency: Int = 0,
+        perceptual: WorkerPerceptualCapabilities? = nil
     ) {
         self.name = name
         self.operatingSystem = operatingSystem
@@ -61,6 +63,7 @@ public struct SidecarCapabilities: Sendable, Equatable {
         self.vmaf = vmaf
         self.freeScratchBytes = freeScratchBytes
         self.maxConcurrency = maxConcurrency
+        self.perceptual = perceptual
     }
 
     /// Reported rather than guessed from the product name, so a Rosetta or Intel host is honest.
@@ -181,8 +184,10 @@ public struct Assignment: Sendable, Equatable {
     public let videoEncoder: String
     public let kind: String
     public let audioEncoder: String?
+    public let nativeQuality: NativeQualityAssignment?
     public var isAudio: Bool { kind == "Audio" }
-    public var encoder: String { isAudio ? audioEncoder ?? "Unknown audio encoder" : videoEncoder }
+    public var isImage: Bool { kind == "Image" }
+    public var encoder: String { nativeQuality?.encoder ?? (isAudio ? audioEncoder ?? "Unknown audio encoder" : videoEncoder) }
     public let renewWithinSeconds: Int
     public let arguments: [String]
     public let outputExtension: String
@@ -200,8 +205,10 @@ public struct Assignment: Sendable, Equatable {
         renewWithinSeconds: Int, arguments: [String], outputExtension: String,
         quality: QualityRequirement, search: AdaptiveSearchStep? = nil,
         fullVerification: FullVerificationContract? = nil, maxCandidateBytes: Int64? = nil,
-        minCandidateBytes: Int64? = nil, kind: String = "Video", audioEncoder: String? = nil
+        minCandidateBytes: Int64? = nil, kind: String = "Video", audioEncoder: String? = nil,
+        nativeQuality: NativeQualityAssignment? = nil
     ) {
+        self.nativeQuality = nativeQuality
         self.leaseId = leaseId
         self.jobId = jobId
         self.title = title
@@ -219,7 +226,30 @@ public struct Assignment: Sendable, Equatable {
         self.minCandidateBytes = minCandidateBytes
     }
 
+    public static func decode(_ data: Data) -> Self? {
+        guard let wire = try? NativeWireJSON.compact(data),
+              let object = try? JSONSerialization.jsonObject(with: wire) as? [String: Any] else { return nil }
+        let keys = NativeWireJSON.rootKeys(wire).map { $0.lowercased() }
+        guard keys.filter({ $0 == "leaseid" }).count == 1, keys.filter({ $0 == "jobid" }).count == 1 else { return nil }
+        if let search = object["perceptualSearch"], !(search is NSNull) {
+            guard let native = NativeQualityAssignment(data: wire) else { return nil }
+            return Self(leaseId: native.leaseId, jobId: native.jobId, title: native.title,
+                sourceBytes: native.sourceBytes, videoEncoder: "", renewWithinSeconds: native.renewWithinSeconds,
+                arguments: native.arguments, outputExtension: native.outputExtension, quality: native.quality,
+                kind: native.kind, audioEncoder: native.kind == "Audio" ? native.encoder : nil, nativeQuality: native)
+        }
+        return Self(json: object)
+    }
+
     init?(json: [String: Any]) {
+        // Native search has a separate shared-engine contract. Until it is routed there,
+        // treating an unreadable search as absent would silently run a fixed encode.
+        guard json["perceptualSearch"] == nil || json["perceptualSearch"] is NSNull else { return nil }
+        var search: AdaptiveSearchStep?
+        if let raw = json["search"], !(raw is NSNull) {
+            guard let object = raw as? [String: Any], let parsed = AdaptiveSearchStep(json: object) else { return nil }
+            search = parsed
+        }
         guard
             let leaseId = json["leaseId"] as? String,
             let jobId = (json["jobId"] as? NSNumber)?.intValue,
@@ -265,24 +295,10 @@ public struct Assignment: Sendable, Equatable {
             // Absent from a server that predates the search, and from every job whose quality is
             // already settled — both mean "encode straight away", which is what this app did
             // before the field existed.
-            search: Assignment.search(from: json), fullVerification: fullVerification,
+            search: search, fullVerification: fullVerification,
             maxCandidateBytes: (json["maxCandidateBytes"] as? NSNumber)?.int64Value,
             minCandidateBytes: (json["minCandidateBytes"] as? NSNumber)?.int64Value,
             kind: kind, audioEncoder: json["audioEncoder"] as? String)
     }
 
-    /// Says so when a search arrives that cannot be read.
-    ///
-    /// Nil has two meanings here and only one of them is ordinary: no search was sent, or one was
-    /// sent and could not be understood. They looked identical, and the second is the one that
-    /// quietly encodes a whole title at the library's baseline.
-    private static func search(from json: [String: Any]) -> AdaptiveSearchStep? {
-        guard let searchJson = json["search"] as? [String: Any] else { return nil }
-        guard let step = AdaptiveSearchStep(json: searchJson) else {
-            SidecarLog.job.error(
-                "A quality search was offered but could not be read, so this job would encode at the library's quality. Keys: \(searchJson.keys.sorted().joined(separator: ", "), privacy: .public)")
-            return nil
-        }
-        return step
-    }
 }

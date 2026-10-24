@@ -302,16 +302,17 @@ public static class Program
         var prober = new CapabilityProber(new ProcessCommandRunner());
         var scratch = ScratchDirectory();
 
-        probe = token => prober.ProbeAsync(
-            Environment.MachineName,
-            // Whatever FFmpeg this machine has on its PATH, until the installer bundles one. Null
-            // when there is none, which the prober reports as no capabilities at all rather than
-            // guessing — and a worker that proved nothing is never offered work.
-            FindFfmpeg(),
-            FreeScratchBytes(scratch),
-            // One job at a time until there is a job runner to run a second with.
-            maxConcurrency: 1,
-            token);
+        probe = async token =>
+        {
+            var ffmpeg = FindFfmpeg();
+            var proved = await prober.ProbeAsync(Environment.MachineName, ffmpeg, FreeScratchBytes(scratch), 1, token);
+            if (ffmpeg is not null)
+            {
+                var native = await PerceptualCapabilityProber.ForFfmpeg(ffmpeg).ProbeAsync(scratch, token);
+                proved = proved with { Perceptual = native, MaxConcurrency = proved.MaxConcurrency > 0 || native.ImageEncoders is { Count: > 0 } ? 1 : 0 };
+            }
+            return NativeWorkerResources.Refresh(proved, scratch);
+        };
         var capture = probe;
 
         // One client for control traffic, another for transfers. A whole-video upload must not sit
@@ -342,6 +343,7 @@ public static class Program
             load: loadSampler.Sample,
             delay: Task.Delay,
             report: report,
+            refreshCapabilities: cap => NativeWorkerResources.Refresh(cap, scratch),
             runJob: async (pairing, assignment, token) =>
             {
                 try

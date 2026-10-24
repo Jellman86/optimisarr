@@ -16,7 +16,7 @@ public sealed record ConfigSnapshot(
     IReadOnlyList<ArrConnectionSnapshot> ArrConnections)
 {
     /// <summary>The current snapshot schema version. Bump when the shape changes incompatibly.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 }
 
 /// <summary>A library definition, matched on its unique <see cref="Path"/> when imported.</summary>
@@ -95,7 +95,14 @@ public sealed record LibrarySnapshot(
     double? MaximumAudioQualityDistance = null,
     bool? SoundtrackQualityReportingEnabled = null,
     bool? SoundtrackQualityGateEnabled = null,
-    double? MaximumSoundtrackQualityDistance = null);
+    double? MaximumSoundtrackQualityDistance = null,
+    bool? ImagePerceptualReportingEnabled = null,
+    bool? ImagePerceptualGateEnabled = null,
+    double? MinimumImagePerceptualScore = null,
+    bool? AdaptiveAudioQuality = null,
+    bool? AdaptiveImageQuality = null,
+    // Absent from backups made before the setting existed; importing those keeps the stored choice.
+    bool? NormalizeOpusChannelLayout = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

@@ -6,6 +6,19 @@ namespace Optimisarr.Tests;
 
 public sealed class TranscodeSpecResolverTests
 {
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void Only_explicit_quality_first_opt_in_allows_lossy_webp_from_a_lossless_source(bool adaptive, bool lossless)
+    {
+        var rules = Hevc with { TargetImageFormat = "webp", ImageQuality = 80 };
+        var spec = TranscodeSpecResolver.Resolve(rules, "/data/photo.png", "photo.png", "/work", false, null, null,
+            kind: MediaKind.Image, sourceImageCodec: "png", adaptiveImageQuality: adaptive);
+        Assert.Equal(lossless, spec.ImageLossless);
+        Assert.Equal(80, spec.ImageQuality);
+        Assert.Equal("libwebp", spec.ImageEncoder);
+    }
+
     private static readonly RuleSettings Hevc = RuleProfileDefaults.For(RuleProfile.ConservativeHevc);
 
     [Fact]
@@ -19,6 +32,31 @@ public sealed class TranscodeSpecResolverTests
         var args = FfmpegCommandBuilder.Build(spec);
         Assert.Contains("-c:s:0", args);
         Assert.DoesNotContain("-c:s:1", args);
+    }
+
+    [Fact]
+    public void Carries_the_source_channel_layout_into_an_opus_encode()
+    {
+        var rules = Hevc with { VideoAudioCodec = "opus" };
+
+        var spec = TranscodeSpecResolver.Resolve(rules, "/data/film.mkv", "film.mkv", "/work",
+            false, 23, "medium", sourceAudioChannelLayout: "5.1(side)");
+
+        Assert.Equal("5.1(side)", spec.SourceAudioChannelLayout);
+        var args = FfmpegCommandBuilder.Build(spec);
+        Assert.Equal("channelmap=channel_layout=5.1", args[Array.IndexOf(args.ToArray(), "-af") + 1]);
+    }
+
+    [Fact]
+    public void Leaves_the_channel_layout_alone_when_the_library_turns_the_conversion_off()
+    {
+        var rules = Hevc with { VideoAudioCodec = "opus", NormalizeOpusChannelLayout = false };
+
+        var spec = TranscodeSpecResolver.Resolve(rules, "/data/film.mkv", "film.mkv", "/work",
+            false, 23, "medium", sourceAudioChannelLayout: "5.1(side)");
+
+        Assert.False(spec.NormalizeOpusChannelLayout);
+        Assert.DoesNotContain("-af", FfmpegCommandBuilder.Build(spec));
     }
 
     [Fact]

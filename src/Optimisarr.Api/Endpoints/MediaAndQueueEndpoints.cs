@@ -186,6 +186,9 @@ internal static class MediaAndQueueEndpoints
                 ? ApiErrors.NotFound("media.previewUnavailable", $"No media file with id {id} (or it has no library).", new { id })
                 : Results.Ok(new { jobId });
         })
+        .Produces<ApiError>(StatusCodes.Status409Conflict)
+        .Produces(StatusCodes.Status200OK)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
         .WithName("CreatePreview");
 
         app.MapGet("/api/preview/{jobId:int}", async (
@@ -206,6 +209,9 @@ internal static class MediaAndQueueEndpoints
             var deleted = await preview.DeleteAsync(jobId, cancellationToken);
             return deleted ? Results.NoContent() : Results.NotFound();
         })
+        .Produces<ApiError>(StatusCodes.Status409Conflict)
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status404NotFound)
         .WithName("DeletePreview");
 
         // Streams the original media file for side-by-side comparison (range-enabled so the browser
@@ -215,11 +221,11 @@ internal static class MediaAndQueueEndpoints
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
         {
-            var path = await db.MediaFiles
+            var source = await db.MediaFiles.AsNoTracking()
                 .Where(file => file.Id == id)
-                .Select(file => file.Path)
+                .Select(file => new { file.Path, LibraryRoot = file.Library == null ? null : file.Library.Path })
                 .FirstOrDefaultAsync(cancellationToken);
-            return FileServing.ServeFile(path);
+            return source is null ? Results.NotFound() : FileServing.ServeLibraryFile(source.Path, source.LibraryRoot);
         })
         .WithName("GetMediaContent");
 
@@ -236,6 +242,11 @@ internal static class MediaAndQueueEndpoints
             return FileServing.ServeFile(path);
         })
         .WithName("GetPreviewContent");
+
+        app.MapGet("/api/preview/{jobId:int}/reference", async (
+            int jobId, PreviewService preview, CancellationToken cancellationToken) =>
+            FileServing.ServeFile(await preview.ReferencePathAsync(jobId, cancellationToken)))
+        .WithName("GetPreviewReference");
 
         // The queue feed and the diagnostics list. All query params are optional: status, libraryId, and
         // category (a FailureCategory) narrow the set; since/until (ISO-8601) bound a job's finished/enqueued
@@ -255,6 +266,7 @@ internal static class MediaAndQueueEndpoints
             SettingsStore settingsStore,
             RemoteWorkersFeature remoteWorkers,
             ReplacementCoordinator replacementCoordinator,
+            QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
             JobStatus? wantedStatus = null;
@@ -297,9 +309,14 @@ internal static class MediaAndQueueEndpoints
             }, cancellationToken, availability);
 
             response.Headers["X-Total-Count"] = result.Total.ToString();
-            return Results.Ok(result.Items.Select(job => job with { Finalizing = replacementCoordinator.IsActive(job.Id) }));
+            return Results.Ok(result.Items.Select(job => job with
+            {
+                Finalizing = replacementCoordinator.IsActive(job.Id),
+                WaitingForResources = job.Status == nameof(JobStatus.Queued) && dispatcher.IsLocallyHeldForCapacity(job.Id, job.ExecutionAttempt)
+            }));
         })
-        .WithName("ListJobs");
+        .WithName("ListJobs")
+        .Produces<IReadOnlyList<JobDto>>();
 
         // Diagnostics: failed jobs grouped by classified reason (size-saving, container incompatibility,
         // replacement collision, …) with counts and recent samples, so "why are jobs failing?" is answerable
@@ -413,8 +430,12 @@ internal static class MediaAndQueueEndpoints
                     .Where(j => batch.Contains(j.Id) && statuses.Contains(j.Status)
                         && (j.Type == JobType.Normal || j.Status == JobStatus.Failed))
                     .ToListAsync(cancellationToken);
-                var clearable = terminal.Where(j => JobClearing.IsClearable(j, protectedIds)
-                    && dispatcher.TryDiscardWorkOutput(j.WorkOutputPath)).ToList();
+                var clearable = new List<Job>();
+                foreach (var job in terminal)
+                {
+                    if (JobClearing.IsClearable(job, protectedIds)
+                        && await dispatcher.TryDiscardWorkOutputAsync(db, job, cancellationToken)) clearable.Add(job);
+                }
                 var ids = clearable.Select(j => j.Id).ToArray();
                 var spent = await db.Replacements.Where(r => ids.Contains(r.JobId)
                     && (r.Status == ReplacementStatus.RolledBack || r.Status == ReplacementStatus.Purged))
@@ -507,6 +528,9 @@ internal static class MediaAndQueueEndpoints
 
             job.BypassSizePreflight = true;
             job.AdaptiveVideoQuality = null;
+            job.AdaptiveAudioBitrateKbps = null;
+            job.AdaptiveImageQuality = null;
+            job.PerceptualSearchJson = null;
             job.VmafModel = null;
             job.ErrorMessage = null;
             job.Progress = 0;
@@ -547,11 +571,11 @@ internal static class MediaAndQueueEndpoints
                 return ApiErrors.Conflict("job.recoveryPending",
                     "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
 
-            if (!dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
+            if (!await dispatcher.TryDiscardWorkOutputAsync(db, job, cancellationToken))
             {
                 return ApiErrors.Conflict(
                     "job.workCleanupFailed",
-                    "The job output could not be removed from the work directory. The job was retained.");
+                    "Cleanup is deferred while the output is reserved, shared, or unavailable. The job and diagnostics were retained; resolve the file operation and retry.");
             }
 
             db.Jobs.Remove(job);
@@ -599,11 +623,18 @@ internal static class MediaAndQueueEndpoints
                 return ApiErrors.Conflict("job.recoveryPending",
                     "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
 
-            if (!dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
+            // Preserve the admission error contract, but check before discarding any candidate.
+            var sourcePath = await db.MediaFiles.AsNoTracking().Where(f => f.Id == job.MediaFileId)
+                .Select(f => f.Path).SingleOrDefaultAsync(cancellationToken);
+            if (await db.IsFileReservedAsync(job.MediaFileId,
+                new[] { sourcePath, job.WorkOutputPath }.OfType<string>().ToArray(), cancellationToken))
+                throw new DedupeReservationConflictException();
+
+            if (!await dispatcher.TryDiscardWorkOutputAsync(db, job, cancellationToken))
             {
                 return ApiErrors.Conflict(
                     "job.workCleanupFailed",
-                    "The previous output could not be removed from the work directory. The job was not retried.");
+                    "Cleanup is deferred while the output is reserved, shared, or unavailable. The job and diagnostics were retained; resolve the file operation and retry.");
             }
 
             JobAttemptHistory.Archive(job, "ManualRetry", DateTimeOffset.UtcNow);
@@ -614,6 +645,9 @@ internal static class MediaAndQueueEndpoints
             // A retry must re-evaluate the samples against the current settings and whichever
             // encoder claims the job. Reusing the old selected quality also skips size preflight.
             job.AdaptiveVideoQuality = null;
+            job.AdaptiveAudioBitrateKbps = null;
+            job.AdaptiveImageQuality = null;
+            job.PerceptualSearchJson = null;
             job.VmafModel = null;
             if (higherQuality)
             {

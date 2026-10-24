@@ -87,6 +87,102 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private Task<HttpClient> PairCapableWorker(string name, int concurrency = 1) =>
         PairWorkerWithEncoders(name, concurrency, "libx265");
 
+    [Theory]
+    [InlineData(JobType.Preview, false)]
+    [InlineData(JobType.Calibration, false)]
+    [InlineData(JobType.Preview, true)]
+    [InlineData(JobType.Calibration, true)]
+    public async Task Interactive_jobs_can_be_claimed_without_becoming_normal_jobs(JobType type, bool strict)
+    {
+        await EnableRemoteWorkers(strict);
+        var worker = await PairCapableWorker("Interactive " + type);
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.FindAsync(id);
+            job!.Type = type;
+            job.CalibrationSessionId = type == JobType.Calibration ? Guid.NewGuid() : null;
+            job.RequestedVideoQuality = 24;
+            job.RequestedRuleProfile = type == JobType.Calibration ? RuleProfile.ConservativeHevc : null;
+            job.CalibrationClipSeconds = 12;
+            job.CalibrationClipStartSeconds = 24;
+            await db.SaveChangesAsync();
+        }
+        // Preparation runs outside the request (#428); a fast fixture may already be ready
+        // on the first claim. Keep that response so a successfully acquired lease is not lost.
+        using var claim = await ClaimWhenReady(worker);
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.FindAsync(id);
+        Assert.Equal(type, saved!.Type);
+        Assert.Equal(JobStatus.Leased, saved.Status);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetGuid();
+        Assert.Equal(4, assignment.GetProperty("sourceBytes").GetInt64());
+        Assert.Equal(strict, assignment.GetProperty("fullVerification").ValueKind != JsonValueKind.Null);
+        if (strict) Assert.True(assignment.GetProperty("fullVerification").GetProperty("countVideoFrames").GetBoolean());
+        var arguments = assignment.GetProperty("arguments").EnumerateArray().Select(v => v.GetString()).ToArray();
+        Assert.DoesNotContain("-t", arguments);
+        Assert.DoesNotContain("-ss", arguments);
+        using var source = await worker.GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.OK, source.StatusCode);
+        Assert.Equal(new byte[] { 1, 3, 5, 7 }, await source.Content.ReadAsByteArrayAsync());
+        var sourceHash = source.Headers.GetValues("X-Optimisarr-Source-Sha256").Single();
+        var database = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = await database.JobLeases.FindAsync(leaseId);
+        var frozen = lease!.VerificationWorkJson;
+        var tampered = System.Text.Json.Nodes.JsonNode.Parse(frozen!)!;
+        var originalPath = await database.MediaFiles.Where(media => media.Id == saved.MediaFileId).Select(media => media.Path).SingleAsync();
+        tampered["workerSample"]!["path"] = originalPath;
+        tampered["original"]!["path"] = originalPath;
+        lease.VerificationWorkJson = tampered.ToJsonString();
+        await database.SaveChangesAsync();
+        using var refused = await worker.GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        lease.VerificationWorkJson = frozen;
+        await database.SaveChangesAsync();
+        var bytes = new byte[] { 2, 4, 6, 8 };
+        using var upload = new HttpRequestMessage(HttpMethod.Post, $"/api/workers/leases/{leaseId}/result");
+        upload.Headers.Add("X-Optimisarr-Source-Sha256", sourceHash);
+        upload.Headers.Add("X-Optimisarr-Candidate-Sha256", Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant());
+        upload.Content = new ByteArrayContent(bytes);
+        using var delivered = await worker.SendAsync(upload);
+        Assert.Equal(HttpStatusCode.Accepted, delivered.StatusCode);
+        await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Entry(saved).ReloadAsync();
+        Assert.Equal(JobStatus.AwaitingVerification, saved.Status);
+        var expectedRoot = Optimisarr.Api.Queue.WorkerJobPaths.Root(
+            Optimisarr.Api.Queue.WorkPaths.Resolve(check.ServiceProvider.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>()), saved);
+        Assert.Equal(Path.GetFullPath(expectedRoot), Path.GetDirectoryName(saved.WorkOutputPath!));
+        Assert.Equal(type, saved.Type);
+        File.Delete(saved.WorkOutputPath!);
+    }
+
+    [Theory]
+    [InlineData(JobType.Preview)]
+    [InlineData(JobType.Calibration)]
+    public async Task Interactive_audio_keeps_its_local_path_instead_of_entering_a_worker_search(JobType type)
+    {
+        await EnableRemoteWorkers(strict: true);
+        var worker = await PairWorker("Audio interactive", 1, [], [], ["aac"], protocolMaximum: WorkerProtocol.Current);
+        var id = await QueueAJob(videoEncoder: null, placement: WorkPlacement.WorkerOnly, fileName: "track.flac");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == id);
+            job.Type = type;
+            job.CalibrationSessionId = type == JobType.Calibration ? Guid.NewGuid() : null;
+            job.RequestedAudioBitrateKbps = 128;
+            var media = job.MediaFile!;
+            media.MediaKind = MediaKind.Audio; media.VideoCodec = null; media.Width = null; media.Height = null;
+            media.AudioCodecs = "flac"; media.AudioTrackCount = 1; media.MaxAudioChannels = 2;
+            media.Library!.AudioTargetCodec = "aac";
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
     [Fact]
     public async Task A_previous_worker_cannot_claim_strict_picture_retention_work()
     {
@@ -1716,6 +1812,137 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, secondClaim.StatusCode);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Temporary_capacity_returns_keep_the_pause_without_becoming_permanent_refusal_opinions(bool capacity)
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        var route = capacity ? "capacity-unavailable" : "release";
+        for (var index = 0; index < 3; index++)
+        {
+            using var worker = await PairCapableWorker($"Return policy {capacity} {index} {Guid.NewGuid():N}");
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+            var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+            using var returned = await worker.PostAsync($"/api/workers/leases/{leaseId}/{route}", null);
+            Assert.Equal(HttpStatusCode.NoContent, returned.StatusCode);
+            using var immediate = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, immediate.StatusCode);
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var lease = await db.JobLeases.SingleAsync(l => l.Id == leaseId);
+            Assert.Equal(capacity ? "CapacityUnavailable" : null, lease.EndReason?.ToString());
+        }
+        using var next = await PairCapableWorker($"After three returns {capacity} {Guid.NewGuid():N}");
+        using var offered = await next.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(capacity ? HttpStatusCode.OK : HttpStatusCode.NoContent, offered.StatusCode);
+        using var finalScope = _api.Services.CreateScope();
+        var context = finalScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await context.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        Assert.Equal(0, job.MediaFile!.FailureCount);
+        Assert.False(await context.Exclusions.AnyAsync(e => e.Path == job.MediaFile.Path));
+        Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile.Path));
+    }
+
+    [Fact]
+    public async Task Worker_interruptions_allow_immediate_recovery_without_becoming_permanent_media_refusals()
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        var route = "interrupted";
+        for (var index = 0; index < 3; index++)
+        {
+            using var worker = await PairCapableWorker($"Return policy interrupted {index} {Guid.NewGuid():N}");
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+            var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+            using var returned = await worker.PostAsync($"/api/workers/leases/{leaseId}/{route}", null);
+            Assert.Equal(HttpStatusCode.NoContent, returned.StatusCode);
+            using var immediate = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.OK, immediate.StatusCode);
+            var resumedLeaseId = (await immediate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+            using var resumedReturn = await worker.PostAsync($"/api/workers/leases/{resumedLeaseId}/{route}", null);
+            Assert.Equal(HttpStatusCode.NoContent, resumedReturn.StatusCode);
+            using var scope = _api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var lease = await db.JobLeases.SingleAsync(l => l.Id == leaseId);
+            Assert.Equal("WorkerInterrupted", lease.EndReason?.ToString());
+        }
+        using var next = await PairCapableWorker($"After three returns interrupted {Guid.NewGuid():N}");
+        using var offered = await next.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, offered.StatusCode);
+        using var finalScope = _api.Services.CreateScope();
+        var context = finalScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await context.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        Assert.Equal(0, job.MediaFile!.FailureCount);
+        Assert.False(await context.Exclusions.AnyAsync(e => e.Path == job.MediaFile.Path));
+        Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile.Path));
+    }
+
+    [Theory]
+    [InlineData("capacity-unavailable")]
+    [InlineData("interrupted")]
+    public async Task A_temporary_return_is_replay_safe_and_cannot_requeue_another_workers_new_lease(string route)
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob();
+        using var first = await PairCapableWorker($"Capacity replay {Guid.NewGuid():N}");
+        using var second = await PairCapableWorker($"Capacity successor {Guid.NewGuid():N}");
+        using var claim = await first.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+        var path = $"/api/workers/leases/{leaseId}/{route}";
+        using var stolen = await second.PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+        using var anonymous = await _api.CreateClient().PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        using var returned = await first.PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.NoContent, returned.StatusCode);
+        using var taken = await second.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
+        using var repeated = await first.PostAsync(path, null);
+        Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(jobId));
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Single(await db.JobLeases.Where(l => l.JobId == jobId && l.State == LeaseState.Held).ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false, "capacity-unavailable")]
+    [InlineData(true, "capacity-unavailable")]
+    [InlineData(false, "interrupted")]
+    [InlineData(true, "interrupted")]
+    public async Task Temporary_return_preserves_cancellation_and_retry_intent_and_refuses_expired_leases(bool expired, string route)
+    {
+        await EnableRemoteWorkers();
+        var jobId = await QueueAJob();
+        using var worker = await PairCapableWorker($"Capacity lifetime {expired} {Guid.NewGuid():N}");
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetGuid();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Cancelled;
+            job.QualityRetryCount = 1;
+            job.RetryReason = "HigherPerceptualQualityRetry";
+            if (expired) (await db.JobLeases.SingleAsync(l => l.Id == leaseId)).ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+            await db.SaveChangesAsync();
+        }
+        using var response = await worker.PostAsync($"/api/workers/leases/{leaseId}/{route}", null);
+        Assert.Equal(expired ? HttpStatusCode.Conflict : HttpStatusCode.NoContent, response.StatusCode);
+        using var finalScope = _api.Services.CreateScope();
+        var context = finalScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var saved = await context.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Cancelled, saved.Status);
+        Assert.Equal(1, saved.QualityRetryCount);
+        Assert.Equal("HigherPerceptualQualityRetry", saved.RetryReason);
+        Assert.Equal(0, saved.MediaFile!.FailureCount);
+        Assert.Equal(expired ? LeaseState.Held : LeaseState.Released, (await context.JobLeases.SingleAsync(l => l.Id == leaseId)).State);
+    }
+
     [Fact]
     public async Task Releasing_a_claim_puts_the_job_back_in_the_queue()
     {
@@ -2086,5 +2313,16 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, claim.StatusCode);
 
         await EnableRemoteWorkers();
+    }
+
+    private static async Task<HttpResponseMessage> ClaimWhenReady(HttpClient worker)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            if (claim.StatusCode != HttpStatusCode.NoContent || attempt == 100) return claim;
+            claim.Dispose();
+            await Task.Delay(20);
+        }
     }
 }

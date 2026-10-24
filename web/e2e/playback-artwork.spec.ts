@@ -39,7 +39,7 @@ for (const width of [1440, 390]) {
     const album = await playing.locator('[data-shape="square"]').boundingBox()
     expect(album?.width).toBe(album?.height)
     await expect(playing).toContainText('A Song by An Artist')
-    await expect(playing).toContainText('(paused)')
+    await expect(playing).toContainText('Paused')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     const before = await playing.boundingBox()
     const initialRequests = [...requests]

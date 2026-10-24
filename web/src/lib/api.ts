@@ -158,6 +158,8 @@ export type LibraryRules = {
   videoAudioCodec: string | null
   videoAudioBitrateKbps: number | null
   downmixToStereo: boolean
+  /** Map a 5.1(side) source onto the standard 5.1 order Opus writes. */
+  normalizeOpusChannelLayout: boolean
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
@@ -183,6 +185,11 @@ export type LibraryRules = {
   maximumSizeSavingPercent: number | null
   audioLoudnessGateEnabled: boolean
   maxLoudnessDriftLufs: number
+  adaptiveAudioQuality?: boolean
+  adaptiveImageQuality?: boolean
+  imagePerceptualReportingEnabled?: boolean
+  imagePerceptualGateEnabled?: boolean
+  minimumImagePerceptualScore?: number | null
   soundtrackQualityReportingEnabled?: boolean
   soundtrackQualityGateEnabled?: boolean
   maximumSoundtrackQualityDistance?: number | null
@@ -275,6 +282,7 @@ export function newLibraryDefaults(): SaveLibrary {
     videoAudioCodec: null,
     videoAudioBitrateKbps: null,
     downmixToStereo: false,
+    normalizeOpusChannelLayout: true,
     keepAudioLanguages: null,
     keepSubtitleLanguages: null,
     reencodeLossyAudio: false,
@@ -300,6 +308,11 @@ export function newLibraryDefaults(): SaveLibrary {
     maximumSizeSavingPercent: null,
     audioLoudnessGateEnabled: false,
     maxLoudnessDriftLufs: 1,
+    adaptiveAudioQuality: false,
+    adaptiveImageQuality: false,
+    imagePerceptualReportingEnabled: false,
+    imagePerceptualGateEnabled: false,
+    minimumImagePerceptualScore: null,
     soundtrackQualityReportingEnabled: false,
     soundtrackQualityGateEnabled: false,
     maximumSoundtrackQualityDistance: null,
@@ -481,11 +494,46 @@ export type VerificationCheck = {
   detail: string
 }
 
+export type PerceptualSearchSummary = {
+  kind: 'Audio' | 'Image'
+  encoder: string
+  sourceSha256: string
+  measurementLocation: string
+  retryValue?: number | null
+  minimumValue?: number | null
+  preparationBlocked?: boolean
+  minimumImageScore: number | null
+  maximumAudioDistance: number | null
+  audioWindows: { startSeconds: number; durationSeconds: number }[]
+  result: {
+    decision: { nextValue: number | null; selectedValue: number; fellBack: boolean; reason: string }
+    probes: { value: number; encodedBytes: number; measurement: { available: boolean; meetsTarget: boolean; score: number | null; error: string | null; imageSsim?: number | null; loudnessDriftLufs?: number | null; targetDetail?: string | null } }[]
+  }
+}
+
 export type VerificationReport = {
+  perceptualSearch?: PerceptualSearchSummary | null
   checks: VerificationCheck[]
+  imagePerceptualQuality?: ImagePerceptualReport | null
   soundtrackQuality?: SoundtrackQualityReport | null
   audioQuality?: AudioQualityReport | null
   context?: VerificationContext | null
+}
+
+export type ImagePerceptualReport = {
+  measurement: { width: number; height: number; alpha: boolean; maximumAlphaError: number;
+    score: number; backgroundScores: number[] } | null
+  error: string | null
+  metric?: string
+  revision?: string
+  preparation?: string
+  sourceSha256?: string | null
+  candidateSha256?: string | null
+  metricSha256?: string | null
+  elapsedSeconds?: number
+  gateEnabled?: boolean
+  minimumScore?: number | null
+  gatePassed?: boolean | null
 }
 
 export type SoundtrackQualityReport = {
@@ -558,6 +606,7 @@ export type MediaSideStats = {
 }
 
 export type PreviewComparison = {
+  originalUrl?: string | null
   jobId: number
   mediaFileId: number
   mediaKind: string
@@ -664,6 +713,8 @@ export type CalibrationResult = {
   outcome: string
   applied: boolean
   variants: CalibrationVariantResult[]
+  currentQuality: number
+  currentProfile: string | null
 }
 
 export type CalibrationSession = {
@@ -692,6 +743,8 @@ export type Job = {
   enqueueReason: string | null
   failureCategory: string | null
   ffmpegArguments: string | null
+  /** The audio filter chain the job's command applied, or null when it applied none. */
+  appliedAudioFilter: string | null
   videoEncoder: string | null
   requestedVideoQuality: number | null
   effectiveVideoQuality: number | null
@@ -702,6 +755,7 @@ export type Job = {
   outputSizeBytes: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
+  perceptualSearchJson?: string | null
   verifiedAt: string | null
   enqueuedAt: string
   startedAt: string | null
@@ -716,6 +770,7 @@ export type Job = {
   remoteStage: string | null
   /** A queued job its library keeps off this server until a worker takes it. */
   waitingForWorker: boolean
+  waitingForResources?: boolean
   /** The current worker assignment completed the media checks; the container only validates evidence. */
   sidecarVerification?: boolean
   /** The verified output is currently being safely moved into place by the container. */
@@ -1200,21 +1255,39 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+export interface ExactDuplicateCopy {
+  id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string; reused?: boolean
+  libraryId?: number; libraryName?: string; libraryType?: string
+  aliases?: { id: number; libraryId: number; libraryName: string; relativePath: string }[]
+}
+export interface ExactDuplicateGroup {
+  sha256: string; sizeBytes: number; extraCopyBytes: number | null; totalCopies?: number
+  copies: ExactDuplicateCopy[]; reviewKey?: string | null; canDecide?: boolean
+  decision?: { choice: 'Keep' | 'Ignore'; keepIds: number[]; savedAt: string } | null
+}
 export interface ExactDuplicateStatus {
   libraryId: number
-  status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed'
+  status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed' | 'Interrupted'
   startedAt: string | null
   finishedAt: string | null
-  progress: { checked: number; skipped: number; total: number; bytesRead: number }
+  progress: { checked: number; skipped: number; total: number; bytesRead: number; reused?: number }
   error: string | null
-  result: null | { checked: number; skipped: number; total: number; bytesRead: number; truncated: boolean;
-    groups: { sha256: string; sizeBytes: number; extraCopyBytes: number | null; totalCopies?: number;
-      copies: { id: number; relativePath: string; hardLinkCount: number | null; checkedAt: string }[] }[] }
+  isStale?: boolean
+  libraries?: { id: number; name: string; root: string; mediaType: string }[]
+  result: null | { reused?: number; totalGroups?: number; page?: number; hasMore?: boolean; checked: number; skipped: number; total: number; bytesRead: number; truncated: boolean;
+    groups: ExactDuplicateGroup[] }
 }
 
 export const api = {
-  exactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`),
-  scanExactDuplicates: (id: number) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates`, { method: 'POST' }),
+  exactDuplicates: (id: number, page = 0) => request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates${page ? `?page=${page}` : ''}`),
+  scanExactDuplicates: (id: number, forceRefresh = false, libraryIds: number[] = []) => {
+    const query = new URLSearchParams()
+    if (forceRefresh) query.set('forceRefresh', 'true')
+    if (libraryIds.length > 1) for (const value of libraryIds) query.append('libraryIds', String(value))
+    return request<ExactDuplicateStatus>(`/api/libraries/${id}/duplicates${query.size ? '?' + query : ''}`, { method: 'POST' })
+  },
+  saveExactDuplicateReview: (id: number, reviewKey: string, choice: 'Keep' | 'Ignore' | 'Review', keepIds: number[] = []) =>
+    request<void>(`/api/libraries/${id}/duplicates/review`, { method: 'PUT', body: JSON.stringify({ reviewKey, choice, keepIds }) }),
   cancelExactDuplicates: (id: number) => request<void>(`/api/libraries/${id}/duplicates`, { method: 'DELETE' }),
   diagnosticParticipants: (id: string) => request<{ workerId: number; state: string }[]>(`/api/diagnostics/capture/${encodeURIComponent(id)}/participants`),
   diagnosticCaptures: (jobId?: number) => request<DiagnosticCapture[]>(`/api/diagnostics/captures${jobId == null ? '' : `?jobId=${jobId}`}`),
@@ -1277,9 +1350,9 @@ export const api = {
 
   calibrationSources: (libraryId: number) =>
     request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
-  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false, diagnosticsEnabled = true, ignoreActiveStreams = false) =>
+  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false, diagnosticsEnabled = true, ignoreActiveStreams = false, compareVideoPresets = false) =>
     request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
-      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled, ignoreActiveStreams }),
+      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled, ignoreActiveStreams, compareVideoPresets }),
     }),
   calibrations: () => request<CalibrationSession[]>('/api/calibration'),
   calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),

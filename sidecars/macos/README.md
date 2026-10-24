@@ -170,6 +170,7 @@ Encoding, all proved with a real test encode at launch rather than taken from FF
 | HEVC | `hevc_videotoolbox` (hardware) and `libx265` |
 | AV1 | `libsvtav1` (software only) |
 | Audio | `aac`, `libopus`, `libmp3lame`; each encoder must pass a real capability probe. The bundle includes pinned Opus and LAME sources and licenses. |
+| Still images | JPEG and WebP with pinned ExifTool modules. Native tool proof is bundled, while automatic image placement remains gated behind protocol-11 workflow qualification. |
 
 **This sidecar currently offers software AV1 encoding through SVT-AV1.** Hardware decoding is
 advertised only where the launch probe succeeds. The bundled build is pinned to FFmpeg 8.0.3; see
@@ -214,7 +215,7 @@ reboots with nothing on screen to say so.
 ## Requirements
 
 - macOS 14 or later
-- Xcode 26 (or a Swift 6 toolchain) to build
+- Xcode 26 (or a Swift 6 toolchain), Python 3 and the .NET 10 SDK to build the app and its self-contained helper
 - An Optimisarr server with **Settings → Files & safety → Remote workers** switched on
 
 ## Build and run
@@ -329,6 +330,41 @@ Give the address with its scheme. A bare host is reached over `http://`, which i
 server on a home network and wrong for one behind a TLS proxy; the failure message says so when the
 address had no scheme.
 
+## Unattended remote builds and acceptance
+
+A locked login keychain does not need to be unlocked for isolated testing. When
+`AcceptanceWorker` is configured with `OPTIMISARR_NATIVE_HOST`, also set
+`OPTIMISARR_NATIVE_ACCOUNTING_ROOT` to a new disposable journal directory and
+`OPTIMISARR_NATIVE_ACCOUNTING_SERVICE` to a unique `uk.optimisarr.acceptance.*`
+service. The worker creates a random-password checkpoint keychain beside the
+journal and deletes it on normal exit. Set `TMPDIR` to a newly created directory
+owned by the run, and use a new `OPTIMISARR_ACCEPTANCE_SCRATCH` directory. Native
+helper, metrics and metadata paths must refer to the qualified signed bundle.
+Recovery and resource observations stay in the isolated workspace; pairing is
+kept in memory. After a forced process termination, the coordinator must delete
+only that run's remaining `checkpoint-*.keychain-db` files using `security
+delete-keychain`. Never reuse its journal with a different checkpoint keychain.
+A missing or locked checkpoint still blocks native work.
+
+For Developer ID builds over SSH, use the authorized certificate backup with the
+wrapper below. Supply its export password on stdin through the private credential
+transport; never put the password in a command, environment variable or file.
+
+```bash
+SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
+  swift scripts/with-signing-keychain.swift /path/to/authorized-backup.p12 \
+  ./scripts/make-app.sh release
+```
+
+The wrapper imports into a disposable keychain, passes `SIGNING_KEYCHAIN` to the
+build, and removes it after the command exits. Every `codesign` call explicitly
+selects it. The user's default keychain, search list and login-keychain lock
+settings are left alone. This does not change the installed app's persistent
+pairing or accounting store. Interrupted signing runs may leave a locked,
+random-password keychain under `build/signing-*`; clean only the abandoned run
+after checking no build still owns it. Certificate renewal remains necessary
+when the authorized signing identity expires.
+
 ## Signing and release
 
 `make-app.sh` applies an ad-hoc signature by default, which is enough to run locally. Set
@@ -374,12 +410,16 @@ binary. It prepares or validates exact corresponding sources against the release
 commit and bundled media-tool revisions before signing. `SIDECAR_SOURCE_PACKAGE` can select an
 existing package; a stale package fails rather than being reused silently.
 
-It builds, signs with the hardened runtime and a secure timestamp (signing the bundled `ffmpeg`
-and `ffprobe` first, as notarisation requires), archives with `ditto`, submits to Apple, waits,
+It builds the self-contained shared quality helper and pinned ExifTool modules, then signs every
+nested native runtime library and media tool before the app. Developer ID signing uses the
+hardened runtime and secure timestamps; only the managed helper receives the required JIT
+entitlement. It archives with `ditto`, submits to Apple, waits,
 staples the ticket to the bundle, re-archives, and checks the result the way Gatekeeper will. It
 then builds a disk image from the stapled app and notarises and staples that too. Before notarisation,
 `verify-app.sh` copies the signed app to a temporary directory and renders all twenty light/dark
-fixture states using embedded artwork, without pairing or contacting a server. Final `.sha256`
+fixture states using embedded artwork, without pairing or contacting a server. It also proves
+managed startup, real JPEG/WebP metadata preservation and both pinned metrics using only bundled tools
+and system Perl. Missing tool dependencies block package acceptance. Final `.sha256`
 files are generated after stapling. Attach the `.dmg`, `.zip`, checksums and corresponding-source
 parts to the GitHub Release.
 

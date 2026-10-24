@@ -347,9 +347,10 @@ versions `1` and `2` preserve existing controls when omitted. See
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
 | `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts. |
-| `GET` | `/api/libraries/{id}/duplicates` | Current in-memory exact-copy scan status and bounded snapshot for this library. |
-| `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Returns `202`, or `409` if busy or over the 50,000-candidate preview limit. |
+| `GET` | `/api/libraries/{id}/duplicates` | Latest durable exact-copy report owned by this starting library (development). Optional zero-based `page`, 20 groups per page. Includes selected `libraries`, physical copies with aliases, review keys/preferences, original read dates, pagination and staleness. Only complete, current groups have `canDecide=true`. |
+| `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Optional repeated `libraryIds=1&libraryIds=2` selects 1–16 unique existing libraries, including `{id}`; omission uses `{id}` only. Optional `forceRefresh=true` rereads every candidate. Returns `202`, `400` for invalid scope, or `409` if busy or over 50,000 total candidates. |
 | `DELETE` | `/api/libraries/{id}/duplicates` | Cancel this library's running scan. Does not delete files or results. Returns `202`, or `409` if the scan has stopped. |
+| `PUT` | `/api/libraries/{id}/duplicates/review` | Save a preference for a complete current group. Body: `reviewKey` (64 characters), `choice` (`Keep`, `Ignore`, `Review`), `keepIds` (distinct physical-copy representative IDs, at most 100). `Keep` requires at least one; `Ignore` and `Review` require an empty array. `Review` clears the preference. Returns `204`; invalid, stale, shortened or mismatched evidence returns `409`, null fields `400`. Never changes media files. |
 
 Create and update library bodies use the same shape. Common fields:
 
@@ -392,6 +393,7 @@ Create and update library bodies use the same shape. Common fields:
   "audioTargetCodec": null,
   "audioBitrateKbps": null,
   "downmixToStereo": false,
+  "normalizeOpusChannelLayout": true,
   "targetImageFormat": null,
   "imageQuality": null,
   "autoEnqueueEnabled": false,
@@ -435,7 +437,7 @@ version-one configuration backups materialise their former global values into ea
 |---|---|---|
 | `POST` | `/api/media/{id}/preview` | Start a throwaway preview encode for one media file. |
 | `GET` | `/api/preview/{jobId}` | Read preview status, comparison stats, and verification report. |
-| `DELETE` | `/api/preview/{jobId}` | Remove preview output. |
+| `DELETE` | `/api/preview/{jobId}` | Remove preview output. Returns `409 work.cleanupDeferred` when cleanup must retain files and diagnostics for retry. |
 | `GET` | `/api/media/{id}/content` | Stream original media content for comparison. |
 | `GET` | `/api/preview/{jobId}/content` | Stream preview output for comparison. |
 
@@ -459,13 +461,24 @@ free space, a manual pause, or active-media protection.
 | `POST` | `/api/calibration/{id}/classifications` | Classify every anonymous candidate and reveal its settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
 | `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended video preset or media quality to the library, if its relevant settings have not changed. |
 | `GET` | `/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content` | Stream one scene or excerpt for `ORIGINAL` or anonymous candidate `A`–`E`. |
-| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its scratch media and non-failed disposable jobs. A failed job keeps only its diagnostic row until **Clear errored** removes it. |
+| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its scratch media and non-failed disposable jobs. A failed job keeps its diagnostic row until **Clear errored** removes it. Returns `409 work.cleanupDeferred` without cancelling jobs, removing the session or deleting files when cleanup is blocked. |
 
-Video calibration creates three 12-second scenes for the four shuffled library-slider presets plus one marked original reference.
+Recursive preview and calibration cleanup conservatively defers while any shared file operation,
+unresolved duplicate intent or durable file reservation exists, including one in another library.
+Opaque reservation keys cannot yet establish that an entire scratch tree has no aliased or absent
+reserved descendant. Resolve the operation or reservation and retry. Starting a new preview can
+return the same conflict when an earlier preview cannot be removed. Expired calibration sessions
+remain listed with their files and diagnostic references; expiration retries on later sweeps.
+
+Video calibration defaults to three 12-second scenes at up to five quality levels around the saved
+library quality, plus one marked original reference. Codec, container and other library settings
+are retained, and Apply changes only `QualityCrf`. Set `compareVideoPresets: true` in the start request
+to explicitly compare the four shuffled library-slider presets; Apply then changes the video preset
+and its complete bundle. Unsupported encoder execution is not silently replaced with another codec.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
 preceding keyframe, its sample `startSeconds` identifies the matching presentation window. Video
-samples retain the complete preset output, including its container, audio contract, and concrete
-configured quality. Calibration deliberately bypasses the library's Adaptive per-title VMAF search:
+samples retain the selected settings or complete preset output, including container and audio
+contract, with one concrete quality per candidate. Calibration deliberately bypasses the library's Adaptive per-title VMAF search:
 normal jobs retain that path, while a personal check measures VMAF once on each completed 12-second
 scene instead of recursively preparing three 40-second quality-search windows inside every scene.
 Scores remain absent from the API until classifications reveal the lineup;
@@ -520,7 +533,8 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/jobs/clear?scope=errored` | Clear failed jobs. Scope can be `errored`, `finished`, or `all`. |
 | `POST` | `/api/jobs/clear-pending` | Clear queued and ready-to-replace jobs and stop running work. |
 
-Job responses include status, progress, priority, FFmpeg arguments, selected
+Job responses include status, progress, priority, FFmpeg arguments, the audio filter the command
+applied (`appliedAudioFilter`, null when it applied none), selected
 encoder, output size, verification result, verification report JSON, the
 classified failure category (when failed), and timestamps. When paging is used,
 the total number of matches before paging is returned in the `X-Total-Count`
@@ -672,7 +686,9 @@ sidecar learns of a drain on its next check-in rather than at the end of its job
 | `POST` | `/api/workers/leases/{leaseId}/quality-probe` | Report an assigned adaptive sample's quality, encoded size and VMAF logs. Worker credential. The server advances the bounded search and returns the next step or the selected quality and final encode arguments; the worker does not select its own final quality. |
 | `POST` | `/api/workers/leases/{leaseId}/quality` | Report the libvmaf JSON logs for the commands the assignment carried, with `sourceSha256` and `candidateSha256`. The server parses and pools them itself and stores the result on the lease; `400 worker.quality.windowCount` / `worker.quality.logInvalid`, `409 worker.quality.notRequested` when the assignment asked for no measurement, `409 worker.quality.sourceMismatch` for another source. Evidence is used at verification only if the candidate then delivered carries the same hash. |
 | `POST` | `/api/workers/leases/{leaseId}/verification` | Submit full verification evidence for the lease's contract, bound to source and candidate hashes. Worker credential. A matching retry is idempotent; a different second report returns `409 worker.verification.alreadyRecorded`. A wrong contract or hash returns `409`. Negative/incomplete evidence is retained so strict verification can fail the job without local fallback. |
-| `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |
+| `POST` | `/api/workers/leases/{leaseId}/interrupted` | Acknowledge stopped native work, including parent exit. No body. Returns `204` without a media-refusal opinion or capacity cooldown; the restored worker can reclaim immediately. Replay preserves newer leases, cancellation and quality retry intent. `403` for another holder; `409` for an expired or incompatible ended lease. |
+| `POST` | `/api/workers/leases/{leaseId}/capacity-unavailable` | Return temporarily unaffordable work. No body. Returns `204`, preserving the worker/file retry pause without a permanent refusal opinion. A matching replay is idempotent. |
+| `POST` | `/api/workers/leases/{leaseId}/release` | Give refused work back to the queue. This ordinary hand-back contributes to the repeated-file-refusal policy. |
 | `GET` | `/api/workers/leases/{leaseId}/result/offset` | How many bytes of a resumable delivery the server holds for this lease (`bytes`). Zero before the first chunk. |
 | `PATCH` | `/api/workers/leases/{leaseId}/result` | Append one chunk at `X-Optimisarr-Offset`. `409 worker.result.offsetMismatch` with the real `bytes` when the offsets disagree, so the worker resumes from the truth. Staged by lease, so a resumed upload can only continue its own transfer. |
 | `POST` | `/api/workers/leases/{leaseId}/result/complete` | Finish a chunked delivery with the two hash headers and no body. The assembled file is hashed and accepted, or refused and discarded, exactly as a whole upload; `409 worker.result.nothingStaged` when no chunk arrived. |
@@ -858,3 +874,14 @@ search. Complete verification contract version `2` is audio; version `1` remains
 video. Audio evidence includes `sourceAudio` and `candidateAudio` packet spans
 rather than video spans. All required evidence is bound to the frozen contract and
 source/candidate hashes. Missing or contradictory evidence fails closed.
+
+Video previews and video personal quality checks may be claimed by compatible workers. Library
+placement and CPU mode apply to these disposable jobs; they cannot enter replacement. Source size,
+SHA-256, scratch limits and strict verification describe the bounded segment actually transferred,
+including video keyframe pre-roll, rather than the full inventory file. Preview comparisons may
+return `originalUrl` pointing to `/api/preview/{jobId}/reference`; clients should use it when supplied
+with the returned comparison clock. Calibration source and worker-candidate clocks include the same
+scene pre-roll. Closing a comparison ends its jobs and invalidates outstanding leases through the
+existing disposable cleanup lifecycle.
+
+Audio and still-image comparisons keep local execution and need local placement.

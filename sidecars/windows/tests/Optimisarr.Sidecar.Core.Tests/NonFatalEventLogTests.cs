@@ -152,8 +152,9 @@ public sealed class NonFatalEventLogTests
         {
             EventLog.CreateEventSource(source, "Application");
             var notices = new List<EventLogWriteState>();
-            using var provider = new NonFatalEventLogProvider(new NativeEventLogProvider(new EventLogSettings
-            { SourceName = source, LogName = "Application" }), notices.Add, TimeProvider.System);
+            var recorded = new RecordedNativeSink(new NativeEventLogProvider(new EventLogSettings
+            { SourceName = source, LogName = "Application" }));
+            using var provider = new NonFatalEventLogProvider(recorded, notices.Add, TimeProvider.System);
             var registration = provider.CreateLogger("registration");
             // Windows refreshes its registered sources asynchronously. Prove a real
             // write before concurrent entry assertions; an initial refusal must recover
@@ -177,16 +178,62 @@ public sealed class NonFatalEventLogTests
             Parallel.For(0, 100, index => provider.CreateLogger($"category{index}")
                 .LogInformation(new EventId(1000 + index), "Synthetic logging probe {Index}; no job or pairing.", index));
             provider.CreateLogger("empty").LogInformation(new EventId(1100), "");
-            Assert.Equal(noticesBefore, notices.Count);
-            var written = Array.Empty<int>();
-            var publication = Stopwatch.StartNew();
-            while (publication.Elapsed < TimeSpan.FromSeconds(30))
+            var expected = Enumerable.Range(1000, 101).ToArray();
+            // With no outage notice every burst entry must already be published.
+            // A notice means the OS transiently refused a write (hosted runners
+            // intermittently return ERROR_ACCESS_DENIED mid-burst long after
+            // registration succeeded; physical hosts do not). The guard's contract
+            // is drop-with-notice for one 30-second outage, so in that case require
+            // exactly one visible outage/recovery cycle and re-drive only the IDs
+            // the outage dropped. Silent loss still fails every assertion below.
+            var written = notices.Count > noticesBefore
+                ? ReadOwnedEntries(1000, Stopwatch.StartNew(), TimeSpan.FromSeconds(30))
+                : ReadPublished();
+            var missing = expected.Except(written).ToArray();
+            if (missing.Length == 0)
             {
-                written = ReadOwnedEntries(1000, publication, TimeSpan.FromSeconds(30));
-                if (written.Length >= 101) break;
-                Thread.Sleep(100);
+                Assert.Equal(noticesBefore, notices.Count);
             }
-            Assert.Equal(Enumerable.Range(1000, 101), written.Order());
+            else
+            {
+                var added = notices.Skip(noticesBefore).ToArray();
+                Assert.True(added.Length == 1 && added[0] == new EventLogWriteState(false, 5),
+                    "Concurrent native writes changed sink availability unexpectedly: " + string.Join(", ", added)
+                    + " Published synthetic IDs: " + string.Join(",", written.Order())
+                    + " Native write failures: " + string.Join("\n", recorded.Failures));
+                var recovery = Stopwatch.StartNew();
+                while (recovery.Elapsed < TimeSpan.FromSeconds(40)
+                    && !notices.Skip(noticesBefore).Any(notice => notice.Available))
+                {
+                    provider.CreateLogger("recovery").LogInformation(new EventId(999),
+                        "Synthetic recovery probe; no job or pairing.");
+                    Thread.Sleep(1000);
+                }
+                Assert.Contains(notices.Skip(noticesBefore), notice => notice.Available);
+                foreach (var id in missing)
+                {
+                    if (id == 1100)
+                        provider.CreateLogger("empty").LogInformation(new EventId(1100), "");
+                    else
+                        provider.CreateLogger("redrive").LogInformation(new EventId(id),
+                            "Synthetic logging probe {Index}; no job or pairing.", id - 1000);
+                }
+                written = ReadPublished();
+            }
+            Assert.Equal(expected, written.Order());
+
+            int[] ReadPublished()
+            {
+                var publication = Stopwatch.StartNew();
+                var ids = Array.Empty<int>();
+                while (publication.Elapsed < TimeSpan.FromSeconds(30))
+                {
+                    ids = ReadOwnedEntries(1000, publication, TimeSpan.FromSeconds(30));
+                    if (ids.Length >= 101) break;
+                    Thread.Sleep(100);
+                }
+                return ids;
+            }
 
             int[] ReadOwnedEntries(int minimumId, Stopwatch phase, TimeSpan budget)
             {
@@ -240,6 +287,37 @@ public sealed class NonFatalEventLogTests
     private sealed class ThrowingScope
     {
         public override string ToString() => throw new IOException("Scope bug");
+    }
+
+    // Only this disposable synthetic source uses exception detail. Production notices retain
+    // safe fields only; recording must not replay dropped IDs or change throttling/readiness.
+    [SupportedOSPlatform("windows")]
+    private sealed class RecordedNativeSink(NativeEventLogProvider native) : ILoggerProvider
+    {
+        private readonly Stopwatch _elapsed = Stopwatch.StartNew();
+        public List<string> Failures { get; } = [];
+        public ILogger CreateLogger(string category) => new RecordedLogger(this, native.CreateLogger(category));
+        public void Dispose() => native.Dispose();
+
+        private sealed class RecordedLogger(RecordedNativeSink owner, ILogger logger) : ILogger, IPreparedEventLogLogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => logger.BeginScope(state);
+            public bool IsEnabled(LogLevel level) => logger.IsEnabled(level);
+            public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter) => PrepareWrite(level, id, formatter(state, exception), exception)();
+            public Action PrepareWrite(LogLevel level, EventId id, string message, Exception? exception)
+            {
+                var write = ((IPreparedEventLogLogger)logger).PrepareWrite(level, id, message, exception);
+                return () => {
+                    try { write(); }
+                    catch (Exception error)
+                    {
+                        owner.Failures.Add($"Synthetic ID {id.Id}, elapsed {owner._elapsed.Elapsed}, thread {Environment.CurrentManagedThreadId}: {error}");
+                        throw;
+                    }
+                };
+            }
+        }
     }
 
     private sealed class ThrowingException : Exception

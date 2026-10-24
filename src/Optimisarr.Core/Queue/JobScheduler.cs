@@ -17,7 +17,8 @@ public sealed record QueuedJob(
     /// this decides whether holding the job for a worker means anything at all.
     /// </summary>
     bool QualityChosen = true,
-    MediaKind Kind = MediaKind.Unknown);
+    MediaKind Kind = MediaKind.Unknown,
+    bool WorkerRequired = false);
 
 public enum WorkloadLane { Video, NonVideo, Evidence }
 public sealed record ScheduledJob(int Id, WorkloadLane Lane);

@@ -79,6 +79,10 @@ public sealed class LibraryScanner
             throw new DirectoryNotFoundException($"Library root does not exist: {root}");
         }
 
+        if (!LibraryPathSafety.IsSafeDirectory(root))
+            throw new IOException("Library root must be an accessible directory without a symbolic link or reparse point.");
+        root = Path.GetFullPath(root);
+
         var files = new List<ScannedFile>();
         var skippedUnsettled = 0;
         var skippedNonMedia = 0;
@@ -87,11 +91,13 @@ public sealed class LibraryScanner
         {
             RecurseSubdirectories = true,
             IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.System
+            // Excluding links during enumeration prevents descent into linked directories too.
+            AttributesToSkip = FileAttributes.System | FileAttributes.ReparsePoint
         };
 
         foreach (var path in Directory.EnumerateFiles(root, "*", enumerationOptions))
         {
+            if (!LibraryPathSafety.IsSafeFile(path, root)) continue;
             var extension = System.IO.Path.GetExtension(path);
             if (!options.Extensions.Contains(extension))
             {

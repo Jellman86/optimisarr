@@ -15,7 +15,7 @@ public sealed class ImageMetadataCommandBuilderTests
                 "-overwrite_original",
                 "-TagsFromFile", "/data/Photos/a name.png",
                 "-EXIF:all",
-                "-ICC_Profile:all",
+                "-ICC_Profile",
                 "--Orientation",
                 "--ThumbnailImage",
                 "--PreviewImage",

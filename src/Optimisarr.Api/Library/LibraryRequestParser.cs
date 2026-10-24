@@ -78,7 +78,14 @@ internal readonly record struct ParsedLibrary(
     bool AutoEnqueueEnabled,
     TimeOnly AutoEnqueueWindowStart,
     TimeOnly AutoEnqueueWindowEnd,
-    bool AutoReplace);
+    bool AutoReplace,
+    bool ImagePerceptualReportingEnabled = false,
+    bool ImagePerceptualGateEnabled = false,
+    double? MinimumImagePerceptualScore = null,
+    bool AdaptiveAudioQuality = false,
+    bool AdaptiveImageQuality = false,
+    // The automatic surround-layout conversion is on unless the request turns it off.
+    bool NormalizeOpusChannelLayout = true);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -119,6 +126,29 @@ internal static class LibraryRequestParser
         if (!Enum.TryParse<RuleProfile>(request.RuleProfile, ignoreCase: true, out var ruleProfile))
         {
             error = $"Unknown rule profile: {request.RuleProfile}. Expected one of {string.Join(", ", Enum.GetNames<RuleProfile>())}.";
+            return false;
+        }
+
+        if (((request.ImagePerceptualReportingEnabled == true || request.ImagePerceptualGateEnabled == true)
+                && mediaType is not (MediaType.Photo or MediaType.Other))
+            || (request.MinimumImagePerceptualScore is not null && !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore))
+            || (request.ImagePerceptualGateEnabled == true && !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore)))
+        {
+            error = "Perceptual image quality requires a photo or mixed library and an explicit gate score between 0 and 100.";
+            return false;
+        }
+
+        if (request.AdaptiveAudioQuality == true && (mediaType is not (MediaType.Music or MediaType.Other)
+            || request.AudioQualityGateEnabled != true || !AudioQualityGate.ValidLimit(request.MaximumAudioQualityDistance) || request.DownmixToStereo == true))
+        {
+            error = "Adaptive audio requires a music or mixed library and an enabled explicit audio quality target.";
+            return false;
+        }
+        if (request.AdaptiveImageQuality == true && (mediaType is not (MediaType.Photo or MediaType.Other)
+            || request.ImagePerceptualGateEnabled != true || !ImagePerceptualQualityGate.ValidLimit(request.MinimumImagePerceptualScore)
+            || (!string.IsNullOrWhiteSpace(request.ImageDownscaleMode) && !string.Equals(request.ImageDownscaleMode, "None", StringComparison.OrdinalIgnoreCase))))
+        {
+            error = "Adaptive images require a photo or mixed library, no resizing, and an enabled explicit image quality target.";
             return false;
         }
 
@@ -581,7 +611,13 @@ internal static class LibraryRequestParser
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,
-            request.AutoReplace ?? false);
+            request.AutoReplace ?? false,
+            request.ImagePerceptualReportingEnabled ?? false,
+            request.ImagePerceptualGateEnabled ?? false,
+            request.MinimumImagePerceptualScore,
+            request.AdaptiveAudioQuality ?? false,
+            request.AdaptiveImageQuality ?? false,
+            request.NormalizeOpusChannelLayout ?? true);
         error = null;
         return true;
     }

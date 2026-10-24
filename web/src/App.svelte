@@ -21,12 +21,12 @@
   import Setup from './lib/pages/Setup.svelte'
   import DiagnosticCaptureBanner from './lib/components/DiagnosticCaptureBanner.svelte'
   import StatusStrip from './lib/components/StatusStrip.svelte'
-  import { pageWidth } from './lib/layout'
 
   // Map the active route to its page component.
   let page = $derived.by(() => {
     const path = router.path
     if (/^\/libraries\/\d+\/quality-check$/.test(path)) return QualityLab
+    if (/^\/libraries\/\d+\/duplicates$/.test(path)) return ExactDuplicates
     if (path.startsWith('/libraries')) return Libraries
     // Inventory absorbed the Candidates view; the old /candidates route still lands there.
     if (path === '/inventory/duplicates') return ExactDuplicates
@@ -186,11 +186,15 @@
       </button>
     </header>
 
+    <!-- relative is a correctness requirement, not decoration: an absolutely positioned
+         descendant is only clipped by ancestors in its containing-block chain, so while main
+         was static, screen-reader text such as the queue table's sr-only header label kept its
+         own box outside this scroll container and stretched the document past the viewport. -->
     <main
-      class="min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
+      class="relative min-w-0 flex-1 overflow-y-auto scroll-pb-24 p-4 sm:p-6 lg:p-8"
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
-      <div class="page-frame" class:page-frame-reading={pageWidth(router.path) === 'reading'}>
+      <div class="page-frame">
         <StatusStrip />
         <DiagnosticCaptureBanner />
         {#key pageKey}

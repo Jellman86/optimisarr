@@ -4,6 +4,22 @@ namespace Optimisarr.Tests;
 
 public sealed class ConfigSnapshotValidatorTests
 {
+    [Fact]
+    public void Quality_first_configuration_requires_explicit_targets_and_preserves_its_opt_ins_in_json()
+    {
+        var audio = new LibrarySnapshot("Music", "/music", "Music", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null) { AdaptiveAudioQuality = true };
+        var image = audio with { MediaType = "Photo", AdaptiveAudioQuality = false, AdaptiveImageQuality = true };
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [audio, image] }, AllowedKeys).IsValid);
+        audio = audio with { AudioQualityGateEnabled = true, MaximumAudioQualityDistance = 0.02 };
+        image = image with { ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 85 };
+        var snapshot = Empty() with { Libraries = [audio, image] };
+        Assert.True(ConfigSnapshotValidator.Validate(snapshot, AllowedKeys).IsValid);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<ConfigSnapshot>(System.Text.Json.JsonSerializer.Serialize(snapshot))!;
+        Assert.True(restored.Libraries[0].AdaptiveAudioQuality);
+        Assert.True(restored.Libraries[1].AdaptiveImageQuality);
+    }
+
     private static readonly IReadOnlySet<string> AllowedKeys =
         new HashSet<string> { "queue.maxConcurrentJobs", "queue.encoderMode" };
 
@@ -29,6 +45,22 @@ public sealed class ConfigSnapshotValidatorTests
         var result = ConfigSnapshotValidator.Validate(Empty() with { Libraries = [library] }, AllowedKeys);
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, error => error.Contains("audio quality gate"));
+    }
+
+    [Fact]
+    public void Perceptual_image_gates_require_version_four_an_explicit_finite_limit_and_image_library()
+    {
+        var library = new LibrarySnapshot("Photos", "/data/photos", "Photo", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null)
+            { ImagePerceptualGateEnabled = true, MinimumImagePerceptualScore = 80 };
+        var snapshot = Empty() with { Libraries = [library] };
+        Assert.True(ConfigSnapshotValidator.Validate(snapshot, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(snapshot with { Version = 3 }, AllowedKeys).IsValid);
+        foreach (double? limit in new double?[] { null, -1, 101, double.NaN, double.PositiveInfinity })
+            Assert.False(ConfigSnapshotValidator.Validate(snapshot with { Libraries = [library with { MinimumImagePerceptualScore = limit }] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(snapshot with { Libraries = [library with { MediaType = "Music" }] }, AllowedKeys).IsValid);
+        Assert.True(ConfigSnapshotValidator.Validate(snapshot with { Libraries = [library with {
+            ImagePerceptualGateEnabled = false, ImagePerceptualReportingEnabled = true, MinimumImagePerceptualScore = null }] }, AllowedKeys).IsValid);
     }
 
     [Theory]

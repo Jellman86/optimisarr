@@ -7,8 +7,10 @@ namespace Optimisarr.Core.Verification;
 /// true-peak level (dBTP) when the filter is run with <c>peak=true</c>; it is null
 /// when the build did not emit a peak line.
 /// </summary>
-public sealed record LoudnessResult(bool Measured, double? IntegratedLufs, double? TruePeakDbtp, string? Error)
+public sealed record LoudnessResult(bool Measured, double? IntegratedLufs, double? TruePeakDbtp, string? Error, bool TruePeakIsSilent = false)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasTruePeak => TruePeakSafety.Known(TruePeakDbtp, TruePeakIsSilent);
     public static LoudnessResult Ok(double lufs, double? truePeakDbtp) => new(true, lufs, truePeakDbtp, null);
 
     public static LoudnessResult Failed(string error) => new(false, null, null, error);
@@ -24,6 +26,18 @@ public sealed record LoudnessResult(bool Measured, double? IntegratedLufs, doubl
 public sealed class LoudnessService(string? ffmpegCommand = null)
 {
     private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
+
+    public Task<LoudnessResult> MeasureSampleAsync(string path, CancellationToken token) =>
+        MeasureSampleAsync(path, token, TimeSpan.FromSeconds(90));
+
+    internal async Task<LoudnessResult> MeasureSampleAsync(string path, CancellationToken token, TimeSpan timeout)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(timeout);
+        try { return await MeasureAsync(path, deadline.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { return LoudnessResult.Failed("Sample loudness assessment timed out."); }
+    }
 
     public async Task<LoudnessResult> MeasureAsync(string path, CancellationToken cancellationToken)
     {
@@ -71,6 +85,9 @@ public sealed class LoudnessService(string? ffmpegCommand = null)
             catch (OperationCanceledException)
             {
                 KillQuietly(process);
+                await process.WaitForExitAsync(CancellationToken.None);
+                try { await Task.WhenAll(stdoutTask, stderrTask); }
+                catch (OperationCanceledException) { }
                 throw;
             }
 
@@ -91,7 +108,7 @@ public sealed class LoudnessService(string? ffmpegCommand = null)
         var lufs = LoudnessParser.ParseIntegratedLufs(stderr);
         return lufs is null
             ? LoudnessResult.Failed("ebur128 produced no integrated-loudness summary.")
-            : LoudnessResult.Ok(lufs.Value, LoudnessParser.ParseTruePeakDbtp(stderr));
+            : new(true, lufs.Value, LoudnessParser.ParseTruePeakDbtp(stderr), null, LoudnessParser.IsSilentTruePeak(stderr));
     }
 
     private static void KillQuietly(Process process)

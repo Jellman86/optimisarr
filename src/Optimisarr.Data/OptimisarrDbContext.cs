@@ -2,14 +2,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Optimisarr.Data;
 
-public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options) : DbContext(options)
+public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options, IFileReservationKeys? fileKeys = null) : DbContext(options)
 {
+
+    public Task<bool> IsFileReservedAsync(int mediaFileId, string[] paths, CancellationToken token = default)
+    {
+        var keys = ResolveFileReservationKeys(mediaFileId, paths);
+        return DedupeFileClaims.AsNoTracking().AnyAsync(c => keys.Contains(c.Key), token);
+    }
+
+    internal IReadOnlyList<string> ResolveFileReservationKeys(int mediaFileId, string[] paths) =>
+        fileKeys?.Resolve(mediaFileId, paths) ?? DedupeJobReservations.LexicalKeys(mediaFileId, paths);
 
     public override async Task<int> SaveChangesAsync(
         bool acceptAllChangesOnSuccess,
         CancellationToken cancellationToken = default)
     {
         ChangeTracker.DetectChanges();
+        var admissionJobs = DedupeJobReservations.PendingJobs(this);
+        var checkAdmission = admissionJobs.Length != 0 || DedupeJobReservations.HasPendingLease(this);
         foreach (var entry in ChangeTracker.Entries<JobLease>().Where(e => e.State == EntityState.Added && e.Entity.ExecutionAttempt == 0))
         {
             var job = ChangeTracker.Entries<Job>().FirstOrDefault(j => j.Entity.Id == entry.Entity.JobId)?.Entity;
@@ -32,7 +43,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         var replacements = ChangeTracker.Entries<Replacement>()
             .Where(entry => entry.State == EntityState.Added || entry.State == EntityState.Modified && entry.Property(r => r.Status).IsModified)
             .Select(entry => entry.Entity).ToArray();
-        if (transitions.Length == 0 && archives.Length == 0 && leases.Length == 0 && replacements.Length == 0)
+        if (!checkAdmission && transitions.Length == 0 && archives.Length == 0 && leases.Length == 0 && replacements.Length == 0)
         {
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
@@ -40,6 +51,9 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         // Reserve SQLite's write transaction before reading capture counters. Reuse an outer
         // operational transaction so its events and cap reservations commit together.
         await using var write = await BeginDiagnosticWriteAsync(cancellationToken);
+        // The same SQLite write reservation serializes job/lease admission with dedupe preparation.
+        // Keep this at the persistence boundary so retries and disposable jobs cannot bypass it.
+        if (checkAdmission) await DedupeJobReservations.ValidateAsync(this, admissionJobs, cancellationToken);
         var nowUtc = DateTimeOffset.UtcNow;
         foreach (var (job, previous) in archives)
             await DiagnosticEventCapture.AppendArchivedAttemptsAsync(this, job, previous, nowUtc, cancellationToken);
@@ -85,8 +99,102 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<DiagnosticEvent> DiagnosticEvents => Set<DiagnosticEvent>();
 
+    public DbSet<ExactDuplicateScan> ExactDuplicateScans => Set<ExactDuplicateScan>();
+    public DbSet<ExactFileFingerprint> ExactFileFingerprints => Set<ExactFileFingerprint>();
+    public DbSet<ExactDuplicateObservation> ExactDuplicateObservations => Set<ExactDuplicateObservation>();
+    public DbSet<ExactDuplicateScanLibrary> ExactDuplicateScanLibraries => Set<ExactDuplicateScanLibrary>();
+    public DbSet<ExactDuplicateReviewDecision> ExactDuplicateReviewDecisions => Set<ExactDuplicateReviewDecision>();
+
+    public DbSet<DedupeAction> DedupeActions => Set<DedupeAction>();
+    public DbSet<DedupeActionFile> DedupeActionFiles => Set<DedupeActionFile>();
+    public DbSet<DedupeFileClaim> DedupeFileClaims => Set<DedupeFileClaim>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<DedupeAction>(entity =>
+        {
+            entity.HasKey(action => action.Id);
+            entity.Property(action => action.Contract).IsRequired().HasMaxLength(80);
+            entity.Property(action => action.Retention).IsRequired().HasMaxLength(24);
+            entity.Property(action => action.ReviewKey).IsRequired().HasMaxLength(64);
+            entity.Property(action => action.ScopeKey).IsRequired().HasMaxLength(64);
+            entity.Property(action => action.PlanHash).IsRequired().HasMaxLength(64);
+            entity.Property(action => action.State).HasConversion<string>().HasMaxLength(24);
+            entity.Property(action => action.AttentionReason).HasMaxLength(512);
+            entity.HasIndex(action => new { action.LibraryId, action.State });
+        });
+        modelBuilder.Entity<DedupeActionFile>(entity =>
+        {
+            entity.HasKey(file => new { file.ActionId, file.MediaFileId });
+            entity.Property(file => file.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Path).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.QuarantinePath).HasMaxLength(4096);
+            entity.Property(file => file.Identity).IsRequired().HasMaxLength(160);
+            entity.Property(file => file.Sha256).IsRequired().HasMaxLength(64);
+            entity.HasIndex(file => file.MediaFileId);
+            entity.HasIndex(file => file.QuarantinePath).IsUnique();
+            entity.HasOne<DedupeAction>().WithMany().HasForeignKey(file => file.ActionId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable(table => table.HasCheckConstraint("CK_DedupeActionFiles_RollbackPath",
+                "(IsKeeper = 1 AND QuarantinePath IS NULL) OR (IsKeeper = 0 AND QuarantinePath IS NOT NULL)"));
+        });
+        modelBuilder.Entity<DedupeFileClaim>(entity =>
+        {
+            entity.HasKey(claim => claim.Key);
+            entity.Property(claim => claim.Key).HasMaxLength(80);
+            entity.HasOne<DedupeAction>().WithMany().HasForeignKey(claim => claim.ActionId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ExactDuplicateScan>(entity =>
+        {
+            entity.HasKey(scan => scan.Id);
+            entity.Property(scan => scan.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(scan => scan.ScopeSignature).IsRequired().HasMaxLength(64);
+            entity.Property(scan => scan.State).HasConversion<string>().HasMaxLength(24);
+            entity.Property(scan => scan.Error).HasMaxLength(512);
+            entity.HasIndex(scan => scan.ActiveSlot).IsUnique();
+            entity.HasIndex(scan => scan.LibraryId).IsUnique();
+            entity.HasOne<Library>().WithMany().HasForeignKey(scan => scan.LibraryId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ExactFileFingerprint>(entity =>
+        {
+            entity.HasKey(file => file.MediaFileId);
+            entity.Property(file => file.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Path).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Identity).HasMaxLength(160);
+            entity.Property(file => file.Contract).IsRequired().HasMaxLength(80);
+            entity.Property(file => file.Sha256).IsRequired().HasMaxLength(64);
+            entity.HasOne<MediaFile>().WithMany().HasForeignKey(file => file.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ExactDuplicateObservation>(entity =>
+        {
+            entity.HasKey(file => new { file.ScanId, file.MediaFileId });
+            entity.Property(file => file.Path).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.RelativePath).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Sha256).IsRequired().HasMaxLength(64);
+            entity.HasOne<ExactDuplicateScan>().WithMany().HasForeignKey(file => file.ScanId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(file => file.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(file => file.Identity).HasMaxLength(160);
+            entity.HasIndex(file => new { file.ScanId, file.SizeBytes, file.Sha256 });
+        });
+        modelBuilder.Entity<ExactDuplicateScanLibrary>(entity =>
+        {
+            entity.HasKey(s => new { s.ScanId, s.LibraryId });
+            entity.Property(s => s.Root).IsRequired().HasMaxLength(4096);
+            entity.Property(s => s.Name).IsRequired().HasMaxLength(512);
+            entity.Property(s => s.MediaType).IsRequired().HasMaxLength(24);
+            // Retain the selected-root snapshot if a secondary library is deleted. Its report
+            // becomes stale instead of silently shrinking the reviewed scope.
+            entity.HasOne<ExactDuplicateScan>().WithMany().HasForeignKey(s => s.ScanId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ExactDuplicateReviewDecision>(entity =>
+        {
+            entity.HasKey(d => new { d.LibraryId, d.ScopeKey, d.Sha256, d.SizeBytes });
+            entity.Property(d => d.ScopeKey).IsRequired().HasMaxLength(64);
+            entity.Property(d => d.Sha256).IsRequired().HasMaxLength(64);
+            entity.Property(d => d.ReviewKey).IsRequired().HasMaxLength(64);
+            entity.Property(d => d.Choice).IsRequired().HasMaxLength(12);
+            entity.Property(d => d.KeepIds).IsRequired().HasMaxLength(4096);
+            entity.HasOne<Library>().WithMany().HasForeignKey(d => d.LibraryId).OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<AppSetting>(entity =>
         {
             entity.HasKey(setting => setting.Key);
@@ -177,6 +285,12 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         modelBuilder.Entity<Job>(entity =>
         {
             entity.HasKey(job => job.Id);
+            entity.Property(job => job.PerceptualSearchJson).HasMaxLength(262144);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Jobs_PerceptualSearch", """
+                (AdaptiveAudioBitrateKbps IS NULL OR AdaptiveAudioBitrateKbps BETWEEN 8 AND 512)
+                AND (AdaptiveImageQuality IS NULL OR AdaptiveImageQuality BETWEEN 0 AND 100)
+                AND (PerceptualSearchJson IS NULL OR length(PerceptualSearchJson) <= 262144)
+                """));
             entity.Property<long>("QueueEnqueuedUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("EnqueuedAt"));
             entity.Property<long>("QueueEffectiveUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("COALESCE(FinishedAt, EnqueuedAt)"));
             entity.HasIndex("Type", "Priority", "QueueEnqueuedUtcTicks", "Id").IsDescending(false, true, false, false);
@@ -272,6 +386,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(worker => worker.OperatingSystem).HasMaxLength(32);
             entity.Property(worker => worker.Architecture).HasMaxLength(32);
             entity.Property(worker => worker.VideoEncoders).HasMaxLength(1024);
+            entity.Property(worker => worker.PerceptualCapabilitiesJson).HasMaxLength(4096);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Workers_PerceptualCapabilities", """
+                "PerceptualCapabilitiesJson" IS NULL OR
+                (length("PerceptualCapabilitiesJson") <= 4096 AND json_valid("PerceptualCapabilitiesJson"))
+                """));
             entity.Property(worker => worker.HardwareDecoders).HasMaxLength(1024);
             entity.Property(worker => worker.Vmaf).HasConversion<string>().HasMaxLength(32);
             // A SHA-256 hex fingerprint is always 64 characters; the credential itself is never stored.
@@ -287,6 +406,18 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(lease => lease.Id);
             entity.Property(lease => lease.State).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
+            entity.Property(lease => lease.ResultUploadPath).HasMaxLength(4096);
+            entity.Property(lease => lease.ResultUploadBinding).HasMaxLength(64);
+            entity.Property(lease => lease.PerceptualSearchStateJson).HasMaxLength(262144);
+            entity.ToTable(t => t.HasCheckConstraint("CK_JobLeases_PerceptualSearch", """
+                "PerceptualSearchStateJson" IS NULL OR
+                (length("PerceptualSearchStateJson") <= 262144 AND json_valid("PerceptualSearchStateJson"))
+                """));
+            entity.ToTable(t => t.HasCheckConstraint("CK_JobLeases_ResultUpload", """
+                ("ResultUploadGeneration" IS NULL AND "ResultUploadPath" IS NULL AND "ResultUploadBinding" IS NULL AND "ResultUploadSealedBytes" IS NULL)
+                OR ("ResultUploadGeneration" IS NOT NULL AND "ResultUploadPath" IS NOT NULL AND "ResultUploadBinding" IS NOT NULL
+                    AND ("ResultUploadSealedBytes" IS NULL OR "ResultUploadSealedBytes" >= 0))
+                """));
             entity.Property(lease => lease.Stage).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.EndReason).HasConversion<string>().HasMaxLength(32);
             entity.Property<long>("AcquiredUtcTicks").HasComputedColumnSql(SqliteUtcTicks.For("AcquiredAt"));

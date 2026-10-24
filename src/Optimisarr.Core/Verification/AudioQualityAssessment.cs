@@ -105,16 +105,33 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
 
 public static class AudioQualityCommandBuilder
 {
+    private const string AudioFormats = "wav,flac,mp3,aac,ogg,mov,matroska,asf,aiff,ape,wv,dsf,iff";
+    private const string SoundtrackFormats = AudioFormats + ",avi,mpeg,mpegts,flv";
+
+    public static IReadOnlyList<string> Probe(string source, bool soundtrack = false) =>
+        ["-v", "error", .. InputOptions(soundtrack), "-show_streams", "-show_format", "-of", "json", source];
+
+    private static IReadOnlyList<string> InputOptions(bool soundtrack) =>
+        // Hashing a playlist does not bind its referenced media. Restrict the demuxer
+        // before it opens the input, including during the very first qualification.
+        ["-protocol_whitelist", "file", "-format_whitelist", soundtrack ? SoundtrackFormats : AudioFormats];
+
     public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window, int audioIndex = 0, double containerLeadSeconds = 0, bool soundtrack = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(audioIndex);
         if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
         var seek = window.StartSeconds + containerLeadSeconds;
+        var inputSeek = soundtrack ? seek : Math.Max(0, seek - 10);
+        var outputSeek = soundtrack ? 0 : seek - inputSeek;
         var frames = (long)Math.Round(window.DurationSeconds * 48000);
         return [
         "-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-        .. soundtrack && seek == 0 ? Array.Empty<string>() : ["-ss", seek.ToString("0.########", CultureInfo.InvariantCulture)],
-        "-i", source, "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
+        // Standalone audio needs decoder context before exact trimming. Soundtracks keep
+        // their demuxer-relative picture origin; output seeking applies a different origin.
+        .. inputSeek == 0 ? Array.Empty<string>() : ["-ss", inputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
+        .. InputOptions(soundtrack), "-i", source,
+        .. outputSeek == 0 ? Array.Empty<string>() : ["-ss", outputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
+        "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
         "-vn", "-sn", "-dn", "-ar", "48000",
         .. soundtrack ? new[] { "-af", $"aresample=48000,atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [], "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
         ];
