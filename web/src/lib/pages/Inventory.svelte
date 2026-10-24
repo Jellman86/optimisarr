@@ -186,7 +186,8 @@
         message: item.error ?? (item.outcome === 'Skipped' ? 'The file is no longer in the inventory.' : 'The file could not be inspected.'),
       }))
     bulkOutcomeKind = 'reprobe'
-    bulkOutcome = { succeeded: batch.succeeded, skipped: batch.skipped, failures }    // The rows that were inspected now carry their new metadata, so the list is read again.
+    // The rows that were inspected now carry their new metadata, so the list is read again.
+    bulkOutcome = { succeeded: batch.succeeded, skipped: batch.skipped, failures }
     await loadInventory(selectedLibrary, show, page)
     if (batch.state === 'Cancelled' && !disposed) probeMessage = i18n.m.inventory.batch_reprobe_cancelled
   }

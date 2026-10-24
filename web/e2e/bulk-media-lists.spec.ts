@@ -36,11 +36,11 @@ const library = {
   lastAutoEnqueueAt: null, fileCount: 1,
 }
 
-function exclusion(id: number, relativePath: string) {
+function exclusion(id: number, relativePath: string, libraryId = 1) {
   return {
     id,
     path: `/media/films/${relativePath}`,
-    libraryId: 1,
+    libraryId,
     relativePath,
     reason: null,
     source: 'Manual',
@@ -190,6 +190,49 @@ test('the excluded tab reports an exclusion it could not lift and keeps it picke
   await expect(page.getByRole('checkbox', { name: 'Select b.mkv' })).toBeChecked()
 })
 
+test('the excluded tab drops the selection when another library is opened', async ({ page }) => {
+  const requests: unknown[] = []
+  const second = { ...library, id: 2, name: 'Shows', path: '/media/shows' }
+  await page.route('**/api/**', async (route: Route) => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
+    if (path === '/api/libraries') return json(route, [library, second])
+    if (path === '/api/libraries/1') return json(route, library)
+    if (path === '/api/libraries/2') return json(route, second)
+    if (path === '/api/library-options') return json(route, {
+      mediaTypes: ['Film', 'TV'], ruleProfiles: ['ConservativeHevc'], ruleProfileSpecs: [],
+      hdrHandlings: ['Exclude'], videoCodecs: ['h264'], containers: ['mkv'],
+      encoderPresets: ['quick'], legacyEncoderPresets: ['veryslow'], imageFormats: ['webp'],
+    })
+    if (path === '/api/candidates') return json(route, [])
+    if (path === '/api/candidates/summary') return json(route, [{ libraryId: 1, eligible: 0, skipped: 0 }])
+    if (path === '/api/exclusions') {
+      // The exclusions belong to the library that is being edited.
+      const libraryId = Number(url.searchParams.get('libraryId') ?? '1')
+      return json(route, libraryId === 2 ? [exclusion(21, 'z.mkv', 2)] : [exclusion(7, 'a.mkv')])
+    }
+    if (path === '/api/exclusions/batch/remove') {
+      requests.push(route.request().postDataJSON())
+      return json(route, { requested: 1, succeeded: [7], failures: [] })
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+
+  await page.goto('/#/libraries/1/configure/source')
+  await page.getByRole('button', { name: /Excluded \(/ }).click()
+  await page.getByRole('checkbox', { name: 'Select a.mkv' }).check()
+  await expect(page.getByText('1 selected', { exact: true })).toBeVisible()
+
+  // Another library shows other exclusions, so the pick made under the first one is dropped.
+  await page.goto('/#/libraries/2/configure/source')
+  await page.getByRole('button', { name: /Excluded \(/ }).click()
+  await expect(page.getByText('z.mkv', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-selection-toolbar]')).toBeHidden()
+  await expect(page.getByRole('checkbox', { name: 'Select z.mkv' })).not.toBeChecked()
+})
+
 async function routeInventory(page: Page, requests: unknown[], overrides: { total?: number; items?: unknown[] } = {}) {
   const items = overrides.items ?? [inventoryRow(1, 'a.mkv'), inventoryRow(2, 'b.mkv'), inventoryRow(3, 'c.mkv')]
   const total = overrides.total ?? items.length
@@ -302,4 +345,85 @@ test('the inventory header checkbox picks every row on the page and no more', as
   await page.getByRole('checkbox', { name: 'Select every row on this page' }).check()
   // The page holds three rows, though the inventory holds sixty — the pick is the page.
   await expect(page.getByText('3 selected', { exact: true })).toBeVisible()
+})
+
+test('the inventory drops the selection when the filter or the library changes', async ({ page }) => {
+  const requests: unknown[] = []
+  const second = { ...library, id: 2, name: 'Shows', path: '/media/shows' }
+  const seen: string[] = []
+  await page.route('**/api/**', async (route: Route) => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
+    if (path === '/api/libraries') return json(route, [library, second])
+    if (path.endsWith('/thumbnail')) return route.fulfill({ status: 404 })
+    if (path === '/api/inventory') {
+      seen.push(url.search)
+      return json(route, {
+        items: [inventoryRow(1, 'a.mkv'), inventoryRow(2, 'b.mkv'), inventoryRow(3, 'c.mkv')],
+        total: 3,
+        counts: { all: 3, eligible: 3, skipped: 0, unprobed: 0 },
+      })
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+
+  await page.goto('/#/inventory')
+  await expect(page.getByRole('button', { name: /a\.mkv/ })).toBeVisible()
+  await page.getByRole('checkbox', { name: 'Select a.mkv' }).check()
+  await expect(page.getByText('1 of 3 selected', { exact: true })).toBeVisible()
+
+  // Another filter shows other files, so the pick made under this one is dropped.
+  await page.getByRole('button', { name: /Eligible \(/ }).click()
+  await expect(page.locator('[data-selection-toolbar]')).toBeHidden()
+  await expect(page.getByRole('checkbox', { name: 'Select a.mkv' })).not.toBeChecked()
+  await expect.poll(() => seen.at(-1)).toContain('show=eligible')
+
+  // The same goes for another library.
+  await page.getByRole('checkbox', { name: 'Select a.mkv' }).check()
+  await expect(page.getByText('1 of 3 selected', { exact: true })).toBeVisible()
+  await page.selectOption('#lib-filter', '2')
+  await expect(page.locator('[data-selection-toolbar]')).toBeHidden()
+  await expect(page.getByRole('checkbox', { name: 'Select a.mkv' })).not.toBeChecked()
+  await expect.poll(() => seen.at(-1)).toContain('libraryId=2')
+})
+
+test('picking and clearing rows asks the server for nothing', async ({ page }) => {
+  // Thumbnails are loaded by the rows themselves, so they are not counted: what must not happen
+  // is a pick, an un-pick or a clear sending a request of its own.
+  let calls = 0
+  await page.route('**/api/**', async (route: Route) => {
+    const path = new URL(route.request().url()).pathname
+    if (!path.endsWith('/thumbnail')) calls += 1
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
+    if (path === '/api/libraries') return json(route, [library])
+    if (path.endsWith('/thumbnail')) return route.fulfill({ status: 404 })
+    if (path === '/api/inventory') {
+      return json(route, {
+        items: [inventoryRow(1, 'a.mkv'), inventoryRow(2, 'b.mkv'), inventoryRow(3, 'c.mkv')],
+        total: 3,
+        counts: { all: 3, eligible: 3, skipped: 0, unprobed: 0 },
+      })
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+
+  await page.goto('/#/inventory')
+  await expect(page.getByRole('button', { name: /a\.mkv/ })).toBeVisible()
+  await expect.poll(() => calls).toBeGreaterThan(0)
+  const before = calls
+
+  // Picking, un-picking, picking again and clearing are all local decisions.
+  const row = page.getByRole('checkbox', { name: 'Select a.mkv' })
+  await row.check()
+  await expect(page.getByText('1 of 3 selected', { exact: true })).toBeVisible()
+  await row.uncheck()
+  await expect(page.locator('[data-selection-toolbar]')).toBeHidden()
+  await row.check()
+  await page.locator('[data-selection-toolbar]').getByRole('button', { name: 'Clear selection' }).click()
+  await expect(page.locator('[data-selection-toolbar]')).toBeHidden()
+
+  expect(calls).toBe(before)
 })
