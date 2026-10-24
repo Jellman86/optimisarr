@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.24 - 2026-10-24
+
+Protocol 11 audio/image worker placement is enabled in this release. Entries below
+also retain intermediate development milestones: earlier statements about disabled
+placement or unconnected journals describe those stages, not the final release.
+The unused .NET durable journal was archived; Windows/Linux workers retain live
+resource admission and owned-scratch recovery. Full audio/image parity and
+power-loss durability are not release claims.
+
 - Fix Windows audio quality measurement under long scratch paths (#447). The native helper now uses extended-length paths for PCM inputs and its report, retaining Unicode names, exclusive report creation and all quality gates.
 
 - Personal quality check video can now be inspected close up and compared quickly (#441). Video has the same Fit, zoom, 1:1 and drag-to-pan controls as photos. Zoom, position and playback time carry over when you switch samples. Full screen now has its own O/A/B/C/D switcher, and pressing O or a sample's letter switches from anywhere on the page. A switch still shows the new sample only after it has loaded and reached the same moment. Pausing now settles the picture on the exact frame other samples will seek to, and a seek the browser cannot complete is reported as a playback error instead of being shown as a matched frame. Blind labels, diagnostics, rating, encoding and original-file safety are unchanged.
