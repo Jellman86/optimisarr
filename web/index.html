@@ -7,6 +7,21 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#e9eef5" />
+    <!-- The scheme is settled before the first paint, so a browser asking for a dark page
+         never sees a light flash while the app boots. The rule is the one in src/lib/theme.ts,
+         which owns the decision; src/lib/theme-boot.test.ts keeps this copy in step with it. -->
+    <script id="theme-boot">
+      (function () {
+        try {
+          var stored = localStorage.getItem('optimisarr.theme')
+          var mode = stored === 'light' || stored === 'dark' ? stored : 'system'
+          var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch {
+          // A browser that refuses storage or media queries keeps the light scheme.
+        }
+      })()
+    </script>
     <title>Optimisarr</title>
   </head>
   <body>

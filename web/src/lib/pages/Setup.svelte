@@ -324,7 +324,7 @@
     </div>
     <div class="flex items-center gap-2 [&_button]:min-h-11 [&_button]:min-w-11">
       <button type="button" class="btn btn-ghost min-h-11 min-w-11" onclick={() => theme.toggle()} aria-label={i18n.m.nav.toggle_theme}>
-        <Icon name={theme.isDark ? 'sun' : 'moon'} class="h-5 w-5" />
+        <Icon name={theme.icon} class="h-5 w-5" />
       </button>
       <LanguageSelect compact />
     </div>
