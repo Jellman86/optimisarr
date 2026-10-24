@@ -1,9 +1,11 @@
+import { nextThemeMode, parseThemeMode, resolveDark, themeIcon, THEME_STORAGE_KEY, type ThemeMode } from '../theme'
+
 // Small UI state holders: dark theme, sidebar collapse, and hash-based routing.
 
 function createTheme() {
-  const stored = localStorage.getItem('optimisarr.theme')
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  let dark = $state(stored ? stored === 'dark' : prefersDark)
+  const media = window.matchMedia('(prefers-color-scheme: dark)')
+  let mode = $state<ThemeMode>(parseThemeMode(localStorage.getItem(THEME_STORAGE_KEY)))
+  let dark = $state(resolveDark(mode, media.matches))
 
   // The browser chrome (iOS Safari's toolbar, Android's status bar) takes the page ground so
   // the app never sits in a differently coloured frame. Read from the stylesheet rather than
@@ -14,16 +16,44 @@ function createTheme() {
     const ground = getComputedStyle(root).getPropertyValue('--ground').trim()
     if (ground) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', ground)
   }
+
+  // A page that follows the system changes with it, with no reload: the browser says the
+  // system has switched, and the tokens, the favicon and the mark all follow the same state.
+  media.addEventListener('change', (event) => {
+    if (mode !== 'system') return
+    dark = event.matches
+    apply()
+  })
+
+  function setMode(next: ThemeMode) {
+    mode = next
+    dark = resolveDark(next, media.matches)
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next)
+    } catch {
+      // A browser that refuses to store the choice still shows it; it just will not survive
+      // a reload.
+    }
+    apply()
+  }
+
   apply()
 
   return {
+    // What the owner asked for: follow the system, or pin one scheme.
+    get mode() {
+      return mode
+    },
+    // What is on screen now, which is the system's answer while the page follows the system.
     get isDark() {
       return dark
     },
+    // The symbol the theme control carries.
+    get icon() {
+      return themeIcon(mode)
+    },
     toggle() {
-      dark = !dark
-      localStorage.setItem('optimisarr.theme', dark ? 'dark' : 'light')
-      apply()
+      setMode(nextThemeMode(mode, media.matches))
     },
   }
 }

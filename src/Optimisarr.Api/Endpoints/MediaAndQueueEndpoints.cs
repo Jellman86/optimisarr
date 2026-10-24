@@ -552,36 +552,17 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-            var job = await db.Jobs.FirstOrDefaultAsync(
-                j => j.Id == id && j.Type == JobType.Normal,
-                cancellationToken);
-            if (job is null)
+            // The rules live in JobOperations so the batch endpoint applies exactly the same
+            // checks; this endpoint only translates the outcome into an HTTP status.
+            var outcome = await JobOperations.RemoveAsync(db, dispatcher, id, cancelActive: false, cancellationToken);
+            if (outcome.Succeeded) return Results.NoContent();
+            return outcome.Failure switch
             {
-                return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
-            }
-
-            if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
-            {
-                return ApiErrors.BadRequest("job.remove.active", "Stop an active job before removing it from the queue.");
-            }
-
-            if (await db.Replacements.AnyAsync(r => r.JobId == id
-                && JobClearing.LiveReplacementStatuses.Contains(r.Status), cancellationToken))
-                return ApiErrors.Conflict("job.recoveryPending",
-                    "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
-
-            if (!await dispatcher.TryDiscardWorkOutputAsync(db, job, cancellationToken))
-            {
-                return ApiErrors.Conflict(
-                    "job.workCleanupFailed",
-                    "Cleanup is deferred while the output is reserved, shared, or unavailable. The job and diagnostics were retained; resolve the file operation and retry.");
-            }
-
-            db.Jobs.Remove(job);
-            await db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return Results.NoContent();
+                JobOperationFailure.NotFound => ApiErrors.NotFound("job.notFound", outcome.Message, outcome.Args ?? new { id }),
+                JobOperationFailure.RecoveryPending => ApiErrors.Conflict("job.recoveryPending", outcome.Message),
+                JobOperationFailure.WorkCleanupFailed => ApiErrors.Conflict("job.workCleanupFailed", outcome.Message),
+                _ => ApiErrors.BadRequest("job.remove.active", outcome.Message),
+            };
         })
         .WithName("RemoveResettableJob");
 
@@ -595,81 +576,17 @@ internal static class MediaAndQueueEndpoints
             CancellationToken cancellationToken,
             bool higherQuality = false) =>
         {
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-            var job = await db.Jobs.FirstOrDefaultAsync(
-                j => j.Id == id && j.Type == JobType.Normal,
-                cancellationToken);
-            if (job is null)
+            var outcome = await JobOperations.RetryAsync(db, dispatcher, id, higherQuality, cancellationToken);
+            if (outcome.Succeeded) return Results.Ok(new { id, status = JobStatus.Queued.ToString() });
+            if (outcome.Failure == JobOperationFailure.Reserved) throw new DedupeReservationConflictException();
+            return outcome.Failure switch
             {
-                return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
-            }
-
-            if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
-            {
-                return ApiErrors.BadRequest("job.retry.invalidState", $"Only failed or cancelled jobs can be retried; job {id} is {job.Status}.", new { id, status = job.Status.ToString() });
-            }
-
-            var excluded = await db.MediaFiles.AsNoTracking()
-                .Where(file => file.Id == job.MediaFileId)
-                .AnyAsync(file => db.Exclusions.Any(e => e.Path == file.Path), cancellationToken);
-            if (excluded)
-            {
-                return ApiErrors.Conflict("job.retry.excluded",
-                    "This file is excluded. Remove its exclusion from the library's Excluded tab before retrying.");
-            }
-
-            if (await db.Replacements.AnyAsync(r => r.JobId == id
-                && JobClearing.LiveReplacementStatuses.Contains(r.Status), cancellationToken))
-                return ApiErrors.Conflict("job.recoveryPending",
-                    "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
-
-            // Preserve the admission error contract, but check before discarding any candidate.
-            var sourcePath = await db.MediaFiles.AsNoTracking().Where(f => f.Id == job.MediaFileId)
-                .Select(f => f.Path).SingleOrDefaultAsync(cancellationToken);
-            if (await db.IsFileReservedAsync(job.MediaFileId,
-                new[] { sourcePath, job.WorkOutputPath }.OfType<string>().ToArray(), cancellationToken))
-                throw new DedupeReservationConflictException();
-
-            if (!await dispatcher.TryDiscardWorkOutputAsync(db, job, cancellationToken))
-            {
-                return ApiErrors.Conflict(
-                    "job.workCleanupFailed",
-                    "Cleanup is deferred while the output is reserved, shared, or unavailable. The job and diagnostics were retained; resolve the file operation and retry.");
-            }
-
-            JobAttemptHistory.Archive(job, "ManualRetry", DateTimeOffset.UtcNow);
-            job.Status = JobStatus.Queued;
-            job.ErrorMessage = null;
-            job.FailureCategory = null;
-            job.ProcessLog = null;
-            // A retry must re-evaluate the samples against the current settings and whichever
-            // encoder claims the job. Reusing the old selected quality also skips size preflight.
-            job.AdaptiveVideoQuality = null;
-            job.AdaptiveAudioBitrateKbps = null;
-            job.AdaptiveImageQuality = null;
-            job.PerceptualSearchJson = null;
-            job.VmafModel = null;
-            if (higherQuality)
-            {
-                job.QualityRetryCount += 1;
-            }
-            job.Progress = 0;
-            job.StartedAt = null;
-            job.FinishedAt = null;
-            job.WorkOutputPath = null;
-            job.OutputSizeBytes = null;
-            job.VerificationPassed = null;
-            job.SourceSha256 = null;
-            job.VerifiedSourceSha256 = null;
-            job.VerifiedOutputSha256 = null;
-            job.VerificationReportJson = null;
-            job.VerifiedAt = null;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-
-            dispatcher.Wake();
-            return Results.Ok(new { id = job.Id, status = job.Status.ToString() });
+                JobOperationFailure.NotFound => ApiErrors.NotFound("job.notFound", outcome.Message, outcome.Args ?? new { id }),
+                JobOperationFailure.InvalidState => ApiErrors.BadRequest("job.retry.invalidState", outcome.Message, outcome.Args ?? new { id }),
+                JobOperationFailure.Excluded => ApiErrors.Conflict("job.retry.excluded", outcome.Message),
+                JobOperationFailure.RecoveryPending => ApiErrors.Conflict("job.recoveryPending", outcome.Message),
+                _ => ApiErrors.Conflict("job.workCleanupFailed", outcome.Message),
+            };
         })
         .WithName("RetryJob");
 

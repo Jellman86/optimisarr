@@ -7,7 +7,7 @@
   import PosterGlow from '../components/PosterGlow.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
-  import { api, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type BatchFailure, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize, savedPercent } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
@@ -26,6 +26,11 @@
   import FailuresPanel from '../components/FailuresPanel.svelte'
   import Thumbnail from '../components/Thumbnail.svelte'
   import PlaybackHolds from '../components/PlaybackHolds.svelte'
+  import BatchResult from '../components/BatchResult.svelte'
+  import ConfirmDialog from '../components/ConfirmDialog.svelte'
+  import SelectionCheckbox from '../components/SelectionCheckbox.svelte'
+  import SelectionToolbar from '../components/SelectionToolbar.svelte'
+  import { createSelection } from '../selection.svelte'
 
   let jobs = $state<Job[]>([])
   let queueStatus = $state<QueueStatus | null>(null)
@@ -47,6 +52,14 @@
   let activeTab = $state<'queue' | 'failures'>(router.path === '/queue/failures' ? 'failures' : 'queue')
 
   let selectedJobId = $state<number | null>(null)
+  // The multi-select over the job table. The operator picks rows and acts on them in bulk; the
+  // selection survives a change of filter and a change of page, so a large queue can be worked
+  // through without losing the rows already picked.
+  let selection = createSelection()
+  let batchAction = $state<'retry' | 'remove' | null>(null)
+  let batchConfirmOpen = $state(false)
+  let batchBusy = $state(false)
+  let batchOutcome = $state<{ title: string; succeeded: number; failures: BatchFailure[] } | null>(null)
   let diagnosticCapture = $state<DiagnosticCapture | null>(null)
   let diagnosticLookupPending = $state(false)
   let downloadingDiagnostics = $state(false)
@@ -272,6 +285,65 @@
   let queuePageCount = $derived(Math.max(1, Math.ceil(visibleJobs.length / QUEUE_PAGE_SIZE)))
   let queuePageStart = $derived((Math.min(queuePage, queuePageCount) - 1) * QUEUE_PAGE_SIZE)
   let pagedJobs = $derived(visibleJobs.slice(queuePageStart, queuePageStart + QUEUE_PAGE_SIZE))
+
+  // The bulk actions work on the rows the operator picked. A range is chosen over the rows on
+  // screen; "select all" covers every row the current filter shows, pages included.
+  let filteredJobIds = $derived(visibleJobs.map((job) => job.id))
+  let pagedJobIds = $derived(pagedJobs.map((job) => job.id))
+  // Every picked job, not only the ones the current filter shows: a selection survives a change
+  // of filter, so the actions have to account for the rows that are no longer on screen.
+  let selectedJobs = $derived(jobs.filter((job) => selection.isSelected(job.id)))
+  // Only a failed or cancelled job can be retried, so a retry covers that part of the selection.
+  // The confirmation says so before anything is sent, and the jobs that cannot be retried keep
+  // their place in the selection.
+  let retryableJobIds = $derived(
+    selectedJobs.filter((job) => job.status === 'Failed' || job.status === 'Cancelled').map((job) => job.id),
+  )
+  // A job the server still counts as active cannot be removed as it stands: the batch has to be
+  // told to stop those first, and the operator is told how many rows that will be.
+  let selectedActive = $derived(selectedJobs.filter((job) => isActive(job.status)).length)
+
+  function toggleJobSelection(jobId: number, extend: boolean) {
+    selection.toggle(jobId, pagedJobIds, extend)
+  }
+
+  function toggleSelectAllJobs() {
+    if (selection.isEverySelected(filteredJobIds)) selection.clear()
+    else selection.selectAll(filteredJobIds)
+  }
+
+  function askBatch(action: 'retry' | 'remove') {
+    batchAction = action
+    batchConfirmOpen = true
+  }
+
+  async function runBatch() {
+    if (!batchAction) return
+    const action = batchAction
+    batchBusy = true
+    try {
+      const result = action === 'retry'
+        ? await api.batchRetryJobs(retryableJobIds)
+        // Only an active job is stopped when the operator is told it will be. Everything else
+        // is removed as it stands, and a job that became active meanwhile is refused.
+        : await api.batchRemoveJobs(selection.ids, selectedActive > 0)
+      batchOutcome = {
+        title: action === 'retry' ? i18n.m.queue.batch_result_retry : i18n.m.queue.batch_result_remove,
+        succeeded: result.succeeded.length,
+        failures: result.failures,
+      }
+      // The rows that were handled leave the selection; the ones that were refused stay picked,
+      // so the operator can act on them again.
+      selection.remove(result.succeeded)
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : i18n.m.queue.error_retry
+    } finally {
+      batchBusy = false
+      batchAction = null
+      batchConfirmOpen = false
+    }
+  }
 
   function selectFilter(key: typeof filter) {
     filter = key
@@ -908,10 +980,48 @@
       {/if}
       {#if loading}<div class="queue-empty" role="status">{i18n.m.common.loading_short}</div>
       {:else if visibleJobs.length > 0}
+        {#if batchOutcome}
+          <BatchResult
+            title={batchOutcome.title}
+            succeeded={batchOutcome.succeeded}
+            failures={batchOutcome.failures}
+            ondismiss={() => (batchOutcome = null)}
+          />
+        {/if}
+        {#if !selection.isEmpty}
+          <SelectionToolbar
+            count={selection.count}
+            total={visibleJobs.length}
+            limited={selection.isFull}
+            onclear={() => selection.clear()}
+          >
+            {#snippet actions()}
+              <button
+                class="btn btn-ghost"
+                onclick={() => askBatch('retry')}
+                disabled={batchBusy || retryableJobIds.length === 0}
+                title={retryableJobIds.length === 0 ? i18n.m.queue.batch_retry_unavailable : i18n.m.queue.batch_retry_title}
+              >
+                <Icon name="retry" class="h-4 w-4" />
+                {i18n.m.queue.batch_retry}
+              </button>
+              <button
+                class="btn btn-danger"
+                onclick={() => askBatch('remove')}
+                disabled={batchBusy}
+                title={i18n.m.queue.batch_remove_title}
+              >
+                <Icon name="trash" class="h-4 w-4" />
+                {i18n.m.queue.batch_remove}
+              </button>
+            {/snippet}
+          </SelectionToolbar>
+        {/if}
         <div class="queue-table-surface"><table class="queue-table">
-          <thead><tr><th scope="col">{i18n.m.queue.col_file}</th><th scope="col">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr></thead>
+          <thead><tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(filteredJobIds)} indeterminate={selection.isSomeSelected(filteredJobIds) && !selection.isEverySelected(filteredJobIds)} label={i18n.m.queue.batch_select_all} onchange={toggleSelectAllJobs} /></th><th scope="col">{i18n.m.queue.col_file}</th><th scope="col">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr></thead>
           <tbody>{#each pagedJobs as job (job.id)}
             <tr class:selected-row={selectedJobId === job.id}>
+              <td class="selection-column"><SelectionCheckbox checked={selection.isSelected(job.id)} label={t(i18n.m.selection.select_row, { name: jobName(job) })} onchange={(extend) => toggleJobSelection(job.id, extend)} /></td>
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
               <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
@@ -925,6 +1035,40 @@
       {:else if !loadError}<p class="queue-empty">{jobs.length > 0 ? i18n.m.queue.no_matches : i18n.m.queue.empty}</p>{/if}
     </section>
   {/if}
+
+  <ConfirmDialog
+    bind:open={batchConfirmOpen}
+    title={batchAction === 'remove'
+      ? plural(selection.count, i18n.m.queue.batch_confirm_remove_title_one, i18n.m.queue.batch_confirm_remove_title_other, selection.count.toLocaleString())
+      : plural(retryableJobIds.length, i18n.m.queue.batch_confirm_retry_title_one, i18n.m.queue.batch_confirm_retry_title_other, retryableJobIds.length.toLocaleString())}
+    confirmLabel={batchAction === 'remove' ? i18n.m.queue.batch_remove : i18n.m.queue.batch_retry}
+    danger={batchAction === 'remove'}
+    busy={batchBusy}
+    onconfirm={runBatch}
+    oncancel={() => { batchConfirmOpen = false; batchAction = null }}
+  >
+    {#snippet body()}
+      <p>{batchAction === 'remove' ? i18n.m.queue.batch_confirm_remove_body : i18n.m.queue.batch_confirm_retry_body}</p>
+      {#if batchAction === 'remove' && selectedActive > 0}
+        <p class="mt-3 rounded-lg border border-warn-line bg-warn-soft p-3 text-warn">
+          {plural(
+            selectedActive,
+            i18n.m.queue.batch_confirm_remove_running_one,
+            i18n.m.queue.batch_confirm_remove_running_other,
+            selectedActive.toLocaleString(),
+          )}
+        </p>
+      {/if}
+      {#if batchAction === 'retry' && retryableJobIds.length < selection.count}
+        <p class="mt-3 rounded-lg border border-warn-line bg-warn-soft p-3 text-warn">
+          {t(i18n.m.queue.batch_confirm_retry_partial, {
+            count: retryableJobIds.length.toLocaleString(),
+            total: selection.count.toLocaleString(),
+          })}
+        </p>
+      {/if}
+    {/snippet}
+  </ConfirmDialog>
 </div>
 
 <style>
@@ -982,9 +1126,9 @@
   .queue-detail-specs:first-child { margin-top: 0; }
   .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs > :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs > :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.queue-detail-actions > div { justify-content: flex-end; }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
   .queue-tools { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; }.queue-filters { display: flex; flex-wrap: wrap; gap: .25rem; }.queue-filters button { padding: .5rem .8rem; font-size: .75rem; color: var(--ink-2); border-radius: 999px; }.queue-filters button:hover { background: var(--lit); }.queue-filters button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }.queue-bulk { display: flex; align-items: flex-start; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; }.queue-bulk .btn { font-size: .75rem; }.queue-management { font-size: .75rem; color: var(--ink-3); }.queue-management summary { padding: .75rem; cursor: pointer; border-radius: .5rem; }.queue-management > div { display: flex; flex-wrap: wrap; padding: .5rem; gap: .5rem; background: var(--panel); border-radius: .75rem; max-width: 100%; }
-  .queue-table-surface { border-radius: 14px; background: var(--panel); box-shadow: var(--lift-2); overflow: clip; }.queue-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.queue-table th { background: var(--panel); box-shadow: inset 0 -1px 0 var(--divide); color: var(--ink-3); padding: .75rem 1rem; font-size: .75rem; font-weight: 600; }.queue-table th:first-child { width: 43%; }.queue-table th:nth-child(2) { width: 25%; }.queue-table th:nth-child(3) { width: 17%; }.queue-table th:last-child { width: 15%; }.queue-table td { padding: 1rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }.queue-table .badge { white-space: normal; }.queue-table tr:hover td,.queue-table .selected-row td { background: var(--lit); }.queue-file { display: flex; align-items: center; width: 100%; min-width: 0; gap: .875rem; text-align: left; border-radius: .375rem; }.queue-file > span { min-width: 0; }.queue-file strong { display: block; color: var(--ink); font-size: .8125rem; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }.queue-file:hover strong { color: var(--accent); }.queue-file small { display: block; font-size: .6875rem; margin-top: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }.queue-row-note { display: block; font-size: .6875rem; margin-top: .375rem; }.queue-verification { border-radius: .25rem; text-align: left; }.action-column .btn { font-size: .75rem; padding: .5rem .75rem; max-width: 100%; white-space: normal; }
+  .queue-table-surface { border-radius: 14px; background: var(--panel); box-shadow: var(--lift-2); overflow: clip; }.queue-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.queue-table th { background: var(--panel); box-shadow: inset 0 -1px 0 var(--divide); color: var(--ink-3); padding: .75rem 1rem; font-size: .75rem; font-weight: 600; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 40%; }.queue-table th:nth-child(3) { width: 25%; }.queue-table th:nth-child(4) { width: 17%; }.queue-table th:last-child { width: 15%; }.queue-table td { padding: 1rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }.queue-table .badge { white-space: normal; }.queue-table tr:hover td,.queue-table .selected-row td { background: var(--lit); }.queue-table .selection-column { padding: 1rem .75rem; }.queue-table .selection-column :global(.checkbox) { display: block; }.queue-file { display: flex; align-items: center; width: 100%; min-width: 0; gap: .875rem; text-align: left; border-radius: .375rem; }.queue-file > span { min-width: 0; }.queue-file strong { display: block; color: var(--ink); font-size: .8125rem; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }.queue-file:hover strong { color: var(--accent); }.queue-file small { display: block; font-size: .6875rem; margin-top: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }.queue-row-note { display: block; font-size: .6875rem; margin-top: .375rem; }.queue-verification { border-radius: .25rem; text-align: left; }.action-column .btn { font-size: .75rem; padding: .5rem .75rem; max-width: 100%; white-space: normal; }
   .queue-empty { padding: 2rem 1.5rem; background: var(--panel); border-radius: .875rem; text-align: center; font-size: .8125rem; color: var(--ink-3); }.queue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--ink-3); font-size: .75rem; }.queue-pagination > div { display: flex; align-items: center; gap: .5rem; }
-  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs button { padding: 0 .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 63%; }.queue-table th:nth-child(2) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-bulk { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
+  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs button { padding: 0 .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 63%; }.queue-table th:nth-child(3) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-bulk { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
   @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
   @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; } }
   @media(max-width: 639px) {

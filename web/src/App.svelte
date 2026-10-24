@@ -9,6 +9,7 @@
   import { setup } from './lib/stores/setup.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import BrandMark from './lib/components/BrandMark.svelte'
+  import Icon from './lib/components/Icon.svelte'
   import Dashboard from './lib/pages/Dashboard.svelte'
   import Libraries from './lib/pages/Libraries.svelte'
   import QualityLab from './lib/pages/QualityLab.svelte'
@@ -178,11 +179,7 @@
         <span class="font-bold tracking-tight text-ink">Optimisarr</span>
       </button>
       <button class="btn btn-ghost ml-auto px-2" aria-label={i18n.m.nav.toggle_theme} onclick={() => theme.toggle()}>
-        {#if theme.isDark}
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-        {:else}
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.4 15.4A9 9 0 018.6 3.6 9 9 0 1020.4 15.4z" /></svg>
-        {/if}
+        <Icon name={theme.icon} class="h-5 w-5" />
       </button>
     </header>
 

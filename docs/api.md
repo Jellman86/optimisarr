@@ -344,6 +344,7 @@ versions `1` and `2` preserve existing controls when omitted. See
 | `POST` | `/api/libraries/scan` | Scan all enabled libraries. |
 | `GET` | `/api/media?libraryId={id}` | List discovered files. Omit `libraryId` for all libraries. Optional `status`, `search` (path substring), and `page`/`pageSize`; the pre-paging total is returned in `X-Total-Count`. |
 | `POST` | `/api/media/{id}/probe` | Probe one media file. |
+| `POST` | `/api/media/batch/probe` | Start a batch that probes several media files in the background; the batch is watched through `GET /api/media/batch/probe/{id}`. |
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
 | `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts. |
@@ -529,9 +530,76 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/jobs/{id}/cancel` | Cancel an active job. |
 | `DELETE` | `/api/jobs/{id}` | Remove a clearable job. |
 | `POST` | `/api/jobs/{id}/retry` | Retry a failed or cancelled job. |
+| `POST` | `/api/jobs/batch/remove` | Remove several clearable jobs at once, reporting what happened to each one. |
+| `POST` | `/api/jobs/batch/retry` | Retry several failed or cancelled jobs at once, reporting what happened to each one. |
 | `POST` | `/api/jobs/replace-ready` | Replace all currently verified, ready normal jobs through the rollback-safe quarantine path; report per-job failures without stopping later replacements. |
 | `POST` | `/api/jobs/clear?scope=errored` | Clear failed jobs. Scope can be `errored`, `finished`, or `all`. |
 | `POST` | `/api/jobs/clear-pending` | Clear queued and ready-to-replace jobs and stop running work. |
+
+### Bulk actions
+
+`POST /api/jobs/batch/remove`, `POST /api/jobs/batch/retry`, `POST /api/media/batch/exclude`, and
+`POST /api/exclusions/batch/remove` take a list of ids and apply the same rules as the single action
+they stand in for, one item at a time. A batch is never more permissive than the single action: a job
+that still owns a live or interrupted rollback, a file that has been excluded, a file a sidecar still
+holds, and a job whose work output cannot be cleaned up are all refused, with the reason, rather
+than dropped quietly. One refused item never stops the rest. A batch carries at most 200 ids; a
+request that carries more is refused with `400 batch.tooLarge` rather than partly handled, so a
+caller never believes a whole selection was acted on when only part of it was.
+
+The response is `200` with the outcome of every requested id:
+
+```json
+{
+  "requested": 3,
+  "succeeded": [12, 13],
+  "failures": [
+    { "id": 14, "code": "job.remove.active", "message": "Stop an active job before removing it from the queue." }
+  ]
+}
+```
+
+`/api/jobs/batch/remove` takes `cancelActive` to stop the active jobs in the batch before removing
+them, the same sequence the Queue's "Stop & remove" action performs. `/api/jobs/batch/retry` takes
+`higherQuality` to count the attempt as a quality retry. `/api/media/batch/exclude` is idempotent
+on the file's path and drops that file's failed and cancelled jobs.
+`/api/exclusions/batch/remove` lifts several exclusions at once, so a file that was excluded by
+mistake is offered for optimisation again. It only forgets the decision: the original media file is
+left on disk, and the file's failure count is reset so the scanner treats it as a fresh start. An id
+that names no exclusion is reported as a failure with the code `exclusion.notFound`.
+
+### Re-probing several files
+
+A probe runs ffprobe on one file, which is a process per file. Inspecting a whole page of files
+therefore does not happen inside one request:
+
+| `POST` | `/api/media/batch/probe` | Start a batch that inspects several files again, and return how the batch stands. |
+| `GET` | `/api/media/batch/probe/{id}` | How a probe batch stands: its state, how far it has got, and what became of every file in it. |
+| `DELETE` | `/api/media/batch/probe/{id}` | Stop a running probe batch. The file it is on finishes; the rest are left alone. |
+
+`POST /api/media/batch/probe` takes the same list of ids and the same `400 batch.tooLarge` cap as
+the other bulk actions, and answers with the batch:
+
+```json
+{
+  "id": 42,
+  "total": 3,
+  "completed": 0,
+  "succeeded": 0,
+  "failed": 0,
+  "skipped": 0,
+  "state": "Queued",
+  "items": []
+}
+```
+
+The batch is worked on in the background, one file at a time, so it never holds a request open and
+never competes with the rest of the server for the single writer the database allows. The caller
+polls `GET /api/media/batch/probe/{id}` until the state is `Completed`, `Cancelled`, or `Failed`, and
+then reads what became of each file: `Succeeded` (inspected again), `Failed` (the file exists but
+could not be inspected — the probe error says why), or `Skipped` (there is no such file any more, so
+there was nothing to inspect). A batch that is still running after 30 minutes is stopped, and a
+finished batch stays readable for an hour.
 
 Job responses include status, progress, priority, FFmpeg arguments, the audio filter the command
 applied (`appliedAudioFilter`, null when it applied none), selected
@@ -584,6 +652,8 @@ applies). `sidecarVerification` identifies an assignment whose media checks ran 
 |---|---|---|
 | `GET` | `/api/exclusions?libraryId={id}` | List path-keyed exclusions. Omit `libraryId` for all. |
 | `POST` | `/api/exclusions` | Exclude a media file from future optimisation. |
+| `POST` | `/api/media/batch/exclude` | Exclude several media files from future optimisation at once, reporting what happened to each one. |
+| `POST` | `/api/exclusions/batch/remove` | Lift several exclusions at once, so the files are offered for optimisation again. The original files are not touched. |
 | `DELETE` | `/api/exclusions/{id}` | Remove an exclusion. |
 
 Example body:
