@@ -53,37 +53,15 @@ internal static class ExclusionEndpoints
         app.MapPost("/api/exclusions", async (
             ExcludeRequest request, OptimisarrDbContext db, CancellationToken cancellationToken) =>
         {
-            var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == request.MediaFileId, cancellationToken);
-            if (file is null)
+            // The rule lives in ExclusionOperations so the batch endpoint applies exactly the same
+            // checks; this endpoint only translates the outcome into an HTTP status.
+            var outcome = await ExclusionOperations.ApplyAsync(db, request.MediaFileId, request.Reason, cancellationToken);
+            if (!outcome.Succeeded)
             {
-                return ApiErrors.NotFound("media.notFound", $"No media file with id {request.MediaFileId}.", new { id = request.MediaFileId });
+                return ApiErrors.NotFound(outcome.Code, outcome.Message, new { id = request.MediaFileId });
             }
 
-            var exclusion = await db.Exclusions.FirstOrDefaultAsync(e => e.Path == file.Path, cancellationToken);
-            if (exclusion is null)
-            {
-                exclusion = new Exclusion
-                {
-                    Path = file.Path,
-                    LibraryId = file.LibraryId,
-                    RelativePath = file.RelativePath,
-                    Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason!.Trim(),
-                    Source = ExclusionSource.Manual
-                };
-                db.Exclusions.Add(exclusion);
-            }
-
-            // Tidy the queue: drop the file's failed/cancelled attempts so excluding from the Queue makes
-            // them disappear. A running job is left to finish and a completed one is kept (it may own a
-            // replacement); the exclusion is what stops the file being offered again.
-            var spentJobs = await db.Jobs
-                .Where(job => job.Type == JobType.Normal
-                    && job.MediaFileId == file.Id
-                    && (job.Status == JobStatus.Failed || job.Status == JobStatus.Cancelled))
-                .ToListAsync(cancellationToken);
-            db.Jobs.RemoveRange(spentJobs);
-
-            await db.SaveChangesAsync(cancellationToken);
+            var exclusion = outcome.Exclusion!;
             return Results.Ok(new ExclusionDto(
                 exclusion.Id, exclusion.Path, exclusion.LibraryId, exclusion.RelativePath,
                 exclusion.Reason, exclusion.Source.ToString(), exclusion.CreatedAt));
@@ -94,24 +72,14 @@ internal static class ExclusionEndpoints
         app.MapDelete("/api/exclusions/{id:int}", async (
             int id, OptimisarrDbContext db, CancellationToken cancellationToken) =>
         {
-            var exclusion = await db.Exclusions.FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
-            if (exclusion is null)
+            // The rule lives in ExclusionOperations so the batch endpoint applies exactly the same
+            // checks; this endpoint only translates the outcome into an HTTP status.
+            var outcome = await ExclusionOperations.UndoAsync(db, id, cancellationToken);
+            if (!outcome.Succeeded)
             {
-                return ApiErrors.NotFound("exclusion.notFound", $"No exclusion with id {id}.", new { id });
+                return ApiErrors.NotFound(outcome.Code, outcome.Message, new { id });
             }
 
-            db.Exclusions.Remove(exclusion);
-
-            // Reset the file's failure streak so removing an exclusion gives it a genuine fresh start —
-            // otherwise an auto-excluded file would be re-excluded on its very next failure.
-            var media = await db.MediaFiles.FirstOrDefaultAsync(f => f.Path == exclusion.Path, cancellationToken);
-            if (media is not null && media.FailureCount != 0)
-            {
-                media.FailureCount = 0;
-                media.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-
-            await db.SaveChangesAsync(cancellationToken);
             return Results.NoContent();
         })
         .WithName("DeleteExclusion");

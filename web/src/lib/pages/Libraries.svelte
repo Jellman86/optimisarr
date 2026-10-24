@@ -3020,7 +3020,15 @@
     {#if editorCandidatesLoading}
       <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else}
-      <CandidateTable candidates={editorCandidates} scoped />
+      <CandidateTable
+        candidates={editorCandidates}
+        scoped
+        onchanged={(excluded) => {
+          // An excluded file is never offered for optimisation again, so it leaves the list the
+          // editor keeps as well — the two agree without a reload that would blank the result.
+          editorCandidates = editorCandidates.filter((candidate) => !excluded.includes(candidate.mediaFileId))
+        }}
+      />
     {/if}
   {:else}
     {#if editorExclusionsError}<Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>{/if}

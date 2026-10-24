@@ -294,6 +294,7 @@ app.MapLibraryEndpoints();
 app.MapCalibrationEndpoints();
 
 app.MapMediaAndQueueEndpoints();
+app.MapBatchEndpoints();
 app.MapExactDuplicateEndpoints();
 
 app.MapStatsEndpoints(configDirectory);

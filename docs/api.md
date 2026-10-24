@@ -529,9 +529,39 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/jobs/{id}/cancel` | Cancel an active job. |
 | `DELETE` | `/api/jobs/{id}` | Remove a clearable job. |
 | `POST` | `/api/jobs/{id}/retry` | Retry a failed or cancelled job. |
+| `POST` | `/api/jobs/batch/remove` | Remove several clearable jobs at once, reporting what happened to each one. |
+| `POST` | `/api/jobs/batch/retry` | Retry several failed or cancelled jobs at once, reporting what happened to each one. |
 | `POST` | `/api/jobs/replace-ready` | Replace all currently verified, ready normal jobs through the rollback-safe quarantine path; report per-job failures without stopping later replacements. |
 | `POST` | `/api/jobs/clear?scope=errored` | Clear failed jobs. Scope can be `errored`, `finished`, or `all`. |
 | `POST` | `/api/jobs/clear-pending` | Clear queued and ready-to-replace jobs and stop running work. |
+
+### Bulk actions
+
+`POST /api/jobs/batch/remove`, `POST /api/jobs/batch/retry`, and `POST /api/media/batch/exclude`
+take a list of ids and apply the same rules as the single action they stand in for, one item at a
+time. A batch is never more permissive than the single action: a job that still owns a live or
+interrupted rollback, a file that has been excluded, a file a sidecar still holds, and a job whose
+work output cannot be cleaned up are all refused, with the reason, rather than dropped quietly.
+One refused item never stops the rest. A batch carries at most 200 ids; a request that carries more
+is refused with `400 batch.tooLarge` rather than partly handled, so a caller never believes a whole
+selection was acted on when only part of it was.
+
+The response is `200` with the outcome of every requested id:
+
+```json
+{
+  "requested": 3,
+  "succeeded": [12, 13],
+  "failures": [
+    { "id": 14, "code": "job.remove.active", "message": "Stop an active job before removing it from the queue." }
+  ]
+}
+```
+
+`/api/jobs/batch/remove` takes `cancelActive` to stop the active jobs in the batch before removing
+them, the same sequence the Queue's "Stop & remove" action performs. `/api/jobs/batch/retry` takes
+`higherQuality` to count the attempt as a quality retry. `/api/media/batch/exclude` is idempotent
+on the file's path and drops that file's failed and cancelled jobs.
 
 Job responses include status, progress, priority, FFmpeg arguments, the audio filter the command
 applied (`appliedAudioFilter`, null when it applied none), selected
@@ -584,6 +614,7 @@ applies). `sidecarVerification` identifies an assignment whose media checks ran 
 |---|---|---|
 | `GET` | `/api/exclusions?libraryId={id}` | List path-keyed exclusions. Omit `libraryId` for all. |
 | `POST` | `/api/exclusions` | Exclude a media file from future optimisation. |
+| `POST` | `/api/media/batch/exclude` | Exclude several media files from future optimisation at once, reporting what happened to each one. |
 | `DELETE` | `/api/exclusions/{id}` | Remove an exclusion. |
 
 Example body:

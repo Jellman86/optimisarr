@@ -777,6 +777,12 @@ export type Job = {
   finalizing?: boolean
 }
 
+/** One row of a bulk action that could not be completed, with the reason it was refused. */
+export type BatchFailure = { id: number; code: string; message: string }
+
+/** The outcome of a bulk action: what was handled, and what was not and why. */
+export type BatchResult = { requested: number; succeeded: number[]; failures: BatchFailure[] }
+
 export type JobAttemptSnapshot = {
   number: number
   workerName: string | null
@@ -1476,6 +1482,21 @@ export const api = {
   clearJobs: (scope?: 'errored' | 'finished' | 'all') =>
     request<{ cleared: number }>(`/api/jobs/clear${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),
   clearPendingJobs: () => request<{ cleared: number }>('/api/jobs/clear-pending', { method: 'POST' }),
+  /** Removes several jobs at once, reporting what happened to each one. */
+  batchRemoveJobs: (ids: number[], cancelActive = false) =>
+    request<BatchResult>('/api/jobs/batch/remove', {
+      method: 'POST', body: JSON.stringify({ ids, cancelActive }),
+    }),
+  /** Re-queues several failed or cancelled jobs at once. */
+  batchRetryJobs: (ids: number[], higherQuality = false) =>
+    request<BatchResult>('/api/jobs/batch/retry', {
+      method: 'POST', body: JSON.stringify({ ids, higherQuality }),
+    }),
+  /** Excludes several files from optimisation at once. */
+  batchExcludeFiles: (mediaFileIds: number[], reason?: string) =>
+    request<BatchResult>('/api/media/batch/exclude', {
+      method: 'POST', body: JSON.stringify({ mediaFileIds, reason }),
+    }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
   replaceReadyJobs: () =>
