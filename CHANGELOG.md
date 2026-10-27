@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add candidate-only absolute-frame offsets to the retained-file diagnostic, so a suspected video shift can be checked independently of input seeking (#454). The source window and production verification rules are unchanged.
+
 - Correct fourteen Simplified Chinese UI strings. "Custom" no longer reads 风俗, the "Scott's" preset keeps the name in Latin script, the clipping label retains the meaning of introduced clipping and its hint reads more naturally, "Verification gates" and "Base URL" no longer use 门 and 底座, the enqueue button and its two related strings read 加入处理队列, and the schedule window uses 开始时间 and 结束时间 with an equal-times hint that starts from the two fields. Keys, placeholders and every other string are unchanged. Contributed by [arbaleast](https://github.com/arbaleast) in [#446](https://github.com/Jellman86/optimisarr/pull/446).
 
 ## 0.2.24 - 2026-10-24
