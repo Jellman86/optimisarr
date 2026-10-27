@@ -430,6 +430,16 @@ python3 scripts/diagnose_frame_pairing.py \
   --starts 123 635 1147 --seconds 10 --root /evidence/pairing-run-1
 ```
 
+For a suspected one-frame content shift, add `--frame-offsets -1 0 1` (or include
+`2` for a two-frame diagnostic). The sought baseline still runs once; only the
+sequential comparisons shift the candidate's absolute frame range, while the source
+range stays fixed. Choose a window later than the beginning when testing negative
+offsets. The zero-offset result is always required. A higher score after independently
+seeking the files does not by itself prove an encoded-content shift: container/audio
+origins can make the sought windows begin on adjacent pictures. Compare the sequential
+zero-offset and candidate-offset results before drawing that conclusion. These
+comparisons never change production alignment or authorise replacement.
+
 VC-1 Matroska regression: a retained equal-frame candidate scored 9.49 in a sought 10-second
 window and 94.25 when decoded sequentially. Three absolute-frame windows scored 94–95.
 The shared production command now avoids input seeking for all complete, equal-frame
