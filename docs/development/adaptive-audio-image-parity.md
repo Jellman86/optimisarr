@@ -35,8 +35,11 @@ Current remaining work is:
   history and export parity.
 - Wider exact-package restart/reconnect/resource-exhaustion acceptance, with
   reboot/remount and physical Linux ARM64 coverage kept explicitly unqualified.
-- The remaining #441 accessibility, keyboard/focus, 200% zoom, state and screenshot
-  acceptance. Major quality-check polish already shipped in 0.2.24.
+
+The [#441 UI acceptance follow-up](../reviews/2026-10-28-personal-quality-check-acceptance.md)
+records keyboard/focus and recovery fixes, automated accessibility checks, enlarged
+text/zoom-equivalent layouts and refreshed captures in `dev`. Major quality-check
+polish already shipped in 0.2.24; this audit does not broaden native media acceptance.
 
 ### Next soundtrack slice
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep keyboard focus with Personal quality check as preparation, comparison and results replace each other (#441). Next unrated sample now leads to its rating controls; errors and successful Apply are announced, and playback/status failures offer another check. Keep the sample deck readable with enlarged text, improve dark-theme primary-button hover contrast and separate the preset Apply explanation cleanly. Refresh video, photo and music evidence across themes, narrow layouts and 200% text/zoom-equivalent layouts.
+
 - Reconcile the roadmap and audio/image parity checkpoint with the 0.2.24 release, selected installed-host evidence and archived journal decision. Retained-soundtrack selection and the remaining UI/source/lifetime acceptance stay explicit follow-ups.
 
 - Add candidate-only absolute-frame offsets to the retained-file diagnostic, so a suspected video shift can be checked independently of input seeking (#454). The source window and production verification rules are unchanged.

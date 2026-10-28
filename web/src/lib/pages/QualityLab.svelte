@@ -60,6 +60,21 @@
   let pictureSize = $state<{ width: number, height: number } | null>(null)
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let closed = false
+  let focusRoot = $state<HTMLElement | null>(null)
+
+  async function focusStage(previousFocus: Element | null, target?: 'rating') {
+    await tick()
+    if (closed) return
+    const currentFocus = document.activeElement
+    // Only hand off focus when the previous control disappeared. A background poll must not
+    // pull someone away from navigation or another control they deliberately focused.
+    if (currentFocus !== document.body && currentFocus !== previousFocus) return
+    if (previousFocus !== document.body && previousFocus?.isConnected) return
+    const stage = target ?? (!session ? 'source' : session.status === 'Preparing' ? 'preparing'
+      : session.status === 'Failed' ? 'failed' : session.status === 'Comparing' ? 'compare' : 'result'
+    )
+    focusRoot?.querySelector<HTMLElement>(`[data-quality-focus="${stage}"]`)?.focus()
+  }
 
   const selected = $derived(sources.find((source) => source.mediaFileId === selectedSource) ?? null)
   const variants = $derived(session?.variants ?? [])
@@ -130,6 +145,7 @@
 
   async function start() {
     if (selectedSource === null) return
+    const previousFocus = document.activeElement
     busy = true
     error = null
     try {
@@ -145,6 +161,7 @@
       activeScene = 0
       ratings = {}
       schedulePoll()
+      await focusStage(previousFocus)
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.calibration.start_error
     } finally {
@@ -160,12 +177,15 @@
 
   async function poll() {
     if (closed || !session) return
+    const previousStatus = session.status
+    const previousFocus = document.activeElement
     try {
       session = await api.calibration(session.id)
       if (session.variants.length > 0 && !session.variants.some((variant) => variant.name === activeName)) {
         activeName = session.variants[0].name
       }
       schedulePoll()
+      if (session.status !== previousStatus) await focusStage(previousFocus)
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.calibration.load_error
     }
@@ -271,6 +291,7 @@
 
   async function chooseVariant(name: string) {
     if (name === activeName && !switching) return
+    const previousFocus = document.activeElement
     if (!switching) {
       const activePlayer = session?.mediaKind === 'Video' ? videoPlayer : players[activeName]
       switchShouldResume = playing || activePlayer != null && !activePlayer.paused
@@ -289,6 +310,7 @@
         if (pendingName !== null) pendingName = null
         switching = false
         switchShouldResume = false
+        await focusStage(previousFocus, 'rating')
       }
     }
   }
@@ -461,10 +483,12 @@
 
   async function revealResults() {
     if (!session || !canReveal) return
+    const previousFocus = document.activeElement
     busy = true
     error = null
     try {
       session = await api.classifyCalibration(session.id, ratings as Record<string, CalibrationClassification>)
+      await focusStage(previousFocus)
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.calibration.reveal_error
     } finally {
@@ -486,6 +510,7 @@
   }
 
   async function checkAnother() {
+    const previousFocus = document.activeElement
     if (pollTimer) clearTimeout(pollTimer)
     const finished = session
     session = null
@@ -500,6 +525,7 @@
     error = null
     pictureSize = null
     fitView()
+    await focusStage(previousFocus)
     if (finished) await api.deleteCalibration(finished.id).catch(() => undefined)
   }
 
@@ -630,7 +656,7 @@
   <title>{i18n.m.calibration.eyebrow} · Optimisarr</title>
 </svelte:head>
 
-<div class="quality-lab min-h-full">
+<div class="quality-lab min-h-full" bind:this={focusRoot}>
   <header class="mb-5 flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <button class="btn btn-ghost -ml-3 mb-2 min-h-11" onclick={() => router.go(`/libraries/${libraryId}/configure`)}>
@@ -665,15 +691,18 @@
     </ol>
   {/if}
 
-  {#if error}<Banner kind="error" class="mb-5">{error}</Banner>{/if}
-  {#if playbackError}<Banner kind="error" class="mb-5">{i18n.m.calibration.playback_error}</Banner>{/if}
+  {#if error}<div role="alert"><Banner kind="error" class="mb-5">{error}</Banner></div>{/if}
+  {#if playbackError}
+    <div role="alert"><Banner kind="error" class="mb-5">{i18n.m.calibration.playback_error}</Banner></div>
+    {#if !revealed}<button class="btn mb-5 min-h-11" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>{/if}
+  {/if}
 
   {#if loading}
     <div class="card flex min-h-72 items-center justify-center text-sm text-ink-3">{i18n.m.common.loading}</div>
   {:else if !session}
     <div class="quality-columns">
       <section class="card p-5 sm:p-6">
-        <h2 class="text-lg font-semibold text-ink">
+        <h2 class="text-lg font-semibold text-ink" tabindex="-1" data-quality-focus="source">
           {selected?.mediaKind === 'Audio' ? i18n.m.calibration.choose_audio : selected?.mediaKind === 'Image' ? i18n.m.calibration.choose_image : i18n.m.calibration.choose_source}
         </h2>
         <p class="mt-2 text-sm leading-relaxed text-ink-2">{i18n.m.calibration.intro}</p>
@@ -727,7 +756,7 @@
     </div>
   {:else if session.status === 'Preparing'}
     <section class="card mx-auto max-w-2xl p-6 sm:p-8">
-      <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-ink">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-accent">{Math.round(session.preparationProgress * 100)}%</span></div>
+      <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-ink" tabindex="-1" data-quality-focus="preparing">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-accent">{Math.round(session.preparationProgress * 100)}%</span></div>
       <div class="mt-5 h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-label={i18n.m.calibration.preparing} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(session.preparationProgress * 100)}><div class="h-full rounded-full bg-accent-fill transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
       <p class="mt-4 text-sm leading-relaxed text-ink-2">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : compareVideoPresets ? i18n.m.calibration.preparing_hint : i18n.m.calibration.preparing_quality_hint}</p>
       <div class="mt-6 border-t border-line pt-5">
@@ -747,10 +776,11 @@
           />
         </div>
       </div>
+      {#if error}<button class="btn mt-5 min-h-11" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>{/if}
     </section>
   {:else if session.status === 'Failed'}
     <section class="card mx-auto max-w-2xl space-y-4 p-6 sm:p-8">
-      <Banner kind="error">{session.error ?? i18n.m.calibration.failed}</Banner>
+      <div role="alert" tabindex="-1" data-quality-focus="failed"><Banner kind="error">{session.error ?? i18n.m.calibration.failed}</Banner></div>
       <button class="btn min-h-11" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>
     </section>
   {:else}
@@ -760,7 +790,7 @@
           <div class="flex min-h-16 items-center justify-between gap-3 border-b border-white/10 px-3 py-2.5 text-white/85 sm:px-4 sm:py-3">
             <div class="min-w-0 flex-1">
               <span class="block text-xs font-semibold text-ink-3">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span>
-              <strong class="block truncate text-lg leading-tight">{variantLabel(activeName)}</strong>
+              <h2 class="block truncate text-lg font-bold leading-tight" tabindex="-1" data-quality-focus="compare">{variantLabel(activeName)}</h2>
             </div>
             <div class="flex shrink-0 items-center gap-1 sm:gap-2">
               {#if switching}<span class="text-xs font-medium text-accent" aria-live="polite">{i18n.m.common.loading_short}</span>{/if}
@@ -862,7 +892,7 @@
 
         <section class="card p-4 sm:p-5">
           <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h2 class="font-semibold text-ink">{i18n.m.calibration.sample_deck}</h2><p class="mt-1 text-sm text-ink-3">{i18n.m.calibration.sample_deck_hint}</p><p class="mt-1 text-xs text-ink-4">{i18n.m.calibration.shortcut_hint}</p></div><span class="text-xs text-ink-4">{i18n.m.calibration.select_then_rate}</span></div>
-          <div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <div class="sample-deck mt-4">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
               <button class="choice group relative min-h-20 touch-manipulation rounded-xl px-3 py-3 text-left" class:choice-selected={activeName === variant.name} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
@@ -887,7 +917,7 @@
             {#if activeVariant?.isOriginal}
               <p class="callout tone-accent mt-3 rounded-xl p-4">{i18n.m.calibration.reference_hint}</p>
             {:else}
-              <div class="mt-3 space-y-2" role="group" aria-label={t(i18n.m.calibration.rate_sample, { name: activeName })}>
+              <div class="mt-3 space-y-2" role="group" tabindex="-1" data-quality-focus="rating" aria-label={t(i18n.m.calibration.rate_sample, { name: activeName })}>
                 {#each ratingOptions as rating}
                   <button class="choice min-h-12 w-full rounded-xl px-3 py-2 text-left text-sm font-semibold" class:choice-selected={ratings[activeName] === rating} aria-pressed={ratings[activeName] === rating} disabled={ratingLocked} onclick={() => classify(activeName, rating)}>{ratingLabel(rating)}<span class="mt-0.5 block text-xs font-normal opacity-70">{ratingHint(rating)}</span></button>
                 {/each}
@@ -908,7 +938,7 @@
           <section class="card overflow-hidden">
             <div class="border-b border-line p-5">
               <p class="text-xs font-semibold text-accent">{i18n.m.calibration.result_title}</p>
-              <h2 class="mt-1 text-xl font-bold text-ink">{change ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2>
+              <h2 class="mt-1 text-xl font-bold text-ink" tabindex="-1" data-quality-focus="result">{change ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2>
               <p class="mt-2 text-sm leading-relaxed text-ink-2">{change ? i18n.m.calibration.result_basis : i18n.m.calibration.result_none_basis}</p>
             </div>
             {#if change}
@@ -923,8 +953,9 @@
                   <p class="mt-3 text-sm text-ink-2">{i18n.m.calibration.estimated_saving}: <strong class="text-ink">{session.result.estimatedSavingPercent}%</strong></p>
                   <p class="mt-0.5 text-xs text-ink-3">{i18n.m.calibration.estimate_note}</p>
                 {/if}
-                <p class="mt-3 flex gap-2 text-xs leading-relaxed text-ink-2"><Icon name="shield-check" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" /><span>{i18n.m.calibration.apply_scope}{#if change.after.profile} {i18n.m.calibration.apply_scope_presets}{/if}</span></p>
+                <p class="mt-3 flex gap-2 text-xs leading-relaxed text-ink-2"><Icon name="shield-check" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" /><span>{i18n.m.calibration.apply_scope}{#if change.after.profile}{' '}{i18n.m.calibration.apply_scope_presets}{/if}</span></p>
                 <button class="btn btn-primary mt-4 min-h-12 w-full" disabled={busy || session.status === 'Applied'} onclick={applyResult}>{session.status === 'Applied' ? i18n.m.calibration.applied : i18n.m.calibration.apply}</button>
+                <span class="sr-only" role="status">{session.status === 'Applied' ? i18n.m.calibration.applied : ''}</span>
               </div>
             {/if}
             <div class="divide-y divide-line-soft">
@@ -966,6 +997,8 @@
 
 <style>
   .quality-lab { container-type: inline-size; }
+  .quality-lab .btn-primary:hover { background: color-mix(in srgb, var(--accent-fill) 92%, black); }
+  .sample-deck { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)); gap: 0.5rem; }
   .quality-columns { display: grid; gap: 1.25rem; }
   @container (min-width: 60rem) {
     .quality-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); }

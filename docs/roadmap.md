@@ -40,8 +40,9 @@ assessment is fixed. These generated-fixture and installed-package checks do not
 certify every source, lifetime boundary, driver or full-length file.
 
 Personal quality check polish and video close inspection shipped in 0.2.24.
-Remaining [#441](https://github.com/Jellman86/optimisarr/issues/441) acceptance covers
-accessibility, keyboard/focus, 200% zoom, states and refreshed screenshots. Subsequent
+The [#441 acceptance follow-up](reviews/2026-10-28-personal-quality-check-acceptance.md)
+adds keyboard/focus and recovery fixes, automated accessibility checks, 200% text
+and zoom-equivalent layouts, and refreshed screenshots in `dev`. Subsequent
 `dev` changes add a retained-file frame-offset diagnostic (#459) and explain zero
 Mac work capacity (#460); those are not part of 0.2.24. The reporter-specific
 alignment and zero-capacity investigations remain separate from those fixes.
