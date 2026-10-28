@@ -117,6 +117,11 @@ public static class RealCuganCommandBuilder
             // is an untested combination this pipeline refuses — see SuperResolutionRefusals).
             args.AddRange(["-crf", crf.ToString(CultureInfo.InvariantCulture)]);
         }
+        // The frames arrive as RGB PNGs; without this the encoder would happily produce an
+        // RGB/4:4:4 stream most delivery players cannot handle. The source's own 8-bit YUV
+        // planar layout is what a super-resolution job is judged against, so that is the target.
+        args.Add("-pix_fmt");
+        args.Add("yuv420p");
         if (!string.IsNullOrWhiteSpace(spec.Preset))
         {
             args.Add("-preset");

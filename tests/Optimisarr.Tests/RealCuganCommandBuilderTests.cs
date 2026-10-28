@@ -109,6 +109,8 @@ public sealed class RealCuganCommandBuilderTests
         Assert.Equal(new[] { "-c:v:0", "libx265" }, Pair(args, "-c:v:0"));
         Assert.Equal(new[] { "-crf", "20" }, Pair(args, "-crf"));
         Assert.Equal(new[] { "-preset", "slow" }, Pair(args, "-preset"));
+        // RGB PNG frames must not become an RGB/4:4:4 HEVC stream.
+        Assert.Equal(new[] { "-pix_fmt", "yuv420p" }, Pair(args, "-pix_fmt"));
         Assert.Equal(new[] { "-c:a", "copy" }, Pair(args, "-c:a"));
         // Subtitles in a Matroska output are copied verbatim.
         Assert.Equal(new[] { "-c:s", "copy" }, Pair(args, "-c:s"));
