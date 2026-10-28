@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Confirm queue replacements on the page instead of relying on browser popups. Keep single and bulk refusal reasons, including dry-run mode, visible with retry and cancel actions; long errors can scroll and an empty bulk result closes without claiming a replacement. Originals and verification safeguards are unchanged. Contributed by [balfourwong](https://github.com/balfourwong) in [#463](https://github.com/Jellman86/optimisarr/pull/463).
+
 - Keep keyboard focus with Personal quality check as preparation, comparison and results replace each other (#441). Next unrated sample now leads to its rating controls; errors and successful Apply are announced, and playback/status failures offer another check. Keep the sample deck readable with enlarged text, improve dark-theme primary-button hover contrast and separate the preset Apply explanation cleanly. Refresh video, photo and music evidence across themes, narrow layouts and 200% text/zoom-equivalent layouts.
 
 - Reconcile the roadmap and audio/image parity checkpoint with the 0.2.24 release, selected installed-host evidence and archived journal decision. Retained-soundtrack selection and the remaining UI/source/lifetime acceptance stay explicit follow-ups.
