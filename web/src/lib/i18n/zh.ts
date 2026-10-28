@@ -102,6 +102,7 @@ export const zh: Messages = {
     safe: "不会删除或修改任何文件。",
     snapshot: "报告在服务器重启后保留。重用哈希不会更新内容读取时间。结果可能过时，文件更改后请重新扫描。",
     progress: "已检查{total}个候选中的{checked}个 · 跳过{skipped}个 · 已读取{bytes}",
+    found: "{count} 组相同文件",
     empty: "未找到重复文件。不同格式、标签或编码不会匹配。",
     truncated: "位置受显示预算限制，每组最多显示 100 个。省略内容的组不显示总量。",
     copies: "{count} 个重复文件",
