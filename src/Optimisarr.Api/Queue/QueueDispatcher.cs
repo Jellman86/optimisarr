@@ -1053,7 +1053,11 @@ public sealed partial class QueueDispatcher(
 
             var preparedWork = work.Value;
             await WithJobAsync(jobId, job => job.VmafModel = preparedWork.Original.VmafModel, cancellationToken);
-            if (ShouldSelectAdaptiveQuality(
+            // A super-resolution job keeps the library's fixed quality: the adaptive search
+            // samples the normal encode, whose size and quality say nothing about the upscaled
+            // candidate, and its size forecast would only reject a job that was never predicted.
+            var superResolutionPlanned = await ShouldRunSuperResolutionAsync(preparedWork, cancellationToken);
+            if (!superResolutionPlanned && ShouldSelectAdaptiveQuality(
                 preparedWork.VideoQualityStrategy,
                 preparedWork.Spec.VideoCodec is not null,
                 preparedWork.VideoQuality is not null,
@@ -1118,16 +1122,29 @@ public sealed partial class QueueDispatcher(
                     work.Value.VideoFrameRate),
                 work.Value.VideoFrameRate,
                 spec.TargetFrameRate);
-            var run = await RunFfmpegAsync(
-                jobId,
-                spec.OutputPath,
-                arguments,
-                progressDuration,
-                expectedFrameCount,
-                hardwareEncoder,
-                cancellationToken,
-                maxCandidateBytes: maxCandidateBytes,
-                minCandidateBytes: minCandidateBytes);
+
+            // A library opted into super-resolution runs a three-stage pipeline (extract →
+            // engine → reassemble) that produces the same candidate the single-command encode
+            // would; everything after this point — size handling, verification, replacement —
+            // is unchanged. Disabled libraries, previews and non-video jobs never enter it.
+            FfmpegRun run;
+            if (superResolutionPlanned)
+            {
+                run = await RunSuperResolutionAsync(jobId, preparedWork, cancellationToken);
+            }
+            else
+            {
+                run = await RunFfmpegAsync(
+                    jobId,
+                    spec.OutputPath,
+                    arguments,
+                    progressDuration,
+                    expectedFrameCount,
+                    hardwareEncoder,
+                    cancellationToken,
+                    maxCandidateBytes: maxCandidateBytes,
+                    minCandidateBytes: minCandidateBytes);
+            }
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.

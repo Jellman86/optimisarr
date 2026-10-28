@@ -34,6 +34,25 @@ public static class SettingKeys
     /// </summary>
     public const string QueuePaused = "queue.paused";
 
+    // --- Real-CUGAN super-resolution engine (Optimisarr.Core.SuperResolution.SuperResolutionOptions). ---
+    // Global engine configuration. Activation is per library (Library.SuperResolutionEnabled), so a
+    // library opting in can never change how another library's ordinary transcodes run.
+
+    /// <summary>Whether the super-resolution engine is configured at all. Off until an operator turns it on.</summary>
+    public const string RealCuganEnabled = "realcugan.enabled";
+    /// <summary>Content preset naming the model directory the engine is pointed at.</summary>
+    public const string RealCuganPreset = "realcugan.preset";
+    /// <summary>Upscale factor the engine applies to every frame.</summary>
+    public const string RealCuganScale = "realcugan.scale";
+    /// <summary>Engine denoise level (-1 conservative, 0 none, 1-3 strength).</summary>
+    public const string RealCuganNoiseLevel = "realcugan.noiseLevel";
+    /// <summary>Device: "auto", "cpu", or "gpu:&lt;index&gt;" for a verified Vulkan device.</summary>
+    public const string RealCuganDevice = "realcugan.device";
+    /// <summary>Path to the realcugan-ncnn-vulkan executable. Empty resolves it on PATH.</summary>
+    public const string RealCuganBinaryPath = "realcugan.binaryPath";
+    /// <summary>Directory containing the engine's model directories. Empty defaults next to the binary.</summary>
+    public const string RealCuganModelsPath = "realcugan.modelsPath";
+
     /// <summary>
     /// Whether to hardware-decode the source when a hardware encoder is in use, falling back
     /// to software decode automatically if the GPU cannot decode a given source.

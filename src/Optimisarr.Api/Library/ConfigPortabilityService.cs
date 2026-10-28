@@ -245,6 +245,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             // A backup taken before the setting existed leaves it out, which means the library
             // keeps its stored choice.
             library.NormalizeOpusChannelLayout = snapshot.NormalizeOpusChannelLayout ?? library.NormalizeOpusChannelLayout;
+            // A backup taken before the Real-CUGAN pipeline existed leaves the per-library switch
+            // out, which means the library keeps its stored choice either way.
+            library.SuperResolutionEnabled = snapshot.SuperResolutionEnabled ?? library.SuperResolutionEnabled;
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
                 ?? legacyVerificationPolicy.ImageQualityGateEnabled;
             library.MinimumImageSsim = snapshot.MinimumImageSsim
@@ -582,7 +585,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MinimumImagePerceptualScore,
         library.AdaptiveAudioQuality,
         library.AdaptiveImageQuality,
-        library.NormalizeOpusChannelLayout);
+        library.NormalizeOpusChannelLayout,
+        library.SuperResolutionEnabled);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

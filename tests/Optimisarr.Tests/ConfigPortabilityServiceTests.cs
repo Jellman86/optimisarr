@@ -117,6 +117,43 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_librarys_super_resolution_switch_survives_export_restore_and_repeated_import()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Animation", Path = "/data/anime", MediaType = MediaType.Film,
+                SuperResolutionEnabled = true });
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(snapshot.Libraries.Single(library => library.Path == "/data/anime").SuperResolutionEnabled);
+        Assert.False(snapshot.Libraries.Single(library => library.Path == "/data/films").SuperResolutionEnabled);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using var restored = CreateDb();
+        Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/anime"))
+            .SuperResolutionEnabled);
+        Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/films"))
+            .SuperResolutionEnabled);
+
+        // A backup taken before the field existed leaves each library's stored switch alone.
+        var legacy = snapshot with
+        {
+            Version = 1,
+            Libraries = snapshot.Libraries.Select(library => library with
+                { SuperResolutionEnabled = null }).ToArray()
+        };
+        Assert.True((await ImportAsync(legacy)).Applied);
+        await using var legacyRestored = CreateDb();
+        Assert.True((await legacyRestored.Libraries.SingleAsync(library => library.Path == "/data/anime"))
+            .SuperResolutionEnabled);
+        Assert.False((await legacyRestored.Libraries.SingleAsync(library => library.Path == "/data/films"))
+            .SuperResolutionEnabled);
+    }
+
+    [Fact]
     public async Task Export_omits_secrets_and_includes_settings_and_definitions()
     {
         await using (var db = CreateDb())

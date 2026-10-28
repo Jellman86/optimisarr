@@ -85,7 +85,8 @@ internal readonly record struct ParsedLibrary(
     bool AdaptiveAudioQuality = false,
     bool AdaptiveImageQuality = false,
     // The automatic surround-layout conversion is on unless the request turns it off.
-    bool NormalizeOpusChannelLayout = true);
+    bool NormalizeOpusChannelLayout = true,
+    bool SuperResolutionEnabled = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -617,7 +618,8 @@ internal static class LibraryRequestParser
             request.MinimumImagePerceptualScore,
             request.AdaptiveAudioQuality ?? false,
             request.AdaptiveImageQuality ?? false,
-            request.NormalizeOpusChannelLayout ?? true);
+            request.NormalizeOpusChannelLayout ?? true,
+            request.SuperResolutionEnabled ?? false);
         error = null;
         return true;
     }
