@@ -1130,7 +1130,21 @@ public sealed partial class QueueDispatcher(
             FfmpegRun run;
             if (superResolutionPlanned)
             {
-                run = await RunSuperResolutionAsync(jobId, preparedWork, cancellationToken);
+                // Upscaling legitimately grows the file, so the size-saving gate would reject
+                // every super-resolution result by construction. Turn that one gate off for the
+                // attempt, the way a calibration attempt already does — every quality, decode,
+                // duration and stream gate stays exactly as the library configured it.
+                var superResolutionWork = preparedWork with
+                {
+                    VerificationPolicy = preparedWork.VerificationPolicy with
+                    {
+                        RequireSizeReduction = false,
+                        MinimumSizeSavingPercent = null,
+                        MaximumSizeSavingPercent = null,
+                    },
+                    BypassSizePreflight = true,
+                };
+                run = await RunSuperResolutionAsync(jobId, superResolutionWork, cancellationToken);
             }
             else
             {
