@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reconcile the roadmap and audio/image parity checkpoint with the 0.2.24 release, selected installed-host evidence and archived journal decision. Retained-soundtrack selection and the remaining UI/source/lifetime acceptance stay explicit follow-ups.
+
 - Add candidate-only absolute-frame offsets to the retained-file diagnostic, so a suspected video shift can be checked independently of input seeking (#454). The source window and production verification rules are unchanged.
 
 - Show “Waiting for capacity” on a connected Mac worker advertising zero working capacity, with guidance to check the work folder and memory pressure (#458). It is not shown while a job is running, because a running job can legitimately hold the remaining capacity. The capacity readout no longer implies that this value is raw free disk space. Resource admission, pairing and running jobs are unchanged.

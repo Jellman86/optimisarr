@@ -4,7 +4,69 @@ Operator priority: **13 October 2026**. Finish quality-first workflows for audio
 images before continuing perceptual dedupe or activating exact-copy file actions.
 Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
-## Active checkpoint, 20 October 2026
+## Active checkpoint, 28 October 2026
+
+Experimental standalone audio/image quality-first workflows shipped in
+[0.2.24](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.24).
+#415 merged, protocol 11 is enabled for compatible workers, and #332 remains open
+for the parity obligations below. No target is calibrated as a universal default.
+
+The [published qualification record](https://github.com/Jellman86/optimisarr/releases/download/v0.2.24/Optimisarr-0.2.24-qualification.json)
+binds the exact tag to downloadable packages and hashes. Windows/NVIDIA,
+macOS/Apple Silicon and Linux/Intel each passed eight selected generated-fixture
+cases: AAC, Opus, MP3, deliberate audio rejection, JPEG, WebP, metadata retention
+and deliberate image rejection. Strict worker final verification, original
+preservation and replacement/rollback are covered by that matrix. Windows checked
+upgrade, pairing and sustained service health passed; Mac signing/notarisation/
+stapling and installed bundle checks passed. Windows long scratch paths are covered.
+This qualifies the selected workflows, not every source or package lifetime.
+
+The 21 October operator decision makes crash/restart recovery the worker bar;
+power-loss durability is a recorded limit. The unused durable .NET journal and its
+OS adapters/bootstrap were archived in #434. Reimplementing those adapters is not
+an active requirement. Existing owned-scratch recovery, live admission and Mac
+anchored accounting remain in place.
+
+Current remaining work is:
+
+- Adaptive selection for every retained **re-encoded** video soundtrack, with frozen
+  source/output maps and copied tracks excluded.
+- Preview/calibration/target guidance and broader source, retry, interrupted-attempt
+  history and export parity.
+- Wider exact-package restart/reconnect/resource-exhaustion acceptance, with
+  reboot/remount and physical Linux ARM64 coverage kept explicitly unqualified.
+- The remaining #441 accessibility, keyboard/focus, 200% zoom, state and screenshot
+  acceptance. Major quality-check polish already shipped in 0.2.24.
+
+### Next soundtrack slice
+
+Start with an opt-in end-to-end workflow in the currently supported mono/stereo
+assessment domain. Reuse the existing soundtrack identity/timing and final-gate
+planning; do not infer surround/downmix support from standalone tests.
+
+1. Freeze the retained source audio indexes, output order, language/commentary
+   identity, codec and target for each re-encoded track before selection. Copied
+   and removed tracks receive no search and must preserve their existing handling.
+2. Run bounded candidate selection on the eventual encoding host. Track-specific
+   evidence and the chosen bitrate must not leak into another track, attempt or
+   source; define per-track and whole-job budgets before enabling it.
+3. Apply selected rates to their exact output tracks, then independently verify
+   the actual final candidate against the frozen maps and every configured gate.
+   A successful search or copied-track pass cannot excuse an unmeasured required track.
+4. Qualify mixed retained/removed/copied tracks, identity/timing mismatches,
+   unavailable evidence, retries, cancellation and reconnect. Original preservation
+   and exact rollback remain acceptance criteria on each supported execution host.
+
+Do not activate an unfinished planner or widen support merely because unit tests
+pass. This scope is the next implementation slice, not a claim that adaptive
+soundtrack selection has shipped.
+
+## Historical checkpoint, 20 October 2026
+
+The following checkpoint describes the implementation and availability **at that
+time**. Statements about an unmerged #415, disabled placement or unqualified packages
+are superseded by the current checkpoint above; detailed source/fault evidence
+retains its stated limits.
 
 The operator resumed full parity work after the 14 October pause. [Draft PR #415](https://github.com/Jellman86/optimisarr/pull/415)
 remains unmerged and undeployed. Protocol 10 remains advertised; automatic protocol-11 placement
@@ -154,23 +216,23 @@ its own qualification and must not be inferred from successful search orchestrat
 
 ## Implementation and evidence
 
-The current branch contains a local workflow under qualification, not completed parity:
+The shipped standalone workflow and the remaining parity obligations are distinct:
 
 See the [13 October local qualification record](../engineering/hardware-validation/2026-10-13-audio-image-quality-first.md)
 for available-device media tests, discovered regressions and explicit limits.
 
-| Area | Current branch | Required before parity is complete |
+| Area | Released/current implementation | Required before parity is complete |
 | --- | --- | --- |
-| Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Independent acceptance of selection and final commands on each host |
-| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests; signed Swift JPEG/WebP jobs pass live admission, verification and rollback on disk and RAM | Packaged Swift advertisement/placement and full job/restart qualification |
-| Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims now pass all three codecs under live memory admission | Automatic placement parity, longer-track and difficult-passage qualification |
+| Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Broader source, boundary and failure cases beyond the selected per-host release matrix |
+| Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests; signed Swift JPEG/WebP jobs pass live admission, verification and rollback on disk and RAM; selected release packages pass advertisement/placement | Broader packaged image job/restart and source coverage |
+| Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims pass all three codecs under live memory admission and selected released packages pass placement | Longer-track and difficult-passage qualification |
 | Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
-| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Packaged Swift capability/placement qualification, broader reconnect acceptance, interrupted-attempt history and export qualification |
+| Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Broader reconnect acceptance, interrupted-attempt history and export qualification |
 | Lifetime | App-shared anchored Mac accounting, scoped v2 execution, inherited native guards, partial cleanup replay and positive writer/RAM retirement; connected busy-delivery and parent-kill/same-identity restart trials; source and attempt fences | Exact packaged restart/reconnect, full reboot/remount and resource-exhaustion acceptance |
-| Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Native worker retry/restart and exact-package qualification |
-| Release | Nothing deployed by this work | Green full CI, exact-package acceptance and Git-backed deployment when qualified |
+| Final verification | Fresh final encodes; one retry only for a sole measured perceptual failure, with retained rejection history. Local and remote retries run a fresh search above the prior minimum | Broader native worker retry/restart and exact-package failure coverage |
+| Release | 0.2.24 shipped with exact-tag packages, sources, installed-host checks and Git-backed rollout | Requalify later changes and keep scope/limits explicit; no claim of complete parity |
 
 Audio probe cuts use whole seconds to match the transcode contract. Fractional tails are
 explicitly outside search coverage and remain in final verification's coverage. A passing
@@ -181,26 +243,27 @@ Local search results are regenerated for each fresh execution rather than reused
 changed source, encoder or policy. The source is hashed before/after the search and again
 by final verification. Candidate paths are unique owned scratch leaves and refuse overwrite.
 Unavailable evidence falls back to the saved setting; the required final metric still blocks
-replacement when it cannot be obtained. Advertised protocol 10 prevents automatic placement of
-the new native search contract; unsupported clients refuse it rather than bypassing selection.
+replacement when it cannot be obtained. Protocol-11 capable workers can take the new
+native search contract; unsupported clients refuse it rather than bypassing selection.
 
-## Worker foundation in progress
+## Worker protocol and qualification
 
-The next contract is reserved as protocol 11; the advertised protocol remains 10. Current
-workers do not automatically claim quality-first audio/image jobs. The persisted worker capabilities and
-lease search state are additive, bounded JSON fields with idempotent migration coverage.
+Protocol 11 is enabled for compatible workers taking quality-first audio/image jobs.
+The persisted worker capabilities and lease search state are additive, bounded JSON
+fields with idempotent migration coverage.
 Pairing and check-in can record fresh optional native-tool proof; omission clears earlier
 proof so a downgraded or failed installation cannot inherit it. Shared .NET collection now
 runs those probes; the ordinary Swift collector conditionally uses the bundled shared helper.
-Packaged capability/placement qualification remains required before placement is enabled.
+The selected release-package capability/placement workflows are qualified; broader
+source and lifetime acceptance remains required.
 
 The shared search coordinator freezes the source and encoder/metric binaries, validates
 raw measurements against the frozen policy, caps work at four candidates and handles repeated
 identical reports without spending another probe. Conflicting, stale, out-of-order or changed
 source/tool reports cannot advance it. Source refusal cannot authorize a baseline encode;
 an unavailable sample can select the saved baseline, which still requires final verification.
-The reporting endpoint and shared .NET runner now use these rules. Automatic placement remains
-disabled until capabilities, resource admission on all clients and packages are qualified.
+The reporting endpoint and shared .NET runner use these rules. Automatic placement
+is enabled only with the required current capabilities and live admission.
 
 Strict image verification has a separate version-4 evidence contract. Source and candidate
 native assessment, SSIM, metadata, probes and decode are separate measurements. The server
@@ -208,10 +271,11 @@ recomputes the final verdict without installing media tools, and rejects missing
 evidence without local fallback. Shared .NET native verification qualifies both images with
 the bounded decoder before FFmpeg, rechecks file/tool hashes and shares the process-wide
 image metric lane. It is tested directly on the Mac and Quark, with native Windows source/tool
-acceptance and conditional Swift routing also implemented; automatic worker assignment and
-exact-package qualification remain outstanding. ExifTool operations now have bounded capture,
-a deadline and child reaping before cancellation returns, including UTF-8 argument input. Source metadata is inspected before sample encoding when
-required. Grouped JSON and explicit binary-profile presence prevent tag-value spoofing and
+acceptance and conditional Swift routing also implemented. The selected automatic
+assignment and exact-package workflows passed for 0.2.24; broader parity remains open.
+ExifTool operations have bounded capture, a deadline and child reaping before cancellation
+returns, including UTF-8 argument input. Source metadata is inspected before sample encoding
+when required. Grouped JSON and explicit binary-profile presence prevent tag-value spoofing and
 missing compression support being mistaken for an image with no profile. Incomplete source
 inspection holds the job without spending media failure counts; the runtime declares and
 checks its compression dependency.
@@ -249,6 +313,12 @@ Before declaring parity, prove:
 Record exact commits, tool hashes, commands, wall time, memory and tested coverage. Keep raw
 private evidence outside Git. Update this table as each implementation and qualification lands;
 do not mark the larger #332 capability complete merely because the local path passes.
+
+## Historical implementation notes
+
+The dated entries below retain engineering evidence and intermediate activation
+gates. Read current delivery status and remaining work above before scheduling a
+previously completed or deliberately archived task.
 
 ## Server exchange (14 October)
 
