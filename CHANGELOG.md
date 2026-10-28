@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix the Find duplicates progress bar and polish the duplicate review and library card. The bar previously advanced only when a whole file finished, so it sat near 0% for minutes while a large film was read, and its total briefly counted every indexed file before narrowing to same-size candidates. It now follows bytes settled (read, reused or skipped), counts only candidates from the first status, sweeps while queued, shows a percentage, never shows 100% before the server reports completion, and uses the shared progress style instead of the unstyled native bar. Completed scans state how many identical groups were found; review states use consistent tones; copy locations sit under each file name; library cards group Scan with a distinctly iconned Find duplicates action. Duplicate review remains preferences only: nothing is moved, removed or changed.
+
 - Keep keyboard focus with Personal quality check as preparation, comparison and results replace each other (#441). Next unrated sample now leads to its rating controls; errors and successful Apply are announced, and playback/status failures offer another check. Keep the sample deck readable with enlarged text, improve dark-theme primary-button hover contrast and separate the preset Apply explanation cleanly. Refresh video, photo and music evidence across themes, narrow layouts and 200% text/zoom-equivalent layouts.
 
 - Reconcile the roadmap and audio/image parity checkpoint with the 0.2.24 release, selected installed-host evidence and archived journal decision. Retained-soundtrack selection and the remaining UI/source/lifetime acceptance stay explicit follow-ups.

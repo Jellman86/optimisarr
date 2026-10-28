@@ -104,6 +104,7 @@ export const en = {
     safe: "Nothing is removed or changed.",
     snapshot: "Reports survive server restarts. Content-read dates stay unchanged when a hash is reused. Results are snapshots and can become outdated; scan again after files change.",
     progress: "{checked} of {total} candidates checked · {skipped} skipped · {bytes} read",
+    found: "{count} groups of identical files",
     empty: "No exact copies found among the checked files. Different formats, tags or encodes will not match.",
     truncated: "Copy locations are shortened to fit the display budget, with at most 100 per group. Totals are hidden for shortened groups.",
     copies: "{count} identical copies",

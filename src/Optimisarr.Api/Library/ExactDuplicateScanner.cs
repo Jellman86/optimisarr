@@ -8,7 +8,10 @@ public sealed record ExactDuplicateCheckpoint(ExactDuplicateInput Input, ExactFi
     int? HardLinkCount, bool Reused, ExactDuplicateProgress Progress);
 public sealed record ExactDuplicateInput(int Id, string Path, string RelativePath, long SizeBytes, DateTimeOffset ModifiedAt,
     int LibraryId = 0, string? Root = null);
-public sealed record ExactDuplicateProgress(int Checked, int Skipped, int Total, long BytesRead, int Reused = 0);
+/// <summary><see cref="ProcessedBytes"/> counts every candidate byte that is settled (read, reused or skipped)
+/// so a progress bar moves while one large file is read instead of waiting for it to finish.</summary>
+public sealed record ExactDuplicateProgress(int Checked, int Skipped, int Total, long BytesRead, int Reused = 0,
+    long TotalBytes = 0, long ProcessedBytes = 0);
 public sealed record ExactDuplicateResult(int Checked, int Skipped, int Total, long BytesRead,
     IReadOnlyList<ExactDuplicateGroup> Groups, bool Truncated, int Reused = 0, int TotalGroups = 0, int Page = 0, bool HasMore = false);
 
@@ -23,12 +26,11 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
         Func<ExactDuplicateCheckpoint, CancellationToken, Task>? checkpoint = null)
     {
         token.ThrowIfCancellationRequested();
-        var candidates = inputs.Where(f => f.SizeBytes > 0).DistinctBy(f => f.Path,
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
-            .GroupBy(f => f.SizeBytes).Where(g => g.Count() > 1).SelectMany(g => g).ToArray();
+        var candidates = Candidates(inputs);
+        var totalBytes = candidates.Sum(f => f.SizeBytes);
         var observed = new List<ExactDuplicateFile>();
-        var checkedCount = 0; var skipped = 0; var reused = 0; long bytes = 0;
-        progress(new(0, 0, candidates.Length, 0));
+        var checkedCount = 0; var skipped = 0; var reused = 0; long bytes = 0; long settledBytes = 0;
+        progress(new(0, 0, candidates.Length, 0, 0, totalBytes));
         var buffer = new byte[128 * 1024];
         foreach (var input in candidates)
         {
@@ -63,7 +65,8 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
                 while ((count = await stream.ReadAsync(buffer, token)) > 0)
                 {
                     hash.AppendData(buffer.AsSpan(0, count)); length += count; bytes += count;
-                    progress(new(checkedCount, skipped, candidates.Length, bytes, reused));
+                    progress(new(checkedCount, skipped, candidates.Length, bytes, reused, totalBytes,
+                        settledBytes + Math.Min(length, input.SizeBytes)));
                     if (_pause > TimeSpan.Zero) await Task.Delay(_pause, token);
                     if (length > input.SizeBytes) break;
                 }
@@ -79,7 +82,8 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; }
             finally
             {
-                var current = new ExactDuplicateProgress(checkedCount, skipped, candidates.Length, bytes, reused);
+                settledBytes += input.SizeBytes;
+                var current = new ExactDuplicateProgress(checkedCount, skipped, candidates.Length, bytes, reused, totalBytes, settledBytes);
                 progress(current);
                 if (checkpoint is not null && !token.IsCancellationRequested)
                     await checkpoint(new(input, fingerprint, links, wasReused, current), token);
@@ -89,6 +93,12 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
         var display = ExactDuplicateGrouping.Limit(groups);
         return new(checkedCount, skipped, candidates.Length, bytes, display.Groups, display.Truncated, reused, groups.Count);
     }
+
+    /// <summary>Only distinct, non-empty files that share a size with another file can be exact copies.</summary>
+    public static ExactDuplicateInput[] Candidates(IEnumerable<ExactDuplicateInput> inputs) =>
+        inputs.Where(f => f.SizeBytes > 0).DistinctBy(f => f.Path,
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            .GroupBy(f => f.SizeBytes).Where(g => g.Count() > 1).SelectMany(g => g).ToArray();
 
     private static bool Matches(ExactDuplicateInput input)
     {

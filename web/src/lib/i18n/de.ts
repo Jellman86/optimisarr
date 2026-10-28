@@ -104,6 +104,7 @@ export const de: Messages = {
     safe: "Nichts wird entfernt oder geändert.",
     snapshot: "Berichte bleiben nach Serverneustarts erhalten. Bei wiederverwendeten Hashes bleibt das Datum der Inhaltsprüfung unverändert. Ergebnisse können veralten; nach Änderungen erneut scannen.",
     progress: "{checked} von {total} Kandidaten geprüft · {skipped} übersprungen · {bytes} gelesen",
+    found: "{count} Gruppen identischer Dateien",
     empty: "Keine exakten Kopien gefunden. Andere Formate, Tags oder Kodierungen stimmen nicht überein.",
     truncated: "Dateipfade werden für die Anzeige gekürzt, höchstens 100 pro Gruppe. Summen gekürzter Gruppen werden ausgeblendet.",
     copies: "{count} identische Kopien",

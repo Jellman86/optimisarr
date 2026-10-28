@@ -102,6 +102,7 @@ export const pt: Messages = {
     safe: "Nada é removido ou alterado.",
     snapshot: "Os relatórios persistem após reinícios. A data de leitura não muda ao reutilizar um hash. Os resultados podem ficar desatualizados; analise após alterações.",
     progress: "{checked} de {total} candidatos verificados · {skipped} ignorados · {bytes} lidos",
+    found: "{count} grupos de arquivos idênticos",
     empty: "Nenhuma cópia exata encontrada. Formatos, etiquetas ou codificações diferentes não coincidem.",
     truncated: "Os locais são limitados para apresentação, até 100 por grupo. Os totais dos grupos abreviados são ocultados.",
     copies: "{count} cópias idênticas",

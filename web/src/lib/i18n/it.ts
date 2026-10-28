@@ -102,6 +102,7 @@ export const it: Messages = {
     safe: "Niente viene rimosso o modificato.",
     snapshot: "I rapporti restano dopo il riavvio. La data di lettura non cambia quando un hash è riutilizzato. I risultati possono diventare obsoleti; ripeti dopo le modifiche.",
     progress: "{checked} di {total} candidati controllati · {skipped} saltati · {bytes} letti",
+    found: "{count} gruppi di file identici",
     empty: "Nessuna copia esatta trovata. Formati, tag o codifiche diversi non coincidono.",
     truncated: "I percorsi sono limitati per la visualizzazione, a 100 per gruppo. I totali dei gruppi abbreviati sono nascosti.",
     copies: "{count} copie identiche",

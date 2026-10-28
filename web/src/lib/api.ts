@@ -1270,7 +1270,7 @@ export interface ExactDuplicateStatus {
   status: 'NotStarted' | 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed' | 'Interrupted'
   startedAt: string | null
   finishedAt: string | null
-  progress: { checked: number; skipped: number; total: number; bytesRead: number; reused?: number }
+  progress: { checked: number; skipped: number; total: number; bytesRead: number; reused?: number; totalBytes?: number; processedBytes?: number }
   error: string | null
   isStale?: boolean
   libraries?: { id: number; name: string; root: string; mediaType: string }[]
