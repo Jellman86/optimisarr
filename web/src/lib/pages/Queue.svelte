@@ -36,6 +36,30 @@
   let removingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
   let replacingAll = $state(false)
+  let replacementTarget = $state<Job | 'all' | null>(null)
+  let replacementError = $state<string | null>(null)
+  const replacementPending = $derived(replacingAll || replacingId !== null)
+
+  function closeReplacement() {
+    if (!replacementPending) replacementTarget = null
+  }
+
+  function replaceAll() {
+    replacementError = null
+    replacementTarget = 'all'
+  }
+
+  function replace(job: Job) {
+    replacementError = null
+    replacementTarget = job
+  }
+
+  async function confirmReplacement() {
+    if (!replacementTarget || replacementPending) return
+    replacementError = null
+    if (replacementTarget === 'all') await performReplaceAll()
+    else await performReplace(replacementTarget)
+  }
   let retryingId = $state<number | null>(null)
   let approvingSizeId = $state<number | null>(null)
   let excludingId = $state<number | null>(null)
@@ -507,38 +531,34 @@
     return value
   }
 
-  async function replaceAll() {
-    if (!confirm(t(i18n.m.queue.confirm_replace_all, { count: readyToReplaceCount.toLocaleString() }))) {
-      return
-    }
+  async function performReplaceAll() {
     replacingAll = true
     try {
       const result = await api.replaceReadyJobs()
       selectedJobId = null
       await load()
       if (result.failures.length > 0) {
-        error = t(i18n.m.queue.bulk_replace_failed, { count: result.failures.length.toLocaleString() })
+        replacementError = t(i18n.m.queue.bulk_replace_failed, { count: result.failures.length.toLocaleString() })
       } else if (result.replaced > 0) {
+        replacementTarget = null
         router.go('/quarantine')
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.queue.error_replace_all
+      replacementError = err instanceof Error ? err.message : i18n.m.queue.error_replace_all
     } finally {
       replacingAll = false
     }
   }
 
-  async function replace(job: Job) {
-    if (!confirm(i18n.m.queue.confirm_replace)) {
-      return
-    }
+  async function performReplace(job: Job) {
     replacingId = job.id
     try {
       await api.replaceFromJob(job.id)
       await load()
+      replacementTarget = null
       router.go('/quarantine')
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.queue.error_replace
+      replacementError = err instanceof Error ? err.message : i18n.m.queue.error_replace
     } finally {
       replacingId = null
     }
@@ -927,7 +947,24 @@
   {/if}
 </div>
 
+
+{#if replacementTarget}
+  <dialog id="queue-replacement-dialog" class="app-modal replacement-confirmation" use:modal={closeReplacement} aria-labelledby="replacement-title" aria-busy={replacementPending}>
+    <h2 id="replacement-title" class="mb-4 text-lg font-semibold">{i18n.m.queue.action_replace_original}</h2>
+    <p class="mb-4 whitespace-pre-line">{replacementTarget === 'all'
+      ? t(i18n.m.queue.confirm_replace_all, { count: readyToReplaceCount.toLocaleString() })
+      : i18n.m.queue.confirm_replace}</p>
+    {#if replacementTarget !== 'all'}<p class="mb-4 break-words">{jobName(replacementTarget)}</p>{/if}
+    {#if replacementError}<div role="alert" class="mb-4"><Banner kind="error">{replacementError}</Banner></div>{/if}
+    <div class="flex justify-end gap-3">
+      <button class="btn btn-ghost" onclick={closeReplacement} disabled={replacementPending}>{i18n.m.common.cancel}</button>
+      <button class="btn btn-primary" onclick={confirmReplacement} disabled={replacementPending}>{replacementPending ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace}</button>
+    </div>
+  </dialog>
+{/if}
+
 <style>
+  .replacement-confirmation { width: min(42rem, calc(100vw - 2rem)); padding: 1.5rem; }
   #queue-list-title { scroll-margin-block-start: .75rem; }
   .queue-review-alert { width: 100%; display: flex; align-items: center; gap: .875rem; margin-bottom: 1.25rem; padding: 1rem 1.125rem; text-align: left; box-shadow: var(--lift-1); transition: transform 180ms ease, box-shadow 180ms ease; }
   .queue-review-alert:hover, .queue-review-alert:focus-visible { transform: translateY(-2px); box-shadow: var(--lift-3); }

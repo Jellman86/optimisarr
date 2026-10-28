@@ -84,21 +84,52 @@ function json(route: Route, body: unknown) {
   })
 }
 
-test('replace all confirms once, replaces every ready job in one request, and opens quarantine once', async ({ page }) => {
+test('replace all confirms on page, replaces every ready job in one request, and opens quarantine once', async ({ page }) => {
   const bulkRequests = await mockQueue(page)
-  let confirmationCount = 0
-  page.on('dialog', async (dialog) => {
-    confirmationCount += 1
-    expect(dialog.message()).toContain('Replace all 2 verified outputs?')
-    await dialog.accept()
-  })
-
+  page.on('dialog', () => { throw new Error('Replacement must not rely on browser dialogs') })
   await page.goto('/#/queue')
   await page.getByRole('button', { name: 'Replace all (2)' }).click()
-
+  const confirmation = page.locator('#queue-replacement-dialog')
+  await expect(confirmation).toContainText('Replace all 2 verified outputs?')
+  expect(bulkRequests()).toBe(0)
+  await confirmation.getByRole('button', { name: 'Replace', exact: true }).click()
   await expect(page).toHaveURL(/#\/quarantine$/)
-  expect(confirmationCount).toBe(1)
   expect(bulkRequests()).toBe(1)
+})
+
+test('replacement refusal stays visible above the job details and allows a retry', async ({ page }) => {
+  await mockQueue(page)
+  let requests = 0
+  await page.route('**/api/jobs/1/replace', async route => {
+    requests++
+    if (requests === 1) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({
+      error: 'Dry-run mode is enabled, so Optimisarr will stop after verification and leave originals untouched.'
+    }) })
+    return json(route, { id: 1, status: 'Replaced' })
+  })
+  page.on('dialog', () => { throw new Error('Replacement must not rely on browser dialogs') })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  await page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' }).click()
+  const confirmation = page.locator('#queue-replacement-dialog')
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(confirmation.getByRole('alert')).toContainText('Dry-run mode is enabled')
+  await page.screenshot({ path: '/tmp/optimisarr-replacement-error.png' })
+  await expect(page.locator('#queue-job-dialog')).toContainText('Ready to replace')
+  await confirmation.getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(page).toHaveURL(/#\/quarantine$/)
+  expect(requests).toBe(2)
+})
+
+test('cancelling on-page replacement leaves verified jobs untouched', async ({ page }) => {
+  const bulkRequests = await mockQueue(page)
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'Replace all (2)' }).click()
+  await page.locator('#queue-replacement-dialog').getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.locator('#queue-replacement-dialog')).toHaveCount(0)
+  expect(bulkRequests()).toBe(0)
+  await expect(page.getByRole('button', { name: 'Replace all (2)' })).toBeVisible()
 })
 
 test('a remote job says where it is, and a job kept for a worker says it is waiting', async ({ page }) => {
