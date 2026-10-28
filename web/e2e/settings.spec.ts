@@ -823,7 +823,7 @@ test('the super-resolution room saves its section, restores defaults, and shows 
 
   await page.getByLabel('Content preset').selectOption('pro')
   await page.getByLabel('Denoise level').selectOption('3')
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByText('Settings saved')).toBeVisible()
   const section = (saved as { superResolution?: Record<string, unknown> } | null)?.superResolution
   expect(section?.preset).toBe('pro')
@@ -842,7 +842,7 @@ test('the super-resolution probe reports a real sample run and a failed save sta
   await mockSettings(page)
   await page.route('**/api/system/realcugan/probe', route =>
     json(route, { success: true, exitCode: 0, error: null, outputTail: '', deviceUsed: 'auto' }))
-  await page.goto('#/settings/super-resolution'.replace('#', ''))
+  await page.goto("/#/settings/super-resolution")
 
   await page.getByRole('button', { name: 'Test with a real sample run' }).click()
   await expect(page.getByText('The engine produced an upscaled sample on device auto.')).toBeVisible()
@@ -850,9 +850,10 @@ test('the super-resolution probe reports a real sample run and a failed save sta
   // A rejected save surfaces the server's specific error instead of pretending it worked.
   await page.route('**/api/settings', async route => {
     if (route.request().method() !== 'PUT') return json(route, settings)
-    return json(route, { error: { code: 'superResolution.modelUnavailable', message: 'The models-pro model set ships no model for scale 2x at noise level 1.' } }, 400)
+    // The wire error shape is flat: { code, error } with a human fallback string.
+    return json(route, { code: 'superResolution.modelUnavailable', error: 'The models-pro model set ships no model for scale 2x at noise level 1.' }, 400)
   })
   await page.getByLabel('Content preset').selectOption('pro')
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByText('no model for scale 2x')).toBeVisible()
 })
