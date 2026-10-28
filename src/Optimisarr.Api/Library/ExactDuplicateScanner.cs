@@ -35,6 +35,8 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
         foreach (var input in candidates)
         {
             token.ThrowIfCancellationRequested();
+            var settledCount = checkedCount + skipped;
+            long length = 0;
             ExactFileFingerprint? fingerprint = null; int? links = null; var wasReused = false;
             try
             {
@@ -60,7 +62,6 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
                     FileShare.Read, buffer.Length, FileOptions.Asynchronous | FileOptions.SequentialScan);
                 if (stream.Length != input.SizeBytes || ExactFileIdentity.Read(stream.SafeFileHandle) != generation.Identity) { skipped++; continue; }
                 using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-                long length = 0;
                 int count;
                 while ((count = await stream.ReadAsync(buffer, token)) > 0)
                 {
@@ -82,7 +83,8 @@ public sealed class ExactDuplicateScanner(TimeSpan? pause = null)
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; }
             finally
             {
-                settledBytes += input.SizeBytes;
+                settledBytes += checkedCount + skipped > settledCount
+                    ? input.SizeBytes : Math.Min(length, input.SizeBytes);
                 var current = new ExactDuplicateProgress(checkedCount, skipped, candidates.Length, bytes, reused, totalBytes, settledBytes);
                 progress(current);
                 if (checkpoint is not null && !token.IsCancellationRequested)

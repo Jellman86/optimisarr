@@ -174,6 +174,43 @@ public sealed class ExactDuplicateTests : IDisposable
     }
 
     [Fact]
+    public async Task Cancellation_during_a_file_does_not_count_its_unread_bytes_as_processed()
+    {
+        var a = await File(1, "a.wav", new byte[300_000]); var b = await File(2, "b.wav", new byte[300_000]);
+        using var cancel = new CancellationTokenSource();
+        var reports = new List<ExactDuplicateProgress>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new ExactDuplicateScanner(TimeSpan.Zero)
+            .ScanAsync(_root, [a, b], progress =>
+            {
+                reports.Add(progress);
+                if (progress.BytesRead > 0) cancel.Cancel();
+            }, cancel.Token));
+        var last = reports[^1];
+        Assert.InRange(last.BytesRead, 1, a.SizeBytes - 1);
+        Assert.Equal(last.BytesRead, last.ProcessedBytes);
+        Assert.Equal((0, 0), (last.Checked, last.Skipped));
+        Assert.Equal(600_000, last.TotalBytes);
+    }
+
+    [Fact]
+    public async Task Cached_candidates_advance_processed_bytes_without_new_reads()
+    {
+        var a = await File(1, "a.wav", new byte[300_000]); var b = await File(2, "b.wav", new byte[300_000]);
+        var cache = new Dictionary<int, ExactFileFingerprint>();
+        var scanner = new ExactDuplicateScanner(TimeSpan.Zero);
+        await scanner.ScanAsync(_root, [a, b], _ => { }, default, checkpoint: (unit, _) =>
+        {
+            if (unit.Fingerprint is { } fingerprint) cache[unit.Input.Id] = fingerprint;
+            return Task.CompletedTask;
+        });
+        var reports = new List<ExactDuplicateProgress>();
+        await scanner.ScanAsync(_root, [a, b], reports.Add, default, cache);
+        Assert.All(reports, progress => Assert.Equal(0, progress.BytesRead));
+        Assert.Contains(reports, progress => progress.Checked == 1 && progress.ProcessedBytes == a.SizeBytes);
+        Assert.Equal((2, 600_000L, 600_000L), (reports[^1].Reused, reports[^1].ProcessedBytes, reports[^1].TotalBytes));
+    }
+
+    [Fact]
     public void Candidates_are_only_distinct_non_empty_files_that_share_a_size()
     {
         ExactDuplicateInput Input(int id, string path, long size) => new(id, Path.Combine(_root, path), path, size, DateTimeOffset.UtcNow);
