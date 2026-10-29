@@ -24,8 +24,8 @@ export function createSelection() {
 
   function toggle(id: number, order: readonly number[], extend = false) {
     if (extend && anchor !== null) {
-      // The range is taken in the order the rows are shown, so the rows that reach the cap are the
-      // ones the operator picked last, not the ones with the lowest ids.
+      // The range is taken in the order the rows are shown, and existing picks are retained when
+      // the range reaches the cap.
       selected = rangeSelection(order, selected, anchor, id)
       return
     }
@@ -64,7 +64,7 @@ export function createSelection() {
     toggle,
     /** Select every shown row, up to the cap. */
     selectAll(order: readonly number[]) {
-      selected = capMerge([], order)
+      selected = capMerge(selected, order)
       anchor = null
     },
     /** Forget the given rows, e.g. the ones a batch action just handled. */

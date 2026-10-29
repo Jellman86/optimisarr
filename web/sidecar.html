@@ -12,14 +12,12 @@
          which owns the decision; src/lib/theme-boot.test.ts keeps this copy in step with it. -->
     <script id="theme-boot">
       (function () {
-        try {
-          var stored = localStorage.getItem('optimisarr.theme')
-          var mode = stored === 'light' || stored === 'dark' ? stored : 'system'
-          var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-          document.documentElement.classList.toggle('dark', dark)
-        } catch {
-          // A browser that refuses storage or media queries keeps the light scheme.
-        }
+        var stored = null
+        var prefersDark = false
+        try { stored = localStorage.getItem('optimisarr.theme') } catch { /* Preferences are optional. */ }
+        try { prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches } catch { /* Use light without a system preference. */ }
+        var mode = stored === 'light' || stored === 'dark' ? stored : 'system'
+        document.documentElement.classList.toggle('dark', mode === 'dark' || (mode === 'system' && prefersDark))
       })()
     </script>
     <title>Optimisarr · Linux sidecar</title>

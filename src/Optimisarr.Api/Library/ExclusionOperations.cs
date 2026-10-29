@@ -61,7 +61,8 @@ public static class ExclusionOperations
         var spentJobs = await db.Jobs
             .Where(job => job.Type == JobType.Normal
                 && job.MediaFileId == file.Id
-                && (job.Status == JobStatus.Failed || job.Status == JobStatus.Cancelled))
+                && (job.Status == JobStatus.Failed || job.Status == JobStatus.Cancelled)
+                && !db.Replacements.Any(replacement => replacement.JobId == job.Id))
             .ToListAsync(token);
         db.Jobs.RemoveRange(spentJobs);
 

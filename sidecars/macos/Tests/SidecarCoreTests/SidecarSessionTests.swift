@@ -874,3 +874,52 @@ struct MenuVisibilityTests {
         #expect(session.gpu?.device == 0.57)
     }
 }
+
+@MainActor
+@Suite("Reported work capacity")
+struct WorkCapacityNoticeTests {
+    @Test("zero reported capacity explains why a connected worker cannot take work")
+    func zeroCapacity() {
+        let session = SidecarSession(prober: nil, executor: nil, persistConcurrency: { _ in })
+        session.status = .connected(workerId: 1, lastCheckIn: Date())
+        session.freeScratchBytes = 0
+        #expect(session.workCapacityNotice != nil)
+        #expect(session.workCapacityNotice?.contains("memory pressure") == true)
+        #expect(session.workCapacityNotice?.contains("work folder") == true)
+        #expect(session.isPaused == false)
+    }
+
+    @Test("capacity notice clears when the reported capacity recovers")
+    func recoveredCapacity() {
+        let session = SidecarSession(prober: nil, executor: nil, persistConcurrency: { _ in })
+        session.status = .connected(workerId: 1, lastCheckIn: Date())
+        session.freeScratchBytes = 0
+        #expect(session.workCapacityNotice != nil)
+        session.freeScratchBytes = 1024
+        #expect(session.workCapacityNotice == nil)
+    }
+
+    @Test("an unmeasured capacity is not described as zero")
+    func unmeasuredCapacity() {
+        let session = SidecarSession(prober: nil, executor: nil, persistConcurrency: { _ in })
+        session.status = .connected(workerId: 1, lastCheckIn: Date())
+        #expect(session.freeScratchBytes == nil)
+        #expect(session.workCapacityNotice == nil)
+    }
+    @Test("a running job holding the remaining capacity is busy, not waiting")
+    func busyCapacity() {
+        let session = SidecarSession(prober: nil, executor: nil, persistConcurrency: { _ in })
+        session.status = .working(jobId: 7, progress: .stageOnly(.measuring))
+        session.freeScratchBytes = 0
+        session.activeJobs[7] = .stageOnly(.measuring)
+        #expect(session.workCapacityNotice == nil)
+    }
+
+    @Test("old zero capacity does not hide a lost server connection")
+    func disconnectedCapacity() {
+        let session = SidecarSession(prober: nil, executor: nil, persistConcurrency: { _ in })
+        session.freeScratchBytes = 0
+        session.status = .unreachable(reason: "Fixture server unavailable")
+        #expect(session.workCapacityNotice == nil)
+    }
+}

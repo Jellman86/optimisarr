@@ -30,6 +30,16 @@
   let scopeLibraries = $derived([...libraries.map(l => ({ id:l.id, name:l.name, available:true })),
     ...(report?.libraries ?? []).filter(l => !libraries.some(current => current.id === l.id)).map(l => ({ id:l.id, name:l.name, available:false }))])
   let statusLabel = $derived(report ? i18n.m.duplicates[report.status] : i18n.m.duplicates.NotStarted)
+  // Whole-file counts stall for minutes on one large film, so the bar follows settled bytes when the
+  // server reports them. It never claims 100% before the server says the scan is complete.
+  let scanPercent = $derived.by(() => {
+    if (!report || report.status !== 'Running') return null
+    const { checked, skipped, total, totalBytes = 0, processedBytes = 0 } = report.progress
+    const fraction = totalBytes > 0 ? processedBytes / totalBytes : total > 0 ? (checked + skipped) / total : null
+    return fraction === null ? null : Math.min(99, Math.max(0, Math.floor(fraction * 100)))
+  })
+  let progressText = $derived(report ? t(i18n.m.duplicates.progress, { checked: report.progress.checked, total: report.progress.total, skipped: report.progress.skipped, bytes: formatSize(report.progress.bytesRead) }) : '')
+  let groupCount = $derived(report?.result ? report.result.totalGroups ?? report.result.groups.length : 0)
   onMount(() => { void loadLibraries() })
   onDestroy(() => { disposed = true; revision++; clearTimeout(timer) })
 
@@ -134,13 +144,25 @@
   {#if error}<Banner kind="error">{error}<button class="btn ml-3" onclick={() => libraryId === null ? loadLibraries() : load(libraryId)}>{i18n.m.setup.retry}</button></Banner>{/if}
   {#if report}
     <section class="card p-5 sm:p-6" aria-busy={loading || running}>
-      <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-base font-semibold text-ink" aria-live="polite">{loading ? i18n.m.common.loading_short : statusLabel}</h2>{#if report.finishedAt}<span class="text-xs text-ink-3">{new Date(report.finishedAt).toLocaleString()}</span>{/if}</div>
-      {#if report.status !== 'NotStarted'}<p class="mt-3 text-sm text-ink-3">{t(i18n.m.duplicates.progress, { checked: report.progress.checked, total: report.progress.total, skipped: report.progress.skipped, bytes: formatSize(report.progress.bytesRead) })}</p>{/if}
-      {#if report.progress.reused}<p class="mt-2 text-sm text-ink-2">{t(i18n.m.duplicates.reused, { count: report.progress.reused })}</p>{/if}
-      {#if running}<progress class="mt-4 w-full accent-accent" max={Math.max(1,report.progress.total)} value={report.progress.checked + report.progress.skipped} aria-label={i18n.m.duplicates.Running}></progress>{/if}
+      <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 class="text-base font-semibold text-ink" aria-live="polite">{loading ? i18n.m.common.loading_short : statusLabel}</h2>
+        {#if report.finishedAt}<span class="text-xs tabular-nums text-ink-3">{new Date(report.finishedAt).toLocaleString()}</span>{/if}
+      </div>
+      {#if running}
+        <div class="scan-progress mt-4">
+          <div class="progress-track" role="progressbar" aria-label={i18n.m.duplicates.Running} aria-valuemin="0" aria-valuemax="100" aria-valuenow={scanPercent ?? undefined} aria-valuetext={scanPercent === null ? statusLabel : `${scanPercent}% · ${progressText}`}>
+            {#if scanPercent !== null}<div class="progress-fill" style:width={`${scanPercent}%`}></div>
+            {:else}<div class="progress-indeterminate"></div>{/if}
+          </div>
+          {#if scanPercent !== null}<strong class="scan-percent">{scanPercent}%</strong>{/if}
+        </div>
+      {/if}
+      {#if report.result && report.status === 'Completed' && groupCount > 0}<p class="mt-3 text-sm font-medium text-ink">{t(i18n.m.duplicates.found, { count: groupCount })}</p>{/if}
+      {#if report.status !== 'NotStarted' && report.status !== 'Queued'}<p class="mt-2 text-sm tabular-nums text-ink-3">{progressText}</p>{/if}
+      {#if report.progress.reused}<p class="mt-1 text-sm text-ink-3">{t(i18n.m.duplicates.reused, { count: report.progress.reused })}</p>{/if}
       {#if report.error}<p class="mt-3 text-sm text-bad" role="alert">{report.error}</p>{/if}
-      {#if report.result?.groups.length === 0}<p class="mt-4 text-sm text-ink">{i18n.m.duplicates.empty}</p>{/if}
-      {#if report.libraries?.length}<div class="mt-4 border-t border-line pt-4"><h3 class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.reportScope}</h3><ul class="mt-2 flex flex-wrap gap-2" aria-label={i18n.m.duplicates.reportScope}>{#each report.libraries as library (library.id)}<li class="badge bg-raised text-ink-2" title={library.root}>{library.name}</li>{/each}</ul></div>{/if}
+      {#if report.result?.groups.length === 0}<p class="mt-3 text-sm text-ink">{i18n.m.duplicates.empty}</p>{/if}
+      {#if report.libraries?.length}<div class="mt-4 border-t border-line pt-4"><h3 class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.reportScope}</h3><ul class="mt-2 flex flex-wrap gap-2" aria-label={i18n.m.duplicates.reportScope}>{#each report.libraries as library (library.id)}<li class="badge tone-neutral" title={library.root}>{library.name}</li>{/each}</ul></div>{/if}
     </section>
     {#if report.isStale}<Banner kind="info">{i18n.m.duplicates.stale}</Banner>{/if}
     {#if report.result?.truncated}<Banner kind="info">{i18n.m.duplicates.truncated}</Banner>{/if}
@@ -168,6 +190,9 @@
   .scope-library { display:flex; align-items:center; gap:.75rem; min-height:2.75rem; padding:.5rem .75rem; border:1px solid var(--line); border-radius:8px; cursor:pointer; }
   .scope-library:has(input:checked) { background:var(--accent-soft); border-color:var(--accent-line); }
   .duplicate-view .badge { min-width:0; max-width:100%; }
+  .scan-progress { display:flex; align-items:center; gap:.75rem; }
+  .scan-progress .progress-track { height:.5rem; }
+  .scan-percent { min-width:3ch; font-size:1.125rem; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; text-align:right; }
   @container (max-width:20rem) {
     .duplicate-view > section, .scope-picker { padding:.5rem; }
     .scope-library { flex-direction:column; align-items:start; gap:.25rem; padding:.5rem; }

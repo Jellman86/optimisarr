@@ -157,6 +157,68 @@ public sealed class ExactDuplicateTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Scanner_progress_advances_by_bytes_within_a_file_and_settles_skipped_files()
+    {
+        var a = await File(1, "a.wav", new byte[300_000]); var b = await File(2, "b.wav", new byte[300_000]);
+        var gone = await File(3, "gone.wav", new byte[300_000]); System.IO.File.Delete(gone.Path);
+        var unique = await File(4, "unique.wav", new byte[10]);
+        var reports = new List<ExactDuplicateProgress>();
+        await new ExactDuplicateScanner(TimeSpan.Zero).ScanAsync(_root, [a, b, gone, unique], reports.Add, default);
+
+        Assert.All(reports, r => Assert.Equal(900_000, r.TotalBytes));
+        Assert.Contains(reports, r => r.Checked == 0 && r.ProcessedBytes is > 0 and < 300_000);
+        Assert.Equal(reports.Select(r => r.ProcessedBytes).Order(), reports.Select(r => r.ProcessedBytes));
+        Assert.Equal(900_000, reports[^1].ProcessedBytes);
+        Assert.Equal((2, 1, 3), (reports[^1].Checked, reports[^1].Skipped, reports[^1].Total));
+    }
+
+    [Fact]
+    public async Task Cancellation_during_a_file_does_not_count_its_unread_bytes_as_processed()
+    {
+        var a = await File(1, "a.wav", new byte[300_000]); var b = await File(2, "b.wav", new byte[300_000]);
+        using var cancel = new CancellationTokenSource();
+        var reports = new List<ExactDuplicateProgress>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new ExactDuplicateScanner(TimeSpan.Zero)
+            .ScanAsync(_root, [a, b], progress =>
+            {
+                reports.Add(progress);
+                if (progress.BytesRead > 0) cancel.Cancel();
+            }, cancel.Token));
+        var last = reports[^1];
+        Assert.InRange(last.BytesRead, 1, a.SizeBytes - 1);
+        Assert.Equal(last.BytesRead, last.ProcessedBytes);
+        Assert.Equal((0, 0), (last.Checked, last.Skipped));
+        Assert.Equal(600_000, last.TotalBytes);
+    }
+
+    [Fact]
+    public async Task Cached_candidates_advance_processed_bytes_without_new_reads()
+    {
+        var a = await File(1, "a.wav", new byte[300_000]); var b = await File(2, "b.wav", new byte[300_000]);
+        var cache = new Dictionary<int, ExactFileFingerprint>();
+        var scanner = new ExactDuplicateScanner(TimeSpan.Zero);
+        await scanner.ScanAsync(_root, [a, b], _ => { }, default, checkpoint: (unit, _) =>
+        {
+            if (unit.Fingerprint is { } fingerprint) cache[unit.Input.Id] = fingerprint;
+            return Task.CompletedTask;
+        });
+        var reports = new List<ExactDuplicateProgress>();
+        await scanner.ScanAsync(_root, [a, b], reports.Add, default, cache);
+        Assert.All(reports, progress => Assert.Equal(0, progress.BytesRead));
+        Assert.Contains(reports, progress => progress.Checked == 1 && progress.ProcessedBytes == a.SizeBytes);
+        Assert.Equal((2, 600_000L, 600_000L), (reports[^1].Reused, reports[^1].ProcessedBytes, reports[^1].TotalBytes));
+    }
+
+    [Fact]
+    public void Candidates_are_only_distinct_non_empty_files_that_share_a_size()
+    {
+        ExactDuplicateInput Input(int id, string path, long size) => new(id, Path.Combine(_root, path), path, size, DateTimeOffset.UtcNow);
+        var candidates = ExactDuplicateScanner.Candidates([Input(1, "a", 3), Input(2, "b", 3), Input(3, "a", 3),
+            Input(4, "c", 4), Input(5, "d", 0), Input(6, "e", 0)]);
+        Assert.Equal([1, 2], candidates.Select(c => c.Id));
+    }
+
     [DllImport("libc", EntryPoint = "link", SetLastError = true)] private static extern int Link(string source, string target);
     [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CreateHardLink(string target, string source, IntPtr reserved);

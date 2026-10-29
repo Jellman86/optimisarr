@@ -7,7 +7,7 @@
   import PosterGlow from '../components/PosterGlow.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
-  import { api, type BatchFailure, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type BatchFailure, type BulkReplacementResult, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type PerceptualSearchSummary, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize, savedPercent } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
@@ -41,6 +41,34 @@
   let removingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
   let replacingAll = $state(false)
+  let replacementTarget = $state<Job | 'all' | null>(null)
+  let replacementError = $state<string | null>(null)
+  let replacementFailures = $state<BulkReplacementResult['failures']>([])
+  const replacementPending = $derived(replacingAll || replacingId !== null)
+
+  function closeReplacement() {
+    if (!replacementPending) replacementTarget = null
+  }
+
+  function replaceAll() {
+    replacementError = null
+    replacementFailures = []
+    replacementTarget = 'all'
+  }
+
+  function replace(job: Job) {
+    replacementError = null
+    replacementFailures = []
+    replacementTarget = job
+  }
+
+  async function confirmReplacement() {
+    if (!replacementTarget || replacementPending) return
+    replacementError = null
+    replacementFailures = []
+    if (replacementTarget === 'all') await performReplaceAll()
+    else await performReplace(replacementTarget)
+  }
   let retryingId = $state<number | null>(null)
   let approvingSizeId = $state<number | null>(null)
   let excludingId = $state<number | null>(null)
@@ -308,7 +336,7 @@
   }
 
   function toggleSelectAllJobs() {
-    if (selection.isEverySelected(filteredJobIds)) selection.clear()
+    if (selection.isEverySelected(filteredJobIds)) selection.remove(filteredJobIds)
     else selection.selectAll(filteredJobIds)
   }
 
@@ -318,7 +346,7 @@
   }
 
   async function runBatch() {
-    if (!batchAction) return
+    if (!batchAction || batchBusy || selection.isEmpty) return
     const action = batchAction
     batchBusy = true
     try {
@@ -579,38 +607,35 @@
     return value
   }
 
-  async function replaceAll() {
-    if (!confirm(t(i18n.m.queue.confirm_replace_all, { count: readyToReplaceCount.toLocaleString() }))) {
-      return
-    }
+  async function performReplaceAll() {
     replacingAll = true
     try {
       const result = await api.replaceReadyJobs()
+      replacementFailures = result.failures
       selectedJobId = null
       await load()
       if (result.failures.length > 0) {
-        error = t(i18n.m.queue.bulk_replace_failed, { count: result.failures.length.toLocaleString() })
-      } else if (result.replaced > 0) {
-        router.go('/quarantine')
+        replacementError = t(i18n.m.queue.bulk_replace_failed, { count: result.failures.length.toLocaleString() })
+      } else {
+        replacementTarget = null
+        if (result.replaced > 0) router.go('/quarantine')
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.queue.error_replace_all
+      replacementError = err instanceof Error ? err.message : i18n.m.queue.error_replace_all
     } finally {
       replacingAll = false
     }
   }
 
-  async function replace(job: Job) {
-    if (!confirm(i18n.m.queue.confirm_replace)) {
-      return
-    }
+  async function performReplace(job: Job) {
     replacingId = job.id
     try {
       await api.replaceFromJob(job.id)
       await load()
+      replacementTarget = null
       router.go('/quarantine')
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.queue.error_replace
+      replacementError = err instanceof Error ? err.message : i18n.m.queue.error_replace
     } finally {
       replacingId = null
     }
@@ -991,7 +1016,7 @@
         {#if !selection.isEmpty}
           <SelectionToolbar
             count={selection.count}
-            total={visibleJobs.length}
+            total={jobs.length}
             limited={selection.isFull}
             onclear={() => selection.clear()}
           >
@@ -1071,7 +1096,34 @@
   </ConfirmDialog>
 </div>
 
+{#if replacementTarget}
+  <dialog id="queue-replacement-dialog" class="app-modal replacement-confirmation" use:modal={closeReplacement} aria-labelledby="replacement-title" aria-busy={replacementPending}>
+    <h2 id="replacement-title" class="mb-4 text-lg font-semibold">{i18n.m.queue.action_replace_original}</h2>
+    <p class="mb-4 whitespace-pre-line">{replacementTarget === 'all'
+      ? t(i18n.m.queue.confirm_replace_all, { count: readyToReplaceCount.toLocaleString() })
+      : i18n.m.queue.confirm_replace}</p>
+    {#if replacementTarget !== 'all'}<p class="mb-4 break-words">{jobName(replacementTarget)}</p>{/if}
+    {#if replacementError}
+      <div role="alert" class="mb-4">
+        <Banner kind="error">{replacementError}</Banner>
+        {#if replacementFailures.length > 0}
+          <ul class="mt-3 space-y-3 text-sm">
+            {#each replacementFailures as failure (failure.jobId)}
+              <li><strong>{jobs.find(job => job.id === failure.jobId)?.relativePath ?? t(i18n.m.queue.job_fallback, { id: failure.jobId })}</strong><span class="block text-ink-2">{failure.message}</span></li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
+    <div class="flex justify-end gap-3">
+      <button class="btn btn-ghost" onclick={closeReplacement} disabled={replacementPending}>{i18n.m.common.cancel}</button>
+      <button class="btn btn-primary" onclick={confirmReplacement} disabled={replacementPending}>{replacementPending ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace}</button>
+    </div>
+  </dialog>
+{/if}
+
 <style>
+  .replacement-confirmation { width: min(42rem, calc(100vw - 2rem)); padding: 1.5rem; overflow-y: auto; overflow-wrap: anywhere; }
   #queue-list-title { scroll-margin-block-start: .75rem; }
   .queue-review-alert { width: 100%; display: flex; align-items: center; gap: .875rem; margin-bottom: 1.25rem; padding: 1rem 1.125rem; text-align: left; box-shadow: var(--lift-1); transition: transform 180ms ease, box-shadow 180ms ease; }
   .queue-review-alert:hover, .queue-review-alert:focus-visible { transform: translateY(-2px); box-shadow: var(--lift-3); }

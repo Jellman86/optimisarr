@@ -175,8 +175,9 @@
 
   <!-- One foot: theme, language, collapse. Three ghost buttons, no strips, no rules. -->
   <div class="flex shrink-0 items-center gap-1 px-2.5 pt-2 pb-3.5 {railCollapsed ? 'flex-col' : 'justify-between'}">
-    <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme}>
+    <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme} aria-describedby="sidebar-theme-mode">
       <Icon name={theme.icon} class="h-5 w-5" />
+        <span id="sidebar-theme-mode" class="sr-only">{i18n.m.nav[`theme_${theme.mode}`]}</span>
     </button>
     <LanguageSelect compact opensUp />
     <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={i18n.m.nav.collapse_sidebar} aria-label={i18n.m.nav.collapse_sidebar}>

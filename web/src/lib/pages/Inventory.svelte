@@ -44,6 +44,7 @@
   let bulkOutcome = $state<{ succeeded: number; skipped: number; failures: { id: number; code: string; message: string }[] } | null>(null)
   let probeBatch = $state<MediaProbeBatch | null>(null)
   let probeBatchId = $state<number | null>(null)
+  let probeActive = $derived(probeBatch !== null && ['Queued', 'Running'].includes(probeBatch.state))
   let rowIds = $derived(rows.map((row) => row.file.id))
   let bulkOutcomeTitle = $derived(bulkOutcomeKind === 'exclude' ? i18n.m.shared.batch_exclude : i18n.m.inventory.batch_reprobe_result)
 
@@ -110,13 +111,13 @@
   }
 
   function askBulkAction(action: 'exclude' | 'reprobe') {
-    if (selection.count === 0 || bulkBusy) return
+    if (selection.count === 0 || bulkBusy || probeActive) return
     bulkAction = action
     bulkOutcome = null
   }
 
   async function runBulkExclude() {
-    if (selection.count === 0 || bulkBusy) return
+    if (selection.count === 0 || bulkBusy || probeActive) return
     const ids = [...selection.ids]
     bulkBusy = true
     probeError = null
@@ -139,7 +140,7 @@
   }
 
   async function runBulkReprobe() {
-    if (selection.count === 0 || bulkBusy) return
+    if (selection.count === 0 || bulkBusy || probeActive) return
     const ids = [...selection.ids]
     bulkBusy = true
     probeError = null
@@ -148,6 +149,7 @@
       const started = await api.batchProbeFiles(ids)
       probeBatchId = started.id
       probeBatch = started
+      bulkAction = null
       await followProbeBatch(started.id)
     } catch (err) {
       if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
@@ -179,17 +181,36 @@
     const batch = probeBatch
     if (!batch || disposed) return
     const failures = batch.items
-      .filter((item) => item.outcome === 'Failed' || item.outcome === 'Skipped')
+      .filter((item) => item.outcome === 'Failed')
       .map((item) => ({
         id: item.mediaFileId,
-        code: item.outcome === 'Skipped' ? 'media.notFound' : 'media.probeFailed',
-        message: item.error ?? (item.outcome === 'Skipped' ? 'The file is no longer in the inventory.' : 'The file could not be inspected.'),
+        code: 'media.probeFailed',
+        message: item.error ?? i18n.m.inventory.error_probe,
       }))
     bulkOutcomeKind = 'reprobe'
     // The rows that were inspected now carry their new metadata, so the list is read again.
-    bulkOutcome = { succeeded: batch.succeeded, skipped: batch.skipped, failures }
+    bulkOutcome = batch.completed > 0 ? { succeeded: batch.succeeded, skipped: batch.skipped, failures } : null
+    selection.remove(batch.items.filter(item => item.outcome === 'Succeeded').map(item => item.mediaFileId))
+    if (batch.state === 'Failed') probeError = i18n.m.inventory.batch_reprobe_failed
     await loadInventory(selectedLibrary, show, page)
     if (batch.state === 'Cancelled' && !disposed) probeMessage = i18n.m.inventory.batch_reprobe_cancelled
+  }
+
+  async function resumeProbeBatch() {
+    if (bulkBusy || probeBatchId === null) return
+    bulkBusy = true
+    probeError = null
+    try { await followProbeBatch(probeBatchId) } finally { bulkBusy = false }
+  }
+
+  async function cancelProbeBatch() {
+    if (probeBatchId === null) return
+    try {
+      await api.cancelProbeBatch(probeBatchId)
+      if (!bulkBusy) await resumeProbeBatch()
+    } catch (err) {
+      if (!disposed) probeError = err instanceof Error ? err.message : i18n.m.inventory.error_probe
+    }
   }
 
   function fileName(path: string) { return path.split(/[\\/]/).pop() || path }
@@ -240,7 +261,7 @@
   </header>
   {#if libraryError}<Banner kind="error" class="mb-4">{libraryError}</Banner>{/if}
   {#if error}<Banner kind="error" class="mb-4">{error}<button class="btn ml-3" onclick={() => loadInventory(selectedLibrary, show, page)}>{i18n.m.setup.retry}</button></Banner>{/if}
-  {#if probeError && !selected}<Banner kind="error" class="mb-4">{probeError}</Banner>{/if}
+  {#if probeError && !selected}<div role="alert"><Banner kind="error" class="mb-4">{probeError}</Banner></div>{/if}
   {#if probeMessage && !selected}<p class="callout tone-ok mb-4" role="status">{probeMessage}</p>{/if}
   <div class="inventory-toolbar">
     <div class="inventory-filters">{#each filters as filter}<button class="focus-ring" class:filter-active={show === filter.key} aria-pressed={show === filter.key} onclick={() => selectFilter(filter.key)}>{filter.label}</button>{/each}</div>
@@ -258,14 +279,16 @@
   {#if selection.count > 0}
     <SelectionToolbar count={selection.count} total={rowIds.length} onclear={() => selection.clear()}>
       {#snippet actions()}
-        <button type="button" class="btn" disabled={bulkBusy} onclick={() => askBulkAction('exclude')}>{i18n.m.shared.batch_exclude}</button>
-        <button type="button" class="btn" disabled={bulkBusy} onclick={() => askBulkAction('reprobe')}>{i18n.m.inventory.batch_reprobe}</button>
+        <button type="button" class="btn" disabled={bulkBusy || probeActive} onclick={() => askBulkAction('exclude')}>{i18n.m.shared.batch_exclude}</button>
+        <button type="button" class="btn" disabled={bulkBusy || probeActive} onclick={() => askBulkAction('reprobe')}>{i18n.m.inventory.batch_reprobe}</button>
       {/snippet}
     </SelectionToolbar>
   {/if}
   {#if probeBatch && probeBatch.state !== 'Completed' && probeBatch.state !== 'Cancelled' && probeBatch.state !== 'Failed'}
     <p class="callout mb-4" role="status">
       {t(i18n.m.inventory.batch_reprobe_running, { done: probeBatch.completed.toLocaleString(), total: probeBatch.total.toLocaleString() })}
+      <button type="button" class="btn ml-2" onclick={cancelProbeBatch}>{i18n.m.common.cancel}</button>
+      {#if !bulkBusy}<button type="button" class="btn ml-2" onclick={resumeProbeBatch}>{i18n.m.setup.retry}</button>{/if}
     </p>
   {/if}
   <div class="inventory-surface" aria-busy={loading}>

@@ -27,9 +27,9 @@
   let allFailed = $derived(succeeded === 0 && failures.length > 0)
 </script>
 
-<div class="card batch-result {allFailed ? 'tone-bad' : failures.length > 0 ? 'tone-warn' : 'tone-ok'}" role="status" data-batch-result>
+<div class="card batch-result {allFailed ? 'tone-bad' : failures.length > 0 || skipped > 0 ? 'tone-warn' : 'tone-ok'}" role="status" data-batch-result>
   <span class="batch-result-icon">
-    <Icon name={allFailed ? 'warning' : failures.length > 0 ? 'warning' : 'check'} class="h-4 w-4" />
+    <Icon name={failures.length > 0 || skipped > 0 ? 'warning' : 'check'} class="h-4 w-4" />
   </span>
   <div class="batch-result-body">
     <p class="batch-result-title">

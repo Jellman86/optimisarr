@@ -78,3 +78,8 @@ test('a range that reaches the cap keeps the rows nearest the anchor', () => {
 test('a merge that stays under the cap keeps everything', () => {
   assert.deepEqual(capMerge([1, 2], [2, 3]), [1, 2, 3])
 })
+
+test('a range at the cap never silently drops an earlier selection', () => {
+  const selected = Array.from({ length: MAX_SELECTION }, (_, index) => index + 1)
+  assert.deepEqual(capMerge(selected, [999]), selected)
+})

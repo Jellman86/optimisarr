@@ -48,20 +48,17 @@ internal static class BatchEndpoints
             BatchJobRequest request,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var ids = Normalise(request.Ids);
             if (ids.Length > MaxBatchSize) return TooLarge(ids.Length);
-            var succeeded = new List<int>();
-            var failures = new List<BatchFailure>();
-            foreach (var id in ids)
+            var result = await RunAsync(ids, db, async id =>
             {
                 var outcome = await JobOperations.RemoveAsync(db, dispatcher, id, request.CancelActive, cancellationToken);
-                if (outcome.Succeeded) succeeded.Add(id);
-                else failures.Add(new BatchFailure(id, outcome.Code, outcome.Message));
-                db.ChangeTracker.Clear();
-            }
-            return Results.Ok(new BatchResult(ids.Length, succeeded.ToArray(), failures.ToArray()));
+                return outcome.Succeeded ? null : new BatchFailure(id, outcome.Code, outcome.Message);
+            }, loggerFactory.CreateLogger(nameof(BatchEndpoints)), cancellationToken);
+            return Results.Ok(result);
         })
         .WithName("BatchRemoveJobs");
 
@@ -71,20 +68,17 @@ internal static class BatchEndpoints
             BatchRetryRequest request,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var ids = Normalise(request.Ids);
             if (ids.Length > MaxBatchSize) return TooLarge(ids.Length);
-            var succeeded = new List<int>();
-            var failures = new List<BatchFailure>();
-            foreach (var id in ids)
+            var result = await RunAsync(ids, db, async id =>
             {
                 var outcome = await JobOperations.RetryAsync(db, dispatcher, id, request.HigherQuality, cancellationToken);
-                if (outcome.Succeeded) succeeded.Add(id);
-                else failures.Add(new BatchFailure(id, outcome.Code, outcome.Message));
-                db.ChangeTracker.Clear();
-            }
-            return Results.Ok(new BatchResult(ids.Length, succeeded.ToArray(), failures.ToArray()));
+                return outcome.Succeeded ? null : new BatchFailure(id, outcome.Code, outcome.Message);
+            }, loggerFactory.CreateLogger(nameof(BatchEndpoints)), cancellationToken);
+            return Results.Ok(result);
         })
         .WithName("BatchRetryJobs");
 
@@ -93,19 +87,17 @@ internal static class BatchEndpoints
         app.MapPost("/api/media/batch/exclude", async (
             BatchExcludeRequest request,
             OptimisarrDbContext db,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var ids = Normalise(request.MediaFileIds);
             if (ids.Length > MaxBatchSize) return TooLarge(ids.Length);
-            var succeeded = new List<int>();
-            var failures = new List<BatchFailure>();
-            foreach (var id in ids)
+            var result = await RunAsync(ids, db, async id =>
             {
                 var outcome = await ExclusionOperations.ApplyAsync(db, id, request.Reason, cancellationToken);
-                if (outcome.Succeeded) succeeded.Add(id);
-                else failures.Add(new BatchFailure(id, outcome.Code, outcome.Message));
-            }
-            return Results.Ok(new BatchResult(ids.Length, succeeded.ToArray(), failures.ToArray()));
+                return outcome.Succeeded ? null : new BatchFailure(id, outcome.Code, outcome.Message);
+            }, loggerFactory.CreateLogger(nameof(BatchEndpoints)), cancellationToken);
+            return Results.Ok(result);
         })
         .WithName("BatchExcludeMedia");
 
@@ -114,20 +106,17 @@ internal static class BatchEndpoints
         app.MapPost("/api/exclusions/batch/remove", async (
             BatchUnexcludeRequest request,
             OptimisarrDbContext db,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var ids = Normalise(request.Ids);
             if (ids.Length > MaxBatchSize) return TooLarge(ids.Length);
-            var succeeded = new List<int>();
-            var failures = new List<BatchFailure>();
-            foreach (var id in ids)
+            var result = await RunAsync(ids, db, async id =>
             {
                 var outcome = await ExclusionOperations.UndoAsync(db, id, cancellationToken);
-                if (outcome.Succeeded) succeeded.Add(id);
-                else failures.Add(new BatchFailure(id, outcome.Code, outcome.Message));
-                db.ChangeTracker.Clear();
-            }
-            return Results.Ok(new BatchResult(ids.Length, succeeded.ToArray(), failures.ToArray()));
+                return outcome.Succeeded ? null : new BatchFailure(id, outcome.Code, outcome.Message);
+            }, loggerFactory.CreateLogger(nameof(BatchEndpoints)), cancellationToken);
+            return Results.Ok(result);
         })
         .WithName("BatchRemoveExclusions");
 
@@ -138,7 +127,10 @@ internal static class BatchEndpoints
         {
             var ids = Normalise(request.Ids);
             if (ids.Length > MaxBatchSize) return TooLarge(ids.Length);
-            return Results.Ok(batches.Start(ids));
+            var batch = batches.Start(ids);
+            return batch is null
+                ? Results.Json(new ApiError("batch.busy", "The probe queue is full. Wait for a batch to finish and retry."), statusCode: StatusCodes.Status503ServiceUnavailable)
+                : Results.Ok(batch);
         })
         .WithName("BatchProbeMedia");
 
@@ -163,6 +155,34 @@ internal static class BatchEndpoints
             return Results.NoContent();
         })
         .WithName("CancelBatchProbeMedia");
+    }
+
+    internal static async Task<BatchResult> RunAsync(int[] ids, OptimisarrDbContext db,
+        Func<int, Task<BatchFailure?>> operation, ILogger logger, CancellationToken token)
+    {
+        var succeeded = new List<int>();
+        var failures = new List<BatchFailure>();
+        foreach (var id in ids)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                var failure = await operation(id);
+                if (failure is null) succeeded.Add(id);
+                else failures.Add(failure);
+            }
+            catch (DedupeReservationConflictException ex)
+            {
+                failures.Add(new(id, "dedupe.reserved", ex.Message));
+            }
+            catch (Exception ex) when (ex is DbUpdateException or IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(ex, "Batch item {ItemId} could not be handled.", id);
+                failures.Add(new(id, "batch.itemFailed", "Could not complete this item. Refresh its state before retrying."));
+            }
+            finally { db.ChangeTracker.Clear(); }
+        }
+        return new(ids.Length, succeeded.ToArray(), failures.ToArray());
     }
 
     /// <summary>Distinct, positive ids in the order the operator selected them.</summary>

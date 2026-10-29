@@ -82,11 +82,12 @@
   }
 
   function toggleSelectAll() {
-    if (selection.isEverySelected(visibleIds)) selection.clear()
+    if (selection.isEverySelected(visibleIds)) selection.remove(visibleIds)
     else selection.selectAll(visibleIds)
   }
 
   async function excludeSelected() {
+    if (busy || selection.isEmpty) return
     busy = true
     error = null
     try {
@@ -131,7 +132,7 @@
   {#if !selection.isEmpty}
     <SelectionToolbar
       count={selection.count}
-      total={offered.length}
+      total={candidates.length}
       limited={selection.isFull}
       onclear={() => selection.clear()}
     >

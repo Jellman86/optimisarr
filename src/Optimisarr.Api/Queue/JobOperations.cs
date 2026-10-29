@@ -85,6 +85,13 @@ public static class JobOperations
                 "job.notFound", $"No job with id {id}.");
         }
 
+        if (await db.Replacements.AnyAsync(r => r.JobId == id
+            && JobClearing.LiveReplacementStatuses.Contains(r.Status), token))
+        {
+            return JobOperationOutcome.Rejected(id, JobOperationFailure.RecoveryPending, "job.recoveryPending",
+                "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
+        }
+
         if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
         {
             if (!cancelActive || !JobEnqueueService.ActiveStatuses.Contains(job.Status))
@@ -93,14 +100,12 @@ public static class JobOperations
                     "Stop an active job before removing it from the queue.");
             }
             await CancelAsync(db, job, token);
+            // Cancellation must survive a later cleanup refusal. Match the single-row stop/remove
+            // sequence: commit the stop before signalling a process, then attempt removal afresh.
+            await transaction.CommitAsync(token);
+            await transaction.DisposeAsync();
             dispatcher.RequestCancel(job.Id);
-        }
-
-        if (await db.Replacements.AnyAsync(r => r.JobId == id
-            && JobClearing.LiveReplacementStatuses.Contains(r.Status), token))
-        {
-            return JobOperationOutcome.Rejected(id, JobOperationFailure.RecoveryPending, "job.recoveryPending",
-                "This job owns a live or interrupted rollback. Resolve its replacement before retrying or removing it.");
+            return await RemoveAsync(db, dispatcher, id, cancelActive: false, token);
         }
 
         if (!await dispatcher.TryDiscardWorkOutputAsync(db, job, token))

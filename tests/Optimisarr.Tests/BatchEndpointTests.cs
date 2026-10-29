@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Optimisarr.Core.Domain;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -235,6 +236,60 @@ public sealed class BatchEndpointTests(AdminTokenAuthEndpointTests.TokenedApi ap
         {
             await CleanupAsync(api, fixture);
         }
+    }
+
+    [Fact]
+    public async Task Excluding_a_file_preserves_its_live_rollback_and_job_record()
+    {
+        using var client = api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AdminTokenAuthEndpointTests.TokenedApi.Token);
+        var fixture = await SeedAsync(api, ("rollback.mkv", JobStatus.Failed));
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.Replacements.Add(new Replacement {
+                JobId = fixture.Jobs[0], MediaFileId = fixture.MediaFiles[0],
+                OriginalPath = fixture.Paths[0], FinalPath = fixture.Paths[0] + ".output",
+                QuarantinePath = fixture.Paths[0] + ".rollback", Status = ReplacementStatus.Replaced,
+            });
+            await db.SaveChangesAsync();
+        }
+        try
+        {
+            using var response = await client.PostAsJsonAsync("/api/media/batch/exclude", new { mediaFileIds = fixture.MediaFiles });
+            response.EnsureSuccessStatusCode();
+            using var scope = api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            Assert.True(await db.Jobs.AnyAsync(job => job.Id == fixture.Jobs[0]));
+            Assert.True(await db.Replacements.AnyAsync(replacement => replacement.JobId == fixture.Jobs[0]));
+            Assert.True(File.Exists(fixture.Paths[0]));
+        }
+        finally { await CleanupAsync(api, fixture); }
+    }
+
+    [Fact]
+    public async Task Stop_is_committed_even_when_reserved_cleanup_defers_removal()
+    {
+        using var client = api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AdminTokenAuthEndpointTests.TokenedApi.Token);
+        var fixture = await SeedAsync(api, ("active.mkv", JobStatus.Transcoding));
+        using var held = api.Services.GetRequiredService<FileOperationClaims>()
+            .TryAcquire(FileOperationClaims.Keys(fixture.MediaFiles[0], fixture.Paths[0]));
+        Assert.NotNull(held);
+        try
+        {
+            using var response = await client.PostAsJsonAsync("/api/jobs/batch/remove", new { ids = fixture.Jobs, cancelActive = true });
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Empty(result.GetProperty("succeeded").EnumerateArray());
+            Assert.Equal("job.workCleanupFailed", result.GetProperty("failures")[0].GetProperty("code").GetString());
+            using var scope = api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var retained = await db.Jobs.AsNoTracking().SingleAsync(job => job.Id == fixture.Jobs[0]);
+            Assert.Equal(JobStatus.Cancelled, retained.Status);
+            Assert.True(File.Exists(fixture.Paths[0]));
+        }
+        finally { await CleanupAsync(api, fixture); }
     }
 
     private sealed record Fixture(int LibraryId, int[] MediaFiles, int[] Jobs, string[] Paths);

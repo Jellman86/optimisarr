@@ -323,8 +323,9 @@
       <div class="text-xs text-ink-3">{i18n.m.app.tagline}</div>
     </div>
     <div class="flex items-center gap-2 [&_button]:min-h-11 [&_button]:min-w-11">
-      <button type="button" class="btn btn-ghost min-h-11 min-w-11" onclick={() => theme.toggle()} aria-label={i18n.m.nav.toggle_theme}>
+      <button type="button" class="btn btn-ghost min-h-11 min-w-11" onclick={() => theme.toggle()} aria-label={i18n.m.nav.toggle_theme} aria-describedby="setup-theme-mode">
         <Icon name={theme.icon} class="h-5 w-5" />
+        <span id="setup-theme-mode" class="sr-only">{i18n.m.nav[`theme_${theme.mode}`]}</span>
       </button>
       <LanguageSelect compact />
     </div>

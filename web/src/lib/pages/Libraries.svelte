@@ -2985,7 +2985,7 @@
       {#if !embedded && editingId !== null && editingId > 0}
         <section class="card flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
           <div class="min-w-0 flex-1"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
-          <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="search" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+          <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
         </section>
       {/if}
     {:else if room === 'source'}
@@ -3211,14 +3211,15 @@
           </div>
         {/if}
 
-        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-3 border-line">
+        <!-- mt-auto pins the actions to the card's foot so cards sharing a row line their buttons up. -->
+        <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
-          <a class="btn btn-ghost min-h-11" href={`#/libraries/${library.id}/duplicates`}><Icon name="search" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
+          <a class="btn btn-ghost min-h-11" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
           {#if library.lastAutoEnqueueAt}
-            <span class="text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
+            <span class="ml-auto text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
           {/if}
         </div>
       </div>

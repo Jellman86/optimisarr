@@ -2,10 +2,18 @@ import { nextThemeMode, parseThemeMode, resolveDark, themeIcon, THEME_STORAGE_KE
 
 // Small UI state holders: dark theme, sidebar collapse, and hash-based routing.
 
+function storedPreference(key: string): string | null {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+
+function themeMedia(): MediaQueryList | null {
+  try { return window.matchMedia('(prefers-color-scheme: dark)') } catch { return null }
+}
+
 function createTheme() {
-  const media = window.matchMedia('(prefers-color-scheme: dark)')
-  let mode = $state<ThemeMode>(parseThemeMode(localStorage.getItem(THEME_STORAGE_KEY)))
-  let dark = $state(resolveDark(mode, media.matches))
+  const media = themeMedia()
+  let mode = $state<ThemeMode>(parseThemeMode(storedPreference(THEME_STORAGE_KEY)))
+  let dark = $state(resolveDark(mode, media?.matches ?? false))
 
   // The browser chrome (iOS Safari's toolbar, Android's status bar) takes the page ground so
   // the app never sits in a differently coloured frame. Read from the stylesheet rather than
@@ -19,7 +27,7 @@ function createTheme() {
 
   // A page that follows the system changes with it, with no reload: the browser says the
   // system has switched, and the tokens, the favicon and the mark all follow the same state.
-  media.addEventListener('change', (event) => {
+  media?.addEventListener('change', (event) => {
     if (mode !== 'system') return
     dark = event.matches
     apply()
@@ -27,7 +35,7 @@ function createTheme() {
 
   function setMode(next: ThemeMode) {
     mode = next
-    dark = resolveDark(next, media.matches)
+    dark = resolveDark(next, media?.matches ?? false)
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next)
     } catch {
@@ -53,7 +61,7 @@ function createTheme() {
       return themeIcon(mode)
     },
     toggle() {
-      setMode(nextThemeMode(mode, media.matches))
+      setMode(nextThemeMode(mode, media?.matches ?? false))
     },
   }
 }
@@ -61,7 +69,7 @@ function createTheme() {
 function createLayout() {
   // `collapsed` is the desktop rail toggle (persisted). `mobileOpen` is the off-canvas
   // drawer on small screens — always starts closed and is never persisted.
-  let collapsed = $state(localStorage.getItem('optimisarr.sidebar') === 'collapsed')
+  let collapsed = $state(storedPreference('optimisarr.sidebar') === 'collapsed')
   let mobileOpen = $state(false)
   return {
     get collapsed() {
@@ -69,7 +77,7 @@ function createLayout() {
     },
     toggle() {
       collapsed = !collapsed
-      localStorage.setItem('optimisarr.sidebar', collapsed ? 'collapsed' : 'expanded')
+      try { localStorage.setItem('optimisarr.sidebar', collapsed ? 'collapsed' : 'expanded') } catch { /* Keep the in-memory preference usable. */ }
     },
     get mobileOpen() {
       return mobileOpen

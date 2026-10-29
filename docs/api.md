@@ -594,12 +594,12 @@ the other bulk actions, and answers with the batch:
 ```
 
 The batch is worked on in the background, one file at a time, so it never holds a request open and
-never competes with the rest of the server for the single writer the database allows. The caller
+does not start a probe process for every selected file at once. The caller
 polls `GET /api/media/batch/probe/{id}` until the state is `Completed`, `Cancelled`, or `Failed`, and
 then reads what became of each file: `Succeeded` (inspected again), `Failed` (the file exists but
 could not be inspected — the probe error says why), or `Skipped` (there is no such file any more, so
 there was nothing to inspect). A batch that is still running after 30 minutes is stopped, and a
-finished batch stays readable for an hour.
+finished batch stays readable for up to an hour. At most 20 batches are tracked; older finished results may be evicted sooner. If all slots are live, submission is refused with `503 batch.busy` without starting more work. Cancellation lets the current file finish; timeout or server shutdown can interrupt it. Timeout is reported as `Failed`, user cancellation as `Cancelled`. Batches are held in memory and do not survive a server restart.
 
 Job responses include status, progress, priority, FFmpeg arguments, the audio filter the command
 applied (`appliedAudioFilter`, null when it applied none), selected

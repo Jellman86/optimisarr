@@ -471,3 +471,58 @@ test('a batch that fails says so and keeps the rows picked', async ({ page }) =>
   await expect(page.getByText('1 of 2 selected', { exact: true })).toBeVisible()
   await expect(page.getByRole('checkbox', { name: 'Select a.mkv' })).toBeChecked()
 })
+
+for (const terminal of ['Failed', 'Skipped', 'Cancelled'] as const) {
+  test(`probe ${terminal} results stay honest and leave unfinished files selected`, async ({ page }) => {
+    const requests: unknown[] = []
+    await routeInventory(page, requests)
+    await page.route('**/api/media/batch/probe/42', route => json(route, {
+      id: 42, total: 2, completed: terminal === 'Skipped' ? 1 : 0,
+      succeeded: 0, failed: 0, skipped: terminal === 'Skipped' ? 1 : 0,
+      state: terminal === 'Skipped' ? 'Completed' : terminal,
+      items: terminal === 'Skipped' ? [{ mediaFileId: 1, outcome: 'Skipped', error: 'No longer present.' }] : [],
+    }))
+    await page.goto('/#/inventory')
+    await page.getByRole('checkbox', { name: 'Select a.mkv' }).check()
+    await page.getByRole('checkbox', { name: 'Select b.mkv' }).check()
+    await page.locator('[data-selection-toolbar]').getByRole('button', { name: 'Re-probe' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Re-probe' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    if (terminal === 'Failed') await expect(page.getByText(/Re-probing did not finish/)).toBeVisible()
+    if (terminal === 'Cancelled') await expect(page.getByText('The re-probe was stopped.')).toBeVisible()
+    if (terminal === 'Skipped') {
+      await expect(page.getByText('1 skipped', { exact: true })).toBeVisible()
+      await expect(page.getByText(/could not be handled/)).toHaveCount(0)
+    } else await expect(page.locator('[data-batch-result]')).toHaveCount(0)
+    await expect(page.getByRole('checkbox', { name: 'Select b.mkv' })).toBeChecked()
+  })
+}
+
+test('a probe batch closes confirmation, supports cancellation, and retries monitoring without another batch', async ({ page }) => {
+  const requests: unknown[] = []
+  await routeInventory(page, requests)
+  let polls = 0
+  let stops = 0
+  await page.route('**/api/media/batch/probe/42', async route => {
+    if (route.request().method() === 'DELETE') {
+      stops++
+      return route.fulfill({ status: 204 })
+    }
+    if (++polls === 1) return route.fulfill({ status: 503, json: { error: 'Connection interrupted.' } })
+    return json(route, { id: 42, total: 1, completed: 0, succeeded: 0, failed: 0, skipped: 0,
+      state: stops ? 'Cancelled' : 'Running', items: [] })
+  })
+  await page.goto('/#/inventory')
+  await page.getByRole('checkbox', { name: 'Select a.mkv' }).check()
+  await page.locator('[data-selection-toolbar]').getByRole('button', { name: 'Re-probe' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Re-probe' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByText('Connection interrupted.')).toBeVisible()
+  await expect(page.locator('[data-selection-toolbar]').getByRole('button', { name: 'Re-probe' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await expect.poll(() => polls).toBeGreaterThan(1)
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByText('The re-probe was stopped.')).toBeVisible()
+  expect(requests).toHaveLength(1)
+  expect(stops).toBe(1)
+})

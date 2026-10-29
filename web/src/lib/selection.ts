@@ -52,7 +52,7 @@ function rangeInOrder(order: readonly number[], anchor: number, target: number):
 
 /**
  * The rows between the anchor and the target, added to the selection. The range is taken in the
- * order the rows are shown, so the rows that reach the cap are the ones the operator picked last.
+ * order the rows are shown, and existing picks are retained when the range reaches the cap.
  */
 export function rangeSelection(
   order: readonly number[],
@@ -74,22 +74,13 @@ export function isSomeSelected(order: readonly number[], selected: readonly numb
 }
 
 /**
- * Adds rows to a selection without going past the cap. The rows the operator just picked come
- * first, so a selection that reaches the cap still acts on what was picked last; the rows that
- * were already selected follow, up to the cap.
+ * Adds rows up to the cap without silently discarding any earlier picks.
  */
 export function capMerge(selected: readonly number[], incoming: readonly number[]): number[] {
   const merged = new Set(selected)
-  for (const id of incoming) merged.add(id)
-  if (merged.size <= MAX_SELECTION) return [...merged].sort((a, b) => a - b)
-  const kept: number[] = []
   for (const id of incoming) {
-    if (kept.length >= MAX_SELECTION) break
-    if (!kept.includes(id)) kept.push(id)
+    if (merged.size >= MAX_SELECTION) break
+    merged.add(id)
   }
-  for (const id of selected) {
-    if (kept.length >= MAX_SELECTION) break
-    if (!kept.includes(id)) kept.push(id)
-  }
-  return kept.sort((a, b) => a - b)
+  return [...merged].sort((a, b) => a - b)
 }

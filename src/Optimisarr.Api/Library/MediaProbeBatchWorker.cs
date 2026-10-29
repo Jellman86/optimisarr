@@ -53,15 +53,15 @@ public sealed class MediaProbeBatchWorker(
 
     private async Task RunAsync(MediaProbeBatches.Batch batch, CancellationToken stoppingToken)
     {
-        batch.Start();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, batch.Token);
+        if (!batch.TryStart()) return;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         timeout.CancelAfter(MediaProbeBatches.BatchTimeout);
 
         foreach (var mediaFileId in batch.MediaFileIds)
         {
-            if (timeout.IsCancellationRequested)
+            if (batch.CancelRequested || timeout.IsCancellationRequested)
             {
-                batch.Finish(batch.Token.IsCancellationRequested
+                batch.Finish(batch.CancelRequested || stoppingToken.IsCancellationRequested
                     ? MediaProbeBatchState.Cancelled
                     : MediaProbeBatchState.Failed);
                 return;
@@ -88,7 +88,8 @@ public sealed class MediaProbeBatchWorker(
             }
             catch (OperationCanceledException)
             {
-                batch.Finish(MediaProbeBatchState.Cancelled);
+                batch.Finish(stoppingToken.IsCancellationRequested
+                    ? MediaProbeBatchState.Cancelled : MediaProbeBatchState.Failed);
                 return;
             }
             catch (Exception ex)
@@ -100,6 +101,6 @@ public sealed class MediaProbeBatchWorker(
             }
         }
 
-        batch.Finish(MediaProbeBatchState.Completed);
+        batch.Finish(batch.CancelRequested ? MediaProbeBatchState.Cancelled : MediaProbeBatchState.Completed);
     }
 }

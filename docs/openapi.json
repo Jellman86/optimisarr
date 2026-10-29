@@ -1263,6 +1263,15 @@
               "string"
             ]
           },
+          "processedBytes": {
+            "default": 0,
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
           "reused": {
             "default": 0,
             "format": "int32",
@@ -1282,6 +1291,15 @@
           },
           "total": {
             "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "totalBytes": {
+            "default": 0,
+            "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
