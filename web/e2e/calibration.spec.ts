@@ -1,4 +1,8 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Locator, type Page, type Route, type TestInfo } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fabricatedQualityMedia, serveQualityMedia, type QualityCheckMedia } from './helpers/quality-check-media'
 
 const library = {
   id: 1, name: 'Films', path: '/media/films', mediaType: 'Film', ruleProfile: 'ConservativeHevc',
@@ -25,7 +29,7 @@ function namesFor(mediaKind: CalibrationMediaKind) {
   return mediaKind === 'Video' ? names.slice(0, 5) : names
 }
 
-function comparingSession(mediaKind: CalibrationMediaKind) {
+function comparingSession(mediaKind: CalibrationMediaKind, diagnosticsEnabled = false) {
   const sampleCount = mediaKind === 'Image' ? 1 : 3
   const variantNames = namesFor(mediaKind)
   return {
@@ -35,7 +39,7 @@ function comparingSession(mediaKind: CalibrationMediaKind) {
     variants: variantNames.map((name, variantIndex) => ({
       name,
       isOriginal: name === 'ORIGINAL',
-      diagnostics: name === 'ORIGINAL'
+      diagnostics: !diagnosticsEnabled ? null : name === 'ORIGINAL'
         ? { profile: null, codec: mediaKind === 'Video' ? 'h264' : null, container: mediaKind === 'Video' ? 'mkv' : null, requestedQuality: null, encoder: null, qualityMode: null, effectiveQuality: null }
         : { profile: mediaKind === 'Video' ? videoProfiles[variantIndex - 1] : null, codec: mediaKind === 'Video' ? ['av1', 'hevc', 'hevc', 'h264'][variantIndex - 1] : mediaKind === 'Audio' ? 'aac' : 'webp', container: mediaKind === 'Video' ? ['mkv', 'mp4', 'mp4', 'mp4'][variantIndex - 1] : null, requestedQuality: mediaKind === 'Video' ? [30, 24, 24, 20][variantIndex - 1] : 70, encoder: mediaKind === 'Video' ? ['libsvtav1', 'libx265', 'libx265', 'libx264'][variantIndex - 1] : null, qualityMode: mediaKind === 'Video' ? 'CRF' : null, effectiveQuality: mediaKind === 'Video' ? [30, 24, 24, 20][variantIndex - 1] : 70 },
       samples: Array.from({ length: sampleCount }, (_, scene) => ({
@@ -100,6 +104,17 @@ function revealedSession(mediaKind: CalibrationMediaKind) {
 }
 
 async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false) {
+  await page.route('**/hubs/jobs/negotiate**', route => json(route, {
+    negotiateVersion: 1, connectionId: 'quality-check', connectionToken: 'quality-check',
+    availableTransports: [{ transport: 'WebSockets', transferFormats: ['Text'] }],
+  }))
+  await page.routeWebSocket('**/hubs/jobs?*', socket => {
+    socket.onMessage(message => {
+      if (String(message).includes('"protocol"')) socket.send('{}\u001e')
+    })
+    const ping = setInterval(() => socket.send('{"type":6}\u001e'), 10_000)
+    socket.onClose(() => clearInterval(ping))
+  })
   const currentLibrary = { ...library, mediaType: mediaKind === 'Audio' ? 'Music' : mediaKind === 'Image' ? 'Photo' : 'Film' }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
@@ -111,7 +126,7 @@ async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', de
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
     if (path === '/api/libraries/1/access') return json(route, { path: currentLibrary.path, exists: true, readable: true, writable: true, ok: true, message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/', fileSystemType: 'ext4', availableBytes: 100_000_000_000, totalBytes: 200_000_000_000, atomicWithWork: true, atomicWithQuarantine: true })
     if (path === '/api/libraries/1/calibration/sources') return json(route, [{ mediaFileId: 7, relativePath: mediaKind === 'Image' ? 'Example Photo.tiff' : mediaKind === 'Audio' ? 'Example Track.flac' : 'Example Film.mkv', durationSeconds: mediaKind === 'Image' ? 0 : 1_200, width: mediaKind === 'Audio' ? null : 1_920, height: mediaKind === 'Audio' ? null : 1_080, mediaKind, isHdr: false }])
-    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, keepPreparing ? preparingSession(mediaKind) : revealImmediately ? revealedSession(mediaKind) : comparingSession(mediaKind))
+    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, keepPreparing ? preparingSession(mediaKind) : revealImmediately ? revealedSession(mediaKind) : comparingSession(mediaKind, route.request().postDataJSON().diagnosticsEnabled === true))
     if (path === `/api/calibration/${id}` && route.request().method() === 'GET') return json(route, preparingSession(mediaKind))
     if (path.endsWith('/classifications') && route.request().method() === 'POST') return json(route, revealedSession(mediaKind))
     if (path.endsWith('/apply') && route.request().method() === 'POST') return json(route, { ...revealedSession(mediaKind), status: 'Applied', result: { ...revealedSession(mediaKind).result, applied: true } })
@@ -604,7 +619,7 @@ test('results lead with the recommendation and the exact library change before A
   const change = page.getByRole('heading', { name: 'What Apply changes' }).locator('..')
   await expect(change.getByRole('definition')).toHaveText(['Conservative HEVC · CRF 24', 'Experimental AV1 · CRF 30'])
   await expect(change).toContainText('It queues no work and replaces no file.')
-  await expect(change).toContainText('Choosing a preset also adopts')
+  await expect(change).toContainText('no file. Choosing a preset also adopts')
   await expect(change).toContainText('Estimated from these short samples')
   await expect(page.getByText('They did not choose the recommendation.', { exact: false })).toBeVisible()
   await expect(page.getByRole('list', { name: 'Quality check progress' }).locator('[aria-current="step"]')).toContainText('Reveal and apply')
@@ -660,4 +675,229 @@ test('no acceptable candidate keeps the library unchanged and offers another che
   await expect(page.getByRole('heading', { name: 'What Apply changes' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Use this setting for the library' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Check another file' })).toBeVisible()
+})
+
+
+test('keyboard focus follows preparation and returns to source selection', async ({ page }) => {
+  await openLab(page, 'Image', false, true)
+  const heading = page.getByRole('heading', { name: 'Preparing blind samples', exact: true })
+  await expect(heading).toBeFocused()
+  await page.route(`**/api/calibration/${id}`, (route) => json(route, { ...preparingSession('Image'), status: 'Failed', error: 'The selected photo could not be decoded.' }))
+  await expect(page.getByRole('alert')).toContainText('The selected photo could not be decoded.')
+  await page.getByRole('button', { name: 'Check another file' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Choose a representative still image' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('combobox')).toBeFocused()
+})
+
+test('comparison and reveal hand keyboard focus to their new content', async ({ page }) => {
+  await openLab(page, 'Image')
+  await expect(page.getByRole('heading', { name: 'Original', exact: true })).toBeFocused()
+  for (const name of names.slice(1)) {
+    await page.getByRole('button', { name, exact: true }).click()
+    await page.getByRole('group', { name: `Rate sample ${name}` }).getByRole('button', { name: /Acceptable/ }).click()
+  }
+  await page.getByRole('button', { name: 'Reveal samples and result' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Your most efficient acceptable setting' })).toBeFocused()
+})
+
+test('stale Apply refusal is announced and never marks the setting as applied', async ({ page }) => {
+  await openLab(page, 'Image', false, false, true)
+  await page.route(`**/api/calibration/${id}/apply`, (route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Library settings changed. Start a new quality check.' }) }))
+  await page.getByRole('button', { name: 'Use this setting for the library' }).click()
+  await expect(page.getByRole('alert')).toContainText('Library settings changed')
+  await expect(page.getByRole('button', { name: 'Setting applied — no work was queued' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Check another file' }).click()
+  await expect(page.getByRole('button', { name: 'Prepare blind samples' })).toBeVisible()
+})
+
+test('a lost preparation poll offers a way to start another check', async ({ page }) => {
+  await openLab(page, 'Image', false, true)
+  await page.route(`**/api/calibration/${id}`, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Preparation status is temporarily unavailable.' }) }))
+  await expect(page.getByRole('alert')).toContainText('Preparation status is temporarily unavailable.')
+  await page.getByRole('button', { name: 'Check another file' }).click()
+  await expect(page.getByRole('button', { name: 'Prepare blind samples' })).toBeVisible()
+})
+
+test('the next unrated shortcut hands focus to the new sample rating', async ({ page }) => {
+  await openLab(page, 'Image')
+  await page.getByRole('button', { name: 'Next unrated sample: A', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  const rating = page.getByRole('group', { name: 'Rate sample A' })
+  await expect(rating).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(rating.getByRole('button', { name: /Indistinguishable/ })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await expect(rating.getByRole('button', { name: /Acceptable/ })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('a completed background preparation does not steal navigation focus', async ({ page }) => {
+  await openLab(page, 'Image', false, true)
+  const back = page.getByRole('button', { name: 'Back to library' })
+  await back.focus()
+  await page.route(`**/api/calibration/${id}`, route => json(route, comparingSession('Image')))
+  await expect(page.getByRole('heading', { name: 'Original', exact: true })).toBeVisible()
+  await expect(back).toBeFocused()
+})
+
+test('waiting for a worker describes the wait without pretending preparation has started', async ({ page }) => {
+  await mockApp(page, 'Image', false, true)
+  const waiting = { ...preparingSession('Image'), preparationState: 'Waiting', preparationProgress: 0 }
+  await page.route('**/api/libraries/1/calibration', route => json(route, waiting))
+  await page.route(`**/api/calibration/${id}`, route => json(route, waiting))
+  await page.goto('/#/libraries/1/quality-check')
+  await page.getByRole('button', { name: 'Prepare blind samples' }).click()
+  await expect(page.getByRole('heading', { name: 'Waiting for an available worker' })).toBeVisible()
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
+  await expect(page.getByRole('button', { name: 'Back to library' })).toBeEnabled()
+})
+
+test('an empty source list explains how to populate it and cannot start a check', async ({ page }) => {
+  await mockApp(page, 'Image')
+  await page.route('**/api/libraries/1/calibration/sources', route => json(route, []))
+  await page.goto('/#/libraries/1/quality-check')
+  await expect(page.getByText('No suitable file is ready', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Prepare blind samples' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Back to library' })).toBeEnabled()
+})
+
+test('unplayable media announces the failure and offers another check', async ({ page }) => {
+  await openLab(page, 'Image')
+  await page.getByRole('img', { name: 'Original reference' }).evaluate(image => image.dispatchEvent(new Event('error')))
+  await expect(page.getByRole('alert')).toContainText('play')
+  await expect(page.getByRole('button', { name: 'Reveal samples and result' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Check another file' }).click()
+  await expect(page.getByRole('button', { name: 'Prepare blind samples' })).toBeVisible()
+})
+
+test('a keyboard-only check can rate every sample, reveal and apply with confirmation', async ({ page }) => {
+  async function tabTo(target: Locator) {
+    for (let step = 0; step < 50; step++) {
+      if (await target.evaluate(element => element === document.activeElement)) return
+      await page.keyboard.press('Tab')
+    }
+    await expect(target).toBeFocused()
+  }
+  await mockApp(page, 'Image')
+  await page.goto('/#/libraries/1/quality-check')
+  await expect(page.getByRole('combobox')).toBeVisible()
+  await tabTo(page.getByRole('button', { name: 'Prepare blind samples' }))
+  await page.keyboard.press('Enter')
+  for (const name of names.slice(1)) {
+    await tabTo(page.getByRole('button', { name: `Next unrated sample: ${name}`, exact: true }))
+    await page.keyboard.press('Enter')
+    const rating = page.getByRole('group', { name: `Rate sample ${name}` })
+    await expect(rating).toBeFocused()
+    await tabTo(rating.getByRole('button', { name: /Acceptable/ }))
+    await page.keyboard.press('Enter')
+  }
+  await tabTo(page.getByRole('button', { name: 'Reveal samples and result' }))
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Your most efficient acceptable setting' })).toBeFocused()
+  await tabTo(page.getByRole('button', { name: 'Use this setting for the library' }))
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('status')).toHaveText('Setting applied — no work was queued')
+})
+
+test('enlarged text keeps the Original sample label inside its control', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openLab(page, 'Image', false, false, true)
+  await page.locator('html').evaluate(html => html.style.fontSize = '200%')
+  const original = page.getByRole('button', { name: 'Original reference', exact: true })
+  const contained = await original.evaluate(button => {
+    const label = button.querySelector('span')!
+    const range = document.createRange()
+    range.selectNodeContents(label)
+    const bounds = button.getBoundingClientRect()
+    return range.getBoundingClientRect().right <= bounds.right - parseFloat(getComputedStyle(button).paddingRight) + 1
+  })
+  expect(contained).toBe(true)
+})
+
+test.describe('quality check accessibility and capture acceptance', () => {
+  let media: QualityCheckMedia
+  test.beforeAll(async ({ browser }) => {
+    const canvasPage = await browser.newPage()
+    try { media = await fabricatedQualityMedia(canvasPage) }
+    finally { await canvasPage.close() }
+  })
+
+  async function audit(page: Page, info: TestInfo, name: string) {
+    const results = await new AxeBuilder({ page }).include('.quality-lab')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+    await info.attach(`${name}-accessibility`, { body: JSON.stringify(results, null, 2), contentType: 'application/json' })
+    expect(results.violations).toEqual([])
+    await expect.poll(() => page.evaluate(() => ({
+      document: document.documentElement.scrollWidth - window.innerWidth,
+      main: document.querySelector('main')!.scrollWidth - document.querySelector('main')!.clientWidth,
+    }))).toEqual({ document: 0, main: 0 })
+    const escapedControls = await page.locator('.quality-lab button:visible').evaluateAll(buttons => {
+      const main = document.querySelector('main')!.getBoundingClientRect()
+      return buttons.filter(button => {
+        const bounds = button.getBoundingClientRect()
+        return bounds.left < main.left - 1 || bounds.right > main.right + 1
+      }).map(button => button.textContent)
+    })
+    expect(escapedControls).toEqual([])
+    const directory = process.env.QUALITY_CAPTURE_DIR
+    if (directory) {
+      await mkdir(directory, { recursive: true })
+      // Expand only capture height so a nested scrolling main does not clip the bottom of
+      // the element screenshot. Width, text scale and the tested layout stay unchanged.
+      const viewport = page.viewportSize()!
+      const height = await page.locator('main').evaluate(main => main.scrollHeight + window.innerHeight - main.clientHeight + 2)
+      await page.setViewportSize({ width: viewport.width, height: Math.max(viewport.height, height) })
+      await page.locator('.quality-lab').screenshot({ path: join(directory, `${name}.png`), animations: 'disabled' })
+      await page.setViewportSize(viewport)
+      await writeFile(join(directory, `${name}-accessibility.json`), JSON.stringify(results, null, 2))
+    }
+  }
+
+  for (const kind of ['Video', 'Audio', 'Image'] as const) for (const theme of ['dark', 'light'] as const) {
+    test(`${kind} ${theme}: source, comparison and result at desktop, narrow and enlarged text`, async ({ page }, info) => {
+      test.setTimeout(150_000)
+      const errors: string[] = []
+      page.on('pageerror', error => errors.push(error.message))
+      await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+      await page.setViewportSize({ width: 1440, height: 1400 })
+      await mockApp(page, kind)
+      await serveQualityMedia(page, kind, media)
+      await page.goto('/#/libraries/1/quality-check')
+      await expect(page.getByRole('combobox')).toBeVisible()
+      // This fixture deliberately compares different presets; request that opt-in path.
+      if (kind === 'Video') await page.getByRole('checkbox', { name: /Compare presets/ }).check()
+      const prefix = `${kind.toLowerCase()}-${theme}`
+      await page.getByRole('button', { name: 'Prepare blind samples' }).hover()
+      await audit(page, info, `${prefix}-setup`)
+      await page.getByRole('button', { name: 'Prepare blind samples' }).click()
+      await expect(page.getByRole('heading', { name: 'Original', exact: true })).toBeVisible()
+      await expect(page.getByText('Stream diagnostics', { exact: true })).toHaveCount(0)
+      if (kind === 'Video') await expect.poll(() => page.locator('video').evaluate(video => video.readyState)).toBeGreaterThanOrEqual(2)
+      if (kind !== 'Image') await page.getByRole('button', { name: kind === 'Audio' ? 'Excerpt 1' : 'Scene 1', exact: true }).hover()
+      await audit(page, info, `${prefix}-compare`)
+      await page.setViewportSize({ width: 390, height: 844 })
+      await audit(page, info, `${prefix}-compare-narrow`)
+      await page.setViewportSize({ width: 1440, height: 1400 })
+      for (const name of namesFor(kind).slice(1)) {
+        await page.getByRole('button', { name, exact: true }).click()
+        await page.getByRole('group', { name: `Rate sample ${name}` }).getByRole('button', { name: /Acceptable/ }).click()
+      }
+      await page.getByRole('button', { name: 'Reveal samples and result' }).click()
+      await expect(page.getByRole('heading', { name: 'Your most efficient acceptable setting' })).toBeVisible()
+      await page.getByRole('button', { name: 'Use this setting for the library' }).hover()
+      await audit(page, info, `${prefix}-results`)
+      // Root text enlargement exercises wrapping separately from the 720 CSS-pixel viewport
+      // equivalent of a 1440px browser at 200% zoom. Neither asserts native browser chrome.
+      await page.locator('html').evaluate(html => html.style.fontSize = '200%')
+      await audit(page, info, `${prefix}-results-text-200`)
+      await page.locator('html').evaluate(html => html.style.fontSize = '')
+      await page.setViewportSize({ width: 720, height: 700 })
+      await audit(page, info, `${prefix}-results-zoom-200`)
+      expect(errors).toEqual([])
+    })
+  }
 })

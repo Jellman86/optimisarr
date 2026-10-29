@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Fix Find duplicates progress so it advances during large-file reads and starts with the actual same-size candidate totals. Cached and skipped files count toward progress; cancelling midway through a file counts only the bytes read so far. The themed bar shows queued work and a percentage without claiming completion early. Clarify identical-group counts, review states and copy locations. Library cards group Scan and Find duplicates at the foot, with distinct icons and aligned actions. Duplicate review still saves preferences only; no file actions are enabled.
+
+- Confirm queue replacements on the page instead of relying on browser popups. Keep single and bulk refusal reasons, including dry-run mode, visible with retry and cancel actions; long errors can scroll and an empty bulk result closes without claiming a replacement. Originals and verification safeguards are unchanged. Contributed by [balfourwong](https://github.com/balfourwong) in [#463](https://github.com/Jellman86/optimisarr/pull/463).
+
+- Keep keyboard focus with Personal quality check as preparation, comparison and results replace each other (#441). Next unrated sample now leads to its rating controls; errors and successful Apply are announced, and playback/status failures offer another check. Keep the sample deck readable with enlarged text, improve dark-theme primary-button hover contrast and separate the preset Apply explanation cleanly. Refresh video, photo and music evidence across themes, narrow layouts and 200% text/zoom-equivalent layouts.
+
+- Reconcile the roadmap and audio/image parity checkpoint with the 0.2.24 release, selected installed-host evidence and archived journal decision. Retained-soundtrack selection and the remaining UI/source/lifetime acceptance stay explicit follow-ups.
+
+- Add candidate-only absolute-frame offsets to the retained-file diagnostic, so a suspected video shift can be checked independently of input seeking (#454). The source window and production verification rules are unchanged.
+
+- Show “Waiting for capacity” on a connected Mac worker advertising zero working capacity, with guidance to check the work folder and memory pressure (#458). It is not shown while a job is running, because a running job can legitimately hold the remaining capacity. The capacity readout no longer implies that this value is raw free disk space. Resource admission, pairing and running jobs are unchanged.
+
+- Correct fourteen Simplified Chinese UI strings. "Custom" no longer reads 风俗, the "Scott's" preset keeps the name in Latin script, the clipping label retains the meaning of introduced clipping and its hint reads more naturally, "Verification gates" and "Base URL" no longer use 门 and 底座, the enqueue button and its two related strings read 加入处理队列, and the schedule window uses 开始时间 and 结束时间 with an equal-times hint that starts from the two fields. Keys, placeholders and every other string are unchanged. Contributed by [arbaleast](https://github.com/arbaleast) in [#446](https://github.com/Jellman86/optimisarr/pull/446).
+
+## 0.2.24 - 2026-10-24
+
+Protocol 11 audio/image worker placement is enabled in this release. Entries below
+also retain intermediate development milestones: earlier statements about disabled
+placement or unconnected journals describe those stages, not the final release.
+The unused .NET durable journal was archived; Windows/Linux workers retain live
+resource admission and owned-scratch recovery. Full audio/image parity and
+power-loss durability are not release claims.
+
 - Fix Windows audio quality measurement under long scratch paths (#447). The native helper now uses extended-length paths for PCM inputs and its report, retaining Unicode names, exclusive report creation and all quality gates.
 
 - The web UI now follows the browser or system light and dark theme by default, and follows it changing while the page is open: no reload, and no flash of the wrong scheme on the first paint, because the scheme is settled before the app boots. The theme control still pins a scheme when asked — it walks follow-the-system, light and dark, and hands the page back to the system — and a stored light or dark choice is kept, so an existing preference survives. Colours, layout and every other string are unchanged.

@@ -102,6 +102,7 @@ export const fr: Messages = {
     safe: "Rien n’est supprimé ni modifié.",
     snapshot: "Les rapports survivent aux redémarrages. La date de lecture reste inchangée si l’empreinte est réutilisée. Les résultats peuvent devenir obsolètes ; relancez après modification.",
     progress: "{checked} sur {total} candidats vérifiés · {skipped} ignorés · {bytes} lus",
+    found: "Groupes de fichiers identiques : {count}",
     empty: "Aucune copie exacte trouvée. Des formats, balises ou encodages différents ne correspondent pas.",
     truncated: "Les emplacements sont limités pour l’affichage, à 100 par groupe. Les totaux des groupes abrégés sont masqués.",
     copies: "{count} copies identiques",

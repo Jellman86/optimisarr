@@ -40,10 +40,11 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
         try
         {
             lock (_lock) if (_active is not null) return false;
-            var scanId = await store.TryCreateAsync(libraryId, root, inputs.Count, forceRefresh, token, inputs, libraries);
+            var initial = InitialProgress(inputs);
+            var scanId = await store.TryCreateAsync(libraryId, root, initial.Total, forceRefresh, token, inputs, libraries);
             if (scanId is null) return false;
             var queued = new ExactDuplicateStatus(libraryId, "Queued", DateTimeOffset.UtcNow, null,
-                new(0, 0, inputs.Count, 0), null, null, Libraries: libraries);
+                initial, null, null, Libraries: libraries);
             lock (_lock)
             {
                 _active = new(scanId.Value, libraryId, root, inputs, forceRefresh, new());
@@ -71,7 +72,7 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
             var pending = new List<ExactDuplicateCheckpoint>(32);
             var state = ExactDuplicateScanState.Completed;
             string? error = null;
-            var progress = new ExactDuplicateProgress(0, 0, work.Inputs.Count, 0);
+            var progress = InitialProgress(work.Inputs);
             try
             {
                 await store.SetStateAsync(work.ScanId, ExactDuplicateScanState.Running, linked.Token);
@@ -113,6 +114,12 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
                 finally { lock (_lock) { _active = null; _status = null; work.Cancel.Dispose(); } }
             }
         }
+    }
+
+    private static ExactDuplicateProgress InitialProgress(IReadOnlyList<ExactDuplicateInput> inputs)
+    {
+        var candidates = ExactDuplicateScanner.Candidates(inputs);
+        return new(0, 0, candidates.Length, 0, 0, candidates.Sum(f => f.SizeBytes));
     }
 
     private void Update(Func<ExactDuplicateStatus, ExactDuplicateStatus> update)

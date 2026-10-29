@@ -20,6 +20,8 @@
     play: 'M6 4l13 8-13 8z',
     pause: 'M8 5v14M16 5v14',
     search: 'M21 21l-4.3-4.3M11 18a7 7 0 100-14 7 7 0 000 14z',
+    // Two stacked sheets: identical copies of one file.
+    copies: 'M8 8h12v12H8zM16 8V4H4v12h4',
     plus: 'M12 5v14M5 12h14',
     'arrow-right': 'M5 12h14m0 0l-6-6m6 6l-6 6',
     'arrow-left': 'M19 12H5m0 0l6-6m-6 6l6 6',

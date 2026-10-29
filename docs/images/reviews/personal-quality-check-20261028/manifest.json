@@ -1,0 +1,418 @@
+{
+  "capturedAtUtc": "2026-10-28T09:42:38.028207+00:00",
+  "baseCommit": "448aea37dbd5676a1f59aaa21983b3e00e66c863",
+  "sourceSha256": {
+    "web/src/lib/pages/QualityLab.svelte": "19ab7a3f4574df17b3a5e5d6e6c341d692afdd935ad88fd4e6b6d47e10aa2cf5",
+    "web/e2e/calibration.spec.ts": "18cec26641071800c063d1a5153d48794c31984b67e8bba96cd6a381f3cc40db",
+    "web/e2e/helpers/quality-check-media.ts": "ec41fe27f429553b82dbbc1a0ebcf0bdd39d64622f2203546b6fd6f4d1148aca",
+    "web/src/app.css": "820d65079fa1ac2e62047262c462534b0aeebc48dda4d9d1ed03e740e4a9679c",
+    "web/package-lock.json": "2c64de276b123fb6ddd9523e7fc515fce673baef96c92f642b7d8b94c88b46be"
+  },
+  "method": "Playwright Chromium with fabricated API/media and intercepted SignalR; no production data. Ordinary diagnostics off; video preset comparison explicitly selected.",
+  "media": "Identical generated landscape/VP8 video/low-level PCM tone per media type. Ratings, savings and quality scores are fabricated, not benchmark evidence.",
+  "testedViewports": {
+    "desktop": [
+      1440,
+      1400
+    ],
+    "narrow": [
+      390,
+      844
+    ],
+    "rootText200": [
+      1440,
+      1400
+    ],
+    "zoomEquivalent200": [
+      720,
+      700
+    ]
+  },
+  "captureSizing": "Only viewport height expands after checks, to capture the whole nested scrolling page. Image dimensions describe the page crop, not browser viewport or real browser zoom.",
+  "accessibility": {
+    "scope": ".quality-lab",
+    "tags": [
+      "wcag2a",
+      "wcag2aa",
+      "wcag21aa"
+    ],
+    "excludedRules": [],
+    "matrixStates": 36,
+    "violations": 0,
+    "browserRuntimeErrors": 0,
+    "manualScreenReaderCertification": false
+  },
+  "images": [
+    {
+      "file": "video-dark-setup.png",
+      "width": 1110,
+      "height": 805,
+      "bytes": 96070,
+      "sha256": "b89d66d546669996837366cc4cee88fcbd867acad13b343c2694090330ff6dd7"
+    },
+    {
+      "file": "video-dark-compare.png",
+      "width": 1110,
+      "height": 1165,
+      "bytes": 154896,
+      "sha256": "d742dc955c6e083a8d7172227af662817d59bb91f36bd2c8bae114724714e203"
+    },
+    {
+      "file": "video-dark-results.png",
+      "width": 1110,
+      "height": 1448,
+      "bytes": 235199,
+      "sha256": "14fc2bdf687c4490e88cfdfad21bd006f763fd850d25e5d4c319a55d615c18b2"
+    },
+    {
+      "file": "video-light-setup.png",
+      "width": 1110,
+      "height": 805,
+      "bytes": 96348,
+      "sha256": "76e6a2152cd4f26c50a1dc0b95e71e17f201b333ea14e3770aa246a5f29a8a91"
+    },
+    {
+      "file": "video-light-compare.png",
+      "width": 1110,
+      "height": 1165,
+      "bytes": 156250,
+      "sha256": "d71e6a4b2abb1775d56bb99e57a1d6a9ae2649fee71d4cad5a70436195e73769"
+    },
+    {
+      "file": "video-light-results.png",
+      "width": 1110,
+      "height": 1448,
+      "bytes": 235351,
+      "sha256": "c42874ba85f2e673733f5aeeb3f47b77a9e671d6db4aab13604b25ebd5b2137b"
+    },
+    {
+      "file": "video-dark-compare-narrow.png",
+      "width": 358,
+      "height": 1693,
+      "bytes": 115834,
+      "sha256": "4613ddf9fe6f2d2488c615282ee03661f2de18d544e6451de3768aea9dab49fe"
+    },
+    {
+      "file": "video-light-results-text-200.png",
+      "width": 780,
+      "height": 5000,
+      "bytes": 443394,
+      "sha256": "03c9c1efcc7b80a6bebff2106469e9ebdca895b5dc933b788d64d378072fc77b"
+    },
+    {
+      "file": "video-light-results-zoom-200.png",
+      "width": 680,
+      "height": 2180,
+      "bytes": 217192,
+      "sha256": "270342d352db5e0f4824f590dac1a8e0c763d9f8955c0d4cd3d41ec57e5efaa6"
+    },
+    {
+      "file": "image-dark-setup.png",
+      "width": 1110,
+      "height": 673,
+      "bytes": 78501,
+      "sha256": "7be82f9ad41b6a56c00a7e3eaabb58aed96fb835525370606cfe3237b1430bd0"
+    },
+    {
+      "file": "image-dark-compare.png",
+      "width": 1110,
+      "height": 1128,
+      "bytes": 127904,
+      "sha256": "fa81387f2f81c72986a3fce76230da9118de1b3fadcd1d4957dbe198446d5ebe"
+    },
+    {
+      "file": "image-dark-results.png",
+      "width": 1110,
+      "height": 1209,
+      "bytes": 170368,
+      "sha256": "02c2fb87593c6ce760248187ffe2df2a3d30c7e544b9c651472627c49d19de9c"
+    },
+    {
+      "file": "image-light-setup.png",
+      "width": 1110,
+      "height": 673,
+      "bytes": 79410,
+      "sha256": "ed1c14dd6fb696c566395c8b8474db2a3bb4e46703738a307048358bdbfdf76e"
+    },
+    {
+      "file": "image-light-compare.png",
+      "width": 1110,
+      "height": 1128,
+      "bytes": 128662,
+      "sha256": "e56db2d168156b2a2ee1f9c9e82882c41e0b535d7359711a061abed87df2493c"
+    },
+    {
+      "file": "image-light-results.png",
+      "width": 1110,
+      "height": 1209,
+      "bytes": 169231,
+      "sha256": "c06e13a744994ae16666d4f428d6624c8587524676f18a15eb5de2547ad42a36"
+    },
+    {
+      "file": "image-dark-compare-narrow.png",
+      "width": 358,
+      "height": 1572,
+      "bytes": 100269,
+      "sha256": "fbe755ef0a43de95680fcd91950c891b1571ce7abcf6708b5a5b045f8a705e49"
+    },
+    {
+      "file": "image-light-results-text-200.png",
+      "width": 780,
+      "height": 4210,
+      "bytes": 335864,
+      "sha256": "e495df07c59b140e2335aceedd7df54c851e655ce65c1e39690399285d6c245c"
+    },
+    {
+      "file": "image-light-results-zoom-200.png",
+      "width": 680,
+      "height": 1967,
+      "bytes": 155863,
+      "sha256": "85d4888049a3059882759c926f79330fe0cd63c3f084e9da6a0d49ec4e95324c"
+    },
+    {
+      "file": "audio-dark-setup.png",
+      "width": 1110,
+      "height": 673,
+      "bytes": 76617,
+      "sha256": "2e15df52c292ba80696af3e400744443b9ff458913272d6b10db63307103155b"
+    },
+    {
+      "file": "audio-dark-compare.png",
+      "width": 1110,
+      "height": 878,
+      "bytes": 114617,
+      "sha256": "2767e4a3881655036e8cd94537b54fd18e83f187f778112a54f70ba0be576371"
+    },
+    {
+      "file": "audio-dark-results.png",
+      "width": 1110,
+      "height": 1209,
+      "bytes": 156619,
+      "sha256": "726c409b4dc924f72ed0c233724447335fd6be54b2941a273b74fc0847193499"
+    },
+    {
+      "file": "audio-light-setup.png",
+      "width": 1110,
+      "height": 673,
+      "bytes": 77614,
+      "sha256": "aa31e01cce2d9c1a920d05c59d65cab607ace7db1916da7222937c1d3643cb4c"
+    },
+    {
+      "file": "audio-light-compare.png",
+      "width": 1110,
+      "height": 878,
+      "bytes": 116044,
+      "sha256": "0355ab7557faa53b7b3e70283386b4dfcd23a25511f4a8b330f0c11b9bc9d32b"
+    },
+    {
+      "file": "audio-light-results.png",
+      "width": 1110,
+      "height": 1209,
+      "bytes": 156580,
+      "sha256": "7cdaa28383aae580c27e196c9fb61a44e4d49c5abe945fb3e9ad8015f3fed5ee"
+    },
+    {
+      "file": "audio-dark-compare-narrow.png",
+      "width": 358,
+      "height": 1556,
+      "bytes": 103197,
+      "sha256": "5a55cb7af860efd8d1328a2ce1322c3f4bb26cc4dcaf931d906110ad68c28732"
+    },
+    {
+      "file": "audio-light-results-text-200.png",
+      "width": 780,
+      "height": 4140,
+      "bytes": 343344,
+      "sha256": "a4cbcf2ebcfdf46ce35a0c049b084d27ecbfee2a01bd56098fe126a7428bb2c8"
+    },
+    {
+      "file": "audio-light-results-zoom-200.png",
+      "width": 680,
+      "height": 1750,
+      "bytes": 146954,
+      "sha256": "b0c98b631a7cb54968f9db2b44cdc481e7ac2db6f7fc4f83f548c689fe96ea4d"
+    }
+  ],
+  "allMatrixReports": [
+    {
+      "file": "audio-dark-compare-accessibility.json",
+      "sha256": "25724e1769267956adadc9eccd32ec0c03c8837b56a7e6788396bdbcd8ed0649",
+      "violations": 0
+    },
+    {
+      "file": "audio-dark-compare-narrow-accessibility.json",
+      "sha256": "5f5bafbdb860134b0a0a91059635326e39a5f3bf7bfcfeee77a011e1d79ac712",
+      "violations": 0
+    },
+    {
+      "file": "audio-dark-results-accessibility.json",
+      "sha256": "9d3e4167b825c2b5db1239638964c7494643accd72124dbcf50b3bd63354bc89",
+      "violations": 0
+    },
+    {
+      "file": "audio-dark-results-text-200-accessibility.json",
+      "sha256": "bb065ce488cf0485ec1f21f99a1adeb06c3376c6f226872a7a841ac070101f73",
+      "violations": 0
+    },
+    {
+      "file": "audio-dark-results-zoom-200-accessibility.json",
+      "sha256": "d8ae2da060559dd70bb3cb854257691b46b86bf7c6dc44c5a2cf57874ce3836f",
+      "violations": 0
+    },
+    {
+      "file": "audio-dark-setup-accessibility.json",
+      "sha256": "f2f4c0384c084b46e06061276171cbd300e830e193926353b32e6c8df74a86f5",
+      "violations": 0
+    },
+    {
+      "file": "audio-light-compare-accessibility.json",
+      "sha256": "644f83689ce1ac4710c433ad1245715298e9e700b0b93fff25436bedb10f3191",
+      "violations": 0
+    },
+    {
+      "file": "audio-light-compare-narrow-accessibility.json",
+      "sha256": "f9991ef450846c83178b2f57661c239b325e2d2780326bc83eab9ac1e34ec8bc",
+      "violations": 0
+    },
+    {
+      "file": "audio-light-results-accessibility.json",
+      "sha256": "db9a097bba0959cd1a02b2e17db930c2d4bfbcabb5b60f921bfaf5eabeac6d9e",
+      "violations": 0
+    },
+    {
+      "file": "audio-light-results-text-200-accessibility.json",
+      "sha256": "e90971e77b6489a49678386129bb6aca3065298d2e412e35fe535303bba438f0",
+      "violations": 0
+    },
+    {
+      "file": "audio-light-results-zoom-200-accessibility.json",
+      "sha256": "2f4881b1ead713d3d0056c1442e6ce0e45641015c3c64cb971c6f6844cd89235",
+      "violations": 0
+    },
+    {
+      "file": "audio-light-setup-accessibility.json",
+      "sha256": "c9dff7b9d853d32323ca3e197b2c8d68b5bff5cffc284cfb30011b42f313da48",
+      "violations": 0
+    },
+    {
+      "file": "image-dark-compare-accessibility.json",
+      "sha256": "62a252c5d904591d95f8295a108bafcbd3ef630a6d42ce076fb8a45b3028a56e",
+      "violations": 0
+    },
+    {
+      "file": "image-dark-compare-narrow-accessibility.json",
+      "sha256": "7eada2d32a7f564464f77b0ee854389a5c76b37890302fdb6c265a93ca683f1b",
+      "violations": 0
+    },
+    {
+      "file": "image-dark-results-accessibility.json",
+      "sha256": "06639507451fac35cabae776345f2c372f84d518d29303dd78a4363be75471ac",
+      "violations": 0
+    },
+    {
+      "file": "image-dark-results-text-200-accessibility.json",
+      "sha256": "6a50a27397abf29ec5f8bf7a81f6208ce2855a1e3404aa7e28c48269c147875a",
+      "violations": 0
+    },
+    {
+      "file": "image-dark-results-zoom-200-accessibility.json",
+      "sha256": "a35920614bc5db1cd8e4627f693aef4ea78dba1030f2d6f53bc71cbb8ecc7257",
+      "violations": 0
+    },
+    {
+      "file": "image-dark-setup-accessibility.json",
+      "sha256": "401968c5f2ac8b6895f9681f5a1a2005295ef5c59054f53f7db54c85f864fc75",
+      "violations": 0
+    },
+    {
+      "file": "image-light-compare-accessibility.json",
+      "sha256": "0bedb49370b11f92e75c7dbafd056dbf7de23f4ca8a9db98a03f9ebb7285a060",
+      "violations": 0
+    },
+    {
+      "file": "image-light-compare-narrow-accessibility.json",
+      "sha256": "63ead125c66284ef5dae889e1ca77c32773f29b7dc87a0b889365bc8121af3d6",
+      "violations": 0
+    },
+    {
+      "file": "image-light-results-accessibility.json",
+      "sha256": "87fab2b0b0cd1162857c57ab7de49d4e56e58408bde31713a73930ca7990c717",
+      "violations": 0
+    },
+    {
+      "file": "image-light-results-text-200-accessibility.json",
+      "sha256": "9440586fb92e5d50a00eca08f164bffd5dc2774321e2bc9a25a48a6a8c46d2aa",
+      "violations": 0
+    },
+    {
+      "file": "image-light-results-zoom-200-accessibility.json",
+      "sha256": "8358101a161402f6fa1dc793f52adcd46e6eb82156852709314b98c299012777",
+      "violations": 0
+    },
+    {
+      "file": "image-light-setup-accessibility.json",
+      "sha256": "b18c1a393c3825ab1118f7aef9c7fb91745cc6ab4e01a462cdf9a5219ef99afb",
+      "violations": 0
+    },
+    {
+      "file": "video-dark-compare-accessibility.json",
+      "sha256": "dcf25b582ba8929b4e8bc7ba26560bde7b6500677fc6cdcab86dcdd48bd80586",
+      "violations": 0
+    },
+    {
+      "file": "video-dark-compare-narrow-accessibility.json",
+      "sha256": "b823e164f3b4fc4d3c057332b837c0447077ef9173f2de5809e7ec261905dab0",
+      "violations": 0
+    },
+    {
+      "file": "video-dark-results-accessibility.json",
+      "sha256": "cab98d8373fcf812711e3dbd901b9675137d19936d7fe63bdf45331361a29f5c",
+      "violations": 0
+    },
+    {
+      "file": "video-dark-results-text-200-accessibility.json",
+      "sha256": "6e4fe08191ee8a8d9253e06689da065e3acd6a5ccde5ce81b0b55c32270dfe08",
+      "violations": 0
+    },
+    {
+      "file": "video-dark-results-zoom-200-accessibility.json",
+      "sha256": "8495cc95a9b83a409ce3ddf34486357f5841bf58ff3f460672f9d8a72d38d7e4",
+      "violations": 0
+    },
+    {
+      "file": "video-dark-setup-accessibility.json",
+      "sha256": "a9a36b295eda923d2cc69119a125fd18bf4d0f083010d8d12aa914aa33573c7f",
+      "violations": 0
+    },
+    {
+      "file": "video-light-compare-accessibility.json",
+      "sha256": "5def306dc16454534a2d90f1efcaac45f9e1b08b4ae76bfcbd3628ef48d1e795",
+      "violations": 0
+    },
+    {
+      "file": "video-light-compare-narrow-accessibility.json",
+      "sha256": "ed4794cd050a387c2585c1c00dfbf3f8c3a3dc53c80b9ab39196c1e71df34228",
+      "violations": 0
+    },
+    {
+      "file": "video-light-results-accessibility.json",
+      "sha256": "80bf0222cd952baf2578e02e3742050264c594ab152dda7b76616dbdd03af9dd",
+      "violations": 0
+    },
+    {
+      "file": "video-light-results-text-200-accessibility.json",
+      "sha256": "276ea492f44bbc174d4d512b19075d0795593a42359526f0c671fb085802ebdd",
+      "violations": 0
+    },
+    {
+      "file": "video-light-results-zoom-200-accessibility.json",
+      "sha256": "1cfed129d147e53080282ccfeb219956feeea2582992d181eb588c99a31011c7",
+      "violations": 0
+    },
+    {
+      "file": "video-light-setup-accessibility.json",
+      "sha256": "772940606a1a69d1245e2b6972641e08e656f39ed382a1863ecc0ff3591ac201",
+      "violations": 0
+    }
+  ]
+}
