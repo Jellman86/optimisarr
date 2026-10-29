@@ -53,7 +53,9 @@
      <Image x:Name="BrandImage" Source="Resources/BrandMark.png" Width="30" Height="30" HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="HighQuality"/>
      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Optimisarr" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="{Binding Machine}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/></StackPanel>
      <Border Grid.Column="2" Style="{StaticResource StatusChip}" Margin="8,0" AutomationProperties.Name="{Binding State}"><TextBlock Text="{Binding State}" FontSize="11" FontWeight="SemiBold" TextWrapping="NoWrap"/></Border>
-     <Button Grid.Column="3" Style="{StaticResource Subtle}" Content="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" Padding="8" ToolTip="Preferences" AutomationProperties.Name="Preferences" Click="Preferences_Click"/>
+     <Button Grid.Column="3" Style="{StaticResource Subtle}" Padding="8" ToolTip="Preferences" AutomationProperties.Name="Preferences" Click="Preferences_Click">
+     <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"/>
+    </Button>
     </Grid>
     <TextBlock Text="{Binding StatusDetail}" Style="{StaticResource StatusDetail}" Margin="0,8,0,0" Visibility="{Binding StatusDetailVisible, Converter={StaticResource BoolVisibility}}"/>
    </StackPanel>
@@ -63,7 +65,9 @@
     <Button Style="{StaticResource Subtle}" HorizontalAlignment="Left" Click="Diagnostics_Click" ToolTip="Connection, version and pairing">
      <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"/><TextBlock Text="Diagnostics" FontSize="12"/></StackPanel>
     </Button>
-    <Button Grid.Column="1" Style="{StaticResource Subtle}" Content="&#xE712;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" ToolTip="More actions" AutomationProperties.Name="More actions" Click="More_Click">
+    <!-- The icon font sits on the glyph, not the button: a button's menu and tooltip inherit its font, and the icon font has no letters. -->
+    <Button Grid.Column="1" Style="{StaticResource Subtle}" ToolTip="More actions" AutomationProperties.Name="More actions" Click="More_Click">
+     <TextBlock Text="&#xE712;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"/>
      <Button.ContextMenu><ContextMenu><MenuItem Header="Open Optimisarr" Click="OpenServer_Click"/><MenuItem Header="Quit tray — keep worker running" Click="Quit_Click"/></ContextMenu></Button.ContextMenu>
     </Button>
    </Grid>

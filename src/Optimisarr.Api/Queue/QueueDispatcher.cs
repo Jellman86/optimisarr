@@ -1882,7 +1882,7 @@ public sealed partial class QueueDispatcher(
                 .ToArray();
             if (keptSubtitleIndexes.Any(index => index is null))
                 throw new InvalidOperationException("Fresh source subtitle stream indexes are required for safe MP4 planning.");
-            var timeline = scope.ServiceProvider.GetRequiredService<SubtitleTimelineProbe>();
+            var timeline = scope.ServiceProvider.GetRequiredService<SubtitleTimelineVerdicts>();
             if (await timeline.RequiresMatroskaAsync(media.Path, keptSubtitleIndexes.Select(index => index!.Value).ToArray(), cancellationToken))
             {
                 spec = spec with { OutputPath = Path.ChangeExtension(spec.OutputPath, "mkv") };

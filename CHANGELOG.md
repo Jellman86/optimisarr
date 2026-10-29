@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix Personal quality check stalling for minutes on a remote worker with a large MP4-target source. Each worker claim re-read every queued sample's complete subtitle timeline (26 s for a 5.5 GB 4K episode), so claims outlived the worker's 30-second request and the worker showed as faulted. The answer is now remembered per unchanged source and survives a claim that gives up. The preparation page also hides this server's live CPU and GPU cards when it has no readings, instead of showing dashes while a worker does the work.
+
+- Fix the Windows tray's More actions menu and Preferences tooltip rendering as empty boxes. They inherited the icon font from their button.
+
 - Select multiple rows to retry/remove queue jobs, exclude candidates or inventory files, lift exclusions, or re-probe inventory files in the background (#450). Confirmations explain the scope and active-job stops; results retain per-file failures. Selections keep earlier picks at the 200-row limit. Probe batches have bounded admission, cancellation and recoverable progress monitoring, and distinguish skipped, failed and unfinished work. Excluding files retains replacement history; a committed stop remains recorded if cleanup defers removal. Original media and replacement/rollback safeguards are preserved. Contributed by [arbaleast](https://github.com/arbaleast) in #451.
 
 - The web UI now follows the browser or system light and dark theme by default, and follows it changing while the page is open: no reload, and no flash of the wrong scheme on the first paint, because the scheme is settled before the app boots. The theme control still pins a scheme when asked — it walks follow-the-system, light and dark, and hands the page back to the system — and a stored light or dark choice is kept, so an existing preference survives. The control describes its current setting for assistive technology, and unavailable theme preferences have safe fallbacks. Contributed by [arbaleast](https://github.com/arbaleast) in #449.
