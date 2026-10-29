@@ -18,7 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../../src/Optimisarr.Core/Optimisarr.Core.csproj" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>
