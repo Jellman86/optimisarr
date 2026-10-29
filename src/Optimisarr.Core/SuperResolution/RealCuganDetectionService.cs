@@ -46,7 +46,11 @@ public sealed record RealCuganProbeResult(
 /// combination loads, and the Vulkan loader. <see cref="ProbeAsync"/> then runs a real 64x64
 /// frame through the configured device — the only check that proves the runtime actually works.
 /// </summary>
-public sealed class RealCuganDetectionService(SuperResolutionOptions options)
+/// <param name="loaderProbe">
+/// Overrides the loader probe, for tests, which must not assume the machine they run on has (or
+/// lacks) a Vulkan loader. Null keeps the real library load.
+/// </param>
+public sealed class RealCuganDetectionService(SuperResolutionOptions options, Func<string, bool>? loaderProbe = null)
 {
     public const string BinaryName = "realcugan-ncnn-vulkan";
 
@@ -223,12 +227,12 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options)
         }
     }
 
-    private static bool VulkanLoaderAvailable()
+    private bool VulkanLoaderAvailable()
     {
         var loader = OperatingSystem.IsWindows() ? "vulkan-1.dll"
             : OperatingSystem.IsMacOS() ? "libMoltenVK.dylib"
             : "libvulkan.so.1";
-        return NativeLibrary.TryLoad(loader, out _);
+        return loaderProbe?.Invoke(loader) ?? NativeLibrary.TryLoad(loader, out _);
     }
 
     private static bool WhereFinds(string command)

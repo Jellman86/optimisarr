@@ -37,7 +37,7 @@ public sealed class RealCuganCommandBuilderTests
         {
             "-i", "/work/1/in",
             "-o", "/work/1/out",
-            "-m", "/models/models-se",
+            "-m", Path.Combine("/models", "models-se"),
             "-s", "2",
             "-n", "1",
             "-f", "png",
@@ -73,7 +73,7 @@ public sealed class RealCuganCommandBuilderTests
     {
         var args = RealCuganCommandBuilder.BuildEngineArguments(
             "in", "out", "/opt/models", Options with { Preset = "pro" });
-        Assert.Equal("/opt/models/models-pro", After(args, "-m"));
+        Assert.Equal(Path.Combine("/opt/models", "models-pro"), After(args, "-m"));
     }
 
     [Fact]

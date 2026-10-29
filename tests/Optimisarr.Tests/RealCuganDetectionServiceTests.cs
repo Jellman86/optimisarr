@@ -57,19 +57,36 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Binary_and_models_present_with_vulkan_report_ready()
+    public async Task A_complete_install_with_an_available_loader_is_ready()
     {
         var binary = InstallBinary();
         var detection = await new RealCuganDetectionService(
-            OptionsFor(binary, Path.Combine(_root, "models"))).DetectAsync(CancellationToken.None);
+            OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => true)
+            .DetectAsync(CancellationToken.None);
 
-        // This machine has no Vulkan loader, so the honest verdict here is VulkanUnavailable —
-        // never Ready. The binary and models themselves must have resolved.
+        // The loader availability is injected, so the verdict is decided by the check itself
+        // and never by which machine the test happens to run on.
         Assert.True(detection.BinaryFound);
         Assert.True(detection.ModelsFound);
         Assert.Equal("models-se", detection.ModelDirectory);
-        Assert.Equal(RealCuganReadiness.VulkanUnavailable, detection.Readiness);
+        Assert.True(detection.VulkanLoaderAvailable);
+        Assert.Equal(RealCuganReadiness.Ready, detection.Readiness);
+        Assert.DoesNotContain(detection.Problems, p => p.Contains("Vulkan loader"));
+    }
+
+    [Fact]
+    public async Task A_complete_install_with_an_unloadable_loader_is_vulkanunavailable()
+    {
+        var binary = InstallBinary();
+        var detection = await new RealCuganDetectionService(
+            OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => false)
+            .DetectAsync(CancellationToken.None);
+
+        Assert.True(detection.BinaryFound);
+        Assert.True(detection.ModelsFound);
         Assert.False(detection.VulkanLoaderAvailable);
+        Assert.Equal(RealCuganReadiness.VulkanUnavailable, detection.Readiness);
+        Assert.Contains(detection.Problems, p => p.Contains("Vulkan loader"));
     }
 
     [Fact]

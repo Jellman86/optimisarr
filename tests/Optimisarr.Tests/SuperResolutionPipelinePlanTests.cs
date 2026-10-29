@@ -57,7 +57,7 @@ public sealed class SuperResolutionPipelinePlanTests
     {
         var plan = QueueDispatcher.PlanSuperResolution(VideoWork(), Options, "/models");
 
-        Assert.EndsWith("/realcugan", plan.WorkDirectory);
+        Assert.EndsWith($"{Path.DirectorySeparatorChar}realcugan", plan.WorkDirectory);
         Assert.Contains(plan.ExtractionArguments, a => a.Contains("frames-in"));
         Assert.Equal(960, plan.ExpectedFrameCount);
         // The reassembly writes exactly the candidate the normal encode would have.
