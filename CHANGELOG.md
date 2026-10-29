@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- The web UI now follows the browser or system light and dark theme by default, and follows it changing while the page is open: no reload, and no flash of the wrong scheme on the first paint, because the scheme is settled before the app boots. The theme control still pins a scheme when asked — it walks follow-the-system, light and dark, and hands the page back to the system — and a stored light or dark choice is kept, so an existing preference survives. The control describes its current setting for assistive technology, and restricted browser storage/media APIs cannot prevent the page from loading. Contributed by [arbaleast](https://github.com/arbaleast) in #449.
+- Select multiple rows to retry/remove queue jobs, exclude candidates or inventory files, lift exclusions, or re-probe inventory files in the background (#450). Confirmations explain the scope and active-job stops; results retain per-file failures. Selections keep earlier picks at the 200-row limit. Probe batches have bounded admission, cancellation and recoverable progress monitoring, and distinguish skipped, failed and unfinished work. Excluding files retains replacement history; a committed stop remains recorded if cleanup defers removal. Original media and replacement/rollback safeguards are preserved. Contributed by [arbaleast](https://github.com/arbaleast) in #451.
+
+- The web UI now follows the browser or system light and dark theme by default, and follows it changing while the page is open: no reload, and no flash of the wrong scheme on the first paint, because the scheme is settled before the app boots. The theme control still pins a scheme when asked — it walks follow-the-system, light and dark, and hands the page back to the system — and a stored light or dark choice is kept, so an existing preference survives. The control describes its current setting for assistive technology, and unavailable theme preferences have safe fallbacks. Contributed by [arbaleast](https://github.com/arbaleast) in #449.
 
 - Fix Find duplicates progress so it advances during large-file reads and starts with the actual same-size candidate totals. Cached and skipped files count toward progress; cancelling midway through a file counts only the bytes read so far. The themed bar shows queued work and a percentage without claiming completion early. Clarify identical-group counts, review states and copy locations. Library cards group Scan and Find duplicates at the foot, with distinct icons and aligned actions. Duplicate review still saves preferences only; no file actions are enabled.
 
@@ -118,12 +120,9 @@ power-loss durability are not release claims.
 
 - Local audio/image quality-first jobs now wait for available memory and working space, preserve retry minima and resume after capacity returns. Queue details explain the wait in every language.
 
-
 - Sources or candidates changed or removed during quality search, upload or final verification now stop the attempt without increasing media failures or spending another quality retry; saved diagnostics remain available.
 
-
 - Native Linux quality-first workers now resolve the actual memory-controller mount and respect legacy/hybrid hierarchies, visible parent limits and v2 pressure limits; unresolved capacity holds work.
-
 
 - Worker uploads now fence staging creation, bounded appends and interrupted cleanup against duplicate reservations and changed assignments. Persistent completion seals prevent another coordinator changing staged bytes during hashing, and resumable retries preserve and finish promoted candidates after an interrupted commit.
 
@@ -132,9 +131,7 @@ power-loss durability are not release claims.
 - Opus re-encodes now map a source that declares the `5.1(side)` surround layout onto the standard 5.1 order, so the encoded track's surround channels sit where the file's own layout says they do. Only the channel order changes: no audio is mixed, remapped or dropped, and the output keeps the source's six channels. **Normalise Opus surround layout** (**Configure → Encode → Audio & subtitles**) turns the conversion off per library. Non-Opus encoders, stereo downmixes, and sources that report no layout or disagree between tracks are left alone, and every job records the audio filter it applied next to its FFmpeg command.
 - Mac FFmpeg now bundles the pinned WebP encoder. Package acceptance proves JPEG/WebP metadata round trips, exact alpha in both WebP modes and exact lossless colour. Corresponding-source archives now accept immutable annotated-tag object pins while refusing moving tag names; completed media-tool checks precede publication of build provenance.
 
-
 - Mac app builds now include the self-contained native quality helper, exact runtime notices and pinned ExifTool modules. Nested native code is signed before the app, with JIT limited to the helper in hardened builds. Relocated package checks exercise JPEG metadata preservation, both metrics and managed startup without Homebrew or an installed .NET runtime. Full packaged-job, restart and remaining parity gates still keep protocol 11 disabled.
-
 
 - Audio quality qualification and measurement now restrict FFmpeg/ffprobe to local media containers before opening originals or candidates. Playlist sources cannot use secondary files to pass a file-bound assessment; supported soundtrack containers and independent verification gates remain intact.
 
@@ -166,7 +163,6 @@ power-loss durability are not release claims.
 
 - Experimental image quality reports use pinned SSIMULACRA2 for supported SDR PNG, JPEG and WebP stills. Photo and mixed libraries can separately enable a replacement gate with an explicit minimum score. Reports show complete dimensions and independent transparency checks; unavailable evidence blocks an enabled gate. Existing SSIM and metadata settings remain unchanged, and both new controls start off.
 
-
 ### Documentation
 
 - Reconcile audio/image parity and dedupe tracking with delivered draft work, current test evidence, remaining qualification and the paused handoff.
@@ -183,9 +179,7 @@ power-loss durability are not release claims.
 
 - Interrupted native audio/image work now returns its lease promptly, including when its parent exits or cancels before execution. A replay-safe interruption reason preserves committed reports and retry intent without counting crashes as file refusals or delaying a restored worker with a capacity cooldown. Failed hand-back acknowledgements remain unconfirmed.
 
-
 - Native audio/image work now keeps an inherited ownership guard through search and verification. Restart recovery preserves surviving writers, refuses redirected or shared files and resumes recorded partial cleanup. Mac startup and folder changes recover owned work before capacity checks; busy RAM volumes retain their allocation instead of being forcibly detached. Package checks permit only the empty persistent coordinator and retain working files after a failed helper.
-
 
 - Temporary worker capacity returns now retain their retry pause without counting as permanent file-refusal opinions. Three low-memory workers can no longer bar a job from every worker. Capacity returns are replay-safe, preserve cancellation and retry intent, and keep the original release API intact.
 
@@ -408,7 +402,6 @@ power-loss durability are not release claims.
 - The container and sidecar packages include the native audio metric, licences and corresponding
   source records. Existing libraries keep reports off.
 
-
 ### Development tools
 
 - Backend tests now state their POSIX requirements explicitly and use portable paths and decoded JSON elsewhere. Native Windows CI runs the complete backend suite, with eight explained POSIX skips. This does not add Windows-native server deployment support or change replacement checks.
@@ -495,7 +488,6 @@ power-loss durability are not release claims.
 
 - Sidecar claims now apply the same current eligibility rules and exclusions as local encoding. Retrying an excluded file explains how to remove the exclusion and preserves its existing failure evidence.
 - Manual and automatic quality retries retain the latest eight attempt reports with bounded process logs. Worker VMAF diagnostics include per-window scores and planned comparison commands; size-budget failures retain the limit and observed size.
-
 
 ## 0.2.17 — 2026-09-27
 
@@ -765,7 +757,6 @@ power-loss durability are not release claims.
   safe-area padding previously overrode the desktop spacing and left both flush with the
   window; the mobile drawer still fills the screen.
 
-
 - **The sidebar is an island, and it says what is encoding.** The rail no longer runs the
   full height of the window as a wall the page leans against: at desktop widths it is a raised
   card floating on the ground, and the page sits in a recessed tray beside it, so the two are
@@ -931,7 +922,6 @@ power-loss durability are not release claims.
 - **The in-flight list no longer runs off the page.** It drew every outstanding job, and a real
   server carries a dozen or more — thirteen on the one this was checked against — which pushed
   everything below it off the screen. It shows the first six and says how many more there are.
-
 
 ### Fixed
 
