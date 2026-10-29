@@ -15,7 +15,7 @@ public sealed class PerceptualSampleProcessTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         File.WriteAllText(Source, "unchanged source");
-        File.WriteAllText(Tool, "#!/usr/bin/python3\nimport pathlib,os,time\npathlib.Path(" + JsonSerializer.Serialize(Pid)
+        File.WriteAllText(Tool, TestPython.Shebang + "import pathlib,os,time\npathlib.Path(" + JsonSerializer.Serialize(Pid)
             + ").write_text(str(os.getpid()))\ntime.sleep(30)\n");
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(Tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }

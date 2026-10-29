@@ -1066,6 +1066,9 @@
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
       optimiseDolbyVision: library.optimiseDolbyVision,
+      // Coerced like the hardlink switch: an older server omits the field, and undefined
+      // must read as off rather than blank the editor.
+      superResolutionEnabled: library.superResolutionEnabled ?? false,
       excludePaths: library.excludePaths,
       // Coerced rather than passed through: a two-way binding onto a boolean prop throws
       // props_invalid_value on undefined, which takes the whole editor down rather than
@@ -1195,6 +1198,7 @@
       targetContainer: emptyToNull(form.targetContainer),
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
+      superResolutionEnabled: form.superResolutionEnabled,
       excludePaths: emptyToNull(form.excludePaths),
       excludeHardLinkedFiles: form.excludeHardLinkedFiles,
       workPlacement: form.workPlacement,
@@ -2570,6 +2574,21 @@
               <InfoTip text={i18n.m.libraries.dolby_vision_tip} />
               <span class="mt-0.5 block text-xs font-normal text-ink-4">
                 {i18n.m.libraries.dolby_vision_hint}
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <!-- Super-resolution is per library on purpose: an opted-in library must never change
+             how another library's jobs run, and off stays exactly the old pipeline. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.superResolutionEnabled} />
+            <span>
+              {i18n.m.libraries.super_resolution_label}
+              <InfoTip text={i18n.m.libraries.super_resolution_tip} />
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
+                {i18n.m.libraries.super_resolution_hint}
               </span>
             </span>
           </label>

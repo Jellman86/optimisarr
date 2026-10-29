@@ -264,6 +264,10 @@ internal static class WorkerLeaseEndpoints
 
             var capabilities = worker.ToCapabilities();
             var encoderMode = (await settings.GetQueueSettingsAsync(cancellationToken)).EncoderMode;
+            // Super-resolution work never leaves this server; one read per claim poll is enough
+            // to keep it that way for every candidate below.
+            var superResolutionEngineEnabled =
+                (await settings.GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
 
             // Keep the queue projection light, and scan bounded batches until an assignment is
             // found. A batch is a loading limit, never a visibility limit: cleanup, incompatible
@@ -337,7 +341,7 @@ internal static class WorkerLeaseEndpoints
                     // preparation would refuse anyway from what is already loaded, so a queue of
                     // local-only or remux jobs does not cost an ffprobe per candidate per poll.
                     // Preparation repeats these refusals itself; this is only the cheap first pass.
-                    if (!PlausiblyOfferable(job, capabilities, encoderMode))
+                    if (!PlausiblyOfferable(job, capabilities, encoderMode, superResolutionEngineEnabled))
                     {
                         skipped++;
                         lastReason = "Queued work includes jobs this worker cannot encode or that must run on this server.";
@@ -1356,12 +1360,19 @@ internal static class WorkerLeaseEndpoints
     /// encoder for the target codec. Mirrors <see cref="QueueDispatcher.PrepareRemoteWorkAsync"/>,
     /// which remains the authority.
     /// </summary>
-    private static bool PlausiblyOfferable(Job job, WorkerCapabilities capabilities, EncoderMode encoderMode)
+    private static bool PlausiblyOfferable(
+        Job job, WorkerCapabilities capabilities, EncoderMode encoderMode, bool superResolutionEngineEnabled)
     {
         var media = job.MediaFile!;
         var library = media.Library;
         if (job.Type != JobType.Normal && media.MediaKind != MediaKind.Video) return false;
-        if (library is not null && !WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement))
+        // Super-resolution work is server-only even under an "anywhere" placement: the engine
+        // works on the server's frames and a worker lease carries only ffmpeg arguments, so an
+        // offered job would come back as an ordinary source-sized encode that silently replaces
+        // the original without the upscaling that was asked for.
+        if (library is not null
+            && (!WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement)
+                || (superResolutionEngineEnabled && media.MediaKind == MediaKind.Video && library.SuperResolutionEnabled)))
         {
             return false;
         }

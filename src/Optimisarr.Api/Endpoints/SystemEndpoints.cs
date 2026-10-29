@@ -16,6 +16,7 @@ using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
@@ -38,6 +39,33 @@ internal static class SystemEndpoints
             });
         })
         .WithName("GetSystemTools");
+
+        // Static super-resolution engine check: binary, model files, Vulkan loader. Cheap and
+        // side-effect free; the UI calls it when the super-resolution settings are shown.
+        app.MapGet("/api/system/realcugan", async (
+            SettingsStore settings,
+            CancellationToken cancellationToken) =>
+        {
+            var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            var detection = await new RealCuganDetectionService(options).DetectAsync(cancellationToken);
+            return Results.Ok(RealCuganStatusDto.From(detection, options));
+        })
+        .WithName("GetRealCuganStatus");
+
+        // A real small-sample engine run. This is the only check that proves the Vulkan
+        // runtime and the configured model files actually work on this machine; it can take a
+        // few seconds, so it runs on the operator's explicit "test environment" action.
+        app.MapPost("/api/system/realcugan/probe", async (
+            SettingsStore settings,
+            CancellationToken cancellationToken) =>
+        {
+            var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            var ffmpeg = MediaToolCommands.ResolveFfmpeg(
+                Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG"));
+            var probe = await new RealCuganDetectionService(options).ProbeAsync(ffmpeg, cancellationToken);
+            return Results.Ok(RealCuganProbeDto.From(probe));
+        })
+        .WithName("ProbeRealCugan");
 
         app.MapGet("/api/system/hardware", async (
             HardwareCapabilityService hardware,
@@ -130,4 +158,59 @@ internal static class SystemEndpoints
         }))
         .WithName("GetLibraryOptions");
     }
+}
+
+/// <summary>
+/// The super-resolution engine's status as the static check found it, plus the effective
+/// configuration it was checked against — so the UI can show the operator exactly what a run
+/// would use and, when something is missing, exactly what to fix.
+/// </summary>
+internal sealed record RealCuganStatusDto(
+    string Engine,
+    string Readiness,
+    bool BinaryFound,
+    string? BinaryPath,
+    bool ModelsFound,
+    string? ModelsRoot,
+    string? ModelDirectory,
+    string? MissingModelFile,
+    bool VulkanLoaderAvailable,
+    bool Enabled,
+    string Preset,
+    int Scale,
+    int NoiseLevel,
+    string Device,
+    IReadOnlyList<string> Problems)
+{
+    public static RealCuganStatusDto From(RealCuganDetection detection, SuperResolutionOptions options) => new(
+        detection.Engine,
+        detection.Readiness.ToString(),
+        detection.BinaryFound,
+        detection.BinaryPath,
+        detection.ModelsFound,
+        detection.ModelsRoot,
+        detection.ModelDirectory,
+        detection.MissingModelFile,
+        detection.VulkanLoaderAvailable,
+        options.Enabled,
+        options.Preset,
+        options.Scale,
+        options.NoiseLevel,
+        options.Device,
+        detection.Problems);
+}
+
+internal sealed record RealCuganProbeDto(
+    bool Success,
+    int? ExitCode,
+    string? Error,
+    string? OutputTail,
+    string? DeviceUsed)
+{
+    public static RealCuganProbeDto From(RealCuganProbeResult probe) => new(
+        probe.Success,
+        probe.ExitCode,
+        probe.Error,
+        probe.OutputTail,
+        probe.DeviceUsed);
 }

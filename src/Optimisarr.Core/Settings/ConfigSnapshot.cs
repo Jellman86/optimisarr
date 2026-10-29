@@ -102,7 +102,10 @@ public sealed record LibrarySnapshot(
     bool? AdaptiveAudioQuality = null,
     bool? AdaptiveImageQuality = null,
     // Absent from backups made before the setting existed; importing those keeps the stored choice.
-    bool? NormalizeOpusChannelLayout = null);
+    bool? NormalizeOpusChannelLayout = null,
+    // Same: null on an older snapshot keeps the stored per-library switch — the Real-CUGAN
+    // super-resolution pipeline must not silently activate (or deactivate) on a config restore.
+    bool? SuperResolutionEnabled = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

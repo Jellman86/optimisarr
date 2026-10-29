@@ -19,7 +19,7 @@ public sealed class ReviewToolProcessTests
                 ? "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Console]::Out.Write([Console]::In.ReadToEnd())"
                 : "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())");
             var input = "-TagsFromFile\n写真 [1] café.png\n";
-            var result = await BoundedToolProcess.RunWithInputAsync(windows ? "pwsh.exe" : "/usr/bin/python3",
+            var result = await BoundedToolProcess.RunWithInputAsync(windows ? "pwsh.exe" : TestPython.Interpreter,
                 windows ? ["-NoProfile", "-NonInteractive", "-File", script] : [script], input, default, TimeSpan.FromSeconds(15));
             Assert.Equal(0, result.ExitCode);
             Assert.Equal(input, result.Output);
@@ -43,7 +43,7 @@ public sealed class ReviewToolProcessTests
                 : excessOutput ? "import os; os.write(1,b'x'*3000000)" : "import time; time.sleep(60)";
             await File.WriteAllTextAsync(script, content);
             var arguments = windows ? new[] { "-NoProfile", "-NonInteractive", "-File", script } : new[] { script };
-            var result = await BoundedToolProcess.RunAsync(windows ? "pwsh.exe" : "/usr/bin/python3",
+            var result = await BoundedToolProcess.RunAsync(windows ? "pwsh.exe" : TestPython.Interpreter,
                 arguments, CancellationToken.None, TimeSpan.FromSeconds(excessOutput ? 15 : 0.2));
             Assert.Equal(-1, result.ExitCode);
             Assert.Empty(result.Output);
@@ -78,7 +78,7 @@ public sealed class ReviewToolProcessTests
         }
         else
         {
-            var script = "#!/usr/bin/python3\nimport os,time\nopen(" + JsonSerializer.Serialize(pidPath) + ", 'w').write(str(os.getpid()))\n";
+            var script = TestPython.Shebang + "import os,time\nopen(" + JsonSerializer.Serialize(pidPath) + ", 'w').write(str(os.getpid()))\n";
             if (floodStderr) script += "os.write(2,b'x'*1000000)\n";
             script += "print('ffmpeg version review',flush=True)\n";
             if (!floodStderr) script += "time.sleep(60)\n";

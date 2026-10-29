@@ -160,6 +160,8 @@ export type LibraryRules = {
   downmixToStereo: boolean
   /** Map a 5.1(side) source onto the standard 5.1 order Opus writes. */
   normalizeOpusChannelLayout: boolean
+  /** Video jobs in this library run through the Real-CUGAN super-resolution pipeline. */
+  superResolutionEnabled: boolean
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
@@ -251,6 +253,7 @@ export type SaveLibrary = LibraryRules & {
 
 export function newLibraryDefaults(): SaveLibrary {
   return {
+    superResolutionEnabled: false,
     name: '',
     path: '',
     mediaType: 'Film',
@@ -358,6 +361,51 @@ export type LibraryOptions = {
   imageFormats: string[]
 }
 
+/** The Real-CUGAN super-resolution engine section. The engine itself is fixed — these
+ * fields configure it: the preset names the engine's model directory (mixed → models-se, the
+ * upstream default set; pro → models-pro; nose → models-nose), the scale is the upscale factor,
+ * the noise level is the engine's denoise level (-1 conservative, 0 none, 1-3 strength), and the
+ * device is 'auto', 'cpu', or 'gpu:<index>' for a verified Vulkan device. Paths point at the
+ * engine executable and its model directory; empty resolves the binary on PATH and the models
+ * beside it. */
+export type SuperResolutionSettings = {
+  enabled: boolean
+  preset: 'mixed' | 'pro' | 'nose'
+  scale: number
+  noiseLevel: number
+  device: string
+  binaryPath: string
+  modelsPath: string
+}
+
+export type RealCuganReadiness = 'NotInstalled' | 'Misconfigured' | 'VulkanUnavailable' | 'Ready'
+
+export type RealCuganStatus = {
+  engine: string
+  readiness: RealCuganReadiness
+  binaryFound: boolean
+  binaryPath: string | null
+  modelsFound: boolean
+  modelsRoot: string | null
+  modelDirectory: string | null
+  missingModelFile: string | null
+  vulkanLoaderAvailable: boolean
+  enabled: boolean
+  preset: string
+  scale: number
+  noiseLevel: number
+  device: string
+  problems: string[]
+}
+
+export type RealCuganProbe = {
+  success: boolean
+  exitCode: number | null
+  error: string | null
+  outputTail: string | null
+  deviceUsed: string | null
+}
+
 export type Settings = {
   maxConcurrentJobs: number
   minFreeDiskBytes: number
@@ -380,6 +428,7 @@ export type Settings = {
   evidenceValidationSlots: number
   automaticNonVideoSlots: number
   automaticEvidenceValidationSlots: number
+  superResolution: SuperResolutionSettings
 }
 
 export type WorkloadLaneStatus = {
@@ -1389,6 +1438,8 @@ export const api = {
   removeExclusion: (id: number) => request<void>(`/api/exclusions/${id}`, { method: 'DELETE' }),
 
   settings: () => request<Settings>('/api/settings'),
+  realCuganStatus: () => request<RealCuganStatus>('/api/system/realcugan'),
+  probeRealCugan: () => request<RealCuganProbe>('/api/system/realcugan/probe', { method: 'POST' }),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   appearance: () => request<{ brandStyle: string }>('/api/settings/appearance'),

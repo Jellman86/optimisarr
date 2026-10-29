@@ -15,7 +15,7 @@ public sealed class ReferenceScratchProcessTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var tool = Path.Combine(_root, "fake media tool");
-        File.WriteAllText(tool, "#!/usr/bin/python3\n" + """
+        File.WriteAllText(tool, TestPython.Shebang + """
             import os,sys,time,pathlib,json
             root=pathlib.Path(__ROOT__)
             if '--hang' in sys.argv:

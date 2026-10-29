@@ -20,6 +20,7 @@ using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -348,9 +349,13 @@ internal sealed record SettingsDto(
     int? NonVideoSlots = null,
     int? EvidenceValidationSlots = null,
     int? AutomaticNonVideoSlots = null,
-    int? AutomaticEvidenceValidationSlots = null)
+    int? AutomaticEvidenceValidationSlots = null,
+    SuperResolutionSettingsDto? SuperResolution = null)
 {
-    public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
+    public static SettingsDto From(
+        QueueSettings settings,
+        bool remoteWorkersAvailable = false,
+        SuperResolutionOptions? superResolution = null) => new(
         settings.MaxConcurrentJobs,
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
@@ -370,7 +375,37 @@ internal sealed record SettingsDto(
         WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
             GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).NonVideo,
         WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
-            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).Evidence);
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).Evidence,
+        superResolution is null ? null : SuperResolutionSettingsDto.From(superResolution));
+}
+
+/// <summary>
+/// The Real-CUGAN super-resolution engine section of the settings. The engine choice itself is
+/// fixed ("realcugan") — the constant exists so the wire contract can name which engine these
+/// fields describe, and so a second engine later is a new section, not a reinterpretation.
+/// </summary>
+internal sealed record SuperResolutionSettingsDto(
+    bool Enabled,
+    string Preset,
+    int Scale,
+    int NoiseLevel,
+    string Device,
+    string BinaryPath,
+    string ModelsPath)
+{
+    public const string Engine = SuperResolutionOptions.EngineName;
+
+    public static SuperResolutionSettingsDto From(SuperResolutionOptions options) => new(
+        options.Enabled,
+        options.Preset,
+        options.Scale,
+        options.NoiseLevel,
+        options.Device,
+        options.BinaryPath,
+        options.ModelsPath);
+
+    public SuperResolutionOptions ToOptions() => new(
+        Enabled, Preset, Scale, NoiseLevel, Device, BinaryPath, ModelsPath);
 }
 
 internal sealed record QueueStatusDto(
@@ -505,7 +540,8 @@ internal sealed record SaveLibraryRequest(
     double? MinimumImagePerceptualScore = null,
     bool? AdaptiveAudioQuality = null,
     bool? AdaptiveImageQuality = null,
-    bool? NormalizeOpusChannelLayout = null);
+    bool? NormalizeOpusChannelLayout = null,
+    bool? SuperResolutionEnabled = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -602,7 +638,8 @@ internal sealed record LibraryDto(
     double? MinimumImagePerceptualScore,
     bool AdaptiveAudioQuality,
     bool AdaptiveImageQuality,
-    bool NormalizeOpusChannelLayout)
+    bool NormalizeOpusChannelLayout,
+    bool SuperResolutionEnabled)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -688,7 +725,8 @@ internal sealed record LibraryDto(
         library.MinimumImagePerceptualScore,
         library.AdaptiveAudioQuality,
         library.AdaptiveImageQuality,
-        library.NormalizeOpusChannelLayout);
+        library.NormalizeOpusChannelLayout,
+        library.SuperResolutionEnabled);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

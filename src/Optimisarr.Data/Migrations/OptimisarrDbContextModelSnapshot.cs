@@ -1244,6 +1244,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("StrongerAdaptiveQuantisation")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("SuperResolutionEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("TargetContainer")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");

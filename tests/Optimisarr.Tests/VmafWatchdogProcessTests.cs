@@ -22,7 +22,7 @@ public sealed class VmafWatchdogProcessTests : IDisposable
         Directory.CreateDirectory(_root);
         File.WriteAllText(Source, "source"); File.WriteAllText(Candidate, "candidate");
         var tool = Path.Combine(_root, "fake-ffmpeg");
-        File.WriteAllText(tool, "#!/usr/bin/python3\n" + """
+        File.WriteAllText(tool, TestPython.Shebang + """
             import os,sys,time,json,re,pathlib
             root=pathlib.Path(__ROOT__)
             graph=sys.argv[sys.argv.index('-lavfi')+1]

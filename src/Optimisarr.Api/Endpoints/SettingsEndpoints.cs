@@ -30,7 +30,8 @@ internal static class SettingsEndpoints
             CancellationToken cancellationToken) =>
         {
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable));
+            var superResolution = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolution));
         })
         .WithName("GetSettings");
 
@@ -48,8 +49,22 @@ internal static class SettingsEndpoints
 
             await settings.SetQueueSettingsAsync(parsed, cancellationToken);
 
+            // The super-resolution section is validated and persisted on its own: an absent
+            // section leaves the stored engine configuration exactly as it was, so older
+            // clients and older automations keep working unchanged.
+            if (request.SuperResolution is { } requestedSuperResolution)
+            {
+                if (!SuperResolutionRequestParser.TryParse(
+                        requestedSuperResolution, out var superResolution, out var superResolutionError))
+                {
+                    return ApiErrors.BadRequest(superResolutionError!.Code, superResolutionError.Message);
+                }
+                await settings.SetSuperResolutionOptionsAsync(superResolution, cancellationToken);
+            }
+
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable));
+            var superResolutionOptions = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolutionOptions));
         })
         .WithName("UpdateSettings");
 
