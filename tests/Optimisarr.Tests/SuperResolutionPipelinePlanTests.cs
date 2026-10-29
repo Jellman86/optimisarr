@@ -68,7 +68,7 @@ public sealed class SuperResolutionPipelinePlanTests
             Path.Combine(plan.WorkDirectory, "frames-out"),
             "/models", Options);
         Assert.Equal(Path.Combine(plan.WorkDirectory, "frames-in"), engine[1]);
-        Assert.Equal("/models/models-se", engine[Array.IndexOf(engine.ToArray(), "-m") + 1]);
+        Assert.Equal(Path.Combine("/models", "models-se"), engine[Array.IndexOf(engine.ToArray(), "-m") + 1]);
     }
 
     [Fact]
