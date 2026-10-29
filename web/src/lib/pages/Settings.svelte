@@ -451,6 +451,7 @@
 
   async function loadRealCuganStatus() {
     realCuganLoading = true
+    realCuganError = null
     try {
       realCuganStatus = await api.realCuganStatus()
       realCuganError = null
@@ -530,6 +531,17 @@ let settings = $state<Settings>({
     return a === b
   }
 
+  /**
+   * A copy of a settings object that is safe to edit or keep as a snapshot. `superResolution` is
+   * the one nested object in `Settings`: a top-level spread alone would leave the draft and its
+   * saved copy pointing at the same object, so an edit through a bound control would change both
+   * at once — and the change detector, which compares values, would report nothing changed. No
+   * save bar, no room badge, no leave-guard, and a save that silently drops the edit.
+   */
+  function detach(value: Settings): Settings {
+    return { ...value, superResolution: { ...value.superResolution } }
+  }
+
   let changedFields = $derived.by(() => {
     if (!savedSettings) return new Set<string>()
     const out = new Set<string>()
@@ -562,12 +574,12 @@ let settings = $state<Settings>({
       minFreeDiskGiB = savedMinFreeDiskGiB
       return
     }
-    settings = { ...settings, [field]: savedSettings[field] }
+    settings = detach({ ...settings, [field]: savedSettings[field] })
   }
 
   function discardAll() {
     if (!savedSettings) return
-    settings = { ...savedSettings }
+    settings = detach(savedSettings)
     minFreeDiskGiB = savedMinFreeDiskGiB
     message = null
     error = null
@@ -694,6 +706,16 @@ let settings = $state<Settings>({
     }
   })
 
+  // The status section answers "can this machine run the engine?" — so it detects the first
+  // time the room is opened instead of waiting for a Detect button that only exists once a
+  // status has come back. The button re-checks whenever the operator wants (after fixing a
+  // path or installing a driver), and it stays reachable in the error state below.
+  $effect(() => {
+    if (openRoom === 'superResolution' && !realCuganLoading && !realCuganStatus && !realCuganError) {
+      void loadRealCuganStatus()
+    }
+  })
+
   async function load() {
     loading = true
     error = null
@@ -708,7 +730,7 @@ let settings = $state<Settings>({
       const loaded = await api.settings()
       settings = { ...settings, ...loaded, superResolution: loaded.superResolution ?? defaultSuperResolution() }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
-      savedSettings = { ...settings }
+      savedSettings = detach(settings)
       savedMinFreeDiskGiB = minFreeDiskGiB
       await loadCleanupPreview()
     } catch (err) {
@@ -736,7 +758,7 @@ let settings = $state<Settings>({
       })
       settings = { ...settings, ...saved }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
-      savedSettings = { ...settings }
+      savedSettings = detach(settings)
       savedMinFreeDiskGiB = minFreeDiskGiB
       message = i18n.m.settings.saved
       await loadCleanupPreview()
@@ -1138,30 +1160,35 @@ let settings = $state<Settings>({
     title={i18n.m.settings.sr_status_title}
     description={i18n.m.settings.sr_status_desc}
   >
-    {#if realCuganLoading}
+    {#if realCuganLoading || (!realCuganStatus && !realCuganError)}
       <div class="card p-6 text-center text-ink-4">{i18n.m.common.loading_short}</div>
-    {:else if realCuganError}
-      <Banner kind="error">{realCuganError}</Banner>
-    {:else if realCuganStatus}
-      <div class="card p-5 space-y-3 text-sm">
-        <p>
-          <span class="font-medium">{i18n.m.settings.sr_status_readiness}</span>
-          {realCuganStatus.readiness === 'Ready' ? i18n.m.settings.sr_status_ready
-            : realCuganStatus.readiness === 'NotInstalled' ? i18n.m.settings.sr_status_not_installed
-            : realCuganStatus.readiness === 'VulkanUnavailable' ? i18n.m.settings.sr_status_no_vulkan
-            : i18n.m.settings.sr_status_misconfigured}
-        </p>
-        <p class="text-ink-3">{tr(i18n.m.settings.sr_status_models, {
-          dir: realCuganStatus.modelDirectory ?? '—',
-          root: realCuganStatus.modelsRoot ?? '—',
-        })}</p>
-        <p class="text-ink-3">{i18n.m.settings.sr_status_vulkan}: {realCuganStatus.vulkanLoaderAvailable ? i18n.m.settings.sr_status_vulkan_ok : i18n.m.settings.sr_status_vulkan_missing}</p>
-        {#if realCuganStatus.problems.length}
-          <ul class="list-disc pl-5 text-ink-3">
-            {#each realCuganStatus.problems as problem}
-              <li>{problem}</li>
-            {/each}
-          </ul>
+    {:else}
+      <div class="space-y-3">
+        {#if realCuganError}
+          <Banner kind="error">{realCuganError}</Banner>
+        {/if}
+        {#if realCuganStatus}
+          <div class="card p-5 space-y-3 text-sm">
+            <p>
+              <span class="font-medium">{i18n.m.settings.sr_status_readiness}</span>
+              {realCuganStatus.readiness === 'Ready' ? i18n.m.settings.sr_status_ready
+                : realCuganStatus.readiness === 'NotInstalled' ? i18n.m.settings.sr_status_not_installed
+                : realCuganStatus.readiness === 'VulkanUnavailable' ? i18n.m.settings.sr_status_no_vulkan
+                : i18n.m.settings.sr_status_misconfigured}
+            </p>
+            <p class="text-ink-3">{tr(i18n.m.settings.sr_status_models, {
+              dir: realCuganStatus.modelDirectory ?? '—',
+              root: realCuganStatus.modelsRoot ?? '—',
+            })}</p>
+            <p class="text-ink-3">{i18n.m.settings.sr_status_vulkan}: {realCuganStatus.vulkanLoaderAvailable ? i18n.m.settings.sr_status_vulkan_ok : i18n.m.settings.sr_status_vulkan_missing}</p>
+            {#if realCuganStatus.problems.length}
+              <ul class="list-disc pl-5 text-ink-3">
+                {#each realCuganStatus.problems as problem}
+                  <li>{problem}</li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
         {/if}
         {#if realCuganProbe}
           <Banner kind={realCuganProbe.success ? 'success' : 'error'}>{realCuganProbe.success

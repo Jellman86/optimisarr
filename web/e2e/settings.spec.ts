@@ -813,16 +813,19 @@ test('the super-resolution room saves its section, restores defaults, and shows 
     }
     return json(route, settings)
   })
-  await page.goto('/#/settings/super-resolution')
+  await page.goto('/#/settings')
 
   // The card says the engine is off before anything is touched.
   await expect(page.getByText('Off — video jobs keep the normal pipeline')).toBeVisible()
 
-  // Status detection shows the machine's real, mocked readiness.
+  // Opening the room runs detection, which reports the machine's real, mocked readiness.
+  await page.getByRole('button', { name: /^AI super-resolution/ }).click()
   await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toBeVisible()
 
   await page.getByLabel('Content preset').selectOption('pro')
-  await page.getByLabel('Denoise level').selectOption('3')
+  // The preset's tooltip also says "denoise level", so a label substring matches both selects —
+  // target the control itself.
+  await page.locator('#sr-noise').selectOption('3')
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByText('Settings saved')).toBeVisible()
   const section = (saved as { superResolution?: Record<string, unknown> } | null)?.superResolution
@@ -832,7 +835,7 @@ test('the super-resolution room saves its section, restores defaults, and shows 
 
   // Restoring defaults puts the documented initial configuration back into the draft.
   await page.getByRole('button', { name: 'Restore defaults' }).click()
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.getByRole('button', { name: 'Save settings' }).click()
   const restored = (saved as { superResolution?: Record<string, unknown> } | null)?.superResolution
   expect(restored?.preset).toBe('mixed')
   expect(restored?.noiseLevel).toBe(1)
