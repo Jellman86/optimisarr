@@ -384,6 +384,9 @@ export const pt: Messages = {
     open_menu: "Abrir menu",
     close_menu: "Fechar menu",
     toggle_theme: "Alternar tema",
+    theme_system: 'Seguir o tema do sistema',
+    theme_light: 'Tema claro',
+    theme_dark: 'Tema escuro',
     collapse_sidebar: "Recolher barra lateral",
     coming_soon: "{label} – em breve",
     soon: "em breve"

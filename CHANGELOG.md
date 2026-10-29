@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The web UI now follows the browser or system light and dark theme by default, and follows it changing while the page is open: no reload, and no flash of the wrong scheme on the first paint, because the scheme is settled before the app boots. The theme control still pins a scheme when asked — it walks follow-the-system, light and dark, and hands the page back to the system — and a stored light or dark choice is kept, so an existing preference survives. The control describes its current setting for assistive technology, and restricted browser storage/media APIs cannot prevent the page from loading. Contributed by [arbaleast](https://github.com/arbaleast) in #449.
+
 - Fix Find duplicates progress so it advances during large-file reads and starts with the actual same-size candidate totals. Cached and skipped files count toward progress; cancelling midway through a file counts only the bytes read so far. The themed bar shows queued work and a percentage without claiming completion early. Clarify identical-group counts, review states and copy locations. Library cards group Scan and Find duplicates at the foot, with distinct icons and aligned actions. Duplicate review still saves preferences only; no file actions are enabled.
 
 - Confirm queue replacements on the page instead of relying on browser popups. Keep single and bulk refusal reasons, including dry-run mode, visible with retry and cancel actions; long errors can scroll and an empty bulk result closes without claiming a replacement. Originals and verification safeguards are unchanged. Contributed by [balfourwong](https://github.com/balfourwong) in [#463](https://github.com/Jellman86/optimisarr/pull/463).

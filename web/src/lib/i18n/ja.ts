@@ -384,6 +384,9 @@ export const ja: Messages = {
     open_menu: "メニューを開く",
     close_menu: "メニューを閉じる",
     toggle_theme: "テーマの切り替え",
+    theme_system: 'システムのテーマに従う',
+    theme_light: 'ライトテーマ',
+    theme_dark: 'ダークテーマ',
     collapse_sidebar: "サイドバーを折りたたむ",
     coming_soon: "{label} — 近日公開予定",
     soon: "近日公開"
