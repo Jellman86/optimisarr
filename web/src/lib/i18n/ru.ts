@@ -384,6 +384,9 @@ export const ru: Messages = {
     open_menu: "Открыть меню",
     close_menu: "Закрыть меню",
     toggle_theme: "Переключить тему",
+    theme_system: 'Следовать теме системы',
+    theme_light: 'Светлая тема',
+    theme_dark: 'Тёмная тема',
     collapse_sidebar: "Свернуть боковую панель",
     coming_soon: "{label} — скоро",
     soon: "вскоре"

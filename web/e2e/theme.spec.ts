@@ -128,3 +128,55 @@ test('the scheme is settled before the app boots, so the page never flashes the 
   await expect(page.locator('html')).toHaveClass(/\bdark\b/)
   await expect(page.locator('#app')).toBeEmpty()
 })
+
+for (const denied of ['storage', 'media'] as const) {
+  test(`theme remains usable when the browser refuses ${denied}`, async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await mockApp(page)
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.addInitScript(denied => {
+      if (denied === 'storage') {
+        const get = Storage.prototype.getItem
+        const set = Storage.prototype.setItem
+        Storage.prototype.getItem = function(key) {
+          if (key === 'optimisarr.theme') throw new DOMException('Storage refused', 'SecurityError')
+          return get.call(this, key)
+        }
+        Storage.prototype.setItem = function(key, value) {
+          if (key === 'optimisarr.theme') throw new DOMException('Storage refused', 'SecurityError')
+          return set.call(this, key, value)
+        }
+      } else {
+        const match = window.matchMedia.bind(window)
+        window.matchMedia = query => {
+          if (query.includes('prefers-color-scheme')) throw new Error('Media queries refused')
+          return match(query)
+        }
+      }
+    }, denied)
+    await page.goto('/#/')
+    const control = page.getByRole('button', { name: 'Toggle theme', exact: true }).filter({ visible: true }).first()
+    await expect(control).toBeVisible()
+    await expect(control).toHaveAccessibleDescription('Follow system theme')
+    if (denied === 'storage') await expect(page.locator('html')).toHaveClass(/dark/)
+    else await expect(page.locator('html')).not.toHaveClass(/dark/)
+    await control.click()
+    await expect(control).toHaveAccessibleDescription(denied === 'storage' ? 'Light theme' : 'Dark theme')
+    expect(errors).toEqual([])
+  })
+}
+
+test('the theme control explains its current mode through a full keyboard cycle', async ({ page }) => {
+  await mockApp(page)
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto('/#/')
+  const control = page.getByRole('button', { name: 'Toggle theme', exact: true }).filter({ visible: true }).first()
+  await expect(control).toHaveAccessibleDescription('Follow system theme')
+  await control.focus()
+  for (const mode of ['Dark theme', 'Light theme', 'Follow system theme']) {
+    await page.keyboard.press('Enter')
+    await expect(control).toHaveAccessibleDescription(mode)
+    await expect(control).toBeFocused()
+  }
+})

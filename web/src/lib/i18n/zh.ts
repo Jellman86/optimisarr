@@ -384,6 +384,9 @@ export const zh: Messages = {
     open_menu: "打开菜单",
     close_menu: "关闭菜单",
     toggle_theme: "切换主题",
+    theme_system: '跟随系统主题',
+    theme_light: '浅色主题',
+    theme_dark: '深色主题',
     collapse_sidebar: "折叠侧边栏",
     coming_soon: "{label} — 即将推出",
     soon: "即将推出"

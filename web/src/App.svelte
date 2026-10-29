@@ -178,8 +178,9 @@
         <BrandMark class="h-7 w-7" />
         <span class="font-bold tracking-tight text-ink">Optimisarr</span>
       </button>
-      <button class="btn btn-ghost ml-auto px-2" aria-label={i18n.m.nav.toggle_theme} onclick={() => theme.toggle()}>
+      <button class="btn btn-ghost ml-auto px-2" aria-label={i18n.m.nav.toggle_theme} aria-describedby="mobile-theme-mode" onclick={() => theme.toggle()}>
         <Icon name={theme.icon} class="h-5 w-5" />
+        <span id="mobile-theme-mode" class="sr-only">{i18n.m.nav[`theme_${theme.mode}`]}</span>
       </button>
     </header>
 
