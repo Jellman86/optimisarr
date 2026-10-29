@@ -50,6 +50,7 @@ var mediaProbe = new MediaProbeService(ffprobe);
 builder.Services.AddSingleton(mediaProbe);
 builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new SubtitleTimelineProbe(ffprobe));
+builder.Services.AddSingleton<SubtitleTimelineVerdicts>();
 builder.Services.AddSingleton(new InputTimestampOffset(ffprobe));
 builder.Services.AddSingleton(new SourceTimestampFacts(ffprobe));
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
