@@ -16,6 +16,7 @@ using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -355,8 +356,8 @@ public sealed partial class QueueDispatcher(
 
             var placements = await db.Libraries
                 .AsNoTracking()
-                .Select(library => new { library.Id, library.WorkPlacement })
-                .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, stoppingToken);
+                .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled })
+                .ToDictionaryAsync(library => library.Id, library => (library.WorkPlacement, library.SuperResolutionEnabled), stoppingToken);
             // Libraries whose jobs a worker cannot be offered until this machine has chosen a
             // per-title quality for them.
             var adaptiveLibraries = await db.Libraries
@@ -395,12 +396,12 @@ public sealed partial class QueueDispatcher(
                     job.IgnoreLibraryWindow,
                     job.HonoursPlacement && job.LibraryId is { } libraryId
                         && placements.TryGetValue(libraryId, out var placement)
-                        ? placement
+                        ? EffectivePlacement(placement.WorkPlacement, placement.SuperResolutionEnabled, job.Kind)
                         : WorkPlacement.Anywhere,
                     job.QualityChosen,
                     job.Kind,
                     WorkerRequired: job.Interactive && job.LibraryId is { } requiredId
-                        && placements.GetValueOrDefault(requiredId) == WorkPlacement.WorkerOnly))
+                        && placements.GetValueOrDefault(requiredId).WorkPlacement == WorkPlacement.WorkerOnly))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -1056,7 +1057,30 @@ public sealed partial class QueueDispatcher(
             // A super-resolution job keeps the library's fixed quality: the adaptive search
             // samples the normal encode, whose size and quality say nothing about the upscaled
             // candidate, and its size forecast would only reject a job that was never predicted.
-            var superResolutionPlanned = await ShouldRunSuperResolutionAsync(preparedWork, cancellationToken);
+            var superResolutionOptions = await ResolveSuperResolutionAsync(preparedWork, cancellationToken);
+            var superResolutionPlanned = superResolutionOptions is not null;
+            if (superResolutionOptions is { } resolvedSuperResolution)
+            {
+                // The candidate this pipeline produces is the source scaled by the engine's
+                // ratio, so verification is told exactly what to expect — without this the
+                // structure gate would fail every candidate for "changing resolution without a
+                // resize policy" — and the size-saving gates stand down: they exist to stop
+                // encodes that fail to shrink, which describes no super-resolution job. Every
+                // other gate applies unchanged.
+                var upscaled = resolvedSuperResolution.UpscaledSize(preparedWork.SourcePicture)
+                    ?? throw new InvalidOperationException(
+                        "Super-resolution needs the source's picture dimensions, which the probe does not " +
+                        "report. Re-probe the file and retry.");
+                preparedWork = preparedWork with
+                {
+                    VerificationPolicy = SuperResolutionPolicy.ForUpscaledCandidate(preparedWork.VerificationPolicy),
+                    Original = preparedWork.Original with
+                    {
+                        ExpectedWidth = upscaled.Width,
+                        ExpectedHeight = upscaled.Height,
+                    },
+                };
+            }
             if (!superResolutionPlanned && ShouldSelectAdaptiveQuality(
                 preparedWork.VideoQualityStrategy,
                 preparedWork.Spec.VideoCodec is not null,
@@ -1468,6 +1492,17 @@ public sealed partial class QueueDispatcher(
         if (prepared is not { } work)
         {
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
+        }
+
+        // The authority behind the claim endpoint's cheap first pass: a super-resolution job runs
+        // this server's engine over this server's frames, and a worker lease carries only ffmpeg
+        // arguments. Offering it would produce an ordinary source-sized candidate that passes
+        // verification and replaces the original without the upscaling that was asked for.
+        if (await ResolveSuperResolutionAsync(work, cancellationToken) is not null)
+        {
+            return RemoteWorkPlan.Refused(
+                "This library runs video through the Real-CUGAN super-resolution engine, which works on this " +
+                "server only. Set the library's placement to keep it off workers.");
         }
 
         if (work.IsDisposable && work.Spec.Kind != MediaKind.Video)
@@ -2841,7 +2876,7 @@ public sealed partial class QueueDispatcher(
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 
-    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
+    internal sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
@@ -3880,8 +3915,8 @@ public sealed partial class QueueDispatcher(
             .ToListAsync(cancellationToken);
         var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
         var libraries = await db.Libraries.AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement, library.AutoEnqueueEnabled,
-                library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled,
+                library.AutoEnqueueEnabled, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
             .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var availability = await WorkerAvailability.ResolveAsync(db, settings.RemoteWorkersEnabled,
@@ -3890,10 +3925,13 @@ public sealed partial class QueueDispatcher(
         var scheduled = queued.Select(job => new QueuedJob(job.Id, job.LibraryId, 0,
             job.EnqueuedAt, IgnoreLibraryWindow: job.Type != JobType.Normal,
             Placement: job.LibraryId is { } id
-                && libraries.TryGetValue(id, out var library) ? library.WorkPlacement : WorkPlacement.Anywhere,
+                && libraries.TryGetValue(id, out var library)
+                    ? EffectivePlacement(library.WorkPlacement, library.SuperResolutionEnabled, job.Kind)
+                    : WorkPlacement.Anywhere,
             Kind: job.Kind,
             WorkerRequired: job.Type != JobType.Normal && job.LibraryId is { } requiredId
-                && libraries.TryGetValue(requiredId, out var requiredLibrary) && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly)).ToList();
+                && libraries.TryGetValue(requiredId, out var requiredLibrary)
+                && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly)).ToList();
         var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
             .ToDictionary(library => library.Id,
                 library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));

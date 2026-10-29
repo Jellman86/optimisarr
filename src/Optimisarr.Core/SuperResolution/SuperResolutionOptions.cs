@@ -1,3 +1,5 @@
+using Optimisarr.Core.Queue;
+
 namespace Optimisarr.Core.SuperResolution;
 
 /// <summary>A single failed validation. <see cref="Code"/> is the API error code.</summary>
@@ -46,6 +48,17 @@ public sealed record SuperResolutionOptions(
         && index >= 0
         ? index
         : null;
+
+    /// <summary>
+    /// The picture size the engine produces for this source: every frame leaves the engine
+    /// scaled by exactly <see cref="Scale"/>, and the reassembly encodes the upscaled frames as
+    /// they are. Null when the source's dimensions are unknown — the expected size verification
+    /// holds the candidate to cannot be promised without them.
+    /// </summary>
+    public PictureSize? UpscaledSize(PictureSize? source) =>
+        source is { } picture && picture.Width > 0 && picture.Height > 0
+            ? new PictureSize(picture.Width * Scale, picture.Height * Scale)
+            : null;
 
     /// <summary>
     /// Validates every field and the combination as a whole. Returns every problem found —

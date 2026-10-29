@@ -1,4 +1,6 @@
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.SuperResolution;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Tests;
 
@@ -108,5 +110,43 @@ public sealed class SuperResolutionOptionsTests
         // operator enabling it later would otherwise inherit a broken engine setup.
         var options = SuperResolutionOptions.Defaults with { Enabled = false, Scale = 7 };
         Assert.NotEmpty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData(2, 640, 360, 1280, 720)]
+    [InlineData(3, 640, 360, 1920, 1080)]
+    [InlineData(4, 1280, 720, 5120, 2880)]
+    public void The_upscaled_size_scales_every_dimension_by_the_engine_ratio(
+        int scale, int sourceWidth, int sourceHeight, int expectedWidth, int expectedHeight)
+    {
+        var options = SuperResolutionOptions.Defaults with { Scale = scale };
+        var upscaled = options.UpscaledSize(new PictureSize(sourceWidth, sourceHeight));
+        Assert.Equal(new PictureSize(expectedWidth, expectedHeight), upscaled);
+    }
+
+    [Fact]
+    public void An_unknown_source_size_has_no_upscaled_size_to_promise()
+    {
+        // Verification is held to the size the job intended. Without the source's dimensions
+        // there is no honest expectation to give it, so the pipeline must refuse instead of
+        // guessing — and a degenerate zero dimension is as good as unknown.
+        Assert.Null(SuperResolutionOptions.Defaults.UpscaledSize(null));
+        Assert.Null(SuperResolutionOptions.Defaults.UpscaledSize(new PictureSize(0, 360)));
+        Assert.Null(SuperResolutionOptions.Defaults.UpscaledSize(new PictureSize(640, 0)));
+    }
+
+    [Fact]
+    public void An_upscaled_candidate_is_never_judged_by_the_size_saving_gate()
+    {
+        // Upscaling is the point of the job: the output is larger than the source by
+        // construction, so the gate built to stop encodes that fail to shrink would reject
+        // every candidate before its quality was ever judged.
+        var policy = SuperResolutionPolicy.ForUpscaledCandidate(
+            VerificationPolicy.Default with { RequireSizeReduction = true, MinimumSizeSavingPercent = 25 });
+        Assert.False(policy.RequireSizeReduction);
+        // Everything else about the policy — the perceptual and stream gates — must survive
+        // untouched: a super-resolution candidate is verified like any other candidate.
+        Assert.Equal(25, policy.MinimumSizeSavingPercent);
+        Assert.Equal(VerificationPolicy.Default.DurationTolerancePercent, policy.DurationTolerancePercent);
     }
 }

@@ -44,7 +44,8 @@ public sealed class SuperResolutionPipelinePlanTests
             AutoReplace: false,
             CpuThreadLimit: 4,
             HardwareDecodeRequested: false,
-            HardwareToneMapRequested: false);
+            HardwareToneMapRequested: false,
+            SourcePicture: new PictureSize(640, 360));
 
     private static TranscodeSpec Spec(bool variableFrameRate = false) => new TranscodeSpec(
             "/media/source.mkv", "/work/42/candidate.mkv",
@@ -123,5 +124,18 @@ public sealed class SuperResolutionPipelinePlanTests
     {
         QueueDispatcher.RefuseUnsuitableSource(VideoWork(), Options);
         Assert.True(true); // reaching here is the assertion: nothing threw
+    }
+
+    [Fact]
+    public void A_source_without_probed_dimensions_is_refused()
+    {
+        // The candidate's expected size is the promise verification holds the output to. A
+        // source whose dimensions the inventory never captured gives no honest expectation,
+        // and guessing one would turn the dimension gate into either a rubber stamp or a
+        // false accusation.
+        var work = VideoWork() with { SourcePicture = null };
+        var problem = Assert.Throws<InvalidOperationException>(() =>
+            QueueDispatcher.RefuseUnsuitableSource(work, Options));
+        Assert.Contains("dimensions", problem.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -53,8 +53,9 @@ In **Settings → AI super-resolution / Real-CUGAN**:
 **Save** validates server-side and persists; a restart reads the saved values
 back, and anything unreadable falls back per field to the documented defaults
 rather than half-configuring the engine. **Restore defaults** puts the initial
-configuration back into the form. **Detect environment** re-checks the machine;
-**Test with a real sample run** performs a real small probe — the only check that
+configuration back into the form. The status card detects the machine as soon as
+the room opens, and **Detect environment** re-checks it on demand; **Test with a
+real sample run** performs a real small probe — the only check that
 proves the Vulkan runtime, device and models actually work on this machine.
 
 ## Enable per library
@@ -62,6 +63,12 @@ proves the Vulkan runtime, device and models actually work on this machine.
 In the library editor, tick **Super-resolution (Real-CUGAN)**. Eligible video
 jobs of that library then run the pipeline; previews, calibration samples and
 non-video jobs never do.
+
+Because the engine works on this server's frames, a super-resolution library's
+video jobs run on this server only: remote workers are never offered them,
+whatever the library's placement setting says. The claim endpoint and the
+remote-preparation path both refuse such jobs, so a worker cannot deliver an
+ordinary source-sized encode in place of the upscale that was asked for.
 
 ## What a job does
 

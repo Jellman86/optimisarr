@@ -31,22 +31,23 @@ public sealed partial class QueueDispatcher
     private static readonly TimeSpan EngineProgressPollInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// Whether this attempt should route video through the super-resolution pipeline: the
-    /// library opted in, the global engine is enabled, and the job is an ordinary replace-bound
-    /// video encode — previews, calibration candidates and non-video jobs keep their normal
-    /// path unchanged.
+    /// The engine configuration this attempt would run under, or null when this attempt keeps
+    /// its normal path: the library opted in, the global engine is enabled, and the job is an
+    /// ordinary replace-bound video encode — previews, calibration candidates and non-video
+    /// jobs keep their normal path unchanged. Returning the options (rather than a bare flag)
+    /// lets the caller carry the engine's scale into the expectations verification holds the
+    /// candidate to.
     /// </summary>
-    private async Task<bool> ShouldRunSuperResolutionAsync(JobWork work, CancellationToken cancellationToken)
+    private async Task<SuperResolutionOptions?> ResolveSuperResolutionAsync(
+        JobWork work, CancellationToken cancellationToken)
     {
-        if (work.Spec.Kind != MediaKind.Video || work.Spec.VideoCodec is null)
+        // The shape gate is pure, so a preview or an audio job never reads settings at all. The
+        // Enabled check below repeats RoutesThroughSuperResolution for the same reason — it skips
+        // the library query when the engine is off. The pure function stays the authority; these
+        // early returns exist only to avoid the I/O it would otherwise answer anyway.
+        if (!IsSuperResolutionCandidate(work))
         {
-            return false;
-        }
-        // A preview or calibration sample exists to show or compare a normal encode; routing it
-        // through super-resolution would change what it previews.
-        if (work.IsDisposable || work.Spec.ClipSeconds is not null || work.Spec.VideoOnly)
-        {
-            return false;
+            return null;
         }
 
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -54,7 +55,7 @@ public sealed partial class QueueDispatcher
         var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
         if (!options.Enabled)
         {
-            return false;
+            return null;
         }
 
         // The library decides per library, so an opted-in library can never change how another
@@ -64,8 +65,44 @@ public sealed partial class QueueDispatcher
             .AsNoTracking()
             .FirstOrDefaultAsync(candidate => candidate.MediaFiles.Any(file => file.Id == work.MediaFileId),
                 cancellationToken);
-        return library?.SuperResolutionEnabled ?? false;
+        return RoutesThroughSuperResolution(work, options, library?.SuperResolutionEnabled == true)
+            ? options
+            : null;
     }
+
+    /// <summary>
+    /// The job-side shape that may run through the engine at all: an ordinary replace-bound video
+    /// encode. A preview or calibration sample exists to show or compare a normal encode — routing
+    /// it through super-resolution would change what it previews — and non-video jobs and clips
+    /// have no frames for the engine to upscale.
+    /// </summary>
+    internal static bool IsSuperResolutionCandidate(JobWork work) =>
+        work.Spec.Kind == MediaKind.Video
+        && work.Spec.VideoCodec is not null
+        && !work.IsDisposable
+        && work.Spec.ClipSeconds is null
+        && !work.Spec.VideoOnly;
+
+    /// <summary>
+    /// The whole routing decision as pure facts: the job's shape, the engine's switch, and whether
+    /// this library opted in. "The engine off changes nothing" is one line here, which is what
+    /// lets a test hold it: an opted-in library with the engine disabled routes nowhere, so its
+    /// jobs take exactly the path they always took.
+    /// </summary>
+    internal static bool RoutesThroughSuperResolution(
+        JobWork work, SuperResolutionOptions options, bool libraryOptedIn) =>
+        IsSuperResolutionCandidate(work) && options.Enabled && libraryOptedIn;
+
+    /// <summary>
+    /// The placement a job effectively runs under. A library opted into super-resolution runs
+    /// its video jobs on this server only: the engine works on the server's frames, while a
+    /// worker lease carries only ffmpeg arguments, so a worker-delivered candidate would arrive
+    /// source-sized and silently pass verification — a replacement without the upscaling that
+    /// was asked for. Local-only is the only placement that keeps the promise honest.
+    /// </summary>
+    internal static WorkPlacement EffectivePlacement(
+        WorkPlacement placement, bool superResolutionEnabled, MediaKind kind) =>
+        superResolutionEnabled && kind == MediaKind.Video ? WorkPlacement.LocalOnly : placement;
 
     /// <summary>
     /// The three-stage super-resolution run. Returns the reassembly's <see cref="FfmpegRun"/>,
@@ -217,6 +254,16 @@ public sealed partial class QueueDispatcher
             throw new InvalidOperationException(
                 "The super-resolution configuration is not valid: " + problems[0].Message);
         }
+        // The candidate's expected size is the promise verification holds the output to. A
+        // source whose dimensions were never probed gives no honest expectation, and guessing
+        // one would turn the dimension gate into either a rubber stamp or a false accusation.
+        if (work.SourcePicture is not { } sourcePicture
+            || sourcePicture.Width <= 0 || sourcePicture.Height <= 0)
+        {
+            throw new InvalidOperationException(
+                "Super-resolution needs the source's picture dimensions, which the probe does not report. " +
+                "Re-probe the file and retry.");
+        }
         if (work.Original.IsHdr)
         {
             throw new InvalidOperationException(
@@ -260,13 +307,51 @@ public sealed partial class QueueDispatcher
     /// Runs the engine over the extracted frames with a dedicated process: argument array, both
     /// output streams captured, cancellation honoured, progress from the frames appearing in the
     /// output directory, and a stall limit that turns a hung GPU pass into a failed attempt.
+    /// The queue's shares, timings and process tracking bind the generic run below to a job.
     /// </summary>
-    private async Task<FfmpegRun> RunEngineAsync(
+    private Task<FfmpegRun> RunEngineAsync(
         int jobId,
         string binaryPath,
         IReadOnlyList<string> arguments,
         string framesOutDirectory,
         int expectedFrames,
+        CancellationToken cancellationToken) =>
+        RunEngineProcessAsync(
+            binaryPath,
+            arguments,
+            framesOutDirectory,
+            expectedFrames,
+            EngineProgressPollInterval,
+            EngineStallLimit,
+            trackStarted: processId =>
+            {
+                // Make the engine visible to the metrics broadcaster and to a manual pause, the
+                // same way an ffmpeg run does; the caller owns the registration's lifetime only
+                // for as long as this process runs.
+                var registration = encodes.Track(processId, hardwareEncoder: false);
+                pauseManager.OnEncodeStarted(processId);
+                return registration;
+            },
+            reportStage: fraction =>
+                UpdateProgressAsync(jobId, ExtractionProgressShare + fraction * EngineProgressShare),
+            cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// One engine pass as a bare child process. Static, with the timings and the job-bound hooks
+    /// injected, so the failure modes a real engine can produce are testable against a real
+    /// process without a queue behind them: a non-zero exit is reported with its code and its
+    /// captured output, a pass that stops producing frames is killed at the stall limit, and a
+    /// cancelled token kills the whole process tree.
+    /// </summary>
+    internal static async Task<FfmpegRun> RunEngineProcessAsync(
+        string binaryPath,
+        IReadOnlyList<string> arguments,
+        string framesOutDirectory,
+        int expectedFrames,
+        TimeSpan pollInterval,
+        TimeSpan stallLimit,
+        Func<int, IDisposable?>? trackStarted,
+        Func<double, Task>? reportStage,
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(framesOutDirectory);
@@ -291,8 +376,7 @@ public sealed partial class QueueDispatcher
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        using var registration = encodes.Track(process.Id, hardwareEncoder: false);
-        pauseManager.OnEncodeStarted(process.Id);
+        using var registration = trackStarted?.Invoke(process.Id);
 
         // A cancelled job kills the engine's whole process tree; the frame trees go with the
         // finally block in the caller.
@@ -306,25 +390,28 @@ public sealed partial class QueueDispatcher
         var lastCount = 0;
         while (!process.HasExited)
         {
-            await Task.Delay(EngineProgressPollInterval, cancellationToken);
+            await Task.Delay(pollInterval, cancellationToken);
             var done = CountFrames(framesOutDirectory);
             if (done > lastCount)
             {
                 lastCount = done;
                 lastAdvance = DateTimeOffset.UtcNow;
             }
-            else if (DateTimeOffset.UtcNow - lastAdvance > EngineStallLimit)
+            else if (DateTimeOffset.UtcNow - lastAdvance > stallLimit)
             {
                 process.Kill(entireProcessTree: true);
                 return new FfmpegRun(-1,
-                    $"The super-resolution engine made no progress for {EngineStallLimit.TotalMinutes:N0} minutes " +
+                    $"The super-resolution engine made no progress for {stallLimit.TotalMinutes:N0} minutes " +
                     $"and was stopped at frame {lastCount} of {expectedFrames}.",
                     error.ToString());
             }
 
             // Extraction owns the first share of the bar; the engine owns the share that follows.
-            var stageFraction = expectedFrames > 0 ? Math.Min(1.0, (double)done / expectedFrames) : 0.0;
-            await UpdateProgressAsync(jobId, ExtractionProgressShare + stageFraction * EngineProgressShare);
+            if (reportStage is not null)
+            {
+                var stageFraction = expectedFrames > 0 ? Math.Min(1.0, (double)done / expectedFrames) : 0.0;
+                await reportStage(stageFraction);
+            }
         }
 
         await process.WaitForExitAsync(CancellationToken.None);

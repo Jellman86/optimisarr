@@ -138,4 +138,34 @@ public sealed class QueueDispatcherSafetyTests
             hasAdaptiveQuality: false,
             isCalibration: false));
     }
+
+    [Fact]
+    public void A_super_resolution_librarys_video_jobs_run_on_this_server_only()
+    {
+        // The engine runs on the server's frames, and a worker lease carries only ffmpeg
+        // arguments: offered to a worker, the job would come back as an ordinary source-sized
+        // encode that silently replaces the original without the super-resolution that was
+        // asked for. Local-only is the only placement that keeps the promise honest.
+        Assert.Equal(WorkPlacement.LocalOnly, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.Anywhere, superResolutionEnabled: true, MediaKind.Video));
+        Assert.Equal(WorkPlacement.LocalOnly, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.PreferWorker, superResolutionEnabled: true, MediaKind.Video));
+        Assert.Equal(WorkPlacement.LocalOnly, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.WorkerOnly, superResolutionEnabled: true, MediaKind.Video));
+        Assert.Equal(WorkPlacement.LocalOnly, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.LocalOnly, superResolutionEnabled: true, MediaKind.Video));
+    }
+
+    [Fact]
+    public void Super_resolution_placement_leaves_everything_else_where_the_operator_put_it()
+    {
+        Assert.Equal(WorkPlacement.Anywhere, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.Anywhere, superResolutionEnabled: false, MediaKind.Video));
+        Assert.Equal(WorkPlacement.PreferWorker, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.PreferWorker, superResolutionEnabled: true, MediaKind.Audio));
+        Assert.Equal(WorkPlacement.WorkerOnly, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.WorkerOnly, superResolutionEnabled: true, MediaKind.Image));
+        Assert.Equal(WorkPlacement.WorkerOnly, QueueDispatcher.EffectivePlacement(
+            WorkPlacement.WorkerOnly, superResolutionEnabled: false, MediaKind.Video));
+    }
 }
