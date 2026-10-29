@@ -225,6 +225,7 @@
   >
     {#snippet body()}
       <p>{i18n.m.shared.batch_confirm_exclude_body}</p>
+      <p class="mt-2">{i18n.m.shared.batch_confirm_exclude_existing}</p>
     {/snippet}
   </ConfirmDialog>
 

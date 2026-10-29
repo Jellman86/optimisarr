@@ -1752,6 +1752,7 @@ export const zh: Messages = {
     batch_confirm_exclude_title_one: "排除 {count} 个文件？",
     batch_confirm_exclude_title_other: "排除 {count} 个文件？",
     batch_confirm_exclude_body: "所选文件将不再作为优化候选。磁盘上的内容不会被改动。",
+    batch_confirm_exclude_existing: '已排队或正在运行的任务不会被取消。如有需要，请在处理队列中单独停止。',
     previous_page: "上一页",
     next_page: "下一页",
     page_of: "{count} 的页面 {page}",
