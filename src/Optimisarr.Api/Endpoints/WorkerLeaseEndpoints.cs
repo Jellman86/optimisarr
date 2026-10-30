@@ -531,6 +531,7 @@ internal static class WorkerLeaseEndpoints
                         job.VerifiedOutputSha256 = null;
                         job.VerificationReportJson = null;
                         job.PerceptualSearchJson = null;
+                        job.SoundtrackSearchJson = null;
                         job.AdaptiveAudioBitrateKbps = null;
                         job.AdaptiveImageQuality = null;
                         job.VerifiedAt = null;
@@ -1382,6 +1383,9 @@ internal static class WorkerLeaseEndpoints
         if (media.MediaKind == MediaKind.Audio)
             return capabilities.ProtocolVersion >= 6 && AudioTarget.IsSupportedTarget(rules.TargetAudioCodec) && capabilities.AudioEncoders.Contains(
                 AudioTarget.Resolve(rules.TargetAudioCodec).Encoder, StringComparer.OrdinalIgnoreCase);
+        // Workers do not carry the per-soundtrack search contract yet; this server runs it.
+        if (job.Type == JobType.Normal && library?.AdaptiveSoundtrackQuality == true && rules.VideoAudioCodec is not null)
+            return false;
         var targetCodec = rules.TargetVideoCodec;
         return targetCodec is not null
             && WorkerEncoderCatalogue.Select(

@@ -187,6 +187,7 @@ export type LibraryRules = {
   maxLoudnessDriftLufs: number
   adaptiveAudioQuality?: boolean
   adaptiveImageQuality?: boolean
+  adaptiveSoundtrackQuality?: boolean
   imagePerceptualReportingEnabled?: boolean
   imagePerceptualGateEnabled?: boolean
   minimumImagePerceptualScore?: number | null
@@ -310,6 +311,7 @@ export function newLibraryDefaults(): SaveLibrary {
     maxLoudnessDriftLufs: 1,
     adaptiveAudioQuality: false,
     adaptiveImageQuality: false,
+    adaptiveSoundtrackQuality: false,
     imagePerceptualReportingEnabled: false,
     imagePerceptualGateEnabled: false,
     minimumImagePerceptualScore: null,
@@ -494,6 +496,17 @@ export type VerificationCheck = {
   detail: string
 }
 
+export type SoundtrackSearchSummary = {
+  encoder: string | null
+  baselineKbps: number
+  maximumDistance: number | null
+  unavailable: string | null
+  tracks: {
+    track: { sourceAudioIndex: number; outputIndex: number; language: string | null; title: string | null }
+    result: PerceptualSearchSummary['result']
+  }[]
+}
+
 export type PerceptualSearchSummary = {
   kind: 'Audio' | 'Image'
   encoder: string
@@ -513,6 +526,7 @@ export type PerceptualSearchSummary = {
 
 export type VerificationReport = {
   perceptualSearch?: PerceptualSearchSummary | null
+  soundtrackSearch?: SoundtrackSearchSummary | null
   checks: VerificationCheck[]
   imagePerceptualQuality?: ImagePerceptualReport | null
   soundtrackQuality?: SoundtrackQualityReport | null
@@ -756,6 +770,7 @@ export type Job = {
   verificationPassed: boolean | null
   verificationReportJson: string | null
   perceptualSearchJson?: string | null
+  soundtrackSearchJson?: string | null
   verifiedAt: string | null
   enqueuedAt: string
   startedAt: string | null

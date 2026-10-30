@@ -254,6 +254,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.VideoQualityStrategy = ParseEnum<VideoQualityStrategy>(snapshot.VideoQualityStrategy);
             library.AdaptiveAudioQuality = snapshot.AdaptiveAudioQuality ?? library.AdaptiveAudioQuality;
             library.AdaptiveImageQuality = snapshot.AdaptiveImageQuality ?? library.AdaptiveImageQuality;
+            library.AdaptiveSoundtrackQuality = snapshot.AdaptiveSoundtrackQuality ?? library.AdaptiveSoundtrackQuality;
             library.WorkPlacement = snapshot.WorkPlacement is null
                 ? WorkPlacement.Anywhere
                 : ParseEnum<WorkPlacement>(snapshot.WorkPlacement);
@@ -582,7 +583,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MinimumImagePerceptualScore,
         library.AdaptiveAudioQuality,
         library.AdaptiveImageQuality,
-        library.NormalizeOpusChannelLayout);
+        library.NormalizeOpusChannelLayout,
+        library.AdaptiveSoundtrackQuality);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

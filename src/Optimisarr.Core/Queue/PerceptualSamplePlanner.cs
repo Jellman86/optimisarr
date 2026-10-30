@@ -39,6 +39,50 @@ public static class PerceptualSamplePlanner
             "-ar", "48000", "-c:a", "pcm_f32le", "-f", "wav", output];
     }
 
+    /// <summary>One video soundtrack's window, decoded to the same lossless reference as standalone audio.</summary>
+    public static IReadOnlyList<string> SoundtrackReference(string source, string output, int sourceAudioIndex, PerceptualAudioWindow window)
+    {
+        if (sourceAudioIndex < 0) throw new ArgumentOutOfRangeException(nameof(sourceAudioIndex));
+        var arguments = AudioReference(source, output, window).ToArray();
+        arguments[Array.IndexOf(arguments, "0:a:0")] = $"0:a:{sourceAudioIndex}";
+        return arguments;
+    }
+
+    /// <summary>
+    /// The standalone container each search encoder is measured in. These trim encoder priming the
+    /// way the assessment expects; AAC and Opus in Matroska kept it and every sample was refused.
+    /// </summary>
+    public static string SoundtrackSampleExtension(string encoder) => encoder switch
+    {
+        "aac" => ".m4a",
+        "libopus" => ".opus",
+        "libmp3lame" => ".mp3",
+        _ => throw new ArgumentException("Unsupported soundtrack search encoder.", nameof(encoder))
+    };
+
+    /// <summary>
+    /// One soundtrack window encoded exactly as the video job will encode it: same encoder, filter
+    /// and channel handling, at the bitrate under test.
+    /// </summary>
+    public static List<string> SoundtrackCandidate(TranscodeSpec spec, string output, int sourceAudioIndex, int bitrate, PerceptualAudioWindow window)
+    {
+        Validate(window);
+        if (spec.Kind != MediaKind.Video || spec.AudioEncoder is null || bitrate <= 0 || sourceAudioIndex < 0)
+            throw new ArgumentException("Soundtrack samples require a video job that re-encodes its audio.");
+        var inputSeek = Math.Max(0, window.StartSeconds - 10);
+        var outputSeek = window.StartSeconds - inputSeek;
+        List<string> arguments = ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n", "-progress", "pipe:1",
+            .. inputSeek == 0 ? Array.Empty<string>() : ["-ss", inputSeek.ToString(CultureInfo.InvariantCulture)],
+            "-i", spec.InputPath,
+            .. outputSeek == 0 ? Array.Empty<string>() : ["-ss", outputSeek.ToString(CultureInfo.InvariantCulture)],
+            "-map", $"0:a:{sourceAudioIndex}", "-t", window.DurationSeconds.ToString(CultureInfo.InvariantCulture),
+            "-vn", "-sn", "-dn", "-map_metadata", "-1", "-c:a", spec.AudioEncoder, "-b:a", $"{bitrate}k"];
+        if (spec.DownmixToStereo) arguments.AddRange(["-ac", "2"]);
+        if (FfmpegCommandBuilder.ResolveAudioFilter(spec).Chain is { } filter) arguments.AddRange(["-af", filter]);
+        arguments.Add(output);
+        return arguments;
+    }
+
     public static TranscodeSpec AudioCandidate(TranscodeSpec spec, string output, int bitrate, PerceptualAudioWindow window)
     {
         Validate(window);

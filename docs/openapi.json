@@ -2223,6 +2223,12 @@
             "default": false,
             "type": "boolean"
           },
+          "soundtrackSearchJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "sourceSizeBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2346,6 +2352,12 @@
             ]
           },
           "adaptiveImageQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "adaptiveSoundtrackQuality": {
             "type": [
               "null",
               "boolean"
@@ -4476,6 +4488,12 @@
             ]
           },
           "adaptiveImageQuality": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "adaptiveSoundtrackQuality": {
             "type": [
               "null",
               "boolean"

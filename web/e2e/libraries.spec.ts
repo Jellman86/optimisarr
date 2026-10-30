@@ -956,6 +956,29 @@ test('disabling the soundtrack gate discards an invalid unsaved custom limit', a
   expect((await saved).postDataJSON()).toMatchObject({ soundtrackQualityGateEnabled: false, maximumSoundtrackQualityDistance: null })
 })
 
+test('soundtrack bitrate selection keeps its gate on and saves only for re-encoded audio', async ({ page }) => {
+  await mockLibraries(page, { ...library, videoAudioCodec: 'aac', videoAudioBitrateKbps: 160,
+    soundtrackQualityGateEnabled: true, maximumSoundtrackQualityDistance: 0.005 })
+  await page.goto('/#/libraries/1/configure/verify')
+  const gate = page.getByRole('checkbox', { name: 'Require soundtrack quality', exact: true })
+  const adaptive = page.getByRole('checkbox', { name: "Choose each soundtrack's bitrate by measurement", exact: true })
+  await expect(adaptive).toBeEnabled()
+  await adaptive.check()
+  await expect(gate).toBeDisabled()
+  await expect(page.getByText('Needed while soundtrack bitrates are chosen by measurement.', { exact: true })).toBeVisible()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ adaptiveSoundtrackQuality: true, soundtrackQualityGateEnabled: true,
+    maximumSoundtrackQualityDistance: 0.005 })
+})
+
+test('soundtrack bitrate selection explains why copied audio cannot use it', async ({ page }) => {
+  await mockLibraries(page, { ...library, videoAudioCodec: null, soundtrackQualityGateEnabled: true, maximumSoundtrackQualityDistance: 0.005 })
+  await page.goto('/#/libraries/1/configure/verify')
+  await expect(page.getByRole('checkbox', { name: "Choose each soundtrack's bitrate by measurement", exact: true })).toBeDisabled()
+  await expect(page.getByText('Available when soundtracks are re-encoded to AAC, Opus or MP3', { exact: false })).toBeVisible()
+})
+
 test('image quality target is chosen in Encode, requires a target and enables its gate', async ({ page }) => {
   await mockLibraries(page, { ...library, mediaType: 'Photo' })
   await page.goto('/#/libraries/1/configure/encode/quality')

@@ -27,11 +27,27 @@ public sealed class LibraryRequestParserTests
     }
 
     [Fact]
+    public void Soundtrack_quality_search_requires_re_encoded_audio_its_gate_and_this_server()
+    {
+        var request = Request() with { AdaptiveSoundtrackQuality = true, VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160 };
+        Assert.False(LibraryRequestParser.TryParse(request, out _, out _));
+        request = request with { SoundtrackQualityGateEnabled = true, MaximumSoundtrackQualityDistance = 0.001 };
+        Assert.True(LibraryRequestParser.TryParse(request, out var parsed, out _));
+        Assert.True(parsed.AdaptiveSoundtrackQuality);
+        Assert.False(LibraryRequestParser.TryParse(request with { VideoAudioCodec = "copy" }, out _, out _));
+        Assert.False(LibraryRequestParser.TryParse(request with { VideoAudioCodec = null }, out _, out _));
+        Assert.False(LibraryRequestParser.TryParse(request with { DownmixToStereo = true }, out _, out _));
+        Assert.False(LibraryRequestParser.TryParse(request with { WorkPlacement = "WorkerOnly" }, out _, out _));
+        Assert.False(LibraryRequestParser.TryParse(request with { MediaType = "Music" }, out _, out _));
+    }
+
+    [Fact]
     public void Existing_requests_keep_fixed_audio_and_image_encoding()
     {
         Assert.True(LibraryRequestParser.TryParse(Request(), out var parsed, out _));
         Assert.False(parsed.AdaptiveAudioQuality);
         Assert.False(parsed.AdaptiveImageQuality);
+        Assert.False(parsed.AdaptiveSoundtrackQuality);
     }
 
     // A baseline valid request; the path must exist because the parser verifies it.

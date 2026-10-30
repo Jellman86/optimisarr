@@ -186,6 +186,7 @@ public static class JobOperations
         job.AdaptiveAudioBitrateKbps = null;
         job.AdaptiveImageQuality = null;
         job.PerceptualSearchJson = null;
+        job.SoundtrackSearchJson = null;
         job.VmafModel = null;
         if (higherQuality)
         {

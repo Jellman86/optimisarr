@@ -67,6 +67,12 @@ public sealed record TranscodeSpec(
     /// <summary>Disposable audio quality probes exclude artwork and timed lyrics from their size and encode cost.</summary>
     public bool AudioSampleOnly { get; init; }
 
+    /// <summary>
+    /// Per-output-track rates chosen by soundtrack quality-first, in output order. Null keeps the
+    /// single library bitrate for every re-encoded track.
+    /// </summary>
+    public IReadOnlyList<int>? AudioTrackBitratesKbps { get; init; }
+
     /// <summary>Source subtitle codecs in subtitle-relative stream order, from a fresh probe.</summary>
     public IReadOnlyList<string?>? SourceSubtitleCodecs { get; init; }
 
@@ -533,7 +539,16 @@ public static class FfmpegCommandBuilder
         args.Add("-c:a");
         args.Add(spec.AudioEncoder!);
 
-        if (spec.AudioBitrateKbps is { } bitrate)
+        if (spec.AudioTrackBitratesKbps is { Count: > 0 } rates)
+        {
+            // FFmpeg addresses the output audio ordinal, which is already the retained-track order.
+            for (var track = 0; track < rates.Count; track++)
+            {
+                args.Add($"-b:a:{track}");
+                args.Add($"{rates[track]}k");
+            }
+        }
+        else if (spec.AudioBitrateKbps is { } bitrate)
         {
             args.Add("-b:a");
             args.Add($"{bitrate}k");
