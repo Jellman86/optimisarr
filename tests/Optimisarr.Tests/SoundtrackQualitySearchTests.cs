@@ -2,6 +2,7 @@ using System.Text.Json;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 
 namespace Optimisarr.Tests;
 
@@ -122,6 +123,19 @@ public sealed class SoundtrackQualitySearchTests
         Assert.Equal("96k", arguments[arguments.IndexOf("-b:a:0") + 1]);
         Assert.Equal("128k", arguments[arguments.IndexOf("-b:a:1") + 1]);
         Assert.DoesNotContain("-b:a", arguments);
+    }
+
+    [Fact]
+    public void Per_track_rates_are_only_offered_to_workers_that_accept_them()
+    {
+        var spec = new TranscodeSpec(WorkerProtocol.InputPlaceholder, WorkerProtocol.OutputPlaceholder + ".mkv", "libx265", 24, null, false,
+            AudioEncoder: "aac", AudioBitrateKbps: 160);
+        var library = FfmpegCommandBuilder.Build(spec, 0, "libx265", optimisedMarker: null);
+        var measured = FfmpegCommandBuilder.Build(spec with { AudioTrackBitratesKbps = [96, 128] }, 0, "libx265", optimisedMarker: null);
+
+        Assert.True(WorkerProtocol.MinimumForEncodeCommand(library) < WorkerProtocol.TrackBitrateVersion);
+        Assert.Equal(WorkerProtocol.TrackBitrateVersion, WorkerProtocol.MinimumForEncodeCommand(measured));
+        Assert.True(WorkerProtocol.Current >= WorkerProtocol.TrackBitrateVersion);
     }
 
     [Fact]

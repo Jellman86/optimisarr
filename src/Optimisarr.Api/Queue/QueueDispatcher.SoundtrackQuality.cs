@@ -77,86 +77,23 @@ public sealed partial class QueueDispatcher
     private async Task<SoundtrackSearchSummary> SearchSoundtracksAsync(int jobId, int attempt, JobWork work,
         SoundtrackSearchPlan plan, string sourceHash, IServiceProvider services, CancellationToken token)
     {
-        var policy = work.VerificationPolicy;
-        var bitrates = plan.Bitrates!;
-        var results = new List<SoundtrackTrackSearchResult>();
         await using var scratch = await OwnedScratchWorkspace.CreateAsync(scopeFactory, claims, _workRoot,
             jobId, attempt, Path.GetDirectoryName(work.Spec.OutputPath)!, "adaptive-quality", logger, token);
-        foreach (var track in plan.Tracks)
-        {
-            var references = new List<string>();
-            var referenceLoudness = new List<LoudnessResult>();
-            for (var index = 0; index < track.Windows.Count; index++)
+        var host = new SoundtrackSearchHost(scratch.Root,
+            async (arguments, output, seconds, cancellation) =>
             {
-                var path = Path.Combine(scratch.Root, $"reference-{track.OutputIndex}-{index}.wav");
-                try
-                {
-                    var run = await RunFfmpegAsync(jobId, path,
-                        PerceptualSamplePlanner.SoundtrackReference(work.Original.Path, path, track.SourceAudioIndex, track.Windows[index]),
-                        track.Windows[index].DurationSeconds, null, false, token, maxCandidateBytes: 32 * 1024 * 1024,
-                        progressMap: _ => AdaptiveQualityProgress.Started);
-                    if (run.ExitCode != 0) throw new InvalidOperationException(run.Error ?? "Soundtrack reference preparation failed.");
-                }
-                finally { scratch.Capture(path); }
-                references.Add(path);
-                if (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled)
-                    referenceLoudness.Add(await services.GetRequiredService<LoudnessService>().MeasureSampleAsync(path, token));
-            }
-
-            var result = await PerceptualSearchRunner.RunAsync(bitrates, async (value, candidateIndex, cancellation) =>
+                var run = await RunFfmpegAsync(jobId, output, arguments, seconds, null, false, cancellation,
+                    maxCandidateBytes: 32L * 1024 * 1024, progressMap: _ => AdaptiveQualityProgress.Started);
+                return (run.ExitCode, run.Error);
+            },
+            scratch.Capture, async path => await scratch.TryDeleteAsync(path), encodes.TrackVerification);
+        return await SoundtrackSearchRunner.RunAsync(work.Original.Path, work.Spec, work.VerificationPolicy, plan, sourceHash,
+            services, host, async (snapshot, cancellation) =>
             {
-                long bytes = 0;
-                var scores = new List<PerceptualSearchMeasurement>();
-                for (var index = 0; index < track.Windows.Count; index++)
-                {
-                    var path = Path.Combine(scratch.Root,
-                        $"candidate-{track.OutputIndex}-{candidateIndex}-{index}{PerceptualSamplePlanner.SoundtrackSampleExtension(plan.Encoder!)}");
-                    try
-                    {
-                        var run = await RunFfmpegAsync(jobId, path,
-                            PerceptualSamplePlanner.SoundtrackCandidate(work.Spec, path, track.SourceAudioIndex, value, track.Windows[index]),
-                            track.Windows[index].DurationSeconds, null, false, cancellation, maxCandidateBytes: 32L * 1024 * 1024,
-                            progressMap: _ => AdaptiveQualityProgress.Started);
-                        if (run.ExitCode != 0 || !File.Exists(path) || new FileInfo(path).Length <= 0)
-                            return new PerceptualSearchProbe(value, Math.Max(1, bytes),
-                                PerceptualSearchMeasurement.Unavailable(run.Error ?? "Soundtrack sample encoding failed."));
-                        bytes = checked(bytes + new FileInfo(path).Length);
-                        using var measurementActivity = encodes.TrackVerification();
-                        var referenceHash = await FileContentIdentity.HashAsync(references[index], cancellation);
-                        var candidateHash = await FileContentIdentity.HashAsync(path, cancellation);
-                        var report = await services.GetRequiredService<AudioQualityObservationService>()
-                            .ObserveAsync(true, MediaKind.Audio, true, false, references[index], path, null, cancellation);
-                        var measurement = PerceptualSearchEvidence.Audio(report, referenceHash, candidateHash,
-                            policy.MaximumSoundtrackQualityDistance);
-                        if (referenceLoudness.Count > 0 && measurement.Available)
-                            measurement = PerceptualAuxiliaryTargets.Audio(measurement, referenceLoudness[index],
-                                await services.GetRequiredService<LoudnessService>().MeasureSampleAsync(path, cancellation), policy);
-                        scores.Add(measurement);
-                        if (!measurement.Available) return new PerceptualSearchProbe(value, bytes, measurement);
-                    }
-                    finally
-                    {
-                        scratch.Capture(path);
-                        await scratch.TryDeleteAsync(path);
-                    }
-                }
-                return new PerceptualSearchProbe(value, bytes, new(true, scores.All(s => s.MeetsTarget), scores.Max(s => s.Score), null,
-                    WindowMeasurements: scores.ToArray(),
-                    LoudnessDriftLufs: scores.Max(s => s.LoudnessDriftLufs),
-                    SourceTruePeakDbtp: scores.Max(s => s.SourceTruePeakDbtp), CandidateTruePeakDbtp: scores.Max(s => s.CandidateTruePeakDbtp),
-                    TargetDetail: scores.FirstOrDefault(s => !s.MeetsTarget)?.TargetDetail));
-            }, token, async (snapshot, cancellation) =>
-            {
-                var progress = new SoundtrackSearchSummary(plan.Encoder, bitrates.Baseline, policy.MaximumSoundtrackQualityDistance,
-                    sourceHash, [.. results, new(track, snapshot)], null);
                 await UpdatePerceptualSearchAsync(jobId, attempt, sourceHash,
-                    job => job.SoundtrackSearchJson = JsonSerializer.Serialize(progress, ReportJsonOptions), cancellation);
+                    job => job.SoundtrackSearchJson = JsonSerializer.Serialize(snapshot, ReportJsonOptions), cancellation);
                 await NotifyAsync();
-            });
-            results.Add(new(track, result));
-            foreach (var reference in references) await scratch.TryDeleteAsync(reference);
-        }
-        return new(plan.Encoder, bitrates.Baseline, policy.MaximumSoundtrackQualityDistance, sourceHash, results, null);
+            }, token);
     }
 
     private static JobWork RebuildWorkWithSpec(JobWork work, TranscodeSpec spec)

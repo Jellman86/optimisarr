@@ -391,7 +391,9 @@ internal static class WorkerLeaseEndpoints
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == 9
+                        lastReason = requiredProtocol == WorkerProtocol.TrackBitrateVersion
+                            ? "Per-soundtrack bitrates require an updated sidecar (protocol 12)."
+                            : requiredProtocol == 9
                             ? "Picture preservation requires an updated sidecar (protocol 9)."
                             : requiredProtocol == 8
                             ? "Soundtrack quality assessment requires an updated sidecar (protocol 8)."
@@ -1383,9 +1385,6 @@ internal static class WorkerLeaseEndpoints
         if (media.MediaKind == MediaKind.Audio)
             return capabilities.ProtocolVersion >= 6 && AudioTarget.IsSupportedTarget(rules.TargetAudioCodec) && capabilities.AudioEncoders.Contains(
                 AudioTarget.Resolve(rules.TargetAudioCodec).Encoder, StringComparer.OrdinalIgnoreCase);
-        // Workers do not carry the per-soundtrack search contract yet; this server runs it.
-        if (job.Type == JobType.Normal && library?.AdaptiveSoundtrackQuality == true && rules.VideoAudioCodec is not null)
-            return false;
         var targetCodec = rules.TargetVideoCodec;
         return targetCodec is not null
             && WorkerEncoderCatalogue.Select(

@@ -539,14 +539,13 @@ internal static class LibraryRequestParser
             }
         }
 
-        // Selection runs on this server until workers carry the soundtrack search contract.
         if (request.AdaptiveSoundtrackQuality == true && (mediaType is MediaType.Music or MediaType.Photo
             || videoAudioCodec is null || videoAudioCodec.Equals("copy", StringComparison.OrdinalIgnoreCase)
             || request.SoundtrackQualityGateEnabled != true || !AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance)
-            || request.DownmixToStereo == true || workPlacement == WorkPlacement.WorkerOnly))
+            || request.DownmixToStereo == true))
         {
             error = "Adaptive soundtracks require a video or mixed library that re-encodes audio without a stereo downmix, "
-                + "the soundtrack quality gate with an explicit limit, and placement that allows this server.";
+                + "and the soundtrack quality gate with an explicit limit.";
             return false;
         }
 

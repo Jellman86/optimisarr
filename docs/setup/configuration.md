@@ -374,9 +374,15 @@ measures on the server. See [evidence and resource limits](../development/percep
 
 With **Require soundtrack quality** on, **Choose each soundtrack's bitrate by measurement** lets
 the server pick a bitrate per retained soundtrack before the full encode. It needs an explicit
-**Re-encode to** choice of AAC, Opus or MP3, no stereo downmix, and placement that allows this
-server: worker-only libraries cannot enable it, and these jobs are not offered to workers yet.
-While it is on, the soundtrack gate stays on.
+**Re-encode to** choice of AAC, Opus or MP3 and no stereo downmix. While it is on, the soundtrack
+gate stays on.
+
+The search always runs on the server, which holds the original. When a worker will encode the
+job, the server chooses the bitrates first and offers the job once they are ready; the worker
+receives a fixed per-track command. That needs sidecar protocol 12, and older sidecars are not
+offered these jobs. The worker's own soundtrack gate then measures the file it actually produced,
+so a worker encoder that behaves differently from the server's is caught by measurement rather
+than assumed equivalent.
 
 Each retained mono/stereo track is sampled in the same windows the gate uses (up to three
 30-second windows) and measured at up to four bitrates from the codec's ladder, starting at the

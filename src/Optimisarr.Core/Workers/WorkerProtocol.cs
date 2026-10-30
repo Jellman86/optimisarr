@@ -23,12 +23,16 @@ public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
     // Protocol 10 adds opt-in correlated diagnostic capture; media verification contracts are unchanged.
-    public const int Current = 11;
+    public const int Current = 12;
 
     // Advertise this only once all native runners and strict verification implement the contract.
     public const int PerceptualQualityVersion = 11;
 
+    /// <summary>Video encodes that give each output soundtrack its own measured bitrate (<c>-b:a:N</c>).</summary>
+    public const int TrackBitrateVersion = 12;
+
     public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments, MediaKind kind = MediaKind.Video) =>
+        arguments.Any(argument => argument.StartsWith("-b:a:", StringComparison.Ordinal)) ? TrackBitrateVersion :
         kind == MediaKind.Image ? PerceptualQualityVersion : arguments.Contains("-itsoffset") ? 9 : kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
             : arguments.Any(argument => argument.StartsWith("-c:s:", StringComparison.Ordinal)) ? 4 : 1;
 

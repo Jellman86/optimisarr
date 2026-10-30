@@ -27,7 +27,7 @@ public sealed class LibraryRequestParserTests
     }
 
     [Fact]
-    public void Soundtrack_quality_search_requires_re_encoded_audio_its_gate_and_this_server()
+    public void Soundtrack_quality_search_requires_re_encoded_audio_and_its_gate_on_any_placement()
     {
         var request = Request() with { AdaptiveSoundtrackQuality = true, VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160 };
         Assert.False(LibraryRequestParser.TryParse(request, out _, out _));
@@ -37,7 +37,7 @@ public sealed class LibraryRequestParserTests
         Assert.False(LibraryRequestParser.TryParse(request with { VideoAudioCodec = "copy" }, out _, out _));
         Assert.False(LibraryRequestParser.TryParse(request with { VideoAudioCodec = null }, out _, out _));
         Assert.False(LibraryRequestParser.TryParse(request with { DownmixToStereo = true }, out _, out _));
-        Assert.False(LibraryRequestParser.TryParse(request with { WorkPlacement = "WorkerOnly" }, out _, out _));
+        Assert.True(LibraryRequestParser.TryParse(request with { WorkPlacement = "WorkerOnly" }, out _, out _));
         Assert.False(LibraryRequestParser.TryParse(request with { MediaType = "Music" }, out _, out _));
     }
 

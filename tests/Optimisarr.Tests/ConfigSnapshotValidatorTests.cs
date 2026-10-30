@@ -29,7 +29,7 @@ public sealed class ConfigSnapshotValidatorTests
         film = film with { SoundtrackQualityGateEnabled = true, MaximumSoundtrackQualityDistance = 0.001 };
         Assert.True(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film] }, AllowedKeys).IsValid);
         Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film with { VideoAudioCodec = "copy" }] }, AllowedKeys).IsValid);
-        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film with { WorkPlacement = "WorkerOnly" }] }, AllowedKeys).IsValid);
+        Assert.True(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film with { WorkPlacement = "WorkerOnly" }] }, AllowedKeys).IsValid);
         var restored = System.Text.Json.JsonSerializer.Deserialize<ConfigSnapshot>(
             System.Text.Json.JsonSerializer.Serialize(Empty() with { Libraries = [film] }))!;
         Assert.True(restored.Libraries[0].AdaptiveSoundtrackQuality);
