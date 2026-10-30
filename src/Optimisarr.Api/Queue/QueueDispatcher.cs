@@ -35,6 +35,7 @@ public sealed partial class QueueDispatcher(
     IHostEnvironment environment,
     VerificationService verification,
     WorkerSamplePreparations workerSamples,
+    WorkerSoundtrackSelections soundtrackSelections,
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
     QueuePauseManager pauseManager,
@@ -1449,8 +1450,15 @@ public sealed partial class QueueDispatcher(
 
         if (work.IsDisposable && work.Spec.Kind != MediaKind.Video)
             return RemoteWorkPlan.Refused("Audio and still-image comparisons currently run on this server; choose local placement.");
-        if (!work.IsDisposable && work.AdaptiveSoundtrackQuality && work.Spec.Kind == MediaKind.Video && work.Spec.AudioEncoder is not null)
-            return RemoteWorkPlan.Refused("Adaptive soundtrack selection currently runs on this server.");
+        if (!work.IsDisposable && work.AdaptiveSoundtrackQuality && work.Spec.Kind == MediaKind.Video
+            && work.Spec.AudioEncoder is not null && !work.Spec.VideoOnly)
+        {
+            var selection = soundtrackSelections.TryTake(jobId, work.Original.Path, work.Spec, work.VerificationPolicy);
+            if (selection is null)
+                return RemoteWorkPlan.Refused("Choosing soundtrack bitrates on this server; the job will be offered when they are ready.");
+            work = RebuildWorkWithSpec(work, work.Spec with { AudioTrackBitratesKbps = selection.SelectedBitrates() })
+                with { SoundtrackSearch = selection };
+        }
 
         if (work.IsDisposable && work.Spec.ClipSeconds is { } seconds)
         {

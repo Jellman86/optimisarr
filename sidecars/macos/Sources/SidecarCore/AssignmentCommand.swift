@@ -14,6 +14,7 @@ public enum AssignmentCommandError: Error, Equatable, Sendable {
     case strayPlaceholder(String)
     case unknownHardwareDecoder(String)
     case invalidColourMetadata(option: String)
+    case invalidSoundtrackBitrate(String)
 }
 
 /// The server's argument array, checked before this machine will run it.
@@ -74,14 +75,16 @@ public struct AssignmentCommand: Sendable, Equatable {
                 index += 1
                 continue
             }
-            guard valued.contains(token) || isIndexedSubtitleCodec(token) else {
+            guard valued.contains(token) || isIndexedSubtitleCodec(token) || isIndexedAudioBitrate(token) else {
                 throw AssignmentCommandError.unknownOption(token)
             }
             guard index + 1 < body.count else {
                 throw AssignmentCommandError.optionWithoutValue(token)
             }
             let value = body[index + 1]
-            if token == "-itsoffset" {
+            if isIndexedAudioBitrate(token) {
+                guard isAudioBitrateValue(value) else { throw AssignmentCommandError.invalidSoundtrackBitrate(value) }
+            } else if token == "-itsoffset" {
                 guard let offset = Double(value), offset.isFinite, offset >= 0, offset <= 86400 else { throw AssignmentCommandError.unknownOption(value) }
             } else if token == "-color_range:v:0" {
                 guard ["tv", "pc"].contains(value) else {
@@ -121,6 +124,21 @@ public struct AssignmentCommand: Sendable, Equatable {
             result[index] = input.path
         }
         return result
+    }
+
+    // A per-soundtrack bitrate (protocol 12), addressed by output audio ordinal.
+    private static func isIndexedAudioBitrate(_ token: String) -> Bool {
+        guard token.hasPrefix("-b:a:") else { return false }
+        let suffix = String(token.dropFirst(5))
+        guard let index = Int(suffix), (0..<8).contains(index) else { return false }
+        return suffix == String(index)
+    }
+
+    private static func isAudioBitrateValue(_ value: String) -> Bool {
+        guard value.hasSuffix("k") else { return false }
+        let digits = String(value.dropLast())
+        guard let kbps = Int(digits), (8...512).contains(kbps) else { return false }
+        return digits == String(kbps)
     }
 
     private static func isIndexedSubtitleCodec(_ token: String) -> Bool {

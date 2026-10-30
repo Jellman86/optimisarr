@@ -989,11 +989,10 @@ class Harness:
                     self.report.case(label + "-soundtrack-copied", lambda w=worker: self.soundtrack("aac", w, copied=True))
                     self.report.case(label + "-soundtrack-short", lambda w=worker: self.soundtrack("aac", w, short=True))
                     self.report.case(label + "-soundtrack-long", lambda w=worker: self.soundtrack("aac", w, long=True))
-                    if worker is None:
-                        for codec in ("aac", "opus", "mp3"):
-                            self.report.case(label + "-soundtrack-adaptive-" + codec, lambda c=codec: self.soundtrack(c, adaptive=True))
-                        self.report.case(label + "-soundtrack-adaptive-filtered", lambda: self.soundtrack("aac", filtered=True, adaptive=True))
-                        self.report.case(label + "-soundtrack-adaptive-rejected", lambda: self.soundtrack("aac", reject=True, adaptive=True))
+                    for codec in ("aac", "opus", "mp3"):
+                        self.report.case(label + "-soundtrack-adaptive-" + codec, lambda c=codec, w=worker: self.soundtrack(c, w, adaptive=True))
+                    self.report.case(label + "-soundtrack-adaptive-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-adaptive-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True, adaptive=True))
                 if tier == "fleet" and not any(w["online"] and not w["revokedAt"] for w in self.workers):
                     self.report.case("soundtrack-workers", lambda: (_ for _ in ()).throw(Blocked("No soundtrack workers paired")))
                 return self.report.exit_code

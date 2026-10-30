@@ -8,7 +8,8 @@ import Foundation
 /// working across a server upgrade.
 public enum WorkerProtocol {
     public static let minimum = 1
-    public static let maximum = 11
+    // Protocol 12 accepts per-soundtrack bitrates (-b:a:N) chosen by the server.
+    public static let maximum = 12
 }
 
 /// What this machine has *proved* it can do.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run per-soundtrack bitrate selection for jobs workers encode (#332). The server chooses the bitrates in the background, without holding the claim request, then offers the job with a fixed per-track command; the worker's own soundtrack gate still measures the output. Requires sidecar protocol 12, whose workers accept only `-b:a:<n>` options with whole-kbps values from 8 to 512. Worker-only libraries can now enable the setting.
+
 - Add experimental per-soundtrack bitrate selection for video re-encodes (#332). With the soundtrack quality gate on and audio re-encoded to AAC, Opus or MP3, the server samples each retained mono/stereo soundtrack at up to four bitrates and encodes each track at the smallest one that met the limit. When any track cannot be assessed, every track keeps the library bitrate; selection never fails a job by itself, and the gate still judges the finished file. Off by default, and these jobs stay on the server until workers support the search. Queue job details show each track's chosen bitrate.
 
 - Fix Personal quality check stalling for minutes on a remote worker with a large MP4-target source. Each worker claim re-read every queued sample's complete subtitle timeline (26 s for a 5.5 GB 4K episode), so claims outlived the worker's 30-second request and the worker showed as faulted. The answer is now remembered per unchanged source and survives a claim that gives up. The preparation page also hides this server's live CPU and GPU cards when it has no readings, instead of showing dashes while a worker does the work.
