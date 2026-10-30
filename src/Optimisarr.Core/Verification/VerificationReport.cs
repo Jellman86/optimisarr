@@ -58,7 +58,8 @@ public sealed record VerificationReport(
     AudioQualityReport? AudioQuality = null,
     SoundtrackQualityReport? SoundtrackQuality = null,
     ImagePerceptualReport? ImagePerceptualQuality = null,
-    Optimisarr.Core.Queue.PerceptualSearchSummary? PerceptualSearch = null)
+    Optimisarr.Core.Queue.PerceptualSearchSummary? PerceptualSearch = null,
+    Optimisarr.Core.Queue.SoundtrackSearchSummary? SoundtrackSearch = null)
 {
     public bool HasValidStructure() => Checks is { Count: > 0 }
         && Checks.All(check => check is not null && !string.IsNullOrWhiteSpace(check.Name)

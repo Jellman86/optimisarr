@@ -146,6 +146,9 @@ public sealed class Job
     public int? AdaptiveImageQuality { get; set; }
     public string? PerceptualSearchJson { get; set; }
 
+    /// <summary>Per-soundtrack bitrate search evidence for a video re-encode (a SoundtrackSearchSummary).</summary>
+    public string? SoundtrackSearchJson { get; set; }
+
     /// <summary>
     /// The operator approved a full encode despite a sample-based size warning. The final size
     /// and quality gates still apply; this only prevents the advisory preflight from holding the

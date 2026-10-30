@@ -599,6 +599,9 @@
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
   // Music, images for Photo, and everything for a mixed "Other" library that may hold any of them.
   const showVideoOptions = $derived(isVideoType(form.mediaType))
+  // Mirrors the server: soundtracks must be re-encoded, not downmixed, and allowed to run here.
+  const soundtrackSearchAvailable = $derived(['aac', 'opus', 'mp3'].includes(form.videoAudioCodec ?? '')
+    && !form.downmixToStereo && form.workPlacement !== 'WorkerOnly')
   const showAudioOptions = $derived(isAudioType(form.mediaType))
   const showImageOptions = $derived(isImageType(form.mediaType))
 
@@ -1178,6 +1181,7 @@
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
       adaptiveAudioQuality: library.adaptiveAudioQuality ?? false,
       adaptiveImageQuality: library.adaptiveImageQuality ?? false,
+      adaptiveSoundtrackQuality: library.adaptiveSoundtrackQuality ?? false,
       imagePerceptualReportingEnabled: library.imagePerceptualReportingEnabled ?? false,
       imagePerceptualGateEnabled: library.imagePerceptualGateEnabled ?? false,
       minimumImagePerceptualScore: library.minimumImagePerceptualScore ?? null,
@@ -1282,6 +1286,7 @@
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
       adaptiveAudioQuality: showAudioOptions && form.adaptiveAudioQuality && form.audioQualityGateEnabled,
       adaptiveImageQuality: showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled,
+      adaptiveSoundtrackQuality: showVideoOptions && soundtrackSearchAvailable && !!form.adaptiveSoundtrackQuality && !!form.soundtrackQualityGateEnabled,
       imagePerceptualReportingEnabled: showImageOptions && form.imagePerceptualReportingEnabled,
       imagePerceptualGateEnabled: showImageOptions && form.imagePerceptualGateEnabled,
       minimumImagePerceptualScore: toNullableNumber(form.minimumImagePerceptualScore ?? null),
@@ -2129,8 +2134,9 @@
                 <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
               {/if}
               <div class="mt-4 border-t border-line-soft pt-4">
-                <Toggle bind:checked={form.soundtrackQualityGateEnabled}
+                <Toggle bind:checked={form.soundtrackQualityGateEnabled} disabled={form.adaptiveSoundtrackQuality}
                   label={i18n.m.soundtrack_quality.gate_label} hint={i18n.m.soundtrack_quality.gate_hint} />
+                {#if form.adaptiveSoundtrackQuality}<p class="mt-2 text-xs text-ink-3">{i18n.m.soundtrack_quality.adaptive_requires_gate}</p>{/if}
                 {#if form.soundtrackQualityGateEnabled}
                   {#if room === 'verify/advanced'}
                   <div class="mt-4 min-w-0" data-soundtrack-quality-limit>
@@ -2177,6 +2183,13 @@
                   <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
                 {/if}
               </div>
+              {#if form.soundtrackQualityGateEnabled}
+                <div class="mt-4 border-t border-line-soft pt-4" data-adaptive-soundtrack>
+                  <Toggle bind:checked={form.adaptiveSoundtrackQuality} disabled={!soundtrackSearchAvailable && !form.adaptiveSoundtrackQuality}
+                    label={i18n.m.soundtrack_quality.adaptive_label} hint={i18n.m.soundtrack_quality.adaptive_hint} />
+                  {#if !soundtrackSearchAvailable}<p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.soundtrack_quality.adaptive_unavailable}</p>{/if}
+                </div>
+              {/if}
               <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.soundtrack_quality.coverage_note}</p>
             </div>
           {/if}

@@ -20,6 +20,21 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.True(restored.Libraries[1].AdaptiveImageQuality);
     }
 
+    [Fact]
+    public void Soundtrack_quality_first_requires_its_gate_and_re_encoded_audio_and_survives_json()
+    {
+        var film = new LibrarySnapshot("Films", "/films", "Film", "ConservativeHevc", true, 0,
+            null, null, null, null, null, null, null, null, false, null) { AdaptiveSoundtrackQuality = true, VideoAudioCodec = "aac" };
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film] }, AllowedKeys).IsValid);
+        film = film with { SoundtrackQualityGateEnabled = true, MaximumSoundtrackQualityDistance = 0.001 };
+        Assert.True(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film with { VideoAudioCodec = "copy" }] }, AllowedKeys).IsValid);
+        Assert.False(ConfigSnapshotValidator.Validate(Empty() with { Libraries = [film with { WorkPlacement = "WorkerOnly" }] }, AllowedKeys).IsValid);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<ConfigSnapshot>(
+            System.Text.Json.JsonSerializer.Serialize(Empty() with { Libraries = [film] }))!;
+        Assert.True(restored.Libraries[0].AdaptiveSoundtrackQuality);
+    }
+
     private static readonly IReadOnlySet<string> AllowedKeys =
         new HashSet<string> { "queue.maxConcurrentJobs", "queue.encoderMode" };
 

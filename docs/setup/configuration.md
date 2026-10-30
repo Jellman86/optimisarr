@@ -370,6 +370,27 @@ host. Strict worker verification requires an updated protocol 8 sidecar and veri
 contract 3; measurement stays on the worker with no server fallback. Server verification mode
 measures on the server. See [evidence and resource limits](../development/perceptual-audio-image-quality-plan.md#video-soundtrack-reports-and-gate-in-development).
 
+#### Choose soundtrack bitrates by measurement (experimental)
+
+With **Require soundtrack quality** on, **Choose each soundtrack's bitrate by measurement** lets
+the server pick a bitrate per retained soundtrack before the full encode. It needs an explicit
+**Re-encode to** choice of AAC, Opus or MP3, no stereo downmix, and placement that allows this
+server: worker-only libraries cannot enable it, and these jobs are not offered to workers yet.
+While it is on, the soundtrack gate stays on.
+
+Each retained mono/stereo track is sampled in the same windows the gate uses (up to three
+30-second windows) and measured at up to four bitrates from the codec's ladder, starting at the
+library bitrate. The smallest measured bitrate that met **Maximum soundtrack difference** in
+every window becomes that track's bitrate. A track whose measurements never meet the limit
+keeps the library bitrate. If any retained track cannot be assessed (surround, unknown duration,
+more than eight tracks), the source cannot be probed or the tools are unavailable, no track is
+searched and every track keeps the library bitrate. Selection never blocks or fails the job on its
+own.
+
+The chosen rates are explanatory evidence, not approval. The finished file is measured track by
+track by the soundtrack gate exactly as without selection, and a failed gate blocks replacement.
+Queue job details show **Soundtrack bitrates** with each track's chosen rate and the reason.
+
 All other configured video, timing, stream, metadata, loudness/clipping and size gates still
 apply. A failed soundtrack gate leaves the original unchanged and adds no automatic quality
 search or retry. Replacement still quarantines the original before installing the verified

@@ -531,6 +531,7 @@ internal static class MediaAndQueueEndpoints
             job.AdaptiveAudioBitrateKbps = null;
             job.AdaptiveImageQuality = null;
             job.PerceptualSearchJson = null;
+            job.SoundtrackSearchJson = null;
             job.VmafModel = null;
             job.ErrorMessage = null;
             job.Progress = 0;

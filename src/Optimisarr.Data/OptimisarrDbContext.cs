@@ -286,6 +286,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         {
             entity.HasKey(job => job.Id);
             entity.Property(job => job.PerceptualSearchJson).HasMaxLength(262144);
+            entity.Property(job => job.SoundtrackSearchJson).HasMaxLength(1048576);
             entity.ToTable(t => t.HasCheckConstraint("CK_Jobs_PerceptualSearch", """
                 (AdaptiveAudioBitrateKbps IS NULL OR AdaptiveAudioBitrateKbps BETWEEN 8 AND 512)
                 AND (AdaptiveImageQuality IS NULL OR AdaptiveImageQuality BETWEEN 0 AND 100)

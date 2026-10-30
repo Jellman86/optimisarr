@@ -353,12 +353,14 @@ class Harness:
             self.api.post("/api/queue/resume")
 
 
-    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False):
+    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False, adaptive=False):
         self.select_worker(worker)
         name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
         name += "-long" if long else "-short-mp4" if short else ""
-        seconds = 120 if long else 12 if short else 8
+        name += "-adaptive" if adaptive else ""
+        # Adaptive selection needs more than one sample window per track.
+        seconds = 120 if long else 12 if short else 40 if adaptive else 8
         audio_seconds = seconds - 0.5 if short else seconds
         commentary_seconds = seconds - 2.5 if long else audio_seconds
         fixture = self.root / "fixtures" / (name + ".mkv")
@@ -374,7 +376,7 @@ class Harness:
             "targetVideoCodec": None, "targetContainer": "mp4" if short else "mkv", "videoAudioCodec": "copy" if copied else codec,
             "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
             "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,
-            "keepAudioLanguages": "fra" if filtered else None})
+            "keepAudioLanguages": "fra" if filtered else None, "adaptiveSoundtrackQuality": adaptive})
         job = self.wait_job(case)
         save(self.report.root / name / "job.json", job)
         verification = json.loads(job["verificationReportJson"] or "{}")
@@ -386,6 +388,20 @@ class Harness:
         else:
             location = "Worker" if worker and self.strict_worker_verification else "Server"
             validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject)
+        if adaptive:
+            search = verification.get("soundtrackSearch") or {}
+            require(search.get("unavailable") is None, f"Soundtrack selection did not run: {search.get('unavailable')}")
+            retained = [1] if filtered else [0, 1]
+            require([t["track"]["sourceAudioIndex"] for t in search["tracks"]] == retained, "Searched tracks differ from the retained tracks")
+            for output, track in enumerate(search["tracks"]):
+                decision = track["result"]["decision"]
+                require(track["track"]["outputIndex"] == output, "Soundtrack search lost the output order")
+                require(track["result"]["probes"], "Soundtrack search measured nothing")
+                # Limit 1 accepts every probe, so selection must compress; limit 0 accepts none and falls back.
+                require(decision["fellBack"] == reject, f"Unexpected soundtrack search outcome: {decision['reason']}")
+                require(decision["selectedValue"] < 128 if not reject else decision["selectedValue"] == 128,
+                        "Soundtrack search chose an unexpected bitrate")
+                require(f"-b:a:{output} {decision['selectedValue']}k" in job["ffmpegArguments"], "Full encode ignored the selected soundtrack bitrate")
             if long:
                 for track in verification["soundtrackQuality"]["tracks"]:
                     assessment = track["report"]["evidence"]["assessment"]
@@ -973,6 +989,11 @@ class Harness:
                     self.report.case(label + "-soundtrack-copied", lambda w=worker: self.soundtrack("aac", w, copied=True))
                     self.report.case(label + "-soundtrack-short", lambda w=worker: self.soundtrack("aac", w, short=True))
                     self.report.case(label + "-soundtrack-long", lambda w=worker: self.soundtrack("aac", w, long=True))
+                    if worker is None:
+                        for codec in ("aac", "opus", "mp3"):
+                            self.report.case(label + "-soundtrack-adaptive-" + codec, lambda c=codec: self.soundtrack(c, adaptive=True))
+                        self.report.case(label + "-soundtrack-adaptive-filtered", lambda: self.soundtrack("aac", filtered=True, adaptive=True))
+                        self.report.case(label + "-soundtrack-adaptive-rejected", lambda: self.soundtrack("aac", reject=True, adaptive=True))
                 if tier == "fleet" and not any(w["online"] and not w["revokedAt"] for w in self.workers):
                     self.report.case("soundtrack-workers", lambda: (_ for _ in ()).throw(Blocked("No soundtrack workers paired")))
                 return self.report.exit_code
