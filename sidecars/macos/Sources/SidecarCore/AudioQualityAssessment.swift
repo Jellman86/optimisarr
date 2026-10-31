@@ -145,8 +145,9 @@ public struct AudioQualityAssessment: Sendable {
         var duration = streamDuration.flatMap(Double.init)
         let formatTags = (object["format"] as? [String: Any])?["tags"] as? [String: Any]
         let encoder = (formatTags?.first(where: { $0.key.lowercased() == "encoder" })?.value as? String ?? "").lowercased()
-        // FFmpeg always writes a plain DURATION, so a language-suffixed one in its output is a stale copy.
-        let suffixed = !encoder.hasPrefix("lavf") && !writtenByFfmpeg
+        // FFmpeg writes a plain DURATION, which wins over any stale suffixed copy. A file with only
+        // suffixed tags had them rewritten later, except in an output this FFmpeg just wrote.
+        let suffixed = !writtenByFfmpeg
         if duration == nil, audioIndex != nil,
            let tags = audio[selected]["tags"] as? [String: Any],
            let endText = matroskaTag(tags, "DURATION", allowLanguageSuffix: suffixed) {

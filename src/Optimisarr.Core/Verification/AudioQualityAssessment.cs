@@ -55,8 +55,10 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
                 var encoder = format.TryGetProperty("tags", out var formatTags)
                     ? formatTags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("encoder", StringComparison.OrdinalIgnoreCase)).Value : default;
                 var muxedByFfmpeg = encoder.ValueKind == JsonValueKind.String && encoder.GetString()!.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase);
-                // FFmpeg always writes a plain DURATION, so a language-suffixed one in its output is a stale copy.
-                var suffixed = !muxedByFfmpeg && !writtenByFfmpeg;
+                // FFmpeg writes a plain DURATION, which wins over any stale suffixed copy. A file with only
+                // suffixed tags had them rewritten later (mkvmerge, or mkvpropedit after FFmpeg), except
+                // in an output this FFmpeg just wrote, where they can only be copies of the source's.
+                var suffixed = !writtenByFfmpeg;
                 if (!standalone && track.TryGetProperty("tags", out var tags)
                     && MatroskaTag(tags, "DURATION", suffixed) is { ValueKind: JsonValueKind.String } end)
                 {

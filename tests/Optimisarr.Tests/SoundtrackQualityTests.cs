@@ -58,7 +58,12 @@ public sealed class SoundtrackQualityTests
         var json = """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0","channels":2,"sample_rate":"48000","tags":{"language":"ita","DURATION-eng":"00:42:48.640000000","_STATISTICS_WRITING_APP-eng":"mkvmerge v51"}}],"format":{"start_time":"0","duration":"2568.661","tags":{"encoder":"libebml v1.4.1 + libmatroska v1.6.2"}}}""";
 
         Assert.Equal(2568.64, AudioQualityInput.ParseTrack(json, 0)!.DurationSeconds, 6);
-        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("libebml v1.4.1 + libmatroska v1.6.2", "Lavf62"), 0));
+        // FFmpeg muxed it and mkvpropedit later replaced the statistics (Red Dwarf, Lavf58): with no plain
+        // DURATION left, the suffixed one is the length. A delayed track would still be ambiguous.
+        var propedited = json.Replace("libebml v1.4.1 + libmatroska v1.6.2", "Lavf58.29.100").Replace("mkvmerge v51", "mkvpropedit v28.2.0");
+        Assert.Equal(2568.64, AudioQualityInput.ParseTrack(propedited, 0)!.DurationSeconds, 6);
+        Assert.Null(AudioQualityInput.ParseTrack(propedited.Replace("\"start_time\":\"0\",\"channels\"", "\"start_time\":\"0.5\",\"channels\""), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(propedited, 0, writtenByFfmpeg: true));
         Assert.Null(AudioQualityInput.ParseTrack(json.Replace(",\"_STATISTICS", ",\"DURATION-fre\":\"00:42:40.000000000\",\"_STATISTICS"), 0));
     }
 
