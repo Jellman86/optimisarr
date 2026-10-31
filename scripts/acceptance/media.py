@@ -35,7 +35,11 @@ def validate_uneven_timing_fixture(probe, times):
             "minimumGapSeconds": min(gaps), "maximumGapSeconds": max(gaps)}
 
 
-def validate_soundtrack_report(report, source_indexes, location, limit, *, passes=True):
+SOUNDTRACK_PREPARATION = "audio-f32le-48k-video-timeline-v1"
+SOUNDTRACK_DOWNMIX_PREPARATION = "audio-f32le-48k-video-timeline-stereo-downmix-v1"
+
+
+def validate_soundtrack_report(report, source_indexes, location, limit, *, passes=True, downmixed=()):
     """Check retained-track coverage and every channel independently of the server verdict."""
     require(report and not report.get("unavailableReason"), "Soundtrack assessment unavailable")
     tracks = report.get("tracks") or []
@@ -49,8 +53,12 @@ def validate_soundtrack_report(report, source_indexes, location, limit, *, passe
                 "Soundtrack measurement ran on the wrong host or was unavailable")
         evidence = quality.get("evidence") or {}
         assessment = evidence.get("assessment") or {}
-        require(evidence.get("preparation") == "audio-f32le-48k-video-timeline-v1" and assessment.get("measured"),
-                "Missing versioned soundtrack evidence")
+        downmix = source_index in downmixed
+        require(evidence.get("preparation") == (SOUNDTRACK_DOWNMIX_PREPARATION if downmix else SOUNDTRACK_PREPARATION)
+                and assessment.get("measured"), "Missing versioned soundtrack evidence")
+        reference = assessment.get("reference") or {}
+        require((reference.get("sourceChannels") is not None) == downmix and (not downmix or reference.get("channels") == 2),
+                "Downmixed soundtrack evidence is not bound to its source channels")
         require(assessment.get("referenceAudioIndex") == source_index and assessment.get("candidateAudioIndex") == index,
                 "Score belongs to a different soundtrack")
         windows = assessment.get("windows") or []

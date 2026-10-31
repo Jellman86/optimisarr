@@ -14,7 +14,8 @@ public sealed record AudioQualityAssessmentResult(
 {
     public string Metric => "zimtohrli";
     public string Revision => AudioQualityResultParser.Revision;
-    public string Preparation => ReferenceAudioIndex is null ? AudioQualityResultParser.Preparation : AudioQualityResultParser.SoundtrackPreparation;
+    public string Preparation => ReferenceAudioIndex is null ? AudioQualityResultParser.Preparation
+        : Reference?.Downmixed == true ? AudioQualityResultParser.SoundtrackDownmixPreparation : AudioQualityResultParser.SoundtrackPreparation;
     public bool Sampled => Reference is not null && Reference.DurationSeconds > 90;
     public double CoveredSeconds => Windows?.Where(w => w?.Distances is not null).Sum(w => w.Distances.Frames / 48000.0) ?? 0;
     public double? DurationDriftSeconds => Reference is null || Candidate is null ? null : Candidate.DurationSeconds - Reference.DurationSeconds;
@@ -55,7 +56,7 @@ public sealed class AudioQualityService
         MeasureAsync(referencePath, candidatePath, referenceAudioIndex, candidateAudioIndex, token);
 
     private async Task<AudioQualityAssessmentResult> MeasureAsync(string referencePath, string candidatePath,
-        int? referenceAudioIndex, int? candidateAudioIndex, CancellationToken token, FileHashes? snapshot = null)
+        int? referenceAudioIndex, int? candidateAudioIndex, CancellationToken token, FileHashes? snapshot = null, bool downmixToStereo = false)
     {
         token.ThrowIfCancellationRequested();
         referencePath = Path.GetFullPath(referencePath);
@@ -75,7 +76,7 @@ public sealed class AudioQualityService
             metricHash = hashes.Metric; ffmpegHash = hashes.Ffmpeg; ffprobeHash = hashes.Ffprobe;
             var a = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(referencePath, referenceAudioIndex is not null), token, TimeSpan.FromSeconds(30));
             var b = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(candidatePath, candidateAudioIndex is not null), token, TimeSpan.FromSeconds(30));
-            reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(a.Output, ai) : AudioQualityInput.Parse(a.Output) : null;
+            reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(a.Output, ai, downmixToStereo: downmixToStereo) : AudioQualityInput.Parse(a.Output) : null;
             candidate = b.ExitCode == 0 ? candidateAudioIndex is { } bi ? AudioQualityInput.ParseTrack(b.Output, bi, writtenByFfmpeg: true) : AudioQualityInput.Parse(b.Output) : null;
             if (reference is null || candidate is null)
                 return Result(false, "Assessment requires one known-duration mono/stereo audio track, without video or unproved channel layouts.");
@@ -91,10 +92,11 @@ public sealed class AudioQualityService
                 token.ThrowIfCancellationRequested();
                 var referencePcm = Path.Combine(scratch, "reference.raw");
                 var candidatePcm = Path.Combine(scratch, "candidate.raw");
-                foreach (var pair in new[] { (referencePath, referencePcm, referenceAudioIndex ?? 0, reference.ContainerLeadSeconds),
-                    (candidatePath, candidatePcm, candidateAudioIndex ?? 0, candidate.ContainerLeadSeconds) })
+                foreach (var pair in new[] { (referencePath, referencePcm, referenceAudioIndex ?? 0, reference.ContainerLeadSeconds, reference.Downmixed),
+                    (candidatePath, candidatePcm, candidateAudioIndex ?? 0, candidate.ContainerLeadSeconds, false) })
                 {
-                    var decode = await _run(_ffmpeg, AudioQualityCommandBuilder.Decode(pair.Item1, pair.Item2, window, pair.Item3, pair.Item4, soundtrack: referenceAudioIndex is not null),
+                    var decode = await _run(_ffmpeg, AudioQualityCommandBuilder.Decode(pair.Item1, pair.Item2, window, pair.Item3, pair.Item4,
+                        soundtrack: referenceAudioIndex is not null, downmixToStereo: pair.Item5),
                         token, TimeSpan.FromSeconds(90));
                     if (decode.ExitCode != 0) return Result(false, decode.Error ?? "Audio preparation failed.");
                     if (!File.Exists(pair.Item2) || new FileInfo(pair.Item2).Length is < 192000 or > 11520000)
@@ -147,7 +149,8 @@ public sealed class AudioQualityService
             var snapshot = await ReadHashesAsync(referencePath, candidatePath, token);
             var results = new List<AudioQualityAssessmentResult>();
             foreach (var track in tracks)
-                results.Add(await MeasureAsync(referencePath, candidatePath, track.SourceAudioIndex, track.CandidateAudioIndex, token, snapshot));
+                results.Add(await MeasureAsync(referencePath, candidatePath, track.SourceAudioIndex, track.CandidateAudioIndex, token, snapshot,
+                    track.Reference.Downmixed));
             if (await ReadHashesAsync(referencePath, candidatePath, token) != snapshot)
                 return results.Select(r => r with { Measured = false, Error = "A media file or tool changed during soundtrack assessment; the scores cannot be used." }).ToArray();
             return results;

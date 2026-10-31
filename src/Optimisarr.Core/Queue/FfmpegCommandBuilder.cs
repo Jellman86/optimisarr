@@ -562,12 +562,14 @@ public static class FfmpegCommandBuilder
     // so the resolver only sets the flag when audio is actually being re-encoded.
     private static void AppendDownmix(List<string> args, TranscodeSpec spec)
     {
-        if (spec.DownmixToStereo)
-        {
-            args.Add("-ac");
-            args.Add("2");
-        }
+        if (spec.DownmixToStereo) args.AddRange(StereoDownmixArguments);
     }
+
+    /// <summary>
+    /// The stereo downmix, shared by the encode and by every soundtrack reference that stands for it,
+    /// so a quality score always compares the output with the same downmix of its source.
+    /// </summary>
+    public static IReadOnlyList<string> StereoDownmixArguments { get; } = ["-ac", "2"];
 
     /// <summary>
     /// The audio filter this command applies, and what became of the source's surround layout.

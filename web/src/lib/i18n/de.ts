@@ -137,7 +137,7 @@ export const de: Messages = {
     maximum: "Maximale Tonspurabweichung",
     validation: "Eine maximale Tonspurabweichung zwischen 0 und 1 eingeben.",
     track: "Tonspur {track} · {language}",
-    coverage_note: "Bis zu acht beibehaltene Spuren und 90 Sekunden je Spur. Surround und Surround-Downmix werden nicht bewertet. Kopierte Spuren nutzen die bestehenden Erhaltungsprüfungen.",
+    coverage_note: "Bis zu acht beibehaltene Spuren und 90 Sekunden je Spur. Surround wird nur bei Stereo-Downmix bewertet, verglichen mit demselben Downmix der Quelle. Kopierte Spuren nutzen die bestehenden Erhaltungsprüfungen.",
     adaptive_label: "Bitrate jeder Tonspur durch Messung wählen",
     adaptive_hint: "Experimentell. Vor der vollständigen Kodierung wird jede beibehaltene Tonspur mit bis zu vier Bitraten getestet und die kleinste innerhalb Ihres Grenzwerts verwendet. Lässt sich eine Spur nicht messen, behalten alle Spuren die obige Bitrate. Die Prüfung bewertet weiterhin die fertige Datei. Die Bitraten wählt dieser Server, auch für Aufträge, die ein Worker kodiert.",
     adaptive_unavailable: "Verfügbar, wenn Tonspuren nach AAC, Opus oder MP3 neu kodiert werden.",

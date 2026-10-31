@@ -387,11 +387,14 @@ internal static class WorkerLeaseEndpoints
                     }
 
                     var requiredProtocol = WorkerProtocol.MinimumForAssignment(assignment.Arguments, assignment.Kind, assignment.VmafModel,
-                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null, assignment.FullVerification?.CountVideoFrames == true, assignment.PerceptualSearch is not null);
+                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null, assignment.FullVerification?.CountVideoFrames == true, assignment.PerceptualSearch is not null,
+                        assignment.FullVerification?.SoundtrackQuality?.DownmixToStereo == true);
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == WorkerProtocol.TrackBitrateVersion
+                        lastReason = requiredProtocol == WorkerProtocol.DownmixSoundtrackVersion
+                            ? "Soundtrack quality for a stereo downmix requires an updated sidecar (protocol 13)."
+                            : requiredProtocol == WorkerProtocol.TrackBitrateVersion
                             ? "Per-soundtrack bitrates require an updated sidecar (protocol 12)."
                             : requiredProtocol == 9
                             ? "Picture preservation requires an updated sidecar (protocol 9)."

@@ -37,7 +37,7 @@ internal static class SoundtrackSearchRunner
                     try
                     {
                         var run = await host.RunFfmpeg(
-                            PerceptualSamplePlanner.SoundtrackReference(source, path, track.SourceAudioIndex, track.Windows[index]),
+                            PerceptualSamplePlanner.SoundtrackReference(source, path, track.SourceAudioIndex, track.Windows[index], track.Input.Downmixed),
                             path, track.Windows[index].DurationSeconds, token);
                         if (run.ExitCode != 0) throw new InvalidOperationException(run.Error ?? "Soundtrack reference preparation failed.");
                     }

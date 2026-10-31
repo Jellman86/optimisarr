@@ -1601,7 +1601,7 @@ public sealed partial class QueueDispatcher(
                 work.Spec.Kind != MediaKind.Image && (work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled),
                 work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind),
                 work.Spec.Kind == MediaKind.Video && work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded)
-                    ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null,
+                    ? VerificationService.SoundtrackRequest(work.Original) : null,
                 CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null,
                 Image: work.Spec.Kind == MediaKind.Image ? new(work.VerificationPolicy.ImageQualityGateEnabled,
                     work.VerificationPolicy.ImageMetadataGateEnabled, work.VerificationPolicy.RequiresImagePerceptualQuality(work.Spec.Kind)) : null) : null,
@@ -1973,6 +1973,7 @@ public sealed partial class QueueDispatcher(
                 && media.AudioTrackCount > (spec.RemoveAudioStreamIndexes?.Count ?? 0),
             // An operator-requested stereo downmix is an intentional channel reduction.
             AudioDownmixed: spec.DownmixToStereo,
+            AudioFiltered: FfmpegCommandBuilder.ResolveAudioFilter(spec).Chain is not null,
             // A requested image downscale is an intentional dimension reduction, not corruption.
             ImageDownscaleRequested: spec.ImageScaleFilter is not null,
             // Remux-only work copies encoded video frames unchanged, so a perceptual comparison

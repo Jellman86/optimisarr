@@ -135,7 +135,7 @@ export const es: Messages = {
     maximum: "Diferencia máxima de las pistas de audio",
     validation: "Introduce una diferencia máxima de las pistas de audio entre 0 y 1.",
     track: "Pista de audio {track} · {language}",
-    coverage_note: "Hasta ocho pistas conservadas y 90 segundos por pista. No se evalúan surround ni su mezcla a estéreo. Las pistas copiadas usan las comprobaciones de conservación existentes.",
+    coverage_note: "Hasta ocho pistas conservadas y 90 segundos por pista. El surround solo se evalúa al mezclarlo a estéreo, frente a la misma mezcla del original. Las pistas copiadas usan las comprobaciones de conservación existentes.",
     adaptive_label: "Elegir la tasa de bits de cada pista de audio midiendo",
     adaptive_hint: "Experimental. Antes de la codificación completa, cada pista conservada se prueba con hasta cuatro tasas de bits y se usa la menor dentro de tu límite. Si alguna pista no puede medirse, todas mantienen la tasa indicada arriba. La comprobación sigue evaluando el archivo final. Las tasas se eligen en este servidor, también para trabajos que codifica un worker.",
     adaptive_unavailable: "Disponible cuando las pistas se recodifican a AAC, Opus o MP3.",

@@ -135,7 +135,7 @@ export const fr: Messages = {
     maximum: "Différence maximale des pistes audio",
     validation: "Saisissez une différence maximale des pistes audio entre 0 et 1.",
     track: "Piste audio {track} · {language}",
-    coverage_note: "Jusqu’à huit pistes conservées et 90 secondes par piste. Surround et réduction du surround ne sont pas évalués. Les pistes copiées utilisent les contrôles de conservation existants.",
+    coverage_note: "Jusqu’à huit pistes conservées et 90 secondes par piste. Le surround n’est évalué qu’en réduction stéréo, face à la même réduction de l’original. Les pistes copiées utilisent les contrôles de conservation existants.",
     adaptive_label: "Choisir le débit de chaque piste audio par mesure",
     adaptive_hint: "Expérimental. Avant l’encodage complet, chaque piste conservée est testée à jusqu’à quatre débits et le plus faible respectant votre limite est utilisé. Si une piste ne peut pas être mesurée, toutes gardent le débit ci-dessus. Le contrôle évalue toujours le fichier final. Les débits sont choisis sur ce serveur, y compris pour les tâches encodées par un worker.",
     adaptive_unavailable: "Disponible lorsque les pistes sont réencodées en AAC, Opus ou MP3.",

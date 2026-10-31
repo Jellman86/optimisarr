@@ -40,7 +40,8 @@ public static class PerceptualSamplePlanner
     }
 
     /// <summary>One video soundtrack's window, decoded to the same lossless reference as standalone audio.</summary>
-    public static IReadOnlyList<string> SoundtrackReference(string source, string output, int sourceAudioIndex, PerceptualAudioWindow window)
+    public static IReadOnlyList<string> SoundtrackReference(string source, string output, int sourceAudioIndex, PerceptualAudioWindow window,
+        bool downmixToStereo = false)
     {
         Validate(window);
         if (sourceAudioIndex < 0) throw new ArgumentOutOfRangeException(nameof(sourceAudioIndex));
@@ -55,7 +56,7 @@ public static class PerceptualSamplePlanner
             "-i", source, "-map", $"0:a:{sourceAudioIndex}", "-vn", "-sn", "-dn", "-map_metadata", "-1",
             "-af", string.Create(CultureInfo.InvariantCulture,
                 $"aresample=48000,atrim=start_sample={first},asetpts=PTS-STARTPTS,apad,atrim=end_sample={frames}"),
-            "-ar", "48000", "-c:a", "pcm_f32le", "-f", "wav", output];
+            "-ar", "48000", .. downmixToStereo ? FfmpegCommandBuilder.StereoDownmixArguments : [], "-c:a", "pcm_f32le", "-f", "wav", output];
     }
 
     /// <summary>
@@ -82,7 +83,7 @@ public static class PerceptualSamplePlanner
             throw new ArgumentException("Soundtrack samples require a video job that re-encodes its audio.");
         List<string> arguments = ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n", "-progress", "pipe:1",
             "-i", reference, "-map", "0:a:0", "-vn", "-sn", "-dn", "-map_metadata", "-1", "-c:a", spec.AudioEncoder, "-b:a", $"{bitrate}k"];
-        if (spec.DownmixToStereo) arguments.AddRange(["-ac", "2"]);
+        // The reference already carries the job's stereo downmix when there is one.
         if (FfmpegCommandBuilder.ResolveAudioFilter(spec).Chain is { } filter) arguments.AddRange(["-af", filter]);
         arguments.Add(output);
         return arguments;

@@ -2,6 +2,10 @@ import Foundation
 
 public struct SoundtrackQualityRequest: Codable, Sendable, Equatable {
     public let removedSourceAudioIndexes: [Int]
+    /// The encode downmixes to stereo, so mono and known-layout surround tracks are measured against that downmix.
+    public var downmixToStereo: Bool? = nil
+    /// The encode applies an audio filter, which a sampled downmix reference cannot reproduce.
+    public var audioFiltered: Bool? = nil
 }
 public struct SoundtrackQualityPair: Codable, Sendable {
     let sourceAudioIndex: Int
@@ -49,11 +53,14 @@ public struct SoundtrackQualityAssessment: Sendable {
             throw Failure("Assessment requires every retained soundtrack, with at most eight tracks.")
         }
         return try retained.enumerated().map { outputIndex, sourceIndex in
-            guard let reference = AudioQualityAssessment.profile(sourceProbe, audioIndex: sourceIndex),
+            guard let reference = AudioQualityAssessment.profile(sourceProbe, audioIndex: sourceIndex, downmixToStereo: request.downmixToStereo == true),
                   let candidate = AudioQualityAssessment.profile(candidateProbe, audioIndex: outputIndex, writtenByFfmpeg: true),
                   reference.channels == candidate.channels, reference.channelLayout == candidate.channelLayout,
                   abs(reference.durationSeconds - candidate.durationSeconds) <= 0.1 else {
-                throw Failure("Soundtrack \(outputIndex + 1): assessment supports matching known-duration mono/stereo tracks. Surround and surround downmix assessment are not available.")
+                throw Failure("Soundtrack \(outputIndex + 1): assessment supports matching known-duration mono/stereo tracks, and surround with a known layout when the library downmixes to stereo.")
+            }
+            guard !(reference.downmixed && request.audioFiltered == true) else {
+                throw Failure("Soundtrack \(outputIndex + 1): a downmixed track cannot be assessed with an audio filter, which a sampled reference cannot reproduce.")
             }
             let tags = source[sourceIndex]["tags"] as? [String: Any]
             let language = (tags?["language"] as? String)?.trimmingCharacters(in: .whitespaces).lowercased()
@@ -77,7 +84,8 @@ public struct SoundtrackQualityAssessment: Sendable {
             for pair in pairs {
                 let evidence = try await AudioQualityAssessment(runner: runner, hash: hash).measure(ffmpeg: ffmpeg, ffprobe: ffprobe,
                     metric: metric, source: source, candidate: candidate, sourceProbe: sourceProbe, candidateProbe: candidateProbe,
-                    scratch: scratch, sourceAudioIndex: pair.sourceAudioIndex, candidateAudioIndex: pair.candidateAudioIndex, sharedHashes: hashes)
+                    scratch: scratch, sourceAudioIndex: pair.sourceAudioIndex, candidateAudioIndex: pair.candidateAudioIndex, sharedHashes: hashes,
+                    downmixToStereo: request.downmixToStereo == true)
                 results.append(.init(track: pair, report: .init(evidence: evidence.assessment.measured ? evidence : nil,
                     unavailableReason: evidence.assessment.error)))
             }
