@@ -135,7 +135,7 @@ export const it: Messages = {
     maximum: "Differenza massima delle tracce audio",
     validation: "Inserisci una differenza massima delle tracce audio tra 0 e 1.",
     track: "Traccia audio {track} · {language}",
-    coverage_note: "Fino a otto tracce mantenute e 90 secondi per traccia. Surround e riduzione surround non sono valutati. Le tracce copiate usano i controlli di conservazione esistenti.",
+    coverage_note: "Fino a otto tracce mantenute e 90 secondi per traccia. Il surround è valutato solo con riduzione stereo, rispetto alla stessa riduzione dell’originale. Le tracce copiate usano i controlli di conservazione esistenti.",
     adaptive_label: "Scegli il bitrate di ogni traccia audio misurandolo",
     adaptive_hint: "Sperimentale. Prima della codifica completa, ogni traccia mantenuta viene provata con fino a quattro bitrate e si usa il più basso entro il tuo limite. Se una traccia non può essere misurata, tutte mantengono il bitrate sopra. Il controllo valuta comunque il file finale. I bitrate vengono scelti su questo server, anche per i lavori codificati da un worker.",
     adaptive_unavailable: "Disponibile quando le tracce vengono ricodificate in AAC, Opus o MP3.",

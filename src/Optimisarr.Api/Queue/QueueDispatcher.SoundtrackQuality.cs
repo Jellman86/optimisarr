@@ -30,7 +30,7 @@ public sealed partial class QueueDispatcher
         var probe = await scope.ServiceProvider.GetRequiredService<IMediaProbeService>().ProbeAsync(work.Original.Path, token);
         var plan = probe is { Success: true, RawJson: { } json }
             ? SoundtrackSearchPlanner.Plan(json, spec.RemoveAudioStreamIndexes, spec.AudioEncoder, spec.AudioBitrateKbps,
-                spec.DownmixToStereo, work.VerificationPolicy)
+                spec.DownmixToStereo, work.VerificationPolicy, FfmpegCommandBuilder.ResolveAudioFilter(spec).Chain is not null)
             : new SoundtrackSearchPlan(spec.AudioEncoder, null, [], "The source could not be probed.");
 
         SoundtrackSearchSummary summary;

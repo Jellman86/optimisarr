@@ -137,7 +137,7 @@ export const en = {
     maximum: "Maximum soundtrack difference",
     validation: "Enter a maximum soundtrack difference between 0 and 1.",
     track: "Soundtrack {track} · {language}",
-    coverage_note: "Up to eight retained tracks and 90 seconds per track. Surround and surround downmix assessment are unavailable. Copied soundtracks use existing retention checks.",
+    coverage_note: "Up to eight retained tracks and 90 seconds per track. Surround is assessed only when downmixed to stereo, against the same downmix of the source. Copied soundtracks use existing retention checks.",
     adaptive_label: "Choose each soundtrack's bitrate by measurement",
     adaptive_hint: "Experimental. Before the full encode, each retained soundtrack is sampled at up to four bitrates and the smallest within your limit is used. If any track cannot be measured, every track keeps the bitrate above. The gate still judges the finished file. Bitrates are chosen on this server, including for jobs a worker encodes.",
     adaptive_unavailable: "Available when soundtracks are re-encoded to AAC, Opus or MP3.",

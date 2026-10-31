@@ -32,7 +32,7 @@ public sealed class SoundtrackQualitySearchTests
     }
 
     [Theory]
-    [InlineData(6, "Surround")]
+    [InlineData(6, "surround with a known layout when the library downmixes")]
     [InlineData(2, null)]
     public void Any_retained_track_outside_the_assessable_domain_disables_the_whole_search(int channels, string? expected)
     {
@@ -71,14 +71,21 @@ public sealed class SoundtrackQualitySearchTests
     }
 
     [Fact]
-    public void A_stereo_downmix_is_searched_only_when_every_retained_track_is_already_stereo()
+    public void A_stereo_downmix_searches_every_track_against_its_downmixed_reference()
     {
-        // The downmix is one global -ac 2: a no-op for stereo, but it turns mono into stereo and
-        // folds surround, neither of which a stereo sample of the source can stand for.
-        Assert.Null(SoundtrackSearchPlanner.Plan(Probe(Track(2, "eng"), Track(2, "fre")), [], "aac", 160, true, Gated).Unavailable);
-        Assert.Contains("already stereo", SoundtrackSearchPlanner.Plan(Probe(Track(2, "eng"), Track(1, "eng")), [], "aac", 160, true, Gated).Unavailable);
-        Assert.NotNull(SoundtrackSearchPlanner.Plan(Probe(Track(6, "eng")), [], "aac", 160, true, Gated).Unavailable);
-        Assert.Null(SoundtrackSearchPlanner.Plan(Probe(Track(2, "eng"), Track(6, "eng")), [1], "aac", 160, true, Gated).Unavailable);
+        // The reference is each window through the job's own -ac 2, so surround and mono tracks are
+        // searched as the stereo they will become. An explicit filter cannot be reproduced on a window.
+        var plan = SoundtrackSearchPlanner.Plan(Probe(Track(6, "eng"), Track(1, "eng"), Track(2, "fre")), [], "aac", 160, true, Gated);
+        Assert.Null(plan.Unavailable);
+        Assert.Equal([6, 1, null], plan.Tracks.Select(track => track.Input.SourceChannels));
+        Assert.All(plan.Tracks, track => Assert.Equal(2, track.Input.Channels));
+        Assert.Contains("audio filter", SoundtrackSearchPlanner.Plan(Probe(Track(6, "eng")), [], "aac", 160, true, Gated, audioFiltered: true).Unavailable);
+        Assert.Null(SoundtrackSearchPlanner.Plan(Probe(Track(2, "eng")), [], "aac", 160, true, Gated, audioFiltered: true).Unavailable);
+        Assert.NotNull(SoundtrackSearchPlanner.Plan(Probe(Track(6, "eng")), [], "aac", 160, false, Gated).Unavailable);
+
+        var reference = PerceptualSamplePlanner.SoundtrackReference("film.mkv", "r.wav", 0, plan.Tracks[0].Windows[0],
+            downmixToStereo: plan.Tracks[0].Input.Downmixed).ToList();
+        Assert.Equal(["-ac", "2"], reference.Skip(reference.IndexOf("-ac")).Take(2));
     }
 
     [Fact]

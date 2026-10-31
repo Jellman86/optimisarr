@@ -9,7 +9,8 @@ import Foundation
 public enum WorkerProtocol {
     public static let minimum = 1
     // Protocol 12 accepts per-soundtrack bitrates (-b:a:N) chosen by the server.
-    public static let maximum = 12
+    // Protocol 13 measures a downmixed soundtrack against the same downmix of its source.
+    public static let maximum = 13
 }
 
 /// What this machine has *proved* it can do.

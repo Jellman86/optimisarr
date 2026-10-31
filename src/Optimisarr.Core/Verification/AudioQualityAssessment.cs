@@ -28,14 +28,23 @@ public static class AudioQualityWindowPlanner
     }
 }
 
-public sealed record AudioQualityInput(double DurationSeconds, int Channels, int SampleRate, string ChannelLayout, double ContainerLeadSeconds = 0)
+/// <param name="SourceChannels">Set when this stereo reference is the source track through the job's stereo
+/// downmix; it binds the evidence to what was downmixed. Null for a track measured as it is.</param>
+public sealed record AudioQualityInput(double DurationSeconds, int Channels, int SampleRate, string ChannelLayout, double ContainerLeadSeconds = 0,
+    int? SourceChannels = null, string? SourceChannelLayout = null)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool Downmixed => SourceChannels is not null;
+
     public static AudioQualityInput? Parse(string json)
         => ParseTrack(json, 0, standalone: true);
 
     /// <param name="writtenByFfmpeg">The file is an output this FFmpeg just muxed, so its plain DURATION tag is
     /// FFmpeg's own end timestamp even when stale statistics were copied from the source.</param>
-    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false, bool writtenByFfmpeg = false)
+    /// <param name="downmixToStereo">The job downmixes to stereo: a mono or known-layout surround track
+    /// becomes a stereo reference recording its source channels; it is never a standalone input.</param>
+    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false, bool writtenByFfmpeg = false,
+        bool downmixToStereo = false)
     {
         try
         {
@@ -80,9 +89,19 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
                 else if (!standalone || !double.TryParse(doc.RootElement.GetProperty("format").GetProperty("duration").GetString(),
                     NumberStyles.Float, CultureInfo.InvariantCulture, out duration)) return null;
             }
-            if (AudioQualityWindowPlanner.Plan(duration).Count == 0 || channels is not (1 or 2) || sampleRate is < 8000 or > 384000) return null;
-            var expectedLayout = channels == 1 ? "mono" : "stereo";
+            if (AudioQualityWindowPlanner.Plan(duration).Count == 0 || sampleRate is < 8000 or > 384000) return null;
             var layout = track.TryGetProperty("channel_layout", out var l) ? l.GetString() : null;
+            int? sourceChannels = null;
+            string? sourceLayout = null;
+            if (downmixToStereo && !standalone && channels != 2)
+            {
+                // A surround downmix follows the layout's own matrix; without a layout it would be a guess.
+                if (channels == 1 ? !string.IsNullOrEmpty(layout) && layout != "mono" : channels is < 3 or > 8 || string.IsNullOrWhiteSpace(layout))
+                    return null;
+                (sourceChannels, sourceLayout, channels, layout) = (channels, channels == 1 ? "mono" : layout, 2, null);
+            }
+            if (channels is not (1 or 2)) return null;
+            var expectedLayout = channels == 1 ? "mono" : "stereo";
             if (!string.IsNullOrEmpty(layout) && layout != expectedLayout) return null;
             var lead = 0.0;
             if (!standalone)
@@ -95,7 +114,7 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
                     lead = Start(video) - Start(doc.RootElement.GetProperty("format"));
                 if (!double.IsFinite(lead) || lead is < 0 or > 0.1) return null;
             }
-            return new(duration, channels, sampleRate, expectedLayout, lead);
+            return new(duration, channels, sampleRate, expectedLayout, lead, sourceChannels, sourceLayout);
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException or ArgumentNullException)
         { return null; }
@@ -132,8 +151,10 @@ public static class AudioQualityCommandBuilder
         // before it opens the input, including during the very first qualification.
         ["-protocol_whitelist", "file", "-format_whitelist", soundtrack ? SoundtrackFormats : AudioFormats];
 
-    public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window, int audioIndex = 0, double containerLeadSeconds = 0, bool soundtrack = false)
+    public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window, int audioIndex = 0, double containerLeadSeconds = 0, bool soundtrack = false,
+        bool downmixToStereo = false)
     {
+        if (downmixToStereo && !soundtrack) throw new ArgumentException("Only a soundtrack reference is downmixed.", nameof(downmixToStereo));
         ArgumentOutOfRangeException.ThrowIfNegative(audioIndex);
         if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
         var seek = window.StartSeconds + containerLeadSeconds;
@@ -149,7 +170,9 @@ public static class AudioQualityCommandBuilder
         .. outputSeek == 0 ? Array.Empty<string>() : ["-ss", outputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
         "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
         "-vn", "-sn", "-dn", "-ar", "48000",
-        .. soundtrack ? new[] { "-af", $"aresample=48000,atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [], "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
+        .. soundtrack ? new[] { "-af", $"aresample=48000,atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [],
+        .. downmixToStereo ? Queue.FfmpegCommandBuilder.StereoDownmixArguments : [],
+        "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
         ];
     }
 }
@@ -164,6 +187,10 @@ public static class AudioQualityResultParser
     public const string Revision = "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3";
     public const string Preparation = "audio-f32le-48k-native-defaults-v1";
     public const string SoundtrackPreparation = "audio-f32le-48k-video-timeline-v1";
+    /// <summary>The reference is the source track through the job's stereo downmix.</summary>
+    public const string SoundtrackDownmixPreparation = "audio-f32le-48k-video-timeline-stereo-downmix-v1";
+
+    public static bool IsSoundtrack(string preparation) => preparation is SoundtrackPreparation or SoundtrackDownmixPreparation;
 
     public static AudioQualityDistances? Parse(string json, int channels, double durationSeconds)
     {

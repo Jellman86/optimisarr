@@ -120,4 +120,16 @@ public class WorkerProtocolTests
     {
         Assert.True(WorkerProtocol.Current >= WorkerProtocol.MinimumSupported);
     }
+
+    [Fact]
+    public void A_downmixed_soundtrack_gate_is_offered_only_to_workers_that_build_the_same_downmix()
+    {
+        // An older worker would compare the stereo output with the surround source and refuse it,
+        // spending a whole encode to learn nothing.
+        Assert.Equal(WorkerProtocol.DownmixSoundtrackVersion, WorkerProtocol.MinimumForAssignment(["-c:v:0", "libx265"],
+            Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", false, measuresSoundtracks: true, measuresDownmixedSoundtracks: true));
+        Assert.Equal(8, WorkerProtocol.MinimumForAssignment(["-c:v:0", "libx265"],
+            Optimisarr.Core.Domain.MediaKind.Video, "vmaf_v1.0.16_3d0h", false, measuresSoundtracks: true));
+        Assert.True(WorkerProtocol.Current >= WorkerProtocol.DownmixSoundtrackVersion);
+    }
 }

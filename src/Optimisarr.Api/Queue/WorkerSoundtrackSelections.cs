@@ -72,7 +72,8 @@ public sealed class WorkerSoundtrackSelections(
             await using var scope = scopes.CreateAsyncScope();
             var probe = await scope.ServiceProvider.GetRequiredService<IMediaProbeService>().ProbeAsync(source, stopping);
             var plan = probe is { Success: true, RawJson: { } json }
-                ? SoundtrackSearchPlanner.Plan(json, spec.RemoveAudioStreamIndexes, spec.AudioEncoder, spec.AudioBitrateKbps, spec.DownmixToStereo, policy)
+                ? SoundtrackSearchPlanner.Plan(json, spec.RemoveAudioStreamIndexes, spec.AudioEncoder, spec.AudioBitrateKbps, spec.DownmixToStereo, policy,
+                    FfmpegCommandBuilder.ResolveAudioFilter(spec).Chain is not null)
                 : new SoundtrackSearchPlan(spec.AudioEncoder, null, [], "The source could not be probed.");
             if (plan.Unavailable is { } refusal || plan.Bitrates is null) return Unchosen(plan.Unavailable ?? "No bitrate plan.");
             using var peak = resources.ReservePeak(MediaKind.Audio, workRoot);
