@@ -52,6 +52,41 @@ public sealed class SoundtrackQualityTests
     }
 
     [Fact]
+    public void Mkvmerge_language_suffixed_statistics_give_the_track_length()
+    {
+        // mkvmerge writes only DURATION-eng when the statistics tags carry a language.
+        var json = """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0","channels":2,"sample_rate":"48000","tags":{"language":"ita","DURATION-eng":"00:42:48.640000000","_STATISTICS_WRITING_APP-eng":"mkvmerge v51"}}],"format":{"start_time":"0","duration":"2568.661","tags":{"encoder":"libebml v1.4.1 + libmatroska v1.6.2"}}}""";
+
+        Assert.Equal(2568.64, AudioQualityInput.ParseTrack(json, 0)!.DurationSeconds, 6);
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("libebml v1.4.1 + libmatroska v1.6.2", "Lavf62"), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace(",\"_STATISTICS", ",\"DURATION-fre\":\"00:42:40.000000000\",\"_STATISTICS"), 0));
+    }
+
+    [Fact]
+    public void An_output_this_ffmpeg_wrote_reads_its_own_end_tag_despite_copied_statistics()
+    {
+        // FFmpeg rewrites DURATION as an end timestamp but copies the source's stale mkvmerge statistics.
+        var json = """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0.019","channels":2,"sample_rate":"48000","tags":{"language":"eng","DURATION":"00:11:48.199000000","DURATION-eng":"00:11:48.139000000","_STATISTICS_WRITING_APP":"mkvmerge v9.6.0"}}],"format":{"start_time":"0","duration":"708.285","tags":{"encoder":"Lavf62.3.103"}}}""";
+
+        Assert.Null(AudioQualityInput.ParseTrack(json, 0));
+        Assert.Equal(708.18, AudioQualityInput.ParseTrack(json, 0, writtenByFfmpeg: true)!.DurationSeconds, 6);
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("\"DURATION\":\"00:11:48.199000000\",", ""), 0, writtenByFfmpeg: true));
+    }
+
+    [Fact]
+    public void Mp4_outputs_that_cannot_carry_track_titles_keep_language_identity()
+    {
+        var source = Probe(Track("por", "Brazilian"), Track("eng", "English"));
+        var mp4 = Probe(Track("por", null), Track("eng", null)).Replace("\"start_time\":\"0\"}}", "\"start_time\":\"0\",\"format_name\":\"mov,mp4,m4a,3gp,3g2,mj2\"}}");
+
+        Assert.Null(SoundtrackQualityPlanner.Plan(source, mp4, new([])).Error);
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, Probe(Track("por", null), Track("eng", null)), new([])).Error);
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, mp4.Replace("\"por\"", "\"spa\""), new([])).Error);
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, Probe(Track("por", "English"), Track("eng", "Brazilian"))
+            .Replace("\"start_time\":\"0\"}}", "\"start_time\":\"0\",\"format_name\":\"mov,mp4,m4a,3gp,3g2,mj2\"}}"), new([])).Error);
+    }
+
+    [Fact]
     public void Matroska_track_end_tags_keep_short_soundtracks_inside_their_own_timeline()
     {
         var source = Probe(Track(duration: "12", start: "-0.021"))
@@ -86,7 +121,7 @@ public sealed class SoundtrackQualityTests
         format = new { duration = "3", start_time = "0" }
     });
 
-    internal static object Track(string language = "eng", string title = "Main", int channels = 2,
+    internal static object Track(string language = "eng", string? title = "Main", int channels = 2,
         string start = "0", string duration = "3") => new
     {
         codec_type = "audio", codec_name = "aac", channels, sample_rate = "48000",

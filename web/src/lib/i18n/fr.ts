@@ -138,7 +138,7 @@ export const fr: Messages = {
     coverage_note: "Jusqu’à huit pistes conservées et 90 secondes par piste. Surround et réduction du surround ne sont pas évalués. Les pistes copiées utilisent les contrôles de conservation existants.",
     adaptive_label: "Choisir le débit de chaque piste audio par mesure",
     adaptive_hint: "Expérimental. Avant l’encodage complet, chaque piste conservée est testée à jusqu’à quatre débits et le plus faible respectant votre limite est utilisé. Si une piste ne peut pas être mesurée, toutes gardent le débit ci-dessus. Le contrôle évalue toujours le fichier final. Les débits sont choisis sur ce serveur, y compris pour les tâches encodées par un worker.",
-    adaptive_unavailable: "Disponible lorsque les pistes sont réencodées en AAC, Opus ou MP3 sans réduction stéréo.",
+    adaptive_unavailable: "Disponible lorsque les pistes sont réencodées en AAC, Opus ou MP3.",
     adaptive_requires_gate: "Nécessaire tant que les débits des pistes sont choisis par mesure.",
     search_title: "Débits des pistes audio",
     search_hint: "Choisis à partir de courts extraits avant l’encodage complet. Ils expliquent les débits sans approuver le remplacement. Le contrôle de qualité des pistes évalue le fichier final.",

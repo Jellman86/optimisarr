@@ -541,10 +541,9 @@ internal static class LibraryRequestParser
 
         if (request.AdaptiveSoundtrackQuality == true && (mediaType is MediaType.Music or MediaType.Photo
             || videoAudioCodec is null || videoAudioCodec.Equals("copy", StringComparison.OrdinalIgnoreCase)
-            || request.SoundtrackQualityGateEnabled != true || !AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance)
-            || request.DownmixToStereo == true))
+            || request.SoundtrackQualityGateEnabled != true || !AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance)))
         {
-            error = "Adaptive soundtracks require a video or mixed library that re-encodes audio without a stereo downmix, "
+            error = "Adaptive soundtracks require a video or mixed library that re-encodes audio, "
                 + "and the soundtrack quality gate with an explicit limit.";
             return false;
         }

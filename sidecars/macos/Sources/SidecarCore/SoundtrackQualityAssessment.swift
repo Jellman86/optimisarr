@@ -50,7 +50,7 @@ public struct SoundtrackQualityAssessment: Sendable {
         }
         return try retained.enumerated().map { outputIndex, sourceIndex in
             guard let reference = AudioQualityAssessment.profile(sourceProbe, audioIndex: sourceIndex),
-                  let candidate = AudioQualityAssessment.profile(candidateProbe, audioIndex: outputIndex),
+                  let candidate = AudioQualityAssessment.profile(candidateProbe, audioIndex: outputIndex, writtenByFfmpeg: true),
                   reference.channels == candidate.channels, reference.channelLayout == candidate.channelLayout,
                   abs(reference.durationSeconds - candidate.durationSeconds) <= 0.1 else {
                 throw Failure("Soundtrack \(outputIndex + 1): assessment supports matching known-duration mono/stereo tracks. Surround and surround downmix assessment are not available.")

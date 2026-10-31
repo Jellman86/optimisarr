@@ -64,11 +64,21 @@ public sealed class SoundtrackQualitySearchTests
         var one = Probe(Track(2, "eng"));
         Assert.NotNull(SoundtrackSearchPlanner.Plan(one, [], "flac", 160, false, Gated).Unavailable);
         Assert.NotNull(SoundtrackSearchPlanner.Plan(one, [], null, 160, false, Gated).Unavailable);
-        Assert.NotNull(SoundtrackSearchPlanner.Plan(one, [], "aac", 160, true, Gated).Unavailable);
 
         var nine = Probe(Enumerable.Range(0, 9).Select(_ => Track(2, "eng")).ToArray());
         Assert.Contains("eight", SoundtrackSearchPlanner.Plan(nine, [], "aac", 160, false, Gated).Unavailable);
         Assert.Null(SoundtrackSearchPlanner.Plan(nine, [8], "aac", 160, false, Gated).Unavailable);
+    }
+
+    [Fact]
+    public void A_stereo_downmix_is_searched_only_when_every_retained_track_is_already_stereo()
+    {
+        // The downmix is one global -ac 2: a no-op for stereo, but it turns mono into stereo and
+        // folds surround, neither of which a stereo sample of the source can stand for.
+        Assert.Null(SoundtrackSearchPlanner.Plan(Probe(Track(2, "eng"), Track(2, "fre")), [], "aac", 160, true, Gated).Unavailable);
+        Assert.Contains("already stereo", SoundtrackSearchPlanner.Plan(Probe(Track(2, "eng"), Track(1, "eng")), [], "aac", 160, true, Gated).Unavailable);
+        Assert.NotNull(SoundtrackSearchPlanner.Plan(Probe(Track(6, "eng")), [], "aac", 160, true, Gated).Unavailable);
+        Assert.Null(SoundtrackSearchPlanner.Plan(Probe(Track(2, "eng"), Track(6, "eng")), [1], "aac", 160, true, Gated).Unavailable);
     }
 
     [Fact]
@@ -85,7 +95,7 @@ public sealed class SoundtrackQualitySearchTests
     public void Reference_and_candidate_samples_address_one_source_track_without_overwriting()
     {
         var window = new PerceptualAudioWindow(600, 30);
-        var reference = PerceptualSamplePlanner.SoundtrackReference("film with spaces.mkv", "reference.wav", 2, window);
+        var reference = PerceptualSamplePlanner.SoundtrackReference("film with spaces.mkv", "reference.wav", 2, window).ToList();
         Assert.Contains("0:a:2", reference);
         Assert.Contains("pcm_f32le", reference);
         Assert.Contains("-n", reference);
@@ -94,15 +104,36 @@ public sealed class SoundtrackQualitySearchTests
 
         var spec = new TranscodeSpec("film with spaces.mkv", "film.mkv", "libx265", 24, null, false,
             AudioEncoder: "libopus", AudioBitrateKbps: 128, AudioFilter: "volume=1.0");
-        var candidate = PerceptualSamplePlanner.SoundtrackCandidate(spec, "candidate.mka", 2, 96, window);
-        Assert.Contains("0:a:2", candidate);
+        var candidate = PerceptualSamplePlanner.SoundtrackCandidate(spec, "reference.wav", "candidate.opus", 96, window);
         Assert.Equal("libopus", candidate[candidate.IndexOf("-c:a") + 1]);
         Assert.Equal("96k", candidate[candidate.IndexOf("-b:a") + 1]);
         Assert.Equal("volume=1.0", candidate[candidate.IndexOf("-af") + 1]);
         Assert.Contains("-vn", candidate);
         Assert.Contains("-n", candidate);
         Assert.DoesNotContain("-y", candidate);
-        Assert.Equal("candidate.mka", candidate[^1]);
+        Assert.Equal("candidate.opus", candidate[^1]);
+    }
+
+    [Fact]
+    public void A_lossy_source_window_is_prepared_at_its_exact_length_and_the_candidate_encodes_that_same_audio()
+    {
+        // A lossy source decodes in whole packets, so a plain -t cut misses the window by hundreds of
+        // samples and the assessment refuses the pair. Pad and trim the reference to the window, then
+        // encode the candidate from it so the only difference measured is the codec under test.
+        var window = new PerceptualAudioWindow(339, 30);
+        var reference = PerceptualSamplePlanner.SoundtrackReference("film.mkv", "reference.wav", 0, window).ToList();
+        Assert.Equal("329", reference[reference.IndexOf("-ss") + 1]);
+        Assert.Single(reference, argument => argument == "-ss");
+        Assert.DoesNotContain("-t", reference);
+        Assert.Equal("aresample=48000,atrim=start_sample=480000,asetpts=PTS-STARTPTS,apad,atrim=end_sample=1440000",
+            reference[reference.IndexOf("-af") + 1]);
+
+        var spec = new TranscodeSpec("film.mkv", "out.mkv", "libx265", 24, null, false, AudioEncoder: "aac", AudioBitrateKbps: 128);
+        var candidate = PerceptualSamplePlanner.SoundtrackCandidate(spec, "reference.wav", "candidate.m4a", 96, window);
+        Assert.Equal("reference.wav", candidate[candidate.IndexOf("-i") + 1]);
+        Assert.Single(candidate, argument => argument == "-i");
+        Assert.DoesNotContain("-ss", candidate);
+        Assert.DoesNotContain("film.mkv", candidate);
     }
 
     [Theory]

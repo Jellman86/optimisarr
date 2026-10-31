@@ -76,7 +76,7 @@ public sealed class AudioQualityService
             var a = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(referencePath, referenceAudioIndex is not null), token, TimeSpan.FromSeconds(30));
             var b = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(candidatePath, candidateAudioIndex is not null), token, TimeSpan.FromSeconds(30));
             reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(a.Output, ai) : AudioQualityInput.Parse(a.Output) : null;
-            candidate = b.ExitCode == 0 ? candidateAudioIndex is { } bi ? AudioQualityInput.ParseTrack(b.Output, bi) : AudioQualityInput.Parse(b.Output) : null;
+            candidate = b.ExitCode == 0 ? candidateAudioIndex is { } bi ? AudioQualityInput.ParseTrack(b.Output, bi, writtenByFfmpeg: true) : AudioQualityInput.Parse(b.Output) : null;
             if (reference is null || candidate is null)
                 return Result(false, "Assessment requires one known-duration mono/stereo audio track, without video or unproved channel layouts.");
             if (AudioQualityInput.Incompatibility(reference, candidate) is { } mismatch) return Result(false, mismatch);

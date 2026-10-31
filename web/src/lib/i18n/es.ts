@@ -138,7 +138,7 @@ export const es: Messages = {
     coverage_note: "Hasta ocho pistas conservadas y 90 segundos por pista. No se evalúan surround ni su mezcla a estéreo. Las pistas copiadas usan las comprobaciones de conservación existentes.",
     adaptive_label: "Elegir la tasa de bits de cada pista de audio midiendo",
     adaptive_hint: "Experimental. Antes de la codificación completa, cada pista conservada se prueba con hasta cuatro tasas de bits y se usa la menor dentro de tu límite. Si alguna pista no puede medirse, todas mantienen la tasa indicada arriba. La comprobación sigue evaluando el archivo final. Las tasas se eligen en este servidor, también para trabajos que codifica un worker.",
-    adaptive_unavailable: "Disponible cuando las pistas se recodifican a AAC, Opus o MP3 sin mezcla a estéreo.",
+    adaptive_unavailable: "Disponible cuando las pistas se recodifican a AAC, Opus o MP3.",
     adaptive_requires_gate: "Necesaria mientras las tasas de bits de las pistas se eligen midiendo.",
     search_title: "Tasas de bits de las pistas de audio",
     search_hint: "Elegidas a partir de muestras cortas antes de la codificación completa. Explican las tasas; no aprueban el reemplazo. La comprobación de calidad de pistas evalúa el archivo final.",

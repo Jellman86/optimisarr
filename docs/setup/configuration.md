@@ -374,8 +374,9 @@ measures on the server. See [evidence and resource limits](../development/percep
 
 With **Require soundtrack quality** on, **Choose each soundtrack's bitrate by measurement** lets
 the server pick a bitrate per retained soundtrack before the full encode. It needs an explicit
-**Re-encode to** choice of AAC, Opus or MP3 and no stereo downmix. While it is on, the soundtrack
-gate stays on.
+**Re-encode to** choice of AAC, Opus or MP3. While it is on, the soundtrack gate stays on. With
+**Downmix surround to stereo** also on, a file is searched only when every retained soundtrack is
+already stereo; a mono or surround track leaves the whole file at the library bitrate.
 
 The search always runs on the server, which holds the original. When a worker will encode the
 job, the server chooses the bitrates first and offers the job once they are ready; the worker
@@ -386,7 +387,8 @@ than assumed equivalent.
 
 Each retained mono/stereo track is sampled in the same windows the gate uses (up to three
 30-second windows) and measured at up to four bitrates from the codec's ladder, starting at the
-library bitrate. The smallest measured bitrate that met **Maximum soundtrack difference** in
+library bitrate. Each window is cut from the source sample-exact and every candidate bitrate
+encodes that same cut, so the measurement compares only the codec, even for lossy sources. The smallest measured bitrate that met **Maximum soundtrack difference** in
 every window becomes that track's bitrate. A track whose measurements never meet the limit
 keeps the library bitrate. If any retained track cannot be assessed (surround, unknown duration,
 more than eight tracks), the source cannot be probed or the tools are unavailable, no track is

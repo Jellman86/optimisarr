@@ -1609,7 +1609,8 @@ public sealed partial class QueueDispatcher(
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
             work.VideoQuality?.Mode,
-            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder, work.WorkerSample?.Bytes, work.WorkerSample is null ? null : work.DurationSeconds));
+            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder, work.WorkerSample?.Bytes, work.WorkerSample is null ? null : work.DurationSeconds,
+            work.SoundtrackSearch is null ? null : JsonSerializer.Serialize(work.SoundtrackSearch, ReportJsonOptions)));
     }
 
     /// <summary>

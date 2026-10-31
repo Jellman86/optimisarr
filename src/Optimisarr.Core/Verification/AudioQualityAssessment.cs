@@ -33,7 +33,9 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
     public static AudioQualityInput? Parse(string json)
         => ParseTrack(json, 0, standalone: true);
 
-    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false)
+    /// <param name="writtenByFfmpeg">The file is an output this FFmpeg just muxed, so its plain DURATION tag is
+    /// FFmpeg's own end timestamp even when stale statistics were copied from the source.</param>
+    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false, bool writtenByFfmpeg = false)
     {
         try
         {
@@ -49,8 +51,14 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
             double duration;
             if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out duration))
             {
+                var format = doc.RootElement.GetProperty("format");
+                var encoder = format.TryGetProperty("tags", out var formatTags)
+                    ? formatTags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("encoder", StringComparison.OrdinalIgnoreCase)).Value : default;
+                var muxedByFfmpeg = encoder.ValueKind == JsonValueKind.String && encoder.GetString()!.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase);
+                // FFmpeg always writes a plain DURATION, so a language-suffixed one in its output is a stale copy.
+                var suffixed = !muxedByFfmpeg && !writtenByFfmpeg;
                 if (!standalone && track.TryGetProperty("tags", out var tags)
-                    && tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("DURATION", StringComparison.OrdinalIgnoreCase)).Value is { ValueKind: JsonValueKind.String } end)
+                    && MatroskaTag(tags, "DURATION", suffixed) is { ValueKind: JsonValueKind.String } end)
                 {
                     var parts = end.GetString()!.Split(':');
                     if (parts.Length != 3 || !int.TryParse(parts[0], out var hours) || !int.TryParse(parts[1], out var minutes)
@@ -58,16 +66,12 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
                         || hours < 0 || minutes is < 0 or > 59 || seconds is < 0 or >= 60
                         || !track.TryGetProperty("start_time", out var start)
                         || !double.TryParse(start.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var began)) return null;
-                    var statistics = tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("_STATISTICS_WRITING_APP", StringComparison.OrdinalIgnoreCase)).Value;
-                    var format = doc.RootElement.GetProperty("format");
-                    var encoder = format.TryGetProperty("tags", out var formatTags)
-                        ? formatTags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("encoder", StringComparison.OrdinalIgnoreCase)).Value : default;
-                    var statisticsLength = statistics.ValueKind == JsonValueKind.String
+                    var statistics = MatroskaTag(tags, "_STATISTICS_WRITING_APP", suffixed);
+                    var statisticsLength = !writtenByFfmpeg && statistics.ValueKind == JsonValueKind.String
                         && (statistics.GetString()!.StartsWith("mkvmerge", StringComparison.OrdinalIgnoreCase)
                             || statistics.GetString()!.StartsWith("mkvpropedit", StringComparison.OrdinalIgnoreCase));
                     // FFmpeg can retain stale statistics, or mkvpropedit can refresh them after muxing.
-                    if (statisticsLength && encoder.ValueKind == JsonValueKind.String
-                        && encoder.GetString()!.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase) && began != 0) return null;
+                    if (statisticsLength && muxedByFfmpeg && began != 0) return null;
                     // MKVToolNix statistics store elapsed time; FFmpeg rewrites DURATION as an end timestamp.
                     duration = hours * 3600.0 + minutes * 60 + seconds - (statisticsLength ? 0 : began);
                 }
@@ -93,6 +97,16 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException or ArgumentNullException)
         { return null; }
+    }
+
+    // The plain tag, or else one agreed language-suffixed copy such as mkvmerge's DURATION-eng.
+    private static JsonElement MatroskaTag(JsonElement tags, string name, bool allowLanguageSuffix)
+    {
+        var plain = tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
+        if (plain.ValueKind != JsonValueKind.Undefined || !allowLanguageSuffix) return plain;
+        var copies = tags.EnumerateObject().Where(p => p.Name.StartsWith(name + "-", StringComparison.OrdinalIgnoreCase)).Select(p => p.Value).ToArray();
+        return copies.Length > 0 && copies.All(c => c.ValueKind == JsonValueKind.String) && copies.Select(c => c.GetString()).Distinct().Count() == 1
+            ? copies[0] : default;
     }
 
     public static string? Incompatibility(AudioQualityInput reference, AudioQualityInput candidate) =>
