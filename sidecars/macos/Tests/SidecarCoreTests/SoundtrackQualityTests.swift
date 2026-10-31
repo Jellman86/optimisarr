@@ -45,6 +45,36 @@ struct SoundtrackQualityTests {
         #expect(AudioQualityAssessment.profile(probe(["eng"]), audioIndex: 0)?.channels == 2)
     }
 
+    @Test("a downmixed surround or mono track is measured against the same stereo downmix")
+    func downmix() throws {
+        let surround = probe(["eng"], channels: 6).replacingOccurrences(of: #""channels":6,"#, with: #""channels":6,"channel_layout":"5.1(side)","#)
+        let request = SoundtrackQualityRequest(removedSourceAudioIndexes: [], downmixToStereo: true)
+        let pairs = try SoundtrackQualityAssessment.plan(sourceProbe: surround, candidateProbe: probe(["eng"]), request: request)
+        #expect(pairs[0].reference.channels == 2 && pairs[0].reference.channelLayout == "stereo")
+        #expect(pairs[0].reference.sourceChannels == 6 && pairs[0].reference.sourceChannelLayout == "5.1(side)")
+        #expect(try SoundtrackQualityAssessment.plan(sourceProbe: probe(["eng"], channels: 1), candidateProbe: probe(["eng"]),
+            request: request)[0].reference.sourceChannelLayout == "mono")
+        #expect(throws: (any Error).self) { try SoundtrackQualityAssessment.plan(sourceProbe: surround, candidateProbe: probe(["eng"]),
+            request: .init(removedSourceAudioIndexes: [], downmixToStereo: true, audioFiltered: true)) }
+        // No layout: the downmix matrix would be a guess.
+        #expect(throws: (any Error).self) { try SoundtrackQualityAssessment.plan(sourceProbe: probe(["eng"], channels: 6),
+            candidateProbe: probe(["eng"]), request: request) }
+
+        let window = AudioQualitySample(startSeconds: 10, durationSeconds: 30)
+        let reference = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/s"), output: URL(fileURLWithPath: "/r"),
+            window: window, audioIndex: 0, lead: 0, soundtrack: true, downmixToStereo: true)
+        #expect(Array(reference[reference.firstIndex(of: "-ac")!...].prefix(2)) == AudioQualityAssessment.stereoDownmixArguments)
+        #expect(!AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/c"), output: URL(fileURLWithPath: "/o"),
+            window: window, audioIndex: 0, lead: 0, soundtrack: true).contains("-ac"))
+
+        var result = AudioQualityResult(); result.referenceAudioIndex = 0; result.reference = pairs[0].reference
+        #expect(RemoteAudioQualityEvidence(assessment: result).preparation == "audio-f32le-48k-video-timeline-stereo-downmix-v1")
+        result.reference = pairs[0].candidate
+        #expect(RemoteAudioQualityEvidence(assessment: result).preparation == "audio-f32le-48k-video-timeline-v1")
+        let encoded = try JSONEncoder().encode(pairs[0].reference)
+        #expect(try JSONDecoder().decode(AudioQualityProfile.self, from: encoded).sourceChannels == 6)
+    }
+
     @Test("missing tracks surround and malformed removal contracts fail")
     func unsupported() {
         #expect(throws: (any Error).self) { try SoundtrackQualityAssessment.plan(sourceProbe: probe(["eng", "fra"]),

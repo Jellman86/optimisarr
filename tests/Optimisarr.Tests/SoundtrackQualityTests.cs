@@ -92,6 +92,69 @@ public sealed class SoundtrackQualityTests
     }
 
     [Fact]
+    public void A_downmixed_surround_track_is_assessed_against_the_same_stereo_downmix()
+    {
+        // The library downmixes to stereo, so the honest reference is the source through that same
+        // downmix: the score then measures the codec, not the downmix the library chose.
+        var source = Probe(Track("eng", "Main", channels: 6), Track("eng", "Commentary", channels: 1));
+        var output = Probe(Track("eng", "Main"), Track("eng", "Commentary"));
+
+        Assert.Contains("downmix", SoundtrackQualityPlanner.Plan(source, output, new([])).Error);
+        var plan = SoundtrackQualityPlanner.Plan(source, output, new([], DownmixToStereo: true));
+
+        Assert.Null(plan.Error);
+        Assert.Equal(new AudioQualityInput(3, 2, 48000, "stereo", 0, SourceChannels: 6, SourceChannelLayout: "5.1"), plan.Tracks[0].Reference);
+        Assert.Equal(new AudioQualityInput(3, 2, 48000, "stereo", 0, SourceChannels: 1, SourceChannelLayout: "mono"), plan.Tracks[1].Reference);
+        Assert.Equal(new AudioQualityInput(3, 2, 48000, "stereo"), plan.Tracks[1].Candidate);
+        Assert.Contains("audio filter", SoundtrackQualityPlanner.Plan(source, output, new([], DownmixToStereo: true, AudioFiltered: true)).Error);
+        Assert.Null(SoundtrackQualityPlanner.Plan(Probe(Track()), Probe(Track()), new([], DownmixToStereo: true, AudioFiltered: true)).Error);
+    }
+
+    [Fact]
+    public void A_surround_track_without_a_known_layout_is_not_downmixed_by_guesswork()
+    {
+        var source = Probe(Track("eng", "Main", channels: 6)).Replace("\"channel_layout\":\"5.1\",", "");
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, Probe(Track()), new([], DownmixToStereo: true)).Error);
+        Assert.Null(AudioQualityInput.ParseTrack(source, 0, downmixToStereo: true));
+    }
+
+    [Fact]
+    public void The_encode_and_both_references_downmix_with_one_argument_list()
+    {
+        var spec = new Optimisarr.Core.Queue.TranscodeSpec("film.mkv", "out.mkv", "libx265", 24, null, false,
+            AudioEncoder: "aac", AudioBitrateKbps: 128, DownmixToStereo: true);
+        var encode = Optimisarr.Core.Queue.FfmpegCommandBuilder.Build(spec, 0, "libx265", optimisedMarker: null).ToList();
+        var channels = Optimisarr.Core.Queue.FfmpegCommandBuilder.StereoDownmixArguments;
+        Assert.Equal(channels, encode.Skip(encode.IndexOf("-ac")).Take(channels.Count));
+
+        var window = new AudioQualityWindow(10, 30);
+        var reference = AudioQualityCommandBuilder.Decode("film.mkv", "r.raw", window, 1, 0, soundtrack: true, downmixToStereo: true).ToList();
+        Assert.Equal(channels, reference.Skip(reference.IndexOf("-ac")).Take(channels.Count));
+        Assert.DoesNotContain("-ac", AudioQualityCommandBuilder.Decode("out.mkv", "c.raw", window, 1, 0, soundtrack: true));
+
+        var sample = Optimisarr.Core.Queue.PerceptualSamplePlanner.SoundtrackReference("film.mkv", "r.wav", 1,
+            new Optimisarr.Core.Queue.PerceptualAudioWindow(10, 30), downmixToStereo: true).ToList();
+        Assert.Equal(channels, sample.Skip(sample.IndexOf("-ac")).Take(channels.Count));
+        Assert.DoesNotContain("-ac", Optimisarr.Core.Queue.PerceptualSamplePlanner.SoundtrackCandidate(spec, "r.wav", "c.m4a", 96,
+            new Optimisarr.Core.Queue.PerceptualAudioWindow(10, 30)));
+    }
+
+    [Fact]
+    public void Downmixed_evidence_is_bound_to_its_own_preparation()
+    {
+        var reference = new AudioQualityInput(100, 2, 48000, "stereo", 0, SourceChannels: 6, SourceChannelLayout: "5.1(side)");
+        var plain = new AudioQualityAssessmentResult(true, null, reference with { SourceChannels = null, SourceChannelLayout = null },
+            new AudioQualityInput(100, 2, 48000, "stereo"), null, null, null, null, null, [], 0, 0, 0);
+        var downmixed = plain with { Reference = reference };
+
+        Assert.Equal(AudioQualityResultParser.SoundtrackPreparation, plain.Preparation);
+        Assert.Equal(AudioQualityResultParser.SoundtrackDownmixPreparation, downmixed.Preparation);
+        Assert.Equal("The audio metric or preparation does not match this release.",
+            AudioQualityReporting.Validate(RemoteAudioQualityEvidence.From(downmixed) with { Preparation = AudioQualityResultParser.SoundtrackPreparation },
+                null, null, AudioQualityResultParser.SoundtrackDownmixPreparation));
+    }
+
+    [Fact]
     public void Matroska_track_end_tags_keep_short_soundtracks_inside_their_own_timeline()
     {
         var source = Probe(Track(duration: "12", start: "-0.021"))

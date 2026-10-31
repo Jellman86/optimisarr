@@ -135,7 +135,7 @@ export const pt: Messages = {
     maximum: "Diferença máxima das faixas de áudio",
     validation: "Introduza uma diferença máxima das faixas de áudio entre 0 e 1.",
     track: "Faixa de áudio {track} · {language}",
-    coverage_note: "Até oito faixas mantidas e 90 segundos por faixa. Surround e redução surround não são avaliados. As faixas copiadas usam as verificações de preservação existentes.",
+    coverage_note: "Até oito faixas mantidas e 90 segundos por faixa. O surround só é avaliado quando reduzido para estéreo, comparado com a mesma redução do original. As faixas copiadas usam as verificações de preservação existentes.",
     adaptive_label: "Escolher a taxa de bits de cada faixa de áudio por medição",
     adaptive_hint: "Experimental. Antes da codificação completa, cada faixa mantida é testada com até quatro taxas de bits e a menor dentro do seu limite é usada. Se alguma faixa não puder ser medida, todas mantêm a taxa acima. A verificação continua a avaliar o ficheiro final. As taxas são escolhidas neste servidor, incluindo para trabalhos codificados por um worker.",
     adaptive_unavailable: "Disponível quando as faixas são recodificadas em AAC, Opus ou MP3.",

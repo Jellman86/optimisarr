@@ -32,7 +32,7 @@ public sealed record SoundtrackSearchSummary(string? Encoder, int BaselineKbps, 
 public static class SoundtrackSearchPlanner
 {
     public static SoundtrackSearchPlan Plan(string sourceProbe, IReadOnlyList<int>? removedSourceAudioIndexes,
-        string? encoder, int? baselineKbps, bool downmixToStereo, VerificationPolicy policy)
+        string? encoder, int? baselineKbps, bool downmixToStereo, VerificationPolicy policy, bool audioFiltered = false)
     {
         SoundtrackSearchPlan Refused(string reason) => new(encoder, null, [], reason);
         if (!policy.SoundtrackQualityGateEnabled || !AudioQualityGate.ValidLimit(policy.MaximumSoundtrackQualityDistance))
@@ -64,13 +64,12 @@ public static class SoundtrackSearchPlanner
         var tracks = new List<SoundtrackSearchTrack>();
         foreach (var (sourceIndex, outputIndex) in retained.Select((index, position) => (index, position)))
         {
-            var input = AudioQualityInput.ParseTrack(sourceProbe, sourceIndex);
+            var input = AudioQualityInput.ParseTrack(sourceProbe, sourceIndex, downmixToStereo: downmixToStereo);
             var windows = input is null ? [] : PerceptualSamplePlanner.AudioWindows(input.DurationSeconds);
             if (input is null || windows.Count == 0)
-                return Refused($"Soundtrack {outputIndex + 1}: quality-first supports known-duration mono/stereo tracks. Surround assessment is not available.");
-            // The downmix is one global -ac 2: a no-op only for a track that is already stereo.
-            if (downmixToStereo && input.Channels != 2)
-                return Refused($"Soundtrack {outputIndex + 1}: with a stereo downmix, quality-first assesses only tracks that are already stereo.");
+                return Refused($"Soundtrack {outputIndex + 1}: quality-first supports known-duration mono/stereo tracks, and surround with a known layout when the library downmixes to stereo.");
+            if (input.Downmixed && audioFiltered)
+                return Refused($"Soundtrack {outputIndex + 1}: a downmixed track cannot be searched with an audio filter, which a sampled reference cannot reproduce.");
             var (language, title) = Identity(sourceProbe, sourceIndex);
             tracks.Add(new(sourceIndex, outputIndex, language, title, input, windows));
         }

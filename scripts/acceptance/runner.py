@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -353,21 +354,32 @@ class Harness:
             self.api.post("/api/queue/resume")
 
 
-    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False, adaptive=False):
+    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False, adaptive=False,
+                   surround=None):
+        """surround: None for stereo sources; True for a 5.1 main track downmixed to stereo; False for that
+        track kept surround, which no soundtrack gate can assess, so the gate must block replacement."""
         self.select_worker(worker)
         name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
         name += "-long" if long else "-short-mp4" if short else ""
         name += "-adaptive" if adaptive else ""
+        name += "" if surround is None else "-surround-downmixed" if surround else "-surround-kept"
         # Adaptive selection needs more than one sample window per track.
         seconds = 120 if long else 12 if short else 40 if adaptive else 8
         audio_seconds = seconds - 0.5 if short else seconds
         commentary_seconds = seconds - 2.5 if long else audio_seconds
         fixture = self.root / "fixtures" / (name + ".mkv")
+        main = (f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42" if surround is None else
+                # Six distinct channels, so a dropped or misrouted channel changes the downmix.
+                "aevalsrc=exprs=" + "|".join(f"0.08*sin({2 * math.pi * f}*t)" for f in (220, 330, 440, 150, 550, 660))
+                + f":channel_layout=5.1:sample_rate=48000:duration={audio_seconds}")
+        # Matroska PCM stores no channel layout, so a surround fixture uses FLAC, which carries 5.1 the way
+        # real AC-3/E-AC-3/AAC tracks do; an unknown layout is refused rather than downmixed by guesswork.
+        channels = ["-c:a", "pcm_s16le", "-ac", "2"] if surround is None else ["-c:a", "flac", "-ac:a:1", "2"]
         self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
-            "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42",
+            "-f", "lavfi", "-i", main,
             "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
-            "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", "-c:a", "pcm_s16le", "-ac", "2",
+            "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *channels,
             "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=" if short else "title=Main",
             "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary", self.tools.path(fixture)])
         # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
@@ -376,18 +388,26 @@ class Harness:
             "targetVideoCodec": None, "targetContainer": "mp4" if short else "mkv", "videoAudioCodec": "copy" if copied else codec,
             "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
             "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,
-            "keepAudioLanguages": "fra" if filtered else None, "adaptiveSoundtrackQuality": adaptive})
+            "keepAudioLanguages": "fra" if filtered else None, "adaptiveSoundtrackQuality": adaptive,
+            "downmixToStereo": bool(surround)})
         job = self.wait_job(case)
         save(self.report.root / name / "job.json", job)
         verification = json.loads(job["verificationReportJson"] or "{}")
         require(job["workerName"] == (worker["name"] if worker else None), "Soundtrack ran on the wrong host")
         require(sha256(case["source"]) == case["sourceSha256"], "Assessment changed the source")
-        require(job["status"] == ("Failed" if reject else "ReadyToReplace"), f"Unexpected soundtrack job verdict: {job['errorMessage']}")
+        blocked = reject or surround is False
+        require(job["status"] == ("Failed" if blocked else "ReadyToReplace"), f"Unexpected soundtrack job verdict: {job['errorMessage']}")
+        if surround is False:
+            reason = (verification.get("soundtrackQuality") or {}).get("unavailableReason") or ""
+            require("surround" in reason, f"Kept surround was not refused as unassessable: {reason}")
+            require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Unassessed surround replaced media")
+            return {"originalUnchanged": True, "gateBlocked": True}
         if copied:
             require(not verification.get("soundtrackQuality"), "Copied audio launched perceptual assessment")
         else:
             location = "Worker" if worker and self.strict_worker_verification else "Server"
-            validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject)
+            validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject,
+                                       downmixed=(0,) if surround else ())
         if adaptive:
             search = verification.get("soundtrackSearch") or {}
             require(search.get("unavailable") is None, f"Soundtrack selection did not run: {search.get('unavailable')}")
@@ -993,6 +1013,10 @@ class Harness:
                         self.report.case(label + "-soundtrack-adaptive-" + codec, lambda c=codec, w=worker: self.soundtrack(c, w, adaptive=True))
                     self.report.case(label + "-soundtrack-adaptive-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True, adaptive=True))
                     self.report.case(label + "-soundtrack-adaptive-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-surround-downmixed", lambda w=worker: self.soundtrack("aac", w, surround=True))
+                    self.report.case(label + "-soundtrack-surround-kept", lambda w=worker: self.soundtrack("aac", w, surround=False))
+                    self.report.case(label + "-soundtrack-adaptive-surround-downmixed",
+                                     lambda w=worker: self.soundtrack("aac", w, surround=True, adaptive=True))
                 if tier == "fleet" and not any(w["online"] and not w["revokedAt"] for w in self.workers):
                     self.report.case("soundtrack-workers", lambda: (_ for _ in ()).throw(Blocked("No soundtrack workers paired")))
                 return self.report.exit_code

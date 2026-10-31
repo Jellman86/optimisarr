@@ -4,7 +4,11 @@ using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Verification;
 
-public sealed record SoundtrackQualityRequest(IReadOnlyList<int> RemovedSourceAudioIndexes);
+/// <param name="DownmixToStereo">The encode downmixes to stereo, so mono and known-layout surround tracks
+/// are measured against the same downmix of their source.</param>
+/// <param name="AudioFiltered">The encode applies an audio filter, which a sampled reference cannot reproduce.</param>
+public sealed record SoundtrackQualityRequest(IReadOnlyList<int> RemovedSourceAudioIndexes, bool DownmixToStereo = false,
+    bool AudioFiltered = false);
 public sealed record SoundtrackQualityPair(int SourceAudioIndex, int CandidateAudioIndex, string? Language,
     string? Title, AudioQualityInput Reference, AudioQualityInput Candidate);
 public sealed record SoundtrackQualityPlan(IReadOnlyList<SoundtrackQualityPair> Tracks, string? Error);
@@ -42,10 +46,12 @@ public static class SoundtrackQualityPlanner
                 var sourceIndex = retained[index];
                 var original = source[sourceIndex];
                 var candidate = output[index];
-                var reference = AudioQualityInput.ParseTrack(sourceProbe, sourceIndex);
+                var reference = AudioQualityInput.ParseTrack(sourceProbe, sourceIndex, downmixToStereo: request.DownmixToStereo);
                 var distorted = AudioQualityInput.ParseTrack(candidateProbe, index, writtenByFfmpeg: true);
                 if (reference is null || distorted is null)
-                    return Refused($"Soundtrack {index + 1}: assessment supports known-duration mono/stereo tracks. Surround and surround downmix assessment are not available.");
+                    return Refused($"Soundtrack {index + 1}: assessment supports known-duration mono/stereo tracks, and surround with a known layout when the library downmixes to stereo.");
+                if (reference.Downmixed && request.AudioFiltered)
+                    return Refused($"Soundtrack {index + 1}: a downmixed track cannot be assessed with an audio filter, which a sampled reference cannot reproduce.");
                 if (AudioQualityInput.Incompatibility(reference, distorted) is { } mismatch)
                     return Refused($"Soundtrack {index + 1}: {mismatch}");
                 // MP4 cannot store a track title or commentary flag, so their absence there is not a different track.

@@ -357,8 +357,18 @@ Assessment supports one to eight retained mono/stereo tracks with matching chann
 The frozen job records intentional source-track removals. Remaining source tracks map in order
 to output audio tracks; matching language, title and commentary identity is required. It does
 not guess track matches from language alone. A missing, extra or reordered track makes assessment
-unavailable. Surround and surround-to-stereo downmix assessment are unavailable, including a
-retained surround track alongside otherwise supported stereo tracks. Track duration differences
+unavailable.
+
+With **Downmix surround to stereo** on, a surround track with a known channel layout (and a mono
+track, which the downmix makes stereo) is measured against the source track through the same
+`-ac 2` downmix the encode applied. The score therefore measures what the codec lost, not the
+downmix itself, which is the library's own choice. Its evidence records the source's channel count
+and layout and a separate preparation, so it can never be read as a plain comparison. A surround
+track whose layout is unknown is refused rather than downmixed by guesswork, and so is a downmixed
+track when the library also sets an audio filter, because a filter such as loudness normalisation
+behaves differently on a 30-second sample than on the whole file. Workers need sidecar protocol 13
+for these jobs. Without a downmix, retained surround tracks remain unassessable and block a gated
+replacement, including alongside otherwise supported stereo tracks. Track duration differences
 over 100 ms, start-time differences over 50 ms, and unsupported picture/container offsets are
 also refused; a perceptual score cannot approve a timing shift or establish lip-sync quality.
 
@@ -375,8 +385,8 @@ measures on the server. See [evidence and resource limits](../development/percep
 With **Require soundtrack quality** on, **Choose each soundtrack's bitrate by measurement** lets
 the server pick a bitrate per retained soundtrack before the full encode. It needs an explicit
 **Re-encode to** choice of AAC, Opus or MP3. While it is on, the soundtrack gate stays on. With
-**Downmix surround to stereo** also on, a file is searched only when every retained soundtrack is
-already stereo; a mono or surround track leaves the whole file at the library bitrate.
+**Downmix surround to stereo** also on, surround and mono tracks are searched as the stereo they
+become: each sample is cut from the source through the same downmix as the encode.
 
 The search always runs on the server, which holds the original. When a worker will encode the
 job, the server chooses the bitrates first and offers the job once they are ready; the worker
@@ -390,8 +400,8 @@ Each retained mono/stereo track is sampled in the same windows the gate uses (up
 library bitrate. Each window is cut from the source sample-exact and every candidate bitrate
 encodes that same cut, so the measurement compares only the codec, even for lossy sources. The smallest measured bitrate that met **Maximum soundtrack difference** in
 every window becomes that track's bitrate. A track whose measurements never meet the limit
-keeps the library bitrate. If any retained track cannot be assessed (surround, unknown duration,
-more than eight tracks), the source cannot be probed or the tools are unavailable, no track is
+keeps the library bitrate. If any retained track cannot be assessed (surround without a downmix,
+an unknown layout, unknown duration, more than eight tracks), the source cannot be probed or the tools are unavailable, no track is
 searched and every track keeps the library bitrate. Selection never blocks or fails the job on its
 own.
 
