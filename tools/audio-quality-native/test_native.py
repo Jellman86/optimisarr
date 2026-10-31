@@ -46,8 +46,18 @@ class NativeAssessmentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(all(value > 0 for value in json.loads(result.stdout)["distances"]))
 
-    def test_nonfinite_clipped_truncated_short_or_oversized_inputs_fail(self):
-        for values in ([float("nan"), 0] * 48000, [1.1, 0] * 48000,
+    def test_decoded_overs_above_full_scale_are_measured(self):
+        # Lossy decoders reconstruct peaks a little above full scale on loud masters.
+        # Refusing them left real soundtracks unmeasurable; they are audio, not corruption.
+        hot = [value * 3.5 for value in self.samples]
+        self.write(self.reference, hot)
+        self.write(self.candidate, [value * 0.98 for value in hot])
+        result = self.run_metric()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(value > 0 for value in json.loads(result.stdout)["distances"]))
+
+    def test_nonfinite_implausible_truncated_short_or_oversized_inputs_fail(self):
+        for values in ([float("nan"), 0] * 48000, [float("inf"), 0] * 48000, [4.5, 0] * 48000,
                        self.samples[:-2], [0.0, 0.0] * 100):
             self.write(self.candidate, values)
             result = self.run_metric()
