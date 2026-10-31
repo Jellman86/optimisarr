@@ -39,8 +39,6 @@ public static class SoundtrackSearchPlanner
             return Refused("Soundtrack quality-first requires the soundtrack quality gate with an explicit limit.");
         if (encoder is not ("aac" or "libopus" or "libmp3lame") || baselineKbps is not { } baseline)
             return Refused("Soundtrack quality-first supports AAC, Opus and MP3 re-encodes.");
-        if (downmixToStereo)
-            return Refused("Soundtrack quality-first does not assess stereo downmixes.");
         PerceptualQualityPlan bitrates;
         try { bitrates = PerceptualQualityPlan.Audio(encoder, baseline); }
         catch (ArgumentException error) { return Refused(error.Message); }
@@ -70,6 +68,9 @@ public static class SoundtrackSearchPlanner
             var windows = input is null ? [] : PerceptualSamplePlanner.AudioWindows(input.DurationSeconds);
             if (input is null || windows.Count == 0)
                 return Refused($"Soundtrack {outputIndex + 1}: quality-first supports known-duration mono/stereo tracks. Surround assessment is not available.");
+            // The downmix is one global -ac 2: a no-op only for a track that is already stereo.
+            if (downmixToStereo && input.Channels != 2)
+                return Refused($"Soundtrack {outputIndex + 1}: with a stereo downmix, quality-first assesses only tracks that are already stereo.");
             var (language, title) = Identity(sourceProbe, sourceIndex);
             tracks.Add(new(sourceIndex, outputIndex, language, title, input, windows));
         }

@@ -75,7 +75,7 @@ internal static class SoundtrackSearchRunner
             try
             {
                 var run = await host.RunFfmpeg(
-                    PerceptualSamplePlanner.SoundtrackCandidate(spec with { InputPath = source }, path, track.SourceAudioIndex, value, track.Windows[index]),
+                    PerceptualSamplePlanner.SoundtrackCandidate(spec with { InputPath = source }, references[index], path, value, track.Windows[index]),
                     path, track.Windows[index].DurationSeconds, token);
                 if (run.ExitCode != 0 || !File.Exists(path) || new FileInfo(path).Length <= 0)
                     return new PerceptualSearchProbe(value, Math.Max(1, bytes),

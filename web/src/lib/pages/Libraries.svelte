@@ -599,8 +599,8 @@
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
   // Music, images for Photo, and everything for a mixed "Other" library that may hold any of them.
   const showVideoOptions = $derived(isVideoType(form.mediaType))
-  // Mirrors the server: soundtracks must be re-encoded and not downmixed.
-  const soundtrackSearchAvailable = $derived(['aac', 'opus', 'mp3'].includes(form.videoAudioCodec ?? '') && !form.downmixToStereo)
+  // Mirrors the server: soundtracks must be re-encoded. With a downmix, each file's stereo tracks are still searched.
+  const soundtrackSearchAvailable = $derived(['aac', 'opus', 'mp3'].includes(form.videoAudioCodec ?? ''))
   const showAudioOptions = $derived(isAudioType(form.mediaType))
   const showImageOptions = $derived(isImageType(form.mediaType))
 

@@ -57,6 +57,11 @@ public sealed class WorkerSoundtrackSelections(
     private async Task<SoundtrackSearchSummary> SelectAsync(int jobId, string source, TranscodeSpec spec,
         VerificationPolicy policy, string identity)
     {
+        SoundtrackSearchSummary Unchosen(string reason)
+        {
+            logger.LogInformation("Job {JobId}: soundtrack bitrates not chosen for a worker: {Reason}", jobId, reason);
+            return Fallback(spec, policy, identity, reason);
+        }
         await _oneAtATime.WaitAsync(stopping);
         var workRoot = WorkPaths.Resolve(environment);
         var parent = Path.Combine(workRoot, ".soundtrack-search");
@@ -69,9 +74,9 @@ public sealed class WorkerSoundtrackSelections(
             var plan = probe is { Success: true, RawJson: { } json }
                 ? SoundtrackSearchPlanner.Plan(json, spec.RemoveAudioStreamIndexes, spec.AudioEncoder, spec.AudioBitrateKbps, spec.DownmixToStereo, policy)
                 : new SoundtrackSearchPlan(spec.AudioEncoder, null, [], "The source could not be probed.");
-            if (plan.Unavailable is { } refusal || plan.Bitrates is null) return Fallback(spec, policy, identity, plan.Unavailable ?? "No bitrate plan.");
+            if (plan.Unavailable is { } refusal || plan.Bitrates is null) return Unchosen(plan.Unavailable ?? "No bitrate plan.");
             using var peak = resources.ReservePeak(MediaKind.Audio, workRoot);
-            if (peak is null) return Fallback(spec, policy, identity, "Not enough known memory for soundtrack assessment.");
+            if (peak is null) return Unchosen("Not enough known memory for soundtrack assessment.");
 
             scratch = Path.Combine(parent, $"{jobId}-{Guid.NewGuid():N}");
             Directory.CreateDirectory(scratch);
@@ -82,7 +87,7 @@ public sealed class WorkerSoundtrackSelections(
             var summary = await SoundtrackSearchRunner.RunAsync(source, spec, policy, plan, identity,
                 scope.ServiceProvider, host, null, stopping);
             if (SourceIdentity(source) != identity)
-                return Fallback(spec, policy, identity, "The source changed during soundtrack selection.");
+                return Unchosen("The source changed during soundtrack selection.");
             logger.LogInformation("Job {JobId}: chose soundtrack bitrates {Rates} for a worker", jobId,
                 string.Join(", ", summary.SelectedBitrates()?.Select(rate => $"{rate} kbps") ?? []));
             return summary;

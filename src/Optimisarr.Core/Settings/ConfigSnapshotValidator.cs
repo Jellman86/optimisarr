@@ -83,9 +83,8 @@ public static class ConfigSnapshotValidator
                 errors.Add($"{where} adaptive images require an explicit enabled image target and no resizing in a photo or mixed library.");
             if (library.AdaptiveSoundtrackQuality == true && (mediaType is MediaType.Music or MediaType.Photo
                 || string.IsNullOrWhiteSpace(library.VideoAudioCodec) || string.Equals(library.VideoAudioCodec, "copy", StringComparison.OrdinalIgnoreCase)
-                || library.SoundtrackQualityGateEnabled != true || !AudioQualityGate.ValidLimit(library.MaximumSoundtrackQualityDistance)
-                || library.DownmixToStereo))
-                errors.Add($"{where} adaptive soundtracks require re-encoded audio without a downmix and an enabled explicit soundtrack target.");
+                || library.SoundtrackQualityGateEnabled != true || !AudioQualityGate.ValidLimit(library.MaximumSoundtrackQualityDistance)))
+                errors.Add($"{where} adaptive soundtracks require re-encoded audio and an enabled explicit soundtrack target.");
             if (library.HdrHandling is not null)
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);

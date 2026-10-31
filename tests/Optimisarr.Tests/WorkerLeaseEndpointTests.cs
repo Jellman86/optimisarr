@@ -669,6 +669,40 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_worker_job_keeps_the_servers_soundtrack_bitrate_evidence()
+    {
+        // The server chooses a worker job's soundtrack bitrates, so it must also keep why. Without
+        // this a fallback left no trace, and the queue could not say what the worker was sent.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Soundtracks", 1, ["libx265"], [], audioEncoders: ["aac"]);
+        var jobId = await QueueAJob(videoAudioCodec: "aac");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = await db.Libraries.SingleAsync(l => l.Id == db.Jobs.Single(j => j.Id == jobId).LibraryId);
+            library.VideoAudioBitrateKbps = 128;
+            library.SoundtrackQualityGateEnabled = true;
+            library.MaximumSoundtrackQualityDistance = 0.01;
+            library.AdaptiveSoundtrackQuality = true;
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage claim;
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while ((claim = await worker.PostAsJsonAsync("/api/workers/claim", new { })).StatusCode == HttpStatusCode.NoContent
+            && DateTime.UtcNow < deadline)
+        {
+            claim.Dispose();
+            await Task.Delay(100);
+        }
+
+        using (claim) Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var evidence = (await JobRow(jobId)).GetProperty("soundtrackSearchJson").GetString();
+        Assert.NotNull(evidence);
+        Assert.Contains("library bitrate", evidence);
+    }
+
+    [Fact]
     public async Task A_check_in_refreshes_what_the_worker_can_do()
     {
         // Capabilities used to be recorded once, at pairing. A sidecar re-probes itself on every

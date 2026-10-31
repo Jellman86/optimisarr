@@ -36,7 +36,8 @@ public sealed class LibraryRequestParserTests
         Assert.True(parsed.AdaptiveSoundtrackQuality);
         Assert.False(LibraryRequestParser.TryParse(request with { VideoAudioCodec = "copy" }, out _, out _));
         Assert.False(LibraryRequestParser.TryParse(request with { VideoAudioCodec = null }, out _, out _));
-        Assert.False(LibraryRequestParser.TryParse(request with { DownmixToStereo = true }, out _, out _));
+        // Each file decides: a downmix leaves stereo soundtracks searchable and the rest at the library bitrate.
+        Assert.True(LibraryRequestParser.TryParse(request with { DownmixToStereo = true }, out _, out _));
         Assert.True(LibraryRequestParser.TryParse(request with { WorkPlacement = "WorkerOnly" }, out _, out _));
         Assert.False(LibraryRequestParser.TryParse(request with { MediaType = "Music" }, out _, out _));
     }

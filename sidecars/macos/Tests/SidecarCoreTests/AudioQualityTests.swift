@@ -58,6 +58,20 @@ struct AudioQualityTests {
         }
     }
 
+    @Test("mkvmerge language-suffixed statistics give the track length")
+    func suffixedStatistics() {
+        let json = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0","channels":2,"sample_rate":"48000","tags":{"language":"ita","DURATION-eng":"00:42:48.640000000","_STATISTICS_WRITING_APP-eng":"mkvmerge v51"}}],"format":{"start_time":"0","duration":"2568.661","tags":{"encoder":"libebml v1.4.1"}}}"#
+        #expect(abs((AudioQualityAssessment.profile(json, audioIndex: 0)?.durationSeconds ?? 0) - 2568.64) < 1e-6)
+        #expect(AudioQualityAssessment.profile(json.replacingOccurrences(of: "libebml v1.4.1", with: "Lavf62"), audioIndex: 0) == nil)
+    }
+
+    @Test("an output this FFmpeg wrote reads its own end tag despite copied statistics")
+    func ownOutputDuration() {
+        let json = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0.019","channels":2,"sample_rate":"48000","tags":{"DURATION":"00:11:48.199000000","DURATION-eng":"00:11:48.139000000","_STATISTICS_WRITING_APP":"mkvmerge v9.6.0"}}],"format":{"start_time":"0","duration":"708.285","tags":{"encoder":"Lavf62.3.103"}}}"#
+        #expect(AudioQualityAssessment.profile(json, audioIndex: 0) == nil)
+        #expect(abs((AudioQualityAssessment.profile(json, audioIndex: 0, writtenByFfmpeg: true)?.durationSeconds ?? 0) - 708.18) < 1e-6)
+    }
+
     @Test("older audio profiles decode with a zero container lead")
     func oldProfile() throws {
         let json = #"{"durationSeconds":3,"channels":2,"sampleRate":48000,"channelLayout":"stereo"}"#

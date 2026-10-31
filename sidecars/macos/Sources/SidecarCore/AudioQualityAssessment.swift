@@ -126,7 +126,9 @@ public struct AudioQualityAssessment: Sendable {
         return arguments
     }
 
-    static func profile(_ json: String, audioIndex: Int? = nil) -> AudioQualityProfile? {
+    /// `writtenByFfmpeg`: an output this FFmpeg just muxed, whose plain DURATION is its own end timestamp
+    /// even when stale statistics were copied from the source.
+    static func profile(_ json: String, audioIndex: Int? = nil, writtenByFfmpeg: Bool = false) -> AudioQualityProfile? {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let streams = object["streams"] as? [[String: Any]] else { return nil }
@@ -141,18 +143,20 @@ public struct AudioQualityAssessment: Sendable {
         let streamDuration = audio[selected]["duration"] as? String
         let formatDuration = (object["format"] as? [String: Any])?["duration"] as? String
         var duration = streamDuration.flatMap(Double.init)
+        let formatTags = (object["format"] as? [String: Any])?["tags"] as? [String: Any]
+        let encoder = (formatTags?.first(where: { $0.key.lowercased() == "encoder" })?.value as? String ?? "").lowercased()
+        // FFmpeg always writes a plain DURATION, so a language-suffixed one in its output is a stale copy.
+        let suffixed = !encoder.hasPrefix("lavf") && !writtenByFfmpeg
         if duration == nil, audioIndex != nil,
            let tags = audio[selected]["tags"] as? [String: Any],
-           let endText = tags.first(where: { $0.key.uppercased() == "DURATION" })?.value as? String {
+           let endText = matroskaTag(tags, "DURATION", allowLanguageSuffix: suffixed) {
             let parts = endText.split(separator: ":", omittingEmptySubsequences: false)
             guard parts.count == 3, let hours = Int(parts[0]), hours >= 0,
                   let minutes = Int(parts[1]), (0...59).contains(minutes),
                   let seconds = Double(parts[2]), (0..<60).contains(seconds),
                   let start = Double(audio[selected]["start_time"] as? String ?? "N/A") else { return nil }
-            let statistics = (tags.first(where: { $0.key.uppercased() == "_STATISTICS_WRITING_APP" })?.value as? String ?? "").lowercased()
-            let formatTags = (object["format"] as? [String: Any])?["tags"] as? [String: Any]
-            let encoder = (formatTags?.first(where: { $0.key.lowercased() == "encoder" })?.value as? String ?? "").lowercased()
-            let lengthTag = statistics.hasPrefix("mkvmerge") || statistics.hasPrefix("mkvpropedit")
+            let statistics = (matroskaTag(tags, "_STATISTICS_WRITING_APP", allowLanguageSuffix: suffixed) ?? "").lowercased()
+            let lengthTag = !writtenByFfmpeg && (statistics.hasPrefix("mkvmerge") || statistics.hasPrefix("mkvpropedit"))
             // A later tag edit and stale copied statistics have indistinguishable provenance.
             guard !(lengthTag && encoder.hasPrefix("lavf") && start != 0) else { return nil }
             duration = Double(hours) * 3600 + Double(minutes) * 60 + seconds - (lengthTag ? 0 : start)
@@ -168,6 +172,15 @@ public struct AudioQualityAssessment: Sendable {
             guard lead.isFinite, (0...0.1).contains(lead) else { return nil }
         }
         return .init(durationSeconds: seconds, channels: channels, sampleRate: rate, channelLayout: layout, containerLeadSeconds: lead)
+    }
+
+    /// The plain tag, or else one agreed language-suffixed copy such as mkvmerge's DURATION-eng.
+    static func matroskaTag(_ tags: [String: Any], _ name: String, allowLanguageSuffix: Bool) -> String? {
+        if let plain = tags.first(where: { $0.key.uppercased() == name }) { return plain.value as? String }
+        guard allowLanguageSuffix else { return nil }
+        let copies = tags.filter { $0.key.uppercased().hasPrefix(name + "-") }.map { $0.value as? String }
+        guard let first = copies.first, let value = first, copies.allSatisfy({ $0 == value }) else { return nil }
+        return value
     }
 
     static func parse(_ json: String, channels: Int, seconds: Double) -> AudioQualityDistances? {
@@ -193,7 +206,7 @@ public struct AudioQualityAssessment: Sendable {
         result.candidateAudioIndex = candidateAudioIndex
         defer { try? FileManager.default.removeItem(at: owned) }
         do {
-            guard let reference = Self.profile(sourceProbe, audioIndex: sourceAudioIndex), let output = Self.profile(candidateProbe, audioIndex: candidateAudioIndex) else {
+            guard let reference = Self.profile(sourceProbe, audioIndex: sourceAudioIndex), let output = Self.profile(candidateProbe, audioIndex: candidateAudioIndex, writtenByFfmpeg: true) else {
                 throw Failure("Assessment requires one known-duration mono/stereo audio track without video or unproved channel layouts.")
             }
             result.reference = reference; result.candidate = output

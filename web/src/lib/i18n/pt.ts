@@ -138,7 +138,7 @@ export const pt: Messages = {
     coverage_note: "Até oito faixas mantidas e 90 segundos por faixa. Surround e redução surround não são avaliados. As faixas copiadas usam as verificações de preservação existentes.",
     adaptive_label: "Escolher a taxa de bits de cada faixa de áudio por medição",
     adaptive_hint: "Experimental. Antes da codificação completa, cada faixa mantida é testada com até quatro taxas de bits e a menor dentro do seu limite é usada. Se alguma faixa não puder ser medida, todas mantêm a taxa acima. A verificação continua a avaliar o ficheiro final. As taxas são escolhidas neste servidor, incluindo para trabalhos codificados por um worker.",
-    adaptive_unavailable: "Disponível quando as faixas são recodificadas em AAC, Opus ou MP3 sem redução para estéreo.",
+    adaptive_unavailable: "Disponível quando as faixas são recodificadas em AAC, Opus ou MP3.",
     adaptive_requires_gate: "Necessária enquanto as taxas de bits das faixas forem escolhidas por medição.",
     search_title: "Taxas de bits das faixas de áudio",
     search_hint: "Escolhidas a partir de amostras curtas antes da codificação completa. Explicam as taxas; não aprovam a substituição. A verificação de qualidade das faixas avalia o ficheiro final.",
