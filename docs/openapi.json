@@ -600,6 +600,21 @@
               "integer",
               "string"
             ]
+          },
+          "sourceChannelLayout": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceChannels": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
           }
         },
         "required": [
@@ -5622,6 +5637,14 @@
       },
       "SoundtrackQualityRequest": {
         "properties": {
+          "audioFiltered": {
+            "default": false,
+            "type": "boolean"
+          },
+          "downmixToStereo": {
+            "default": false,
+            "type": "boolean"
+          },
           "removedSourceAudioIndexes": {
             "items": {
               "format": "int32",
