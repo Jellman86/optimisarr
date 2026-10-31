@@ -62,7 +62,10 @@ struct AudioQualityTests {
     func suffixedStatistics() {
         let json = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0","channels":2,"sample_rate":"48000","tags":{"language":"ita","DURATION-eng":"00:42:48.640000000","_STATISTICS_WRITING_APP-eng":"mkvmerge v51"}}],"format":{"start_time":"0","duration":"2568.661","tags":{"encoder":"libebml v1.4.1"}}}"#
         #expect(abs((AudioQualityAssessment.profile(json, audioIndex: 0)?.durationSeconds ?? 0) - 2568.64) < 1e-6)
-        #expect(AudioQualityAssessment.profile(json.replacingOccurrences(of: "libebml v1.4.1", with: "Lavf62"), audioIndex: 0) == nil)
+        let propedited = json.replacingOccurrences(of: "libebml v1.4.1", with: "Lavf58.29.100").replacingOccurrences(of: "mkvmerge v51", with: "mkvpropedit v28.2.0")
+        #expect(abs((AudioQualityAssessment.profile(propedited, audioIndex: 0)?.durationSeconds ?? 0) - 2568.64) < 1e-6)
+        #expect(AudioQualityAssessment.profile(propedited.replacingOccurrences(of: #""start_time":"0","channels""#, with: #""start_time":"0.5","channels""#), audioIndex: 0) == nil)
+        #expect(AudioQualityAssessment.profile(propedited, audioIndex: 0, writtenByFfmpeg: true) == nil)
     }
 
     @Test("an output this FFmpeg wrote reads its own end tag despite copied statistics")
