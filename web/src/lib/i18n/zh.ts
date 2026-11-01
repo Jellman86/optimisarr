@@ -468,7 +468,7 @@ export const zh: Messages = {
     state: "状态",
     state_reason: "原因",
     state_encoding: "正在编码",
-    state_workers: "在工作节点上",
+    state_workers: "在工作节点上编码",
     state_workers_local_held: "本服务器：{reason}",
     state_workers_local_paused: "本服务器已暂停。已在工作节点上的任务会继续运行。",
     state_paused: "已暂停",

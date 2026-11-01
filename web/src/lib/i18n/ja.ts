@@ -468,7 +468,7 @@ export const ja: Messages = {
     state: "状態",
     state_reason: "理由",
     state_encoding: "エンコード中",
-    state_workers: "ワーカーで実行中",
+    state_workers: "ワーカーでエンコード中",
     state_workers_local_held: "このサーバー: {reason}",
     state_workers_local_paused: "このサーバーは一時停止中です。ワーカー上のジョブは実行を続けます。",
     state_paused: "一時停止",
