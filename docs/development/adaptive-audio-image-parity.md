@@ -293,7 +293,9 @@ CI matrix includes these workflows and the audio/image searches.
 ## Qualification matrix
 
 Extend the existing isolated acceptance harness; do not use the installed service or replace
-personal media as a test fixture. `--regression quality-first` exercises JPEG and AAC/Opus/MP3
+personal media. Generated fixtures remain the public baseline. The release check's house corpus
+only reads short copies of the operator's own files on that host, and its clips, manifest and full
+reports are never committed or published. `--regression quality-first` exercises JPEG and AAC/Opus/MP3
 selection, deliberate impossible targets, original hashes, actual final encoder settings,
 replacement rejection and exact rollback. Its deliberately permissive success limits and
 zero-distance rejection limits are fixtures, not recommended policies.
