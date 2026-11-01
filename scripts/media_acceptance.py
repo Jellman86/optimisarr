@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import shutil
@@ -54,11 +55,13 @@ def main():
     verification = parser.add_mutually_exclusive_group()
     verification.add_argument("--sidecar-verification", action="store_true", help="Require complete sidecar verification (already the fleet default)")
     verification.add_argument("--server-verification", action="store_true", help="Explicitly test the legacy server-verification mode")
-    parser.add_argument("--regression", choices=("interactive-samples", "interactive-lifecycle", "subtitle-mux", "fractional-timing", "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy", "audio", "soundtrack-quality", "image-quality", "quality-first", "quality-first-workers", "quality-first-source", "quality-first-webp", "quality-first-metadata", "quality-first-retry", "quality-first-ownership"), help="Run a focused real-media regression matrix")
+    parser.add_argument("--regression", choices=("house-corpus", "interactive-samples", "interactive-lifecycle", "subtitle-mux", "fractional-timing", "uneven-timing", "initial-pictures", "subtitle-overlap", "alac-copy", "audio", "soundtrack-quality", "image-quality", "quality-first", "quality-first-workers", "quality-first-source", "quality-first-webp", "quality-first-metadata", "quality-first-retry", "quality-first-ownership"), help="Run a focused real-media regression matrix")
     parser.add_argument("--tier", choices=("smoke", "fleet"), default="smoke")
     parser.add_argument("--corpus", type=Path, help="Checksum-locked corpus.json produced by acceptance_corpus.py")
     parser.add_argument("--expected-worker", action="append", default=[])
+    parser.add_argument("--worker-name", help="Explicit identity for a single disposable worker encoder")
     worker_runtime = parser.add_mutually_exclusive_group()
+    worker_runtime.add_argument("--worker-config", type=Path, help="Private JSON list of mixed disposable worker launchers")
     worker_runtime.add_argument("--worker-image", help="Linux sidecar image; disposable local Linux Docker daemons only")
     parser.add_argument("--worker-remote", action="store_true", help="Worker command launches on another host; do not assume its dashboard or scratch is local")
     parser.add_argument("--worker-scratch-root", type=Path, help="New native-worker scratch directory, separate from durable evidence")
@@ -78,6 +81,11 @@ def main():
                         help="Memory limit for worker containers; image quality-first jobs reserve 3.5 GiB, so use 6g")
     parser.add_argument("--timeout", type=int, default=900, help="Per-job deadline in seconds")
     args = parser.parse_args()
+    if args.regression == "house-corpus" and not args.corpus:
+        parser.error("--regression house-corpus requires --corpus")
+    if args.worker_name and (not re.fullmatch(r"[a-zA-Z0-9_-]+", args.worker_name)
+                            or len(args.worker_encoder) != 1 or not (args.worker_command or args.worker_image)):
+        parser.error("--worker-name requires a safe unique name, one --worker-encoder and a worker launcher")
     if not 8 <= args.fixture_seconds <= 600 or not 0 <= args.soak_cycles <= 1000:
         parser.error("Fixture duration must be 8–600 seconds and soak cycles 0–1000")
     if args.sidecar_verification and args.tier != "fleet":
@@ -86,7 +94,7 @@ def main():
         parser.error("--server-verification requires --tier fleet")
     if args.expected_worker and args.tier != "fleet":
         parser.error("--expected-worker requires --tier fleet")
-    if (args.worker_command or args.worker_image) and args.tier != "fleet":
+    if (args.worker_command or args.worker_image or args.worker_config) and args.tier != "fleet":
         parser.error("Worker launchers require --tier fleet")
     if (args.worker_encoder or args.require_worker_ram) and not (args.worker_command or args.worker_image):
         parser.error("Worker encoder/RAM requirements need --worker-command or --worker-image")
@@ -178,13 +186,17 @@ def main():
                     time.sleep(1)
         if args.worker_image:
             require(sys.platform == "linux", "Worker containers require a disposable local Linux Docker daemon")
-            workers = ContainerWorkers(api, root, url, args.worker_image, devices=args.device, gpus=args.gpus, memory=args.worker_memory)
+            workers = ContainerWorkers(api, root, url, args.worker_image, devices=args.device, gpus=args.gpus, memory=args.worker_memory, name=args.worker_name)
             workers.start([], args.worker_encoder, report=report)
         if args.worker_command:
             argv = json.loads(args.worker_command)
             require(isinstance(argv, list) and argv and all(isinstance(x, str) for x in argv), "Worker command must be a JSON argument array")
-            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe, vmaf=args.vmaf, require_ram=args.require_worker_ram, scratch_root=scratch_root, observe_local=not args.worker_remote)
+            workers = Workers(api, root, url, args.ffmpeg, args.ffprobe, vmaf=args.vmaf, require_ram=args.require_worker_ram, scratch_root=scratch_root, observe_local=not args.worker_remote, name=args.worker_name)
             workers.start(argv, args.worker_encoder, report=report)
+        if args.worker_config:
+            from acceptance.worker_group import WorkerGroup
+            workers = WorkerGroup(api, root, url, args.ffmpeg, args.ffprobe)
+            workers.start(json.loads(args.worker_config.read_text()), report)
         corpus = args.corpus
         if corpus:
             from acceptance.corpus import import_corpus

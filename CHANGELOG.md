@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add private checksum-pinned house clips that retain real timing/metadata quirks with explicit pass, expected refusal or search-fallback outcomes. Mixed disposable worker launchers share one test server and require every named identity. The negative-start Opus first-window defect (#474) remains open.
+
 - Expand public soundtrack acceptance fixtures with lossy AAC search/gate paths, titled MP4 output, near-full-scale AAC decode overs, FFmpeg-emulated mkvpropedit statistics and mono downmix assessment. Each case proves the source property before checking measured evidence and replacement/rollback.
 
 - Assess surround and mono soundtracks that a library downmixes to stereo (#332). The soundtrack gate and per-soundtrack bitrate selection previously refused every retained surround track, which left most surround video unassessable. With **Downmix surround to stereo** on, a surround track with a known channel layout (or a mono track) is now measured against the source through the same `-ac 2` downmix the encode applied, so the score measures codec loss rather than the downmix the library chose. One argument list drives the encode and every reference, the evidence records the source channels and a distinct preparation, and workers need sidecar protocol 13. Surround with an unknown layout, a downmixed track with an explicit audio filter, and surround kept without a downmix stay unassessable.

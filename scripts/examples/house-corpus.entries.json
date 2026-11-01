@@ -1,0 +1,95 @@
+[
+  {
+    "source": "/operator/private/lossy-aac.mkv",
+    "start": 60,
+    "seconds": 40,
+    "property": "lossy-aac-window",
+    "reason": "Lossy AAC source with sampled windows that previously missed their requested length (#469).",
+    "expected": "passes"
+  },
+  {
+    "source": "/operator/private/mkvpropedit-short.mkv",
+    "start": 0,
+    "seconds": 40,
+    "cut": "whole-file",
+    "property": "duration-eng-statistics",
+    "reason": "Already-short FFmpeg-muxed MKV, later edited by real mkvpropedit: DURATION-eng only (#470). Whole-file keeps exact statistics.",
+    "expected": "passes"
+  },
+  {
+    "source": "/operator/private/copied-statistics.mkv",
+    "start": 0,
+    "seconds": 40,
+    "cut": "whole-file",
+    "property": "stale-statistics",
+    "reason": "Plain FFmpeg duration must win over stale copied mkvmerge statistics in the output (#469).",
+    "expected": "passes"
+  },
+  {
+    "source": "/operator/private/titled-soundtrack.mkv",
+    "start": 20,
+    "seconds": 40,
+    "targetContainer": "mp4",
+    "property": "mp4-track-title",
+    "reason": "Titled source becomes MP4: output loses title but must preserve language (#469).",
+    "expected": "passes"
+  },
+  {
+    "source": "/operator/private/near-full-scale.mkv",
+    "start": 60,
+    "seconds": 40,
+    "property": "decoded-overs",
+    "reason": "Below-full-scale source whose lossy encodes decode above full scale (#471).",
+    "expected": "passes"
+  },
+  {
+    "source": "/operator/private/negative-opus-short.mkv",
+    "start": 0,
+    "seconds": 40,
+    "cut": "whole-file",
+    "property": "negative-opus-start",
+    "reason": "Known OPEN issue https://github.com/Jellman86/optimisarr/issues/474: negative-start Opus first window is 46 ms short. Set the reason substring below to the retained job's exact refusal text.",
+    "expected": {"outcome": "blocked", "reason": "window"}
+  },
+  {
+    "source": "/operator/private/legacy-no-track-duration-short.mkv",
+    "start": 0,
+    "seconds": 40,
+    "cut": "whole-file",
+    "property": "missing-track-duration",
+    "reason": "Accepted limitation: legacy Lavf55 MKV has no per-track duration and a 105 ms video lead (>100 ms); assessment must fail closed. Confirm the retained refusal text.",
+    "expected": {"outcome": "blocked", "reason": "duration"}
+  },
+  {
+    "source": "/operator/private/subtitle-heavy.mkv",
+    "start": 0,
+    "seconds": 40,
+    "property": "subtitle-heavy-claim",
+    "reason": "Keep every subtitle stream and attachment; exercises the worker claim path (#466). A short clip does not reproduce full-file demux latency.",
+    "expected": "passes"
+  },
+  {
+    "source": "/operator/private/eac3-side-surround.mkv",
+    "start": 60,
+    "seconds": 40,
+    "property": "eac3-surround",
+    "reason": "E-AC-3 5.1(side) assessed against the configured stereo downmix (#472).",
+    "expected": "passes"
+  },
+  {
+    "source": "/operator/private/opus-seven-one.mkv",
+    "start": 60,
+    "seconds": 40,
+    "property": "opus-surround",
+    "reason": "Opus 7.1 downmix; qualify timing separately from the known negative-start issue #474.",
+    "expected": "search-fallback"
+  },
+  {
+    "source": "/operator/private/stereo-surround.mkv",
+    "start": 60,
+    "seconds": 40,
+    "property": "stereo-surround-mix",
+    "reason": "Mixed retained stereo and surround tracks must each use the correct reference preparation.",
+    "expected": "passes"
+  }
+]

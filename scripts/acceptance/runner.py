@@ -506,6 +506,42 @@ class Harness:
         return {"originalUnchanged": True, "restoredOriginal": True, "tracks": len(tracks), "copied": copied,
                 "sourceDecodedPeak": peak, "sourceLossyAac": lossy, "titledMp4": titled_mp4}
 
+    def house_clip(self, entry, corpus_root, worker=None):
+        from .house_corpus import assert_outcome, validate_expected
+        self.select_worker(worker)
+        fixture = inside(corpus_root, Path(corpus_root) / entry["path"])
+        require(sha256(fixture) == entry["sha256"], "House clip checksum mismatch")
+        expected = validate_expected(entry["expected"])
+        name = (f"worker-{worker['id']}-" if worker else "local-") + entry["id"]
+        encoder = worker["videoEncoders"][0] if worker else "libx264"
+        if encoder not in MODES:
+            raise Blocked("No house corpus scenario for the proved worker encoder")
+        case = self.create_job(name, fixture, encoder=encoder, worker=worker, overrides={
+            "targetVideoCodec": CODECS.get(encoder, encoder.split("_")[0]), "targetContainer": entry.get("targetContainer", "mkv"),
+            "videoAudioCodec": "aac", "videoAudioBitrateKbps": 128,
+            "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": .01,
+            "downmixToStereo": True, "adaptiveSoundtrackQuality": True,
+            "vmafQualityGateEnabled": False, "requireSizeReduction": False})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        verification = json.loads(job.get("verificationReportJson") or "{}")
+        require(job.get("workerName") == (worker["name"] if worker else None), "House clip ran on the wrong host")
+        require(sha256(case["source"]) == case["sourceSha256"], "House assessment changed the original")
+        assert_outcome(expected, job["status"], job.get("errorMessage"), verification)
+        require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")),
+                "House clip was replaced before explicit acceptance")
+        if expected["outcome"] == "blocked":
+            return {"expected": expected, "originalUnchanged": True, "gateBlocked": True}
+        probe = self.tools.probe(fixture)
+        audio = [s for s in probe["streams"] if s["codec_type"] == "audio"]
+        location = "Worker" if worker and self.strict_worker_verification else "Server"
+        validate_soundtrack_report(verification.get("soundtrackQuality"), list(range(len(audio))), location, .01,
+            downmixed=tuple(i for i, stream in enumerate(audio) if stream.get("channels") != 2))
+        candidate = self.output(case)
+        self.tools.run(self.tools.ffmpeg, ["-v", "error", "-xerror", "-i", self.tools.path(candidate), "-f", "null", "-"])
+        self.replace_restore(case, candidate)
+        return {"expected": expected, "originalUnchanged": True, "restoredOriginal": True}
+
     def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False, adaptive=False, reject=False):
         self.select_worker(worker)
         name = f"worker-{worker['id']}-audio-{codec}" if worker else f"audio-{codec}"
@@ -987,6 +1023,28 @@ class Harness:
         self.configure(workerVerificationRequired=strict_worker_verification)
         self.report.environment["strictWorkerVerification"] = strict_worker_verification
         try:
+            if tier == "fleet":
+                for name in missing_workers(self.workers, expected_workers):
+                    self.report.case("required-worker-at-start-" + name,
+                        lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
+            if regression == "house-corpus":
+                require(corpus, "house-corpus regression requires --corpus")
+                manifest = json.loads(Path(corpus).read_text())
+                require(manifest.get("kind") == "house" and manifest.get("clips"), "Expected a nonempty house corpus")
+                save(self.report.root / "corpus.json", manifest)
+                targets = [None]
+                if tier == "fleet":
+                    for name in missing_workers(self.workers, expected_workers):
+                        self.report.case("required-worker-" + name,
+                            lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
+                    targets += [w for w in self.workers if w["online"] and not w["revokedAt"]]
+                    if len(targets) == 1:
+                        self.report.case("house-workers", lambda: (_ for _ in ()).throw(Blocked("No house corpus workers paired")))
+                for worker in targets:
+                    for entry in manifest["clips"]:
+                        label = (f"worker-{worker['id']}-" if worker else "local-") + entry["id"]
+                        self.report.case(label, lambda e=entry, w=worker: self.house_clip(e, Path(corpus).parent, w))
+                return self.report.exit_code
             if regression in ("interactive-samples", "interactive-lifecycle"):
                 from .interactive import run_interactive_matrix
                 run_interactive_matrix(self, tier=tier, expected_workers=expected_workers, lifecycle_only=regression == "interactive-lifecycle")
@@ -1270,4 +1328,8 @@ class Harness:
                 self.report.case("oracle-rejects-" + damage, negative)
         finally:
             self.report.case("restore-test-settings", self.restore)
+            if tier == "fleet" and expected_workers:
+                for name in missing_workers(self.api.request("/api/workers"), expected_workers):
+                    self.report.case("required-worker-at-finish-" + name,
+                        lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
         return self.report.exit_code
