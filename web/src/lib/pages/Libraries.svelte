@@ -3074,11 +3074,13 @@
     </nav>
   {/if}
 
-  {#if room !== 'overview' && activeTab === 'rules'}
+  {#if room !== 'overview' || activeTab !== 'rules'}
+    <!-- Every configuration view keeps the way into each stage; only a stage being edited is filled. -->
     <nav class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={i18n.m.libraryWorkflow.workflow}>
       {#each workflowStages as stage, index}
-        <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-14 items-center gap-3 px-4 py-3 text-left text-sm {stageRoom === stage.room ? 'text-accent ring-1 ring-inset ring-accent/40' : 'text-ink-2'}" aria-current={stageRoom === stage.room ? 'step' : undefined} onclick={() => goRoom(stage.room)}>
-          <span class="text-xs tabular-nums text-ink-3">{index + 1}</span><span class="min-w-0 break-words font-medium">{stage.title}</span>
+        {@const current = activeTab === 'rules' && stageRoom === stage.room}
+        <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-14 items-center gap-3 px-4 py-3 text-left text-sm {current ? 'bg-accent-fill text-accent-on' : 'text-ink-2'}" aria-current={current ? 'step' : undefined} onclick={() => goRoom(stage.room)}>
+          <span class="text-xs tabular-nums {current ? 'text-accent-on/80' : 'text-ink-3'}">{index + 1}</span><span class="min-w-0 break-words font-semibold">{stage.title}</span>
         </button>
       {/each}
     </nav>
