@@ -104,7 +104,13 @@ The cutter reads originals and copies every stream, metadata and attachment wher
 container permits. It never falls back to a re-encode. Stream copy can add keyframe pre-roll,
 change duration statistics or normalize timing; inspect `sourceProbe` and `probe` in the private
 manifest to confirm the chosen property survived. Remuxing cannot reproduce every historical
-mkvpropedit/Lavf quirk. Use `whole-file` for existing short clips whose exact bytes matter; it
+mkvpropedit/Lavf quirk. In practice an FFmpeg stream-copy cut from the middle of a long Matroska
+episode can keep seconds of keyframe pre-roll (a negative audio start) and the source's stale
+whole-episode `DURATION-eng`; such a clip tests the cut, not the library. Prefer cutting with
+`mkvmerge --split parts:START-END`, which writes clean, correct statistics like a real release,
+then use `whole-file`. Recreate tag quirks with the tool that originally wrote them (for example
+`mkvpropedit --add-track-statistics-tags` on an FFmpeg-muxed cut), and confirm them in the probe.
+Local house clips encode with libx265, because real clips are often 10-bit. Use `whole-file` for existing short clips whose exact bytes matter; it
 requires start zero and a probed duration within the requested bound. SHA-256, codecs, channel
 layouts, tags and the reason/expectation are retained. Manifest import checks checksums and
 confines every clip path to the manifest directory, preserving the original extension.

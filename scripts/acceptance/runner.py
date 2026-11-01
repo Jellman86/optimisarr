@@ -513,7 +513,8 @@ class Harness:
         require(sha256(fixture) == entry["sha256"], "House clip checksum mismatch")
         expected = validate_expected(entry["expected"])
         name = (f"worker-{worker['id']}-" if worker else "local-") + entry["id"]
-        encoder = worker["videoEncoders"][0] if worker else "libx264"
+        # Real library clips are often 10-bit HEVC/AV1, which the H.264 compatibility profile refuses.
+        encoder = worker["videoEncoders"][0] if worker else "libx265"
         if encoder not in MODES:
             raise Blocked("No house corpus scenario for the proved worker encoder")
         case = self.create_job(name, fixture, encoder=encoder, worker=worker, overrides={

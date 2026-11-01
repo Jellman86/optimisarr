@@ -34,7 +34,9 @@ class HouseCorpusTests(unittest.TestCase):
             self.assertTrue(settings["soundtrackQualityGateEnabled"])
             self.assertTrue(settings["downmixToStereo"])
             self.assertTrue(settings["adaptiveSoundtrackQuality"])
-            self.assertEqual("h264", settings["targetVideoCodec"])
+            # Real library clips are often 10-bit, which H.264's compatibility profile refuses.
+            self.assertEqual("hevc", settings["targetVideoCodec"])
+            self.assertEqual("libx265", harness.create_job.call_args.kwargs["encoder"])
             self.assertEqual("aac", settings["videoAudioCodec"])
             harness.wait_job.return_value["workerName"] = "mac"
             harness.house_clip(entry, root, {"id": 1, "name": "mac", "videoEncoders": ["hevc_videotoolbox"]})
