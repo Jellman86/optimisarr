@@ -426,6 +426,8 @@ class Harness:
                                f"-metadata:s:a:{track}", "_STATISTICS_WRITING_APP-eng=mkvpropedit generated-regression"]
         elif timing == "opus-preroll":
             channels = ["-c:a", "libopus", "-ac", "2"]
+        # Offset timestamps rather than inserting silence: the first decoded sample must be late.
+        audio_offset = ["-itsoffset", "0.022"] if timing == "late-audio" else []
         attachment = []
         if attached_font:
             # Generated attachment payload: probing must never dump this entire 2 MiB font stream.
@@ -434,8 +436,8 @@ class Harness:
             attachment = ["-attach", self.tools.path(font), "-metadata:s:t:0", "mimetype=application/x-truetype-font",
                           "-metadata:s:t:0", "filename=regression.ttf"]
         self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
-            "-f", "lavfi", "-i", main,
-            "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
+            *audio_offset, "-f", "lavfi", "-i", main,
+            *audio_offset, "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
             "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *channels,
             "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=" if short else "title=Main",
             "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary",
@@ -463,6 +465,11 @@ class Harness:
             require(all(float(track["start_time"]) < 0 for track in audio), "Opus fixture lost its negative start")
         source_probe = self.tools.probe(fixture)
         source_tracks = [stream for stream in source_probe["streams"] if stream["codec_type"] == "audio"]
+        if timing == "late-audio":
+            video = next(stream for stream in source_probe["streams"] if stream["codec_type"] == "video")
+            require(abs(float(video["start_time"])) < .001, "Late-audio fixture lost its zero picture origin")
+            require(len(source_tracks) == 2 and all(.021 <= float(track["start_time"]) <= .023 for track in source_tracks),
+                    "Late-audio fixture must start both audio tracks about 22 ms after the picture")
         if mono:
             require(source_tracks[0]["channels"] == 1, "Mono fixture is not mono")
         save(self.report.root / name / "source-probe.json", source_probe)
@@ -1194,6 +1201,7 @@ class Harness:
                     self.report.case(label + "-soundtrack-flac-statistics", lambda w=worker: self.soundtrack("aac", w, timing="flac-statistics"))
                     self.report.case(label + "-soundtrack-flac-statistics-font", lambda w=worker: self.soundtrack("aac", w, timing="flac-statistics", attached_font=True))
                     self.report.case(label + "-soundtrack-opus-preroll", lambda w=worker: self.soundtrack("opus", w, timing="opus-preroll"))
+                    self.report.case(label + "-soundtrack-late-audio", lambda w=worker: self.soundtrack("aac", w, timing="late-audio"))
                     self.report.case(label + "-soundtrack-surround-downmixed", lambda w=worker: self.soundtrack("aac", w, surround=True))
                     self.report.case(label + "-soundtrack-surround-kept", lambda w=worker: self.soundtrack("aac", w, surround=False))
                     self.report.case(label + "-soundtrack-adaptive-surround-downmixed",

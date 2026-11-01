@@ -129,10 +129,9 @@ public struct AudioQualityAssessment: Sendable {
         let inputArgs: [String] = inputSeek == 0 ? [] : ["-ss", secondsText(inputSeek)]
         let outputArgs: [String] = outputSeek == 0 ? [] : ["-ss", secondsText(outputSeek)]
         let frames = Int((window.durationSeconds * 48000).rounded())
-        // Bound both timestamps so late audio cannot move the window's end after normalization.
-        // Match the existing 64-frame rounding allowance for millisecond Matroska timestamps.
-        let end = seek + window.durationSeconds + 64 / 48000.0
-        let trim = fromStart ? "atrim=start=\(secondsText(seek)):end=\(secondsText(end)),asetpts=PTS-STARTPTS," : ""
+        // Audio can start slightly after the picture. Count samples after the start trim;
+        // a timestamp end would shorten those windows. Start-time and lead checks enforce timing.
+        let trim = fromStart ? "atrim=start=\(secondsText(seek)),asetpts=PTS-STARTPTS," : ""
         let filterArgs: [String] = soundtrack ? ["-af", "aresample=48000,\(trim)atrim=end_sample=\(frames)"] : []
         let duration = secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0))
         // Standalone samples need decoder context; soundtracks keep the demuxer's picture origin.

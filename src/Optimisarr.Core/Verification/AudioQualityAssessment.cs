@@ -192,17 +192,15 @@ public static class AudioQualityCommandBuilder
         if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
         var seek = window.StartSeconds + containerLeadSeconds;
         // Opus needs up to 80 ms of decoder pre-roll. Near the origin, input seeking can
-        // discard valid samples. Bound both trim timestamps so a late first sample cannot
-        // move the window's end after timestamp normalization.
+        // discard valid samples, so decode from the start before trimming.
         var fromStart = soundtrack && seek <= 0.1;
         var inputSeek = soundtrack ? (fromStart ? 0 : seek) : Math.Max(0, seek - 10);
         var outputSeek = soundtrack ? 0 : seek - inputSeek;
         var frames = (long)Math.Round(window.DurationSeconds * 48000);
-        // Matroska timestamps round to milliseconds. Keep the existing 64-frame rounding
-        // allowance at the end, then cap actual samples; never fill a missing start with later audio.
-        var end = seek + window.DurationSeconds + 64 / 48000.0;
+        // Audio can start slightly after the picture. Count samples after the start trim;
+        // a timestamp end would shorten those windows. Start-time and lead checks enforce timing.
         var trim = fromStart
-            ? $"atrim=start={seek.ToString("0.########", CultureInfo.InvariantCulture)}:end={end.ToString("0.########", CultureInfo.InvariantCulture)},asetpts=PTS-STARTPTS,"
+            ? $"atrim=start={seek.ToString("0.########", CultureInfo.InvariantCulture)},asetpts=PTS-STARTPTS,"
             : "";
         return [
         "-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",

@@ -6,16 +6,33 @@ import Testing
 struct AudioQualityTests {
     @Test("near-start soundtrack windows trim on the picture timeline without input seeking")
     func soundtrackPreroll() {
-        for (start, lead, trim, end) in [(0.0, 0.007, "0.007", "30.00833333"), (0.04, 0.007, "0.047", "30.04833333"),
-                                         (0.0, 0.021, "0.021", "30.02233333"), (0.0, 0.0, "0", "30.00133333")] {
+        for (start, lead, trim) in [(0.0, 0.007, "0.007"), (0.04, 0.007, "0.047"),
+                                    (0.0, 0.021, "0.021"), (0.0, 0.0, "0")] {
             for file in ["reference-opus.mkv", "candidate-opus.mkv"] {
                 let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/" + file),
                     output: URL(fileURLWithPath: "/decoded.raw"), window: .init(startSeconds: start, durationSeconds: 30),
                     audioIndex: 0, lead: lead, soundtrack: true)
                 #expect(!args.contains("-ss"))
-                #expect(args[args.firstIndex(of: "-af")! + 1] == "aresample=48000,atrim=start=\(trim):end=\(end),asetpts=PTS-STARTPTS,atrim=end_sample=1440000")
+                #expect(args[args.firstIndex(of: "-af")! + 1] == "aresample=48000,atrim=start=\(trim),asetpts=PTS-STARTPTS,atrim=end_sample=1440000")
                 #expect(args[args.firstIndex(of: "-t")! + 1] == "30.1")
                 #expect(!args.joined(separator: ",").contains("apad"))
+            }
+        }
+    }
+
+    @Test("late-starting soundtracks count samples after the start trim without a timestamp end")
+    func lateSoundtrackSamples() throws {
+        for start in ["0.009", "0.022"] {
+            let probe = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"\#(start)","duration":"8","channels":2,"sample_rate":"48000"}],"format":{"start_time":"0"}}"#
+            let profile = try #require(AudioQualityAssessment.profile(probe, audioIndex: 0))
+            #expect(profile.containerLeadSeconds == 0)
+            let window = try #require(AudioQualityAssessment.plan(profile.durationSeconds, soundtrack: true).first)
+            for file in ["reference-late.mkv", "candidate-late.mkv"] {
+                let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/" + file),
+                    output: URL(fileURLWithPath: "/decoded.raw"), window: window,
+                    audioIndex: 0, lead: profile.containerLeadSeconds, soundtrack: true)
+                #expect(!args.contains("-ss"))
+                #expect(args[args.firstIndex(of: "-af")! + 1] == "aresample=48000,atrim=start=0,asetpts=PTS-STARTPTS,atrim=end_sample=379200")
             }
         }
     }

@@ -177,20 +177,39 @@ public sealed class SoundtrackQualityTests
         """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","codec_name":"flac","start_time":"0","channels":2,"sample_rate":"48000","extradata":"\n00000000: 1000 1000 0000 0000 0000 0bb8 02f0 0041  ...............A\n00000010: f000 0000 0000 0000 0000 0000 0000 0000  ................\n00000020: 0000                                     ..\n","tags":{"language":"eng","TAG":"00:01:29.941000000","_STATISTICS_WRITING_APP-eng":"mkvpropedit v95"}}],"format":{"start_time":"0","duration":"91","tags":{"encoder":"Lavf62"}}}""".Replace("TAG", tag);
 
     [Theory]
-    [InlineData(0, 0.007, "0.007", "30.00833333")]
-    [InlineData(0.04, 0.007, "0.047", "30.04833333")]
-    [InlineData(0, 0.021, "0.021", "30.02233333")]
-    [InlineData(0, 0, "0", "30.00133333")]
-    public void Near_start_soundtrack_windows_trim_on_the_picture_timeline_without_input_seeking(double start, double lead, string trim, string end)
+    [InlineData(0, 0.007, "0.007")]
+    [InlineData(0.04, 0.007, "0.047")]
+    [InlineData(0, 0.021, "0.021")]
+    [InlineData(0, 0, "0")]
+    public void Near_start_soundtrack_windows_trim_on_the_picture_timeline_without_input_seeking(double start, double lead, string trim)
     {
         // The same command builder prepares reference and candidate, including a candidate with priming.
         foreach (var file in new[] { "reference-opus.mkv", "candidate-opus.mkv" })
         {
             var args = AudioQualityCommandBuilder.Decode(file, "decoded.raw", new(start, 30), containerLeadSeconds: lead, soundtrack: true).ToList();
             Assert.DoesNotContain("-ss", args);
-            Assert.Equal($"aresample=48000,atrim=start={trim}:end={end},asetpts=PTS-STARTPTS,atrim=end_sample=1440000", args[args.IndexOf("-af") + 1]);
+            Assert.Equal($"aresample=48000,atrim=start={trim},asetpts=PTS-STARTPTS,atrim=end_sample=1440000", args[args.IndexOf("-af") + 1]);
             Assert.Equal("30.1", args[args.IndexOf("-t") + 1]);
             Assert.DoesNotContain("apad", string.Join(',', args));
+        }
+    }
+
+    [Theory]
+    [InlineData("0.009")]
+    [InlineData("0.022")]
+    public void Late_starting_soundtracks_count_samples_after_the_start_trim_without_a_timestamp_end(string start)
+    {
+        var probe = Probe(Track(start: start, duration: "8"));
+        var profile = AudioQualityInput.ParseTrack(probe, 0)!;
+        Assert.Equal(0, profile.ContainerLeadSeconds);
+        var window = AudioQualityWindowPlanner.Plan(profile.DurationSeconds, soundtrack: true)[0];
+        foreach (var file in new[] { "reference-late.mkv", "candidate-late.mkv" })
+        {
+            var args = AudioQualityCommandBuilder.Decode(file, "decoded.raw", window,
+                containerLeadSeconds: profile.ContainerLeadSeconds, soundtrack: true).ToList();
+            Assert.DoesNotContain("-ss", args);
+            Assert.Equal("aresample=48000,atrim=start=0,asetpts=PTS-STARTPTS,atrim=end_sample=379200",
+                args[args.IndexOf("-af") + 1]);
         }
     }
 
@@ -448,7 +467,7 @@ public sealed class SoundtrackQualityTests
         var args = AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3), 0, 0, soundtrack: true);
         Assert.DoesNotContain("-ss", args);
         Assert.Equal("3.1", args[args.ToList().IndexOf("-t") + 1]);
-        Assert.Contains("aresample=48000,atrim=start=0:end=3.00133333,asetpts=PTS-STARTPTS,atrim=end_sample=144000", args);
+        Assert.Contains("aresample=48000,atrim=start=0,asetpts=PTS-STARTPTS,atrim=end_sample=144000", args);
         Assert.DoesNotContain("-ss", AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3)));
     }
 
