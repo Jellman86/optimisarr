@@ -13,7 +13,7 @@ from .monitor import LinuxObserver, local_files
 
 
 class Workers:
-    def __init__(self, api, root, server, ffmpeg, ffprobe, *, vmaf=None, require_ram=False, scratch_root=None, observe_local=True):
+    def __init__(self, api, root, server, ffmpeg, ffprobe, *, vmaf=None, require_ram=False, scratch_root=None, observe_local=True, name=None):
         self.api, self.root, self.server = api, Path(root), server
         self.scratch_root = Path(scratch_root) if scratch_root else self.root
         self.env = {**{k: v for k, v in os.environ.items() if not k.startswith("OPTIMISARR_")}, "OPTIMISARR_FFMPEG": ffmpeg, "OPTIMISARR_FFPROBE": ffprobe,
@@ -30,6 +30,7 @@ class Workers:
         self.observers = {}
         self.require_ram = require_ram
         self.observe_local = observe_local
+        self.name = name
 
     def discover(self, argv):
         try:
@@ -61,7 +62,7 @@ class Workers:
         settings["remoteWorkersEnabled"] = True
         self.api.request("/api/settings", "PUT", settings)
         pin = self.api.post("/api/workers/pairing-code")["code"]
-        name = f"acceptance-{capabilities['operatingSystem']}-{encoder}"
+        name = self.name or f"acceptance-{capabilities['operatingSystem']}-{encoder}"
         require(re.fullmatch(r"[a-zA-Z0-9_-]+", name), "Unsafe worker capability name")
         port = free_port() if capabilities["operatingSystem"] == "linux" and self.observe_local else None
         if self.require_ram and port is None:

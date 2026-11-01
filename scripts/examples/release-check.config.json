@@ -1,0 +1,79 @@
+{
+  "listen": "0.0.0.0",
+  "stepTimeout": 14400,
+  "artifacts": {
+    "image": {
+      "sourceCommit": "0000000000000000000000000000000000000000",
+      "version": "0.0.0",
+      "ffmpegRevision": "0000000000000000000000000000000000000000",
+      "nativeHelperRevision": "0000000000000000000000000000000000000000"
+    },
+    "macos": {
+      "path": "/operator/packages/Optimisarr-Sidecar.zip",
+      "version": "0.0.0",
+      "sourceCommit": "0000000000000000000000000000000000000000",
+      "ffmpegRevision": "0000000000000000000000000000000000000000",
+      "nativeHelperRevision": "0000000000000000000000000000000000000000"
+    },
+    "windows": {
+      "path": "/operator/packages/Optimisarr-Sidecar.msi",
+      "version": "0.0.0",
+      "sourceCommit": "0000000000000000000000000000000000000000",
+      "ffmpegRevision": "0000000000000000000000000000000000000000",
+      "nativeHelperRevision": "0000000000000000000000000000000000000000"
+    }
+  },
+  "native": {
+    "path": "/operator/build/Optimisarr.Api.dll",
+    "ffmpeg": "/operator/tools/ffmpeg",
+    "ffprobe": "/operator/tools/ffprobe",
+    "vmaf": "/operator/tools/ffmpeg-vmaf"
+  },
+  "requiredWorkers": ["release-linux", "release-macos", "release-windows"],
+  "workers": {
+    "release-linux": {
+      "image": "example/sidecar@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "encoder": "libx265",
+      "memory": "6g",
+      "ffmpegRevision": "0000000000000000000000000000000000000000",
+      "nativeHelperRevision": "0000000000000000000000000000000000000000"
+    },
+    "release-macos": {
+      "encoder": "hevc_videotoolbox",
+      "ffmpegRevision": "0000000000000000000000000000000000000000",
+      "nativeHelperRevision": "0000000000000000000000000000000000000000",
+      "ssh": {
+        "host": "operator-mac-alias",
+        "python": "python3",
+        "command": ["/operator/build/AcceptanceWorker"],
+        "scratchRoot": "/operator/acceptance-scratch",
+        "serverUrl": "http://operator-test-interface:{port}",
+        "tools": {
+          "OPTIMISARR_FFMPEG": "/operator/package/ffmpeg",
+          "OPTIMISARR_FFPROBE": "/operator/package/ffprobe",
+          "OPTIMISARR_NATIVE_HOST": "/operator/package/native-quality-host",
+          "OPTIMISARR_AUDIO_QUALITY": "/operator/package/optimisarr-audio-quality",
+          "OPTIMISARR_IMAGE_QUALITY": "/operator/package/optimisarr-image-quality"
+        }
+      }
+    },
+    "release-windows": {
+      "encoder": "hevc_nvenc",
+      "ffmpegRevision": "0000000000000000000000000000000000000000",
+      "nativeHelperRevision": "0000000000000000000000000000000000000000",
+      "ssh": {
+        "host": "operator-windows-alias",
+        "python": "python",
+        "command": ["C:/operator/build/Optimisarr.Sidecar.Acceptance.exe"],
+        "scratchRoot": "C:/operator/acceptance-scratch",
+        "serverUrl": "http://operator-test-interface:{port}",
+        "tools": {
+          "OPTIMISARR_FFMPEG": "C:/operator/package/ffmpeg.exe",
+          "OPTIMISARR_FFPROBE": "C:/operator/package/ffprobe.exe",
+          "OPTIMISARR_AUDIO_QUALITY": "C:/operator/package/optimisarr-audio-quality.exe",
+          "OPTIMISARR_IMAGE_QUALITY": "C:/operator/package/optimisarr-image-quality.exe"
+        }
+      }
+    }
+  }
+}

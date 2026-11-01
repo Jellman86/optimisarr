@@ -13,6 +13,32 @@ from acceptance.container_workers import ContainerWorkers
 
 
 class WorkerAvailabilityTests(unittest.TestCase):
+    def test_focused_early_return_still_reports_missing_required_workers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Report(Path(directory) / "report")
+            api = Mock()
+            api.request.return_value = []
+            harness = Harness(api, Mock(), Path(directory), report)
+            harness.preflight = Mock(return_value={})
+            harness.configure, harness.restore = Mock(), Mock(return_value=None)
+            harness.image_perceptual = Mock(return_value={})
+            harness.run(tier="fleet", regression="quality-first-source", expected_workers=["missing"])
+            self.assertTrue(any(row["status"] == "blocked" for row in report.results))
+
+    def test_named_native_worker_pairs_under_the_exact_required_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            api = Mock()
+            api.request.return_value = {}
+            api.post.return_value = {"code": "test-pin"}
+            workers = Workers(api, directory, "http://localhost:1234", "ffmpeg", "ffprobe",
+                              observe_local=False, name="required-worker")
+            process = Mock()
+            with patch("acceptance.workers.subprocess.Popen", return_value=process) as launch, patch.object(workers, "wait_online"):
+                result = workers.launch(["launcher"], {"operatingSystem": "windows"}, "libx265")
+            self.assertEqual("required-worker", result["name"])
+            self.assertEqual("required-worker", launch.call_args.kwargs["env"]["OPTIMISARR_ACCEPTANCE_NAME"])
+            workers.processes[0][1].close()
+
     def test_ram_scratch_is_separate_from_durable_configuration_and_reports(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "durable"

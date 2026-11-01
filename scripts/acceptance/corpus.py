@@ -80,6 +80,8 @@ def import_corpus(manifest, destination):
     manifest, destination = Path(manifest).resolve(), Path(destination)
     data = json.loads(manifest.read_text())
     require(data["version"] == 1 and bool(data["clips"]), "Empty or unsupported corpus manifest")
+    house = data.get("kind") == "house"
+    require(data.get("kind") in (None, "house"), "Unsupported corpus kind")
     destination.mkdir(parents=True, exist_ok=False)
     identifiers = set()
     for clip in data["clips"]:
@@ -88,9 +90,15 @@ def import_corpus(manifest, destination):
         identifiers.add(identifier)
         source = inside(manifest.parent, manifest.parent / clip["path"])
         require(sha256(source) == clip["sha256"], "Corpus source checksum mismatch")
-        require(clip["source"]["license"] and clip["source"]["attribution"], "Corpus has no licence provenance")
-        target = destination / (identifier + ".mkv")
+        if house:
+            from .house_corpus import validate_expected
+            validate_expected(clip.get("expected"))
+            require(clip.get("reason") and clip.get("source", {}).get("private") is True, "House corpus lacks private provenance/reason")
+        else:
+            require(clip["source"]["license"] and clip["source"]["attribution"], "Corpus has no licence provenance")
+        target = destination / (identifier + (source.suffix if house else ".mkv"))
         shutil.copyfile(source, target)
+        require(sha256(target) == clip["sha256"], "Imported corpus checksum mismatch")
         clip["path"] = target.name
     save(destination / "corpus.json", data)
     return destination / "corpus.json"
