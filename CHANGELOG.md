@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expand public soundtrack acceptance fixtures with lossy AAC search/gate paths, titled MP4 output, near-full-scale AAC decode overs, FFmpeg-emulated mkvpropedit statistics and mono downmix assessment. Each case proves the source property before checking measured evidence and replacement/rollback.
+
 - Assess surround and mono soundtracks that a library downmixes to stereo (#332). The soundtrack gate and per-soundtrack bitrate selection previously refused every retained surround track, which left most surround video unassessable. With **Downmix surround to stereo** on, a surround track with a known channel layout (or a mono track) is now measured against the source through the same `-ac 2` downmix the encode applied, so the score measures codec loss rather than the downmix the library chose. One argument list drives the encode and every reference, the evidence records the source channels and a distinct preparation, and workers need sidecar protocol 13. Surround with an unknown layout, a downmixed track with an explicit audio filter, and surround kept without a downmix stay unassessable.
 
 - Measure audio whose decoded peaks rise slightly above full scale. Loud lossy soundtracks decode with overs, and the Zimtohrli helper refused any sample outside ±1.0, so a real Buffy episode's English track could not be measured: its bitrate search fell back, and a soundtrack gate window landing on those peaks would block replacement as unmeasurable. The helper now accepts finite samples up to +12 dBFS and still refuses anything beyond that as corrupt input. The pinned Zimtohrli revision is unchanged; the helper is rebuilt into the server image and every sidecar.
