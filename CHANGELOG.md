@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an isolated release regression command with required worker/artifact coverage, native-only regression routing and redacted JSON/Markdown summaries. Full corpus data and reports remain local; missing release evidence blocks qualification.
+
 - Add private checksum-pinned house clips that retain real timing/metadata quirks with explicit pass, expected refusal or search-fallback outcomes. Mixed disposable worker launchers share one test server and require every named identity. The negative-start Opus first-window defect (#474) remains open.
 
 - Expand public soundtrack acceptance fixtures with lossy AAC search/gate paths, titled MP4 output, near-full-scale AAC decode overs, FFmpeg-emulated mkvpropedit statistics and mono downmix assessment. Each case proves the source property before checking measured evidence and replacement/rollback.
