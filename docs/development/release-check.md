@@ -47,7 +47,7 @@ source-distribution qualification alongside this report; this command does not p
 ## Coverage and remote workers
 
 The command runs smoke with diagnostics and VMAF shadow evidence, all 18 focused regressions,
-the optional house corpus, and a fleet run with **every** `requiredWorkers` identity paired
+the house corpus (a run without one is blocked), and a fleet run with **every** `requiredWorkers` identity paired
 beside the same isolated server (mixed Docker, local and SSH launchers).
 The regression inventory is tested against both the harness choices and every CI workflow.
 `quality-first-ownership` uses `native.path` and its configured tools; without a native POSIX

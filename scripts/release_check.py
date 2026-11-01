@@ -23,7 +23,8 @@ REGRESSIONS = ("interactive-samples", "interactive-lifecycle", "subtitle-mux", "
     "image-quality", "quality-first", "quality-first-workers", "quality-first-source", "quality-first-webp",
     "quality-first-metadata", "quality-first-retry", "quality-first-ownership")
 WORKER_REGRESSIONS = {"interactive-lifecycle", "quality-first-workers"}
-PROPERTIES = set(REGRESSIONS) | HOUSE_PROPERTIES | {"smoke", "fleet", "house-corpus", "image", "macos-package", "windows-package"}
+PROPERTIES = set(REGRESSIONS) | HOUSE_PROPERTIES | {"smoke", "fleet", "house-corpus", "image", "macos-package", "windows-package",
+    "release-check"}
 
 
 def token(value, pattern):
@@ -262,6 +263,12 @@ class ReleaseCheck:
                     clip_status = "failed" if "failed" in outcomes else (
                         "passed" if outcomes and all(outcome == "passed" for outcome in outcomes) else "blocked")
                     details["corpus"].append({**clip, "status": clip_status})
+                # Every clip needs its own passing result; one that never ran cannot pass the step.
+                clips = {clip["status"] for clip in details["corpus"]}
+                if "failed" in clips:
+                    status = "failed"
+                elif clips != {"passed"} and status == "passed":
+                    status = "blocked"
             self.record(prop, status, **details)
         except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
             self.record(prop, "blocked", detail=str(exc))
@@ -300,6 +307,9 @@ class ReleaseCheck:
                 self.acceptance(regression, ["--regression", regression], native=regression == "quality-first-ownership")
         if self.corpus:
             self.acceptance("house-corpus", ["--regression", "house-corpus", "--corpus", str(self.corpus)])
+        else:
+            # Real-media properties are what generated fixtures missed; a release cannot skip them.
+            self.record("house-corpus", "blocked", detail="No house corpus manifest supplied")
         required = self.config.get("requiredWorkers", [])
         if not required:
             for prop in ("fleet", *sorted(WORKER_REGRESSIONS)):
@@ -348,9 +358,9 @@ def main():
         check.artifacts_check(commit)
         check.run_matrices()
     except KeyboardInterrupt:
-        check.record("smoke", "blocked", detail="Interrupted; release qualification incomplete")
+        check.record("release-check", "blocked", detail="Interrupted; release qualification incomplete")
     except Exception as exc:
-        check.record("smoke", "failed", detail=str(exc))
+        check.record("release-check", "failed", detail=str(exc))
     finally:
         code = check.finish()
     print(f"Redacted summary: {check.root / 'release-check.md'}")

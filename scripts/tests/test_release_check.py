@@ -61,12 +61,17 @@ class ReleaseCheckTests(unittest.TestCase):
                     {"name": name, "operatingSystem": name, "online": True, "protocolVersion": 13,
                      "sidecarVersion": "0.2.24", "videoEncoders": ["libx265"]} for name in config["requiredWorkers"]]}
                 path.write_text(json.dumps(report))
+                if "house-corpus" in argv:
+                    report["results"] = [{"name": "house-clip-a", "status": "passed"}]
+                    path.write_text(json.dumps(report))
                 if "--worker-config" in argv:
                     launchers = json.loads(Path(argv[argv.index("--worker-config") + 1]).read_text())
                     self.assertEqual({"linux", "macos", "windows"}, {w["name"] for w in launchers})
                 return result
+            corpus = Path(directory) / "corpus.json"
+            corpus.write_text(json.dumps({"kind": "house", "clips": [{"id": "clip-a", "property": "lossy-aac-window"}]}))
             check = ReleaseCheck(Path(directory) / "release", "registry.example/image@" + DIGEST, config,
-                                 run=fake, config_path=Path(directory) / "config.json")
+                                 run=fake, config_path=Path(directory) / "config.json", corpus=corpus)
             check.artifacts_check(COMMIT)
             check.run_matrices()
             self.assertEqual(0, check.finish())
@@ -130,6 +135,39 @@ class ReleaseCheckTests(unittest.TestCase):
             house = next(argv for argv in commands if "house-corpus" in argv)
             self.assertEqual(str(manifest), house[house.index("--corpus") + 1])
             self.assertTrue(any(s["property"] == "fleet" and s["status"] == "blocked" for s in check.steps))
+
+    def test_a_release_without_the_house_corpus_cannot_pass(self):
+        # The roadmap requires the real-media corpus; leaving it out must be visible, not silent.
+        with tempfile.TemporaryDirectory() as directory:
+            check = ReleaseCheck(Path(directory) / "release", DIGEST, {}, run=Mock(side_effect=self.fake_run))
+            check.run_matrices()
+            house = [s for s in check.steps if s["property"] == "house-corpus"]
+            self.assertEqual(["blocked"], [s["status"] for s in house])
+
+    def test_a_corpus_clip_without_its_own_passing_result_blocks_the_step(self):
+        # A clip that never ran must not hide behind an otherwise passing harness report.
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "corpus.json"
+            corpus.write_text(json.dumps({"kind": "house", "clips": [{"id": "ran", "property": "lossy-aac-window"},
+                                                                      {"id": "missing", "property": "negative-opus-start"}]}))
+            def run(argv, **kwargs):
+                result = self.fake_run(argv, **kwargs)
+                if "house-corpus" in argv:
+                    path = Path(argv[argv.index("--root") + 1]) / "report/report.json"
+                    report = json.loads(path.read_text())
+                    report["results"] = [{"name": "house-ran", "status": "passed"}]
+                    path.write_text(json.dumps(report))
+                return result
+            check = ReleaseCheck(Path(directory) / "release", DIGEST, {}, corpus=corpus, run=run)
+            check.run_matrices()
+            house = next(s for s in check.steps if s["property"] == "house-corpus")
+            self.assertEqual("blocked", house["status"])
+            self.assertEqual(["passed", "blocked"], [clip["status"] for clip in house["corpus"]])
+
+    def test_an_interrupted_or_crashed_run_is_reported_as_the_release_check_not_a_matrix(self):
+        summary = public_summary({"completed": True, "steps": [{"property": "release-check", "status": "failed"}]})
+        self.assertEqual("release-check", summary["steps"][0]["property"])
+        self.assertEqual("failed", summary["status"])
 
     def test_partial_missing_blocked_and_nonzero_child_reports_never_pass(self):
         for document, code, expected in [
