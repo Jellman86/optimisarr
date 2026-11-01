@@ -125,31 +125,49 @@ claim that the additional security work is complete.
    sidecar-only operation and current stricter native audio/image rules. Quarantine is a
    recovery window, not proof that worker measurements are truthful.
 
-## Up next (priority order, reconciled 2026-10-28)
+## Up next (priority order, reconciled 2026-11-01)
 
-**Required before the next release: a release regression check, added 2026-11-01.** The
-real-media harness, its focused regressions and the physical-worker launchers exist, but a release
-can still skip parts of them, and their generated fixtures missed every soundtrack defect found in
-the week of 2026-10-30 (#469–#472). Those defects all came from properties of real library files:
-lossy AAC soundtrack sources whose sampled windows missed their length, mkvmerge/mkvpropedit
-`DURATION-eng` statistics, stale statistics copied into FFmpeg outputs, MP4 outputs that cannot
-store track titles, decoded overs above full scale, Opus sources that start before zero, MKVs
-without per-track durations, and large subtitle-heavy sources that made worker claims time out.
+### Before every release: release regression check (added 2026-11-01)
+
+CI already runs the container smoke tier and most focused regressions on every push and tag, but
+its generated fixtures missed the real-media defects found in late October, and nothing yet proves a
+release on the physical workers or the packaged sidecars. Those defects came from properties of real
+library files, each cited to the change that documents it:
+
+- lossy AAC soundtrack sources whose sampled windows missed their length, `DURATION-eng`-only
+  mkvmerge statistics, stale statistics copied into FFmpeg outputs and MP4 outputs that cannot keep
+  a track title (#469);
+- an FFmpeg-muxed MKV whose statistics mkvpropedit later rewrote, leaving only `DURATION-eng` (#470);
+- near-full-scale sources whose lossy encodes decode above full scale (#471);
+- surround and mono soundtracks refused instead of assessed through the library's downmix (#472);
+- large subtitle-heavy sources whose per-claim timeline probe outlived the worker's request (#466);
+- found during the #472 field test and not yet fixed: Opus sources that start before zero make the
+  first soundtrack window 46 ms short, and old MKVs without per-track durations are refused by design.
+
 The release check closes that gap:
 
-- **A private house corpus.** Short clips cut from real files on the operator's own server, each
-  chosen for one property above (plus E-AC-3 5.1(side), Opus 7.1 and a stereo/surround mix), pinned
-  by checksum with the reason it exists. It stays on that host and is never committed or published.
-- **One `release-check` command.** It builds the release image, runs the container smoke tier,
-  every focused regression and the house corpus through soundtrack, downmix and per-soundtrack
-  bitrate paths, starts the disposable Mac and Windows acceptance launchers over SSH beside the
-  Linux worker, requires every named worker, and writes one pass/fail/blocked report to attach to
-  the release. An absent required worker is blocked, never passed.
-- **More realistic CI fixtures** that need no private media: a lossy-AAC soundtrack source, titled
-  tracks written to MP4 and a source whose decoded peaks exceed full scale.
-- **The regression table** in [`development/media-acceptance.md`](development/media-acceptance.md)
-  records each of these defects beside the evidence that now guards it, and
-  [`development/releasing.md`](development/releasing.md) makes the report a publish checklist item.
+- **Generated fixtures stay the public baseline.** CI gains fixtures that need no private media: a
+  lossy-AAC soundtrack source, a titled source written to MP4 (where the output cannot keep the
+  title), a near-full-scale source whose encodes decode above full scale, an mkvpropedit-rewritten
+  MKV, and surround/mono through the downmix (the last already in `--regression soundtrack-quality`).
+- **A house corpus is an additional, local-only, read-only check.** Short clips copied from the
+  operator's own library, each chosen for one property above, pinned by checksum with the reason it
+  exists. Clips, manifest and full reports stay on that host and are never committed, attached or
+  published; originals are only read. The policy lines in
+  [`development/adaptive-audio-image-parity.md`](development/adaptive-audio-image-parity.md) and
+  [`development/soundtrack-quality-validation.md`](development/soundtrack-quality-validation.md) are
+  updated to say so.
+- **One `release-check` command** runs against the exact published image digest and the packaged Mac
+  app and Windows MSI from the same commit. It runs the smoke tier, every applicable focused
+  regression (native-only cases against a native instance, otherwise reported blocked, never
+  passed), the house corpus, and a fleet run that starts the Mac and Windows launchers over SSH
+  beside the Linux worker and requires every named worker. Its report records the image digest,
+  package hashes, app/MSI versions, worker protocol versions and FFmpeg/native-helper revisions.
+- **Only a redacted summary leaves the host:** opaque corpus IDs and the property under test, with no
+  source paths, titles, hostnames or library names. Publication requires that summary as a release
+  artifact; a missing or blocked report blocks the release.
+- The regression table in [`development/media-acceptance.md`](development/media-acceptance.md)
+  records each defect by property, never by title, beside the evidence that now guards it.
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without

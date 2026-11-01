@@ -36,7 +36,9 @@ coverage. The existing complete-file decode and retention checks still apply.
 ## Real media and machines
 
 Generated video, seeded noise and sine fixtures avoid third-party media rights and
-private media dependencies. The complete application acceptance run passed AAC,
+private media dependencies, and remain the public baseline. The release check adds a local-only
+house corpus of short copies of the operator's own files, read but never replaced, committed or
+published, because real files exposed defects these fixtures missed (#469–#472). The complete application acceptance run passed AAC,
 Opus and MP3 soundtracks, removal of the first audio stream, explicit gate rejection
 and copied-audio bypass. Two further cases cover a soundtrack shorter than its
 video and a 120-second file whose tracks each require three sample windows. Successful cases exercised replacement, repeat-call
