@@ -53,7 +53,11 @@ finally:
             if os.name != "nt":
                 os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=5)
-sys.exit(process.returncode)
+# The control thread is still blocked reading stdin; normal interpreter shutdown can abort on
+# that lock and replace the child's exit code. Flush and leave without finalization.
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(process.returncode if process.returncode >= 0 else 1)
 '''
 
 
@@ -111,19 +115,32 @@ def run_ssh(argv, payload, *, interval=10):
                    for source, destination in ((process.stdout, sys.stdout), (process.stderr, sys.stderr))]
         for thread in threads:
             thread.start()
-        process.stdin.write(json.dumps(payload) + "\n")
-        process.stdin.flush()
+        def send(line):
+            # A remote that already finished closes its end; that is its exit, not a lost launcher.
+            try:
+                process.stdin.write(line)
+                process.stdin.flush()
+                return True
+            except (BrokenPipeError, OSError):
+                return False
+        send(json.dumps(payload) + "\n")
         while process.poll() is None and not stopped.wait(interval):
-            process.stdin.write("alive\n")
-            process.stdin.flush()
-        process.stdin.close()
+            if not send("alive\n"):
+                break
+        try:
+            process.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
         code = process.wait(timeout=7)
         for thread in threads:
             thread.join(timeout=1)
         return code
     finally:
         if process and process.poll() is None:
-            process.stdin.close()
+            try:
+                process.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
             try:
                 process.wait(timeout=7)
             except subprocess.TimeoutExpired:
