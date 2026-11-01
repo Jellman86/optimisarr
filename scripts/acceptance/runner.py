@@ -355,7 +355,7 @@ class Harness:
 
 
     def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False, adaptive=False,
-                   surround=None):
+                   surround=None, timing=None):
         """surround: None for stereo sources; True for a 5.1 main track downmixed to stereo; False for that
         track kept surround, which no soundtrack gate can assess, so the gate must block replacement."""
         self.select_worker(worker)
@@ -363,10 +363,13 @@ class Harness:
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
         name += "-long" if long else "-short-mp4" if short else ""
         name += "-adaptive" if adaptive else ""
+        name += "-" + timing if timing else ""
         name += "" if surround is None else "-surround-downmixed" if surround else "-surround-kept"
         # Adaptive selection needs more than one sample window per track.
         seconds = 120 if long else 12 if short else 40 if adaptive else 8
-        audio_seconds = seconds - 0.5 if short else seconds
+        if timing == "flac-statistics":
+            seconds = 8.1
+        audio_seconds = 385024 / 48000 if timing == "flac-statistics" else seconds - 0.5 if short else seconds
         commentary_seconds = seconds - 2.5 if long else audio_seconds
         fixture = self.root / "fixtures" / (name + ".mkv")
         main = (f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42" if surround is None else
@@ -376,12 +379,36 @@ class Harness:
         # Matroska PCM stores no channel layout, so a surround fixture uses FLAC, which carries 5.1 the way
         # real AC-3/E-AC-3/AAC tracks do; an unknown layout is refused rather than downmixed by guesswork.
         channels = ["-c:a", "pcm_s16le", "-ac", "2"] if surround is None else ["-c:a", "flac", "-ac:a:1", "2"]
+        statistics = []
+        if timing == "flac-statistics":
+            channels = ["-c:a", "flac", "-frame_size", "4096", "-ac", "2"]
+            statistics = ["-write_crc32", "0"]
+            for track in range(2):
+                statistics += [f"-metadata:s:a:{track}", "DURATION-eng=00:00:07.936000000",
+                               f"-metadata:s:a:{track}", "_STATISTICS_WRITING_APP-eng=mkvpropedit generated-regression"]
+        elif timing == "opus-preroll":
+            channels = ["-c:a", "libopus", "-ac", "2"]
         self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
             "-f", "lavfi", "-i", main,
             "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
             "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *channels,
             "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=" if short else "title=Main",
-            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary", self.tools.path(fixture)])
+            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary", *statistics, self.tools.path(fixture)])
+        if timing == "flac-statistics":
+            # Simulate mkvpropedit's statistics without adding MKVToolNix to the runtime image.
+            # Rename only the EBML TagName for FFmpeg's plain DURATION, without changing element sizes.
+            data = fixture.read_bytes()
+            # A suffixed tag is stored as DURATION + TagLanguage, while a plain tag's value follows
+            # its name immediately. Keep the language-tagged statistics intact.
+            marker = b"\x45\xa3\x88DURATION\x44\x87"
+            require(data.count(marker) == 3, "Generated FLAC fixture has unexpected duration tags")
+            edited = fixture.with_suffix(".statistics.mkv")
+            edited.write_bytes(data.replace(marker, b"\x45\xa3\x88IGNORED_\x44\x87"))
+            edited.replace(fixture)
+        if timing == "opus-preroll":
+            probe = self.tools.probe(fixture)
+            audio = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+            require(all(float(track["start_time"]) < 0 for track in audio), "Opus fixture lost its negative start")
         # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
         limit = 0 if reject else 1
         case = self.create_job(name, fixture, encoder="libx264", worker=worker, overrides={
@@ -408,6 +435,15 @@ class Harness:
             location = "Worker" if worker and self.strict_worker_verification else "Server"
             validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject,
                                        downmixed=(0,) if surround else ())
+        if timing:
+            for track in verification["soundtrackQuality"]["tracks"]:
+                assessment = track["report"]["evidence"]["assessment"]
+                first = assessment["windows"][0]
+                require(first["distances"]["frames"] == round(first["window"]["durationSeconds"] * 48000),
+                        "Timing regression did not decode an exact first window")
+                if timing == "flac-statistics":
+                    require(abs(assessment["reference"]["durationSeconds"] - 385024 / 48000) < 1e-8,
+                            "FLAC duration did not use its exact sample count")
         if adaptive:
             search = verification.get("soundtrackSearch") or {}
             require(search.get("unavailable") is None, f"Soundtrack selection did not run: {search.get('unavailable')}")
@@ -1013,6 +1049,8 @@ class Harness:
                         self.report.case(label + "-soundtrack-adaptive-" + codec, lambda c=codec, w=worker: self.soundtrack(c, w, adaptive=True))
                     self.report.case(label + "-soundtrack-adaptive-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True, adaptive=True))
                     self.report.case(label + "-soundtrack-adaptive-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-flac-statistics", lambda w=worker: self.soundtrack("aac", w, timing="flac-statistics"))
+                    self.report.case(label + "-soundtrack-opus-preroll", lambda w=worker: self.soundtrack("opus", w, timing="opus-preroll"))
                     self.report.case(label + "-soundtrack-surround-downmixed", lambda w=worker: self.soundtrack("aac", w, surround=True))
                     self.report.case(label + "-soundtrack-surround-kept", lambda w=worker: self.soundtrack("aac", w, surround=False))
                     self.report.case(label + "-soundtrack-adaptive-surround-downmixed",
