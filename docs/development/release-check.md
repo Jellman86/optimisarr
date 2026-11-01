@@ -75,7 +75,11 @@ it cannot take a fixed existing application URL. A trusted test interface must r
 SSH stdin, never command arguments or config files, and are removed from relayed launcher logs.
 Only tool paths are allowed in the forwarded config environment. The remote supervisor owns its
 child tree: stdin EOF, missing keepalives, termination or its four-hour deadline stops that tree.
-It does not stop installed services, reuse pairing or delete existing worker directories. Scratch
+It does not stop installed services, reuse pairing or delete existing worker directories. If the harness itself is
+killed outright (for example its terminal or agent session ends), its cleanup cannot run: each
+SSH launcher notices its parent has gone and closes its session, so the remote worker stops, but
+the harness's own `optimisarr-acceptance-*` containers remain until you remove them with
+`docker rm -f`. An ordinary interrupt (Ctrl-C) runs the full cleanup. Scratch
 and accounting paths receive random suffixes. SSH orchestration is unit-tested with fakes;
 physical platform execution remains an explicit operator qualification.
 

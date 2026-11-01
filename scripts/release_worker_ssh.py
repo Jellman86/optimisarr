@@ -124,8 +124,11 @@ def run_ssh(argv, payload, *, interval=10):
             except (BrokenPipeError, OSError):
                 return False
         send(json.dumps(payload) + "\n")
+        # A harness killed outright never runs its cleanup. Re-parenting means it is gone, so stop
+        # sending keepalives and close the session; the remote supervisor then stops its worker.
+        parent = os.getppid()
         while process.poll() is None and not stopped.wait(interval):
-            if not send("alive\n"):
+            if os.getppid() != parent or not send("alive\n"):
                 break
         try:
             process.stdin.close()

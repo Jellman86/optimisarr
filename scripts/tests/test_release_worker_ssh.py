@@ -81,6 +81,19 @@ class SshLauncherTests(unittest.TestCase):
         with patch("release_worker_ssh.subprocess.Popen", return_value=process):
             self.assertEqual(0, run_ssh(["ssh", "test-alias"], {"env": {}, "command": ["worker"]}, interval=0))
 
+    def test_a_launcher_whose_harness_died_stops_its_remote_worker(self):
+        # A harness killed outright never runs its cleanup; its launchers must not outlive it.
+        import io
+        process = Mock()
+        process.poll.return_value = None
+        process.stdout, process.stderr = io.StringIO(""), io.StringIO("")
+        process.wait.return_value = 0
+        parents = iter([4242, 4242, 1])
+        with patch("release_worker_ssh.subprocess.Popen", return_value=process), \
+             patch("release_worker_ssh.os.getppid", side_effect=lambda: next(parents, 1)):
+            self.assertEqual(0, run_ssh(["ssh", "test-alias"], {"env": {}, "command": ["worker"]}, interval=0))
+        process.stdin.close.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()
