@@ -127,6 +127,30 @@ claim that the additional security work is complete.
 
 ## Up next (priority order, reconciled 2026-10-28)
 
+**Required before the next release: a release regression check, added 2026-11-01.** The
+real-media harness, its focused regressions and the physical-worker launchers exist, but a release
+can still skip parts of them, and their generated fixtures missed every soundtrack defect found in
+the week of 2026-10-30 (#469–#472). Those defects all came from properties of real library files:
+lossy AAC soundtrack sources whose sampled windows missed their length, mkvmerge/mkvpropedit
+`DURATION-eng` statistics, stale statistics copied into FFmpeg outputs, MP4 outputs that cannot
+store track titles, decoded overs above full scale, Opus sources that start before zero, MKVs
+without per-track durations, and large subtitle-heavy sources that made worker claims time out.
+The release check closes that gap:
+
+- **A private house corpus.** Short clips cut from real files on the operator's own server, each
+  chosen for one property above (plus E-AC-3 5.1(side), Opus 7.1 and a stereo/surround mix), pinned
+  by checksum with the reason it exists. It stays on that host and is never committed or published.
+- **One `release-check` command.** It builds the release image, runs the container smoke tier,
+  every focused regression and the house corpus through soundtrack, downmix and per-soundtrack
+  bitrate paths, starts the disposable Mac and Windows acceptance launchers over SSH beside the
+  Linux worker, requires every named worker, and writes one pass/fail/blocked report to attach to
+  the release. An absent required worker is blocked, never passed.
+- **More realistic CI fixtures** that need no private media: a lossy-AAC soundtrack source, titled
+  tracks written to MP4 and a source whose decoded peaks exceed full scale.
+- **The regression table** in [`development/media-acceptance.md`](development/media-acceptance.md)
+  records each of these defects beside the evidence that now guards it, and
+  [`development/releasing.md`](development/releasing.md) makes the report a publish checklist item.
+
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
    weakening the transcode → verify → replace pipeline. This phase is grounded in
