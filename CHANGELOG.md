@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tidy the queue status strip. The state reads in normal case instead of capitals (for example Holding), sits directly above its reason beside the playback artwork, and lines up with the counts. The playback link no longer shows a permanent underline, and the workers state is now called Encoding on workers so it no longer repeats the On workers count beside it.
+
 - Restore soundtrack quality checks for audio that starts a few milliseconds after the picture. Near-start windows count the requested samples after trimming the start, while retaining Opus decoder pre-roll and the existing timing checks. Generated acceptance now covers two tracks starting 22 ms late.
 
 - Keep font attachments out of probe data so subtitle fonts cannot block soundtrack verification or bloat library scans. FLAC tracks with Matroska statistics still use their exact sample count, read through a small audio-only probe on the server and workers.
