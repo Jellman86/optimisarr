@@ -154,7 +154,7 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
     }
 
     // The plain tag, or else one agreed language-suffixed copy such as mkvmerge's DURATION-eng.
-    private static JsonElement MatroskaTag(JsonElement tags, string name, bool allowLanguageSuffix)
+    internal static JsonElement MatroskaTag(JsonElement tags, string name, bool allowLanguageSuffix)
     {
         var plain = tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
         if (plain.ValueKind != JsonValueKind.Undefined || !allowLanguageSuffix) return plain;
@@ -177,7 +177,7 @@ public static class AudioQualityCommandBuilder
     private const string SoundtrackFormats = AudioFormats + ",avi,mpeg,mpegts,flv";
 
     public static IReadOnlyList<string> Probe(string source, bool soundtrack = false) =>
-        ["-v", "error", .. InputOptions(soundtrack), "-show_streams", "-show_format", "-show_data", "-of", "json", source];
+        ["-v", "error", .. InputOptions(soundtrack), "-show_streams", "-show_format", "-of", "json", source];
 
     private static IReadOnlyList<string> InputOptions(bool soundtrack) =>
         // Hashing a playlist does not bind its referenced media. Restrict the demuxer

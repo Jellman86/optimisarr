@@ -103,6 +103,62 @@ public sealed class SoundtrackQualityTests
     }
 
     [Fact]
+    public async Task Targeted_flac_statistics_probe_ignores_font_attachments_and_matches_worker_profiles()
+    {
+        var full = System.Text.Json.Nodes.JsonNode.Parse(FlacStatisticsProbe("DURATION-eng"))!;
+        var streams = full["streams"]!.AsArray();
+        var track = streams[1]!;
+        track["index"] = 2;
+        var targeted = new System.Text.Json.Nodes.JsonObject { ["streams"] = new System.Text.Json.Nodes.JsonArray(track.DeepClone()) }.ToJsonString();
+        track.AsObject().Remove("extradata");
+        streams.Insert(1, new System.Text.Json.Nodes.JsonObject { ["codec_type"] = "attachment", ["index"] = 1,
+            ["codec_name"] = "ttf", ["extradata_size"] = 2 * 1024 * 1024 });
+        var metadata = full.ToJsonString();
+        var calls = 0;
+        var enriched = await FlacStreamInfoProbe.EnrichAsync(metadata, async (index, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            Assert.Equal(0, index); // audio-relative index, not the absolute stream index (2).
+            calls++;
+            await Task.Yield();
+            return targeted;
+        }, CancellationToken.None);
+        Assert.Equal(1, calls);
+        Assert.True(enriched.Length < 4096);
+        var reference = AudioQualityInput.ParseTrack(enriched, 0)!;
+        Assert.Equal(4321280 / 48000.0, reference.DurationSeconds, 8);
+        Assert.Equal(AudioQualityInput.ParseTrack(FlacStatisticsProbe("DURATION-eng"), 0), reference);
+        Assert.Null(SoundtrackQualityPlanner.Plan(enriched, Probe(Track(title: null, duration: "90.048")), new([])).Error);
+        Assert.Contains("duration", SoundtrackQualityPlanner.Plan(enriched, Probe(Track(title: null, duration: "89.915")), new([])).Error);
+        var args = FlacStreamInfoProbe.Arguments("movie.mkv", 0).ToList();
+        Assert.Equal("a:0", args[args.IndexOf("-select_streams") + 1]);
+        Assert.Contains("-show_data", args);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Flac_stream_duration_and_ffmpeg_output_need_no_extra_probe(bool streamDuration, bool writtenByFfmpeg)
+    {
+        var probe = FlacStatisticsProbe("DURATION");
+        if (streamDuration) probe = probe.Replace("\"sample_rate\"", "\"duration\":\"90.027\",\"sample_rate\"");
+        Assert.Equal(probe, await FlacStreamInfoProbe.EnrichAsync(probe, (_, _) => throw new Exception("Unexpected probe"),
+            CancellationToken.None, writtenByFfmpeg));
+    }
+
+    [Fact]
+    public async Task Oversized_or_wrong_track_streaminfo_is_refused()
+    {
+        var metadata = FlacStatisticsProbe("DURATION-eng").Replace("extradata", "unavailable");
+        foreach (var targeted in new[] { new string('x', 16385), "null", "{}", "{\"streams\":null}", "{\"streams\":[]}",
+            FlacStatisticsProbe("DURATION-eng"), FlacStatisticsProbe("DURATION-eng").Replace("flac", "ttf") })
+        {
+            var enriched = await FlacStreamInfoProbe.EnrichAsync(metadata, (_, _) => Task.FromResult(targeted), CancellationToken.None);
+            Assert.Null(AudioQualityInput.ParseTrack(enriched, 0));
+        }
+    }
+
+    [Fact]
     public void Flac_sample_counts_cannot_override_stream_durations_or_conflicting_statistics()
     {
         var json = FlacStatisticsProbe("DURATION-eng");
@@ -117,7 +173,7 @@ public sealed class SoundtrackQualityTests
         Assert.Equal(4321280 / 48000.0, AudioQualityInput.ParseTrack(json.Replace("29.941", "30.000"), 0)!.DurationSeconds, 8);
     }
 
-    private static string FlacStatisticsProbe(string tag) =>
+    internal static string FlacStatisticsProbe(string tag) =>
         """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","codec_name":"flac","start_time":"0","channels":2,"sample_rate":"48000","extradata":"\n00000000: 1000 1000 0000 0000 0000 0bb8 02f0 0041  ...............A\n00000010: f000 0000 0000 0000 0000 0000 0000 0000  ................\n00000020: 0000                                     ..\n","tags":{"language":"eng","TAG":"00:01:29.941000000","_STATISTICS_WRITING_APP-eng":"mkvpropedit v95"}}],"format":{"start_time":"0","duration":"91","tags":{"encoder":"Lavf62"}}}""".Replace("TAG", tag);
 
     [Theory]

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep font attachments out of probe data so subtitle fonts cannot block soundtrack verification or bloat library scans. FLAC tracks with Matroska statistics still use their exact sample count, read through a small audio-only probe on the server and workers.
+
 - Fix soundtrack quality refusals for Matroska FLAC statistics that omit the last frame and Opus tracks starting before zero (#476, #474). FLAC uses its exact sample count while keeping the 100 ms duration limit; near-start samples retain decoder pre-roll and trim on the picture timeline on both sides. Soundtrack workers now require protocol 14 and version 2 preparation evidence. Missing or conflicting FLAC sample counts still fail closed.
 
 - Make the library workflow bar easier to follow. The stage you are editing is now filled with the accent colour instead of a faint outline, and the bar stays visible on the Candidates and Excluded tabs, so every part of a library's configuration keeps the same way into each stage.

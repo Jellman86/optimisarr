@@ -28,7 +28,7 @@ public static class FullVerification
             var timestamps = new TimestampIntegrityCheck(ffprobe);
             var loudness = new LoudnessService(contract.Kind == MediaKind.Audio ? ffmpeg : measurementFfmpeg ?? ffmpeg);
             var sourceProbe = await ProbeAsync(ffprobe, source, cancellationToken);
-            var candidateProbe = await ProbeAsync(ffprobe, candidate, cancellationToken);
+            var candidateProbe = await ProbeAsync(ffprobe, candidate, cancellationToken, writtenByFfmpeg: true);
             var decode = await new DecodeHealthCheck(ffmpeg).CheckAsync(candidate, cancellationToken);
             var sourceVideo = contract.Kind == MediaKind.Audio ? null : await timestamps.CheckSourceAsync(source, cancellationToken);
             var candidateVideo = contract.Kind == MediaKind.Audio ? null : await timestamps.CheckAsync(candidate, cancellationToken);
@@ -100,13 +100,13 @@ public static class FullVerification
         }
     }
 
-    private static async Task<string> ProbeAsync(string ffprobe, string path, CancellationToken token)
+    private static async Task<string> ProbeAsync(string ffprobe, string path, CancellationToken token, bool writtenByFfmpeg = false)
     {
         var result = await new ProcessTranscoder().ProbeAsync(ffprobe,
-            ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_data", path], token);
+            MediaProbeService.ProbeArguments(path), token);
         if (result.ExitCode != 0) throw new InvalidOperationException("ffprobe failed.");
         if (string.IsNullOrWhiteSpace(result.Output))
             throw new InvalidOperationException("ffprobe evidence did not finish before its output pipe closed.");
-        return result.Output;
+        return await FlacStreamInfoProbe.ProbeAsync(ffprobe, path, result.Output, token, writtenByFfmpeg);
     }
 }

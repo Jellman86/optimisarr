@@ -48,6 +48,34 @@ struct AudioQualityTests {
         }
     }
 
+    @Test("targeted STREAMINFO ignores font attachments and retains exact profiles")
+    func targetedFlacStreamInfo() throws {
+        let original = flacStatisticsProbe("DURATION-eng")
+        var root = try JSONSerialization.jsonObject(with: Data(original.utf8)) as! [String: Any]
+        var streams = root["streams"] as! [[String: Any]]
+        streams[1]["index"] = 2
+        let selected = String(data: try JSONSerialization.data(withJSONObject: ["streams": [streams[1]]]), encoding: .utf8)!
+        streams[1].removeValue(forKey: "extradata")
+        streams.insert(["codec_type": "attachment", "codec_name": "ttf", "index": 1, "extradata_size": 2 * 1024 * 1024], at: 1)
+        root["streams"] = streams
+        let metadata = String(data: try JSONSerialization.data(withJSONObject: root), encoding: .utf8)!
+        #expect(FlacStreamInfoProbe.requiredAudioIndexes(metadata) == [0])
+        #expect(FlacStreamInfoProbe.requiredAudioIndexes(metadata, writtenByFfmpeg: true).isEmpty)
+        let enriched = FlacStreamInfoProbe.withStreamInfo(metadata, audioIndex: 0, trackProbe: selected)
+        #expect(enriched.utf8.count < 4096)
+        let actual = try #require(AudioQualityAssessment.profile(enriched, audioIndex: 0))
+        let expected = try #require(AudioQualityAssessment.profile(original, audioIndex: 0))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        #expect(try encoder.encode(actual) == encoder.encode(expected))
+        for invalid in [String(repeating: "x", count: 16385), original, selected.replacingOccurrences(of: "flac", with: "ttf")] {
+            #expect(AudioQualityAssessment.profile(FlacStreamInfoProbe.withStreamInfo(metadata, audioIndex: 0, trackProbe: invalid), audioIndex: 0) == nil)
+        }
+        let args = FlacStreamInfoProbe.arguments(file: URL(fileURLWithPath: "/movie.mkv"), audioIndex: 0)
+        #expect(args[args.firstIndex(of: "-select_streams")! + 1] == "a:0")
+        #expect(args.contains("-show_data"))
+    }
+
     @Test("FLAC counts cannot override stream durations or conflicting statistics")
     func conflictingFlacStatistics() {
         let json = flacStatisticsProbe("DURATION-eng")

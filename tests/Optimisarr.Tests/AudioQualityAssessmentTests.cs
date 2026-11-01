@@ -11,7 +11,7 @@ public sealed class AudioQualityAssessmentTests
     public void Audio_assessment_opens_only_self_contained_local_formats_before_probing_or_decoding(bool soundtrack)
     {
         var source = "source";
-        Assert.Contains("-show_data", AudioQualityCommandBuilder.Probe(source, soundtrack));
+        Assert.DoesNotContain("-show_data", AudioQualityCommandBuilder.Probe(source, soundtrack));
         var commands = new[] { AudioQualityCommandBuilder.Probe(source, soundtrack),
             AudioQualityCommandBuilder.Decode(source, "decoded.raw", new(0, 1), soundtrack: soundtrack) };
         foreach (var command in commands)

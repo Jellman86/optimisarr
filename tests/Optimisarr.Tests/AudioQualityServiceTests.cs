@@ -101,6 +101,44 @@ public sealed class AudioQualityServiceTests : IDisposable
         Assert.Empty(Directory.GetDirectories(_root));
     }
 
+    [Theory]
+    [InlineData("90.048", false)]
+    [InlineData("89.915", true)]
+    public async Task Soundtrack_measurement_resolves_the_same_flac_profile_as_server_planning(string duration, bool truncated)
+    {
+        var original = SoundtrackQualityTests.FlacStatisticsProbe("DURATION-eng");
+        var root = System.Text.Json.Nodes.JsonNode.Parse(original)!;
+        var streams = root["streams"]!.AsArray();
+        var targeted = new System.Text.Json.Nodes.JsonObject { ["streams"] = new System.Text.Json.Nodes.JsonArray(streams[1]!.DeepClone()) }.ToJsonString();
+        streams[1]!.AsObject().Remove("extradata");
+        var metadata = root.ToJsonString();
+        var targetCalls = 0;
+        Task<ToolProcessResult> Runner(string command, IReadOnlyList<string> args, CancellationToken token, TimeSpan? timeout)
+        {
+            token.ThrowIfCancellationRequested();
+            if (command == Tool("ffprobe"))
+            {
+                if (args.Contains("-show_data"))
+                {
+                    Assert.Contains("-select_streams", args);
+                    Assert.Contains("a:0", args);
+                    Assert.Equal(Reference, args[^1]);
+                    targetCalls++;
+                    return Task.FromResult(new ToolProcessResult(0, targeted, null));
+                }
+                return Task.FromResult(new ToolProcessResult(0, args[^1] == Reference ? metadata
+                    : SoundtrackQualityTests.Probe(SoundtrackQualityTests.Track(title: null, duration: duration)), null));
+            }
+            Assert.False(truncated, "Truncated candidates must be refused before decoding.");
+            return Task.FromResult(new ToolProcessResult(1, "", "Stop after profile validation"));
+        }
+        var result = await Service(Runner).MeasureTrackAsync(Reference, Candidate, 0, 0, default);
+        Assert.Equal(1, targetCalls);
+        Assert.Equal(AudioQualityInput.ParseTrack(original, 0), result.Reference);
+        Assert.False(result.Measured);
+        Assert.Contains(truncated ? "duration" : "Stop after profile validation", result.Error);
+    }
+
     [Fact]
     public async Task Successful_measurement_binds_files_tools_coverage_and_cleans_only_owned_scratch()
     {
