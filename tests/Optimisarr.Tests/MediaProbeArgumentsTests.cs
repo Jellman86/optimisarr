@@ -22,6 +22,7 @@ public sealed class MediaProbeArgumentsTests
         // Indirect formats reference media outside the hashed original and must refuse.
         foreach (var refused in new[] { "dash", "hls", "concat", "live_flv", "subfile", "mmsh", "rtsp" })
             Assert.DoesNotContain(refused, allowed);
+        Assert.Contains("-show_data", args);
         Assert.Equal("movie.mkv", args[^1]);
     }
 }

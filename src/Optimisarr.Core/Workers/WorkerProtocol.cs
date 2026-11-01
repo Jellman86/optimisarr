@@ -22,8 +22,8 @@ public sealed record ProtocolNegotiation(bool Compatible, int AgreedVersion, str
 public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
-    // Protocol 10 adds opt-in correlated diagnostic capture; media verification contracts are unchanged.
-    public const int Current = 13;
+    // Protocol 14 fixes soundtrack duration qualification and near-start decoder pre-roll.
+    public const int Current = 14;
 
     // Advertise this only once all native runners and strict verification implement the contract.
     public const int PerceptualQualityVersion = 11;
@@ -34,6 +34,9 @@ public static class WorkerProtocol
     /// <summary>Soundtrack gates that measure a downmixed track against the same downmix of its source.</summary>
     public const int DownmixSoundtrackVersion = 13;
 
+    /// <summary>Exact FLAC statistics durations and picture-timeline trimming through codec pre-roll.</summary>
+    public const int SoundtrackTimingVersion = 14;
+
     public static int MinimumForEncodeCommand(IReadOnlyList<string> arguments, MediaKind kind = MediaKind.Video) =>
         arguments.Any(argument => argument.StartsWith("-b:a:", StringComparison.Ordinal)) ? TrackBitrateVersion :
         kind == MediaKind.Image ? PerceptualQualityVersion : arguments.Contains("-itsoffset") ? 9 : kind == MediaKind.Audio ? 6 : arguments.Any(argument => argument is "-color_range:v:0" or "-bsf:v:0") ? 5
@@ -41,9 +44,9 @@ public static class WorkerProtocol
 
     public static int MinimumForAssignment(IReadOnlyList<string> arguments, MediaKind kind, string model, bool measuresVmaf,
         bool measuresSoundtracks = false, bool countsVideoFrames = false, bool perceptualSearch = false, bool measuresDownmixedSoundtracks = false) =>
-        Math.Max(Math.Max(MinimumForEncodeCommand(arguments, kind), measuresDownmixedSoundtracks ? DownmixSoundtrackVersion : 1),
+        Math.Max(Math.Max(MinimumForEncodeCommand(arguments, kind), measuresSoundtracks || measuresDownmixedSoundtracks ? SoundtrackTimingVersion : 1),
             perceptualSearch ? PerceptualQualityVersion : countsVideoFrames ? 9
-            : measuresSoundtracks ? 8 : measuresVmaf && model.StartsWith("vmaf_v1.", StringComparison.Ordinal) ? 7 : 1);
+            : measuresVmaf && model.StartsWith("vmaf_v1.", StringComparison.Ordinal) ? 7 : 1);
 
     /// <summary>The oldest contract version this build still accepts.</summary>
     public const int MinimumSupported = 1;

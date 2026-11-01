@@ -51,7 +51,7 @@ struct NativeQualityCapabilityTests {
         #expect(caps.perceptual?.imageEncoders == ["mjpeg"])
         #expect(caps.videoEncoders.isEmpty && caps.audioEncoders.isEmpty)
         #expect(caps.maxConcurrency == 2)
-        #expect(WorkerProtocol.maximum == 13)
+        #expect(WorkerProtocol.maximum == 14)
     }
 
     @Test("pairing and heartbeat send typed proof and current capacity")

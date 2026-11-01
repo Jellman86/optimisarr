@@ -60,7 +60,7 @@ public struct RemoteAudioQualityEvidence: Codable, Sendable {
     let revision = AudioQualityAssessment.revision
     var preparation: String {
         assessment.referenceAudioIndex == nil ? "audio-f32le-48k-native-defaults-v1"
-            : assessment.reference?.downmixed == true ? "audio-f32le-48k-video-timeline-stereo-downmix-v1" : "audio-f32le-48k-video-timeline-v1"
+            : assessment.reference?.downmixed == true ? "audio-f32le-48k-video-timeline-stereo-downmix-v2" : "audio-f32le-48k-video-timeline-v2"
     }
     enum CodingKeys: String, CodingKey { case metric, revision, preparation, assessment }
     public init(assessment: AudioQualityResult) { self.assessment = assessment }
@@ -122,12 +122,18 @@ public struct AudioQualityAssessment: Sendable {
     static func decodeArguments(input: URL, output: URL, window: AudioQualitySample,
                                 audioIndex: Int, lead: Double, soundtrack: Bool, downmixToStereo: Bool = false) -> [String] {
         let seek = window.startSeconds + lead
-        let inputSeek = soundtrack ? seek : max(0, seek - 10)
+        // Opus needs up to 80 ms of pre-roll. Trim near-start windows on the same picture clock.
+        let fromStart = soundtrack && seek <= 0.1
+        let inputSeek = soundtrack ? (fromStart ? 0 : seek) : max(0, seek - 10)
         let outputSeek = soundtrack ? 0 : seek - inputSeek
         let inputArgs: [String] = inputSeek == 0 ? [] : ["-ss", secondsText(inputSeek)]
         let outputArgs: [String] = outputSeek == 0 ? [] : ["-ss", secondsText(outputSeek)]
         let frames = Int((window.durationSeconds * 48000).rounded())
-        let filterArgs: [String] = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(frames)"] : []
+        // Bound both timestamps so late audio cannot move the window's end after normalization.
+        // Match the existing 64-frame rounding allowance for millisecond Matroska timestamps.
+        let end = seek + window.durationSeconds + 64 / 48000.0
+        let trim = fromStart ? "atrim=start=\(secondsText(seek)):end=\(secondsText(end)),asetpts=PTS-STARTPTS," : ""
+        let filterArgs: [String] = soundtrack ? ["-af", "aresample=48000,\(trim)atrim=end_sample=\(frames)"] : []
         let duration = secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0))
         // Standalone samples need decoder context; soundtracks keep the demuxer's picture origin.
         var arguments = ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n"]
@@ -187,6 +193,11 @@ public struct AudioQualityAssessment: Sendable {
             // A later tag edit and stale copied statistics have indistinguishable provenance.
             guard !(lengthTag && encoder.hasPrefix("lavf") && start != 0) else { return nil }
             duration = Double(hours) * 3600 + Double(minutes) * 60 + seconds - (lengthTag ? 0 : start)
+            if lengthTag, audio[selected]["codec_name"] as? String == "flac" {
+                // Statistics can omit the final packet. Use STREAMINFO's exact sample count instead.
+                guard let exact = flacDuration(audio[selected], sampleRate: rate, statisticsDuration: duration!) else { return nil }
+                duration = exact
+            }
         }
         if duration == nil, audioIndex == nil { duration = formatDuration.flatMap(Double.init) }
         guard let seconds = duration, !plan(seconds).isEmpty else { return nil }
@@ -200,6 +211,31 @@ public struct AudioQualityAssessment: Sendable {
         }
         return .init(durationSeconds: seconds, channels: channels, sampleRate: rate, channelLayout: layout, containerLeadSeconds: lead,
                      sourceChannels: sourceChannels, sourceChannelLayout: sourceLayout)
+    }
+
+    private static func flacDuration(_ track: [String: Any], sampleRate: Int, statisticsDuration: Double) -> Double? {
+        guard let dump = track["extradata"] as? String, dump.count <= 1024 else { return nil }
+        let hex = dump.split(separator: "\n").map { line -> String in
+            guard let colon = line.firstIndex(of: ":") else { return "" }
+            let fields = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            return (fields.components(separatedBy: "  ").first ?? "").replacingOccurrences(of: " ", with: "")
+        }.joined()
+        guard hex.count == 68 else { return nil }
+        var bytes: [UInt8] = []
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let end = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<end], radix: 16) else { return nil }
+            bytes.append(byte); index = end
+        }
+        let minimumBlock = Int(bytes[0]) << 8 | Int(bytes[1])
+        let maximumBlock = Int(bytes[2]) << 8 | Int(bytes[3])
+        let info = bytes[10..<18].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+        let rate = Int(info >> 44), samples = info & 0xfffffffff
+        guard rate == sampleRate, samples > 0, minimumBlock >= 16, maximumBlock >= minimumBlock else { return nil }
+        let duration = Double(samples) / Double(sampleRate), missing = duration - statisticsDuration
+        // One omitted packet plus millisecond timestamp rounding; conflicting headers fail closed.
+        return missing >= -0.001 && missing <= Double(maximumBlock) / Double(sampleRate) + 0.001 ? duration : nil
     }
 
     /// The plain tag, or else one agreed language-suffixed copy such as mkvmerge's DURATION-eng.

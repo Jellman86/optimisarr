@@ -129,6 +129,7 @@ public sealed class MediaProbeService : IMediaProbeService
         "-print_format", "json",
         "-show_format",
         "-show_streams",
+        "-show_data",
         path
     ];
 

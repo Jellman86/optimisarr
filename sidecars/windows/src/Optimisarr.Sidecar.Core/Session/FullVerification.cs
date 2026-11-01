@@ -103,7 +103,7 @@ public static class FullVerification
     private static async Task<string> ProbeAsync(string ffprobe, string path, CancellationToken token)
     {
         var result = await new ProcessTranscoder().ProbeAsync(ffprobe,
-            ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path], token);
+            ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_data", path], token);
         if (result.ExitCode != 0) throw new InvalidOperationException("ffprobe failed.");
         if (string.IsNullOrWhiteSpace(result.Output))
             throw new InvalidOperationException("ffprobe evidence did not finish before its output pipe closed.");

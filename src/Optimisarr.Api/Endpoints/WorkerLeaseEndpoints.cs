@@ -392,8 +392,8 @@ internal static class WorkerLeaseEndpoints
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == WorkerProtocol.DownmixSoundtrackVersion
-                            ? "Soundtrack quality for a stereo downmix requires an updated sidecar (protocol 13)."
+                        lastReason = requiredProtocol == WorkerProtocol.SoundtrackTimingVersion
+                            ? "Soundtrack quality requires an updated sidecar with exact duration and decoder pre-roll preparation (protocol 14)."
                             : requiredProtocol == WorkerProtocol.TrackBitrateVersion
                             ? "Per-soundtrack bitrates require an updated sidecar (protocol 12)."
                             : requiredProtocol == 9

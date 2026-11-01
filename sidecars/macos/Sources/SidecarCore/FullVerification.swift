@@ -200,7 +200,7 @@ public struct FullVerification: Sendable {
     private func probe(_ ffprobe: URL, file: URL, scratch: URL, name: String) async throws -> String {
         let output = scratch.appendingPathComponent("verification-\(name).json")
         defer { try? FileManager.default.removeItem(at: output) }
-        let result = try await runner.run(ffprobe, ["-v", "error", "-show_format", "-show_streams", "-of", "json", "-o", output.path, file.path]) { _ in }
+        let result = try await runner.run(ffprobe, ["-v", "error", "-show_format", "-show_streams", "-show_data", "-of", "json", "-o", output.path, file.path]) { _ in }
         guard result.exitCode == 0 else { throw Failure("ffprobe failed: \(result.stderr)") }
         let size = (try FileManager.default.attributesOfItem(atPath: output.path)[.size] as? NSNumber)?.intValue ?? 0
         guard size > 0 && size <= 1024 * 1024 else { throw Failure("ffprobe evidence is empty or exceeds 1 MiB.") }
