@@ -252,6 +252,9 @@ def main():
         if container_started:
             try:
                 (root / "server.log").write_text(command(["docker", "logs", container], include_stderr=True))
+            except RuntimeError as exc:
+                # A container already being removed has no logs; that must not skip its removal or the report.
+                (root / "server.log").write_text(f"Server log unavailable: {exc}\n")
             finally:
                 subprocess.run(["docker", "rm", "-f", container], capture_output=True, timeout=30)
         report.finish()

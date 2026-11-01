@@ -517,6 +517,8 @@ class Harness:
         encoder = worker["videoEncoders"][0] if worker else "libx265"
         if encoder not in MODES:
             raise Blocked("No house corpus scenario for the proved worker encoder")
+        # CPU mode binds every machine to software encoding (#425); a hardware worker needs its own mode.
+        self.configure(encoderMode=MODES[encoder] if worker else "Cpu", hardwareDecode=False)
         case = self.create_job(name, fixture, encoder=encoder, worker=worker, overrides={
             "targetVideoCodec": CODECS.get(encoder, encoder.split("_")[0]), "targetContainer": entry.get("targetContainer", "mkv"),
             "videoAudioCodec": "aac", "videoAudioBitrateKbps": 128,

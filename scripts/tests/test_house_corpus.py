@@ -24,6 +24,7 @@ class HouseCorpusTests(unittest.TestCase):
             harness.select_worker = Mock()
             case = {"source": source, "sourceSha256": sha256(source), "jobId": 17}
             harness.create_job = Mock(return_value=case)
+            harness.configure = Mock()
             harness.wait_job = Mock(return_value={"status": "Failed", "errorMessage": "first window short",
                 "verificationReportJson": "{}", "workerName": None})
             entry = {"id": "house-001", "path": source.name, "sha256": sha256(source),
@@ -37,10 +38,13 @@ class HouseCorpusTests(unittest.TestCase):
             # Real library clips are often 10-bit, which H.264's compatibility profile refuses.
             self.assertEqual("hevc", settings["targetVideoCodec"])
             self.assertEqual("libx265", harness.create_job.call_args.kwargs["encoder"])
+            self.assertEqual("Cpu", harness.configure.call_args.kwargs["encoderMode"])
             self.assertEqual("aac", settings["videoAudioCodec"])
             harness.wait_job.return_value["workerName"] = "mac"
             harness.house_clip(entry, root, {"id": 1, "name": "mac", "videoEncoders": ["hevc_videotoolbox"]})
             self.assertEqual("hevc_videotoolbox", harness.create_job.call_args.kwargs["encoder"])
+            # CPU mode binds every machine to software (#425), so a hardware worker could never claim.
+            self.assertEqual("Auto", harness.configure.call_args.kwargs["encoderMode"])
             self.assertEqual("hevc", harness.create_job.call_args.kwargs["overrides"]["targetVideoCodec"])
             harness.wait_job.return_value["workerName"] = None
             api.request.return_value = [{"jobId": 17}]
