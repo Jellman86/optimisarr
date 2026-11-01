@@ -155,7 +155,9 @@ source revision must not be used to describe a newer binary build.
 
 ### Fleet verification and rollout
 
-Use [the real-media acceptance harness](media-acceptance.md) with every required
+Run the release regression check (see the [roadmap](../roadmap.md#before-every-release-release-regression-check-added-2026-11-01))
+against the exact tagged image and packaged sidecars. It uses
+[the real-media acceptance harness](media-acceptance.md) with every required
 physical worker named explicitly. Test ordinary verification and strict
 sidecar-only verification separately. Keep the selected encoder/fixture matrix
 and its omissions visible: a smoke run does not certify all drivers, HDR media
@@ -206,6 +208,8 @@ when, and whether there is a tradeoff.
 
 - [ ] The release title and tag match the application version.
 - [ ] The exact tag's CI and container smoke test are green.
+- [ ] The redacted release-check summary for this tag is attached and has no failed or blocked
+      cases. A missing or blocked summary blocks publication.
 - [ ] Both native packaging jobs succeeded for the same reviewed commit, and
       downloadable assets, checksums and corresponding sources are present.
 - [ ] Mac notarisation/stapling and Windows installation/upgrade evidence are

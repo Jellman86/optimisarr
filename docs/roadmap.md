@@ -125,9 +125,7 @@ claim that the additional security work is complete.
    sidecar-only operation and current stricter native audio/image rules. Quarantine is a
    recovery window, not proof that worker measurements are truthful.
 
-## Up next (priority order, reconciled 2026-11-01)
-
-### Before every release: release regression check (added 2026-11-01)
+## Before every release: release regression check (added 2026-11-01)
 
 CI already runs the container smoke tier and most focused regressions on every push and tag, but
 its generated fixtures missed the real-media defects found in late October, and nothing yet proves a
@@ -141,15 +139,18 @@ library files, each cited to the change that documents it:
 - near-full-scale sources whose lossy encodes decode above full scale (#471);
 - surround and mono soundtracks refused instead of assessed through the library's downmix (#472);
 - large subtitle-heavy sources whose per-claim timeline probe outlived the worker's request (#466);
-- found during the #472 field test and not yet fixed: Opus sources that start before zero make the
-  first soundtrack window 46 ms short, and old MKVs without per-track durations are refused by design.
+- found during the #472 field test: Opus sources that start before zero make the first soundtrack
+  window 46 ms short (open, #474). Old MKVs without per-track durations and with a video lead over
+  100 ms are refused by design; a house-corpus clip of that kind is expected to be blocked.
 
 The release check closes that gap:
 
 - **Generated fixtures stay the public baseline.** CI gains fixtures that need no private media: a
   lossy-AAC soundtrack source, a titled source written to MP4 (where the output cannot keep the
-  title), a near-full-scale source whose encodes decode above full scale, an mkvpropedit-rewritten
-  MKV, and surround/mono through the downmix (the last already in `--regression soundtrack-quality`).
+  title), a near-full-scale source whose encodes decode above full scale, an FFmpeg-muxed MKV whose
+  tags emulate mkvpropedit statistics (the real tool is not in the image; real mkvpropedit files are
+  covered by the house corpus), and a mono track through the downmix. Surround through the downmix
+  is already in `--regression soundtrack-quality`.
 - **A house corpus is an additional, local-only, read-only check.** Short clips copied from the
   operator's own library, each chosen for one property above, pinned by checksum with the reason it
   exists. Clips, manifest and full reports stay on that host and are never committed, attached or
@@ -164,10 +165,12 @@ The release check closes that gap:
   beside the Linux worker and requires every named worker. Its report records the image digest,
   package hashes, app/MSI versions, worker protocol versions and FFmpeg/native-helper revisions.
 - **Only a redacted summary leaves the host:** opaque corpus IDs and the property under test, with no
-  source paths, titles, hostnames or library names. Publication requires that summary as a release
-  artifact; a missing or blocked report blocks the release.
+  source paths, titles, hostnames or library names. [`development/releasing.md`](development/releasing.md)
+  requires that summary for the exact tag; a missing or blocked summary blocks the release.
 - The regression table in [`development/media-acceptance.md`](development/media-acceptance.md)
   records each defect by property, never by title, beside the evidence that now guards it.
+
+## Up next (priority order, reconciled 2026-10-28)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
