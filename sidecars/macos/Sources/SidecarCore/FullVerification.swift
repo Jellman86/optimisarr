@@ -112,7 +112,7 @@ public struct FullVerification: Sendable {
         do {
             guard [1, 2, 3].contains(contract.version), contract.version != 3 || contract.soundtrackQuality != nil, let ffprobe else { throw Failure("This worker cannot run the requested full verification contract.") }
             evidence.sourceProbe = try await probe(ffprobe, file: source, scratch: scratch, name: "source")
-            evidence.candidateProbe = try await probe(ffprobe, file: candidate, scratch: scratch, name: "candidate")
+            evidence.candidateProbe = try await probe(ffprobe, file: candidate, scratch: scratch, name: "candidate", writtenByFfmpeg: true)
             // The runner retains a bounded diagnostic tail. Stop on decode errors so a later
             // flood of harmless muxer notes cannot evict corruption and produce a false pass.
             let decoded = try await runner.run(ffmpeg, Self.decodeArguments(file: candidate)) { _ in }
@@ -197,14 +197,28 @@ public struct FullVerification: Sendable {
         return Self.parsePictureCount(try String(contentsOf: output, encoding: .utf8))
     }
 
-    private func probe(_ ffprobe: URL, file: URL, scratch: URL, name: String) async throws -> String {
+    private func probe(_ ffprobe: URL, file: URL, scratch: URL, name: String, writtenByFfmpeg: Bool = false) async throws -> String {
         let output = scratch.appendingPathComponent("verification-\(name).json")
         defer { try? FileManager.default.removeItem(at: output) }
         let result = try await runner.run(ffprobe, ["-v", "error", "-show_format", "-show_streams", "-of", "json", "-o", output.path, file.path]) { _ in }
         guard result.exitCode == 0 else { throw Failure("ffprobe failed: \(result.stderr)") }
         let size = (try FileManager.default.attributesOfItem(atPath: output.path)[.size] as? NSNumber)?.intValue ?? 0
         guard size > 0 && size <= 1024 * 1024 else { throw Failure("ffprobe evidence is empty or exceeds 1 MiB.") }
-        return try String(contentsOf: output, encoding: .utf8)
+        var metadata = try String(contentsOf: output, encoding: .utf8)
+        for index in FlacStreamInfoProbe.requiredAudioIndexes(metadata, writtenByFfmpeg: writtenByFfmpeg) {
+            try Task.checkCancellation()
+            let extra = scratch.appendingPathComponent("verification-\(name)-flac-\(index).json")
+            defer { try? FileManager.default.removeItem(at: extra) }
+            var args = FlacStreamInfoProbe.arguments(file: file, audioIndex: index)
+            args.insert(contentsOf: ["-o", extra.path], at: args.count - 1)
+            let targeted = try await runner.run(ffprobe, args) { _ in }
+            guard targeted.exitCode == 0 else { continue }
+            let bytes = (try FileManager.default.attributesOfItem(atPath: extra.path)[.size] as? NSNumber)?.intValue ?? 0
+            guard bytes > 0, bytes <= FlacStreamInfoProbe.maximumTrackProbeBytes else { continue }
+            metadata = FlacStreamInfoProbe.withStreamInfo(metadata, audioIndex: index,
+                trackProbe: try String(contentsOf: extra, encoding: .utf8))
+        }
+        return metadata
     }
 
     private func timestamps(_ ffprobe: URL, file: URL, stream: String, scratch: URL, name: String,

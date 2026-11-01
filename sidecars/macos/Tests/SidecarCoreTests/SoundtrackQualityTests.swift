@@ -68,9 +68,9 @@ struct SoundtrackQualityTests {
             window: window, audioIndex: 0, lead: 0, soundtrack: true).contains("-ac"))
 
         var result = AudioQualityResult(); result.referenceAudioIndex = 0; result.reference = pairs[0].reference
-        #expect(RemoteAudioQualityEvidence(assessment: result).preparation == "audio-f32le-48k-video-timeline-stereo-downmix-v1")
+        #expect(RemoteAudioQualityEvidence(assessment: result).preparation == "audio-f32le-48k-video-timeline-stereo-downmix-v2")
         result.reference = pairs[0].candidate
-        #expect(RemoteAudioQualityEvidence(assessment: result).preparation == "audio-f32le-48k-video-timeline-v1")
+        #expect(RemoteAudioQualityEvidence(assessment: result).preparation == "audio-f32le-48k-video-timeline-v2")
         let encoded = try JSONEncoder().encode(pairs[0].reference)
         #expect(try JSONDecoder().decode(AudioQualityProfile.self, from: encoded).sourceChannels == 6)
     }
@@ -131,7 +131,7 @@ struct LiveSoundtrackQualityTests {
         #expect(result.soundtrackQuality?.tracks.count == (fixture.removed.isEmpty ? 2 : 1))
         for track in result.soundtrackQuality?.tracks ?? [] {
             #expect(track.report.evidence?.assessment.measured == true, "\(track.report.unavailableReason ?? "No evidence")")
-            #expect(track.report.evidence?.preparation == "audio-f32le-48k-video-timeline-v1")
+            #expect(track.report.evidence?.preparation == "audio-f32le-48k-video-timeline-v2")
         }
         #expect(try FileManager.default.contentsOfDirectory(atPath: scratch.path).isEmpty)
         try JSONEncoder().encode(result).write(to: URL(fileURLWithPath: fixture.report), options: .withoutOverwriting)

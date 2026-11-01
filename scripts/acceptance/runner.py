@@ -385,7 +385,8 @@ class Harness:
 
 
     def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False, adaptive=False,
-                   surround=None, lossy=False, titled_mp4=False, overs=False, statistics=False, mono=False):
+                   surround=None, lossy=False, titled_mp4=False, overs=False, statistics=False, mono=False,
+                   timing=None, attached_font=False):
         """surround: None for stereo sources; True for a 5.1 main track downmixed to stereo; False for that
         track kept surround, which no soundtrack gate can assess, so the gate must block replacement."""
         self.select_worker(worker)
@@ -393,13 +394,17 @@ class Harness:
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
         name += "-long" if long else "-short-mp4" if short else ""
         name += "-adaptive" if adaptive else ""
+        name += "-" + timing if timing else ""
+        name += "-font" if attached_font else ""
         name += "" if surround is None else "-surround-downmixed" if surround else "-surround-kept"
         name += "-lossy-aac" if lossy else "-titled-mp4" if titled_mp4 else "-decoded-overs" if overs else ""
         name += "-mkvpropedit-statistics" if statistics else ""
         name += "-mono-downmixed" if mono else ""
         # Adaptive selection needs more than one sample window per track.
         seconds = 120 if long else 12 if short else 40 if adaptive or lossy else 8
-        audio_seconds = seconds - 0.5 if short else seconds
+        if timing == "flac-statistics":
+            seconds = 8.1
+        audio_seconds = 385024 / 48000 if timing == "flac-statistics" else seconds - 0.5 if short else seconds
         commentary_seconds = seconds - 2.5 if long else audio_seconds
         fixture = self.root / "fixtures" / (name + ".mkv")
         main = (f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42" if surround is None else
@@ -412,15 +417,59 @@ class Harness:
             signal = "0.98*sgn(sin(2*PI*997*t))"
             main = f"aevalsrc=exprs={signal}|{signal}:channel_layout=stereo:sample_rate=48000:duration={audio_seconds}"
         channels = soundtrack_source_audio(lossy=lossy, overs=overs, surround=surround, mono=mono)
+        timing_tags = []
+        if timing == "flac-statistics":
+            channels = ["-c:a", "flac", "-frame_size", "4096", "-ac", "2"]
+            timing_tags = ["-write_crc32", "0"]
+            for track in range(2):
+                timing_tags += [f"-metadata:s:a:{track}", "DURATION-eng=00:00:07.936000000",
+                               f"-metadata:s:a:{track}", "_STATISTICS_WRITING_APP-eng=mkvpropedit generated-regression"]
+        elif timing == "opus-preroll":
+            channels = ["-c:a", "libopus", "-ac", "2"]
+        # Offset timestamps rather than inserting silence: the first decoded sample must be late.
+        audio_offset = ["-itsoffset", "0.022"] if timing == "late-audio" else []
+        attachment = []
+        if attached_font:
+            # Generated attachment payload: probing must never dump this entire 2 MiB font stream.
+            font = self.root / "fixtures" / (name + ".ttf")
+            font.write_bytes(b"\x00\x01\x00\x00" + bytes(2 * 1024 * 1024 - 4))
+            attachment = ["-attach", self.tools.path(font), "-metadata:s:t:0", "mimetype=application/x-truetype-font",
+                          "-metadata:s:t:0", "filename=regression.ttf"]
         self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
-            "-f", "lavfi", "-i", main,
-            "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
+            *audio_offset, "-f", "lavfi", "-i", main,
+            *audio_offset, "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
             "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *channels,
             "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=" if short else "title=Main",
             "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary",
-            *(mkvpropedit_metadata(seconds, 2) if statistics else []), self.tools.path(fixture)])
+            *(mkvpropedit_metadata(seconds, 2) if statistics else []), *timing_tags, *attachment, self.tools.path(fixture)])
+        if timing == "flac-statistics":
+            # Simulate mkvpropedit's statistics without adding MKVToolNix to the runtime image.
+            # Rename only the EBML TagName for FFmpeg's plain DURATION, without changing element sizes.
+            data = fixture.read_bytes()
+            # A suffixed tag is stored as DURATION + TagLanguage, while a plain tag's value follows
+            # its name immediately. Keep the language-tagged statistics intact.
+            marker = b"\x45\xa3\x88DURATION\x44\x87"
+            require(data.count(marker) == 3, "Generated FLAC fixture has unexpected duration tags")
+            edited = fixture.with_suffix(".statistics.mkv")
+            edited.write_bytes(data.replace(marker, b"\x45\xa3\x88IGNORED_\x44\x87"))
+            edited.replace(fixture)
+        if attached_font:
+            probe = self.tools.probe(fixture)
+            require(len(json.dumps(probe)) < 16384, "Metadata probe dumped the font attachment")
+            fonts = [s for s in probe["streams"] if s["codec_type"] == "attachment"]
+            require(len(fonts) == 1 and fonts[0]["extradata_size"] == 2 * 1024 * 1024,
+                    "Generated font attachment is absent or has the wrong size")
+        if timing == "opus-preroll":
+            probe = self.tools.probe(fixture)
+            audio = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+            require(all(float(track["start_time"]) < 0 for track in audio), "Opus fixture lost its negative start")
         source_probe = self.tools.probe(fixture)
         source_tracks = [stream for stream in source_probe["streams"] if stream["codec_type"] == "audio"]
+        if timing == "late-audio":
+            video = next(stream for stream in source_probe["streams"] if stream["codec_type"] == "video")
+            require(abs(float(video["start_time"])) < .001, "Late-audio fixture lost its zero picture origin")
+            require(len(source_tracks) == 2 and all(.021 <= float(track["start_time"]) <= .023 for track in source_tracks),
+                    "Late-audio fixture must start both audio tracks about 22 ms after the picture")
         if mono:
             require(source_tracks[0]["channels"] == 1, "Mono fixture is not mono")
         save(self.report.root / name / "source-probe.json", source_probe)
@@ -463,6 +512,15 @@ class Harness:
             location = "Worker" if worker and self.strict_worker_verification else "Server"
             validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject,
                                        downmixed=(0,) if surround or mono else ())
+        if timing:
+            for track in verification["soundtrackQuality"]["tracks"]:
+                assessment = track["report"]["evidence"]["assessment"]
+                first = assessment["windows"][0]
+                require(first["distances"]["frames"] == round(first["window"]["durationSeconds"] * 48000),
+                        "Timing regression did not decode an exact first window")
+                if timing == "flac-statistics":
+                    require(abs(assessment["reference"]["durationSeconds"] - 385024 / 48000) < 1e-8,
+                            "FLAC duration did not use its exact sample count")
         if adaptive:
             search = verification.get("soundtrackSearch") or {}
             require(search.get("unavailable") is None, f"Soundtrack selection did not run: {search.get('unavailable')}")
@@ -1140,6 +1198,10 @@ class Harness:
                         self.report.case(label + "-soundtrack-adaptive-" + codec, lambda c=codec, w=worker: self.soundtrack(c, w, adaptive=True))
                     self.report.case(label + "-soundtrack-adaptive-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True, adaptive=True))
                     self.report.case(label + "-soundtrack-adaptive-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-flac-statistics", lambda w=worker: self.soundtrack("aac", w, timing="flac-statistics"))
+                    self.report.case(label + "-soundtrack-flac-statistics-font", lambda w=worker: self.soundtrack("aac", w, timing="flac-statistics", attached_font=True))
+                    self.report.case(label + "-soundtrack-opus-preroll", lambda w=worker: self.soundtrack("opus", w, timing="opus-preroll"))
+                    self.report.case(label + "-soundtrack-late-audio", lambda w=worker: self.soundtrack("aac", w, timing="late-audio"))
                     self.report.case(label + "-soundtrack-surround-downmixed", lambda w=worker: self.soundtrack("aac", w, surround=True))
                     self.report.case(label + "-soundtrack-surround-kept", lambda w=worker: self.soundtrack("aac", w, surround=False))
                     self.report.case(label + "-soundtrack-adaptive-surround-downmixed",

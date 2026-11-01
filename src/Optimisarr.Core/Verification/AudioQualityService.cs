@@ -76,7 +76,13 @@ public sealed class AudioQualityService
             metricHash = hashes.Metric; ffmpegHash = hashes.Ffmpeg; ffprobeHash = hashes.Ffprobe;
             var a = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(referencePath, referenceAudioIndex is not null), token, TimeSpan.FromSeconds(30));
             var b = await _run(_ffprobe, AudioQualityCommandBuilder.Probe(candidatePath, candidateAudioIndex is not null), token, TimeSpan.FromSeconds(30));
-            reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(a.Output, ai, downmixToStereo: downmixToStereo) : AudioQualityInput.Parse(a.Output) : null;
+            var referenceProbe = a.ExitCode == 0 && referenceAudioIndex is not null
+                ? await FlacStreamInfoProbe.EnrichAsync(a.Output, async (index, cancellation) =>
+                {
+                    var extra = await _run(_ffprobe, FlacStreamInfoProbe.Arguments(referencePath, index), cancellation, TimeSpan.FromSeconds(30));
+                    return extra.ExitCode == 0 ? extra.Output : "";
+                }, token) : a.Output;
+            reference = a.ExitCode == 0 ? referenceAudioIndex is { } ai ? AudioQualityInput.ParseTrack(referenceProbe, ai, downmixToStereo: downmixToStereo) : AudioQualityInput.Parse(a.Output) : null;
             candidate = b.ExitCode == 0 ? candidateAudioIndex is { } bi ? AudioQualityInput.ParseTrack(b.Output, bi, writtenByFfmpeg: true) : AudioQualityInput.Parse(b.Output) : null;
             if (reference is null || candidate is null)
                 return Result(false, "Assessment requires one known-duration mono/stereo audio track, without video or unproved channel layouts.");

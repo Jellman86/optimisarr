@@ -366,17 +366,23 @@ downmix itself, which is the library's own choice. Its evidence records the sour
 and layout and a separate preparation, so it can never be read as a plain comparison. A surround
 track whose layout is unknown is refused rather than downmixed by guesswork, and so is a downmixed
 track when the library also sets an audio filter, because a filter such as loudness normalisation
-behaves differently on a 30-second sample than on the whole file. Workers need sidecar protocol 13
-for these jobs. Without a downmix, retained surround tracks remain unassessable and block a gated
-replacement, including alongside otherwise supported stereo tracks. Track duration differences
-over 100 ms, start-time differences over 50 ms, and unsupported picture/container offsets are
+behaves differently on a 30-second sample than on the whole file. Workers need sidecar protocol 14
+for soundtrack assessment. Without a downmix, retained surround tracks remain unassessable and block a gated
+replacement, including alongside otherwise supported stereo tracks. For FLAC tracks whose duration
+comes from Matroska statistics, the probe reads the exact STREAMINFO sample count: statistics can
+omit the final packet's duration. Missing sample counts or disagreement beyond one FLAC frame
+(plus 1 ms timestamp rounding) remain unassessable. The candidate must still match that exact
+duration within 100 ms. Other track duration differences over 100 ms, start-time differences
+over 50 ms, and unsupported picture/container offsets are
 also refused; a perceptual score cannot approve a timing shift or establish lip-sync quality.
 
 Each track up to 90 seconds is fully assessed; longer tracks use three 30-second samples at
 the start, middle and end. This cannot guarantee quality outside the assessed windows or
 inaudibility within them. Cost grows with retained tracks: serial decode/scoring, temporary
 PCM files, and repeated reads of both complete video files for identity hashes on the verifying
-host. Strict worker verification requires an updated protocol 8 sidecar and verification
+host. Windows within 100 ms of the container origin decode from the beginning and trim on the
+picture timeline, preserving Opus pre-roll without moving the assessed audio. Strict worker
+verification requires an updated protocol 14 sidecar and verification
 contract 3; measurement stays on the worker with no server fallback. Server verification mode
 measures on the server. See [evidence and resource limits](../development/perceptual-audio-image-quality-plan.md#video-soundtrack-reports-and-gate-in-development).
 

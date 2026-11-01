@@ -35,8 +35,8 @@ def validate_uneven_timing_fixture(probe, times):
             "minimumGapSeconds": min(gaps), "maximumGapSeconds": max(gaps)}
 
 
-SOUNDTRACK_PREPARATION = "audio-f32le-48k-video-timeline-v1"
-SOUNDTRACK_DOWNMIX_PREPARATION = "audio-f32le-48k-video-timeline-stereo-downmix-v1"
+SOUNDTRACK_PREPARATION = "audio-f32le-48k-video-timeline-v2"
+SOUNDTRACK_DOWNMIX_PREPARATION = "audio-f32le-48k-video-timeline-stereo-downmix-v2"
 
 
 def validate_soundtrack_report(report, source_indexes, location, limit, *, passes=True, downmixed=()):

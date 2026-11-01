@@ -4,17 +4,113 @@ import Testing
 
 @Suite("Audio quality reporting")
 struct AudioQualityTests {
-    @Test("soundtrack seeks retain the demuxer origin and picture lead")
-    func soundtrackSeekOrigin() {
-        for (start, expected) in [(0.0, "0.021"), (22.5, "22.521")] {
-            let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/source.mkv"),
-                output: URL(fileURLWithPath: "/decoded.raw"), window: .init(startSeconds: start, durationSeconds: 3),
-                audioIndex: 0, lead: 0.021, soundtrack: true)
-            let seeks = args.indices.filter { args[$0] == "-ss" }
-            #expect(seeks.count == 1)
-            #expect(seeks[0] < args.firstIndex(of: "-i")!)
-            #expect(args[seeks[0] + 1] == expected)
+    @Test("near-start soundtrack windows trim on the picture timeline without input seeking")
+    func soundtrackPreroll() {
+        for (start, lead, trim) in [(0.0, 0.007, "0.007"), (0.04, 0.007, "0.047"),
+                                    (0.0, 0.021, "0.021"), (0.0, 0.0, "0")] {
+            for file in ["reference-opus.mkv", "candidate-opus.mkv"] {
+                let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/" + file),
+                    output: URL(fileURLWithPath: "/decoded.raw"), window: .init(startSeconds: start, durationSeconds: 30),
+                    audioIndex: 0, lead: lead, soundtrack: true)
+                #expect(!args.contains("-ss"))
+                #expect(args[args.firstIndex(of: "-af")! + 1] == "aresample=48000,atrim=start=\(trim),asetpts=PTS-STARTPTS,atrim=end_sample=1440000")
+                #expect(args[args.firstIndex(of: "-t")! + 1] == "30.1")
+                #expect(!args.joined(separator: ",").contains("apad"))
+            }
         }
+    }
+
+    @Test("late-starting soundtracks count samples after the start trim without a timestamp end")
+    func lateSoundtrackSamples() throws {
+        for start in ["0.009", "0.022"] {
+            let probe = #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"\#(start)","duration":"8","channels":2,"sample_rate":"48000"}],"format":{"start_time":"0"}}"#
+            let profile = try #require(AudioQualityAssessment.profile(probe, audioIndex: 0))
+            #expect(profile.containerLeadSeconds == 0)
+            let window = try #require(AudioQualityAssessment.plan(profile.durationSeconds, soundtrack: true).first)
+            for file in ["reference-late.mkv", "candidate-late.mkv"] {
+                let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/" + file),
+                    output: URL(fileURLWithPath: "/decoded.raw"), window: window,
+                    audioIndex: 0, lead: profile.containerLeadSeconds, soundtrack: true)
+                #expect(!args.contains("-ss"))
+                #expect(args[args.firstIndex(of: "-af")! + 1] == "aresample=48000,atrim=start=0,asetpts=PTS-STARTPTS,atrim=end_sample=379200")
+            }
+        }
+    }
+
+    @Test("later soundtrack seeks retain the demuxer origin and picture lead")
+    func soundtrackSeekOrigin() {
+        let args = AudioQualityAssessment.decodeArguments(input: URL(fileURLWithPath: "/source.mkv"),
+            output: URL(fileURLWithPath: "/decoded.raw"), window: .init(startSeconds: 22.5, durationSeconds: 3),
+            audioIndex: 0, lead: 0.021, soundtrack: true)
+        let seek = args.firstIndex(of: "-ss")!
+        #expect(seek < args.firstIndex(of: "-i")!)
+        #expect(args[seek + 1] == "22.521")
+        #expect(args[args.firstIndex(of: "-af")! + 1] == "aresample=48000,atrim=end_sample=144000")
+    }
+
+    @Test("FLAC statistics use the exact sample count and still refuse truncation")
+    func flacStatistics() throws {
+        for tag in ["DURATION", "DURATION-eng"] {
+            let source = flacStatisticsProbe(tag)
+            let reference = try #require(AudioQualityAssessment.profile(source, audioIndex: 0))
+            #expect(abs(reference.durationSeconds - 4321280 / 48000.0) < 1e-8)
+            func candidate(_ duration: String) -> String {
+                #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0","channels":2,"sample_rate":"48000","duration":"\#(duration)","tags":{"language":"eng"}}],"format":{"start_time":"0"}}"#
+            }
+            let plan = try SoundtrackQualityAssessment.plan(sourceProbe: source, candidateProbe: candidate("90.048"), request: .init(removedSourceAudioIndexes: []))
+            #expect(plan.count == 1)
+            #expect(throws: (any Error).self) {
+                try SoundtrackQualityAssessment.plan(sourceProbe: source, candidateProbe: candidate("89.915"), request: .init(removedSourceAudioIndexes: []))
+            }
+        }
+    }
+
+    @Test("targeted STREAMINFO ignores font attachments and retains exact profiles")
+    func targetedFlacStreamInfo() throws {
+        let original = flacStatisticsProbe("DURATION-eng")
+        var root = try JSONSerialization.jsonObject(with: Data(original.utf8)) as! [String: Any]
+        var streams = root["streams"] as! [[String: Any]]
+        streams[1]["index"] = 2
+        let selected = String(data: try JSONSerialization.data(withJSONObject: ["streams": [streams[1]]]), encoding: .utf8)!
+        streams[1].removeValue(forKey: "extradata")
+        streams.insert(["codec_type": "attachment", "codec_name": "ttf", "index": 1, "extradata_size": 2 * 1024 * 1024], at: 1)
+        root["streams"] = streams
+        let metadata = String(data: try JSONSerialization.data(withJSONObject: root), encoding: .utf8)!
+        #expect(FlacStreamInfoProbe.requiredAudioIndexes(metadata) == [0])
+        #expect(FlacStreamInfoProbe.requiredAudioIndexes(metadata, writtenByFfmpeg: true).isEmpty)
+        let enriched = FlacStreamInfoProbe.withStreamInfo(metadata, audioIndex: 0, trackProbe: selected)
+        #expect(enriched.utf8.count < 4096)
+        let actual = try #require(AudioQualityAssessment.profile(enriched, audioIndex: 0))
+        let expected = try #require(AudioQualityAssessment.profile(original, audioIndex: 0))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        #expect(try encoder.encode(actual) == encoder.encode(expected))
+        for invalid in [String(repeating: "x", count: 16385), original, selected.replacingOccurrences(of: "flac", with: "ttf")] {
+            #expect(AudioQualityAssessment.profile(FlacStreamInfoProbe.withStreamInfo(metadata, audioIndex: 0, trackProbe: invalid), audioIndex: 0) == nil)
+        }
+        let args = FlacStreamInfoProbe.arguments(file: URL(fileURLWithPath: "/movie.mkv"), audioIndex: 0)
+        #expect(args[args.firstIndex(of: "-select_streams")! + 1] == "a:0")
+        #expect(args.contains("-show_data"))
+    }
+
+    @Test("FLAC counts cannot override stream durations or conflicting statistics")
+    func conflictingFlacStatistics() {
+        let json = flacStatisticsProbe("DURATION-eng")
+        #expect(AudioQualityAssessment.profile(json.replacingOccurrences(of: #""sample_rate""#, with: #""duration":"91","sample_rate""#), audioIndex: 0)?.durationSeconds == 91)
+        for invalid in [json.replacingOccurrences(of: "29.941", with: "28.941"),
+                        json.replacingOccurrences(of: "02f0 0041", with: "02f0 0000").replacingOccurrences(of: "f000 0000", with: "0000 0000"),
+                        json.replacingOccurrences(of: "0bb8 02f0", with: "0ac4 42f0"),
+                        json.replacingOccurrences(of: "1000 1000", with: "1000 0000"),
+                        json.replacingOccurrences(of: "extradata", with: "unavailable")] {
+            #expect(AudioQualityAssessment.profile(invalid, audioIndex: 0) == nil)
+        }
+        #expect(AudioQualityAssessment.profile(json, audioIndex: 0, writtenByFfmpeg: true) == nil)
+        #expect(AudioQualityAssessment.profile(flacStatisticsProbe("DURATION").replacingOccurrences(of: "29.941", with: "30.100"), audioIndex: 0, writtenByFfmpeg: true)?.durationSeconds == 90.1)
+        #expect(abs((AudioQualityAssessment.profile(json.replacingOccurrences(of: "29.941", with: "30.000"), audioIndex: 0)?.durationSeconds ?? 0) - 4321280 / 48000.0) < 1e-8)
+    }
+
+    private func flacStatisticsProbe(_ tag: String) -> String {
+        #"{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","codec_name":"flac","start_time":"0","channels":2,"sample_rate":"48000","extradata":"\n00000000: 1000 1000 0000 0000 0000 0bb8 02f0 0041  ...............A\n00000010: f000 0000 0000 0000 0000 0000 0000 0000  ................\n00000020: 0000                                     ..\n","tags":{"language":"eng","\#(tag)":"00:01:29.941000000","_STATISTICS_WRITING_APP-eng":"mkvpropedit v95"}}],"format":{"start_time":"0","duration":"91","tags":{"encoder":"Lavf62"}}}"#
     }
 
     @Test func audioWindowSeeksPreserveDecoderContextAndTrimExactSamples() {

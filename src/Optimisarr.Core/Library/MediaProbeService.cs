@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using Optimisarr.Core;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Core.Library;
 
@@ -187,6 +188,7 @@ public sealed class MediaProbeService : IMediaProbeService
 
         try
         {
+            stdout = await FlacStreamInfoProbe.ProbeAsync(_ffprobe, path, stdout, cancellationToken);
             return Parse(stdout, Path.GetExtension(path));
         }
         catch (JsonException ex)

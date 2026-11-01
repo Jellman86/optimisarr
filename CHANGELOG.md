@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Restore soundtrack quality checks for audio that starts a few milliseconds after the picture. Near-start windows count the requested samples after trimming the start, while retaining Opus decoder pre-roll and the existing timing checks. Generated acceptance now covers two tracks starting 22 ms late.
+
+- Keep font attachments out of probe data so subtitle fonts cannot block soundtrack verification or bloat library scans. FLAC tracks with Matroska statistics still use their exact sample count, read through a small audio-only probe on the server and workers.
+
+- Fix soundtrack quality refusals for Matroska FLAC statistics that omit the last frame and Opus tracks starting before zero (#476, #474). FLAC uses its exact sample count while keeping the 100 ms duration limit; near-start samples retain decoder pre-roll and trim on the picture timeline on both sides. Soundtrack workers now require protocol 14 and version 2 preparation evidence. Missing or conflicting FLAC sample counts still fail closed.
+
 - Add an isolated release regression command with required worker/artifact coverage, native-only regression routing and redacted JSON/Markdown summaries. Full corpus data and reports remain local; missing release evidence blocks qualification.
 
 - Add private checksum-pinned house clips that retain real timing/metadata quirks with explicit pass, expected refusal or search-fallback outcomes. Mixed disposable worker launchers share one test server and require every named identity. The negative-start Opus first-window defect (#474) remains open.
