@@ -275,12 +275,26 @@ Do not remove a required host from the arguments merely to obtain a green report
 | Worker VMAF differs from the server or measurement drops frames | Strict worker evidence checked against raw independent VMAF and picture counts |
 | A rejected candidate replaces the source, or repeat replace corrupts history | Impossible-quality rejection, duplicate replace, quarantine hash and byte-for-byte rollback |
 | One unavailable target hides all other coverage | Harness self-tests for partial startup, absent executables, stale availability and disconnect cancellation |
+| Lossy AAC search windows have the wrong length (#469) | Generated `soundtrack-quality` lossy-AAC gate and adaptive cases; real AAC sources in the private house corpus |
+| Language-suffixed mkvmerge duration statistics are ignored (#469) | C# `SoundtrackQualityTests` and Swift `AudioQualityTests` parser tests; checksum-pinned house clips |
+| FFmpeg-muxed files later edited by mkvpropedit have only `DURATION-eng` (#470) | Generated FFmpeg metadata emulation asserts Lavf muxing, suffixed duration/statistics app and absence of plain duration before gate assessment; real mkvpropedit files stay in the house corpus. mkvtoolnix is not in the image |
+| Stale mkvmerge statistics override FFmpeg output duration (#469) | C#/Swift parser tests explicitly select freshly written plain duration; house `stale-statistics` property exercises actual retained metadata |
+| MP4 cannot retain a source track title (#469) | Generated titled-source → MP4 case asserts the title is absent, both languages survive and the measured gate passes |
+| Near-full-scale source encodes decode above ±1.0 (#471) | Generated ~0.98-peak source, independently measured source/candidate peaks, AAC decode overs and a measured final gate; native-helper corruption/finite-input tests |
+| Surround or mono is refused despite the configured stereo downmix (#472) | Existing 5.1 FLAC downmix, kept-surround rejection and adaptive cases; new mono gate/adaptive cases require the versioned downmix reference and stereo output; house E-AC-3 5.1(side), Opus 7.1 and mixed-track properties |
+| Negative-start Opus makes the first window 46 ms short (open #474) | House corpus can assert expected blocked with a specific reason; [#474](https://github.com/Jellman86/optimisarr/issues/474) remains open, with no product-code fix here |
+| Legacy MKV has no per-track duration and >100 ms video lead (accepted limitation) | Expected blocked house entry preserves the exact short-file bytes; original must remain unchanged |
+| Large subtitle-heavy sources outlive a 30-second worker claim (#466) | `SubtitleTimelineVerdictsTests` cover shared/invalidation/retry cache behavior; interactive fleet regressions exercise claims. House clips retain subtitle streams/attachments, but short clips do not prove full-file latency; the first uncached claim can still time out |
 
 These cases supplement the shared worker unit suites and macOS live RAM-volume tests. Linux
 RAM observation does not certify Windows RAM-disk software or the macOS RAM allocator. Keep
 physical-host runs for those platforms and list required hosts explicitly. Server restart here is
 an idle-control-plane reconnect test; a long network partition during an active encode remains
 separate coverage.
+
+For the complete release command, exact image/package receipts, private house corpus and the
+redacted summary to attach to a release, follow [Release regression check](release-check.md).
+Full harness reports and corpus manifests contain private paths/tags and must stay on the host.
 
 ### macOS launcher
 
