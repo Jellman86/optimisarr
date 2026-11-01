@@ -61,6 +61,12 @@ class HouseCorpusTests(unittest.TestCase):
         fallback = {**good, "soundtrackSearch": {"unavailable": "negative start"}}
         assert_outcome("search-fallback", "ReadyToReplace", "", fallback)
         assert_outcome({"outcome": "blocked", "reason": "46 ms"}, "Failed", "first window 46 ms short", {})
+        # A per-track refusal is the specific reason; the job error only names the failed check.
+        per_track = {"soundtrackQuality": {"tracks": [{"report": {"unavailableReason": "Prepared audio does not cover the requested channel/frame count."}}]}}
+        assert_outcome({"outcome": "blocked", "reason": "does not cover"}, "Failed",
+                       "Verification failed: Soundtrack 1: Perceptual audio quality (Zimtohrli)", per_track)
+        with self.assertRaises(AssertionError):
+            assert_outcome({"outcome": "blocked", "reason": "known-duration"}, "Failed", "Verification failed", per_track)
         for expected, status, error, report in [
             ("passes", "ReadyToReplace", "", fallback),
             ("search-fallback", "ReadyToReplace", "", good),

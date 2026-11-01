@@ -23,7 +23,9 @@ def assert_outcome(expected, status, error, verification):
     expected = validate_expected(expected)
     if expected["outcome"] == "blocked":
         quality = verification.get("soundtrackQuality") or {}
-        reasons = " ".join(str(value) for value in (error or "", quality.get("unavailableReason") or ""))
+        # The job error names only the failed check; each track carries the specific refusal.
+        track_reasons = [(track.get("report") or {}).get("unavailableReason") or "" for track in quality.get("tracks") or []]
+        reasons = " ".join(str(value) for value in (error or "", quality.get("unavailableReason") or "", *track_reasons))
         require(status == "Failed" and expected["reason"].casefold() in reasons.casefold(),
                 f"Expected blocked reason {expected['reason']!r}; got {status}: {reasons}")
         return
