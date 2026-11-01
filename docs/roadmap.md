@@ -128,8 +128,10 @@ claim that the additional security work is complete.
 ## Before every release: release regression check (added 2026-11-01)
 
 CI already runs the container smoke tier and most focused regressions on every push and tag, but
-its generated fixtures missed the real-media defects found in late October, and nothing yet proves a
-release on the physical workers or the packaged sidecars. Those defects came from properties of real
+its generated fixtures missed the real-media defects found in late October. Physical-worker
+qualification runs exist (0.2.24 was qualified on Windows/NVIDIA, macOS/Apple Silicon and
+Linux/Intel), but they are a hand-picked matrix run from source-built launchers, and no per-tag run
+forces the fleet matrix, the packaged sidecars and the house corpus to pass together. Those defects came from properties of real
 library files, each cited to the change that documents it:
 
 - lossy AAC soundtrack sources whose sampled windows missed their length, `DURATION-eng`-only
@@ -168,7 +170,7 @@ The release check closes that gap:
   source paths, titles, hostnames or library names. [`development/releasing.md`](development/releasing.md)
   requires that summary for the exact tag; a missing or blocked summary blocks the release.
 - The regression table in [`development/media-acceptance.md`](development/media-acceptance.md)
-  records each defect by property, never by title, beside the evidence that now guards it.
+  will record each defect by property, never by title, beside the evidence that guards it.
 
 ## Up next (priority order, reconciled 2026-10-28)
 

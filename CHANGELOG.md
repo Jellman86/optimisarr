@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add a release regression check to the roadmap as a gate before every release. Generated fixtures stay the public baseline, a local-only house corpus of real files adds the properties that exposed #466 and #469–#472, the check runs against the published image and packaged sidecars on every named worker, and only a redacted summary is published. The release checklist now requires that summary. Track the open Opus first-window finding as #474.
+- Added a roadmap item for a release regression check before every release, prompted by the real-media defects fixed in #466 and #469–#472. It plans generated fixtures as the public baseline, a local-only house corpus of real files, a per-tag run against the published image and packaged sidecars on every named worker, and a redacted published summary. The release checklist will require that summary once the command lands. The open Opus first-window finding is tracked as #474.
 
 - Assess surround and mono soundtracks that a library downmixes to stereo (#332). The soundtrack gate and per-soundtrack bitrate selection previously refused every retained surround track, which left most surround video unassessable. With **Downmix surround to stereo** on, a surround track with a known channel layout (or a mono track) is now measured against the source through the same `-ac 2` downmix the encode applied, so the score measures codec loss rather than the downmix the library chose. One argument list drives the encode and every reference, the evidence records the source channels and a distinct preparation, and workers need sidecar protocol 13. Surround with an unknown layout, a downmixed track with an explicit audio filter, and surround kept without a downmix stay unassessable.
 
