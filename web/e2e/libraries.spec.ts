@@ -1018,3 +1018,30 @@ test('audio quality target keeps its choice across navigation and a fixed settin
   expect((await saved).postDataJSON()).toMatchObject({ adaptiveAudioQuality: false,
     audioQualityGateEnabled: true, maximumAudioQualityDistance: 0.01 })
 })
+
+test('the workflow bar marks the current stage with a filled accent and stays on every configuration view', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/verify/advanced')
+  const current = stage(page, 'Verify')
+  await expect(current).toHaveAttribute('aria-current', 'step')
+  const fill = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.className = 'bg-accent-fill'
+    document.body.append(probe)
+    const value = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return value
+  })
+  await expect(current).toHaveCSS('background-color', fill)
+  await expect(stage(page, 'Encode')).not.toHaveCSS('background-color', fill)
+
+  // Candidates and exclusions keep the same way back into each stage, with no stage claimed as current.
+  for (const tab of [/Candidates \(/, /Excluded \(/]) {
+    await page.getByRole('button', { name: tab }).click()
+    await expect(stage(page, 'Verify')).toBeVisible()
+    await expect(stage(page, 'Verify')).not.toHaveAttribute('aria-current', 'step')
+  }
+  await stage(page, 'Encode').click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Encode')
+  await expect(stage(page, 'Encode')).toHaveAttribute('aria-current', 'step')
+})
