@@ -58,6 +58,14 @@ ordinary work and reports that an update is needed for those jobs. Timed-text
 subtitle conversion to Matroska requires protocol 4. MP4 timing corrections and strict decoded-picture evidence require protocol 9. Unsupported commands are
 held before a lease is issued, rather than sent to the worker to fail.
 
+When upgrading from 0.2.24, update the sidecars alongside the server. With **Verify entirely on the
+sidecar** enabled, jobs requesting soundtrack reports or the soundtrack gate require protocol 14 and
+full-verification contract 3. Protocols 12 and 13 provided earlier soundtrack support but cannot
+perform the current assessment. Older workers remain available for compatible jobs. **Only on
+workers** leaves affected work waiting for a compatible worker; placement that permits this server
+can run it locally. Strict worker verification never silently falls back to server measurement.
+Pairing is retained, and the updated protocol is negotiated on heartbeat.
+
 ## Choose where a library runs
 
 ### RAM storage and GPU processing
@@ -88,7 +96,8 @@ for tested paths and remaining limitations.
 ### Placement
 
 Open **Libraries → Configure → Choose files → Advanced eligibility → Where this library's work
-may run**. Placement is saved per library and applies to eligible video and audio re-encodes.
+may run**. Placement is saved per library and applies to eligible video and audio re-encodes and
+still-image quality-first jobs.
 
 | Setting | Effect |
 |---|---|
@@ -101,12 +110,14 @@ may run**. Placement is saved per library and applies to eligible video and audi
 
 Turning **Remote workers** off makes placement fall back to the container, including libraries
 saved as **Only on workers**. Keep remote workers enabled to enforce worker-only placement.
-Automation windows, pause rules, capability requirements, and disk checks still apply. Image, remux, preview, and personal quality-check workflows retain their existing local paths.
+Automation windows, pause rules, capability requirements, and disk checks still apply. Remuxes and
+disposable audio/image comparisons remain local. Eligible video previews and Personal quality check
+samples can run on workers; compatible workers can also run audio/image quality-first jobs.
 
 Queue shows separate capacity for video work, audio/images, sidecar evidence checks, safe
 replacement, and workers. A strict worker result waits for the container to validate its evidence;
-the container does not repeat media verification. **Settings → Encoding & queue → Advanced →
-Workload concurrency** shows the effective limits and lets you set extra lightweight lanes when
+the container does not repeat media verification. **Settings → Encoding → Queue → Advanced workload
+lanes** shows the effective limits and lets you set extra lightweight lanes when
 the server has capacity. The primary video limit remains separate from each worker's advertised
 slots. Queue names the waiting lane and its reason when work cannot start yet.
 

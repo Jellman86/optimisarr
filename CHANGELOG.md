@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Refresh operator and user documentation for current worker protocols, soundtrack assessment,
+  release qualification, backups, navigation and bulk actions, with regenerated fabricated web
+  captures. Calm library settings with content icons, clearer media and codec labels, tooltip-based
+  audio caveats and an explicit explanation of the locked soundtrack gate.
+
 - Tidy the queue status strip. The state reads in normal case instead of capitals (for example Holding), sits directly above its reason beside the playback artwork, and lines up with the counts. The playback link no longer shows a permanent underline, and the workers state is now called Encoding on workers so it no longer repeats the On workers count beside it.
 
 - Restore soundtrack quality checks for audio that starts a few milliseconds after the picture. Near-start windows count the requested samples after trimming the start, while retaining Opus decoder pre-roll and the existing timing checks. Generated acceptance now covers two tracks starting 22 ms late.
@@ -12,13 +17,21 @@
 
 - Add an isolated release regression command with required worker/artifact coverage, native-only regression routing and redacted JSON/Markdown summaries. Full corpus data and reports remain local; missing release evidence blocks qualification.
 
-- Add private checksum-pinned house clips that retain real timing/metadata quirks with explicit pass, expected refusal or search-fallback outcomes. Mixed disposable worker launchers share one test server and require every named identity. The negative-start Opus first-window defect (#474) remains open.
+- Add private checksum-pinned house clips that retain real timing/metadata quirks with explicit
+  pass, expected refusal or search-fallback outcomes. Mixed disposable worker launchers share one
+  test server and require every named identity. The negative-start Opus first-window defect (#474)
+  was fixed in #478; its house example now requires a measured passing outcome.
 
 - Expand public soundtrack acceptance fixtures with lossy AAC search/gate paths, titled MP4 output, near-full-scale AAC decode overs, FFmpeg-emulated mkvpropedit statistics and mono downmix assessment. Each case proves the source property before checking measured evidence and replacement/rollback.
 
 - Make the library workflow bar easier to follow. The stage you are editing is now filled with the accent colour instead of a faint outline, and the bar stays visible on the Candidates and Excluded tabs, so every part of a library's configuration keeps the same way into each stage.
 
-- Added a roadmap item for a release regression check before every release, prompted by the real-media defects fixed in #466 and #469–#472. It plans generated fixtures as the public baseline, a local-only house corpus of real files, a per-tag run against the published image and packaged sidecars on every named worker, and a redacted published summary. The release checklist will require that summary once the command lands. The open Opus first-window finding is tracked as #474.
+- Added a roadmap item for a release regression check before every release, prompted by the
+  real-media defects fixed in #466 and #469–#472. The implemented command combines generated
+  fixtures, a local-only house corpus, the exact published image, configured acceptance launchers
+  and package receipts for every named worker, with a redacted published summary. Installed-package,
+  signing and upgrade/recovery qualification remain separate requirements. The release checklist
+  requires that summary before publication. The Opus first-window finding (#474) was fixed in #478.
 
 - Assess surround and mono soundtracks that a library downmixes to stereo (#332). The soundtrack gate and per-soundtrack bitrate selection previously refused every retained surround track, which left most surround video unassessable. With **Downmix surround to stereo** on, a surround track with a known channel layout (or a mono track) is now measured against the source through the same `-ac 2` downmix the encode applied, so the score measures codec loss rather than the downmix the library chose. One argument list drives the encode and every reference, the evidence records the source channels and a distinct preparation, and workers need sidecar protocol 13. Surround with an unknown layout, a downmixed track with an explicit audio filter, and surround kept without a downmix stay unassessable.
 

@@ -965,7 +965,7 @@ test('soundtrack bitrate selection keeps its gate on and saves only for re-encod
   await expect(adaptive).toBeEnabled()
   await adaptive.check()
   await expect(gate).toBeDisabled()
-  await expect(page.getByText('Needed while soundtrack bitrates are chosen by measurement.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Locked on while soundtrack bitrates are chosen by measurement.', { exact: true })).toBeVisible()
   const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ adaptiveSoundtrackQuality: true, soundtrackQualityGateEnabled: true,
@@ -1044,4 +1044,17 @@ test('the workflow bar marks the current stage with a filled accent and stays on
   await stage(page, 'Encode').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Encode')
   await expect(stage(page, 'Encode')).toHaveAttribute('aria-current', 'step')
+})
+
+test('library settings stay calm: labelled media type, codec names in capitals, background notes in the tooltip', async ({ page }) => {
+  await mockLibraries(page, { ...library, videoAudioCodec: 'aac', videoAudioBitrateKbps: 128 })
+  await page.goto('/#/libraries/1/configure/encode/audio')
+  await expect(page.locator('header .badge').first()).toHaveText('Media type: TV')
+  await expect(page.locator('option', { hasText: 'Re-encode to AAC' })).toHaveCount(1)
+  await expect(page.getByText('Re-encode to aac', { exact: true })).toHaveCount(0)
+  // General guidance moved into the slider's tooltip; what the bitrate means per channel pair stays visible.
+  await expect(page.locator('[data-audio-encoding-preset] p.text-ink-3', { hasText: 'Encoding starting points' })).toHaveCount(0)
+  await expect(page.locator('[data-audio-encoding-preset] p.text-ink-3', { hasText: 'mono/stereo baseline' })).toBeVisible()
+  await page.getByRole('button', { name: 'About: Audio encoding quality' }).click()
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Encoding starting points' })).toBeVisible()
 })

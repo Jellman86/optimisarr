@@ -139,7 +139,7 @@ export const zh: Messages = {
     adaptive_label: "通过测量为每条音轨选择码率",
     adaptive_hint: "实验性功能。完整编码前，每条保留的音轨最多试用四种码率，并采用在限值内的最小码率。如有任何音轨无法测量，所有音轨都保持上方的码率。完成的文件仍由质量门判定。码率在此服务器上选择，包括由工作节点编码的任务。",
     adaptive_unavailable: "当音轨重新编码为 AAC、Opus 或 MP3 时可用。",
-    adaptive_requires_gate: "通过测量选择音轨码率时需要此项。",
+    adaptive_requires_gate: "通过测量选择音轨码率时此项锁定为开启。",
     search_title: "音轨码率",
     search_hint: "根据完整编码前的短样本选出。它说明码率的来源，但不批准替换。完成的文件由音轨质量门判定。",
     search_running: "测量中",

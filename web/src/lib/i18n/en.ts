@@ -141,7 +141,7 @@ export const en = {
     adaptive_label: "Choose each soundtrack's bitrate by measurement",
     adaptive_hint: "Experimental. Before the full encode, each retained soundtrack is sampled at up to four bitrates and the smallest within your limit is used. If any track cannot be measured, every track keeps the bitrate above. The gate still judges the finished file. Bitrates are chosen on this server, including for jobs a worker encodes.",
     adaptive_unavailable: "Available when soundtracks are re-encoded to AAC, Opus or MP3.",
-    adaptive_requires_gate: "Needed while soundtrack bitrates are chosen by measurement.",
+    adaptive_requires_gate: "Locked on while soundtrack bitrates are chosen by measurement.",
     search_title: "Soundtrack bitrates",
     search_hint: "Chosen from short samples before the full encode. This explains the bitrates; it does not approve replacement. The soundtrack quality gate judges the finished file.",
     search_running: "Measuring",
