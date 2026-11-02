@@ -497,7 +497,7 @@ class Harness:
             require(.97 < peak <= 1, "Overs fixture source must peak near .98 without exceeding full scale")
         # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
         limit = 0 if reject else 1
-        case = self.create_job(name, fixture, encoder="libx264", worker=worker, overrides={
+        case = self.create_job(name, fixture, encoder=encoder, worker=worker, overrides={
             "targetVideoCodec": None, "targetContainer": "mp4" if short or titled_mp4 else "mkv", "videoAudioCodec": "copy" if copied else codec,
             "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
             "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,

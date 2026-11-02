@@ -122,6 +122,18 @@ class WorkerAvailabilityTests(unittest.TestCase):
             harness.soundtrack()
         configure.assert_called_once_with(encoderMode="Cpu", hardwareDecode=False)
 
+    def test_soundtrack_job_uses_worker_encoder_defaults_instead_of_a_cpu_preset(self):
+        for encoder in ("hevc_videotoolbox", "hevc_nvenc", "libx265"):
+            with self.subTest(encoder=encoder), tempfile.TemporaryDirectory() as directory:
+                report = Mock(root=Path(directory) / "report")
+                tools = Mock()
+                tools.probe.return_value = {"streams": []}
+                harness = Harness(Mock(), tools, directory, report)
+                with patch.object(harness, "select_worker"), patch.object(harness, "configure"), \
+                        patch.object(harness, "create_job", side_effect=Blocked("fixture")) as create_job, self.assertRaises(Blocked):
+                    harness.soundtrack(worker={"id": 2, "videoEncoders": [encoder]})
+                self.assertEqual(encoder, create_job.call_args.kwargs["encoder"])
+
     def test_remote_running_cancel_uses_the_worker_encoder_mode(self):
         harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
         with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \

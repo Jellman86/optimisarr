@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Soundtrack release checks select each worker's proved encoder policy, allowing Mac and NVIDIA workers to claim their test jobs instead of waiting behind the test server's CPU-only policy. Local cases explicitly restore CPU mode. Media assessment and replacement gates are unchanged.
+- Soundtrack release checks select each worker's proved encoder policy and encoder defaults, allowing Mac and NVIDIA workers to claim their test jobs instead of waiting behind CPU-only policy or an unsupported CPU preset. Local cases explicitly restore CPU mode. Media assessment and replacement gates are unchanged.
 
 - The Windows acceptance worker proves native quality tools and its RAM working-space budget the way the service does, so release checks can run quality-first cases on Windows. It previously reported only encoders, so the server never offered it quality-first work.
 - Native worker startup qualifies its independent image, metadata and audio tools concurrently within the existing deadline. Slow metadata round trips no longer use the entire budget before the audio check starts; every probe stops before its temporary workspace is cleaned.
