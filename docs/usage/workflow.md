@@ -55,6 +55,9 @@ Do this:
 8. Use the overview or breadcrumbs to move between stages. The draft is retained, and **Save**
    applies changes from all stages together. Advanced pages are optional refinements.
 
+The stage bar remains available on configuration, Candidates and Excluded pages. The stage being
+edited is filled with the accent colour; selecting another stage retains the draft.
+
 For explicitly re-encoded video audio, **Verify** also offers **Soundtrack quality report**
 and **Require soundtrack quality**, both off by default and separate from standalone audio.
 When enabling the gate, choose **Maximum soundtrack difference** in **Advanced verification**.
@@ -248,6 +251,11 @@ breakdown and permanent-deletion confirmation.
 The working-job card keeps progress, the assigned encoder, and **View job** together.
 
 ![Working job with fabricated Lumen Coast artwork, 68% encoding progress, encoder, speed, and stage indicators](../images/optimisarr-queue-working-job-dark.png)
+
+Use row checkboxes to select up to 200 items. Queue supports bulk Retry and Remove; Candidates and
+Inventory support exclusion; Excluded supports lifting exclusions; Inventory supports background
+re-probing. Review the confirmation and per-file results. Removing active jobs stops them first, and
+re-probe progress can be monitored and cancelled.
 
 Use the row actions carefully:
 

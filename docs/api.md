@@ -250,10 +250,9 @@ Health response:
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
 | `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
 
-Configuration exports use format version `3` to preserve soundtrack reporting and gates. Imports
-accept legacy versions `1` and `2` and preserve existing soundtrack controls when omitted.
-Version `1` imports also preserve an existing standalone audio gate when its fields are omitted.
-Older builds reject version `3`.
+New exports use configuration format version 4. This build accepts versions 1–4 and rejects newer
+formats. Legacy imports preserve existing saved controls when those fields are omitted; new
+libraries retain their defaults.
 
 Settings fields include:
 
@@ -328,8 +327,8 @@ Video soundtrack controls are separate: `soundtrackQualityReportingEnabled`,
 explicitly re-encoded audio in full video jobs. Copied audio and previews bypass this assessment.
 Every channel/sample of every retained track must meet the limit, and unavailable evidence
 blocks a gated job. Reporting alone leaves the verification verdict unchanged. Omitted update
-fields preserve saved soundtrack controls. Configuration format `3` carries them; imports of
-versions `1` and `2` preserve existing controls when omitted. See
+fields preserve saved soundtrack controls. Configuration format `4` carries them; imports of
+versions `1`–`3` preserve existing controls when omitted. See
 [supported tracks and safety limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
 
 | Method | Endpoint | Purpose |

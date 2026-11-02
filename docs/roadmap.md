@@ -17,7 +17,8 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it. The converse matters too: an entry left
   describing finished work as outstanding sends effort at an item that has none.
-- Current delivery status reconciled against `dev` and the 0.2.24 release: **2026-10-28**.
+- Current delivery status reconciled against `dev` and the 0.2.24 release: **2026-10-28**, with
+  soundtrack, worker-search and release-check documentation reconciled again on **2026-11-02**.
   Individually dated engineering and security assessments retain their own scope.
 
 ## Current delivery and follow-up, reconciled 2026-10-28
@@ -48,11 +49,14 @@ Mac work capacity (#460); those are not part of 0.2.24. The reporter-specific
 alignment and zero-capacity investigations remain separate from those fixes.
 
 **Active feature priority remains [#332](https://github.com/Jellman86/optimisarr/issues/332).**
-Adaptive selection for retained re-encoded video soundtracks, preview/calibration
-parity and broader source/retry/reconnect/history/export coverage are unfinished.
-The [current parity checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-28-october-2026)
-separates delivered work from remaining acceptance and scopes the next soundtrack
-slice. Complete those obligations before perceptual dedupe or exact-copy file actions.
+Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
+encodes, including supported stereo-downmix references. The search runs on the server; the final
+candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
+retry/reconnect, history/export and package-lifetime qualification remain open.
+The [current parity
+checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-28-october-2026) separates
+delivered work from remaining acceptance. Complete those obligations before perceptual dedupe or
+exact-copy file actions.
 
 **The 21 October operator decision still applies:** crash and restart recovery is
 the home-lab worker qualification bar. Power-loss durability is a recorded limit,
@@ -141,9 +145,10 @@ library files, each cited to the change that documents it:
 - near-full-scale sources whose lossy encodes decode above full scale (#471);
 - surround and mono soundtracks refused instead of assessed through the library's downmix (#472);
 - large subtitle-heavy sources whose per-claim timeline probe outlived the worker's request (#466);
-- found during the #472 field test: Opus sources that start before zero make the first soundtrack
-  window 46 ms short (open, #474). Old MKVs without per-track durations and with a video lead over
-  100 ms are refused by design; a house-corpus clip of that kind is expected to be blocked.
+- This build includes the #474 near-start Opus decoder pre-roll fix. Requalify checksum-pinned
+  negative-start Opus clips against the current build and record their observed outcomes; the former
+  first-window refusal is no longer an accepted product limitation. Missing track duration and
+  unsupported picture/container offsets remain fail-closed limitations.
 
 The release check closes that gap:
 
@@ -160,12 +165,13 @@ The release check closes that gap:
   [`development/adaptive-audio-image-parity.md`](development/adaptive-audio-image-parity.md) and
   [`development/soundtrack-quality-validation.md`](development/soundtrack-quality-validation.md) are
   updated to say so.
-- **One `release-check` command** runs against the exact published image digest and the packaged Mac
-  app and Windows MSI from the same commit. It runs the smoke tier, every applicable focused
-  regression (native-only cases against a native instance, otherwise reported blocked, never
-  passed), the house corpus, and a fleet run that starts the Mac and Windows launchers over SSH
-  beside the Linux worker and requires every named worker. Its report records the image digest,
-  package hashes, app/MSI versions, worker protocol versions and FFmpeg/native-helper revisions.
+- **One `release-check` command.** The release-check command tests the exact image and configured
+  acceptance launchers, records package receipts, and uses operator-qualified packaged tool paths.
+  It does not install the MSI or launch and qualify the distributed desktop apps; installed-package,
+  signing and upgrade/recovery evidence remain separate requirements. It runs the smoke tier,
+  applicable focused regressions and house corpus, requiring every named worker. Native-only cases
+  without a native instance are blocked. Reports record the image digest, package hashes, worker
+  protocol versions and tool revisions.
 - **Only a redacted summary leaves the host:** opaque corpus IDs and the property under test, with no
   source paths, titles, hostnames or library names. [`development/releasing.md`](development/releasing.md)
   requires that summary for the exact tag; a missing or blocked summary blocks the release.
@@ -395,7 +401,7 @@ The release check closes that gap:
      a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
      restart, accepts duplicate progress writes idempotently, and permits completion only from final
      review. Upgraded installations are marked complete and never forced into onboarding. Back retains
-     applied choices, and **Settings → Backup → First-run setup** offers **Run setup again** without
+     applied choices, and **Settings → System → First-run setup** offers **Run setup again** without
      deleting configuration.
      Connections remain explicitly skipped on the final review and can be added later, so an optional
      provider can never block first use.
@@ -1050,12 +1056,10 @@ The release check closes that gap:
       available. Promote it from experimental only if the bounded search saves meaningful space or avoids failures without
       creating surprising encode time, unstable choices, or weaker verification.
 
-11. **Tell an operator a newer version exists, without telling anyone anything.** Optimisarr has no
-    way to say "there is a newer release" or "this sidecar is older than the server it is paired
-    to". The first is why a fix can sit unnoticed for weeks; the second is why a Mac ran a build two
-    commits behind a fix it needed and nothing on the page could have said so. YA-WAMF already
-    solves the release half, and its design is worth reusing — but its privacy posture is not, and
-    the difference matters more here than the mechanism does.
+11. **Tell an operator a newer version exists, without telling anyone anything.**
+    Sidecar-versus-server release-version comparison is implemented using existing check-ins.
+    External discovery of a newer server release remains planned. The external-release design below
+    remains proposed; its privacy posture matters as much as the mechanism.
 
     - **What YA-WAMF does, and which parts to take.** `backend/app/utils/version.py` keeps the
       comparison pure and free of I/O, so "is a newer release available?" is deterministic and
@@ -1117,12 +1121,9 @@ The release check closes that gap:
       ever, and a worker machine behind a firewall with no route out still learns it is behind.
       With the check disabled, the heartbeat carries no such field and nothing is asked of anyone.
 
-    - **Sidecar version skew needs no network at all, and should land first.** Workers now report
-      their own build on pairing and on every check-in, so the controller can already tell that a
-      paired sidecar is older than the controller expects, purely from data it holds. That is the
-      most useful piece of this entry, it carries none of the privacy question, and it should ship
-      independently rather than waiting behind the release check. It also covers the common case
-      directly: most fleets are behind because someone upgraded the container and not the machines.
+    - **Sidecar version skew is implemented without external requests.** Sidecar-versus-server
+      release-version comparison is implemented using existing check-ins. External discovery of a
+      newer server release remains planned.
 
     - **Evidence to call it complete.** A test that boots with no configuration and proves no
       outbound request is attempted; a test that the enabled check makes exactly one request
@@ -1176,32 +1177,17 @@ The release check closes that gap:
       recommending the sidecar for encoding; and one real end-to-end run on an Apple Silicon host
       that transcodes, verifies, and replaces a file.
 
-13. **Run the per-title quality search where the encode runs.** The search is the expensive half of
-    an adaptive job — a bounded set of sample encodes, each scored with libvmaf — and it runs on the
-    control plane while the cheap half is handed to whichever machine has the GPU. That is the wrong
-    way round, and on 2026-09-14 it was also the reason "prefer a worker" did nothing at all: a
-    worker cannot be offered a job until a quality has been chosen, the choice is made by the
-    server, and the server went straight on to encode it. There was no instant at which the
-    preference could apply. The handback shipped that day — return the job to the queue once the
-    quality is chosen — makes the setting work, but it is a stopgap for this entry rather than the
-    answer.
+13. **Run the per-title quality search where the encode runs.** Implemented: compatible workers
+    perform the bounded per-title VMAF search and full encode under one lease. The server owns the
+    search bounds, validates the evidence and retains final replacement authority. The constraints
+    and qualification criteria below describe that implementation and its acceptance boundaries.
 
-    - **One lease covers the search and the encode.** This is the decision that shapes everything
-      else. If one worker searches and another encodes, the source crosses the network twice, and
-      these are whole video files; today it effectively crosses twice anyway, because the server
-      reads it locally to search and the worker then downloads it to encode. Binding both to a
-      single assignment moves it **once**, which is a larger saving than the processor time that
-      prompted the idea. It also removes the round trip through the queue that the handback adds.
+    - **One lease covers the search and the encode.** The worker downloads the source once, uses
+      it for the bounded sample search and full encode, and returns evidence under that lease.
 
-    - **The protocol grows a shape, and two clients implement it.** An assignment today names one
-      encoder and one quality, and delivery is a candidate file. A searching assignment must instead
-      carry the range to search, the measurement commands for each sample, and the policy the
-      evidence will be held to — and the worker returns a chosen value and its evidence before any
-      full encode begins. Much of this exists: `QualityRequirement` already ships per-window libvmaf
-      commands, and `/api/workers/leases/{id}/quality` already takes raw libvmaf logs back. This is
-      an extension of a conversation the two ends already have. It is still a versioned contract
-      with a Swift implementation and a C# one, so the shape wants settling before either is
-      written, not during.
+    - **A versioned search contract is implemented in Swift and C#.** Assignments carry the
+      search bounds and per-sample measurement commands. Workers return raw evidence, and the server
+      returns the next step or a frozen full-encode command.
 
     - **The control plane still owns the decision.** It sends the bounds, the sample windows and the
       thresholds; the worker measures and reports. A worker proposing a value the server did not
@@ -1209,22 +1195,19 @@ The release check closes that gap:
       taken under an easier policy is evidence about something else. The server records the chosen
       value against the job exactly as it does now, so a recovery retry stays anchored to it.
 
-    - **Safety is unchanged, and that is what makes this worth attempting.** A search only chooses a
-      setting; it never authorises a replacement. The finished encode still clears the structural,
-      decode, duration, tail, stream, size and configured VMAF gates on this machine before anything
-      is replaced. A worker that chooses badly produces an encode that then fails verification, not
-      a bad replacement. So this is an efficiency change rather than a trust one.
+    - **Final verification still governs replacement.** A search chooses a setting; it cannot
+      authorise replacement. The full encode must pass structural, decode, duration, tail, stream,
+      size and configured VMAF gates on the assigned verification host. The server validates strict
+      worker evidence and retains replacement authority.
 
-    - **Read why it lives in the dispatcher before moving it.** The feature is still marked
-      Experimental above, and its notes say the search deliberately does not cache a decision across
-      work. That is about caching rather than placement, but the two were written together, and ten
-      minutes spent on the reasoning is cheaper than discovering it afterwards.
+    - **Search evidence belongs to one job and encoder.** Experimental per-title search does not
+      reuse another job’s chosen value; a recovery retry remains anchored to the recorded decision.
 
     - **Evidence to call it complete.** A worker that searches and encodes under one lease with the
       source transferred once, proved by counting the transfers; a worker's proposed quality refused
       when it is outside the offered bounds or its evidence was taken under a different policy; the
-      server falling back to its own search when no worker can take the job, so a fleet that is
-      absent or incapable never stalls a library; both sidecars implementing the same contract
+      server falling back to its own search when no worker can take the job and placement permits
+      local execution, while worker-only jobs wait for compatible workers; both sidecars implementing the same contract
       against the same tests; and a real adaptive job completing end to end on a worker with the
       chosen quality and its evidence recorded against the job as they are today.
 
@@ -1259,22 +1242,32 @@ The release check closes that gap:
       for standalone audio and explicitly re-encoded video soundtracks. They preserve existing
       settings and never choose a quality gate limit. A bounded sample search for a suitable
       bitrate is released for standalone audio, with measured candidates,
-      bounded execution, source/size checks and independent final verification. Adaptive
-      retained soundtracks and the remaining [parity qualification](development/adaptive-audio-image-parity.md)
-      are still outstanding.
+      bounded execution, source/size checks and independent final verification. Implemented on
+      dev: opt-in per-soundtrack bitrate selection for local and compatible worker video encodes,
+      including supported stereo-downmix references. The search runs on the server; the final
+      candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
+      retry/reconnect, history/export and package-lifetime qualification remain open. See the
+      remaining [parity qualification](development/adaptive-audio-image-parity.md).
     - **Native Mac lifetime:** app/session/runner wiring now restores independently anchored
       accounting before claims and uses scoped helper execution with positive writer/RAM retirement.
       Signed release-library trials cover AAC/Opus/MP3, actual RAM, busy delivery and parent-kill/
       same-identity replay. The selected 0.2.24 installed-package workflows are qualified;
       broader restart and reboot/remount qualification remain open. See the
       [runtime evidence and limits](engineering/hardware-validation/2026-10-15-native-work-runtime.md).
-    - **Video soundtracks:** opt-in reporting and a separate explicit gate are released
-      for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
-      source tracks to output order, with language/title/commentary identity and timing checks.
-      Copied audio retains existing preservation checks. Protocol 8/contract 3 keeps strict worker
-      measurement on the worker; unavailable evidence blocks a configured gate. Each track has
-      up to 90 seconds of assessed coverage. Surround/downmix assessment, broader timing/lip-sync
-      qualification and calibrated defaults remain future work. See
+    - **Video soundtracks:** opt-in reporting and a separate explicit gate support up to eight
+      retained re-encoded tracks, with up to 90 seconds of assessed coverage each. Frozen removals
+      map source tracks to output order with timing checks. Retained tracks map in frozen source
+      order and must preserve language identity. Title and commentary identity must also match,
+      except that their absence in an MP4 output is accepted because that container cannot retain
+      them through this path.
+      Assessment supports retained mono/stereo tracks and, when the library downmixes to
+      stereo, mono and known-layout surround references through the same downmix. Retained surround
+      without downmix, unknown surround layouts, and downmixed tracks with an explicit audio filter
+      remain unassessable. Plain soundtrack evidence uses `audio-f32le-48k-video-timeline-v2`;
+      downmix evidence uses `audio-f32le-48k-video-timeline-stereo-downmix-v2`.
+      Strict worker assessment requires protocol 14 and full-verification contract 3;
+      unavailable evidence blocks a configured gate. Copied audio retains existing preservation
+      checks. Broader timing/lip-sync qualification and calibrated defaults remain future work. See
       [coverage and limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
     - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
       additive/idempotent evidence storage and a versioned worker capability/evidence contract.

@@ -1,6 +1,8 @@
 # Documentation screenshots
 
-The web screenshots in this directory are captured from the current local Optimisarr UI. All media,
+These captures use fabricated documentation data. Capture dates and source revisions are recorded in
+the screenshot manifests; older captures may differ from the current interface. The main web
+captures were regenerated on 2 November 2026 from `ee3c6514` (0.2.24 development UI). All media,
 artwork, filenames, connections, workers, measurements, and job histories are fabricated for
 documentation. No copyrighted media or production data is used. The small landscape video is
 created in Chromium from an original canvas drawing; no external sample media is downloaded.
@@ -26,8 +28,8 @@ and sidecar versions are read from project metadata.
 
 The script uses English, dark appearance, a fixed documentation clock, and reduced motion. The
 standard viewport is 1440 × 1000; the Quarantine review uses 1440 × 1500 to show both the comparison
-and decision controls, the quality lab uses 1440 × 1250, Exact copies uses 1440 × 1400,
-the soundtrack report uses 1440 × 1900, and the mobile Queue uses 390 × 1000.
+and decision controls, the quality lab uses 1440 × 1250, Find duplicates uses 1440 × 3200,
+library configuration uses 2048 × 1167, the soundtrack report uses 1440 × 1900, and the mobile Queue uses 390 × 1000.
 Focused dialogs/cards are captured without unrelated surrounding UI. Some stable filenames remain
 aliases for the same current capture so existing documentation links continue to work.
 
@@ -55,7 +57,9 @@ run `python3 scripts/check_docs.py` and `git diff --check` from the repository r
 
 ## Sidecar captures
 
-The [user gallery](../usage/screenshots.md#sidecars) links the current native and Linux images.
+The [user gallery](../usage/screenshots.md#sidecars) links native and Linux images from the builds
+recorded in their separate manifests. These were retained when the main web captures were
+regenerated; older captures may differ from the current interface, including Mac capacity labels.
 All job state, telemetry, machine names and addresses are fabricated. Spectrograms on Mac,
 Windows and Linux are measured from the committed original fixture
 [`sidecar-spectrum.jpg`](../../web/scripts/fixtures/sidecar-spectrum.jpg), generated from this

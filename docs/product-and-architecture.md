@@ -331,12 +331,18 @@ Before replacement, all required checks must pass:
   explicitly quality-normalisation rather than size-saving.
 
 Standalone audio and video soundtracks have separate opt-in Zimtohrli reporting and gates.
-For full video jobs with re-encoded audio, the soundtrack planner maps retained source tracks
-using frozen removals and source order to output positions and checks language/title/commentary identity,
-channel layout and bounded timing differences. Up to eight mono/stereo tracks receive up to
-90 seconds of assessment each; surround/downmix assessment is unavailable. All channels and
-windows must meet the explicit operator limit. Copied audio and previews bypass this assessment.
-Strict worker assessment uses protocol 8/full-verification contract 3, with validated file/tool
+For full video jobs with re-encoded audio, the soundtrack planner uses frozen source removals to map
+up to eight retained tracks, with bounded timing checks and up to 90 seconds of assessment each.
+Retained tracks map in frozen source order and must preserve language identity. Title and commentary
+identity must also match, except that their absence in an MP4 output is accepted because that
+container cannot retain them through this path.
+Assessment supports retained mono/stereo tracks and, when the library downmixes to stereo, mono and
+known-layout surround references through the same downmix. Retained surround without downmix,
+unknown surround layouts, and downmixed tracks with an explicit audio filter remain unassessable.
+Plain soundtrack evidence uses `audio-f32le-48k-video-timeline-v2`; downmix evidence uses
+`audio-f32le-48k-video-timeline-stereo-downmix-v2`.
+All channels and windows must meet the explicit operator limit. Copied audio and previews bypass this assessment.
+Strict worker assessment uses protocol 14 and full-verification contract 3, with validated file/tool
 identity and complete track evidence and no server fallback. Reporting alone cannot change
 replacement decisions. These sampled metrics do not guarantee inaudibility or lip-sync; see
 [controls and limits](setup/configuration.md#assess-re-encoded-video-soundtracks).

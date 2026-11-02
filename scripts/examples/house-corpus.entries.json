@@ -48,8 +48,8 @@
     "seconds": 40,
     "cut": "whole-file",
     "property": "negative-opus-start",
-    "reason": "Known OPEN issue https://github.com/Jellman86/optimisarr/issues/474: negative-start Opus first window is 46 ms short. Set the reason substring below to the retained job's exact refusal text.",
-    "expected": {"outcome": "blocked", "reason": "window"}
+    "reason": "Negative-start Opus decoder pre-roll regression #474 was fixed in #478; require a measured passing search and final soundtrack gate.",
+    "expected": "passes"
   },
   {
     "source": "/operator/private/legacy-no-track-duration-short.mkv",
@@ -81,7 +81,7 @@
     "start": 60,
     "seconds": 40,
     "property": "opus-surround",
-    "reason": "Opus 7.1 downmix; qualify timing separately from the known negative-start issue #474.",
+    "reason": "Opus 7.1 downmix; qualify timing separately from the negative-start regression #474, fixed in #478.",
     "expected": "search-fallback"
   },
   {

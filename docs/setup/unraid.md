@@ -109,7 +109,7 @@ After installing or updating, check the following:
 - **Settings → System** reports writable config, work and quarantine paths. Setup's Re-test
   confirms the effective filesystem/mount relationship; one mapping does not guarantee that
   underlying Unraid shares, pools or devices share a filesystem.
-- **Settings → Tools** proves the intended encoder, full decoding and VMAF capability. On a
+- **Settings → System → Tools** proves the intended encoder, full decoding and VMAF capability. On a
   CPU-only host, remove the optional `/dev/dri` entry before applying the template.
 - A small test job produces a verification report before you allow replacement. If using a
   sidecar, confirm its attribution and full verification evidence in the job details.

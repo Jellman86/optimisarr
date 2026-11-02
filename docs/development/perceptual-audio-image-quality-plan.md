@@ -444,8 +444,8 @@ The [configuration reference](../setup/configuration.md#audio-quality-reports-an
 records each codec's bitrate. These are explicit starting points, without cross-codec quality
 equivalence or a claimed listening grade. Existing saved bitrates and gate limits stay unchanged.
 An explicitly chosen tier follows codec changes during the current edit; after saving, the
-stored policy remains codec and bitrate. Standalone sample search is implemented in the draft;
-automatic worker placement and full workflow parity remain gated by the
+stored policy remains codec and bitrate. Standalone sample search and compatible protocol-11 worker
+placement are implemented; broader workflow qualification remains tracked by the
 [current completion matrix](adaptive-audio-image-parity.md).
 
 ### Video soundtrack reports and gate in development
@@ -454,24 +454,33 @@ The shared metric now supports explicitly selected audio streams in video contai
 standalone parser still rejects moving video and multiple audio tracks; the video path uses
 its own planner and separate reporting, gate and maximum-distance settings. Both switches
 start off. The gate requires an explicit finite limit from 0 to 1 and requests measurement
-independently of reporting. Configuration exports use format 3; older imports and update
-requests preserve omitted soundtrack choices. See the
+independently of reporting. New exports use configuration format version 4. This build accepts
+versions 1–4 and rejects newer formats. Legacy imports preserve existing saved controls when those
+fields are omitted; new libraries retain their defaults. Update requests preserve omitted soundtrack
+choices. See the
 [operator controls](../setup/configuration.md#assess-re-encoded-video-soundtracks).
 
-The frozen encode's removed source audio indexes determine the mapping. Each retained source
-track maps to the next output audio position, and every retained track must be present. The
-planner checks canonical language, exact title and commentary disposition, compatible duration
-and channel layout; it refuses reordered, missing or extra tracks, invalid removals and more
-than eight retained tracks. Mono/stereo tracks are supported. Surround, including an intentional
-surround downmix, remains unavailable rather than being compared with an untransformed reference.
+The frozen encode's removed source audio indexes determine the mapping. Every retained track must be
+present; reordered, missing or extra tracks, invalid removals and more than eight retained tracks
+are refused. Retained tracks map in frozen source order and must preserve language identity. Title
+and commentary identity must also match, except that their absence in an MP4 output is accepted
+because that container cannot retain them through this path.
+
+Assessment supports retained mono/stereo tracks and, when the library downmixes to stereo, mono and
+known-layout surround references through the same downmix. Retained surround without downmix,
+unknown surround layouts, and downmixed tracks with an explicit audio filter remain unassessable.
+Plain soundtrack evidence uses `audio-f32le-48k-video-timeline-v2`; downmix evidence uses
+`audio-f32le-48k-video-timeline-stereo-downmix-v2`.
 
 Start-time differences over 50 ms and duration differences over 100 ms are refused. PCM
 preparation uses the picture/container lead (bounded to 0–100 ms) and the versioned
-`audio-f32le-48k-video-timeline-v1` preparation. This accounts for bounded container priming;
+`audio-f32le-48k-video-timeline-v2` preparation. This accounts for bounded container priming;
 it is not perceptual alignment that may erase a timing error, and does not establish lip-sync
 quality. Existing independent video timing, retention, decode, metadata, loudness/clipping,
 size and VMAF checks still apply. Copied audio, remuxes and previews skip soundtrack observation
-and its gate. No automatic bitrate search or quality retry is added.
+and its gate. Opt-in per-soundtrack bitrate selection is described in the [configuration
+reference](../setup/configuration.md#choose-soundtrack-bitrates-by-measurement-experimental); it
+does not add a soundtrack quality retry.
 
 Each retained track gets its own channel measurements and up to 90 seconds of coverage. Tracks
 up to 90 seconds use the complete duration in at most three windows; longer tracks use 30 seconds
@@ -481,7 +490,7 @@ profiles, invalid mapping, changed files or incomplete evidence cannot pass a co
 Report-only mode shows these limits without changing replacement decisions. This is sampled
 experimental evidence, without a calibrated listening grade or quality guarantee.
 
-Strict worker jobs require protocol 8 and full-verification contract 3, which freezes the removal
+Strict worker jobs require protocol 14 and full-verification contract 3, which freezes the removal
 mapping. Mac and shared Windows/Linux workers measure before delivery. The server validates the
 contract, file/tool hashes, metric pin and preparation, exact track mapping/profiles/indexes,
 complete windows/channel counts and finite distances. It computes the verdict against the frozen
@@ -489,9 +498,11 @@ policy rather than trusting a worker verdict. Older workers cannot claim a sound
 contract, and missing evidence never triggers server media analysis. Server verification mode
 measures on the server.
 
-Cost scales with retained tracks: up to 24 serial metric windows across eight tracks, two bounded
-PCM files at a time (at most 11.52 MB each), and full source/candidate and tool hashes before and
-after each track's measurement. Shared-provider probes have 30-second deadlines and decode/metric
+Cost scales with retained tracks through serial probing, decoding and scoring. The batch shares one
+source/candidate/tool hash snapshot and checks those identities again after all tracks; each track
+does not independently reread every complete file for hashing. Up to 24 serial metric windows across
+eight tracks use two bounded PCM files at a time (at most 11.52 MB each). Shared-provider probes
+have 30-second deadlines and decode/metric
 commands have 90-second deadlines; these are command limits, not a total-job runtime guarantee.
 Scratch is removed on success, failure and cancellation. Turning both controls off or copying
 audio adds no soundtrack assessment processes, hashes or PCM scratch. Existing verification

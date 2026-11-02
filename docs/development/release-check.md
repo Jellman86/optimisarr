@@ -128,9 +128,10 @@ entry **passes its assertion**; unavailable infrastructure still blocks qualific
 cases decode the candidate and exercise replacement/rollback only on disposable fixture copies.
 Use long enough clips (normally 40–90 seconds) to exercise search windows.
 
-Negative-start Opus remains the known open [#474](https://github.com/Jellman86/optimisarr/issues/474)
-first-window bug; the example records it as expected blocked. Legacy MKVs without per-track
-duration and with a video lead over 100 ms remain refused by design, also expected blocked.
+This build includes the #474 near-start Opus decoder pre-roll fix. Requalify checksum-pinned
+negative-start Opus clips against the current build and record their observed outcomes; the former
+first-window refusal is no longer an accepted product limitation. Missing track duration and
+unsupported picture/container offsets remain fail-closed limitations.
 Subtitle-heavy short clips exercise stream preservation and worker claims, but do not certify
 multi-gigabyte demux latency. The first claim for a large uncached source can still time out;
 the cached retry is the #466 safeguard.
