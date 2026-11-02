@@ -42,13 +42,27 @@ public sealed class PerceptualCapabilityProber
             await File.WriteAllBytesAsync(audio, Wave(), deadline.Token);
             var sourceHash = await Hash(source, deadline.Token);
             var audioHash = await Hash(audio, deadline.Token);
-            var encoders = new List<string>();
-            foreach (var encoder in new[] { "mjpeg", "libwebp" })
-                if (await Attempt(() => _operations.Encoder(encoder, source, Path.Combine(root, encoder + (encoder == "mjpeg" ? ".jpg" : ".webp")), deadline.Token)))
-                    encoders.Add(encoder);
-            var metadata = await Attempt(() => _operations.Metadata(source, copy, deadline.Token));
-            var image = await Attempt(() => _operations.Image(source, deadline.Token));
-            var sound = await Attempt(() => _operations.Audio(audio, deadline.Token));
+            async Task<IReadOnlyList<string>> QualifyEncodersAsync()
+            {
+                var qualified = new List<string>();
+                foreach (var encoder in new[] { "mjpeg", "libwebp" })
+                    if (await Attempt(() => _operations.Encoder(encoder, source,
+                        Path.Combine(root, encoder + (encoder == "mjpeg" ? ".jpg" : ".webp")), deadline.Token)))
+                        qualified.Add(encoder);
+                return qualified;
+            }
+            // All inputs are fixed, tiny owned fixtures and each writer has a distinct output.
+            // Serial metadata round trips must not consume the audio proof's entire deadline.
+            var encodersTask = QualifyEncodersAsync();
+            var metadataTask = Attempt(() => _operations.Metadata(source, copy, deadline.Token));
+            var imageTask = Attempt(() => _operations.Image(source, deadline.Token));
+            var audioTask = Attempt(() => _operations.Audio(audio, deadline.Token));
+            // Even cancellation must quiesce every reader/writer before the workspace is retired.
+            await Task.WhenAll(encodersTask, metadataTask, imageTask, audioTask);
+            var encoders = await encodersTask;
+            var metadata = await metadataTask;
+            var image = await imageTask;
+            var sound = await audioTask;
             var imageValid = RemoteImagePerceptualEvidence.VersionError(image) is null && image?.Assessment is { } picture
                 && PerceptualSearchEvidence.Image(picture, sourceHash, sourceHash, 0).Available
                 && picture.Measurement is { Width: 32, Height: 32, Alpha: false, Score: 100 };
