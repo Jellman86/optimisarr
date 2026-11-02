@@ -88,6 +88,26 @@ public sealed class AssignmentCommandTests
     }
 
     [Fact]
+    public void Per_soundtrack_bitrates_are_accepted()
+    {
+        Assert.Null(Refuse(["-i", "{{input}}", "-c:a", "aac", "-b:a:0", "96k", "-b:a:7", "160k", "{{output}}.mkv"]));
+    }
+
+    [Theory]
+    [InlineData("-b:a:8", "96k")]
+    [InlineData("-b:a:-1", "96k")]
+    [InlineData("-b:a:01", "96k")]
+    [InlineData("-b:a:0", "96")]
+    [InlineData("-b:a:0", "0096k")]
+    [InlineData("-b:a:0", "4k")]
+    [InlineData("-b:a:0", "9000k")]
+    [InlineData("-b:a:0", "96k/../x")]
+    public void Malformed_soundtrack_bitrates_are_refused(string token, string value)
+    {
+        Assert.NotNull(Refuse(["-i", "{{input}}", "-c:a", "aac", token, value, "{{output}}.mkv"]));
+    }
+
+    [Fact]
     public void The_command_the_server_actually_sends_is_accepted()
     {
         Assert.Null(Refuse(Ordinary));

@@ -1,9 +1,11 @@
 # Screenshot gallery
 
 See the main application and its Mac, Windows and Linux sidecars before setting them up.
-These 0.2.22 captures use fabricated dummy media created for documentation, original artwork,
-invented machine names and example server addresses. No copyrighted material or private
-library data is used. Readings illustrate the interface; they are not performance benchmarks.
+These captures use fabricated documentation data. Capture dates and source revisions are recorded in
+the screenshot manifests; older captures may differ from the current interface. Web captures were
+regenerated on 2 November 2026 from `ee3c6514` (0.2.24 development UI). Original artwork, invented
+machine names and example server addresses keep private library data out of the images. Readings
+illustrate the interface; they are not performance benchmarks.
 
 ## Main application
 
@@ -46,6 +48,10 @@ privacy control and a title-only Queue example.
 Mac and Windows use native desktop panels. Linux uses a browser dashboard hosted by the worker.
 All three show work and available resource readings; missing telemetry stays unavailable.
 
+These captures use fabricated documentation data. Capture dates and source revisions are recorded in
+the screenshot manifests. Native Mac and Windows captures were re-rendered from the same dev build
+(eec61bad) on 2026-11-02; Linux sidecar captures were retained from their recorded build.
+
 ### Mac menu bar
 
 | Working, dark | Working, light |
@@ -66,7 +72,9 @@ All three show work and available resource readings; missing telemetry stays una
 | Processing details | Shown above | [Details](../images/optimisarr-sidecar-macos-light-details.png) |
 | Preferences | [Preferences](../images/optimisarr-sidecar-macos-preferences.png) | Shown above |
 
-These are actual native views rendered offscreen from the 0.2.22 UI with corrected capture fixtures. The renderer uses a flat
+These are actual native views rendered offscreen from the build recorded in the [native sidecar
+screenshot manifest](../images/native-sidecar-screenshot-manifest.json), with fabricated capture
+fixtures, including the Waiting for capacity and Work capacity labels. The renderer uses a flat
 snapshot background and bordered controls; macOS 26 supplies glass in the live popover.
 Indeterminate activity bars freeze in native snapshots; encoded time remains readable.
 See the [Mac installation guide](../../sidecars/macos/README.md).
@@ -91,7 +99,8 @@ See the [Mac installation guide](../../sidecars/macos/README.md).
 | Cancelable shutdown countdown | [Countdown](../images/optimisarr-sidecar-windows-shutdown.png) | [Countdown](../images/optimisarr-sidecar-windows-light-shutdown.png) |
 | Preferences | [Preferences](../images/optimisarr-sidecar-windows-preferences.png) | Shown above |
 
-These are native WPF renders from the current Windows CI build. Audio shows the same generated
+These are native WPF renders from the build recorded in the [native sidecar screenshot
+manifest](../images/native-sidecar-screenshot-manifest.json). Audio shows the same generated
 chirp spectrum as Mac and Linux. The video fallback is an icon placeholder. Indeterminate
 activity bars freeze in native snapshots; they do not show a completion percentage. The background service
 continues working when the tray closes. See the [Windows guide](../../sidecars/windows/README.md).

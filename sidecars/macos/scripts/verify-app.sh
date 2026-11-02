@@ -50,7 +50,7 @@ for key in ['PACKAGE_RESOURCE_BUNDLE_PATH', 'PACKAGE_RESOURCE_BUNDLE_URL', 'OPTI
 # The packaged resource loader deliberately cannot fall back to Bundle.module/build paths.
 subprocess.run([str(contents / 'MacOS' / 'OptimisarrSidecar'), '--render-menu', str(root / 'rendered')],
                cwd=root, env=environment, check=True, timeout=90)
-for state in ['unpaired', 'connected-idle', 'receiving', 'encoding', 'sending', 'two-jobs', 'details', 'preferences', 'revoked', 'unreachable']:
+for state in ['unpaired', 'connected-idle', 'capacity-waiting', 'receiving', 'encoding', 'sending', 'two-jobs', 'details', 'preferences', 'revoked', 'unreachable']:
     for prefix in ['', 'light-']:
         path = root / 'rendered' / f'{prefix}{state}.png'
         data = path.read_bytes()
@@ -59,5 +59,5 @@ for state in ['unpaired', 'connected-idle', 'receiving', 'encoding', 'sending', 
         width, height = struct.unpack('>II', data[16:24])
         if width < 390 or height < 100:
             raise SystemExit(f'Truncated native fixture: {path.name}')
-print('Relocated signed app: version, embedded tools/artwork and all 20 native fixtures passed.')
+print('Relocated signed app: version, embedded tools/artwork and all 22 native fixtures passed.')
 PY

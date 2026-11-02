@@ -126,7 +126,7 @@ to compatible legacy models. Update sidecars with the server: protocol 7 proves 
 models and supplies the candidate's actual encoded format. HDR, high frame rates and conversions
 retain legacy scoring until their v1 policies are validated.
 
-Optional re-encoded soundtrack assessment has a separate minimum: protocol 8 and full-verification
+Optional re-encoded soundtrack assessment has a separate minimum: protocol 14 and full-verification
 contract 3. Update the sidecar before enabling these controls for strict worker jobs. Zimtohrli
 measurement runs on the assigned verification host, without a server fallback for strict jobs.
 See [soundtrack coverage and cost](configuration.md#assess-re-encoded-video-soundtracks).

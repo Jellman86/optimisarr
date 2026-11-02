@@ -13,5 +13,7 @@ public static class WorkerProtocol
 {
     public const int Minimum = 1;
     // Protocol 9 supports preserving MP4 timestamps and decoded-picture evidence.
-    public const int Maximum = 11;
+    // Protocol 12 accepts per-soundtrack bitrates (-b:a:N) chosen by the server.
+    // Protocol 14 fixes soundtrack duration qualification and near-start decoder pre-roll.
+    public const int Maximum = 14;
 }

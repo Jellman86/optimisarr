@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.2.25 - 2026-11-02
+
+- The Windows acceptance worker proves native quality tools and its RAM working-space budget the way the service does, so release checks can run quality-first cases on Windows. It previously reported only encoders, so the server never offered it quality-first work.
+- Native worker startup qualifies its independent image, metadata and audio tools concurrently within the existing deadline. Slow metadata round trips no longer use the entire budget before the audio check starts; every probe stops before its temporary workspace is cleaned.
+- Release checks start the Windows acceptance worker outside the SSH session's job object through a small guardian, because the sidecar refuses native memory inside a job it cannot measure. Windows also retires the worker and its tools if the guardian itself crashes or the worker exits before its tools. A failed launch blocks qualification instead of silently falling back.
+- `release-check` accepts the versions real sidecars report: Windows `0.2.25+<commit>` and Mac `0.2.25 (<build>)`. A reported commit, full or abbreviated, must be the release commit; `unknown` or malformed versions never match, and the server health version stays numeric. Previously every Mac and Windows worker failed the version check, so a fleet release check could not pass.
+- `release-check` accepts a fixed `port` so SSH workers can reach its isolated server through forwarded tunnels instead of a randomly chosen port.
+- Acceptance fleet runs set each hardware worker's own encoder mode for its video and running-cancellation cases. They previously forced CPU mode, which since #425 binds every machine to software encoding, so VideoToolbox and NVENC workers could never claim their jobs.
+
+- Refresh operator and user documentation for current worker protocols, soundtrack assessment,
+  release qualification, backups, navigation and bulk actions, with regenerated fabricated web
+  captures. Calm library settings with content icons, clearer media and codec labels, tooltip-based
+  audio caveats and an explicit explanation of the locked soundtrack gate.
+
+- Tidy the queue status strip. The state reads in normal case instead of capitals (for example Holding), sits directly above its reason beside the playback artwork, and lines up with the counts. The playback link no longer shows a permanent underline, and the workers state is now called Encoding on workers so it no longer repeats the On workers count beside it.
+
+- Restore soundtrack quality checks for audio that starts a few milliseconds after the picture. Near-start windows count the requested samples after trimming the start, while retaining Opus decoder pre-roll and the existing timing checks. Generated acceptance now covers two tracks starting 22 ms late.
+
+- Keep font attachments out of probe data so subtitle fonts cannot block soundtrack verification or bloat library scans. FLAC tracks with Matroska statistics still use their exact sample count, read through a small audio-only probe on the server and workers.
+
+- Fix soundtrack quality refusals for Matroska FLAC statistics that omit the last frame and Opus tracks starting before zero (#476, #474). FLAC uses its exact sample count while keeping the 100 ms duration limit; near-start samples retain decoder pre-roll and trim on the picture timeline on both sides. Soundtrack workers now require protocol 14 and version 2 preparation evidence. Missing or conflicting FLAC sample counts still fail closed.
+
+- Add an isolated release regression command with required worker/artifact coverage, native-only regression routing and redacted JSON/Markdown summaries. Full corpus data and reports remain local; missing release evidence blocks qualification.
+
+- Add private checksum-pinned house clips that retain real timing/metadata quirks with explicit
+  pass, expected refusal or search-fallback outcomes. Mixed disposable worker launchers share one
+  test server and require every named identity. The negative-start Opus first-window defect (#474)
+  was fixed in #478; its house example now requires a measured passing outcome.
+
+- Expand public soundtrack acceptance fixtures with lossy AAC search/gate paths, titled MP4 output, near-full-scale AAC decode overs, FFmpeg-emulated mkvpropedit statistics and mono downmix assessment. Each case proves the source property before checking measured evidence and replacement/rollback.
+
+- Make the library workflow bar easier to follow. The stage you are editing is now filled with the accent colour instead of a faint outline, and the bar stays visible on the Candidates and Excluded tabs, so every part of a library's configuration keeps the same way into each stage.
+
+- Added a roadmap item for a release regression check before every release, prompted by the
+  real-media defects fixed in #466 and #469–#472. The implemented command combines generated
+  fixtures, a local-only house corpus, the exact published image, configured acceptance launchers
+  and package receipts for every named worker, with a redacted published summary. Installed-package,
+  signing and upgrade/recovery qualification remain separate requirements. The release checklist
+  requires that summary before publication. The Opus first-window finding (#474) was fixed in #478.
+
+- Assess surround and mono soundtracks that a library downmixes to stereo (#332). The soundtrack gate and per-soundtrack bitrate selection previously refused every retained surround track, which left most surround video unassessable. With **Downmix surround to stereo** on, a surround track with a known channel layout (or a mono track) is now measured against the source through the same `-ac 2` downmix the encode applied, so the score measures codec loss rather than the downmix the library chose. One argument list drives the encode and every reference, the evidence records the source channels and a distinct preparation, and workers need sidecar protocol 13. Surround with an unknown layout, a downmixed track with an explicit audio filter, and surround kept without a downmix stay unassessable.
+
+- Measure audio whose decoded peaks rise slightly above full scale. Loud lossy soundtracks decode with overs, and the Zimtohrli helper refused any sample outside ±1.0, so a real Buffy episode's English track could not be measured: its bitrate search fell back, and a soundtrack gate window landing on those peaks would block replacement as unmeasurable. The helper now accepts finite samples up to +12 dBFS and still refuses anything beyond that as corrupt input. The pinned Zimtohrli revision is unchanged; the helper is rebuilt into the server image and every sidecar.
+
+- Fix per-soundtrack bitrate selection and the soundtrack quality gate on real library media (#332). Testing on real TV episodes found every sample refused on lossy sources, because a window cut from AAC landed hundreds of samples off its length; each window is now cut sample-exact and every candidate bitrate encodes that same cut. The gate no longer refuses tracks whose duration mkvmerge or mkvpropedit stored only as `DURATION-eng`, outputs whose copied mkvmerge statistics sit beside FFmpeg's own duration, or MP4 outputs that cannot store a track title. A library that downmixes to stereo can now enable selection: files whose retained soundtracks are all stereo are searched and the rest keep the library bitrate. Worker jobs keep the server's selection evidence, including why it fell back.
+
+- Run per-soundtrack bitrate selection for jobs workers encode (#332). The server chooses the bitrates in the background, without holding the claim request, then offers the job with a fixed per-track command; the worker's own soundtrack gate still measures the output. Requires sidecar protocol 12, whose workers accept only `-b:a:<n>` options with whole-kbps values from 8 to 512. Worker-only libraries can now enable the setting.
+
+- Add experimental per-soundtrack bitrate selection for video re-encodes (#332). With the soundtrack quality gate on and audio re-encoded to AAC, Opus or MP3, the server samples each retained mono/stereo soundtrack at up to four bitrates and encodes each track at the smallest one that met the limit. When any track cannot be assessed, every track keeps the library bitrate; selection never fails a job by itself, and the gate still judges the finished file. Off by default, and these jobs stay on the server until workers support the search. Queue job details show each track's chosen bitrate.
+
+- Fix Personal quality check stalling for minutes on a remote worker with a large MP4-target source. Each worker claim re-read every queued sample's complete subtitle timeline (26 s for a 5.5 GB 4K episode), so claims outlived the worker's 30-second request and the worker showed as faulted. The answer is now remembered per unchanged source and survives a claim that gives up. The preparation page also hides this server's live CPU and GPU cards when it has no readings, instead of showing dashes while a worker does the work.
+
+- Fix the Windows tray's More actions menu and Preferences tooltip rendering as empty boxes. They inherited the icon font from their button.
+
+- Select multiple rows to retry/remove queue jobs, exclude candidates or inventory files, lift exclusions, or re-probe inventory files in the background (#450). Confirmations explain the scope and active-job stops; results retain per-file failures. Selections keep earlier picks at the 200-row limit. Probe batches have bounded admission, cancellation and recoverable progress monitoring, and distinguish skipped, failed and unfinished work. Excluding files retains replacement history; a committed stop remains recorded if cleanup defers removal. Original media and replacement/rollback safeguards are preserved. Contributed by [arbaleast](https://github.com/arbaleast) in #451.
+
+- The web UI now follows the browser or system light and dark theme by default, and follows it changing while the page is open: no reload, and no flash of the wrong scheme on the first paint, because the scheme is settled before the app boots. The theme control still pins a scheme when asked — it walks follow-the-system, light and dark, and hands the page back to the system — and a stored light or dark choice is kept, so an existing preference survives. The control describes its current setting for assistive technology, and unavailable theme preferences have safe fallbacks. Contributed by [arbaleast](https://github.com/arbaleast) in #449.
+
+- Fix Find duplicates progress so it advances during large-file reads and starts with the actual same-size candidate totals. Cached and skipped files count toward progress; cancelling midway through a file counts only the bytes read so far. The themed bar shows queued work and a percentage without claiming completion early. Clarify identical-group counts, review states and copy locations. Library cards group Scan and Find duplicates at the foot, with distinct icons and aligned actions. Duplicate review still saves preferences only; no file actions are enabled.
+
+- Confirm queue replacements on the page instead of relying on browser popups. Keep single and bulk refusal reasons, including dry-run mode, visible with retry and cancel actions; long errors can scroll and an empty bulk result closes without claiming a replacement. Originals and verification safeguards are unchanged. Contributed by [balfourwong](https://github.com/balfourwong) in [#463](https://github.com/Jellman86/optimisarr/pull/463).
+
+- Keep keyboard focus with Personal quality check as preparation, comparison and results replace each other (#441). Next unrated sample now leads to its rating controls; errors and successful Apply are announced, and playback/status failures offer another check. Keep the sample deck readable with enlarged text, improve dark-theme primary-button hover contrast and separate the preset Apply explanation cleanly. Refresh video, photo and music evidence across themes, narrow layouts and 200% text/zoom-equivalent layouts.
+
+- Reconcile the roadmap and audio/image parity checkpoint with the 0.2.24 release, selected installed-host evidence and archived journal decision. Retained-soundtrack selection and the remaining UI/source/lifetime acceptance stay explicit follow-ups.
+
+- Add candidate-only absolute-frame offsets to the retained-file diagnostic, so a suspected video shift can be checked independently of input seeking (#454). The source window and production verification rules are unchanged.
+
+- Show “Waiting for capacity” on a connected Mac worker advertising zero working capacity, with guidance to check the work folder and memory pressure (#458). It is not shown while a job is running, because a running job can legitimately hold the remaining capacity. The capacity readout no longer implies that this value is raw free disk space. Resource admission, pairing and running jobs are unchanged.
+
+- Correct fourteen Simplified Chinese UI strings. "Custom" no longer reads 风俗, the "Scott's" preset keeps the name in Latin script, the clipping label retains the meaning of introduced clipping and its hint reads more naturally, "Verification gates" and "Base URL" no longer use 门 and 底座, the enqueue button and its two related strings read 加入处理队列, and the schedule window uses 开始时间 and 结束时间 with an equal-times hint that starts from the two fields. Keys, placeholders and every other string are unchanged. Contributed by [arbaleast](https://github.com/arbaleast) in [#446](https://github.com/Jellman86/optimisarr/pull/446).
+
 ## 0.2.24 - 2026-10-24
 
 Protocol 11 audio/image worker placement is enabled in this release. Entries below

@@ -81,6 +81,10 @@ public static class ConfigSnapshotValidator
                 || library.ImagePerceptualGateEnabled != true || !ImagePerceptualQualityGate.ValidLimit(library.MinimumImagePerceptualScore)
                 || (!string.IsNullOrWhiteSpace(library.ImageDownscaleMode) && !string.Equals(library.ImageDownscaleMode, "None", StringComparison.OrdinalIgnoreCase))))
                 errors.Add($"{where} adaptive images require an explicit enabled image target and no resizing in a photo or mixed library.");
+            if (library.AdaptiveSoundtrackQuality == true && (mediaType is MediaType.Music or MediaType.Photo
+                || string.IsNullOrWhiteSpace(library.VideoAudioCodec) || string.Equals(library.VideoAudioCodec, "copy", StringComparison.OrdinalIgnoreCase)
+                || library.SoundtrackQualityGateEnabled != true || !AudioQualityGate.ValidLimit(library.MaximumSoundtrackQualityDistance)))
+                errors.Add($"{where} adaptive soundtracks require re-encoded audio and an enabled explicit soundtrack target.");
             if (library.HdrHandling is not null)
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);

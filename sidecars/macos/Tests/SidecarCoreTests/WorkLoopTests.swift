@@ -74,6 +74,25 @@ struct AssignmentCommandTests {
         }
     }
 
+    @Test("per-soundtrack bitrates are accepted")
+    func soundtrackBitrates() throws {
+        _ = try AssignmentCommand.validate(["-i", "{{input}}", "-c:a", "aac", "-b:a:0", "96k", "-b:a:7", "160k", "{{output}}.mkv"], outputExtension: "mkv")
+    }
+
+    @Test("malformed soundtrack bitrate options are refused", arguments: ["-b:a:8", "-b:a:-1", "-b:a:01"])
+    func malformedSoundtrackOption(_ token: String) {
+        #expect(throws: AssignmentCommandError.unknownOption(token)) {
+            _ = try AssignmentCommand.validate(["-i", "{{input}}", token, "96k", "{{output}}.mkv"], outputExtension: "mkv")
+        }
+    }
+
+    @Test("malformed soundtrack bitrate values are refused", arguments: ["96", "0096k", "4k", "9000k", "96k/../x"])
+    func malformedSoundtrackValue(_ value: String) {
+        #expect(throws: AssignmentCommandError.invalidSoundtrackBitrate(value)) {
+            _ = try AssignmentCommand.validate(["-i", "{{input}}", "-b:a:0", value, "{{output}}.mkv"], outputExtension: "mkv")
+        }
+    }
+
     @Test("a command shaped like the server's is accepted and both tokens are substituted")
     func acceptsServerShape() throws {
         let command = try AssignmentCommand.validate(serverCommand, outputExtension: "mp4")

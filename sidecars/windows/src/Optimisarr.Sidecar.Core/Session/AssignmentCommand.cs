@@ -61,6 +61,19 @@ public static class AssignmentCommand
             System.Globalization.CultureInfo.InvariantCulture, out var index)
         && index >= 0 && token[5..] == index.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+    // A per-soundtrack bitrate (protocol 12). The index is the output audio ordinal FFmpeg
+    // addresses; leading zeros or signs would be a different spelling of an option nobody sent.
+    private static bool IsIndexedAudioBitrate(string token) =>
+        token.StartsWith("-b:a:", StringComparison.Ordinal)
+        && int.TryParse(token.AsSpan(5), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var index)
+        && index is >= 0 and < 8 && token[5..] == index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static bool IsAudioBitrateValue(string value) =>
+        value.EndsWith('k') && int.TryParse(value.AsSpan(0, value.Length - 1), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var kbps)
+        && kbps is >= 8 and <= 512 && value[..^1] == kbps.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>
     /// Checks the array against the contract. Returns the reason on refusal rather than throwing,
     /// because refusing a command is an ordinary outcome this machine hands the job back for.
@@ -95,7 +108,7 @@ public static class AssignmentCommand
                 continue;
             }
 
-            if (!Valued.Contains(token) && !IsIndexedSubtitleCodec(token))
+            if (!Valued.Contains(token) && !IsIndexedSubtitleCodec(token) && !IsIndexedAudioBitrate(token))
             {
                 return new CommandRefusal($"The server sent an option this sidecar does not know: '{token}'.");
             }
@@ -106,6 +119,11 @@ public static class AssignmentCommand
             }
 
             var value = arguments[index + 1];
+            if (IsIndexedAudioBitrate(token) && !IsAudioBitrateValue(value))
+            {
+                return new CommandRefusal($"'{value}' is not a soundtrack bitrate.");
+            }
+
             switch (token)
             {
                 case "-itsoffset" when !double.TryParse(value, System.Globalization.NumberStyles.Float,

@@ -7,9 +7,10 @@ report and gate introduced on the development branch.
 
 The report measures every retained, re-encoded mono or stereo soundtrack, up to
 eight tracks and 90 seconds per track. Language removal uses the frozen stream
-mapping. Copied audio bypasses this additional measurement. Surround and downmix
-assessment remain unavailable; an enabled gate stops replacement when required
-evidence is unavailable. Reporting and gating default to off, and an enabled gate
+mapping. Copied audio bypasses this additional measurement. With a stereo downmix,
+surround tracks with a known layout and mono tracks are assessed against the same
+downmix of their source (#472); surround kept without a downmix stays unassessable,
+and an enabled gate stops replacement when required evidence is unavailable. Reporting and gating default to off, and an enabled gate
 requires an explicit maximum difference. No listening calibration or universal
 quality threshold is claimed.
 
@@ -36,7 +37,9 @@ coverage. The existing complete-file decode and retention checks still apply.
 ## Real media and machines
 
 Generated video, seeded noise and sine fixtures avoid third-party media rights and
-private media dependencies. The complete application acceptance run passed AAC,
+private media dependencies, and remain the public baseline. The release check adds a local-only
+house corpus of short copies of the operator's own files, read but never replaced, committed or
+published, because real files exposed defects these fixtures missed (#469–#472). The complete application acceptance run passed AAC,
 Opus and MP3 soundtracks, removal of the first audio stream, explicit gate rejection
 and copied-audio bypass. Two further cases cover a soundtrack shorter than its
 video and a 120-second file whose tracks each require three sample windows. Successful cases exercised replacement, repeat-call

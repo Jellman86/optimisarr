@@ -58,8 +58,8 @@ public final class SidecarSession: ObservableObject {
     @Published public internal(set) var audioJobs: Set<Int> = []
     @Published public internal(set) var imageJobs: Set<Int> = []
 
-    /// Free space on the work volume, as this Mac last reported it to the server. Nil until the
-    /// first check-in, so the panel shows a dash rather than a zero nobody measured.
+    /// Capacity advertised for new work after resource checks and reservations. A zero can mean
+    /// unavailable disk or memory evidence, not a full disk. Nil until the first check-in.
     @Published public internal(set) var freeScratchBytes: Int64?
 
     /// The recent frames each running job was seen encoding. Only collected while the menu is
@@ -85,6 +85,16 @@ public final class SidecarSession: ObservableObject {
 
     @Published public private(set) var isPaused = false
     @Published public private(set) var workReadinessNotice: String?
+
+    public var workCapacityNotice: String? {
+        switch status {
+        case .connected, .working: break
+        default: return nil
+        }
+        // A running job can legitimately hold all remaining capacity; that is busy, not stuck.
+        guard activeJobs.isEmpty, let freeScratchBytes, freeScratchBytes <= 0 else { return nil }
+        return "No capacity is currently available for new work. Check free space in the work folder and macOS memory pressure."
+    }
     /// A newer release the server says to install, from the latest check-in; nil while current.
     @Published public internal(set) var availableUpdate: SidecarUpdate?
 

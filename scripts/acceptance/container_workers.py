@@ -12,9 +12,9 @@ from .workers import Workers, free_port
 
 
 class ContainerWorkers(Workers):
-    def __init__(self, api, root, server, image, *, devices=(), gpus=None, memory="2g"):
+    def __init__(self, api, root, server, image, *, devices=(), gpus=None, memory="2g", name=None):
         super().__init__(api, root, server, "/usr/lib/jellyfin-ffmpeg/ffmpeg",
-                         "/usr/lib/jellyfin-ffmpeg/ffprobe", require_ram=True)
+                         "/usr/lib/jellyfin-ffmpeg/ffprobe", require_ram=True, name=name)
         self.image = image
         self.devices, self.gpus = devices, gpus
         require(re.fullmatch(r"[1-9][0-9]*[mg]", memory), "Worker memory must look like 2g or 512m")
@@ -51,7 +51,7 @@ class ContainerWorkers(Workers):
 
     def launch(self, argv, capabilities, encoder):
         require(re.fullmatch(r"[a-zA-Z0-9_]+", encoder), "Unsafe encoder name")
-        name = f"acceptance-linux-{encoder}"
+        name = self.name or f"acceptance-linux-{encoder}"
         container = "optimisarr-acceptance-worker-" + secrets.token_hex(5)
         port = free_port()
         config = self.root / (name + "-config")

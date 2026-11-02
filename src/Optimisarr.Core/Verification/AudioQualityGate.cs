@@ -34,7 +34,9 @@ public static class AudioQualityGate
         var evidence = report.Evidence;
         var error = report?.UnavailableReason ?? AudioQualityReporting.Validate(evidence,
             evidence?.Assessment?.ReferenceSha256, evidence?.Assessment?.CandidateSha256,
-            soundtrack ? AudioQualityResultParser.SoundtrackPreparation : AudioQualityResultParser.Preparation);
+            !soundtrack ? AudioQualityResultParser.Preparation
+                : evidence?.Assessment?.Reference?.Downmixed == true ? AudioQualityResultParser.SoundtrackDownmixPreparation
+                : AudioQualityResultParser.SoundtrackPreparation);
         if (error is not null) return Failed(error + " Replacement is blocked because audio quality could not be verified.");
         // Recompute from validated channel values rather than trusting a supplied pooled score.
         var distance = evidence!.Assessment.Windows.SelectMany(window => window.Distances.ChannelDistances).Max();

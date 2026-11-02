@@ -34,6 +34,7 @@ function job(id: number, status: string, verificationPassed: boolean | null) {
 }
 
 async function mockQueue(page: Page) {
+  await queueHub(page)
   let jobs = [
     job(1, 'ReadyToReplace', true),
     job(2, 'ReadyToReplace', true),
@@ -84,21 +85,137 @@ function json(route: Route, body: unknown) {
   })
 }
 
-test('replace all confirms once, replaces every ready job in one request, and opens quarantine once', async ({ page }) => {
+test('replace all confirms on page, replaces every ready job in one request, and opens quarantine once', async ({ page }) => {
   const bulkRequests = await mockQueue(page)
-  let confirmationCount = 0
-  page.on('dialog', async (dialog) => {
-    confirmationCount += 1
-    expect(dialog.message()).toContain('Replace all 2 verified outputs?')
-    await dialog.accept()
-  })
-
+  page.on('dialog', () => { throw new Error('Replacement must not rely on browser dialogs') })
   await page.goto('/#/queue')
   await page.getByRole('button', { name: 'Replace all (2)' }).click()
-
+  const confirmation = page.locator('#queue-replacement-dialog')
+  await expect(confirmation).toContainText('Replace all 2 verified outputs?')
+  expect(bulkRequests()).toBe(0)
+  await confirmation.getByRole('button', { name: 'Replace', exact: true }).click()
   await expect(page).toHaveURL(/#\/quarantine$/)
-  expect(confirmationCount).toBe(1)
   expect(bulkRequests()).toBe(1)
+})
+
+test('replacement refusal stays visible above the job details and allows a retry', async ({ page }) => {
+  await mockQueue(page)
+  let requests = 0
+  await page.route('**/api/jobs/1/replace', async route => {
+    requests++
+    if (requests === 1) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({
+      error: 'Dry-run mode is enabled, so Optimisarr will stop after verification and leave originals untouched.'
+    }) })
+    return json(route, { id: 1, status: 'Replaced' })
+  })
+  page.on('dialog', () => { throw new Error('Replacement must not rely on browser dialogs') })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  await page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' }).click()
+  const confirmation = page.locator('#queue-replacement-dialog')
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(confirmation.getByRole('alert')).toContainText('Dry-run mode is enabled')
+  await expect(page.locator('#queue-job-dialog')).toContainText('Ready to replace')
+  await confirmation.getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(page).toHaveURL(/#\/quarantine$/)
+  expect(requests).toBe(2)
+})
+
+test('cancelling on-page replacement leaves verified jobs untouched', async ({ page }) => {
+  const bulkRequests = await mockQueue(page)
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'Replace all (2)' }).click()
+  await page.locator('#queue-replacement-dialog').getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.locator('#queue-replacement-dialog')).toHaveCount(0)
+  expect(bulkRequests()).toBe(0)
+  await expect(page.getByRole('button', { name: 'Replace all (2)' })).toBeVisible()
+})
+
+test('bulk replacement keeps each refusal reason visible and retries remaining jobs', async ({ page }) => {
+  await mockQueue(page)
+  let requests = 0
+  await page.route('**/api/jobs/replace-ready', async route => {
+    requests++
+    if (requests === 1) {
+      await page.route('**/api/jobs', route => json(route, [job(2, 'ReadyToReplace', true), job(3, 'Queued', null)]))
+      return json(route, { attempted: 2, replaced: 1, failures: [{ jobId: 2, message: 'Dry-run mode is enabled; the original was not replaced.' }] })
+    }
+    return json(route, { attempted: 1, replaced: 1, failures: [] })
+  })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'Replace all (2)' }).click()
+  const dialog = page.locator('#queue-replacement-dialog')
+  await dialog.getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('1 ready job(s) could not be replaced')
+  await expect(dialog.getByRole('alert')).toContainText('Film 2.mkv')
+  await expect(dialog.getByRole('alert')).toContainText('Dry-run mode is enabled')
+  await expect(dialog).toContainText('Replace all 1 verified outputs?')
+  await dialog.getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(page).toHaveURL(/#\/quarantine$/)
+  expect(requests).toBe(2)
+})
+
+test('an empty bulk replacement result closes confirmation without implying a replacement', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs/replace-ready', async route => {
+    await page.route('**/api/jobs', route => json(route, [job(3, 'Queued', null)]))
+    return json(route, { attempted: 0, replaced: 0, failures: [] })
+  })
+  await page.goto('/#/queue')
+  await page.getByRole('button', { name: 'Replace all (2)' }).click()
+  await page.locator('#queue-replacement-dialog').getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(page.locator('#queue-replacement-dialog')).toHaveCount(0)
+  await expect(page).toHaveURL(/#\/queue$/)
+  await expect(page.getByRole('button', { name: /Replace all/ })).toHaveCount(0)
+})
+
+test('a pending replacement ignores repeated submission and Escape until its result arrives', async ({ page }) => {
+  await mockQueue(page)
+  let pending: Route | undefined
+  let requests = 0
+  await page.route('**/api/jobs/1/replace', route => { requests++; pending = route })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  await page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' }).click()
+  const dialog = page.locator('#queue-replacement-dialog')
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await expect.poll(() => Boolean(pending)).toBe(true)
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('aria-busy', 'true')
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  expect(requests).toBe(1)
+  await pending!.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'The source changed; re-verify it first.' }) })
+  await expect(dialog.getByRole('alert')).toContainText('The source changed')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' })).toBeFocused()
+})
+
+test('long replacement refusals keep cancel reachable in a short narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 375 })
+  await mockQueue(page)
+  await page.route('**/api/jobs/1/replace', route => route.fulfill({
+    status: 409, contentType: 'application/json',
+    body: JSON.stringify({ error: 'The retained source changed. ' + 'Keep both files and re-verify the candidate before retrying. '.repeat(12) }),
+  }))
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  await page.locator('#queue-job-dialog').getByRole('button', { name: 'Replace original' }).click()
+  const dialog = page.locator('#queue-replacement-dialog')
+  await dialog.getByRole('button', { name: 'Replace', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('The retained source changed')
+  const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
+  const bounds = (await dialog.boundingBox())!
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  await page.mouse.wheel(0, 5_000)
+  await expect(cancel).toBeInViewport()
+  await cancel.click()
+  await expect(dialog).toHaveCount(0)
 })
 
 test('a remote job says where it is, and a job kept for a worker says it is waiting', async ({ page }) => {

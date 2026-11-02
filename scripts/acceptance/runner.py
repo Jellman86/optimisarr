@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -21,6 +22,42 @@ MODES = {"libx264": "Cpu", "libx265": "Cpu", "libsvtav1": "Cpu",
          "h264_videotoolbox": "Auto", "hevc_videotoolbox": "Auto"}
 CODECS = {"libx264": "h264", "libx265": "hevc", "libsvtav1": "av1"}
 DEFAULT_GATES = {"harmonic": 93, "p5": 80, "minimum": 50}
+
+
+def encoder_mode(encoder):
+    if encoder not in MODES:
+        raise Blocked(f"No acceptance scenario for advertised encoder {encoder}")
+    return MODES[encoder]
+
+
+def soundtrack_source_audio(*, lossy=False, overs=False, surround=None, mono=False):
+    require(sum((lossy, overs, surround is not None, mono)) <= 1, "Conflicting soundtrack fixture properties")
+    if lossy:
+        return ["-c:a", "aac", "-b:a", "96k", "-ac", "2"]
+    if surround is not None:
+        return ["-c:a", "flac", "-ac:a:1", "2"]
+    if mono:
+        return ["-c:a", "flac", "-ac:a:0", "1", "-ac:a:1", "2"]
+    return ["-c:a", "pcm_s16le", "-ac", "2"]
+
+
+def mkvpropedit_metadata(seconds, tracks):
+    duration = f"{int(seconds) // 3600:02}:{int(seconds) // 60 % 60:02}:{int(seconds) % 60:02}.000000000"
+    args = []
+    for index in range(tracks):
+        for tag in ("DURATION=", "DURATION-eng=" + duration, "_STATISTICS_WRITING_APP-eng=mkvpropedit"):
+            args += [f"-metadata:s:a:{index}", tag]
+    # FFmpeg normally regenerates plain DURATION at trailer time. Live Matroska keeps only
+    # our suffixed metadata, emulating a subsequent mkvpropedit statistics rewrite.
+    return args + ["-live", "1"]
+
+
+def decoded_peak(tools, fixture):
+    log = tools.run(tools.ffmpeg, ["-nostdin", "-hide_banner", "-i", tools.path(fixture),
+        "-map", "0:a:0", "-af", "astats", "-f", "null", "-"], include_stderr=True)
+    peaks = [float(value) for value in re.findall(r"Peak level dB:\s*([^\s]+)", log)]
+    require(peaks and all(math.isfinite(value) for value in peaks), "No finite decoded peak measurement")
+    return 10 ** (max(peaks) / 20)
 
 
 def missing_workers(workers, required):
@@ -198,7 +235,8 @@ class Harness:
 
     def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False, numbered_repeated_fixture=False, check_regular_cadence=False, reference_decoder_timing=False):
         self.select_worker(worker)
-        self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
+        # CPU mode binds every machine to software encoding (#425); a hardware worker needs its own mode.
+        self.configure(encoderMode=encoder_mode(encoder), hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
         if (encoder.startswith("h264") or encoder == "libx264") and "ten-bit" in str(fixture):
             return self.create_job(name, fixture, encoder=encoder, worker=worker,
@@ -353,39 +391,157 @@ class Harness:
             self.api.post("/api/queue/resume")
 
 
-    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False):
+    def soundtrack(self, codec="aac", worker=None, *, filtered=False, reject=False, copied=False, long=False, short=False, adaptive=False,
+                   surround=None, lossy=False, titled_mp4=False, overs=False, statistics=False, mono=False,
+                   timing=None, attached_font=False):
+        """surround: None for stereo sources; True for a 5.1 main track downmixed to stereo; False for that
+        track kept surround, which no soundtrack gate can assess, so the gate must block replacement."""
         self.select_worker(worker)
         name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
         name += "-long" if long else "-short-mp4" if short else ""
-        seconds = 120 if long else 12 if short else 8
-        audio_seconds = seconds - 0.5 if short else seconds
+        name += "-adaptive" if adaptive else ""
+        name += "-" + timing if timing else ""
+        name += "-font" if attached_font else ""
+        name += "" if surround is None else "-surround-downmixed" if surround else "-surround-kept"
+        name += "-lossy-aac" if lossy else "-titled-mp4" if titled_mp4 else "-decoded-overs" if overs else ""
+        name += "-mkvpropedit-statistics" if statistics else ""
+        name += "-mono-downmixed" if mono else ""
+        # Adaptive selection needs more than one sample window per track.
+        seconds = 120 if long else 12 if short else 40 if adaptive or lossy else 8
+        if timing == "flac-statistics":
+            seconds = 8.1
+        audio_seconds = 385024 / 48000 if timing == "flac-statistics" else seconds - 0.5 if short else seconds
         commentary_seconds = seconds - 2.5 if long else audio_seconds
         fixture = self.root / "fixtures" / (name + ".mkv")
+        main = (f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42" if surround is None else
+                # Six distinct channels, so a dropped or misrouted channel changes the downmix.
+                "aevalsrc=exprs=" + "|".join(f"0.08*sin({2 * math.pi * f}*t)" for f in (220, 330, 440, 150, 550, 660))
+                + f":channel_layout=5.1:sample_rate=48000:duration={audio_seconds}")
+        # Matroska PCM stores no channel layout, so a surround fixture uses FLAC, which carries 5.1 the way
+        # real AC-3/E-AC-3/AAC tracks do; an unknown layout is refused rather than downmixed by guesswork.
+        if overs:
+            signal = "0.98*sgn(sin(2*PI*997*t))"
+            main = f"aevalsrc=exprs={signal}|{signal}:channel_layout=stereo:sample_rate=48000:duration={audio_seconds}"
+        channels = soundtrack_source_audio(lossy=lossy, overs=overs, surround=surround, mono=mono)
+        timing_tags = []
+        if timing == "flac-statistics":
+            channels = ["-c:a", "flac", "-frame_size", "4096", "-ac", "2"]
+            timing_tags = ["-write_crc32", "0"]
+            for track in range(2):
+                timing_tags += [f"-metadata:s:a:{track}", "DURATION-eng=00:00:07.936000000",
+                               f"-metadata:s:a:{track}", "_STATISTICS_WRITING_APP-eng=mkvpropedit generated-regression"]
+        elif timing == "opus-preroll":
+            channels = ["-c:a", "libopus", "-ac", "2"]
+        # Offset timestamps rather than inserting silence: the first decoded sample must be late.
+        audio_offset = ["-itsoffset", "0.022"] if timing == "late-audio" else []
+        attachment = []
+        if attached_font:
+            # Generated attachment payload: probing must never dump this entire 2 MiB font stream.
+            font = self.root / "fixtures" / (name + ".ttf")
+            font.write_bytes(b"\x00\x01\x00\x00" + bytes(2 * 1024 * 1024 - 4))
+            attachment = ["-attach", self.tools.path(font), "-metadata:s:t:0", "mimetype=application/x-truetype-font",
+                          "-metadata:s:t:0", "filename=regression.ttf"]
         self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
-            "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.1:duration={audio_seconds}:sample_rate=48000:seed=42",
-            "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
-            "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", "-c:a", "pcm_s16le", "-ac", "2",
+            *audio_offset, "-f", "lavfi", "-i", main,
+            *audio_offset, "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
+            "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *channels,
             "-metadata:s:a:0", "language=eng", "-metadata:s:a:0", "title=" if short else "title=Main",
-            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary", self.tools.path(fixture)])
+            "-metadata:s:a:1", "language=fra", "-metadata:s:a:1", "title=" if short else "title=Commentary",
+            *(mkvpropedit_metadata(seconds, 2) if statistics else []), *timing_tags, *attachment, self.tools.path(fixture)])
+        if timing == "flac-statistics":
+            # Simulate mkvpropedit's statistics without adding MKVToolNix to the runtime image.
+            # Rename only the EBML TagName for FFmpeg's plain DURATION, without changing element sizes.
+            data = fixture.read_bytes()
+            # A suffixed tag is stored as DURATION + TagLanguage, while a plain tag's value follows
+            # its name immediately. Keep the language-tagged statistics intact.
+            marker = b"\x45\xa3\x88DURATION\x44\x87"
+            require(data.count(marker) == 3, "Generated FLAC fixture has unexpected duration tags")
+            edited = fixture.with_suffix(".statistics.mkv")
+            edited.write_bytes(data.replace(marker, b"\x45\xa3\x88IGNORED_\x44\x87"))
+            edited.replace(fixture)
+        if attached_font:
+            probe = self.tools.probe(fixture)
+            require(len(json.dumps(probe)) < 16384, "Metadata probe dumped the font attachment")
+            fonts = [s for s in probe["streams"] if s["codec_type"] == "attachment"]
+            require(len(fonts) == 1 and fonts[0]["extradata_size"] == 2 * 1024 * 1024,
+                    "Generated font attachment is absent or has the wrong size")
+        if timing == "opus-preroll":
+            probe = self.tools.probe(fixture)
+            audio = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+            require(all(float(track["start_time"]) < 0 for track in audio), "Opus fixture lost its negative start")
+        source_probe = self.tools.probe(fixture)
+        source_tracks = [stream for stream in source_probe["streams"] if stream["codec_type"] == "audio"]
+        if timing == "late-audio":
+            video = next(stream for stream in source_probe["streams"] if stream["codec_type"] == "video")
+            require(abs(float(video["start_time"])) < .001, "Late-audio fixture lost its zero picture origin")
+            require(len(source_tracks) == 2 and all(.021 <= float(track["start_time"]) <= .023 for track in source_tracks),
+                    "Late-audio fixture must start both audio tracks about 22 ms after the picture")
+        if mono:
+            require(source_tracks[0]["channels"] == 1, "Mono fixture is not mono")
+        save(self.report.root / name / "source-probe.json", source_probe)
+        if lossy:
+            require(len(source_tracks) == 2 and all(t["codec_name"] == "aac" for t in source_tracks), "Source is not lossy AAC")
+        if titled_mp4:
+            require([t.get("tags", {}).get("title") for t in source_tracks] == ["Main", "Commentary"], "Source lacks track titles")
+        if statistics:
+            require("Lavf" in source_probe["format"].get("tags", {}).get("ENCODER", ""), "Source was not muxed by FFmpeg")
+            for track in source_tracks:
+                tags = {key.upper(): value for key, value in track.get("tags", {}).items()}
+                require("DURATION" not in tags and tags.get("DURATION-ENG")
+                        and tags.get("_STATISTICS_WRITING_APP-ENG") == "mkvpropedit", "Mkvpropedit-style statistics were not preserved")
+        peak = decoded_peak(self.tools, fixture) if overs else None
+        if overs:
+            require(.97 < peak <= 1, "Overs fixture source must peak near .98 without exceeding full scale")
         # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
         limit = 0 if reject else 1
         case = self.create_job(name, fixture, encoder="libx264", worker=worker, overrides={
-            "targetVideoCodec": None, "targetContainer": "mp4" if short else "mkv", "videoAudioCodec": "copy" if copied else codec,
+            "targetVideoCodec": None, "targetContainer": "mp4" if short or titled_mp4 else "mkv", "videoAudioCodec": "copy" if copied else codec,
             "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
             "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,
-            "keepAudioLanguages": "fra" if filtered else None})
+            "keepAudioLanguages": "fra" if filtered else None, "adaptiveSoundtrackQuality": adaptive,
+            "downmixToStereo": bool(surround) or mono})
         job = self.wait_job(case)
         save(self.report.root / name / "job.json", job)
         verification = json.loads(job["verificationReportJson"] or "{}")
         require(job["workerName"] == (worker["name"] if worker else None), "Soundtrack ran on the wrong host")
         require(sha256(case["source"]) == case["sourceSha256"], "Assessment changed the source")
-        require(job["status"] == ("Failed" if reject else "ReadyToReplace"), f"Unexpected soundtrack job verdict: {job['errorMessage']}")
+        blocked = reject or surround is False
+        require(job["status"] == ("Failed" if blocked else "ReadyToReplace"), f"Unexpected soundtrack job verdict: {job['errorMessage']}")
+        if surround is False:
+            reason = (verification.get("soundtrackQuality") or {}).get("unavailableReason") or ""
+            require("surround" in reason, f"Kept surround was not refused as unassessable: {reason}")
+            require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")), "Unassessed surround replaced media")
+            return {"originalUnchanged": True, "gateBlocked": True}
         if copied:
             require(not verification.get("soundtrackQuality"), "Copied audio launched perceptual assessment")
         else:
             location = "Worker" if worker and self.strict_worker_verification else "Server"
-            validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject)
+            validate_soundtrack_report(verification.get("soundtrackQuality"), [1] if filtered else [0, 1], location, limit, passes=not reject,
+                                       downmixed=(0,) if surround or mono else ())
+        if timing:
+            for track in verification["soundtrackQuality"]["tracks"]:
+                assessment = track["report"]["evidence"]["assessment"]
+                first = assessment["windows"][0]
+                require(first["distances"]["frames"] == round(first["window"]["durationSeconds"] * 48000),
+                        "Timing regression did not decode an exact first window")
+                if timing == "flac-statistics":
+                    require(abs(assessment["reference"]["durationSeconds"] - 385024 / 48000) < 1e-8,
+                            "FLAC duration did not use its exact sample count")
+        if adaptive:
+            search = verification.get("soundtrackSearch") or {}
+            require(search.get("unavailable") is None, f"Soundtrack selection did not run: {search.get('unavailable')}")
+            retained = [1] if filtered else [0, 1]
+            require([t["track"]["sourceAudioIndex"] for t in search["tracks"]] == retained, "Searched tracks differ from the retained tracks")
+            for output, track in enumerate(search["tracks"]):
+                decision = track["result"]["decision"]
+                require(track["track"]["outputIndex"] == output, "Soundtrack search lost the output order")
+                require(track["result"]["probes"], "Soundtrack search measured nothing")
+                # Limit 1 accepts every probe, so selection must compress; limit 0 accepts none and falls back.
+                require(decision["fellBack"] == reject, f"Unexpected soundtrack search outcome: {decision['reason']}")
+                require(decision["selectedValue"] < 128 if not reject else decision["selectedValue"] == 128,
+                        "Soundtrack search chose an unexpected bitrate")
+                require(f"-b:a:{output} {decision['selectedValue']}k" in job["ffmpegArguments"], "Full encode ignored the selected soundtrack bitrate")
             if long:
                 for track in verification["soundtrackQuality"]["tracks"]:
                     assessment = track["report"]["evidence"]["assessment"]
@@ -397,12 +553,62 @@ class Harness:
             return {"originalUnchanged": True, "gateBlocked": True}
         candidate = self.output(case)
         probe = self.tools.probe(candidate)
+        if titled_mp4:
+            require(candidate.suffix == ".mp4", "Titled track regression did not produce MP4")
         tracks = [stream for stream in probe["streams"] if stream["codec_type"] == "audio"]
+        if mono:
+            require(tracks[0]["channels"] == 2, "Mono soundtrack was not downmixed to stereo")
+        if titled_mp4:
+            require(all(not t.get("tags", {}).get("title") for t in tracks), "MP4 unexpectedly retained track titles")
+        if overs:
+            candidate_peak = decoded_peak(self.tools, candidate)
+            require(1 < candidate_peak <= 4, "Lossy encode did not decode above full scale")
+            save(self.report.root / name / "decoded-peak.json", {"sourcePeak": peak, "candidatePeak": candidate_peak})
         require([track.get("tags", {}).get("language") for track in tracks] == (["fra"] if filtered else ["eng", "fra"]),
                 "Retained soundtrack language changed")
         self.tools.run(self.tools.ffmpeg, ["-v", "error", "-xerror", "-i", self.tools.path(candidate), "-f", "null", "-"])
         self.replace_restore(case, candidate)
-        return {"originalUnchanged": True, "restoredOriginal": True, "tracks": len(tracks), "copied": copied}
+        return {"originalUnchanged": True, "restoredOriginal": True, "tracks": len(tracks), "copied": copied,
+                "sourceDecodedPeak": peak, "sourceLossyAac": lossy, "titledMp4": titled_mp4}
+
+    def house_clip(self, entry, corpus_root, worker=None):
+        from .house_corpus import assert_outcome, validate_expected
+        self.select_worker(worker)
+        fixture = inside(corpus_root, Path(corpus_root) / entry["path"])
+        require(sha256(fixture) == entry["sha256"], "House clip checksum mismatch")
+        expected = validate_expected(entry["expected"])
+        name = (f"worker-{worker['id']}-" if worker else "local-") + entry["id"]
+        # Real library clips are often 10-bit HEVC/AV1, which the H.264 compatibility profile refuses.
+        encoder = worker["videoEncoders"][0] if worker else "libx265"
+        if encoder not in MODES:
+            raise Blocked("No house corpus scenario for the proved worker encoder")
+        # CPU mode binds every machine to software encoding (#425); a hardware worker needs its own mode.
+        self.configure(encoderMode=MODES[encoder] if worker else "Cpu", hardwareDecode=False)
+        case = self.create_job(name, fixture, encoder=encoder, worker=worker, overrides={
+            "targetVideoCodec": CODECS.get(encoder, encoder.split("_")[0]), "targetContainer": entry.get("targetContainer", "mkv"),
+            "videoAudioCodec": "aac", "videoAudioBitrateKbps": 128,
+            "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": .01,
+            "downmixToStereo": True, "adaptiveSoundtrackQuality": True,
+            "vmafQualityGateEnabled": False, "requireSizeReduction": False})
+        job = self.wait_job(case)
+        save(self.report.root / name / "job.json", job)
+        verification = json.loads(job.get("verificationReportJson") or "{}")
+        require(job.get("workerName") == (worker["name"] if worker else None), "House clip ran on the wrong host")
+        require(sha256(case["source"]) == case["sourceSha256"], "House assessment changed the original")
+        assert_outcome(expected, job["status"], job.get("errorMessage"), verification)
+        require(not any(r["jobId"] == case["jobId"] for r in self.api.request("/api/replacements")),
+                "House clip was replaced before explicit acceptance")
+        if expected["outcome"] == "blocked":
+            return {"expected": expected, "originalUnchanged": True, "gateBlocked": True}
+        probe = self.tools.probe(fixture)
+        audio = [s for s in probe["streams"] if s["codec_type"] == "audio"]
+        location = "Worker" if worker and self.strict_worker_verification else "Server"
+        validate_soundtrack_report(verification.get("soundtrackQuality"), list(range(len(audio))), location, .01,
+            downmixed=tuple(i for i, stream in enumerate(audio) if stream.get("channels") != 2))
+        candidate = self.output(case)
+        self.tools.run(self.tools.ffmpeg, ["-v", "error", "-xerror", "-i", self.tools.path(candidate), "-f", "null", "-"])
+        self.replace_restore(case, candidate)
+        return {"expected": expected, "originalUnchanged": True, "restoredOriginal": True}
 
     def audio(self, codec="aac", worker=None, *, artwork=False, downmix=False, adaptive=False, reject=False):
         self.select_worker(worker)
@@ -740,6 +946,7 @@ class Harness:
     def cancel_running(self, worker=None, encoder="libx265"):
         self.select_worker(worker)
         name = f"cancel-running-worker-{worker['id']}-{encoder}" if worker else "cancel-running"
+        self.configure(encoderMode=encoder_mode(encoder), hardwareDecode=False)
         fixture = self.root / "fixtures" / (name + ".mkv")
         self.tools.fixture(fixture, seconds=120)
         case = self.create_job(name, fixture, worker=worker, encoder=encoder, overrides={"encoderPreset": "slow" if encoder in ("libx264", "libx265") else None})
@@ -885,6 +1092,28 @@ class Harness:
         self.configure(workerVerificationRequired=strict_worker_verification)
         self.report.environment["strictWorkerVerification"] = strict_worker_verification
         try:
+            if tier == "fleet":
+                for name in missing_workers(self.workers, expected_workers):
+                    self.report.case("required-worker-at-start-" + name,
+                        lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
+            if regression == "house-corpus":
+                require(corpus, "house-corpus regression requires --corpus")
+                manifest = json.loads(Path(corpus).read_text())
+                require(manifest.get("kind") == "house" and manifest.get("clips"), "Expected a nonempty house corpus")
+                save(self.report.root / "corpus.json", manifest)
+                targets = [None]
+                if tier == "fleet":
+                    for name in missing_workers(self.workers, expected_workers):
+                        self.report.case("required-worker-" + name,
+                            lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
+                    targets += [w for w in self.workers if w["online"] and not w["revokedAt"]]
+                    if len(targets) == 1:
+                        self.report.case("house-workers", lambda: (_ for _ in ()).throw(Blocked("No house corpus workers paired")))
+                for worker in targets:
+                    for entry in manifest["clips"]:
+                        label = (f"worker-{worker['id']}-" if worker else "local-") + entry["id"]
+                        self.report.case(label, lambda e=entry, w=worker: self.house_clip(e, Path(corpus).parent, w))
+                return self.report.exit_code
             if regression in ("interactive-samples", "interactive-lifecycle"):
                 from .interactive import run_interactive_matrix
                 run_interactive_matrix(self, tier=tier, expected_workers=expected_workers, lifecycle_only=regression == "interactive-lifecycle")
@@ -973,6 +1202,25 @@ class Harness:
                     self.report.case(label + "-soundtrack-copied", lambda w=worker: self.soundtrack("aac", w, copied=True))
                     self.report.case(label + "-soundtrack-short", lambda w=worker: self.soundtrack("aac", w, short=True))
                     self.report.case(label + "-soundtrack-long", lambda w=worker: self.soundtrack("aac", w, long=True))
+                    for codec in ("aac", "opus", "mp3"):
+                        self.report.case(label + "-soundtrack-adaptive-" + codec, lambda c=codec, w=worker: self.soundtrack(c, w, adaptive=True))
+                    self.report.case(label + "-soundtrack-adaptive-filtered", lambda w=worker: self.soundtrack("aac", w, filtered=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-adaptive-rejected", lambda w=worker: self.soundtrack("aac", w, reject=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-flac-statistics", lambda w=worker: self.soundtrack("aac", w, timing="flac-statistics"))
+                    self.report.case(label + "-soundtrack-flac-statistics-font", lambda w=worker: self.soundtrack("aac", w, timing="flac-statistics", attached_font=True))
+                    self.report.case(label + "-soundtrack-opus-preroll", lambda w=worker: self.soundtrack("opus", w, timing="opus-preroll"))
+                    self.report.case(label + "-soundtrack-late-audio", lambda w=worker: self.soundtrack("aac", w, timing="late-audio"))
+                    self.report.case(label + "-soundtrack-surround-downmixed", lambda w=worker: self.soundtrack("aac", w, surround=True))
+                    self.report.case(label + "-soundtrack-surround-kept", lambda w=worker: self.soundtrack("aac", w, surround=False))
+                    self.report.case(label + "-soundtrack-adaptive-surround-downmixed",
+                                     lambda w=worker: self.soundtrack("aac", w, surround=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-lossy-aac", lambda w=worker: self.soundtrack(worker=w, lossy=True))
+                    self.report.case(label + "-soundtrack-lossy-aac-adaptive", lambda w=worker: self.soundtrack(worker=w, lossy=True, adaptive=True))
+                    self.report.case(label + "-soundtrack-titled-mp4", lambda w=worker: self.soundtrack(worker=w, titled_mp4=True))
+                    self.report.case(label + "-soundtrack-decoded-overs", lambda w=worker: self.soundtrack(worker=w, overs=True))
+                    self.report.case(label + "-soundtrack-mkvpropedit-statistics", lambda w=worker: self.soundtrack(worker=w, statistics=True))
+                    self.report.case(label + "-soundtrack-mono-downmixed", lambda w=worker: self.soundtrack(worker=w, mono=True))
+                    self.report.case(label + "-soundtrack-mono-adaptive", lambda w=worker: self.soundtrack(worker=w, mono=True, adaptive=True))
                 if tier == "fleet" and not any(w["online"] and not w["revokedAt"] for w in self.workers):
                     self.report.case("soundtrack-workers", lambda: (_ for _ in ()).throw(Blocked("No soundtrack workers paired")))
                 return self.report.exit_code
@@ -1153,4 +1401,8 @@ class Harness:
                 self.report.case("oracle-rejects-" + damage, negative)
         finally:
             self.report.case("restore-test-settings", self.restore)
+            if tier == "fleet" and expected_workers:
+                for name in missing_workers(self.api.request("/api/workers"), expected_workers):
+                    self.report.case("required-worker-at-finish-" + name,
+                        lambda n=name: (_ for _ in ()).throw(Blocked(f"Required worker {n} is unavailable")))
         return self.report.exit_code

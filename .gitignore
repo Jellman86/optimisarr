@@ -11,6 +11,9 @@ web/playwright-report/
 src/Optimisarr.Api/wwwroot/
 config/
 .env
+# Private acceptance inputs, clips and reports. Prefer a root outside this repository.
+/.acceptance-house/
+/.release-check/
 *.user
 .DS_Store
 

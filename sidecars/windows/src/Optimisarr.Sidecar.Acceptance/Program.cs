@@ -34,9 +34,17 @@ if (Directory.Exists(scratch))
     throw new InvalidOperationException("Acceptance scratch directory must be new.");
 }
 Directory.CreateDirectory(scratch);
-capabilities = capabilities with { VideoEncoders = [encoder] };
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+// Prove native quality tools and the RAM working-space budget exactly as the service does;
+// without them the server never offers quality-first work to this worker.
+var perceptual = await PerceptualCapabilityProber.ForFfmpeg(ffmpeg).ProbeAsync(scratch, cancellation.Token);
+capabilities = NativeWorkerResources.Refresh(capabilities with
+{
+    VideoEncoders = [encoder],
+    Perceptual = perceptual,
+    MaxConcurrency = capabilities.MaxConcurrency > 0 || perceptual.ImageEncoders is { Count: > 0 } ? 1 : 0,
+}, scratch);
 using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
 var client = new SidecarClient(http, new DiagnosticJournal(Path.Combine(scratch, "diagnostics"), ffmpeg, Environment.GetEnvironmentVariable("OPTIMISARR_FFPROBE")));
 var server = Required("OPTIMISARR_ACCEPTANCE_SERVER");
@@ -46,6 +54,7 @@ var runner = new JobRunner(client, new JobTransfer(http, client.Diagnostics), ne
 var session = new SidecarSession(client, new InMemoryCredentialStore(),
     _ => Task.FromResult(capabilities), () => null, Task.Delay,
     status => Console.WriteLine($"Session: {status.State} {status.Detail}"),
-    (pairing, assignment, token) => runner.RunAsync(pairing, assignment, token), FreeBytes);
+    (pairing, assignment, token) => runner.RunAsync(pairing, assignment, token), FreeBytes,
+    refreshCapabilities: current => NativeWorkerResources.Refresh(current, scratch));
 await session.PairAsync(server, Required("OPTIMISARR_ACCEPTANCE_PIN"), cancellation.Token);
 await session.RunAsync(cancellation.Token);

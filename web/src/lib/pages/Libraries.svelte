@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type WorkPlacement } from '../api'
-  import { i18n, mediaTypeLabel, t } from '../i18n/i18n.svelte'
+  import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -11,9 +11,14 @@
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
+  import BatchResult from '../components/BatchResult.svelte'
+  import ConfirmDialog from '../components/ConfirmDialog.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ActionMenu from '../components/ActionMenu.svelte'
   import AudioEncodingPreset from '../components/AudioEncodingPreset.svelte'
+  import SelectionCheckbox from '../components/SelectionCheckbox.svelte'
+  import SelectionToolbar from '../components/SelectionToolbar.svelte'
+  import { createSelection } from '../selection.svelte'
   import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
   import { ruleProfileLabel } from '../rule-profile-label'
 
@@ -464,6 +469,14 @@
   let editorExclusions = $state<Exclusion[]>([])
   let editorExclusionsLoading = $state(false)
   let editorExclusionsError = $state<string | null>(null)
+  // The Excluded tab's own selection: which of the shown exclusions are marked for removal.
+  // It is reset whenever a different library is opened, so ids from one library are never
+  // carried into another.
+  const exclusionSelection = createSelection()
+  let exclusionConfirmOpen = $state(false)
+  let exclusionBusy = $state(false)
+  let exclusionOutcome = $state<{ succeeded: number; failures: { id: number; code: string; message: string }[] } | null>(null)
+  let exclusionIds = $derived(editorExclusions.map((exclusion) => exclusion.id))
   // Per-library eligible/skipped tallies for the list cards (counts only — see /api/candidates/summary).
   let summaries = $state<Record<number, { eligible: number; skipped: number }>>({})
   let form = $state<SaveLibrary>(blankForm())
@@ -586,6 +599,8 @@
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
   // Music, images for Photo, and everything for a mixed "Other" library that may hold any of them.
   const showVideoOptions = $derived(isVideoType(form.mediaType))
+  // Mirrors the server: soundtracks must be re-encoded. With a downmix, each file's stereo tracks are still searched.
+  const soundtrackSearchAvailable = $derived(['aac', 'opus', 'mp3'].includes(form.videoAudioCodec ?? ''))
   const showAudioOptions = $derived(isAudioType(form.mediaType))
   const showImageOptions = $derived(isImageType(form.mediaType))
 
@@ -1022,6 +1037,48 @@
     }
   }
 
+  // The Excluded tab's selection. Shift-clicking extends the range over the shown rows, and the
+  // header checkbox picks every shown row — the whole list, because this list is not paged.
+  function toggleExclusionSelection(id: number, extend: boolean) {
+    exclusionSelection.toggle(id, exclusionIds, extend)
+  }
+
+  function toggleSelectAllExclusions() {
+    if (exclusionSelection.isEverySelected(exclusionIds)) exclusionSelection.clear()
+    else exclusionSelection.selectAll(exclusionIds)
+  }
+
+  function askRemoveExclusions() {
+    if (exclusionSelection.count === 0 || exclusionBusy) return
+    exclusionOutcome = null
+    exclusionConfirmOpen = true
+  }
+
+  async function runRemoveExclusions() {
+    if (exclusionSelection.count === 0 || exclusionBusy) return
+    const ids = [...exclusionSelection.ids]
+    exclusionBusy = true
+    editorExclusionsError = null
+    try {
+      const result = await api.batchRemoveExclusions(ids)
+      const removed = new Set(result.succeeded)
+      // The rows that were lifted leave the list; the ones that failed stay picked, so the
+      // operator can try them again without picking them a second time.
+      editorExclusions = editorExclusions.filter((exclusion) => !removed.has(exclusion.id))
+      exclusionSelection.remove([...removed])
+      exclusionOutcome = { succeeded: result.succeeded.length, failures: result.failures }
+      if (editingId) {
+        // A file that is no longer excluded may be offered for optimisation again.
+        await loadEditorCandidates(editingId)
+      }
+    } catch (err) {
+      editorExclusionsError = err instanceof Error ? err.message : i18n.m.libraries.error_remove_exclusion
+    } finally {
+      exclusionBusy = false
+      exclusionConfirmOpen = false
+    }
+  }
+
   function startAdd() {
     form = blankForm()
     if (options.mediaTypes.length) form.mediaType = options.mediaTypes[0]
@@ -1123,6 +1180,7 @@
         library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
       adaptiveAudioQuality: library.adaptiveAudioQuality ?? false,
       adaptiveImageQuality: library.adaptiveImageQuality ?? false,
+      adaptiveSoundtrackQuality: library.adaptiveSoundtrackQuality ?? false,
       imagePerceptualReportingEnabled: library.imagePerceptualReportingEnabled ?? false,
       imagePerceptualGateEnabled: library.imagePerceptualGateEnabled ?? false,
       minimumImagePerceptualScore: library.minimumImagePerceptualScore ?? null,
@@ -1165,6 +1223,9 @@
     markPristine()
     editorCandidates = []
     editorExclusions = []
+    // A new library has its own exclusions, so the previous library's selection is dropped.
+    exclusionSelection.clear()
+    exclusionOutcome = null
     void loadEditorCandidates(library.id)
     void loadEditorExclusions(library.id)
   }
@@ -1172,6 +1233,9 @@
   function cancelEdit() {
     if (!confirmDiscardIfDirty()) return
     markPristine()
+    // Leaving the editor drops the Excluded tab's selection with it.
+    exclusionSelection.clear()
+    exclusionOutcome = null
     if (embedded) onEmbeddedClose?.()
     else router.go('/libraries')
   }
@@ -1221,6 +1285,7 @@
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
       adaptiveAudioQuality: showAudioOptions && form.adaptiveAudioQuality && form.audioQualityGateEnabled,
       adaptiveImageQuality: showImageOptions && form.adaptiveImageQuality && form.imagePerceptualGateEnabled,
+      adaptiveSoundtrackQuality: showVideoOptions && soundtrackSearchAvailable && !!form.adaptiveSoundtrackQuality && !!form.soundtrackQualityGateEnabled,
       imagePerceptualReportingEnabled: showImageOptions && form.imagePerceptualReportingEnabled,
       imagePerceptualGateEnabled: showImageOptions && form.imagePerceptualGateEnabled,
       minimumImagePerceptualScore: toNullableNumber(form.minimumImagePerceptualScore ?? null),
@@ -1391,7 +1456,7 @@
         <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={workflowHeading} data-workflow-heading>{editorTitle}</h1>
         <p class="page-subtitle break-words">{activeTab !== 'rules' ? form.path : room === 'overview' ? i18n.m.libraryWorkflow.overview_intro : room.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : form.path}</p>
       </div>
-      <span class="badge tone-info">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
+      <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
     </div>
   </header>
 
@@ -1495,7 +1560,7 @@
 
 {#snippet roomLink(target: LibraryRoom)}
   <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-20 w-full items-center gap-4 p-5 text-left" aria-label={roomNames[target]} onclick={() => goRoom(target)}>
-    <Icon name={target.includes('advanced') ? 'sliders' : 'arrow-right'} class="h-5 w-5 shrink-0 text-accent" />
+    <Icon name={target.includes('advanced') ? 'sliders' : target === 'encode/quality' ? 'shield-check' : target === 'encode/audio' ? 'waveform' : target === 'encode/images' ? 'copies' : 'film'} class="h-5 w-5 shrink-0 text-accent" />
     <span class="min-w-0 flex-1"><span class="flex flex-wrap items-center gap-2 text-sm font-semibold">{roomNames[target]}{#if overrideCount(target)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(target) })}</span>{/if}</span><span class="mt-1 block text-xs leading-relaxed text-ink-3">{target.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : target === 'encode/quality' ? (showVideoOptions ? i18n.m.libraryWorkflow.quality_summary : i18n.m.quality_first.strategy_intro) : target === 'encode/audio' ? i18n.m.libraryWorkflow.audio_summary : target === 'encode/images' ? i18n.m.libraries.downscale_tip : i18n.m.libraryWorkflow.video_summary}</span></span>
     <Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" />
   </button>
@@ -2068,8 +2133,9 @@
                 <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.note}</p>
               {/if}
               <div class="mt-4 border-t border-line-soft pt-4">
-                <Toggle bind:checked={form.soundtrackQualityGateEnabled}
+                <Toggle bind:checked={form.soundtrackQualityGateEnabled} disabled={form.adaptiveSoundtrackQuality}
                   label={i18n.m.soundtrack_quality.gate_label} hint={i18n.m.soundtrack_quality.gate_hint} />
+                {#if form.adaptiveSoundtrackQuality}<p class="mt-2 text-xs text-ink-3">{i18n.m.soundtrack_quality.adaptive_requires_gate}</p>{/if}
                 {#if form.soundtrackQualityGateEnabled}
                   {#if room === 'verify/advanced'}
                   <div class="mt-4 min-w-0" data-soundtrack-quality-limit>
@@ -2116,6 +2182,13 @@
                   <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.audio_quality.gate_note}</p>
                 {/if}
               </div>
+              {#if form.soundtrackQualityGateEnabled}
+                <div class="mt-4 border-t border-line-soft pt-4" data-adaptive-soundtrack>
+                  <Toggle bind:checked={form.adaptiveSoundtrackQuality} disabled={!soundtrackSearchAvailable && !form.adaptiveSoundtrackQuality}
+                    label={i18n.m.soundtrack_quality.adaptive_label} hint={i18n.m.soundtrack_quality.adaptive_hint} />
+                  {#if !soundtrackSearchAvailable}<p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.soundtrack_quality.adaptive_unavailable}</p>{/if}
+                </div>
+              {/if}
               <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.soundtrack_quality.coverage_note}</p>
             </div>
           {/if}
@@ -2718,7 +2791,7 @@
             <select id="lib-video-audio-codec" aria-label={i18n.m.libraries.audio_track} class="input" value={form.videoAudioCodec ?? ''} onchange={event => changeAudioCodec(event.currentTarget.value, true)}>
               <option value="">{i18n.m.libraries.audio_profile_default}</option>
               <option value="copy">{i18n.m.libraries.audio_copy}</option>
-              {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
+              {#each [['aac', 'AAC'], ['opus', 'Opus'], ['mp3', 'MP3']] as [codec, name]}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec: name })}</option>{/each}
             </select>
           </div>
           {#if room === 'encode/audio/advanced'}<div>
@@ -2924,7 +2997,7 @@
       {#if !embedded && editingId !== null && editingId > 0}
         <section class="card flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
           <div class="min-w-0 flex-1"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
-          <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="search" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
+          <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
         </section>
       {/if}
     {:else if room === 'source'}
@@ -3001,11 +3074,13 @@
     </nav>
   {/if}
 
-  {#if room !== 'overview' && activeTab === 'rules'}
+  {#if room !== 'overview' || activeTab !== 'rules'}
+    <!-- Every configuration view keeps the way into each stage; only a stage being edited is filled. -->
     <nav class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={i18n.m.libraryWorkflow.workflow}>
       {#each workflowStages as stage, index}
-        <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-14 items-center gap-3 px-4 py-3 text-left text-sm {stageRoom === stage.room ? 'text-accent ring-1 ring-inset ring-accent/40' : 'text-ink-2'}" aria-current={stageRoom === stage.room ? 'step' : undefined} onclick={() => goRoom(stage.room)}>
-          <span class="text-xs tabular-nums text-ink-3">{index + 1}</span><span class="min-w-0 break-words font-medium">{stage.title}</span>
+        {@const current = activeTab === 'rules' && stageRoom === stage.room}
+        <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-14 items-center gap-3 px-4 py-3 text-left text-sm {current ? 'bg-accent-fill text-accent-on' : 'text-ink-2'}" aria-current={current ? 'step' : undefined} onclick={() => goRoom(stage.room)}>
+          <span class="text-xs tabular-nums {current ? 'text-accent-on/80' : 'text-ink-3'}">{index + 1}</span><span class="min-w-0 break-words font-semibold">{stage.title}</span>
         </button>
       {/each}
     </nav>
@@ -3020,21 +3095,58 @@
     {#if editorCandidatesLoading}
       <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else}
-      <CandidateTable candidates={editorCandidates} scoped />
+      <CandidateTable
+        candidates={editorCandidates}
+        scoped
+        onchanged={(excluded) => {
+          // An excluded file is never offered for optimisation again, so it leaves the list the
+          // editor keeps as well — the two agree without a reload that would blank the result.
+          editorCandidates = editorCandidates.filter((candidate) => !excluded.includes(candidate.mediaFileId))
+        }}
+      />
     {/if}
   {:else}
     {#if editorExclusionsError}<Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>{/if}
+    {#if exclusionOutcome}
+      <BatchResult
+        succeeded={exclusionOutcome.succeeded}
+        failures={exclusionOutcome.failures}
+        title={i18n.m.libraries.batch_unexclude_result}
+        ondismiss={() => (exclusionOutcome = null)}
+      />
+    {/if}
     <p class="mb-3 text-xs text-ink-3">{i18n.m.libraries.excluded_desc_1}<strong>{i18n.m.libraries.excluded_desc_exclude}</strong>{i18n.m.libraries.excluded_desc_2}</p>
     {#if editorExclusionsLoading}
       <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else if editorExclusions.length === 0}
       <div class="rounded-lg border border-dashed border-line p-8 text-center text-sm text-ink-4">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
     {:else}
+      {#if exclusionSelection.count > 0}
+        <SelectionToolbar count={exclusionSelection.count} total={exclusionIds.length} onclear={() => exclusionSelection.clear()}>
+          {#snippet actions()}
+            <button type="button" class="btn" disabled={exclusionBusy} onclick={askRemoveExclusions}>{i18n.m.libraries.batch_unexclude}</button>
+          {/snippet}
+        </SelectionToolbar>
+      {/if}
       <div class="divide-y divide-line-soft rounded-lg border border-line divide-line">
+        <div class="flex items-center gap-3 bg-raised px-3 py-2">
+          <SelectionCheckbox
+            checked={exclusionSelection.isEverySelected(exclusionIds)}
+            indeterminate={!exclusionSelection.isEverySelected(exclusionIds) && exclusionSelection.isSomeSelected(exclusionIds)}
+            label={i18n.m.selection.select_all}
+            onchange={toggleSelectAllExclusions}
+          />
+          <span class="text-xs text-ink-3">{i18n.m.libraries.excluded_select_hint}</span>
+        </div>
         {#each editorExclusions as ex (ex.id)}
           {@const auto = ex.source === 'RepeatedFailures'}
-          <div class="flex items-center justify-between gap-3 px-3 py-2">
-            <div class="min-w-0">
+          <div class="flex items-center gap-3 px-3 py-2">
+            <SelectionCheckbox
+              checked={exclusionSelection.isSelected(ex.id)}
+              label={t(i18n.m.selection.select_row, { name: ex.relativePath ?? ex.path })}
+              onchange={(extend) => toggleExclusionSelection(ex.id, extend)}
+            />
+            <div class="min-w-0 flex-1">
               <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
               <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason}{` · ${ex.reason}`}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
             </div>
@@ -3113,14 +3225,15 @@
           </div>
         {/if}
 
-        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-3 border-line">
+        <!-- mt-auto pins the actions to the card's foot so cards sharing a row line their buttons up. -->
+        <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
-          <a class="btn btn-ghost min-h-11" href={`#/libraries/${library.id}/duplicates`}><Icon name="search" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
+          <a class="btn btn-ghost min-h-11" href={`#/libraries/${library.id}/duplicates`}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</a>
           {#if library.lastAutoEnqueueAt}
-            <span class="text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
+            <span class="ml-auto text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
           {/if}
         </div>
       </div>
@@ -3134,6 +3247,24 @@
     </button>
   </EmptyState>
 {/if}
+
+<ConfirmDialog
+  bind:open={exclusionConfirmOpen}
+  title={plural(
+    exclusionSelection.count,
+    i18n.m.libraries.batch_unexclude_title_one,
+    i18n.m.libraries.batch_unexclude_title_other,
+    exclusionSelection.count.toLocaleString(),
+  )}
+  confirmLabel={i18n.m.libraries.batch_unexclude}
+  busy={exclusionBusy}
+  onconfirm={runRemoveExclusions}
+  oncancel={() => { exclusionConfirmOpen = false }}
+>
+  {#snippet body()}
+    <p>{i18n.m.libraries.batch_unexclude_body}</p>
+  {/snippet}
+</ConfirmDialog>
 
 <style>
   /* Match Settings' readable labels and comfortable control targets while retaining

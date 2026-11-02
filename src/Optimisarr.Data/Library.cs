@@ -312,6 +312,9 @@ public sealed class Library
     public bool AdaptiveAudioQuality { get; set; }
     public bool AdaptiveImageQuality { get; set; }
 
+    /// <summary>Whether each re-encoded video soundtrack gets its bitrate chosen by measurement.</summary>
+    public bool AdaptiveSoundtrackQuality { get; set; }
+
     public bool ImagePerceptualReportingEnabled { get; set; }
     public bool ImagePerceptualGateEnabled { get; set; }
     public double? MinimumImagePerceptualScore { get; set; }

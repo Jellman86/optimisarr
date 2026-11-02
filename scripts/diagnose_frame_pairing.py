@@ -7,7 +7,9 @@ from pathlib import Path
 import subprocess
 
 
-def command(ffmpeg, source, candidate, start, seconds, rate, sequential, log_name):
+def command(ffmpeg, source, candidate, start, seconds, rate, sequential, log_name, frame_offset=0):
+    if frame_offset and not sequential:
+        raise ValueError("Candidate offsets require sequential decoding, not input seeking")
     args = [ffmpeg, '-nostdin', '-v', 'error', '-threads', '2']
     for file in (candidate, source):
         if not sequential:
@@ -15,8 +17,11 @@ def command(ffmpeg, source, candidate, start, seconds, rate, sequential, log_nam
         args += ['-threads', '2', '-i', str(file)]
     first = round(start * rate) if sequential else 0
     last = first + round(seconds * rate)
-    trim = f'trim=start_frame={first}:end_frame={last},settb=AVTB,setpts=N*{round(1_000_000/rate)},format=yuv420p'
-    graph = f'[0:v]{trim}[d];[1:v]{trim}[r];[d][r]libvmaf=n_threads=2:model=version=vmaf_v0.6.1:log_fmt=json:log_path={log_name}:shortest=1:repeatlast=0'
+    if first + frame_offset < 0:
+        raise ValueError("Candidate offset would select a negative frame")
+    def trim(offset):
+        return f'trim=start_frame={first + offset}:end_frame={last + offset},settb=AVTB,setpts=N*{round(1_000_000/rate)},format=yuv420p'
+    graph = f'[0:v]{trim(frame_offset)}[d];[1:v]{trim(0)}[r];[d][r]libvmaf=n_threads=2:model=version=vmaf_v0.6.1:log_fmt=json:log_path={log_name}:shortest=1:repeatlast=0'
     return args + ['-lavfi', graph, '-an', '-t', str(seconds), '-f', 'null', '-']
 
 
@@ -36,7 +41,12 @@ def main():
     parser.add_argument('--root', type=Path, required=True, help='New evidence directory; must not exist')
     parser.add_argument('--starts', type=int, nargs='+', required=True)
     parser.add_argument('--seconds', type=int, default=10)
+    parser.add_argument('--frame-offsets', type=int, nargs='+', default=[0],
+                        help='Candidate-only sequential offsets (-2 to 2); must include 0. Diagnostic only.')
     args = parser.parse_args()
+    if 0 not in args.frame_offsets or any(offset < -2 or offset > 2 for offset in args.frame_offsets):
+        parser.error('Frame offsets must include 0 and stay between -2 and 2')
+    args.frame_offsets = list(dict.fromkeys(args.frame_offsets))
     if args.seconds <= 0 or any(t < 0 for t in args.starts):
         parser.error('Window starts must be nonnegative and duration positive.')
     source, candidate = args.source.resolve(strict=True), args.candidate.resolve(strict=True)
@@ -52,18 +62,20 @@ def main():
     rate = float(Fraction(src['avg_frame_rate']))
     if rate <= 0:
         parser.error('Source frame rate is unavailable.')
+    if any(round(start * rate) + offset < 0 for start in args.starts for offset in args.frame_offsets):
+        parser.error('A requested offset selects a negative frame; choose a later window')
     report = {'source': str(source), 'candidate': str(candidate), 'frameRate': rate,
               'note': 'Diagnostic comparisons only; these do not authorize replacement or override verification gates.',
               'windows': []}
     for start in args.starts:
-        for sequential in (False, True):
+        for sequential, offset in [(False, 0)] + [(True, offset) for offset in args.frame_offsets]:
             mode = 'sequential' if sequential else 'seek'
-            name = f'{start}-{mode}'
-            argv = command(args.ffmpeg, source, candidate, start, args.seconds, rate, sequential, name + '.json')
+            name = f'{start}-{mode}' + (f'-offset-{offset:+d}' if offset else '')
+            argv = command(args.ffmpeg, source, candidate, start, args.seconds, rate, sequential, name + '.json', frame_offset=offset)
             (root / (name + '-command.json')).write_text(json.dumps(argv, indent=2))
             result = subprocess.run(argv, cwd=root, capture_output=True, text=True, timeout=1800)
             (root / (name + '-stderr.log')).write_text(result.stderr)
-            item = {'start': start, 'mode': mode, 'exitCode': result.returncode}
+            item = {'start': start, 'mode': mode, 'offsetFrames': offset, 'exitCode': result.returncode}
             if result.returncode == 0:
                 scores = json.loads((root / (name + '.json')).read_text())
                 item.update(scores=scores['pooled_metrics']['vmaf'], frames=len(scores['frames']))

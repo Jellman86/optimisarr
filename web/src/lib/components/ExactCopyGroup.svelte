@@ -63,7 +63,7 @@
     <Thumbnail mediaFileId={group.copies[0].id} shape={['Film','Tv'].includes(group.copies[0].libraryType ?? '') ? 'portrait' : 'square'} size="md" />
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-2"><h2 class="break-words text-base font-semibold text-ink">{displayName}</h2>
-        {#if group.reviewKey}<span class="badge" class:badge-ok={savedChoice === 'Keep'}>{savedChoice === 'Keep' ? i18n.m.duplicates.kept : savedChoice === 'Ignore' ? i18n.m.duplicates.ignored : i18n.m.duplicates.unreviewed}</span>{/if}
+        {#if group.reviewKey}<span class="badge {savedChoice === 'Keep' ? 'tone-ok' : savedChoice === 'Ignore' ? 'tone-muted' : 'tone-info'}">{savedChoice === 'Keep' ? i18n.m.duplicates.kept : savedChoice === 'Ignore' ? i18n.m.duplicates.ignored : i18n.m.duplicates.unreviewed}</span>{/if}
       </div>
       <p class="mt-1 text-sm text-ink-3" title={`SHA-256 ${group.sha256}`}>{t(i18n.m.duplicates.copies,{count:group.totalCopies || group.copies.length})} · {formatSize(group.sizeBytes)} · {i18n.m.duplicates.fullBytes}</p>
     </div>
@@ -87,13 +87,13 @@
           <div class="copy-heading flex min-w-0 items-start gap-4">
             <Thumbnail mediaFileId={copy.id} shape={['Film','Tv'].includes(copy.libraryType ?? '') ? 'portrait' : 'square'} size="lg" />
             <div class="min-w-0 flex-1">
-              {#if copy.libraryName}<span class="badge mb-2">{copy.libraryName}</span>{/if}
+              {#if copy.libraryName}<span class="badge tone-neutral mb-2">{copy.libraryName}</span>{/if}
               <h3 class="break-words text-sm font-semibold leading-relaxed text-ink">{copy.relativePath.split(/[\\/]/).at(-1)}</h3>
-              <p class="mt-2 text-sm text-ink-3">{formatSize(group.sizeBytes)}</p>
+              <!-- Copies are byte-identical, so size lives in the group header; the location is what tells them apart. -->
+              {#if /[\\/]/.test(copy.relativePath)}<p class="mt-1 break-all font-mono text-xs leading-relaxed text-ink-2">{copy.relativePath}</p>{/if}
               {#if copy.hardLinkCount === null || copy.hardLinkCount > 1}<p class="mt-2 text-xs leading-relaxed text-ink-3">{copy.hardLinkCount === null ? i18n.m.duplicates.unknown : t(i18n.m.duplicates.linked,{count:copy.hardLinkCount})}</p>{/if}
             </div>
           </div>
-          {#if /[\\/]/.test(copy.relativePath)}<p class="mt-4 break-all font-mono text-sm leading-relaxed text-ink">{copy.relativePath}</p>{/if}
           {#if copy.aliases?.length}
             <div class="mt-4 border-t border-line pt-3"><p class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.aliases}</p>
               {#each copy.aliases as alias (alias.id)}<p class="mt-2 break-all text-xs leading-relaxed text-ink-3">{alias.libraryName} · {alias.relativePath}</p>{/each}
@@ -130,8 +130,6 @@
   .copy-card { display:flex; flex-direction:column; min-width:0; container-type:inline-size; padding:1rem; border:1px solid var(--line); border-radius:var(--radius-md,12px); background:var(--raised); }
   .keep-control { margin-top:auto; padding-top:1rem; }
   .copy-kept { border-color:var(--accent-line); background:var(--accent-soft); }
-  .badge { color:var(--ink-2); background:var(--panel); }
-  .badge-ok { color:var(--accent-strong); background:var(--accent-soft); }
   .copy-card h3, summary h2 { overflow-wrap:anywhere; min-width:0; max-width:100%; }
   @container (max-width:14rem) { .copy-heading { flex-direction:column; } }
   .keep-control:has(input:disabled) { cursor:default; }

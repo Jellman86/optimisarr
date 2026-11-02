@@ -141,7 +141,12 @@ These offscreen captures use the renderer's flat snapshot background and bordere
 the live macOS 26 popover uses system glass. See [capture provenance](../../docs/images/README.md#sidecar-captures).
 
 Click the Precession icon in the menu bar for the compact activity panel. It shows the Mac's name,
-connection state, current jobs or **Ready for work**, and CPU/GPU/free-space readings. Unknown values
+connection state, current jobs or **Ready for work**, and CPU/GPU/work-capacity readings. A connected
+worker advertising zero capacity shows **Waiting for capacity** with guidance to check the work
+folder and macOS memory pressure. This capacity includes resource checks and reservations: zero
+can mean unavailable disk or memory evidence, not a full disk. The notice clears automatically
+when a later check-in reports capacity. Running jobs and resource admission rules are unchanged.
+Unknown values
 stay unavailable; macOS does not expose VideoToolbox media-engine utilisation, so the GPU reading
 must not be interpreted as encoder utilisation.
 

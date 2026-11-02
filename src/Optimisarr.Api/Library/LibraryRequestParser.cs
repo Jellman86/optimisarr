@@ -85,7 +85,8 @@ internal readonly record struct ParsedLibrary(
     bool AdaptiveAudioQuality = false,
     bool AdaptiveImageQuality = false,
     // The automatic surround-layout conversion is on unless the request turns it off.
-    bool NormalizeOpusChannelLayout = true);
+    bool NormalizeOpusChannelLayout = true,
+    bool AdaptiveSoundtrackQuality = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -538,6 +539,15 @@ internal static class LibraryRequestParser
             }
         }
 
+        if (request.AdaptiveSoundtrackQuality == true && (mediaType is MediaType.Music or MediaType.Photo
+            || videoAudioCodec is null || videoAudioCodec.Equals("copy", StringComparison.OrdinalIgnoreCase)
+            || request.SoundtrackQualityGateEnabled != true || !AudioQualityGate.ValidLimit(request.MaximumSoundtrackQualityDistance)))
+        {
+            error = "Adaptive soundtracks require a video or mixed library that re-encodes audio, "
+                + "and the soundtrack quality gate with an explicit limit.";
+            return false;
+        }
+
         parsed = new ParsedLibrary(
             name,
             path,
@@ -617,7 +627,8 @@ internal static class LibraryRequestParser
             request.MinimumImagePerceptualScore,
             request.AdaptiveAudioQuality ?? false,
             request.AdaptiveImageQuality ?? false,
-            request.NormalizeOpusChannelLayout ?? true);
+            request.NormalizeOpusChannelLayout ?? true,
+            request.AdaptiveSoundtrackQuality ?? false);
         error = null;
         return true;
     }

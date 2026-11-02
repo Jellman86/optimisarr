@@ -17,65 +17,68 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it. The converse matters too: an entry left
   describing finished work as outstanding sends effort at an item that has none.
-- Status claims last verified against the repository: **2026-10-21**.
+- Current delivery status reconciled against `dev` and the 0.2.24 release: **2026-10-28**, with
+  soundtrack, worker-search and release-check documentation reconciled again on **2026-11-02**.
+  Individually dated engineering and security assessments retain their own scope.
 
-## Current hardening follow-up, reviewed 2026-10-21
+## Current delivery and follow-up, reconciled 2026-10-28
 
-The [sidecar handoff](development/sidecar-hardening-handoff.md) reconciles the older
-trial and pairing records with current implementation. Priorities are retained real-source playback evidence and broader quality coverage.
-Windows installer signing is deferred indefinitely: a certificate is outside the operator's
-budget and the SignPath application was declined. Unsigned preview distribution continues;
-signing is not a release blocker.
-Correlated opt-in diagnostic capture, local exports and playback artwork shipped in 0.2.23;
-see the [release acceptance](engineering/hardware-validation/2026-10-09-release-0.2.23.md),
-which distinguishes installed fleet checks from disposable media tests and records the
-pending Mac upgrade. Audio reports and explicit gates are implemented in
-development. Experimental SDR still-image reports and explicit SSIMULACRA2 gates are
-implemented in this development slice; see [qualification and limits](engineering/hardware-validation/2026-10-10-image-perceptual-quality.md).
-[PR #415](https://github.com/Jellman86/optimisarr/pull/415) merged into `dev` as
-`2bfdc99b`, adding bounded audio/image quality selection, shared native execution, conditional
-Swift proof, live admission, neutral capacity returns and audio assessment input restrictions.
-The merge is not installed-fleet acceptance; automatic protocol-11 placement remains disabled. Full parity work resumed on 15 October;
-the [parity checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-15-october-2026)
-records signed Mac helper/metadata packaging, verified coverage and the remaining work. Complete native packaging, restart recovery and
-the remaining audio/image parity before returning to perceptual dedupe or exact-copy actions.
-Completed slices belong in the changelog; do not treat the historical trial's size holds
-or VMAF v0 policy as current behavior.
-Investigation-grade diagnostics ([#242](https://github.com/Jellman86/optimisarr/issues/242))
-closed as complete on 2026-10-18 against the shipped schema-v4 capture documented in
-[troubleshooting](troubleshooting/diagnostics.md). The active feature priority is audio/image
-quality-first parity ([#332](https://github.com/Jellman86/optimisarr/issues/332), merged
-[#415](https://github.com/Jellman86/optimisarr/pull/415)): the Linux native-work journal
-storage and an unconnected Linux-only bootstrap/restoration foundation are now in `dev`
-with Quark test evidence. **Operator decision, 21 October 2026:** Optimisarr is a home-lab
-application, so crash and restart recovery is the worker qualification bar. Power-loss
-durability is a recorded limit rather than a release gate, the durable journal stays unwired,
-and protocol 11 is enabled on workers using their existing in-process accounting and owned-scratch
-recovery. Replacement remains gated by the server's independent final verification.
-Picard (Windows/NVIDIA) and Scott's Mac are reachable again at the later 2026-10-19 check.
-Picard passes the [49-case Windows journal process-death matrix](engineering/hardware-validation/2026-10-19-windows-journal-process-death.md);
-physical power-loss and exact-package qualification remain open. Dedupe file actions
-remain deferred behind #332. The 20 October
-[Linux scratch-open follow-up](engineering/hardware-validation/2026-10-20-linux-scratch-open-flags.md)
-corrects ARM64 directory/no-follow flags with pure/native Quark tests and a separate ARM64
-syscall-emulation probe; physical Linux ARM64 execution remains unqualified. Mac and Picard
-are reachable again at the later 20 October check and pass fresh exact-source shared suites
-(Mac 765, Picard 882); the qualification record distinguishes this from installed-package
-and physical Linux ARM64 acceptance. Merged D3 work to date is safety fencing only and enables no
-cleanup action. The 50 fps VMAF report
-([#406](https://github.com/Jellman86/optimisarr/issues/406)) closed on 2026-10-19 after the
-reporter confirmed both fixes on the exact episode; it ships in the next stable release.
+[0.2.24 is released](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.24).
+Experimental quality-first AAC/Opus/MP3 and JPEG/WebP workflows run on the server
+and compatible protocol-11 workers. Operators choose explicit targets; existing
+libraries retain saved settings. Bounded searches, retained evidence and final
+verification protect replacement. This is shipped functionality, not a draft
+#415 or disabled-placement milestone.
 
-The [20 October native image workflow acceptance](engineering/hardware-validation/2026-10-20-native-image-workflows.md)
-records JPEG/WebP on Picard and the signed Mac runtime, including actual Mac disk and RAM
-runs, response replay, final verification, repeat replacement and exact rollback. These are
-isolated generated-fixture trials, not installed-package lifecycle or physical power-cut proof.
+The [release qualification record](https://github.com/Jellman86/optimisarr/releases/download/v0.2.24/Optimisarr-0.2.24-qualification.json)
+records the exact tag and package hashes. Windows/NVIDIA, macOS/Apple Silicon and
+Linux/Intel each passed eight isolated audio/photo cases: AAC, Opus, MP3, audio
+rejection, JPEG, WebP, metadata retention and image rejection. The selected cases
+exercise strict worker verification, original preservation and replacement/rollback.
+Windows checked upgrade and sustained health preserved pairing; Mac distribution
+signature, Gatekeeper and app/DMG stapling checks passed. Windows long-path audio
+assessment is fixed. These generated-fixture and installed-package checks do not
+certify every source, lifetime boundary, driver or full-length file.
+
+Personal quality check polish and video close inspection shipped in 0.2.24.
+The [#441 acceptance follow-up](reviews/2026-10-28-personal-quality-check-acceptance.md)
+adds keyboard/focus and recovery fixes, automated accessibility checks, 200% text
+and zoom-equivalent layouts, and refreshed screenshots in `dev`. Subsequent
+`dev` changes add a retained-file frame-offset diagnostic (#459) and explain zero
+Mac work capacity (#460); those are not part of 0.2.24. The reporter-specific
+alignment and zero-capacity investigations remain separate from those fixes.
+
+**Active feature priority remains [#332](https://github.com/Jellman86/optimisarr/issues/332).**
+Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
+encodes, including supported stereo-downmix references. The search runs on the server; the final
+candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
+retry/reconnect, history/export and package-lifetime qualification remain open.
+The [current parity
+checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-28-october-2026) separates
+delivered work from remaining acceptance. Complete those obligations before perceptual dedupe or
+exact-copy file actions.
+
+**The 21 October operator decision still applies:** crash and restart recovery is
+the home-lab worker qualification bar. Power-loss durability is a recorded limit,
+not a release gate. The unused durable .NET journal was archived in #434; do not
+restart its OS adapters/bootstrap as an active #332 requirement. Windows/Linux
+workers retain in-process resource admission and owned-scratch recovery. Mac anchored
+accounting and its dated recovery evidence remain platform-specific; full
+reboot/remount and every packaged lifetime boundary are not established.
+
+The [sidecar handoff](development/sidecar-hardening-handoff.md) and dated hardware
+records retain investigation history. Physical AMD VA-API and Linux ARM64 execution
+remain unqualified. Windows installer signing remains deferred: unsigned preview
+status is explicit and is not a release blocker. Real-source playback evidence and
+bounded security work below continue alongside parity; neither permits weakening
+verification or original-file safety.
 
 ## Security hardening priorities, reviewed 2026-10-21
 
 These are independently assessed recommendations, not blanket acceptance of a review's
-proposed fixes. Deliver bounded slices alongside the remaining #332 qualification; none
-authorises deployment changes or enables protocol 11.
+proposed fixes. Deliver bounded slices alongside the remaining #332 qualification.
+Protocol-11 audio/image placement is already released; these recommendations do not
+claim that the additional security work is complete.
 
 1. **Library path safety: first slice in development.** Skip linked files and linked-directory
    descent, and refuse visible aliases in existing inventory before source reads, worker
@@ -126,7 +129,56 @@ authorises deployment changes or enables protocol 11.
    sidecar-only operation and current stricter native audio/image rules. Quarantine is a
    recovery window, not proof that worker measurements are truthful.
 
-## Up next (priority order, updated 2026-10-21)
+## Before every release: release regression check (added 2026-11-01)
+
+CI already runs the container smoke tier and most focused regressions on every push and tag, but
+its generated fixtures missed the real-media defects found in late October. Physical-worker
+qualification runs exist (0.2.24 was qualified on Windows/NVIDIA, macOS/Apple Silicon and
+Linux/Intel), but they are a hand-picked matrix run from source-built launchers, and no per-tag run
+forces the fleet matrix, the packaged sidecars and the house corpus to pass together. Those defects came from properties of real
+library files, each cited to the change that documents it:
+
+- lossy AAC soundtrack sources whose sampled windows missed their length, `DURATION-eng`-only
+  mkvmerge statistics, stale statistics copied into FFmpeg outputs and MP4 outputs that cannot keep
+  a track title (#469);
+- an FFmpeg-muxed MKV whose statistics mkvpropedit later rewrote, leaving only `DURATION-eng` (#470);
+- near-full-scale sources whose lossy encodes decode above full scale (#471);
+- surround and mono soundtracks refused instead of assessed through the library's downmix (#472);
+- large subtitle-heavy sources whose per-claim timeline probe outlived the worker's request (#466);
+- This build includes the #474 near-start Opus decoder pre-roll fix. Requalify checksum-pinned
+  negative-start Opus clips against the current build and record their observed outcomes; the former
+  first-window refusal is no longer an accepted product limitation. Missing track duration and
+  unsupported picture/container offsets remain fail-closed limitations.
+
+The release check closes that gap:
+
+- **Generated fixtures stay the public baseline.** CI gains fixtures that need no private media: a
+  lossy-AAC soundtrack source, a titled source written to MP4 (where the output cannot keep the
+  title), a near-full-scale source whose encodes decode above full scale, an FFmpeg-muxed MKV whose
+  tags emulate mkvpropedit statistics (the real tool is not in the image; real mkvpropedit files are
+  covered by the house corpus), and a mono track through the downmix. Surround through the downmix
+  is already in `--regression soundtrack-quality`.
+- **A house corpus is an additional, local-only, read-only check.** Short clips copied from the
+  operator's own library, each chosen for one property above, pinned by checksum with the reason it
+  exists. Clips, manifest and full reports stay on that host and are never committed, attached or
+  published; originals are only read. The policy lines in
+  [`development/adaptive-audio-image-parity.md`](development/adaptive-audio-image-parity.md) and
+  [`development/soundtrack-quality-validation.md`](development/soundtrack-quality-validation.md) are
+  updated to say so.
+- **One `release-check` command.** The release-check command tests the exact image and configured
+  acceptance launchers, records package receipts, and uses operator-qualified packaged tool paths.
+  It does not install the MSI or launch and qualify the distributed desktop apps; installed-package,
+  signing and upgrade/recovery evidence remain separate requirements. It runs the smoke tier,
+  applicable focused regressions and house corpus, requiring every named worker. Native-only cases
+  without a native instance are blocked. Reports record the image digest, package hashes, worker
+  protocol versions and tool revisions.
+- **Only a redacted summary leaves the host:** opaque corpus IDs and the property under test, with no
+  source paths, titles, hostnames or library names. [`development/releasing.md`](development/releasing.md)
+  requires that summary for the exact tag; a missing or blocked summary blocks the release.
+- The regression table in [`development/media-acceptance.md`](development/media-acceptance.md)
+  will record each defect by property, never by title, beside the evidence that guards it.
+
+## Up next (priority order, reconciled 2026-10-28)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -349,7 +401,7 @@ authorises deployment changes or enables protocol 11.
      a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
      restart, accepts duplicate progress writes idempotently, and permits completion only from final
      review. Upgraded installations are marked complete and never forced into onboarding. Back retains
-     applied choices, and **Settings → Backup → First-run setup** offers **Run setup again** without
+     applied choices, and **Settings → System → First-run setup** offers **Run setup again** without
      deleting configuration.
      Connections remain explicitly skipped on the final review and can be added later, so an optional
      provider can never block first use.
@@ -901,9 +953,10 @@ authorises deployment changes or enables protocol 11.
         fail-closed behaviour it exists for.
 
      4. **Productionisation.** Drain controls, launch-at-login, sleep/wake, App Nap,
-        cancel-on-quit, and a pre-transfer low-disk refusal have landed. Developer ID signing,
-        notarisation, update packaging, and the full release-build acceptance run remain; neither
-        platform is described as supported until there is real-hardware acceptance evidence.
+        cancel-on-quit, and a pre-transfer low-disk refusal have landed. The 0.2.24
+        coordinated release adds Developer ID signing and notarisation on Mac,
+        checked Windows upgrades, matching sources and selected installed-fleet acceptance.
+        Windows remains an unsigned preview; wider lifetime and hardware coverage remain open.
 
    - **Preserve the verification boundary: implemented in both modes.** New installations default to
      strict verification, which delegates media measurements to a protocol-2 worker; the server
@@ -921,11 +974,11 @@ authorises deployment changes or enables protocol 11.
      encoding, and only the hardware encoders/decoders proved available on that machine. NVIDIA
      CUDA VMAF may be advertised when the bundled tools prove it; CPU VMAF remains the portable
      fallback.
-   - **macOS sidecar application: started.** Ship a signed and notarized service with a minimal menu-bar UI
-     and durable launch-at-login/background-service behaviour. Support Apple Silicon first, probe
-     rather than assume VideoToolbox capabilities, and use CPU VMAF because Apple GPUs have no VMAF
-     compute backend. Test sleep/wake, App Nap, low-disk handling, upgrades, cancellation, and
-     permission prompts without requiring broad access to the user's filesystem.
+   - **macOS sidecar application: released; broader qualification continues.** The signed and
+     notarized menu-bar app supports Apple Silicon with probed VideoToolbox capabilities
+     and CPU VMAF. Broader lifecycle acceptance covers launch-at-login/background operation,
+     sleep/wake, App Nap, low-disk handling, upgrades, cancellation and permission prompts
+     without requiring broad access to the user's filesystem.
      **Landed so far:** `sidecars/macos`, a Swift package (not an `.xcodeproj`, so the build is
      reviewable as text) building a menu-bar app that pairs by URL and PIN, keeps its
      credential in the Keychain, and checks in on the interval the server states. It now bundles an
@@ -1003,12 +1056,10 @@ authorises deployment changes or enables protocol 11.
       available. Promote it from experimental only if the bounded search saves meaningful space or avoids failures without
       creating surprising encode time, unstable choices, or weaker verification.
 
-11. **Tell an operator a newer version exists, without telling anyone anything.** Optimisarr has no
-    way to say "there is a newer release" or "this sidecar is older than the server it is paired
-    to". The first is why a fix can sit unnoticed for weeks; the second is why a Mac ran a build two
-    commits behind a fix it needed and nothing on the page could have said so. YA-WAMF already
-    solves the release half, and its design is worth reusing — but its privacy posture is not, and
-    the difference matters more here than the mechanism does.
+11. **Tell an operator a newer version exists, without telling anyone anything.**
+    Sidecar-versus-server release-version comparison is implemented using existing check-ins.
+    External discovery of a newer server release remains planned. The external-release design below
+    remains proposed; its privacy posture matters as much as the mechanism.
 
     - **What YA-WAMF does, and which parts to take.** `backend/app/utils/version.py` keeps the
       comparison pure and free of I/O, so "is a newer release available?" is deterministic and
@@ -1070,12 +1121,9 @@ authorises deployment changes or enables protocol 11.
       ever, and a worker machine behind a firewall with no route out still learns it is behind.
       With the check disabled, the heartbeat carries no such field and nothing is asked of anyone.
 
-    - **Sidecar version skew needs no network at all, and should land first.** Workers now report
-      their own build on pairing and on every check-in, so the controller can already tell that a
-      paired sidecar is older than the controller expects, purely from data it holds. That is the
-      most useful piece of this entry, it carries none of the privacy question, and it should ship
-      independently rather than waiting behind the release check. It also covers the common case
-      directly: most fleets are behind because someone upgraded the container and not the machines.
+    - **Sidecar version skew is implemented without external requests.** Sidecar-versus-server
+      release-version comparison is implemented using existing check-ins. External discovery of a
+      newer server release remains planned.
 
     - **Evidence to call it complete.** A test that boots with no configuration and proves no
       outbound request is attempted; a test that the enabled check makes exactly one request
@@ -1129,32 +1177,17 @@ authorises deployment changes or enables protocol 11.
       recommending the sidecar for encoding; and one real end-to-end run on an Apple Silicon host
       that transcodes, verifies, and replaces a file.
 
-13. **Run the per-title quality search where the encode runs.** The search is the expensive half of
-    an adaptive job — a bounded set of sample encodes, each scored with libvmaf — and it runs on the
-    control plane while the cheap half is handed to whichever machine has the GPU. That is the wrong
-    way round, and on 2026-09-14 it was also the reason "prefer a worker" did nothing at all: a
-    worker cannot be offered a job until a quality has been chosen, the choice is made by the
-    server, and the server went straight on to encode it. There was no instant at which the
-    preference could apply. The handback shipped that day — return the job to the queue once the
-    quality is chosen — makes the setting work, but it is a stopgap for this entry rather than the
-    answer.
+13. **Run the per-title quality search where the encode runs.** Implemented: compatible workers
+    perform the bounded per-title VMAF search and full encode under one lease. The server owns the
+    search bounds, validates the evidence and retains final replacement authority. The constraints
+    and qualification criteria below describe that implementation and its acceptance boundaries.
 
-    - **One lease covers the search and the encode.** This is the decision that shapes everything
-      else. If one worker searches and another encodes, the source crosses the network twice, and
-      these are whole video files; today it effectively crosses twice anyway, because the server
-      reads it locally to search and the worker then downloads it to encode. Binding both to a
-      single assignment moves it **once**, which is a larger saving than the processor time that
-      prompted the idea. It also removes the round trip through the queue that the handback adds.
+    - **One lease covers the search and the encode.** The worker downloads the source once, uses
+      it for the bounded sample search and full encode, and returns evidence under that lease.
 
-    - **The protocol grows a shape, and two clients implement it.** An assignment today names one
-      encoder and one quality, and delivery is a candidate file. A searching assignment must instead
-      carry the range to search, the measurement commands for each sample, and the policy the
-      evidence will be held to — and the worker returns a chosen value and its evidence before any
-      full encode begins. Much of this exists: `QualityRequirement` already ships per-window libvmaf
-      commands, and `/api/workers/leases/{id}/quality` already takes raw libvmaf logs back. This is
-      an extension of a conversation the two ends already have. It is still a versioned contract
-      with a Swift implementation and a C# one, so the shape wants settling before either is
-      written, not during.
+    - **A versioned search contract is implemented in Swift and C#.** Assignments carry the
+      search bounds and per-sample measurement commands. Workers return raw evidence, and the server
+      returns the next step or a frozen full-encode command.
 
     - **The control plane still owns the decision.** It sends the bounds, the sample windows and the
       thresholds; the worker measures and reports. A worker proposing a value the server did not
@@ -1162,30 +1195,27 @@ authorises deployment changes or enables protocol 11.
       taken under an easier policy is evidence about something else. The server records the chosen
       value against the job exactly as it does now, so a recovery retry stays anchored to it.
 
-    - **Safety is unchanged, and that is what makes this worth attempting.** A search only chooses a
-      setting; it never authorises a replacement. The finished encode still clears the structural,
-      decode, duration, tail, stream, size and configured VMAF gates on this machine before anything
-      is replaced. A worker that chooses badly produces an encode that then fails verification, not
-      a bad replacement. So this is an efficiency change rather than a trust one.
+    - **Final verification still governs replacement.** A search chooses a setting; it cannot
+      authorise replacement. The full encode must pass structural, decode, duration, tail, stream,
+      size and configured VMAF gates on the assigned verification host. The server validates strict
+      worker evidence and retains replacement authority.
 
-    - **Read why it lives in the dispatcher before moving it.** The feature is still marked
-      Experimental above, and its notes say the search deliberately does not cache a decision across
-      work. That is about caching rather than placement, but the two were written together, and ten
-      minutes spent on the reasoning is cheaper than discovering it afterwards.
+    - **Search evidence belongs to one job and encoder.** Experimental per-title search does not
+      reuse another job’s chosen value; a recovery retry remains anchored to the recorded decision.
 
     - **Evidence to call it complete.** A worker that searches and encodes under one lease with the
       source transferred once, proved by counting the transfers; a worker's proposed quality refused
       when it is outside the offered bounds or its evidence was taken under a different policy; the
-      server falling back to its own search when no worker can take the job, so a fleet that is
-      absent or incapable never stalls a library; both sidecars implementing the same contract
+      server falling back to its own search when no worker can take the job and placement permits
+      local execution, while worker-only jobs wait for compatible workers; both sidecars implementing the same contract
       against the same tests; and a real adaptive job completing end to end on a worker with the
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: reports/gates in development, adaptive standalone audio/image workflows in draft #415; active with parity incomplete, 2026-10-15.** Add
-    understandable, optional quality evidence alongside the existing structural, timing,
-    loudness/clipping, SSIM and metadata checks. Start with measurement-only reporting;
-    An opt-in Zimtohrli gate now uses an explicit operator-selected maximum distance, with
+14. **Perceptual quality for audio and still images: experimental standalone workflows released in 0.2.24; full parity remains active and incomplete, 2026-10-28.**
+    Optional quality evidence complements structural, timing, loudness/clipping,
+    SSIM and metadata checks. Reporting can be used without enabling a gate.
+    An opt-in Zimtohrli gate uses an explicit operator-selected maximum distance, with
     no preset cutoff. Every assessed channel/sample must pass; unavailable evidence blocks
     replacement. Coverage and supported inputs are documented in
     [configuration](setup/configuration.md#audio-quality-reports-and-gates-development).
@@ -1194,10 +1224,10 @@ authorises deployment changes or enables protocol 11.
     records the sources, tradeoffs and platform qualification still needed.
     Track delivery in [issue #332](https://github.com/Jellman86/optimisarr/issues/332).
 
-    - **Image status:** experimental server-local SSIMULACRA2 reports and separate explicit gates
-      are implemented for bounded same-size 8-bit sRGB PNG/JPEG/WebP stills. Animation, other
+    - **Image status:** experimental server and compatible-worker SSIMULACRA2 reports and separate explicit gates
+      are released for bounded same-size 8-bit sRGB PNG/JPEG/WebP stills. Animation, other
       profiles/depths and orientation transforms fail closed. Native tools are packaged across
-      platforms; automatic image worker placement remains disabled pending full parity. Broader photographs, colour
+      platforms; compatible protocol-11 image worker placement is enabled. Broader photographs, colour
       and human-viewing calibration remain planned. Compare against the
       current SSIM and Butteraugli on photographs, edges/text, gradients, colour and alpha.
       Preserve existing SSIM choices and metadata/animation safety. Do not claim unproved
@@ -1208,41 +1238,52 @@ authorises deployment changes or enables protocol 11.
       an optional offline comparator, not a required shipped dependency or runtime fallback.
       This selection does not claim a universal benchmark winner. Mono aggregation must not hide
       missing/swapped channels or override timing, loudness and clipping checks.
-    - **Encoding presets:** codec-aware bitrate starting points are implemented in development
+    - **Encoding presets:** codec-aware bitrate starting points are released
       for standalone audio and explicitly re-encoded video soundtracks. They preserve existing
       settings and never choose a quality gate limit. A bounded sample search for a suitable
-      bitrate is implemented for standalone audio in draft #415, with measured candidates,
-      bounded execution, source/size checks and independent final verification. Adaptive
-      retained soundtracks and the remaining [parity qualification](development/adaptive-audio-image-parity.md)
-      are still outstanding.
+      bitrate is released for standalone audio, with measured candidates,
+      bounded execution, source/size checks and independent final verification. Implemented on
+      dev: opt-in per-soundtrack bitrate selection for local and compatible worker video encodes,
+      including supported stereo-downmix references. The search runs on the server; the final
+      candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
+      retry/reconnect, history/export and package-lifetime qualification remain open. See the
+      remaining [parity qualification](development/adaptive-audio-image-parity.md).
     - **Native Mac lifetime:** app/session/runner wiring now restores independently anchored
       accounting before claims and uses scoped helper execution with positive writer/RAM retirement.
       Signed release-library trials cover AAC/Opus/MP3, actual RAM, busy delivery and parent-kill/
-      same-identity replay. Installed-package and reboot/remount qualification remain open; see the
+      same-identity replay. The selected 0.2.24 installed-package workflows are qualified;
+      broader restart and reboot/remount qualification remain open. See the
       [runtime evidence and limits](engineering/hardware-validation/2026-10-15-native-work-runtime.md).
-    - **Video soundtracks:** opt-in reporting and a separate explicit gate are implemented in
-      development for up to eight retained re-encoded mono/stereo tracks. Frozen removals map
-      source tracks to output order, with language/title/commentary identity and timing checks.
-      Copied audio retains existing preservation checks. Protocol 8/contract 3 keeps strict worker
-      measurement on the worker; unavailable evidence blocks a configured gate. Each track has
-      up to 90 seconds of assessed coverage. Surround/downmix assessment, broader timing/lip-sync
-      qualification and calibrated defaults remain future work. See
+    - **Video soundtracks:** opt-in reporting and a separate explicit gate support up to eight
+      retained re-encoded tracks, with up to 90 seconds of assessed coverage each. Frozen removals
+      map source tracks to output order with timing checks. Retained tracks map in frozen source
+      order and must preserve language identity. Title and commentary identity must also match,
+      except that their absence in an MP4 output is accepted because that container cannot retain
+      them through this path.
+      Assessment supports retained mono/stereo tracks and, when the library downmixes to
+      stereo, mono and known-layout surround references through the same downmix. Retained surround
+      without downmix, unknown surround layouts, and downmixed tracks with an explicit audio filter
+      remain unassessable. Plain soundtrack evidence uses `audio-f32le-48k-video-timeline-v2`;
+      downmix evidence uses `audio-f32le-48k-video-timeline-stereo-downmix-v2`.
+      Strict worker assessment requires protocol 14 and full-verification contract 3;
+      unavailable evidence blocks a configured gate. Copied audio retains existing preservation
+      checks. Broader timing/lip-sync qualification and calibrated defaults remain future work. See
       [coverage and limits](setup/configuration.md#assess-re-encoded-video-soundtracks).
     - **Dependencies:** pinned native tools/models and notices, bounded TDD-backed providers,
       additive/idempotent evidence storage and a versioned worker capability/evidence contract.
       Strict sidecar-only verification must complete the required metric on the worker, with
       no server fallback. New per-library reporting starts off; existing saved choices survive.
     - **Evidence to call it complete:** real good/bad encodes and rollback/cancellation/resource
-      tests on this Mac, PICARD, Quark, Riker and final supported container images; offline
+      tests on supported Windows, macOS and Linux hosts and final supported container images; offline
       installer/bundle and parity checks; a second-order review of alignment, sampling, colour
       and channel preparation; clear UI/tooltips separating unmeasured, measured and failed.
       Thresholds are explicit policies, not a conversion from VMAF or SSIM's numeric scale.
       No listening-panel programme or promised release date is required.
 
 15. **Duplicate detection and safe dedupe for every library type: durable exact-copy
-    review in development, broader matching and cleanup planned, 2026-10-11.** The manual
+    review released, broader matching and cleanup planned, 2026-10-28.** The manual
     [Exact copies review](usage/exact-copies.md) hashes same-sized inventory files within explicitly
-    selected libraries. Development adds durable results, versioned incremental hashes, completed-file
+    selected libraries. Released support includes durable results, versioned incremental hashes, completed-file
     checkpoints, explicit full-content refresh, original read dates and result pagination. Scans
     remain cancellable, rate limited and bounded, and make no changes to media. Libraries now
     provide a direct review entry, explicit cross-library scope, physical-reference deduplication

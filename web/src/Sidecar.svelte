@@ -39,6 +39,9 @@
   let request: AbortController | null = null
   let timer: ReturnType<typeof setTimeout>
   let disposed = false
+  // The theme control names the setting it holds, not the scheme it would switch to: the page
+  // follows the system, or it is pinned to one scheme.
+  const themeLabel = $derived(theme.mode === 'system' ? 'Follow the system theme' : theme.isDark ? 'Dark theme' : 'Light theme')
 
   let serverInput = $state('')
   let codeInput = $state('')
@@ -149,8 +152,8 @@
       {#if server}
         <a class="btn whitespace-nowrap" href={server}><span class="hidden sm:inline">Open</span> Optimisarr<Icon name="arrow-up-right" class="h-3.5 w-3.5" /></a>
       {/if}
-      <button class="btn btn-ghost h-10 w-10 p-0" onclick={() => theme.toggle()} aria-label={theme.isDark ? 'Use light theme' : 'Use dark theme'} title={theme.isDark ? 'Light theme' : 'Dark theme'}>
-        <Icon name={theme.isDark ? 'sun' : 'moon'} class="h-4 w-4" />
+      <button class="btn btn-ghost h-10 w-10 p-0" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
+        <Icon name={theme.icon} class="h-4 w-4" />
       </button>
     </div>
   </header>

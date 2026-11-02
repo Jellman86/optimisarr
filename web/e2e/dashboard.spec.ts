@@ -123,7 +123,7 @@ test('the status bar names the state, and the job list says what is being worked
 
   // Scoped to the page: the sidebar's encoding card names the same file, encoder and figure.
   const main = page.locator('main')
-  await expect(main.getByText('ENCODING', { exact: true })).toBeVisible()
+  await expect(page.locator('.status-strip-label')).toHaveText('Encoding')
   await expect(main.getByText('Harborlight S02E07', { exact: true })).toBeVisible()
   await expect(main.getByText('hevc_qsv')).toBeVisible()
   await expect(main.getByText('68%')).toBeVisible()
@@ -191,7 +191,7 @@ test('the dashboard asks only for jobs still being worked on', async ({ page }) 
   const seen = await mockDashboard(page, { jobs: [] })
 
   await page.goto('/#/')
-  await expect(page.getByText('HOLDING', { exact: true }).or(page.getByText('NOTHING RUNNING', { exact: true }))).toBeVisible()
+  await expect(page.getByText('Holding', { exact: true }).or(page.getByText('Nothing running', { exact: true }))).toBeVisible()
 
   expect(seen.some((request) => request === '/api/jobs?live=true')).toBe(true)
   expect(seen.some((request) => request === '/api/jobs')).toBe(false)
@@ -207,7 +207,7 @@ test('a queue held by playback says so instead of showing an empty page', async 
 
   await page.goto('/#/')
 
-  await expect(page.getByText('HOLDING', { exact: true })).toBeVisible()
+  await expect(page.getByText('Holding', { exact: true })).toBeVisible()
   await expect(page.getByText('Paused while Riker Plex is active (1 stream).').first()).toBeVisible()
 })
 
@@ -236,13 +236,40 @@ test('a queue held by playback names what is playing and who is watching', async
   await expect(reason).toHaveAttribute('title', 'Riker Plex · Example Show · S2E5 · Pilot · alex on Living Room TV\nRiker Plex · Example Film (1999) (paused)')
 })
 
+test('the status strip reads as one tidy block: state over its reason, beside the artwork, without shouting', async ({ page }) => {
+  await mockDashboard(page, {
+    queue: {
+      canStart: false, blockedReason: 'Paused while Riker Plex is active (1 stream).',
+      playbackHolds: [{ watcher: 'Riker Plex', year: null, artist: null, paused: false, kind: 'Episode', title: 'Pilot',
+        series: 'Example Show', season: 2, episode: 5, user: 'alex', device: 'Living Room TV', artworkUrl: '/api/artwork/1' }],
+    },
+  })
+  await page.goto('/#/')
+  const strip = page.locator('.status-strip')
+  const state = strip.getByText('Holding', { exact: true })
+  const reason = strip.locator('.status-strip-reason')
+  await expect(state).toBeVisible()
+  // The reason sits directly under the state, both beside the artwork, so the strip has one visual block.
+  const [stateBox, reasonBox] = [await state.boundingBox(), await reason.boundingBox()]
+  expect(reasonBox!.y).toBeGreaterThan(stateBox!.y + stateBox!.height - 1)
+  expect(Math.abs(reasonBox!.x - stateBox!.x)).toBeLessThan(2)
+  // A playback link reads as text until hovered or focused.
+  await expect(reason).toHaveCSS('text-decoration-line', 'none')
+  await reason.hover()
+  await expect(reason).toHaveCSS('text-decoration-line', 'underline')
+  // The figures share the block's vertical centre.
+  const block = await strip.locator('.status-strip-state').boundingBox()
+  const fact = await strip.locator('.status-strip-fact').first().boundingBox()
+  expect(Math.abs((block!.y + block!.height / 2) - (fact!.y + fact!.height / 2))).toBeLessThan(3)
+})
+
 test('a shut optimise window is reported as waiting, in the server’s own words', async ({ page }) => {
   const waiting = '1418 job(s) waiting for the TV optimise window (00:00–05:00)'
   await mockDashboard(page, { queue: { waitingReason: waiting } })
 
   await page.goto('/#/')
 
-  await expect(page.getByText('WAITING', { exact: true })).toBeVisible()
+  await expect(page.getByText('Waiting', { exact: true })).toBeVisible()
   await expect(page.getByText(waiting).first()).toBeVisible()
 })
 
@@ -251,7 +278,7 @@ test('a queue that should be running but is not is called out rather than drawn 
 
   await page.goto('/#/')
 
-  await expect(page.getByText('NOTHING RUNNING', { exact: true })).toBeVisible()
+  await expect(page.getByText('Nothing running', { exact: true })).toBeVisible()
 })
 
 test('a worker encoding while this server is held reads as work on workers, not a stall', async ({ page }) => {
@@ -271,7 +298,7 @@ test('a worker encoding while this server is held reads as work on workers, not 
   await page.goto('/#/')
 
   const strip = page.getByRole('region', { name: 'State' })
-  await expect(strip.getByText('ON WORKERS', { exact: true })).toBeVisible()
+  await expect(strip.locator('.status-strip-label')).toHaveText('Encoding on workers')
   await expect(strip.getByText('This server: Paused while Riker Plex is active (1 stream).')).toBeVisible()
   await expect(strip.getByText('1 / 2', { exact: true })).toBeVisible()
 })
@@ -283,7 +310,7 @@ test('an empty queue reads as idle, not as a problem', async ({ page }) => {
 
   await page.goto('/#/')
 
-  await expect(page.getByText('IDLE', { exact: true })).toBeVisible()
+  await expect(page.getByText('Idle', { exact: true })).toBeVisible()
   await expect(page.getByText('Nothing is waiting on a decision from you.')).toBeVisible()
 })
 
@@ -549,7 +576,7 @@ test('unavailable precession graphics leaves a complete still and the app usable
   await expect(mark).toHaveAttribute('data-light-state', 'excited')
   await expect(mark).toHaveAttribute('data-light-motion', 'still')
   expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL().length)).toBeGreaterThan(1000)
-  await expect(page.locator('main').getByText('ENCODING', { exact: true })).toBeVisible()
+  await expect(page.locator('.status-strip-label')).toHaveText('Encoding')
 })
 
 test('reduced-motion sessions never load graphics code', async ({ page }) => {
@@ -830,9 +857,9 @@ test('the status strip reports the queue on every page and pauses it from there'
   await page.goto('/#/libraries')
 
   const strip = page.getByRole('region', { name: 'State' })
-  await expect(strip.getByText('IDLE', { exact: true })).toBeVisible()
+  await expect(strip.getByText('Idle', { exact: true })).toBeVisible()
   await strip.getByRole('button', { name: 'Pause queue' }).click()
-  await expect(strip.getByText('PAUSED', { exact: true })).toBeVisible()
+  await expect(strip.getByText('Paused', { exact: true })).toBeVisible()
   await expect(strip.getByRole('button', { name: 'Resume queue' })).toBeVisible()
 })
 

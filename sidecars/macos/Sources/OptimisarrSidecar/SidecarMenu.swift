@@ -119,11 +119,18 @@ struct SidecarMenu: View {
     /// The state in a word or two, from the table both sidecars share: pause and an armed
     /// shutdown outrank the connection, because they say what the machine will do next.
     private var chipText: String {
-        session.shutdown.armed ? "Shutdown armed" : session.workReadinessNotice != nil ? "Work paused" : session.isPaused ? "Paused" : session.status.readout
+        if session.shutdown.armed { return "Shutdown armed" }
+        if session.workReadinessNotice != nil { return "Work paused" }
+        if session.isPaused { return "Paused" }
+        if session.workCapacityNotice != nil && session.activeJobs.isEmpty { return "Waiting" }
+        return session.status.readout
     }
 
     private var chipTone: Tone {
-        session.shutdown.armed || session.workReadinessNotice != nil ? .warn : session.isPaused ? .info : session.status.tone
+        if session.shutdown.armed || session.workReadinessNotice != nil { return .warn }
+        if session.isPaused { return .info }
+        if session.workCapacityNotice != nil { return .warn }
+        return session.status.tone
     }
 
     // MARK: - Pairing
@@ -181,8 +188,9 @@ struct SidecarMenu: View {
                 }
             }
             cells
-            if let notice = session.workReadinessNotice {
-                Label(notice, systemImage: "pause.circle.fill")
+            if let notice = session.workReadinessNotice ?? session.workCapacityNotice {
+                // Waiting for capacity is not a pause; only the readiness hold pauses new jobs.
+                Label(notice, systemImage: session.workReadinessNotice != nil ? "pause.circle.fill" : "hourglass")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Instrument.warn)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -255,6 +263,7 @@ struct SidecarMenu: View {
         if session.shutdown.armed { return "Finishing before shutdown" }
         if session.workReadinessNotice != nil { return "New jobs paused" }
         if session.isPaused { return "New jobs paused" }
+        if session.workCapacityNotice != nil { return "Waiting for capacity" }
         switch session.status {
         case .unreachable: return "Waiting for the server"
         case .disabledOnServer: return "Worker disabled on server"
@@ -285,6 +294,7 @@ struct SidecarMenu: View {
                 .foregroundStyle(Instrument.ink)
             Text(session.shutdown.armed ? "No new jobs will be accepted." :
                  session.workReadinessNotice != nil ? "Existing working files are retained." :
+                 session.workCapacityNotice != nil ? "Capacity is checked again automatically." :
                  session.lastOutcome.map(Self.lastLine) ?? "New jobs will appear here automatically.")
                 .font(.system(size: 12))
                 .foregroundStyle(Instrument.ink3)
@@ -407,7 +417,7 @@ struct SidecarMenu: View {
                 Rectangle().fill(Instrument.separator).frame(width: 1, height: 34).padding(.horizontal, 12)
                 ReadoutCell(figure: session.gpu.map { Self.percent($0.device) } ?? "—", unit: "GPU load")
                 Rectangle().fill(Instrument.separator).frame(width: 1, height: 34).padding(.horizontal, 12)
-                ReadoutCell(figure: session.freeScratchBytes.map(Self.gigabytes) ?? "—", unit: "Free space")
+                ReadoutCell(figure: session.freeScratchBytes.map(Self.gigabytes) ?? "—", unit: "Work capacity")
             }.monitorCard()
             Text("macOS does not report VideoToolbox media-engine usage.")
                 .font(.system(size: 12))

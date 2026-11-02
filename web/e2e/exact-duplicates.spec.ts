@@ -89,3 +89,36 @@ test('a delayed poll cannot restore running after cancellation', async ({ page }
   expect(await page.getByRole('button', { name: 'Cancel scan' }).count()).toBe(0)
   await expect(page.getByRole('button', { name: 'Find exact copies' })).toBeVisible()
 })
+
+test('scan progress follows bytes read inside a large file and never claims completion early', async ({ page }) => {
+  await mockInventory(page)
+  let progress: Record<string, number> = { checked: 0, skipped: 0, total: 0, bytesRead: 0 }
+  let status = 'Queued'
+  await page.route('**/api/libraries/1/duplicates', route => route.fulfill({ json: { libraryId: 1, status,
+    startedAt: null, finishedAt: null, result: null, error: null, progress } }))
+  await page.goto('/#/inventory/duplicates')
+  await page.getByLabel('Library', { exact: true }).selectOption('1')
+  const bar = page.getByRole('progressbar', { name: 'Reading files' })
+  // Queued work has no measurable fraction yet, so it sweeps rather than showing a misleading 0%.
+  await expect(bar).toBeVisible()
+  await expect(bar).not.toHaveAttribute('aria-valuenow')
+  await expect(page.getByText(/candidates checked/)).toHaveCount(0)
+
+  // One 4 GB film is 40% read while zero whole files have finished: the bar must already show it.
+  status = 'Running'
+  progress = { checked: 0, skipped: 0, total: 2, bytesRead: 4_000_000_000, totalBytes: 10_000_000_000, processedBytes: 4_000_000_000 }
+  await expect(bar).toHaveAttribute('aria-valuenow', '40')
+  await expect(page.getByText('40%', { exact: true })).toBeVisible()
+  await expect(page.locator('progress')).toHaveCount(0)
+
+  progress = { ...progress, checked: 2, processedBytes: 10_000_000_000 }
+  await expect(bar).toHaveAttribute('aria-valuenow', '99')
+
+  // A server without byte totals still moves the bar by settled files.
+  progress = { checked: 1, skipped: 1, total: 4, bytesRead: 10 }
+  await expect(bar).toHaveAttribute('aria-valuenow', '50')
+
+  status = 'Completed'
+  await expect(page.getByText('Scan complete', { exact: true })).toBeVisible()
+  await expect(bar).toHaveCount(0)
+})

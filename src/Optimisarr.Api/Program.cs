@@ -50,6 +50,7 @@ var mediaProbe = new MediaProbeService(ffprobe);
 builder.Services.AddSingleton(mediaProbe);
 builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new SubtitleTimelineProbe(ffprobe));
+builder.Services.AddSingleton<SubtitleTimelineVerdicts>();
 builder.Services.AddSingleton(new InputTimestampOffset(ffprobe));
 builder.Services.AddSingleton(new SourceTimestampFacts(ffprobe));
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
@@ -100,6 +101,7 @@ builder.Services.AddSingleton(_ =>
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddSingleton<IWorkerSampleSource, WorkerSampleSource>();
 builder.Services.AddSingleton<WorkerSamplePreparations>();
+builder.Services.AddSingleton<WorkerSoundtrackSelections>();
 builder.Services.AddSingleton(_ =>
 {
     var service = AudioQualityTools.Create(transcodeFfmpeg, ffprobe, Environment.GetEnvironmentVariable("OPTIMISARR_AUDIO_QUALITY"),
@@ -167,6 +169,8 @@ builder.Services.AddHostedService<TimedCleanupWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
 builder.Services.AddHostedService<LibraryScanWorker>();
 builder.Services.AddHostedService<MediaProbeWorker>();
+builder.Services.AddSingleton<MediaProbeBatches>();
+builder.Services.AddHostedService<MediaProbeBatchWorker>();
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
@@ -294,6 +298,7 @@ app.MapLibraryEndpoints();
 app.MapCalibrationEndpoints();
 
 app.MapMediaAndQueueEndpoints();
+app.MapBatchEndpoints();
 app.MapExactDuplicateEndpoints();
 
 app.MapStatsEndpoints(configDirectory);
@@ -505,7 +510,8 @@ internal sealed record SaveLibraryRequest(
     double? MinimumImagePerceptualScore = null,
     bool? AdaptiveAudioQuality = null,
     bool? AdaptiveImageQuality = null,
-    bool? NormalizeOpusChannelLayout = null);
+    bool? NormalizeOpusChannelLayout = null,
+    bool? AdaptiveSoundtrackQuality = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -602,7 +608,8 @@ internal sealed record LibraryDto(
     double? MinimumImagePerceptualScore,
     bool AdaptiveAudioQuality,
     bool AdaptiveImageQuality,
-    bool NormalizeOpusChannelLayout)
+    bool NormalizeOpusChannelLayout,
+    bool AdaptiveSoundtrackQuality)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -688,7 +695,8 @@ internal sealed record LibraryDto(
         library.MinimumImagePerceptualScore,
         library.AdaptiveAudioQuality,
         library.AdaptiveImageQuality,
-        library.NormalizeOpusChannelLayout);
+        library.NormalizeOpusChannelLayout,
+        library.AdaptiveSoundtrackQuality);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)
