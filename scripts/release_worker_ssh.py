@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import uuid
+import zlib
 from urllib.parse import urlsplit
 
 from acceptance.core import require
@@ -20,23 +21,103 @@ TOOL_KEYS = {"OPTIMISARR_FFMPEG", "OPTIMISARR_FFPROBE", "OPTIMISARR_FFMPEG_VMAF"
 
 # Windows OpenSSH runs every session inside a job object, and the sidecar rightly refuses native
 # memory inside a job whose limits it cannot prove. The supervisor therefore starts this guardian
-# outside the job; it owns the worker and stops its whole tree once the supervisor's pipe closes,
-# however the supervisor ended.
+# outside the job. Its Windows debug lifetime owns every worker descendant, including when
+# the guardian itself crashes. This never changes the installed service or memory policy.
 WINDOWS_GUARDIAN = r'''
-import os, signal, subprocess, sys, threading
-child = subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL, start_new_session=os.name != "nt")
-def stop_when_released():
-    sys.stdin.buffer.read()
-    if child.poll() is None:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True, timeout=10)
-        else:
+import ctypes, os, signal, subprocess, sys, threading
+
+def windows_worker():
+    from ctypes import wintypes as w
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    class ExceptionRecord(ctypes.Structure):
+        _fields_ = [("code", w.DWORD), ("flags", w.DWORD), ("record", w.LPVOID),
+                    ("address", w.LPVOID), ("count", w.DWORD), ("parameters", ctypes.c_size_t * 15)]
+    class ExceptionInfo(ctypes.Structure):
+        _fields_ = [("record", ExceptionRecord), ("first_chance", w.DWORD)]
+    class ProcessInfo(ctypes.Structure):
+        _fields_ = [("file", w.HANDLE), ("process", w.HANDLE), ("thread", w.HANDLE),
+                    ("base", w.LPVOID), ("debug_offset", w.DWORD), ("debug_size", w.DWORD),
+                    ("tls", w.LPVOID), ("start", w.LPVOID), ("image", w.LPVOID), ("unicode", w.WORD)]
+    class DebugInfo(ctypes.Union):
+        _fields_ = [("exception", ExceptionInfo), ("process", ProcessInfo),
+                    ("file", w.HANDLE), ("exit_code", w.DWORD)]
+    class DebugEvent(ctypes.Structure):
+        _fields_ = [("code", w.DWORD), ("pid", w.DWORD), ("tid", w.DWORD), ("info", DebugInfo)]
+    kernel.WaitForDebugEvent.argtypes = [ctypes.POINTER(DebugEvent), w.DWORD]
+    kernel.WaitForDebugEvent.restype = w.BOOL
+    kernel.ContinueDebugEvent.argtypes = [w.DWORD, w.DWORD, w.DWORD]
+    kernel.ContinueDebugEvent.restype = w.BOOL
+    kernel.DebugSetProcessKillOnExit.argtypes = [w.BOOL]
+    kernel.DebugSetProcessKillOnExit.restype = w.BOOL
+    kernel.CloseHandle.argtypes = [w.HANDLE]
+    kernel.CloseHandle.restype = w.BOOL
+    # DEBUG_PROCESS includes descendants without putting them in an unmeasurable job.
+    # Windows kills every debuggee if this guardian exits, including a crash or task kill.
+    child = subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL, creationflags=0x00000001)
+    if not kernel.DebugSetProcessKillOnExit(True):
+        os._exit(1)
+    def stop_when_released():
+        try:
+            sys.stdin.buffer.read()
+        finally:
+            os._exit(1)
+    threading.Thread(target=stop_when_released, daemon=True).start()
+    initial_breakpoints = set()
+    while True:
+        event = DebugEvent()
+        if not kernel.WaitForDebugEvent(ctypes.byref(event), 1000):
+            if ctypes.get_last_error() in (121, 258):
+                continue
+            os._exit(1)
+        status = 0x00010002  # DBG_CONTINUE
+        if event.code == 1:
+            # Handle only the loader's first breakpoint; pass application exceptions back
+            # to their normal handlers, including the CLR's managed exception machinery.
+            if event.info.exception.record.code == 0x80000003 and event.pid not in initial_breakpoints:
+                initial_breakpoints.add(event.pid)
+            else:
+                status = 0x80010001  # DBG_EXCEPTION_NOT_HANDLED
+        elif event.code in (3, 6):
+            # The debugging subsystem closes process/thread handles at exit. Image/DLL
+            # file handles belong to the debugger and must be closed explicitly.
+            handle = event.info.process.file if event.code == 3 else event.info.file
+            if handle:
+                kernel.CloseHandle(handle)
+        if event.code == 5:
+            initial_breakpoints.discard(event.pid)
+        root_exited = event.code == 5 and event.pid == child.pid
+        code = event.info.exit_code if root_exited else None
+        if not kernel.ContinueDebugEvent(event.pid, event.tid, status):
+            os._exit(1)
+        if root_exited:
+            # Even a successful root may have left a tool running. Kernel-owned debug
+            # membership retires those descendants when this guardian exits.
+            return ctypes.c_int32(code).value
+
+def posix_worker():
+    child = subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL, start_new_session=True)
+    def stop():
+        try:
             os.killpg(child.pid, signal.SIGKILL)
-threading.Thread(target=stop_when_released, daemon=True).start()
-code = child.wait()
-sys.stdout.flush()
-sys.stderr.flush()
-os._exit(code if code >= 0 else 1)
+        except ProcessLookupError:
+            pass
+    def stop_when_released():
+        sys.stdin.buffer.read()
+        stop()
+    threading.Thread(target=stop_when_released, daemon=True).start()
+    try:
+        return child.wait()
+    finally:
+        stop()
+
+try:
+    code = windows_worker() if os.name == "nt" else posix_worker()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code if code >= 0 else 1)
+except BaseException:
+    # A broken event loop must terminate its debuggees, never detach them.
+    os._exit(1)
 '''
 
 # A remote Python supervisor owns only its child tree. EOF, missing keepalives or the
@@ -61,7 +142,9 @@ if os.name == "nt":
         process = subprocess.Popen([sys.executable, "-c", WINDOWS_GUARDIAN, *request["command"]], env=env,
             stdin=subprocess.PIPE, creationflags=0x01000000)
     except OSError:
-        process = None
+        sys.stderr.write("Windows acceptance cannot leave the SSH job; no worker was started.\n")
+        sys.stderr.flush()
+        os._exit(2)
 if process is None:
     process = subprocess.Popen(request["command"], env=env, stdin=subprocess.DEVNULL,
         start_new_session=os.name != "nt")
@@ -71,16 +154,28 @@ try:
         if stop.wait(.5) or time.monotonic() - last[0] > 45 or time.monotonic() - started > 14400:
             break
 finally:
-    if process.poll() is None:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, timeout=10)
-        else:
+    if os.name == "nt":
+        # EOF asks the kernel-backed guardian to retire every debuggee. Killing only
+        # this retained guardian handle is also safe if its control thread is stuck.
+        if process.stdin is not None:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+    elif process.poll() is None:
+        try:
             os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            if os.name != "nt":
-                os.killpg(process.pid, signal.SIGKILL)
+            os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=5)
 # The control thread is still blocked reading stdin; normal interpreter shutdown can abort on
 # that lock and replace the child's exit code. Flush and leave without finalization.
@@ -114,8 +209,8 @@ def ssh_request(worker, env, *, discover):
     forwarded.update(OPTIMISARR_ACCEPTANCE_SERVER=remote_server, OPTIMISARR_ACCEPTANCE_SCRATCH=scratch,
         OPTIMISARR_NATIVE_ACCOUNTING_ROOT=scratch + "-accounting",
         OPTIMISARR_NATIVE_ACCOUNTING_SERVICE="uk.optimisarr.acceptance." + uuid.uuid4().hex)
-    encoded = base64.b64encode(REMOTE_SUPERVISOR.encode()).decode()
-    remote = python + ' -u -c "exec(__import__(\'base64\').b64decode(\'' + encoded + '\'))"'
+    encoded = base64.b64encode(zlib.compress(REMOTE_SUPERVISOR.encode())).decode()
+    remote = python + ' -u -c "exec(__import__(\'zlib\').decompress(__import__(\'base64\').b64decode(\'' + encoded + '\')))"'
     argv = ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=10",
             "-o", "ServerAliveCountMax=3", "--", spec["host"], remote]
     return argv, {"command": command + (["--discover"] if discover else []), "env": forwarded}

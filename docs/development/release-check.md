@@ -75,8 +75,15 @@ digits) must be the release commit. The server health version is compared numeri
 The remote host needs Python (`ssh.python`, a simple executable path without spaces), the
 acceptance launcher and its dependencies. On Windows use Python on PATH and the standard
 OpenSSH command shell. Windows OpenSSH runs sessions inside a job object, where the sidecar refuses native
-memory; the supervisor starts a guardian that breaks away from that job and stops the worker tree
-when the supervisor's pipe closes. If the job forbids breakaway, quality-first cases block. No host aliases are built into the scripts.
+memory. The supervisor starts a guardian outside that job. The guardian launches only the disposable
+worker with `DEBUG_PROCESS` and `DebugSetProcessKillOnExit`: Windows owns the lifetime of that worker
+and its descendants, terminating them if the guardian crashes, loses its control pipe, or exits after
+the worker finishes. Application exceptions still reach their normal handlers. No debugger attaches
+to the installed service, and the memory admission policy and Windows protections are unchanged.
+If breakaway fails, no worker starts and qualification blocks. The compressed supervisor fits the
+Windows command-line limit. Independent native capability checks share the existing one-minute
+budget concurrently; their fixed fixtures and separate outputs keep writes isolated, and all checks
+quiesce before workspace cleanup. No host aliases are built into the scripts.
 
 Set a top-level `port` when SSH workers reach the isolated server through tunnels (for example
 an SSH `RemoteForward` of that port to the server's loopback), so every fleet run binds the port
