@@ -2,6 +2,7 @@
 
 ## 0.2.25 - 2026-11-02
 
+- Soundtrack release checks select each worker's proved encoder policy and encoder defaults, allowing Mac and NVIDIA workers to claim their test jobs instead of waiting behind CPU-only policy or an unsupported CPU preset. Local cases explicitly restore CPU mode. Media assessment and replacement gates are unchanged. The soundtrack fixture video is now 320×180 instead of 64×64, which NVENC refused as below its minimum frame size.
 - The Windows acceptance worker proves native quality tools and its RAM working-space budget the way the service does, so release checks can run quality-first cases on Windows. It previously reported only encoders, so the server never offered it quality-first work.
 - Native worker startup qualifies its independent image, metadata and audio tools concurrently within the existing deadline. Slow metadata round trips no longer use the entire budget before the audio check starts; every probe stops before its temporary workspace is cleaned.
 - Release checks start the Windows acceptance worker outside the SSH session's job object through a small guardian, because the sidecar refuses native memory inside a job it cannot measure. Windows also retires the worker and its tools if the guardian itself crashes or the worker exits before its tools. A failed launch blocks qualification instead of silently falling back.
