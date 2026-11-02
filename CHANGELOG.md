@@ -2,6 +2,9 @@
 
 ## 0.2.25 - 2026-11-02
 
+- The Windows acceptance worker proves native quality tools and its RAM working-space budget the way the service does, so release checks can run quality-first cases on Windows. It previously reported only encoders, so the server never offered it quality-first work.
+- Native worker startup qualifies its independent image, metadata and audio tools concurrently within the existing deadline. Slow metadata round trips no longer use the entire budget before the audio check starts; every probe stops before its temporary workspace is cleaned.
+- Release checks start the Windows acceptance worker outside the SSH session's job object through a small guardian, because the sidecar refuses native memory inside a job it cannot measure. Windows also retires the worker and its tools if the guardian itself crashes or the worker exits before its tools. A failed launch blocks qualification instead of silently falling back.
 - `release-check` accepts the versions real sidecars report: Windows `0.2.25+<commit>` and Mac `0.2.25 (<build>)`. A reported commit, full or abbreviated, must be the release commit; `unknown` or malformed versions never match, and the server health version stays numeric. Previously every Mac and Windows worker failed the version check, so a fleet release check could not pass.
 - `release-check` accepts a fixed `port` so SSH workers can reach its isolated server through forwarded tunnels instead of a randomly chosen port.
 - Acceptance fleet runs set each hardware worker's own encoder mode for its video and running-cancellation cases. They previously forced CPU mode, which since #425 binds every machine to software encoding, so VideoToolbox and NVENC workers could never claim their jobs.

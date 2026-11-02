@@ -28,6 +28,78 @@ public sealed class PerceptualCapabilityProberTests : IDisposable
         new(new("fixture-encoder", "fixture-probe", "fixture-audio", "fixture-image", "fixture-metadata"), operations ?? Operations());
 
     [Fact]
+    public async Task Independent_audio_proof_does_not_wait_behind_image_encoder_round_trips()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var audioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ops = Operations();
+        var originalEncoder = ops.Encoder;
+        var originalAudio = ops.Audio;
+        ops = ops with {
+            Encoder = async (name, source, candidate, token) => {
+                await audioStarted.Task.WaitAsync(token);
+                return await originalEncoder(name, source, candidate, token);
+            },
+            Audio = (path, token) => {
+                audioStarted.TrySetResult();
+                return originalAudio(path, token);
+            }
+        };
+        var probing = Prober(ops).ProbeAsync(_root, cancellation.Token);
+        try
+        {
+            var proof = await probing.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(AudioQualityResultParser.Revision, proof.AudioMetricRevision);
+            Assert.True(proof.ImageMetadataSupported);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            try { await probing; } catch (OperationCanceledException) { }
+        }
+    }
+
+    [Fact]
+    public async Task Cancellation_waits_for_every_parallel_probe_before_retiring_its_workspace()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var audioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ops = Operations() with {
+            Audio = async (path, token) => {
+                audioStarted.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, token); }
+                finally {
+                    cancelled.TrySetResult();
+                    await retired.Task;
+                    Assert.True(File.Exists(path));
+                }
+                return null;
+            },
+            Image = async (_, _) => {
+                await audioStarted.Task;
+                cancellation.Cancel();
+                return null;
+            }
+        };
+        var probing = Prober(ops).ProbeAsync(_root, cancellation.Token);
+        try
+        {
+            await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.False(probing.IsCompleted);
+            Assert.Equal(1, NativeScratchWorkspace.Recover(_root).Busy);
+        }
+        finally
+        {
+            retired.TrySetResult();
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => probing);
+        }
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, NativeScratchWorkspace.ControlDirectoryName), "owner-*.json"));
+    }
+
+    [Fact]
     public async Task Capability_qualification_owns_its_workspace_and_recovers_old_stopped_probes()
     {
         var abandoned = NativeScratchWorkspace.CreateCapability(_root);

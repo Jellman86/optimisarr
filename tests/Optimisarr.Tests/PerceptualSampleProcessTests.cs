@@ -27,9 +27,26 @@ public sealed class PerceptualSampleProcessTests : IDisposable
     private async Task<int> StartedAsync()
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!File.Exists(Pid) && DateTime.UtcNow < deadline) await Task.Delay(20);
-        Assert.True(File.Exists(Pid));
-        return int.Parse(await File.ReadAllTextAsync(Pid));
+        while (DateTime.UtcNow < deadline)
+        {
+            if (File.Exists(Pid) && int.TryParse(await File.ReadAllTextAsync(Pid), out var pid) && pid > 0)
+                return pid;
+            await Task.Delay(20);
+        }
+        Assert.Fail("The sample tool did not publish a complete process id before the deadline.");
+        return 0;
+    }
+
+    [Fact]
+    public async Task Process_start_waits_for_the_pid_contents_after_the_file_appears()
+    {
+        Directory.CreateDirectory(_root);
+        await File.WriteAllTextAsync(Pid, "");
+        var waiting = StartedAsync();
+        await Task.Delay(40);
+        Assert.False(waiting.IsCompleted);
+        await File.WriteAllTextAsync(Pid, "123");
+        Assert.Equal(123, await waiting.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [PosixFact]
