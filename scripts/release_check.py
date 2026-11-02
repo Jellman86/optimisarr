@@ -40,6 +40,16 @@ def same_version(left, right):
     return parts(left) is not None and parts(left) == parts(right)
 
 
+def same_sidecar_version(reported, expected, commit):
+    """Accept a sidecar's build metadata, but only a commit that is (a prefix of) the release commit."""
+    # Windows reports X.Y.Z+<commit>; the Mac app reports X.Y.Z (<numeric bundle build>).
+    match = isinstance(reported, str) and re.fullmatch(r"(\d+\.\d+\.\d+(?:\.\d+)?)(?:\+([0-9A-Fa-f]{7,40})| \((\d+)\))?", reported)
+    if not match or not same_version(match.group(1), expected):
+        return False
+    reported_commit = match.group(2)
+    return not reported_commit or bool(token(commit, r"[a-f0-9]{40}") and commit.startswith(reported_commit.lower()))
+
+
 def safe_receipt(value):
     """Only typed release identifiers can leave the host; never copy arbitrary log strings."""
     patterns = {"sha256": r"[a-f0-9]{64}", "sourceCommit": r"[a-f0-9]{40}",
@@ -247,7 +257,8 @@ class ReleaseCheck:
                         status = "blocked" if status != "failed" else status
                     package = self.artifacts.get(observed[0].get("operatingSystem"), {})
                     expected_version = package.get("version") or self.artifacts.get("version")
-                    if expected_version and not same_version(observed[0]["sidecarVersion"], expected_version):
+                    if expected_version and not same_sidecar_version(observed[0]["sidecarVersion"], expected_version,
+                                                                     self.artifacts.get("sourceCommit")):
                         status = "failed"
                     tool_receipt = package or self.artifacts
                     if has_tools and tool_receipt and any(bound.get(key) != tool_receipt.get(key) for key in ("ffmpegRevision", "nativeHelperRevision")):

@@ -65,6 +65,13 @@ VFR, offsets and 10-bit. A selected matrix does not certify every driver or full
 For SSH, build the existing macOS `AcceptanceWorker` or Windows
 `Optimisarr.Sidecar.Acceptance` at the same commit and configure its command plus paths to the
 packaged media tools/helpers. The operator must verify those paths refer to the qualified package.
+A bare macOS `AcceptanceWorker` has no bundle and reports its version as `unknown`, which fails
+the version check. Copy the packaged app to a scratch location, place the `AcceptanceWorker` built at
+the release commit in that copy's `Contents/MacOS`, and run it from there so it reports the package's
+`X.Y.Z (<build>)` version. It keeps pairing in memory and never writes the installed app's
+preferences, though it shares the user's diagnostic journal location. Worker version checks accept
+a numeric Mac build suffix and Windows `+<commit>` metadata; a reported commit (at least seven hex
+digits) must be the release commit. The server health version is compared numerically only.
 The remote host needs Python (`ssh.python`, a simple executable path without spaces), the
 acceptance launcher and its dependencies. On Windows use Python on PATH and the standard
 OpenSSH command shell. No host aliases are built into the scripts.
