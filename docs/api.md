@@ -251,8 +251,7 @@ Health response:
 | `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
 
 New exports use configuration format version 4. This build accepts versions 1–4 and rejects newer
-formats. Legacy imports preserve existing saved controls when those fields are omitted; new
-libraries retain their defaults.
+formats. When an older backup omits a field, verification settings take the value from that backup's legacy global policy, or its defaults (for example, the VMAF gate off); audio quality reporting is off; and the newer audio, image and soundtrack quality controls keep the library's current values. New libraries retain their defaults.
 
 Settings fields include:
 

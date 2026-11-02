@@ -26,8 +26,7 @@
   const selected = $derived(stops.findIndex(stop => stop.mode === mode))
   const budget = $derived(t(i18n.m.audio_encoding.budget, { codec: codec.toUpperCase(), bitrate: bitrate ?? defaultBitrate }))
   const savedDefaultBudget = $derived(mode === 'default' && bitrate != null)
-  const background = $derived([i18n.m.audio_encoding.hint, i18n.m.audio_encoding.channel_note,
-    ...(video ? [i18n.m.audio_encoding.video_note] : [])].join(' '))
+  const background = $derived([i18n.m.audio_encoding.hint, ...(video ? [i18n.m.audio_encoding.video_note] : [])].join(' '))
 </script>
 
 <div class="mt-4 min-w-0" data-audio-encoding-preset>
@@ -62,5 +61,7 @@
   <!-- Standing background lives in the tooltip; only notes about the current choice stay on screen. -->
   <p id={`${id}-hint`} class="sr-only">{background}</p>
   {#if savedDefaultBudget}<p id={`${id}-saved`} class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_encoding.saved_budget}</p>{/if}
+  <!-- What the bitrate means for surround and downmix decides the value, so it stays beside the badge. -->
+  <p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_encoding.channel_note}</p>
   {#if mode === 'custom'}<p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.audio_encoding.custom_note}</p>{/if}
 </div>

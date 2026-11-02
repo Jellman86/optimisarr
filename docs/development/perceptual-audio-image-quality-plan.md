@@ -455,8 +455,7 @@ standalone parser still rejects moving video and multiple audio tracks; the vide
 its own planner and separate reporting, gate and maximum-distance settings. Both switches
 start off. The gate requires an explicit finite limit from 0 to 1 and requests measurement
 independently of reporting. New exports use configuration format version 4. This build accepts
-versions 1–4 and rejects newer formats. Legacy imports preserve existing saved controls when those
-fields are omitted; new libraries retain their defaults. Update requests preserve omitted soundtrack
+versions 1–4 and rejects newer formats. When an older backup omits a field, verification settings take the value from that backup's legacy global policy, or its defaults (for example, the VMAF gate off); audio quality reporting is off; and the newer audio, image and soundtrack quality controls keep the library's current values. New libraries retain their defaults. Update requests preserve omitted soundtrack
 choices. See the
 [operator controls](../setup/configuration.md#assess-re-encoded-video-soundtracks).
 

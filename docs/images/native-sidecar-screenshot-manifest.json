@@ -90,13 +90,13 @@
      "sha256": "9d46d2eca17f255bef3f00157289ef98576d7562c59abbc9d39a73173814f8dd"
     }
    ],
-   "rendererRevision": "7a0ee56c24253ba067b9ec507728ebbdc1d03959",
+   "rendererRevision": "eec61badf1688dc425d7d97849bccde642e45f67",
    "rendererFiles": {
-    "Directory.Build.props": "6c3cd8ce8fdc2dd782758be73189d9326dc4df629572ffe783f58a4d1be8f5b0",
-    "sidecars/macos/Sources/OptimisarrSidecar/MenuRenderer.swift": "386cf2904679b8683177d93c309ed1b4b0b4a2d9b98092caa33332742bf7b72f",
-    "sidecars/macos/Sources/SidecarCore/SidecarSession.swift": "802d48155baf6bde5c2394e781fb8fba9785a723e47e23cc037e598a66f168c5"
+    "Directory.Build.props": "22aa578c220f594bdde6ab393a3e5b54938b6def5de3d647414ff1228a31a51c",
+    "sidecars/macos/Sources/OptimisarrSidecar/MenuRenderer.swift": "2444c001383deef83bbe143181d511c6ea8f28a586a9a725a8c9a84f8683934f",
+    "sidecars/macos/Sources/SidecarCore/SidecarSession.swift": "a47cf95d9e71ff03769cb64a7fba40bf0fcd1d947a572d0cbc9e0a60c643c8df"
    },
-   "uiWorkingTreeModified": true
+   "uiWorkingTreeModified": false
   },
   "windows": {
    "applicationVersion": "0.2.24",
@@ -181,15 +181,15 @@
      "sha256": "1f943c3d01cba63ff190de703a86cd928374ee51df95ec03ab2a61190d34f38d"
     }
    ],
-   "uiWorkingTreeModified": true,
-   "rendererRevision": "7a0ee56c24253ba067b9ec507728ebbdc1d03959",
+   "uiWorkingTreeModified": false,
+   "rendererRevision": "eec61badf1688dc425d7d97849bccde642e45f67",
    "rendererFiles": {
-    "Directory.Build.props": "6c3cd8ce8fdc2dd782758be73189d9326dc4df629572ffe783f58a4d1be8f5b0",
+    "Directory.Build.props": "22aa578c220f594bdde6ab393a3e5b54938b6def5de3d647414ff1228a31a51c",
     "sidecars/windows/src/Optimisarr.Sidecar.Tray/ActivityIconFrame.cs": "a320c4d5612cf53a34bfcdcf3007e954612f5452d46b2f5352a3665e18f23441",
     "sidecars/windows/src/Optimisarr.Sidecar.Tray/MonitorClient.cs": "66215096e72747eae5c3dafb07584cebe1444943f03afacb7ba3c9aaada31fbc",
     "sidecars/windows/src/Optimisarr.Sidecar.Tray/MonitorRenderer.cs": "296547ff1e5f2a8964f9cf3574707a077a84fcd7c90c69abb80a202703d00bfb",
     "sidecars/windows/src/Optimisarr.Sidecar.Tray/MonitorViewModel.cs": "f4730c87a1ae589a30ae35cd736152a8235b95fabd5e0e85a401c80e70f8950c",
-    "sidecars/windows/src/Optimisarr.Sidecar.Tray/MonitorWindow.xaml": "5426d58ab96f5b428e7445f0abeab2eca751669fbe251a7cd31d7e02b8029bf4",
+    "sidecars/windows/src/Optimisarr.Sidecar.Tray/MonitorWindow.xaml": "136fdab53f1ef4e810bc1dd0680e742e65513e12a0ff54398d27d35ff0b0fac5",
     "sidecars/windows/src/Optimisarr.Sidecar.Tray/MonitorWindow.xaml.cs": "006e886b3e5f151ef235ed727a767e14fc3190ca276357ab3cf884481cb7d114",
     "sidecars/windows/src/Optimisarr.Sidecar.Tray/PreviewImageConverter.cs": "f4d389b02585b470f25c0957c52c67660731bb31d978eb1b04b282ac5045414a",
     "sidecars/windows/src/Optimisarr.Sidecar.Tray/SidecarTheme.cs": "c985094b1310a35c0e57c3ffaffdc42b7a4601089cb6a53ff03019d3501e6246",

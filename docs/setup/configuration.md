@@ -666,8 +666,7 @@ commit, share, or leave it in an unprotected download directory.
 ![Backup and restore card explaining export contents and providing Export config and Import config controls](../images/optimisarr-settings-backup-dark.png)
 
 New exports use configuration format version 4. This build accepts versions 1–4 and rejects newer
-formats. Legacy imports preserve existing saved controls when those fields are omitted; new
-libraries retain their defaults.
+formats. When an older backup omits a field, verification settings take the value from that backup's legacy global policy, or its defaults (for example, the VMAF gate off); audio quality reporting is off; and the newer audio, image and soundtrack quality controls keep the library's current values. New libraries retain their defaults.
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,
