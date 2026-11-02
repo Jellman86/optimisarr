@@ -3,6 +3,7 @@
 ## Unreleased
 
 - `release-check` accepts a fixed `port` so SSH workers can reach its isolated server through forwarded tunnels instead of a randomly chosen port.
+- Acceptance fleet runs set each hardware worker's own encoder mode for its video and running-cancellation cases. They previously forced CPU mode, which since #425 binds every machine to software encoding, so VideoToolbox and NVENC workers could never claim their jobs.
 
 - Refresh operator and user documentation for current worker protocols, soundtrack assessment,
   release qualification, backups, navigation and bulk actions, with regenerated fabricated web

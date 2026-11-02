@@ -229,7 +229,8 @@ class Harness:
 
     def video(self, name, fixture, encoder="libx265", worker=None, strategy="Fixed", reject=False, hardware_decode=False, audio_gates=False, check_subtitles=False, container="mkv", rule_overrides=None, subtitle_expectations=None, expected_container=None, audio_expectations=None, check_picture_origin=False, numbered_repeated_fixture=False, check_regular_cadence=False, reference_decoder_timing=False):
         self.select_worker(worker)
-        self.configure(encoderMode=MODES[encoder] if not worker else "Cpu", hardwareDecode=hardware_decode)
+        # CPU mode binds every machine to software encoding (#425); a hardware worker needs its own mode.
+        self.configure(encoderMode=MODES[encoder], hardwareDecode=hardware_decode)
         gates = {"harmonic": 100, "p5": 100, "minimum": 100} if reject else DEFAULT_GATES
         if (encoder.startswith("h264") or encoder == "libx264") and "ten-bit" in str(fixture):
             return self.create_job(name, fixture, encoder=encoder, worker=worker,
@@ -939,6 +940,7 @@ class Harness:
     def cancel_running(self, worker=None, encoder="libx265"):
         self.select_worker(worker)
         name = f"cancel-running-worker-{worker['id']}-{encoder}" if worker else "cancel-running"
+        self.configure(encoderMode=MODES[encoder], hardwareDecode=False)
         fixture = self.root / "fixtures" / (name + ".mkv")
         self.tools.fixture(fixture, seconds=120)
         case = self.create_job(name, fixture, worker=worker, encoder=encoder, overrides={"encoderPreset": "slow" if encoder in ("libx264", "libx265") else None})
