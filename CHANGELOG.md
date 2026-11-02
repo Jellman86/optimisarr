@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `release-check` accepts a fixed `port` so SSH workers can reach its isolated server through forwarded tunnels instead of a randomly chosen port.
+
 - Refresh operator and user documentation for current worker protocols, soundtrack assessment,
   release qualification, backups, navigation and bulk actions, with regenerated fabricated web
   captures. Calm library settings with content icons, clearer media and codec labels, tooltip-based

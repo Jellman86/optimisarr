@@ -328,6 +328,9 @@ class ReleaseCheck:
         worker_config = self.root / "worker-launchers.json"
         save(worker_config, launchers)
         args = ["--tier", "fleet", "--worker-config", str(worker_config), "--listen", self.config.get("listen", "127.0.0.1")]
+        # A fixed port lets SSH workers reach the isolated server through operator-configured tunnels.
+        if isinstance(self.config.get("port"), int) and not isinstance(self.config.get("port"), bool):
+            args += ["--port", str(self.config["port"])]
         for name in required:
             args += ["--expected-worker", name]
         self.acceptance("fleet", args, worker=required)
