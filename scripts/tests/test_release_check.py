@@ -20,6 +20,22 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertFalse(same_version("0.3.0.1", "0.3.0"))
         self.assertFalse(same_version(None, "0.3.0"))
 
+    def test_sidecar_build_metadata_matches_the_release_version(self):
+        commit = "c" * 40
+        # Windows reports SemVer build metadata; the Mac app reports its bundle build in parentheses.
+        self.assertTrue(same_version("0.2.25+" + commit, "0.2.25", commit))
+        self.assertTrue(same_version("0.2.25 (202611021311)", "0.2.25", commit))
+        self.assertFalse(same_version("0.2.24+" + commit, "0.2.25", commit))
+        self.assertFalse(same_version("0.2.25 (202611021311)", "0.2.26"))
+
+    def test_a_reported_commit_must_be_the_release_commit(self):
+        self.assertFalse(same_version("0.2.25+" + "d" * 40, "0.2.25", "c" * 40))
+
+    def test_unknown_or_malformed_sidecar_versions_never_match(self):
+        for reported in ("unknown", "0.2.25 ()", "0.2.25+", "0.2.25 (build) extra", "0.2.25+a b"):
+            with self.subTest(reported=reported):
+                self.assertFalse(same_version(reported, "0.2.25"))
+
     def test_missing_pinned_image_is_blocked_artifact_coverage(self):
         with tempfile.TemporaryDirectory() as directory:
             run = Mock(side_effect=subprocess.CalledProcessError(1, ["docker", "image", "inspect"]))

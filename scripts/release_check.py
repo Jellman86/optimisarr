@@ -31,13 +31,21 @@ def token(value, pattern):
     return value if isinstance(value, str) and re.fullmatch(pattern, value) else None
 
 
-def same_version(left, right):
+def same_version(left, right, commit=None):
+    """Compare release numbers, ignoring a sidecar's build metadata but never a different commit."""
     def parts(value):
         if not token(value, r"\d+\.\d+\.\d+(?:\.\d+)?"):
             return None
         numbers = tuple(int(part) for part in value.split("."))
         return numbers + (0,) * (4 - len(numbers))
-    return parts(left) is not None and parts(left) == parts(right)
+    # Windows reports SemVer build metadata (0.2.25+<commit>); the Mac app reports 0.2.25 (<build>).
+    match = isinstance(left, str) and re.fullmatch(r"([\d.]+)(?:\+([0-9A-Za-z.-]+)| \(([0-9A-Za-z.-]+)\))?", left)
+    if not match:
+        return False
+    metadata = match.group(2)
+    if commit and metadata and re.fullmatch(r"[a-f0-9]{40}", metadata) and metadata != commit:
+        return False
+    return parts(match.group(1)) is not None and parts(match.group(1)) == parts(right)
 
 
 def safe_receipt(value):
@@ -247,7 +255,8 @@ class ReleaseCheck:
                         status = "blocked" if status != "failed" else status
                     package = self.artifacts.get(observed[0].get("operatingSystem"), {})
                     expected_version = package.get("version") or self.artifacts.get("version")
-                    if expected_version and not same_version(observed[0]["sidecarVersion"], expected_version):
+                    if expected_version and not same_version(observed[0]["sidecarVersion"], expected_version,
+                                                             package.get("sourceCommit")):
                         status = "failed"
                     tool_receipt = package or self.artifacts
                     if has_tools and tool_receipt and any(bound.get(key) != tool_receipt.get(key) for key in ("ffmpegRevision", "nativeHelperRevision")):

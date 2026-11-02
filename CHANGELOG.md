@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `release-check` accepts the versions real sidecars report: Windows `0.2.25+<commit>` and Mac `0.2.25 (<build>)`. A reported commit must still be the release commit, and `unknown` or malformed versions never match. Previously every Mac and Windows worker failed the version check, so a fleet release check could not pass.
 - `release-check` accepts a fixed `port` so SSH workers can reach its isolated server through forwarded tunnels instead of a randomly chosen port.
 - Acceptance fleet runs set each hardware worker's own encoder mode for its video and running-cancellation cases. They previously forced CPU mode, which since #425 binds every machine to software encoding, so VideoToolbox and NVENC workers could never claim their jobs.
 
