@@ -444,7 +444,7 @@ class Harness:
             font.write_bytes(b"\x00\x01\x00\x00" + bytes(2 * 1024 * 1024 - 4))
             attachment = ["-attach", self.tools.path(font), "-metadata:s:t:0", "mimetype=application/x-truetype-font",
                           "-metadata:s:t:0", "filename=regression.ttf"]
-        self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
+        self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=10:duration={seconds}",
             *audio_offset, "-f", "lavfi", "-i", main,
             *audio_offset, "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
             "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *channels,

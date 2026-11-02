@@ -134,6 +134,17 @@ class WorkerAvailabilityTests(unittest.TestCase):
                     harness.soundtrack(worker={"id": 2, "videoEncoders": [encoder]})
                 self.assertEqual(encoder, create_job.call_args.kwargs["encoder"])
 
+    def test_soundtrack_fixture_video_meets_hardware_encoder_minimum_size(self):
+        # NVENC refuses frames below its minimum size (64x64 failed on a physical NVIDIA worker).
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        with patch.object(harness, "select_worker"), patch.object(harness, "configure"), \
+                patch.object(harness.tools, "encode", side_effect=Blocked("fixture")) as encode, self.assertRaises(Blocked):
+            harness.soundtrack(worker={"id": 2, "videoEncoders": ["hevc_nvenc"]})
+        source = next(arg for arg in encode.call_args.args[0] if arg.startswith("testsrc2="))
+        width, height = (int(v) for v in source.split("size=")[1].split(":")[0].split("x"))
+        self.assertGreaterEqual(width, 160)
+        self.assertGreaterEqual(height, 128)
+
     def test_remote_running_cancel_uses_the_worker_encoder_mode(self):
         harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
         with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
