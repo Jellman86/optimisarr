@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from release_check import ReleaseCheck, public_summary, package_receipt, REGRESSIONS, owned_command, same_version
+from release_check import ReleaseCheck, public_summary, package_receipt, REGRESSIONS, owned_command, same_version, same_sidecar_version
 
 DIGEST = "sha256:" + "a" * 64
 COMMIT = "b" * 40
@@ -23,18 +23,29 @@ class ReleaseCheckTests(unittest.TestCase):
     def test_sidecar_build_metadata_matches_the_release_version(self):
         commit = "c" * 40
         # Windows reports SemVer build metadata; the Mac app reports its bundle build in parentheses.
-        self.assertTrue(same_version("0.2.25+" + commit, "0.2.25", commit))
-        self.assertTrue(same_version("0.2.25 (202611021311)", "0.2.25", commit))
-        self.assertFalse(same_version("0.2.24+" + commit, "0.2.25", commit))
-        self.assertFalse(same_version("0.2.25 (202611021311)", "0.2.26"))
+        self.assertTrue(same_sidecar_version("0.2.25+" + commit, "0.2.25", commit))
+        self.assertTrue(same_sidecar_version("0.2.25+" + "C" * 12, "0.2.25", commit))
+        self.assertTrue(same_sidecar_version("0.2.25 (202611021311)", "0.2.25", commit))
+        self.assertTrue(same_sidecar_version("0.2.25", "0.2.25", commit))
+        self.assertFalse(same_sidecar_version("0.2.24+" + commit, "0.2.25", commit))
+        self.assertFalse(same_sidecar_version("0.2.25 (202611021311)", "0.2.26", commit))
 
     def test_a_reported_commit_must_be_the_release_commit(self):
-        self.assertFalse(same_version("0.2.25+" + "d" * 40, "0.2.25", "c" * 40))
+        commit = "c" * 40
+        for reported in ("0.2.25+" + "d" * 40, "0.2.25+ddddddd", "0.2.25+" + "D" * 40):
+            with self.subTest(reported=reported):
+                self.assertFalse(same_sidecar_version(reported, "0.2.25", commit))
+        self.assertFalse(same_sidecar_version("0.2.25+" + commit, "0.2.25", None))
 
     def test_unknown_or_malformed_sidecar_versions_never_match(self):
-        for reported in ("unknown", "0.2.25 ()", "0.2.25+", "0.2.25 (build) extra", "0.2.25+a b"):
+        for reported in ("unknown", "0.2.25 ()", "0.2.25+", "0.2.25+..", "0.2.25 (---)", "0.2.25+cccccc",
+                         "0.2.25 (build) extra", "0.2.25+a b", "0.2.25 (abc)"):
             with self.subTest(reported=reported):
-                self.assertFalse(same_version(reported, "0.2.25"))
+                self.assertFalse(same_sidecar_version(reported, "0.2.25", "c" * 40))
+
+    def test_server_health_version_stays_numeric(self):
+        self.assertFalse(same_version("0.2.25+" + "c" * 40, "0.2.25"))
+        self.assertFalse(same_version("0.2.25 (202611021311)", "0.2.25"))
 
     def test_missing_pinned_image_is_blocked_artifact_coverage(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -69,8 +69,9 @@ A bare macOS `AcceptanceWorker` has no bundle and reports its version as `unknow
 the version check. Copy the packaged app to a scratch location, place the `AcceptanceWorker` built at
 the release commit in that copy's `Contents/MacOS`, and run it from there so it reports the package's
 `X.Y.Z (<build>)` version. It keeps pairing in memory and never writes the installed app's
-preferences. Version checks ignore the Mac build suffix and Windows `+<commit>` metadata, but a
-reported commit must match the release `sourceCommit`.
+preferences, though it shares the user's diagnostic journal location. Worker version checks accept
+a numeric Mac build suffix and Windows `+<commit>` metadata; a reported commit (at least seven hex
+digits) must be the release commit. The server health version is compared numerically only.
 The remote host needs Python (`ssh.python`, a simple executable path without spaces), the
 acceptance launcher and its dependencies. On Windows use Python on PATH and the standard
 OpenSSH command shell. No host aliases are built into the scripts.
