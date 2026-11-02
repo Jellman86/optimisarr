@@ -397,6 +397,8 @@ class Harness:
         """surround: None for stereo sources; True for a 5.1 main track downmixed to stereo; False for that
         track kept surround, which no soundtrack gate can assess, so the gate must block replacement."""
         self.select_worker(worker)
+        encoder = worker["videoEncoders"][0] if worker else "libx264"
+        self.configure(encoderMode=encoder_mode(encoder), hardwareDecode=False)
         name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
         name += "-long" if long else "-short-mp4" if short else ""
@@ -442,7 +444,7 @@ class Harness:
             font.write_bytes(b"\x00\x01\x00\x00" + bytes(2 * 1024 * 1024 - 4))
             attachment = ["-attach", self.tools.path(font), "-metadata:s:t:0", "mimetype=application/x-truetype-font",
                           "-metadata:s:t:0", "filename=regression.ttf"]
-        self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=64x64:rate=10:duration={seconds}",
+        self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=10:duration={seconds}",
             *audio_offset, "-f", "lavfi", "-i", main,
             *audio_offset, "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={commentary_seconds}",
             "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *channels,
@@ -495,7 +497,7 @@ class Harness:
             require(.97 < peak <= 1, "Overs fixture source must peak near .98 without exceeding full scale")
         # Limits 1 and 0 are deterministic acceptance controls, not calibrated listening presets.
         limit = 0 if reject else 1
-        case = self.create_job(name, fixture, encoder="libx264", worker=worker, overrides={
+        case = self.create_job(name, fixture, encoder=encoder, worker=worker, overrides={
             "targetVideoCodec": None, "targetContainer": "mp4" if short or titled_mp4 else "mkv", "videoAudioCodec": "copy" if copied else codec,
             "videoAudioBitrateKbps": 128, "vmafQualityGateEnabled": False, "requireSizeReduction": False,
             "soundtrackQualityGateEnabled": True, "maximumSoundtrackQualityDistance": limit,
