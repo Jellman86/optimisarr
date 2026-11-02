@@ -98,6 +98,17 @@ class ReleaseCheckTests(unittest.TestCase):
                 "results": [{"status": "passed"}]}))
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
+    def test_a_configured_port_reaches_every_fleet_run(self):
+        # SSH workers can only reach the isolated server through tunnels to a known port.
+        with tempfile.TemporaryDirectory() as directory:
+            run = Mock(side_effect=self.fake_run)
+            check = ReleaseCheck(Path(directory) / "release", DIGEST, {"port": 18787, "requiredWorkers": ["named-worker"],
+                "workers": {"named-worker": {"image": "worker@" + DIGEST, "encoder": "libx265"}}}, run=run)
+            check.run_matrices()
+            fleet = [c.args[0] for c in run.call_args_list if "--worker-config" in c.args[0]]
+            self.assertTrue(fleet)
+            self.assertTrue(all(argv[argv.index("--port") + 1] == "18787" for argv in fleet))
+
     def test_every_matrix_runs_new_roots_and_native_only_coverage_cannot_disappear(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "release"

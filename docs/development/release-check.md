@@ -69,7 +69,9 @@ The remote host needs Python (`ssh.python`, a simple executable path without spa
 acceptance launcher and its dependencies. On Windows use Python on PATH and the standard
 OpenSSH command shell. No host aliases are built into the scripts.
 
-`ssh.serverUrl` must contain `{port}`. The adapter substitutes the **new isolated server's** port;
+Set a top-level `port` when SSH workers reach the isolated server through tunnels (for example
+an SSH `RemoteForward` of that port to the server's loopback), so every fleet run binds the port
+the tunnels forward. `ssh.serverUrl` must contain `{port}`. The adapter substitutes the **new isolated server's** port;
 it cannot take a fixed existing application URL. A trusted test interface must reach the bound
 `listen` address. Configure firewall access outside this command. Pairing PINs travel only in
 SSH stdin, never command arguments or config files, and are removed from relayed launcher logs.
