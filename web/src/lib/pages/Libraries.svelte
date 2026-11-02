@@ -1456,7 +1456,7 @@
         <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={workflowHeading} data-workflow-heading>{editorTitle}</h1>
         <p class="page-subtitle break-words">{activeTab !== 'rules' ? form.path : room === 'overview' ? i18n.m.libraryWorkflow.overview_intro : room.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : form.path}</p>
       </div>
-      <span class="badge tone-info">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
+      <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
     </div>
   </header>
 
@@ -1560,7 +1560,7 @@
 
 {#snippet roomLink(target: LibraryRoom)}
   <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-20 w-full items-center gap-4 p-5 text-left" aria-label={roomNames[target]} onclick={() => goRoom(target)}>
-    <Icon name={target.includes('advanced') ? 'sliders' : 'arrow-right'} class="h-5 w-5 shrink-0 text-accent" />
+    <Icon name={target.includes('advanced') ? 'sliders' : target === 'encode/quality' ? 'shield-check' : target === 'encode/audio' ? 'waveform' : target === 'encode/images' ? 'copies' : 'film'} class="h-5 w-5 shrink-0 text-accent" />
     <span class="min-w-0 flex-1"><span class="flex flex-wrap items-center gap-2 text-sm font-semibold">{roomNames[target]}{#if overrideCount(target)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(target) })}</span>{/if}</span><span class="mt-1 block text-xs leading-relaxed text-ink-3">{target.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : target === 'encode/quality' ? (showVideoOptions ? i18n.m.libraryWorkflow.quality_summary : i18n.m.quality_first.strategy_intro) : target === 'encode/audio' ? i18n.m.libraryWorkflow.audio_summary : target === 'encode/images' ? i18n.m.libraries.downscale_tip : i18n.m.libraryWorkflow.video_summary}</span></span>
     <Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" />
   </button>
@@ -2791,7 +2791,7 @@
             <select id="lib-video-audio-codec" aria-label={i18n.m.libraries.audio_track} class="input" value={form.videoAudioCodec ?? ''} onchange={event => changeAudioCodec(event.currentTarget.value, true)}>
               <option value="">{i18n.m.libraries.audio_profile_default}</option>
               <option value="copy">{i18n.m.libraries.audio_copy}</option>
-              {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
+              {#each [['aac', 'AAC'], ['opus', 'Opus'], ['mp3', 'MP3']] as [codec, name]}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec: name })}</option>{/each}
             </select>
           </div>
           {#if room === 'encode/audio/advanced'}<div>
