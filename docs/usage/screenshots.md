@@ -49,9 +49,8 @@ Mac and Windows use native desktop panels. Linux uses a browser dashboard hosted
 All three show work and available resource readings; missing telemetry stays unavailable.
 
 These captures use fabricated documentation data. Capture dates and source revisions are recorded in
-the screenshot manifests; older captures may differ from the current interface. Native Mac/Windows
-and Linux sidecar captures were retained from their recorded builds; they were not regenerated with
-the main web UI.
+the screenshot manifests. Native Mac and Windows captures were re-rendered from the same dev build
+(eec61bad) on 2026-11-02; Linux sidecar captures were retained from their recorded build.
 
 ### Mac menu bar
 
@@ -75,8 +74,7 @@ the main web UI.
 
 These are actual native views rendered offscreen from the build recorded in the [native sidecar
 screenshot manifest](../images/native-sidecar-screenshot-manifest.json), with fabricated capture
-fixtures. Older captures may differ from the current interface, including the Waiting for capacity
-and Work capacity labels. The renderer uses a flat
+fixtures, including the Waiting for capacity and Work capacity labels. The renderer uses a flat
 snapshot background and bordered controls; macOS 26 supplies glass in the live popover.
 Indeterminate activity bars freeze in native snapshots; encoded time remains readable.
 See the [Mac installation guide](../../sidecars/macos/README.md).
@@ -102,8 +100,7 @@ See the [Mac installation guide](../../sidecars/macos/README.md).
 | Preferences | [Preferences](../images/optimisarr-sidecar-windows-preferences.png) | Shown above |
 
 These are native WPF renders from the build recorded in the [native sidecar screenshot
-manifest](../images/native-sidecar-screenshot-manifest.json); older captures may differ from the
-current interface. Audio shows the same generated
+manifest](../images/native-sidecar-screenshot-manifest.json). Audio shows the same generated
 chirp spectrum as Mac and Linux. The video fallback is an icon placeholder. Indeterminate
 activity bars freeze in native snapshots; they do not show a completion percentage. The background service
 continues working when the tray closes. See the [Windows guide](../../sidecars/windows/README.md).

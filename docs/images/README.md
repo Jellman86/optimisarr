@@ -58,8 +58,8 @@ run `python3 scripts/check_docs.py` and `git diff --check` from the repository r
 ## Sidecar captures
 
 The [user gallery](../usage/screenshots.md#sidecars) links native and Linux images from the builds
-recorded in their separate manifests. These were retained when the main web captures were
-regenerated; older captures may differ from the current interface, including Mac capacity labels.
+recorded in their separate manifests. Native Mac and Windows captures were re-rendered from dev
+eec61bad on 2026-11-02; Linux sidecar captures were retained from their recorded build.
 All job state, telemetry, machine names and addresses are fabricated. Spectrograms on Mac,
 Windows and Linux are measured from the committed original fixture
 [`sidecar-spectrum.jpg`](../../web/scripts/fixtures/sidecar-spectrum.jpg), generated from this
@@ -117,8 +117,8 @@ SHA-256 hashes and source provenance. Most names gain `optimisarr-sidecar-macos-
 becomes `idle`, and Mac `unpaired` becomes `pairing`. Light audio retains the older
 `audio-light` suffix. Copy only the listed states, retaining existing documentation filenames.
 
-The 2026-10-09 refresh uses local release builds of the reviewed Mac and Windows UI with
-0.2.23 version metadata, corrected capture fixtures and native WPF renders on Windows.
+The 2026-11-02 refresh renders the Mac release build of dev eec61bad offscreen on the Mac worker
+host, and the installed Windows build matching it with `--render-monitor` on the Windows worker host.
 Mac `OPTIMISARR_RENDER_FRAME` supplies an original generated landscape instead of the
 renderer's default colour ramp. Without a bundle the Mac executable reports an unknown
 build; its source revision and renderer hashes are recorded in the manifest. These capture
