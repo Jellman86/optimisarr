@@ -18,6 +18,27 @@ from acceptance.core import require
 TOOL_KEYS = {"OPTIMISARR_FFMPEG", "OPTIMISARR_FFPROBE", "OPTIMISARR_FFMPEG_VMAF",
              "OPTIMISARR_NATIVE_HOST", "OPTIMISARR_AUDIO_QUALITY", "OPTIMISARR_IMAGE_QUALITY", "OPTIMISARR_EXIFTOOL"}
 
+# Windows OpenSSH runs every session inside a job object, and the sidecar rightly refuses native
+# memory inside a job whose limits it cannot prove. The supervisor therefore starts this guardian
+# outside the job; it owns the worker and stops its whole tree once the supervisor's pipe closes,
+# however the supervisor ended.
+WINDOWS_GUARDIAN = r'''
+import os, signal, subprocess, sys, threading
+child = subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL, start_new_session=os.name != "nt")
+def stop_when_released():
+    sys.stdin.buffer.read()
+    if child.poll() is None:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True, timeout=10)
+        else:
+            os.killpg(child.pid, signal.SIGKILL)
+threading.Thread(target=stop_when_released, daemon=True).start()
+code = child.wait()
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(code if code >= 0 else 1)
+'''
+
 # A remote Python supervisor owns only its child tree. EOF, missing keepalives or the
 # lifetime bound stop that tree even if the local harness or SSH connection disappears.
 REMOTE_SUPERVISOR = r'''
@@ -34,8 +55,16 @@ def control():
 threading.Thread(target=control, daemon=True).start()
 env = {k: v for k, v in os.environ.items() if not k.startswith("OPTIMISARR_")}
 env.update(request["env"])
-process = subprocess.Popen(request["command"], env=env, stdin=subprocess.DEVNULL,
-    start_new_session=os.name != "nt")
+process = None
+if os.name == "nt":
+    try:
+        process = subprocess.Popen([sys.executable, "-c", WINDOWS_GUARDIAN, *request["command"]], env=env,
+            stdin=subprocess.PIPE, creationflags=0x01000000)
+    except OSError:
+        process = None
+if process is None:
+    process = subprocess.Popen(request["command"], env=env, stdin=subprocess.DEVNULL,
+        start_new_session=os.name != "nt")
 started = time.monotonic()
 try:
     while process.poll() is None:
@@ -58,7 +87,7 @@ finally:
 sys.stdout.flush()
 sys.stderr.flush()
 os._exit(process.returncode if process.returncode >= 0 else 1)
-'''
+'''.replace("WINDOWS_GUARDIAN, *", repr(WINDOWS_GUARDIAN) + ", *", 1)
 
 
 def ssh_request(worker, env, *, discover):

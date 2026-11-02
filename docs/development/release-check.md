@@ -74,7 +74,9 @@ a numeric Mac build suffix and Windows `+<commit>` metadata; a reported commit (
 digits) must be the release commit. The server health version is compared numerically only.
 The remote host needs Python (`ssh.python`, a simple executable path without spaces), the
 acceptance launcher and its dependencies. On Windows use Python on PATH and the standard
-OpenSSH command shell. No host aliases are built into the scripts.
+OpenSSH command shell. Windows OpenSSH runs sessions inside a job object, where the sidecar refuses native
+memory; the supervisor starts a guardian that breaks away from that job and stops the worker tree
+when the supervisor's pipe closes. If the job forbids breakaway, quality-first cases block. No host aliases are built into the scripts.
 
 Set a top-level `port` when SSH workers reach the isolated server through tunnels (for example
 an SSH `RemoteForward` of that port to the server's loopback), so every fleet run binds the port

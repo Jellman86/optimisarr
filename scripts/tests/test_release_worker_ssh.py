@@ -1,11 +1,12 @@
 import json
+import os
 from pathlib import Path
 import sys
 import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from release_worker_ssh import ssh_request, relay, run_ssh, REMOTE_SUPERVISOR
+from release_worker_ssh import ssh_request, relay, run_ssh, REMOTE_SUPERVISOR, WINDOWS_GUARDIAN
 
 
 class SshLauncherTests(unittest.TestCase):
@@ -69,6 +70,44 @@ class SshLauncherTests(unittest.TestCase):
             self.assertEqual(code, supervisor.returncode, stderr.decode())
             self.assertIn(b"discovered", stdout)
             self.assertNotIn(b"Fatal Python error", stderr)
+
+    def test_guardian_stops_its_worker_tree_when_the_supervisor_pipe_closes(self):
+        # On Windows the guardian runs outside the SSH job; a supervisor that dies must still stop the worker.
+        import subprocess, tempfile, time
+        with tempfile.TemporaryDirectory() as directory:
+            marker = os.path.join(directory, "grandchild.pid")
+            worker = ("import os, subprocess, sys, time; "
+                      "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)']); "
+                      f"open({marker!r}, 'w').write(str(child.pid)); time.sleep(120)")
+            guardian = subprocess.Popen([sys.executable, "-c", WINDOWS_GUARDIAN, sys.executable, "-c", worker],
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            deadline = time.monotonic() + 30
+            while not os.path.exists(marker) and time.monotonic() < deadline:
+                time.sleep(.1)
+            grandchild = int(open(marker).read())
+            guardian.stdin.close()
+            guardian.wait(timeout=30)
+            for _ in range(100):
+                try:
+                    os.kill(grandchild, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(.1)
+            else:
+                self.fail("The worker's child outlived its guardian")
+
+    def test_guardian_returns_its_workers_exit_code(self):
+        import subprocess
+        guardian = subprocess.Popen([sys.executable, "-c", WINDOWS_GUARDIAN, sys.executable, "-c", "raise SystemExit(4)"],
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        guardian.wait(timeout=30)  # stdin left open, as the supervisor holds it
+        guardian.stdin.close()
+        self.assertEqual(4, guardian.returncode, guardian.stderr.read().decode())
+
+    def test_windows_supervisor_breaks_its_guardian_away_from_the_ssh_job(self):
+        # Windows OpenSSH runs sessions inside a job; the sidecar refuses native memory there.
+        self.assertIn("0x01000000", REMOTE_SUPERVISOR)
+        self.assertIn(repr(WINDOWS_GUARDIAN), REMOTE_SUPERVISOR)
 
     def test_a_remote_that_already_finished_is_not_reported_as_an_unavailable_launcher(self):
         import io
