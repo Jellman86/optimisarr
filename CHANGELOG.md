@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.25 - 2026-11-02
 
 - `release-check` accepts the versions real sidecars report: Windows `0.2.25+<commit>` and Mac `0.2.25 (<build>)`. A reported commit, full or abbreviated, must be the release commit; `unknown` or malformed versions never match, and the server health version stays numeric. Previously every Mac and Windows worker failed the version check, so a fleet release check could not pass.
 - `release-check` accepts a fixed `port` so SSH workers can reach its isolated server through forwarded tunnels instead of a randomly chosen port.
