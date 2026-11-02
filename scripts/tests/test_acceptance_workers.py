@@ -96,6 +96,15 @@ class WorkerAvailabilityTests(unittest.TestCase):
                 harness.video("remote", Path("source.mkv"), encoder, {"id": 2})
             configure.assert_called_once_with(encoderMode=mode, hardwareDecode=False)
 
+    def test_worker_encoder_without_a_mode_is_blocked_rather_than_crashing(self):
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
+                patch.object(harness, "create_job") as create_job:
+            with self.assertRaisesRegex(Blocked, "hevc_amf"):
+                harness.video("remote", Path("source.mkv"), "hevc_amf", {"id": 3})
+        configure.assert_not_called()
+        create_job.assert_not_called()
+
     def test_remote_running_cancel_uses_the_worker_encoder_mode(self):
         harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
         with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
