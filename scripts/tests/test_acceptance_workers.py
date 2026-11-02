@@ -105,6 +105,23 @@ class WorkerAvailabilityTests(unittest.TestCase):
         configure.assert_not_called()
         create_job.assert_not_called()
 
+    def test_soundtrack_cases_select_the_proved_workers_encoder_policy_before_encoding(self):
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        for encoder, mode in (("hevc_videotoolbox", "Auto"), ("hevc_nvenc", "NvidiaNvenc"), ("libx265", "Cpu")):
+            worker = {"id": 2, "videoEncoders": [encoder]}
+            with self.subTest(encoder=encoder), patch.object(harness, "select_worker"), \
+                    patch.object(harness, "configure") as configure, \
+                    patch.object(harness.tools, "encode", side_effect=Blocked("fixture")), self.assertRaises(Blocked):
+                harness.soundtrack(worker=worker)
+            configure.assert_called_once_with(encoderMode=mode, hardwareDecode=False)
+
+    def test_local_soundtrack_restores_cpu_policy_after_a_hardware_case(self):
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
+                patch.object(harness.tools, "encode", side_effect=Blocked("fixture")), self.assertRaises(Blocked):
+            harness.soundtrack()
+        configure.assert_called_once_with(encoderMode="Cpu", hardwareDecode=False)
+
     def test_remote_running_cancel_uses_the_worker_encoder_mode(self):
         harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
         with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \

@@ -397,6 +397,8 @@ class Harness:
         """surround: None for stereo sources; True for a 5.1 main track downmixed to stereo; False for that
         track kept surround, which no soundtrack gate can assess, so the gate must block replacement."""
         self.select_worker(worker)
+        encoder = worker["videoEncoders"][0] if worker else "libx264"
+        self.configure(encoderMode=encoder_mode(encoder), hardwareDecode=False)
         name = (f"worker-{worker['id']}" if worker else "local") + "-soundtrack-" + codec
         name += "-filtered" if filtered else "-rejected" if reject else "-copied" if copied else "-passed"
         name += "-long" if long else "-short-mp4" if short else ""
