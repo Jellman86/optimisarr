@@ -343,6 +343,8 @@ public sealed partial class QueueDispatcher(
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var superResolutionOn = (await scope.ServiceProvider.GetRequiredService<SettingsStore>()
+                .GetSuperResolutionOptionsAsync(stoppingToken)).Enabled;
             // A library's placement only means something while work can actually go elsewhere:
             // both the saved switch and deployment availability. Otherwise "only on workers" would hold a
             // job for a claim that the worker routes refuse, which is a stall nobody asked for.
@@ -397,7 +399,8 @@ public sealed partial class QueueDispatcher(
                     job.IgnoreLibraryWindow,
                     job.HonoursPlacement && job.LibraryId is { } libraryId
                         && placements.TryGetValue(libraryId, out var placement)
-                        ? EffectivePlacement(placement.WorkPlacement, placement.SuperResolutionEnabled, job.Kind)
+                        ? EffectivePlacement(placement.WorkPlacement, SuperResolutionRouting.Applies(
+                            superResolutionOn, placement.SuperResolutionEnabled, job.Kind, replaceBound: !job.Interactive))
                         : WorkPlacement.Anywhere,
                     job.QualityChosen,
                     job.Kind,
@@ -1159,7 +1162,7 @@ public sealed partial class QueueDispatcher(
             // would; everything after this point — size handling, verification, replacement —
             // is unchanged. Disabled libraries, previews and non-video jobs never enter it.
             FfmpegRun run;
-            if (superResolutionPlanned)
+            if (superResolutionOptions is { } frozenSuperResolution)
             {
                 // Upscaling legitimately grows the file, so the size-saving gate would reject
                 // every super-resolution result by construction. Turn that one gate off for the
@@ -1175,7 +1178,7 @@ public sealed partial class QueueDispatcher(
                     },
                     BypassSizePreflight = true,
                 };
-                run = await RunSuperResolutionAsync(jobId, superResolutionWork, cancellationToken);
+                run = await RunSuperResolutionAsync(jobId, superResolutionWork, frozenSuperResolution, cancellationToken);
             }
             else
             {
@@ -3937,6 +3940,8 @@ public sealed partial class QueueDispatcher(
                 Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown })
             .ToListAsync(cancellationToken);
         var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
+        var superResolutionOn = (await scope.ServiceProvider.GetRequiredService<SettingsStore>()
+            .GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
         var libraries = await db.Libraries.AsNoTracking()
             .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled,
                 library.AutoEnqueueEnabled, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
@@ -3949,7 +3954,8 @@ public sealed partial class QueueDispatcher(
             job.EnqueuedAt, IgnoreLibraryWindow: job.Type != JobType.Normal,
             Placement: job.LibraryId is { } id
                 && libraries.TryGetValue(id, out var library)
-                    ? EffectivePlacement(library.WorkPlacement, library.SuperResolutionEnabled, job.Kind)
+                    ? EffectivePlacement(library.WorkPlacement, SuperResolutionRouting.Applies(
+                        superResolutionOn, library.SuperResolutionEnabled, job.Kind, replaceBound: job.Type == JobType.Normal))
                     : WorkPlacement.Anywhere,
             Kind: job.Kind,
             WorkerRequired: job.Type != JobType.Normal && job.LibraryId is { } requiredId

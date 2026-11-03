@@ -60,6 +60,13 @@ internal static class SystemEndpoints
             CancellationToken cancellationToken) =>
         {
             var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            // A real engine run is part of the experimental feature: while it is off, nothing
+            // about super-resolution executes on this machine.
+            if (!options.Enabled)
+            {
+                return ApiErrors.Conflict("superResolution.disabled",
+                    "Turn on AI super-resolution in Settings before testing the engine.");
+            }
             var ffmpeg = MediaToolCommands.ResolveFfmpeg(
                 Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG"));
             var probe = await new RealCuganDetectionService(options).ProbeAsync(ffmpeg, cancellationToken);

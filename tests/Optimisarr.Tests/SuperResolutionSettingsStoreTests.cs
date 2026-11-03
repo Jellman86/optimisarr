@@ -22,7 +22,7 @@ public sealed class SuperResolutionSettingsStoreTests : IDisposable
         _connection.Open();
         _options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite(_connection).Options;
         using var db = new OptimisarrDbContext(_options);
-        db.Database.EnsureCreated();
+        db.Database.Migrate();
     }
 
     public void Dispose() => _connection.Dispose();

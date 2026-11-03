@@ -84,25 +84,24 @@ public sealed partial class QueueDispatcher
         && !work.Spec.VideoOnly;
 
     /// <summary>
-    /// The whole routing decision as pure facts: the job's shape, the engine's switch, and whether
-    /// this library opted in. "The engine off changes nothing" is one line here, which is what
-    /// lets a test hold it: an opted-in library with the engine disabled routes nowhere, so its
-    /// jobs take exactly the path they always took.
+    /// The routing decision as pure facts: the job's shape and <see cref="SuperResolutionRouting"/>,
+    /// the one rule every placement and claim decision shares. With the feature off, an opted-in
+    /// library's jobs take exactly the path they always took.
     /// </summary>
     internal static bool RoutesThroughSuperResolution(
         JobWork work, SuperResolutionOptions options, bool libraryOptedIn) =>
-        IsSuperResolutionCandidate(work) && options.Enabled && libraryOptedIn;
+        IsSuperResolutionCandidate(work)
+        && SuperResolutionRouting.Applies(options.Enabled, libraryOptedIn, work.Spec.Kind, replaceBound: true);
 
     /// <summary>
-    /// The placement a job effectively runs under. A library opted into super-resolution runs
-    /// its video jobs on this server only: the engine works on the server's frames, while a
-    /// worker lease carries only ffmpeg arguments, so a worker-delivered candidate would arrive
-    /// source-sized and silently pass verification — a replacement without the upscaling that
-    /// was asked for. Local-only is the only placement that keeps the promise honest.
+    /// The placement a job effectively runs under. Super-resolution work runs on this server only:
+    /// the engine works on the server's frames, while a worker lease carries only ffmpeg arguments,
+    /// so a worker-delivered candidate would arrive source-sized and silently pass verification —
+    /// a replacement without the upscaling that was asked for. Everything else keeps the
+    /// operator's placement.
     /// </summary>
-    internal static WorkPlacement EffectivePlacement(
-        WorkPlacement placement, bool superResolutionEnabled, MediaKind kind) =>
-        superResolutionEnabled && kind == MediaKind.Video ? WorkPlacement.LocalOnly : placement;
+    internal static WorkPlacement EffectivePlacement(WorkPlacement placement, bool superResolution) =>
+        superResolution ? WorkPlacement.LocalOnly : placement;
 
     /// <summary>
     /// The three-stage super-resolution run. Returns the reassembly's <see cref="FfmpegRun"/>,
@@ -112,12 +111,12 @@ public sealed partial class QueueDispatcher
     private async Task<FfmpegRun> RunSuperResolutionAsync(
         int jobId,
         JobWork work,
+        SuperResolutionOptions options,
         CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
-        var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
-
+        // The options were frozen when this attempt was planned: the expected dimensions
+        // verification holds the candidate to came from them, so a settings edit mid-attempt
+        // must not change the engine run.
         RefuseUnsuitableSource(work, options);
 
         var detection = await new RealCuganDetectionService(options).DetectAsync(cancellationToken);

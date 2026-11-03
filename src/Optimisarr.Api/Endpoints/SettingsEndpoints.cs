@@ -17,6 +17,7 @@ using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Endpoints;
@@ -47,18 +48,23 @@ internal static class SettingsEndpoints
                 return ApiErrors.BadRequest(error!.Code, error.Message);
             }
 
-            await settings.SetQueueSettingsAsync(parsed, cancellationToken);
-
-            // The super-resolution section is validated and persisted on its own: an absent
-            // section leaves the stored engine configuration exactly as it was, so older
-            // clients and older automations keep working unchanged.
+            // Validate every section before anything is stored, so a rejected request changes
+            // nothing. An absent super-resolution section leaves the stored engine configuration
+            // exactly as it was, so older clients and automations keep working unchanged.
+            SuperResolutionOptions? superResolution = null;
             if (request.SuperResolution is { } requestedSuperResolution)
             {
                 if (!SuperResolutionRequestParser.TryParse(
-                        requestedSuperResolution, out var superResolution, out var superResolutionError))
+                        requestedSuperResolution, out var parsedSuperResolution, out var superResolutionError))
                 {
                     return ApiErrors.BadRequest(superResolutionError!.Code, superResolutionError.Message);
                 }
+                superResolution = parsedSuperResolution;
+            }
+
+            await settings.SetQueueSettingsAsync(parsed, cancellationToken);
+            if (superResolution is not null)
+            {
                 await settings.SetSuperResolutionOptionsAsync(superResolution, cancellationToken);
             }
 

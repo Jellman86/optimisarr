@@ -9,6 +9,7 @@ using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -1378,7 +1379,8 @@ internal static class WorkerLeaseEndpoints
         // the original without the upscaling that was asked for.
         if (library is not null
             && (!WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement)
-                || (superResolutionEngineEnabled && media.MediaKind == MediaKind.Video && library.SuperResolutionEnabled)))
+                || SuperResolutionRouting.Applies(superResolutionEngineEnabled, library.SuperResolutionEnabled,
+                    media.MediaKind, replaceBound: job.Type == JobType.Normal)))
         {
             return false;
         }
