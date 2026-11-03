@@ -16,12 +16,15 @@ public static class AutoReplacePolicy
         bool? verificationPassed,
         bool libraryAutoReplace,
         bool dryRunMode,
-        bool manuallyPaused = false) =>
+        bool manuallyPaused = false,
+        bool superResolutionApplied = false) =>
         status == JobStatus.ReadyToReplace
         && verificationPassed == true
         && libraryAutoReplace
         && !dryRunMode
-        && !manuallyPaused;
+        && !manuallyPaused
+        // No metric can prove an AI upscale looks better, so a person approves every one.
+        && !superResolutionApplied;
 
     /// <summary>
     /// Whether a reconciled replacement outcome is a problem worth a warning, or an expected

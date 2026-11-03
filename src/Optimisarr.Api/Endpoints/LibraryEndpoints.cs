@@ -134,6 +134,7 @@ internal static class LibraryEndpoints
                 DownmixToStereo = parsed.DownmixToStereo,
                 NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout,
                 SuperResolutionEnabled = parsed.SuperResolutionEnabled,
+                SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck,
                 KeepAudioLanguages = parsed.KeepAudioLanguages,
                 KeepSubtitleLanguages = parsed.KeepSubtitleLanguages,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
@@ -262,6 +263,7 @@ internal static class LibraryEndpoints
             library.DownmixToStereo = parsed.DownmixToStereo;
             library.NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout;
             library.SuperResolutionEnabled = parsed.SuperResolutionEnabled;
+            library.SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck;
             library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.KeepSubtitleLanguages = parsed.KeepSubtitleLanguages;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;

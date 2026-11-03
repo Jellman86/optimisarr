@@ -1131,6 +1131,7 @@
       // Coerced like the hardlink switch: an older server omits the field, and undefined
       // must read as off rather than blank the editor.
       superResolutionEnabled: library.superResolutionEnabled ?? false,
+      superResolutionQualityCheck: library.superResolutionQualityCheck ?? 'BrokenFramesOnly',
       excludePaths: library.excludePaths,
       // Coerced rather than passed through: a two-way binding onto a boolean prop throws
       // props_invalid_value on undefined, which takes the whole editor down rather than
@@ -1268,6 +1269,7 @@
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
       superResolutionEnabled: form.superResolutionEnabled,
+      superResolutionQualityCheck: form.superResolutionQualityCheck,
       excludePaths: emptyToNull(form.excludePaths),
       excludeHardLinkedFiles: form.excludeHardLinkedFiles,
       workPlacement: form.workPlacement,
@@ -2673,6 +2675,17 @@
             </span>
           </span>
         </label>
+        {#if form.superResolutionEnabled}
+          <div class="mt-4">
+            <label class="label" for="library-sr-quality">{i18n.m.libraries.super_resolution_quality} <InfoTip text={i18n.m.libraries.super_resolution_quality_tip} /></label>
+            <select id="library-sr-quality" class="input" bind:value={form.superResolutionQualityCheck}>
+              <option value="BrokenFramesOnly">{i18n.m.libraries.super_resolution_quality_broken}</option>
+              <option value="FullGate">{i18n.m.libraries.super_resolution_quality_full}</option>
+              <option value="Off">{i18n.m.libraries.super_resolution_quality_off}</option>
+            </select>
+            <p class="mt-2 text-xs text-ink-3">{i18n.m.libraries.super_resolution_review_note}</p>
+          </div>
+        {/if}
 </ConfigSection>
 {/if}
 {/snippet}

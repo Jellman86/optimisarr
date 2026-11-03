@@ -62,6 +62,22 @@ While the feature is on, each library has an **AI super-resolution (experimental
 video settings. Tick **Super-resolution (Real-CUGAN)** for libraries whose files you want
 upscaled. Name the library whatever you like.
 
+When a library opts in, choose its **Quality check for upscaled results**:
+
+| Choice | What it does |
+|---|---|
+| Catch broken frames (recommended, default) | VMAF is measured and recorded, and only its broken-frame floor applies: the lowest frame must stay above the library's catastrophic floor (40 if none is set). It catches corrupted or glitched output without refusing the intended changes. |
+| Full VMAF gate | The library's normal VMAF gates apply. Most upscales will be refused. |
+| Off | No VMAF; only the structural checks apply. |
+
+VMAF measures how close a result stays to the original, and an AI upscale changes the picture on
+purpose. On real anime, a good Real-CUGAN upscale scored about 72 on VMAF v1 where a plain
+re-encode of the same frames scored 97 and an ordinary Lanczos upscale 99. Frame, duration,
+track, A/V sync, colour and font checks apply whatever you choose.
+
+**Upscaled results always wait for you to review them** before the original is replaced, even
+when the library replaces automatically: no metric can prove an upscale looks better.
+
 Only the library's ordinary video jobs run the pipeline; previews, calibration samples and
 non-video jobs never do. Its video jobs run on this server only, whatever the library's placement
 says, so a worker can never deliver an ordinary source-sized encode in place of the upscale.
@@ -77,10 +93,10 @@ says, so a worker can never deliver an ordinary source-sized encode in place of 
 3. Encodes the upscaled frames with the library's software encoder and quality, and copies the
    source's audio, subtitles, chapters and metadata. For Matroska it also keeps attachments such
    as subtitle fonts; a candidate missing any of them is not accepted.
-4. Hands the candidate to the normal verification and safe replacement. The size-saving gates are
-   off for this candidate, because upscaling grows the file. Every other gate applies, including
-   VMAF, which compares the candidate scaled back to the source size. The original is
-   quarantined and can be rolled back as always.
+4. Hands the candidate to the normal verification. The size-saving gates are off, because
+   upscaling grows the file; VMAF follows the library's quality check; every structural gate
+   applies. A passing result waits for your review, then the normal safe replacement quarantines
+   the original, which can be rolled back as always.
 
 The settings for an attempt are fixed when it starts; editing them affects later attempts.
 Turning the feature off stops new super-resolution work; an attempt already running finishes,

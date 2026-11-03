@@ -547,7 +547,8 @@ internal sealed record SaveLibraryRequest(
     bool? AdaptiveImageQuality = null,
     bool? NormalizeOpusChannelLayout = null,
     bool? AdaptiveSoundtrackQuality = null,
-    bool? SuperResolutionEnabled = null);
+    bool? SuperResolutionEnabled = null,
+    string? SuperResolutionQualityCheck = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -646,7 +647,8 @@ internal sealed record LibraryDto(
     bool AdaptiveImageQuality,
     bool NormalizeOpusChannelLayout,
     bool AdaptiveSoundtrackQuality,
-    bool SuperResolutionEnabled)
+    bool SuperResolutionEnabled,
+    string SuperResolutionQualityCheck)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -734,7 +736,8 @@ internal sealed record LibraryDto(
         library.AdaptiveImageQuality,
         library.NormalizeOpusChannelLayout,
         library.AdaptiveSoundtrackQuality,
-        library.SuperResolutionEnabled);
+        library.SuperResolutionEnabled,
+        library.SuperResolutionQualityCheck.ToString());
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

@@ -3,15 +3,31 @@ using Optimisarr.Core.Verification;
 namespace Optimisarr.Core.SuperResolution;
 
 /// <summary>
-/// The verification a super-resolution candidate is judged by. Upscaling is the point of the
-/// job: the output is larger than the source by construction, so the size-saving gates — built
-/// to stop encodes that do not shrink — would reject every candidate before its quality was
-/// ever judged. Every other gate (decodability, timeline, stream retention, perceptual quality)
-/// applies unchanged. Opting a library into super-resolution is the operator's explicit
-/// acceptance that its outputs may be larger than the files they replace.
+/// The verification an upscaled candidate is judged by. The size-saving gates are off, because
+/// upscaling grows the file by construction. The library chooses how VMAF applies (see
+/// <see cref="SuperResolutionQualityCheck"/>); every structural gate (decode, pictures, duration,
+/// streams, A/V sync, colour) applies unchanged.
 /// </summary>
 public static class SuperResolutionPolicy
 {
-    public static VerificationPolicy ForUpscaledCandidate(VerificationPolicy policy) =>
-        policy with { RequireSizeReduction = false };
+    /// <summary>The broken-frame floor used when the library has none of its own.</summary>
+    public const double BrokenFrameFloor = 40;
+
+    public static VerificationPolicy ForUpscaledCandidate(VerificationPolicy policy, SuperResolutionQualityCheck check)
+    {
+        var sized = policy with { RequireSizeReduction = false, MinimumSizeSavingPercent = null, MaximumSizeSavingPercent = null };
+        return check switch
+        {
+            SuperResolutionQualityCheck.FullGate => sized,
+            SuperResolutionQualityCheck.Off => sized with { QualityGateEnabled = false, MeasureVmaf = false },
+            _ => sized with
+            {
+                QualityGateEnabled = true,
+                MeasureVmaf = true,
+                MinimumVmafHarmonicMean = 0,
+                MinimumVmafMin = 0,
+                MinimumVmafCatastrophicMin = policy.MinimumVmafCatastrophicMin > 0 ? policy.MinimumVmafCatastrophicMin : BrokenFrameFloor,
+            },
+        };
+    }
 }

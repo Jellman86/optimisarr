@@ -89,6 +89,11 @@ public static class ConfigSnapshotValidator
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
             }
+            if (library.SuperResolutionQualityCheck is not null)
+            {
+                RequireEnum<Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck>(
+                    library.SuperResolutionQualityCheck, $"{where} super-resolution quality check", errors);
+            }
             if (!EncoderPresetPolicy.TryNormaliseSelection(library.EncoderPreset, out _))
             {
                 errors.Add(

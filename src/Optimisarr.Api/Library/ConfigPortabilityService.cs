@@ -248,6 +248,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             // A backup taken before the Real-CUGAN pipeline existed leaves the per-library switch
             // out, which means the library keeps its stored choice either way.
             library.SuperResolutionEnabled = snapshot.SuperResolutionEnabled ?? library.SuperResolutionEnabled;
+            library.SuperResolutionQualityCheck = snapshot.SuperResolutionQualityCheck is null
+                ? library.SuperResolutionQualityCheck
+                : ParseEnum<Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck>(snapshot.SuperResolutionQualityCheck);
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
                 ?? legacyVerificationPolicy.ImageQualityGateEnabled;
             library.MinimumImageSsim = snapshot.MinimumImageSsim
@@ -588,7 +591,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.AdaptiveImageQuality,
         library.NormalizeOpusChannelLayout,
         library.AdaptiveSoundtrackQuality,
-        library.SuperResolutionEnabled);
+        library.SuperResolutionEnabled,
+        library.SuperResolutionQualityCheck.ToString());
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

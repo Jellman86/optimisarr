@@ -130,6 +130,8 @@ export type HardwareCapability = {
 }
 
 export type WorkPlacement = 'Anywhere' | 'LocalOnly' | 'PreferWorker' | 'WorkerOnly'
+/** How a library judges upscaled results: VMAF measures closeness to the original, which upscaling changes on purpose. */
+export type SuperResolutionQualityCheck = 'BrokenFramesOnly' | 'FullGate' | 'Off'
 
 export type LibraryRules = {
   priority: number
@@ -162,6 +164,7 @@ export type LibraryRules = {
   normalizeOpusChannelLayout: boolean
   /** Video jobs in this library run through the Real-CUGAN super-resolution pipeline. */
   superResolutionEnabled: boolean
+  superResolutionQualityCheck: SuperResolutionQualityCheck
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
@@ -255,6 +258,7 @@ export type SaveLibrary = LibraryRules & {
 export function newLibraryDefaults(): SaveLibrary {
   return {
     superResolutionEnabled: false,
+    superResolutionQualityCheck: 'BrokenFramesOnly',
     name: '',
     path: '',
     mediaType: 'Film',

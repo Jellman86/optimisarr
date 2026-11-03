@@ -122,6 +122,10 @@ public sealed class Library
     /// </summary>
     public bool SuperResolutionEnabled { get; set; }
 
+    /// <summary>How this library judges its upscaled results; see <see cref="Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck"/>.</summary>
+    public Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck SuperResolutionQualityCheck { get; set; }
+        = Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.BrokenFramesOnly;
+
     /// <summary>
     /// Portable content tune for video re-encodes ("Animation" or "Grain"). Null (the default)
     /// leaves every encoder on its own tuning. Only the software x264/x265 encoders understand

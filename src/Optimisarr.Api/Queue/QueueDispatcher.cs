@@ -243,7 +243,7 @@ public sealed partial class QueueDispatcher(
                     db.Libraries,
                     job => job.LibraryId,
                     library => library.Id,
-                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace })
+                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace, job.SuperResolutionApplied })
                 .ToListAsync(cancellationToken);
 
             jobIds = ready
@@ -252,7 +252,8 @@ public sealed partial class QueueDispatcher(
                     candidate.VerificationPassed,
                     candidate.AutoReplace,
                     queueSettings.DryRunMode,
-                    pauseManager.IsPaused))
+                    pauseManager.IsPaused,
+                    candidate.SuperResolutionApplied))
                 .OrderBy(candidate => candidate.Id)
                 .Take(AutoReplaceReconcileBatch)
                 .Select(candidate => candidate.Id)
@@ -1063,30 +1064,16 @@ public sealed partial class QueueDispatcher(
             // A super-resolution job keeps the library's fixed quality: the adaptive search
             // samples the normal encode, whose size and quality say nothing about the upscaled
             // candidate, and its size forecast would only reject a job that was never predicted.
-            var superResolutionOptions = await ResolveSuperResolutionAsync(preparedWork, cancellationToken);
-            var superResolutionPlanned = superResolutionOptions is not null;
-            if (superResolutionOptions is { } resolvedSuperResolution)
+            var superResolution = await ResolveSuperResolutionAsync(preparedWork, cancellationToken);
+            var superResolutionPlanned = superResolution is not null;
+            if (superResolution is { } choice)
             {
-                // The candidate this pipeline produces is the source scaled by the engine's
-                // ratio, so verification is told exactly what to expect — without this the
-                // structure gate would fail every candidate for "changing resolution without a
-                // resize policy" — and the size-saving gates stand down: they exist to stop
-                // encodes that fail to shrink, which describes no super-resolution job. Every
-                // other gate applies unchanged.
-                var upscaled = resolvedSuperResolution.UpscaledSize(preparedWork.SourcePicture)
-                    ?? throw new InvalidOperationException(
-                        "Super-resolution needs the source's picture dimensions, which the probe does not " +
-                        "report. Re-probe the file and retry.");
-                preparedWork = preparedWork with
-                {
-                    VerificationPolicy = SuperResolutionPolicy.ForUpscaledCandidate(preparedWork.VerificationPolicy),
-                    Original = preparedWork.Original with
-                    {
-                        ExpectedWidth = upscaled.Width,
-                        ExpectedHeight = upscaled.Height,
-                    },
-                };
+                // The candidate is the source scaled by the engine's ratio, judged by the library's
+                // quality check with the size gates off; a person approves every upscaled replacement.
+                preparedWork = PrepareSuperResolutionWork(preparedWork, choice.Options, choice.QualityCheck);
             }
+            // Recorded per attempt, so a later ordinary attempt is not held for review as an upscale.
+            await WithJobAsync(jobId, job => job.SuperResolutionApplied = superResolutionPlanned, cancellationToken);
             if (!superResolutionPlanned && ShouldSelectAdaptiveQuality(
                 preparedWork.VideoQualityStrategy,
                 preparedWork.Spec.VideoCodec is not null,
@@ -1164,23 +1151,9 @@ public sealed partial class QueueDispatcher(
             // would; everything after this point — size handling, verification, replacement —
             // is unchanged. Disabled libraries, previews and non-video jobs never enter it.
             FfmpegRun run;
-            if (superResolutionOptions is { } frozenSuperResolution)
+            if (superResolution is { } frozenSuperResolution)
             {
-                // Upscaling legitimately grows the file, so the size-saving gate would reject
-                // every super-resolution result by construction. Turn that one gate off for the
-                // attempt, the way a calibration attempt already does — every quality, decode,
-                // duration and stream gate stays exactly as the library configured it.
-                var superResolutionWork = preparedWork with
-                {
-                    VerificationPolicy = preparedWork.VerificationPolicy with
-                    {
-                        RequireSizeReduction = false,
-                        MinimumSizeSavingPercent = null,
-                        MaximumSizeSavingPercent = null,
-                    },
-                    BypassSizePreflight = true,
-                };
-                run = await RunSuperResolutionAsync(jobId, superResolutionWork, frozenSuperResolution, cancellationToken);
+                run = await RunSuperResolutionAsync(jobId, preparedWork, frozenSuperResolution.Options, cancellationToken);
             }
             else
             {

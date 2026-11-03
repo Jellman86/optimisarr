@@ -55,4 +55,42 @@ public sealed class SuperResolutionEndpointTests(AdminTokenAuthEndpointTests.Tok
         Assert.Equal(before["dryRunMode"]!.GetValue<bool>(), after!["dryRunMode"]!.GetValue<bool>());
         Assert.False(after["superResolution"]!["enabled"]!.GetValue<bool>());
     }
+
+    private static object LibraryBody(string path, string? qualityCheck) => new
+    {
+        name = "Anime " + Guid.NewGuid().ToString("N")[..6], path, mediaType = "Tv", ruleProfile = "ConservativeHevc", enabled = true,
+        superResolutionEnabled = true, superResolutionQualityCheck = qualityCheck,
+    };
+
+    [Fact]
+    public async Task A_library_saves_and_returns_how_it_checks_upscaled_results()
+    {
+        using var client = Admin();
+        var path = Directory.CreateDirectory(Path.Combine(api.LibraryDirectory, "sr-" + Guid.NewGuid().ToString("N"))).FullName;
+        using var created = await client.PostAsJsonAsync("/api/libraries", LibraryBody(path, "FullGate"));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var library = await created.Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal("FullGate", library!["superResolutionQualityCheck"]!.GetValue<string>());
+        await client.DeleteAsync($"/api/libraries/{library["id"]}");
+    }
+
+    [Fact]
+    public async Task A_library_without_a_choice_gets_the_broken_frame_check()
+    {
+        using var client = Admin();
+        var path = Directory.CreateDirectory(Path.Combine(api.LibraryDirectory, "sr-" + Guid.NewGuid().ToString("N"))).FullName;
+        using var created = await client.PostAsJsonAsync("/api/libraries", LibraryBody(path, null));
+        var library = await created.Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal("BrokenFramesOnly", library!["superResolutionQualityCheck"]!.GetValue<string>());
+        await client.DeleteAsync($"/api/libraries/{library["id"]}");
+    }
+
+    [Fact]
+    public async Task An_unknown_quality_check_is_rejected()
+    {
+        using var client = Admin();
+        var path = Directory.CreateDirectory(Path.Combine(api.LibraryDirectory, "sr-" + Guid.NewGuid().ToString("N"))).FullName;
+        using var created = await client.PostAsJsonAsync("/api/libraries", LibraryBody(path, "Vibes"));
+        Assert.Equal(HttpStatusCode.BadRequest, created.StatusCode);
+    }
 }

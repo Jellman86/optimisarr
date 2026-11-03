@@ -700,6 +700,36 @@ public sealed class MigrationTests : IDisposable
         Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, films.WorkPlacement);
     }
 
+    [Fact]
+    public async Task An_upgraded_library_reads_back_super_resolution_off_with_the_recommended_check()
+    {
+        // EF generated "" for the new enum column, which is not a member and would fail every
+        // existing library on load; the corrected default must read back.
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath};Pooling=False")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20261030132014_AddAdaptiveSoundtrackQuality");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Anime', '/data/anime', 'Tv', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        var anime = await db.Libraries.SingleAsync();
+        Assert.False(anime.SuperResolutionEnabled);
+        Assert.Equal(Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.BrokenFramesOnly, anime.SuperResolutionQualityCheck);
+    }
+
     public void Dispose()
     {
         if (File.Exists(_dbPath))

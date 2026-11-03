@@ -1081,7 +1081,13 @@ test('with the feature on, a library has its own AI super-resolution section', a
   await page.goto('/#/libraries/1/configure/encode/video')
   await expect(page.getByText('AI super-resolution (experimental)')).toBeVisible()
   await page.getByRole('checkbox', { name: /Super-resolution \(Real-CUGAN\)/ }).check()
+  // Opting in offers how upscaled results are checked, recommending the broken-frame check, and
+  // says plainly that every upscaled result waits for review.
+  const check = page.locator('#library-sr-quality')
+  await expect(check).toHaveValue('BrokenFramesOnly')
+  await expect(page.getByText(/Upscaled results always wait for you to review them/)).toBeVisible()
+  await check.selectOption('Off')
   const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  expect((await saved).postDataJSON()).toMatchObject({ superResolutionEnabled: true })
+  expect((await saved).postDataJSON()).toMatchObject({ superResolutionEnabled: true, superResolutionQualityCheck: 'Off' })
 })

@@ -2803,6 +2803,12 @@
               "boolean"
             ]
           },
+          "superResolutionQualityCheck": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -4989,6 +4995,12 @@
             "type": [
               "null",
               "boolean"
+            ]
+          },
+          "superResolutionQualityCheck": {
+            "type": [
+              "null",
+              "string"
             ]
           },
           "targetContainer": {

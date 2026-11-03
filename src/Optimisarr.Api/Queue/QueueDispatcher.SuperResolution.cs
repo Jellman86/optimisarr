@@ -31,7 +31,10 @@ public sealed partial class QueueDispatcher
     /// lets the caller carry the engine's scale into the expectations verification holds the
     /// candidate to.
     /// </summary>
-    private async Task<SuperResolutionOptions?> ResolveSuperResolutionAsync(
+    /// <summary>The engine options and the library's quality check for one super-resolution attempt.</summary>
+    internal sealed record SuperResolutionChoice(SuperResolutionOptions Options, SuperResolutionQualityCheck QualityCheck);
+
+    private async Task<SuperResolutionChoice?> ResolveSuperResolutionAsync(
         JobWork work, CancellationToken cancellationToken)
     {
         // The shape gate is pure, so a preview or an audio job never reads settings at all. The
@@ -59,7 +62,7 @@ public sealed partial class QueueDispatcher
             .FirstOrDefaultAsync(candidate => candidate.MediaFiles.Any(file => file.Id == work.MediaFileId),
                 cancellationToken);
         return RoutesThroughSuperResolution(work, options, library?.SuperResolutionEnabled == true)
-            ? options
+            ? new SuperResolutionChoice(options, library!.SuperResolutionQualityCheck)
             : null;
     }
 
@@ -95,6 +98,26 @@ public sealed partial class QueueDispatcher
     /// </summary>
     internal static WorkPlacement EffectivePlacement(WorkPlacement placement, bool superResolution) =>
         superResolution ? WorkPlacement.LocalOnly : placement;
+
+    /// <summary>
+    /// The work an upscaled attempt is judged as: the candidate is expected at the upscaled size,
+    /// verification follows the library's quality check with the size-saving gates off, the size
+    /// forecast is skipped, and the result always waits for a person to approve its replacement.
+    /// </summary>
+    internal static JobWork PrepareSuperResolutionWork(
+        JobWork work, SuperResolutionOptions options, SuperResolutionQualityCheck qualityCheck)
+    {
+        var upscaled = options.UpscaledSize(work.SourcePicture)
+            ?? throw new InvalidOperationException(
+                "Super-resolution needs the source's picture dimensions, which the probe does not report. Re-probe the file and retry.");
+        return work with
+        {
+            VerificationPolicy = SuperResolutionPolicy.ForUpscaledCandidate(work.VerificationPolicy, qualityCheck),
+            Original = work.Original with { ExpectedWidth = upscaled.Width, ExpectedHeight = upscaled.Height },
+            BypassSizePreflight = true,
+            AutoReplace = false,
+        };
+    }
 
     /// <summary>
     /// One super-resolution attempt as a bounded stream (see <see cref="SuperResolutionPipeline"/>).

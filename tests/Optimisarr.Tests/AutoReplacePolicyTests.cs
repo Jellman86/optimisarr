@@ -17,6 +17,18 @@ public sealed class AutoReplacePolicyTests
     }
 
     [Fact]
+    public void An_upscaled_result_always_waits_for_review_even_when_the_library_auto_replaces()
+    {
+        // No metric can prove an AI upscale looks better than the original, so a person approves it.
+        Assert.False(AutoReplacePolicy.ShouldReconcile(
+            JobStatus.ReadyToReplace,
+            verificationPassed: true,
+            libraryAutoReplace: true,
+            dryRunMode: false,
+            superResolutionApplied: true));
+    }
+
+    [Fact]
     public void Skips_when_the_library_does_not_auto_replace()
     {
         Assert.False(AutoReplacePolicy.ShouldReconcile(

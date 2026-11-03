@@ -135,18 +135,65 @@ public sealed class SuperResolutionOptionsTests
         Assert.Null(SuperResolutionOptions.Defaults.UpscaledSize(new PictureSize(640, 0)));
     }
 
-    [Fact]
-    public void An_upscaled_candidate_is_never_judged_by_the_size_saving_gate()
+    private static readonly VerificationPolicy Library = VerificationPolicy.Default with
     {
-        // Upscaling is the point of the job: the output is larger than the source by
-        // construction, so the gate built to stop encodes that fail to shrink would reject
-        // every candidate before its quality was ever judged.
-        var policy = SuperResolutionPolicy.ForUpscaledCandidate(
-            VerificationPolicy.Default with { RequireSizeReduction = true, MinimumSizeSavingPercent = 25 });
+        RequireSizeReduction = true, MinimumSizeSavingPercent = 25, MaximumSizeSavingPercent = 80,
+        QualityGateEnabled = true, MinimumVmafHarmonicMean = 90, MinimumVmafMin = 70, MinimumVmafCatastrophicMin = 30,
+    };
+
+    [Theory]
+    [InlineData(SuperResolutionQualityCheck.BrokenFramesOnly)]
+    [InlineData(SuperResolutionQualityCheck.FullGate)]
+    [InlineData(SuperResolutionQualityCheck.Off)]
+    public void An_upscaled_candidate_is_never_judged_by_the_size_saving_gates(SuperResolutionQualityCheck check)
+    {
+        // Upscaling grows the file by construction; the size gates would reject every candidate.
+        var policy = SuperResolutionPolicy.ForUpscaledCandidate(Library, check);
         Assert.False(policy.RequireSizeReduction);
-        // Everything else about the policy — the perceptual and stream gates — must survive
-        // untouched: a super-resolution candidate is verified like any other candidate.
-        Assert.Equal(25, policy.MinimumSizeSavingPercent);
-        Assert.Equal(VerificationPolicy.Default.DurationTolerancePercent, policy.DurationTolerancePercent);
+        Assert.Null(policy.MinimumSizeSavingPercent);
+        Assert.Null(policy.MaximumSizeSavingPercent);
+        // Structural gates are untouched whatever the quality check.
+        Assert.Equal(Library.DurationTolerancePercent, policy.DurationTolerancePercent);
+        Assert.Equal(Library.RequireAudioRetained, policy.RequireAudioRetained);
+    }
+
+    [Fact]
+    public void Catching_broken_frames_measures_vmaf_but_applies_only_the_broken_frame_floor()
+    {
+        // VMAF measures closeness to the original, which an upscaler changes on purpose; a good
+        // Real-CUGAN upscale scored about 72 on VMAF v1 where a plain re-encode scored 97.
+        var policy = SuperResolutionPolicy.ForUpscaledCandidate(Library, SuperResolutionQualityCheck.BrokenFramesOnly);
+        Assert.True(policy.QualityGateEnabled);
+        Assert.True(policy.MeasureVmaf);
+        Assert.Equal(0, policy.MinimumVmafHarmonicMean);
+        Assert.Equal(0, policy.MinimumVmafMin);
+        Assert.Equal(30, policy.MinimumVmafCatastrophicMin);
+    }
+
+    [Fact]
+    public void Without_a_library_floor_broken_frames_are_caught_below_the_standard_floor()
+    {
+        var policy = SuperResolutionPolicy.ForUpscaledCandidate(
+            Library with { QualityGateEnabled = false, MinimumVmafCatastrophicMin = 0 }, SuperResolutionQualityCheck.BrokenFramesOnly);
+        Assert.True(policy.QualityGateEnabled);
+        Assert.Equal(SuperResolutionPolicy.BrokenFrameFloor, policy.MinimumVmafCatastrophicMin);
+    }
+
+    [Fact]
+    public void The_full_gate_keeps_the_librarys_vmaf_floors()
+    {
+        var policy = SuperResolutionPolicy.ForUpscaledCandidate(Library, SuperResolutionQualityCheck.FullGate);
+        Assert.True(policy.QualityGateEnabled);
+        Assert.Equal(90, policy.MinimumVmafHarmonicMean);
+        Assert.Equal(70, policy.MinimumVmafMin);
+        Assert.Equal(30, policy.MinimumVmafCatastrophicMin);
+    }
+
+    [Fact]
+    public void Turning_the_check_off_skips_vmaf_entirely()
+    {
+        var policy = SuperResolutionPolicy.ForUpscaledCandidate(Library with { MeasureVmaf = true }, SuperResolutionQualityCheck.Off);
+        Assert.False(policy.QualityGateEnabled);
+        Assert.False(policy.MeasureVmaf);
     }
 }

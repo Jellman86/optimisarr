@@ -122,7 +122,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         await using (var db = CreateDb())
         {
             db.Libraries.Add(new Library { Name = "Animation", Path = "/data/anime", MediaType = MediaType.Film,
-                SuperResolutionEnabled = true });
+                SuperResolutionEnabled = true, SuperResolutionQualityCheck = Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.Off });
             db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
             await db.SaveChangesAsync();
         }
@@ -135,6 +135,9 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         await using var restored = CreateDb();
         Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/anime"))
             .SuperResolutionEnabled);
+        Assert.Equal("Off", snapshot.Libraries.Single(library => library.Path == "/data/anime").SuperResolutionQualityCheck);
+        Assert.Equal(Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.Off,
+            (await restored.Libraries.SingleAsync(library => library.Path == "/data/anime")).SuperResolutionQualityCheck);
         Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/films"))
             .SuperResolutionEnabled);
 
@@ -192,6 +195,27 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal("", options.BinaryPath);
         Assert.Equal("", options.ModelsPath);
         Assert.Equal("pro", options.Preset);
+    }
+
+    [Fact]
+    public async Task A_backup_with_an_unknown_super_resolution_check_is_rejected_before_anything_changes()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Animation", Path = "/data/anime", MediaType = MediaType.Tv });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var broken = snapshot with
+        {
+            Libraries = [snapshot.Libraries[0] with { Name = "Renamed", SuperResolutionQualityCheck = "Vibes" }],
+        };
+
+        var result = await ImportAsync(broken);
+
+        Assert.False(result.Applied);
+        await using var unchanged = CreateDb();
+        Assert.Equal("Animation", (await unchanged.Libraries.SingleAsync()).Name);
     }
 
     [Fact]

@@ -88,6 +88,21 @@ public sealed class SuperResolutionPipelinePlanTests
     }
 
     [Fact]
+    public void Upscaled_work_expects_the_upscaled_size_and_always_waits_for_review()
+    {
+        var work = VideoWork() with { AutoReplace = true, SourcePicture = new PictureSize(1920, 1080) };
+
+        var prepared = QueueDispatcher.PrepareSuperResolutionWork(work, Options with { Scale = 2 }, SuperResolutionQualityCheck.BrokenFramesOnly);
+
+        Assert.Equal(3840, prepared.Original.ExpectedWidth);
+        Assert.Equal(2160, prepared.Original.ExpectedHeight);
+        // No metric can prove an upscale looks better, so a person approves every replacement.
+        Assert.False(prepared.AutoReplace);
+        Assert.False(prepared.VerificationPolicy.RequireSizeReduction);
+        Assert.True(prepared.BypassSizePreflight);
+    }
+
+    [Fact]
     public void An_hdr_source_is_refused_before_anything_runs()
     {
         Assert.Throws<InvalidOperationException>(() =>

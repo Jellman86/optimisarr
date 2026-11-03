@@ -815,6 +815,9 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("SuperResolutionApplied")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1253,6 +1256,11 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<bool>("SuperResolutionEnabled")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("SuperResolutionQualityCheck")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TargetContainer")
                         .HasMaxLength(32)
