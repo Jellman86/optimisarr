@@ -54,21 +54,28 @@ public static class RealCuganCommandBuilder
     /// <summary>
     /// Decodes the first video stream to a continuous stream of RGB PNG pictures on stdout. The
     /// pipeline reads it one picture at a time, so the decoder blocks while a batch is with the
-    /// engine and scratch space never grows with the length of the video. No filters run: the
-    /// engine owns the picture work.
+    /// engine and scratch space never grows with the length of the video. The engine owns the
+    /// picture work; the only filter is the dither a deeper source needs.
     /// </summary>
-    public static IReadOnlyList<string> BuildDecoder(string inputPath, int threads) =>
-    [
-        "-hide_banner", "-nostdin", "-loglevel", "error",
-        "-threads", threads.ToString(CultureInfo.InvariantCulture),
-        "-i", inputPath,
-        "-map", "0:v:0",
-        "-fps_mode", "passthrough",
-        "-pix_fmt", "rgb24",
-        "-c:v", "png",
-        "-f", "image2pipe",
-        "-",
-    ];
+    public static IReadOnlyList<string> BuildDecoder(string inputPath, int threads, int sourceBitDepth)
+    {
+        var args = new List<string>
+        {
+            "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-threads", threads.ToString(CultureInfo.InvariantCulture),
+            "-i", inputPath,
+            "-map", "0:v:0",
+            "-fps_mode", "passthrough",
+        };
+        if (sourceBitDepth > 8)
+        {
+            // The engine reads 8-bit pictures. Error-diffusion dithering carries a deeper source's
+            // gradients into them without the banding a plain truncation would add.
+            args.AddRange(["-vf", "scale=sws_dither=ed,format=rgb24"]);
+        }
+        args.AddRange(["-pix_fmt", "rgb24", "-c:v", "png", "-f", "image2pipe", "-"]);
+        return args;
+    }
 
     /// <summary>
     /// Encodes the upscaled pictures arriving on stdin, with the original as the second input so
@@ -82,7 +89,8 @@ public static class RealCuganCommandBuilder
         double frameRate,
         int threads,
         string? optimisedMarker,
-        double videoStartSeconds)
+        double videoStartSeconds,
+        int sourceBitDepth)
     {
         var args = new List<string>
         {
@@ -110,9 +118,8 @@ public static class RealCuganCommandBuilder
             // upload filters, a combination this pipeline refuses), so CRF is their quality knob.
             args.AddRange(["-crf", crf.ToString(CultureInfo.InvariantCulture)]);
         }
-        // The pictures arrive as RGB; the target is the source's own 8-bit 4:2:0 layout, the only
-        // layout super-resolution accepts.
-        args.AddRange(["-pix_fmt", "yuv420p"]);
+        // The pictures arrive as RGB; the target is the source's own 4:2:0 layout and bit depth.
+        args.AddRange(["-pix_fmt", sourceBitDepth > 8 ? "yuv420p10le" : "yuv420p"]);
         if (!string.IsNullOrWhiteSpace(spec.Preset))
         {
             args.AddRange(["-preset", spec.Preset]);

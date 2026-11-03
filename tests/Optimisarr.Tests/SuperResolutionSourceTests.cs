@@ -27,8 +27,20 @@ public sealed class SuperResolutionSourceTests
     }
 
     [Theory]
-    [InlineData("\"pix_fmt\": \"yuv420p10le\", \"sample_aspect_ratio\": \"1:1\"", "8-bit")]
-    [InlineData("\"pix_fmt\": \"yuv444p\", \"sample_aspect_ratio\": \"1:1\"", "8-bit")]
+    [InlineData("yuv420p", 8)]
+    [InlineData("yuvj420p", 8)]
+    [InlineData("yuv420p10le", 10)]
+    public void Eight_and_ten_bit_4_2_0_sources_are_accepted_and_keep_their_bit_depth(string pixelFormat, int bitDepth)
+    {
+        var source = SuperResolutionSource.Parse(Probe(video: $"\"pix_fmt\": \"{pixelFormat}\", \"sample_aspect_ratio\": \"1:1\""));
+        Assert.Null(source.Refusal);
+        Assert.Equal(bitDepth, source.BitDepth);
+    }
+
+    [Theory]
+    [InlineData("\"pix_fmt\": \"yuv420p12le\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
+    [InlineData("\"pix_fmt\": \"yuv444p\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
+    [InlineData("\"pix_fmt\": \"yuv422p10le\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
     [InlineData("\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"32:27\"", "square")]
     [InlineData("\"pix_fmt\": \"yuv420p\", \"side_data_list\": [{ \"side_data_type\": \"Display Matrix\", \"rotation\": -90 }]", "rotat")]
     public void A_source_the_frames_cannot_reproduce_is_refused_with_a_reason(string video, string reason)

@@ -144,7 +144,8 @@ public sealed partial class QueueDispatcher
         }
 
         var encoderArguments = RealCuganCommandBuilder.BuildEncoder(
-            work.Spec, work.VideoEncoder!, frameRate, work.CpuThreadLimit, OptimisedMarkerValue, source.VideoStartSeconds);
+            work.Spec, work.VideoEncoder!, frameRate, work.CpuThreadLimit, OptimisedMarkerValue, source.VideoStartSeconds,
+            source.BitDepth);
         await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
         logger.LogInformation(
             "Job {JobId}: super-resolution — {Frames} pictures per batch, preset {Preset}, scale {Scale}x, noise {Noise}, device {Device}",
@@ -154,7 +155,7 @@ public sealed partial class QueueDispatcher
         var request = new SuperResolutionRunRequest(
             transcodeOptions.Ffmpeg,
             detection.BinaryPath,
-            RealCuganCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit),
+            RealCuganCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth),
             encoderArguments,
             (input, output) => RealCuganCommandBuilder.BuildEngineArguments(input, output, detection.ModelsRoot, options),
             WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid()),

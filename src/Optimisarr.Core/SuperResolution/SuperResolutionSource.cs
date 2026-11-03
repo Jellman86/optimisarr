@@ -5,13 +5,18 @@ namespace Optimisarr.Core.SuperResolution;
 
 /// <summary>
 /// The facts about an original that decide whether super-resolution can reproduce it, read from
-/// one ffprobe of the file. The pipeline rebuilds the picture from 8-bit RGB frames of the first
-/// video stream, so a source it cannot reproduce faithfully is refused before anything is
-/// extracted: deeper or wider colour, non-square pixels, rotation, or a second real video stream.
+/// one ffprobe of the file. The engine works on 8-bit RGB pictures of the first video stream. An
+/// 8-bit or 10-bit 4:2:0 source is accepted: a 10-bit source is dithered into the engine's 8-bit
+/// pictures and encoded back to 10-bit, which suits drawn content mastered in 8-bit and released in
+/// 10-bit for compression. Anything else is refused before extraction: other chroma layouts or
+/// depths, non-square pixels, rotation, or a second real video stream.
 /// </summary>
-public sealed record SuperResolutionSource(string? Refusal, double VideoStartSeconds, int AttachmentCount)
+public sealed record SuperResolutionSource(string? Refusal, double VideoStartSeconds, int AttachmentCount, int BitDepth = 8)
 {
-    private static readonly HashSet<string> EightBit420 = ["yuv420p", "yuvj420p"];
+    private static readonly Dictionary<string, int> Supported420 = new()
+    {
+        ["yuv420p"] = 8, ["yuvj420p"] = 8, ["yuv420p10le"] = 10, ["yuv420p10be"] = 10,
+    };
 
     public static SuperResolutionSource Parse(string ffprobeJson)
     {
@@ -30,7 +35,8 @@ public sealed record SuperResolutionSource(string? Refusal, double VideoStartSec
         var start = double.TryParse(Text(video, "start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
             ? seconds
             : 0;
-        return new(RefusalFor(video, videos.Count), start, attachments);
+        var depth = Text(video, "pix_fmt") is { } format && Supported420.TryGetValue(format, out var bits) ? bits : 8;
+        return new(RefusalFor(video, videos.Count), start, attachments, depth);
     }
 
     private static string? RefusalFor(JsonElement video, int videoStreams)
@@ -40,10 +46,10 @@ public sealed record SuperResolutionSource(string? Refusal, double VideoStartSec
             return "The file has more than one video stream; super-resolution upscales a single picture stream.";
         }
         var pixelFormat = Text(video, "pix_fmt");
-        if (pixelFormat is null || !EightBit420.Contains(pixelFormat))
+        if (pixelFormat is null || !Supported420.ContainsKey(pixelFormat))
         {
-            return $"Super-resolution currently supports 8-bit 4:2:0 video only; this source is {pixelFormat ?? "an unknown format"}. " +
-                "Its frames would lose colour depth or detail on the way through the engine.";
+            return $"Super-resolution supports 8-bit and 10-bit 4:2:0 video; this source is {pixelFormat ?? "an unknown format"}. " +
+                "Its frames would lose colour or detail on the way through the engine.";
         }
         if (Text(video, "sample_aspect_ratio") is { } aspect && aspect is not ("1:1" or "0:1"))
         {

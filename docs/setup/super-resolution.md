@@ -90,10 +90,13 @@ Optimisarr starts, so a crash never leaves frames behind for a retry to reuse.
 
 ## What it refuses
 
-Super-resolution rebuilds the picture from 8-bit RGB frames. To avoid losing detail or timing,
-these sources are refused before anything runs, and are left to the normal pipeline:
+The engine works on 8-bit RGB pictures. 8-bit and **10-bit** 4:2:0 video are supported: a 10-bit
+source is dithered into the engine's 8-bit pictures and the result is encoded back to 10-bit. Most
+anime is mastered in 8-bit and released in 10-bit for compression, so this keeps what the release
+carries; the VMAF gate still judges every result. To avoid losing detail or timing, these sources
+are refused before anything runs, and are left to the normal pipeline:
 
-- **anything other than 8-bit 4:2:0 video**, including 10-bit, which is common for anime;
+- other layouts and depths, such as 4:2:2, 4:4:4 or 12-bit video;
 - non-square pixels (anamorphic video), rotated video, or more than one video stream;
 - HDR and variable-frame-rate video;
 - libraries whose rules crop, downscale or cap the frame rate, and hardware encoders.

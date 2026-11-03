@@ -79,13 +79,13 @@ public sealed class RealCuganCommandBuilderTests
     private static TranscodeSpec Spec(string output = "/work/1/candidate.mkv", string input = "/media/source.mkv") =>
         new(input, output, VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false);
 
-    private static IReadOnlyList<string> Encoder(TranscodeSpec spec, double videoStart = 0, double frameRate = 24000.0 / 1001) =>
-        RealCuganCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart);
+    private static IReadOnlyList<string> Encoder(TranscodeSpec spec, double videoStart = 0, double frameRate = 24000.0 / 1001, int bitDepth = 8) =>
+        RealCuganCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart, bitDepth);
 
     [Fact]
     public void The_decoder_streams_the_first_video_streams_frames_as_rgb_png_on_stdout()
     {
-        var args = RealCuganCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4);
+        var args = RealCuganCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 8);
 
         Assert.Equal("/media/source.mkv", After(args, "-i"));
         Assert.Equal(new[] { "-map", "0:v:0" }, Pair(args, "-map"));
@@ -117,6 +117,21 @@ public sealed class RealCuganCommandBuilderTests
         Assert.Equal(new[] { "-c:s", "copy" }, Pair(args, "-c:s"));
         Assert.Equal(new[] { "-metadata", "optimisarr=optimisarr-1" }, Pair(args, "-metadata"));
         Assert.Equal("/work/1/candidate.mkv", args[^1]);
+    }
+
+    [Fact]
+    public void A_ten_bit_source_is_dithered_into_the_engines_8_bit_pictures()
+    {
+        var args = RealCuganCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 10);
+        Assert.Contains(args, argument => argument.Contains("sws_dither=ed"));
+        Assert.Equal(new[] { "-pix_fmt", "rgb24" }, Pair(args, "-pix_fmt"));
+    }
+
+    [Fact]
+    public void A_ten_bit_source_is_encoded_back_to_ten_bit()
+    {
+        Assert.Equal(new[] { "-pix_fmt", "yuv420p10le" }, Pair(Encoder(Spec(), bitDepth: 10), "-pix_fmt"));
+        Assert.Equal(new[] { "-pix_fmt", "yuv420p" }, Pair(Encoder(Spec(), bitDepth: 8), "-pix_fmt"));
     }
 
     [Fact]
