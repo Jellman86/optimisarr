@@ -539,6 +539,9 @@
   // Work can go to a remote worker only when both the saved switch and deployment allow it.
   // Decides whether the placement choice is shown; the choice itself is stored either way.
   let remoteWorkersOn = $state(false)
+  // AI super-resolution is experimental: a library's switch appears only while the feature is on,
+  // and a hidden choice is kept unchanged for when it is turned back on.
+  let superResolutionOn = $state(false)
   const placements: WorkPlacement[] = ['Anywhere', 'LocalOnly', 'PreferWorker', 'WorkerOnly']
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
@@ -985,8 +988,10 @@
     try {
       const settings = await api.settings()
       remoteWorkersOn = settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
+      superResolutionOn = settings.superResolution?.enabled ?? false
     } catch {
       remoteWorkersOn = false
+      superResolutionOn = false
     }
   }
 
@@ -2652,22 +2657,24 @@
           </label>
         </div>
 
-        <!-- Super-resolution is per library on purpose: an opted-in library must never change
-             how another library's jobs run, and off stays exactly the old pipeline. -->
-        <div class="mt-4">
-          <label class="flex cursor-pointer items-start gap-2 text-sm">
-            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.superResolutionEnabled} />
-            <span>
-              {i18n.m.libraries.super_resolution_label}
-              <InfoTip text={i18n.m.libraries.super_resolution_tip} />
-              <span class="mt-0.5 block text-xs font-normal text-ink-4">
-                {i18n.m.libraries.super_resolution_hint}
-              </span>
-            </span>
-          </label>
-        </div>
-
 </ConfigSection>
+
+<!-- AI super-resolution is experimental and per library: an opted-in library never changes how
+     another library's jobs run. The section exists only while the feature is on in Settings. -->
+{#if superResolutionOn}
+<ConfigSection id="library-super-resolution" title={i18n.m.libraries.super_resolution_section} description={i18n.m.libraries.super_resolution_section_desc}>
+        <label class="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.superResolutionEnabled} />
+          <span>
+            {i18n.m.libraries.super_resolution_label}
+            <InfoTip text={i18n.m.libraries.super_resolution_tip} />
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
+              {i18n.m.libraries.super_resolution_hint}
+            </span>
+          </span>
+        </label>
+</ConfigSection>
+{/if}
 {/snippet}
 
 {#snippet videoAdvancedFields()}

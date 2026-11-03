@@ -475,7 +475,8 @@
   }
 
   function restoreSuperResolutionDefaults() {
-    settings = { ...settings, superResolution: defaultSuperResolution() }
+    // Defaults cover the engine configuration only; the experimental switch stays as the operator left it.
+    settings = { ...settings, superResolution: { ...defaultSuperResolution(), enabled: settings.superResolution.enabled } }
     customDevice = false
     realCuganProbe = null
   }
@@ -711,7 +712,7 @@ let settings = $state<Settings>({
   // status has come back. The button re-checks whenever the operator wants (after fixing a
   // path or installing a driver), and it stays reachable in the error state below.
   $effect(() => {
-    if (openRoom === 'superResolution' && !realCuganLoading && !realCuganStatus && !realCuganError) {
+    if (openRoom === 'superResolution' && savedSettings?.superResolution.enabled && !realCuganLoading && !realCuganStatus && !realCuganError) {
       void loadRealCuganStatus()
     }
   })
@@ -1081,12 +1082,6 @@ let settings = $state<Settings>({
   >
     <div class="settings-fields">
       <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
-        <div class="settings-field-label"><label class="label" for="sr-engine">{i18n.m.settings.sr_engine}</label><p>{i18n.m.settings.sr_engine_hint}</p></div>
-        <input id="sr-engine" class="input" value="Real-CUGAN (realcugan-ncnn-vulkan)" disabled />
-        <p class="text-xs text-ink-3 mt-2">{i18n.m.settings.sr_engine_note}</p>
-      </div>
-
-      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
         <div class="settings-field-label">
           <label class="label" for="sr-enabled">{i18n.m.settings.sr_enable}</label>
           <p>{i18n.m.settings.sr_enable_hint}</p>
@@ -1094,6 +1089,15 @@ let settings = $state<Settings>({
         <Toggle bind:checked={settings.superResolution.enabled} label={i18n.m.settings.sr_enable} />
         {@render wasChanged('superResolution', '')}
       </div>
+
+      <!-- Every engine setting stays hidden until the experimental switch is on. -->
+      {#if settings.superResolution.enabled}
+      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="sr-engine">{i18n.m.settings.sr_engine}</label><p>{i18n.m.settings.sr_engine_hint}</p></div>
+        <input id="sr-engine" class="input" value="Real-CUGAN (realcugan-ncnn-vulkan)" disabled />
+        <p class="text-xs text-ink-3 mt-2">{i18n.m.settings.sr_engine_note}</p>
+      </div>
+
 
       <div class="settings-field">
         <div class="settings-field-label"><label class="label" for="sr-preset">{i18n.m.settings.sr_preset} <InfoTip text={i18n.m.settings.sr_preset_tip} /></label><p>{i18n.m.settings.sr_preset_hint}</p></div>
@@ -1152,9 +1156,12 @@ let settings = $state<Settings>({
       <div class="settings-video-fields">
         <button type="button" class="btn btn-ghost min-h-11" onclick={restoreSuperResolutionDefaults}>{i18n.m.settings.sr_restore_defaults}</button>
       </div>
+      {/if}
     </div>
   </ConfigSection>
 
+  <!-- Engine checks run against the saved configuration, so they wait for the switch to be saved on. -->
+  {#if savedSettings?.superResolution.enabled}
   <ConfigSection
     id="super-resolution-status"
     title={i18n.m.settings.sr_status_title}
@@ -1213,6 +1220,9 @@ let settings = $state<Settings>({
     <p class="text-sm leading-relaxed text-ink-3">{tr(i18n.m.settings.sr_output_math, { scale: settings.superResolution.scale })}</p>
     <p class="text-xs leading-relaxed text-ink-3">{i18n.m.settings.sr_output_limit}</p>
   </ConfigSection>
+  {:else if settings.superResolution.enabled}
+    <Banner kind="info">{i18n.m.settings.sr_save_to_test}</Banner>
+  {/if}
   </div>
   {/if}
 

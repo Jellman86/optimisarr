@@ -803,46 +803,57 @@ for (const value of ['', '1.5']) {
   })
 }
 
-test('the super-resolution room saves its section, restores defaults, and shows engine status', async ({ page }) => {
+test('AI super-resolution settings stay hidden behind the experimental switch until it is saved on', async ({ page }) => {
   await mockSettings(page)
+  let current: Record<string, unknown> = settings
   let saved: Record<string, unknown> | null = null
+  let detections = 0
   await page.route('**/api/settings', async route => {
     if (route.request().method() === 'PUT') {
       saved = route.request().postDataJSON() as Record<string, unknown>
+      current = saved
       return json(route, saved)
     }
-    return json(route, settings)
+    return json(route, current)
   })
+  await page.route('**/api/system/realcugan', route => { detections++; return json(route, realCugan) })
   await page.goto('/#/settings')
 
-  // The card says the engine is off before anything is touched.
   await expect(page.getByText('Off — video jobs keep the normal pipeline')).toBeVisible()
-
-  // Opening the room runs detection, which reports the machine's real, mocked readiness.
   await page.getByRole('button', { name: /^AI super-resolution/ }).click()
-  await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toBeVisible()
 
+  // Off: only the switch is offered, and nothing about the engine runs.
+  const toggle = page.getByLabel('Enable AI super-resolution (experimental)')
+  await expect(toggle).toBeVisible()
+  await expect(page.locator('#sr-preset')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Test with a real sample run' })).toHaveCount(0)
+  expect(detections).toBe(0)
+
+  // Switching it on reveals the engine settings; testing waits until the switch is saved.
+  await toggle.check()
+  await expect(page.getByText('Save to turn AI super-resolution on, then check and test the engine here.')).toBeVisible()
   await page.getByLabel('Content preset').selectOption('pro')
-  // The preset's tooltip also says "denoise level", so a label substring matches both selects —
-  // target the control itself.
+  // The preset's tooltip also says "denoise level", so target the control itself.
   await page.locator('#sr-noise').selectOption('3')
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByText('Settings saved')).toBeVisible()
   const section = (saved as { superResolution?: Record<string, unknown> } | null)?.superResolution
-  expect(section?.preset).toBe('pro')
-  expect(section?.noiseLevel).toBe(3)
-  expect(section?.enabled).toBe(false)
+  expect(section).toMatchObject({ enabled: true, preset: 'pro', noiseLevel: 3 })
 
-  // Restoring defaults puts the documented initial configuration back into the draft.
+  // Saved on, the room checks the machine's real, mocked readiness.
+  await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toBeVisible()
+
+  // Restoring defaults resets the engine configuration but leaves the switch as it was.
   await page.getByRole('button', { name: 'Restore defaults' }).click()
   await page.getByRole('button', { name: 'Save settings' }).click()
   const restored = (saved as { superResolution?: Record<string, unknown> } | null)?.superResolution
-  expect(restored?.preset).toBe('mixed')
-  expect(restored?.noiseLevel).toBe(1)
+  expect(restored).toMatchObject({ enabled: true, preset: 'mixed', noiseLevel: 1 })
 })
 
 test('the super-resolution probe reports a real sample run and a failed save stays explicit', async ({ page }) => {
   await mockSettings(page)
+  const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
+  await page.route('**/api/settings', route => json(route, enabled))
   await page.route('**/api/system/realcugan/probe', route =>
     json(route, { success: true, exitCode: 0, error: null, outputTail: '', deviceUsed: 'auto' }))
   await page.goto("/#/settings/super-resolution")
@@ -852,7 +863,7 @@ test('the super-resolution probe reports a real sample run and a failed save sta
 
   // A rejected save surfaces the server's specific error instead of pretending it worked.
   await page.route('**/api/settings', async route => {
-    if (route.request().method() !== 'PUT') return json(route, settings)
+    if (route.request().method() !== 'PUT') return json(route, enabled)
     // The wire error shape is flat: { code, error } with a human fallback string.
     return json(route, { code: 'superResolution.modelUnavailable', error: 'The models-pro model set ships no model for scale 2x at noise level 1.' }, 400)
   })

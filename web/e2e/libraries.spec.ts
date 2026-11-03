@@ -25,13 +25,17 @@ const library = {
   lastAutoEnqueueAt: null, fileCount: 1,
 }
 
-async function mockLibraries(page: Page, configuredLibrary = library) {
+async function mockLibraries(page: Page, configuredLibrary = library, superResolutionOn = false) {
   let currentLibrary = { ...configuredLibrary }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/libraries') return json(route, [currentLibrary])
+    if (path === '/api/settings') return json(route, {
+      remoteWorkersAvailable: false, remoteWorkersEnabled: false,
+      superResolution: { enabled: superResolutionOn, preset: 'mixed', scale: 2, noiseLevel: 1, device: 'auto', binaryPath: '', modelsPath: '' },
+    })
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings', 'RemuxCleanup', 'TrackCleanup'],
@@ -1057,4 +1061,27 @@ test('library settings stay calm: labelled media type, codec names in capitals, 
   await expect(page.locator('[data-audio-encoding-preset] p.text-ink-3', { hasText: 'mono/stereo baseline' })).toBeVisible()
   await page.getByRole('button', { name: 'About: Audio encoding quality' }).click()
   await expect(page.getByRole('tooltip').filter({ hasText: 'Encoding starting points' })).toBeVisible()
+})
+
+test('a library offers AI super-resolution only while the experimental feature is on, and keeps a hidden choice', async ({ page }) => {
+  const optedIn = { ...library, superResolutionEnabled: true }
+  await mockLibraries(page, optedIn, false)
+  await page.goto('/#/libraries/1/configure/encode/video')
+  await expect(page.getByText('AI super-resolution (experimental)')).toHaveCount(0)
+  // Saving while the section is hidden keeps the library's earlier choice for when the feature returns.
+  await page.getByRole('navigation', { name: 'Processing workflow' }).getByRole('button', { name: /Choose files/ }).click()
+  await page.getByLabel('Name', { exact: true }).fill('Anime')
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ superResolutionEnabled: true })
+})
+
+test('with the feature on, a library has its own AI super-resolution section', async ({ page }) => {
+  await mockLibraries(page, library, true)
+  await page.goto('/#/libraries/1/configure/encode/video')
+  await expect(page.getByText('AI super-resolution (experimental)')).toBeVisible()
+  await page.getByRole('checkbox', { name: /Super-resolution \(Real-CUGAN\)/ }).check()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ superResolutionEnabled: true })
 })
