@@ -1,125 +1,113 @@
-# AI super-resolution (Real-CUGAN)
+# AI super-resolution (Real-CUGAN) — experimental
 
 Optimisarr can upscale the video of a library that opts in with the
 [Real-CUGAN](https://github.com/bilibili/ailab/tree/main/Real-CUGAN) engine, using
-[nihui's realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan)
-packaging (MIT licensed). The engine is **off by default**, and the per-library
-switch is off even when the engine is configured — a library that does not opt in
-never changes how its jobs run.
+[nihui's realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan) (MIT licensed;
+the Real-CUGAN models are MIT licensed by Bilibili). Real-CUGAN is trained for anime and
+other drawn content.
 
-This is not a video encoder and never replaces NVENC/QSV/VA-API. It replaces the
-picture only: the frames are upscaled by the engine, and the result is re-encoded
-into a candidate that then passes the same verification and safe replacement as
-any other job.
+It is **experimental and off by default**. One switch controls everything: while it is off,
+its settings are hidden, nothing runs the engine, and a library that opted in behaves exactly
+like any other library. Each library keeps its own choice for when you turn it back on.
 
-## Install the engine
+This is not a video encoder and never replaces NVENC/QSV/VA-API. It replaces the picture only:
+frames are upscaled by the engine and re-encoded into a candidate that then passes the same
+verification and safe replacement as any other job.
 
-The engine is not part of the Optimisarr image. Install the release that matches
-your platform from the
-[realcugan-ncnn-vulkan releases](https://github.com/nihui/realcugan-ncnn-vulkan/releases)
-and either put the executable on `PATH` or set **Engine executable path** in the
-settings. The release ships its model directories (`models-se`, `models-pro`,
-`models-nose`) directly beside the binary; if you move them, set **Models
-directory** to the folder that contains them.
+## What you need
 
-### Vulkan requirement
+The server image for x86-64 includes the engine and its three model sets under
+`/opt/realcugan`, pinned to release `20220728` and checked against its published checksum. The
+image also includes the Vulkan loader and Mesa drivers.
 
-The engine runs on Vulkan. The machine needs:
+- **Intel or AMD GPU:** pass the render device to the container (`/dev/dri`), as for hardware
+  encoding. Optimisarr adds its user to the device's group at start-up.
+- **NVIDIA GPU:** the container runtime must inject the NVIDIA driver with the `graphics`
+  capability (for example `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility,graphics`). Render
+  group membership alone is not enough.
+- **Other architectures:** no engine is bundled, and the settings report it as not installed.
+- **Remote workers:** super-resolution runs on the server only, never on workers.
 
-- the Vulkan **loader** library (`libvulkan.so.1` on Linux, `vulkan-1.dll` on
-  Windows) — even the CPU path (`-g -1`) loads it;
-- a driver with a Vulkan **ICD** for GPU execution. Without an ICD the loader can
-  still load, but `auto` has nothing to pick, and a run prints
-  `vkCreateInstance failed` and either fails or falls back per the device setting.
+Optimisarr does not change your Docker permissions, device mappings or host drivers; the
+settings page tells you what it finds.
 
-In a container, GPU execution additionally needs the device and driver libraries
-mapped in (the same `/dev/dri` and driver mounts the hardware-encoder setups use).
-Optimisarr does not change your Docker permissions, device mappings, or host
-drivers; the settings page tells you what is missing and nothing more.
+### How fast it is
 
-## Configure
+Upscaling is slow. On an Intel Arrow Lake integrated GPU, 2× from 1080p to 2160p took about
+**6 seconds per frame**: roughly 2.5 hours per minute of 24 fps video. A dedicated GPU is much
+faster, but plan for long jobs, and try a short file first.
 
-In **Settings → AI super-resolution / Real-CUGAN**:
+## Turn it on
+
+In **Settings → AI super-resolution / Real-CUGAN**, switch on **Enable AI super-resolution
+(experimental)** and save. The engine settings then appear, and the status card checks the
+machine. **Test with a real sample run** upscales one small picture: the only check that proves
+the Vulkan runtime, device and models work.
 
 | Setting | Values | Notes |
 |---|---|---|
-| Enable | off (default) / on | While off, no job changes behaviour. |
-| Content preset | `mixed` (default) / `pro` / `nose` | Names the model directory the run uses: `mixed` → `models-se` (the upstream default set: 2x/3x/4x, every denoise level), `pro` → `models-pro` (2x/3x, denoise −1/0/3), `nose` → `models-nose` (2x, no denoise only). These are the sets the upstream release ships — the names describe the directories, nothing more. |
+| Content preset | `mixed` (default) / `pro` / `nose` | Names the model set: `mixed` → `models-se` (2×/3×/4×, every denoise level), `pro` → `models-pro` (2×/3×, denoise −1/0/3), `nose` → `models-nose` (2×, no denoise). |
 | Upscale factor | 2 (default) / 3 / 4 | Every frame is upscaled by this factor. |
-| Denoise level | −1 (default) / 0 / 1–3 | −1 conservative, 0 no denoise, 1–3 strength. The chosen model set must contain the combination — an unsupported combination is rejected with a specific error, never silently substituted. |
-| Device | auto (default) / cpu / `gpu:<index>` | `auto` lets the engine pick; `cpu` forces `-g -1`. Only trust a specific index that a probe has verified. |
-| Executable path / models directory | empty or absolute paths | Empty resolves the binary on `PATH` and the models beside it. |
+| Denoise level | −1 to 3 (default 1) | −1 conservative, 0 none, 1–3 strength. A combination the model set does not ship is rejected with a specific error, never substituted. |
+| Device | Automatic (default) / CPU / Vulkan GPU 0–3 | Automatic lets the engine pick. Only choose a specific GPU that the sample run has verified. |
+| Engine executable / models directory | empty or absolute paths | Empty uses the bundled engine. Set these only to use a different installation. |
 
-**Save** validates server-side and persists; a restart reads the saved values
-back, and anything unreadable falls back per field to the documented defaults
-rather than half-configuring the engine. **Restore defaults** puts the initial
-configuration back into the form. The status card detects the machine as soon as
-the room opens, and **Detect environment** re-checks it on demand; **Test with a
-real sample run** performs a real small probe — the only check that
-proves the Vulkan runtime, device and models actually work on this machine.
+**Restore defaults** resets the engine settings but leaves the switch as it is. Backups keep the
+preset, scale, denoise level and device; they never turn the engine on or set its paths, because
+those depend on the machine.
 
 ## Enable per library
 
-In the library editor, tick **Super-resolution (Real-CUGAN)**. Eligible video
-jobs of that library then run the pipeline; previews, calibration samples and
-non-video jobs never do.
+While the feature is on, each library has an **AI super-resolution (experimental)** section in its
+video settings. Tick **Super-resolution (Real-CUGAN)** for libraries whose files you want
+upscaled. Name the library whatever you like.
 
-Because the engine works on this server's frames, a super-resolution library's
-video jobs run on this server only: remote workers are never offered them,
-whatever the library's placement setting says. The claim endpoint and the
-remote-preparation path both refuse such jobs, so a worker cannot deliver an
-ordinary source-sized encode in place of the upscale that was asked for.
+Only the library's ordinary video jobs run the pipeline; previews, calibration samples and
+non-video jobs never do. Its video jobs run on this server only, whatever the library's placement
+says, so a worker can never deliver an ordinary source-sized encode in place of the upscale.
 
 ## What a job does
 
-1. Checks the source, engine, model files and device before starting; an
-   unusable setup fails the job with a specific reason.
-2. Extracts every source frame as a PNG sequence in the job's scratch area.
-3. Runs the engine directory-to-directory over those frames.
-4. Reassembles the upscaled frames with the source's audio, subtitles and
-   attachments (the same target codec and container the library's rules resolve).
-5. Hands the candidate to the normal verification — decode health, duration,
-   retained streams, VMAF gates — and, when it passes, to the existing safe
-   replacement. The original is quarantined and rollback-able as always.
+1. Checks the engine, its models and the source before starting. A source the pipeline cannot
+   reproduce, or a machine without room for a batch, fails the job with the reason.
+2. Decodes the source and upscales it **in batches**: a batch of frames is written to scratch,
+   the engine upscales it, the upscaled frames are encoded, and the batch is deleted. Scratch
+   therefore stays within one batch (at most 4 GiB, and always above the queue's free-space
+   reserve) however long the video is.
+3. Encodes the upscaled frames with the library's software encoder and quality, and copies the
+   source's audio, subtitles, chapters and metadata. For Matroska it also keeps attachments such
+   as subtitle fonts; a candidate missing any of them is not accepted.
+4. Hands the candidate to the normal verification and safe replacement. The size-saving gates are
+   off for this candidate, because upscaling grows the file. Every other gate applies, including
+   VMAF, which compares the candidate scaled back to the source size. The original is
+   quarantined and can be rolled back as always.
 
-Cancellation, failure cleanup, and progress (extraction → engine → reassembly)
-behave like any other job; the frame scratch is removed when the attempt ends.
+The settings for an attempt are fixed when it starts; editing them affects later attempts.
+Turning the feature off stops new super-resolution work; an attempt already running finishes,
+or you can cancel it from the Queue. Pausing the queue suspends the engine like any encode.
+Each attempt has its own scratch folder under `/work/super-resolution`, which is cleared when
+Optimisarr starts, so a crash never leaves frames behind for a retry to reuse.
 
-## Output, and what the pipeline refuses
+## What it refuses
 
-- At 2×, a 720p source becomes **1440p**. The pipeline does not downscale back —
-  the candidate keeps the upscaled size. Getting 1080p out of 720p is not what
-  this does: upscaling and scaling back down would spend a lot of compute to end
-  near where it started.
-- **HDR sources are refused** with a clear error: frame extraction would fold the
-  HDR picture into SDR.
-- **Variable-frame-rate sources are refused**: reassembling at a constant rate
-  would mistime them.
-- **Hardware encoders are refused** for the reassembly stage.
-- A library whose rules crop, downscale, or cap the frame rate is refused with a clear error:
-  the engine upscales every source frame, so those rules either would not apply or would
-  contradict the job.
-- Audio and subtitles are **copied untouched**; the library's audio re-encode
-  rules do not apply to a super-resolution job.
+Super-resolution rebuilds the picture from 8-bit RGB frames. To avoid losing detail or timing,
+these sources are refused before anything runs, and are left to the normal pipeline:
+
+- **anything other than 8-bit 4:2:0 video**, including 10-bit, which is common for anime;
+- non-square pixels (anamorphic video), rotated video, or more than one video stream;
+- HDR and variable-frame-rate video;
+- libraries whose rules crop, downscale or cap the frame rate, and hardware encoders.
+
+Audio and subtitles are copied untouched; the library's audio re-encode rules do not apply.
 
 ## Troubleshooting
 
-- **"Not installed"** — the executable was not found: fix the path or `PATH`.
-- **"Configuration problem"** — the chosen preset/scale/denoise combination has
-  no shipped model; the error names the file the engine would load.
-- **"The Vulkan loader is not available"** — install the loader library; in a
-  container, mount it (and the driver libraries) in.
-- **The probe fails with `vkCreateInstance failed`** — no Vulkan ICD/driver is
-  reachable. GPU execution needs the driver's device nodes and libraries inside
-  the container; `cpu` avoids the GPU but still needs the loader.
-- Disk space: PNG frame trees are large — gigabytes for a feature-length file.
-  The queue's minimum-free-disk gate applies to the job as a whole.
-
-## Known limits
-
-- The engine, its models and the GPU environment are **not bundled** with
-  Optimisarr and are not installed by the documentation you are reading — the
-  settings page reports what it finds and nothing more.
-- Audio re-encode rules and HDR tone mapping do not apply inside a super-resolution
-  job; crops, downscales and frame-rate caps on such a library refuse the job instead.
-- Frame extraction renders to 8-bit PNG; the engine itself processes 8-bit input.
+- **Not installed:** no engine was found. Use the x86-64 image, or set the executable path.
+- **Configuration problem:** the chosen combination has no model, a model file is missing, or the
+  engine is not executable. The status names what is missing.
+- **The Vulkan loader is not available:** the image includes it, so this means a custom
+  installation without `libvulkan.so.1`.
+- **The sample run fails with `vkCreateInstance failed`:** no GPU driver is reachable. Check the
+  device mapping, or the NVIDIA `graphics` capability.
+- **Not enough working space:** free space on the work volume, or lower the queue's free-space
+  reserve.
