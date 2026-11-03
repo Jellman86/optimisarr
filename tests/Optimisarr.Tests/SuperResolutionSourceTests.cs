@@ -73,4 +73,64 @@ public sealed class SuperResolutionSourceTests
         var source = SuperResolutionSource.Parse("""{ "streams": [ { "index": 0, "codec_type": "audio" } ] }""");
         Assert.NotNull(source.Refusal);
     }
+
+    [Fact]
+    public void The_picture_is_offset_from_the_files_start_not_from_zero()
+    {
+        // FFmpeg starts each input at its own earliest timestamp, so a file whose streams all begin
+        // at 5 seconds needs no offset; only the gap between the video and the file's start counts.
+        var aligned = SuperResolutionSource.Parse("""
+            { "format": { "start_time": "5.000000" }, "streams": [
+              { "index": 0, "codec_type": "video", "pix_fmt": "yuv420p", "start_time": "5.000000" },
+              { "index": 1, "codec_type": "audio", "start_time": "5.000000" } ] }
+            """);
+        Assert.Equal(0, aligned.VideoStartSeconds, 6);
+        var late = SuperResolutionSource.Parse("""
+            { "format": { "start_time": "5.000000" }, "streams": [
+              { "index": 0, "codec_type": "video", "pix_fmt": "yuv420p", "start_time": "5.042000" },
+              { "index": 1, "codec_type": "audio", "start_time": "5.000000" } ] }
+            """);
+        Assert.Equal(0.042, late.VideoStartSeconds, 6);
+    }
+
+    [Fact]
+    public void Tagged_colour_is_carried_and_untagged_colour_follows_the_picture_size()
+    {
+        var tagged = SuperResolutionSource.Parse(Probe(video: Square8Bit + ", \"color_space\": \"bt709\", \"color_range\": \"tv\", \"color_primaries\": \"bt709\", \"color_transfer\": \"bt709\", \"height\": 576"));
+        Assert.Equal(new SuperResolutionColour("bt709", "tv", "bt709", "bt709", "bt709", RangeTagged: true), tagged.Colour);
+
+        var hd = SuperResolutionSource.Parse(Probe(video: Square8Bit + ", \"height\": 1080"));
+        Assert.Equal(new SuperResolutionColour("bt709", "tv", null, null, null), hd.Colour);
+        var sd = SuperResolutionSource.Parse(Probe(video: Square8Bit + ", \"height\": 480"));
+        Assert.Equal(new SuperResolutionColour("bt601", "tv", null, null, null), sd.Colour);
+        var pal = SuperResolutionSource.Parse(Probe(video: Square8Bit + ", \"color_space\": \"bt470bg\", \"height\": 576"));
+        var colour = Assert.IsType<SuperResolutionColour>(pal.Colour);
+        Assert.Equal("bt601", colour.Matrix);
+        Assert.Equal("bt470bg", colour.Space);
+    }
+
+    [Fact]
+    public void Fresh_source_facts_supply_frame_rate_without_a_vmaf_probe()
+    {
+        var source = SuperResolutionSource.Parse(Probe(video: Square8Bit + ", \"avg_frame_rate\": \"24000/1001\", \"r_frame_rate\": \"24000/1001\""));
+        Assert.Equal(24000d / 1001, source.FrameRate);
+    }
+
+    [Fact]
+    public void A_range_tag_without_other_colour_tags_is_preserved()
+    {
+        var source = SuperResolutionSource.Parse(Probe(video: Square8Bit + ", \"color_range\": \"pc\""));
+        var colour = Assert.IsType<SuperResolutionColour>(source.Colour);
+        Assert.Equal("pc", colour.Range);
+        Assert.True(colour.RangeTagged);
+        var jpeg = SuperResolutionSource.Parse(Probe(video: "\"pix_fmt\": \"yuvj420p\""));
+        Assert.Equal("pc", Assert.IsType<SuperResolutionColour>(jpeg.Colour).Range);
+    }
+
+    [Fact]
+    public void Wide_gamut_colour_is_refused()
+    {
+        var source = SuperResolutionSource.Parse(Probe(video: Square8Bit + ", \"color_space\": \"bt2020nc\""));
+        Assert.Contains("colour", source.Refusal, StringComparison.OrdinalIgnoreCase);
+    }
 }

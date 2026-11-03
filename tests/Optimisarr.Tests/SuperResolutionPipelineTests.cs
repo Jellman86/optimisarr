@@ -234,4 +234,60 @@ public sealed class SuperResolutionPipelineTests : IDisposable
         Assert.Contains("reserve", run.Error);
         Assert.False(File.Exists(Path.Combine(_root, "work", "super-resolution", "highwater")));
     }
+
+    [PosixFact]
+    public async Task Linked_scratch_roots_and_attempts_are_refused_before_starting_tools()
+    {
+        var outside = Path.Combine(_root, "outside");
+        Directory.CreateDirectory(outside);
+        var original = Path.Combine(outside, "original.mkv");
+        await File.WriteAllTextAsync(original, "retain original");
+        var (request, _) = Request("must-not-start", "must-not-start");
+        var scratchRoot = Path.GetDirectoryName(request.Workspace)!;
+        Directory.CreateDirectory(Path.GetDirectoryName(scratchRoot)!);
+        Directory.CreateSymbolicLink(scratchRoot, outside);
+
+        var throughRoot = await SuperResolutionPipeline.RunAsync(request, Hooks(), CancellationToken.None);
+
+        Assert.NotEqual(0, throughRoot.ExitCode);
+        Assert.Contains("linked", throughRoot.Error);
+        Assert.Equal("retain original", await File.ReadAllTextAsync(original));
+        Assert.Single(Directory.GetFileSystemEntries(outside));
+        Directory.Delete(scratchRoot);
+        Directory.CreateDirectory(scratchRoot);
+        Directory.CreateSymbolicLink(request.Workspace, outside);
+
+        var throughAttempt = await SuperResolutionPipeline.RunAsync(request, Hooks(), CancellationToken.None);
+
+        Assert.NotEqual(0, throughAttempt.ExitCode);
+        Assert.Contains("linked", throughAttempt.Error);
+        Assert.Equal("retain original", await File.ReadAllTextAsync(original));
+    }
+
+    [Fact]
+    public async Task Existing_attempt_directories_are_retained_instead_of_reused()
+    {
+        var (request, _) = Request("must-not-start", "must-not-start");
+        Directory.CreateDirectory(request.Workspace);
+        var retained = Path.Combine(request.Workspace, "evidence.txt");
+        await File.WriteAllTextAsync(retained, "do not reuse");
+
+        var run = await SuperResolutionPipeline.RunAsync(request, Hooks(), CancellationToken.None);
+
+        Assert.NotEqual(0, run.ExitCode);
+        Assert.Equal("do not reuse", await File.ReadAllTextAsync(retained));
+    }
+
+    [PosixFact]
+    public async Task Finishing_the_last_batch_never_needs_room_for_another()
+    {
+        // Writing the batch and the candidate uses space; the end of the video must not then be
+        // refused for lacking room for a batch that will never be read.
+        var (request, output) = Request(FakeFfmpeg(6), FakeEngine(), batch: 8);
+        request = request with { WorstCaseBatchBytes = 5_000, ReserveBytes = 10_000 };
+        var calls = 0;
+        var run = await SuperResolutionPipeline.RunAsync(request, Hooks(free: () => ++calls == 1 ? 15_000 : 12_000), CancellationToken.None);
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("6", await File.ReadAllTextAsync(output));
+    }
 }

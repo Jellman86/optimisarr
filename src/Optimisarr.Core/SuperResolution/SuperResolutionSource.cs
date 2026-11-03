@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Core.SuperResolution;
 
@@ -11,8 +12,11 @@ namespace Optimisarr.Core.SuperResolution;
 /// 10-bit for compression. Anything else is refused before extraction: other chroma layouts or
 /// depths, non-square pixels, rotation, or a second real video stream.
 /// </summary>
-public sealed record SuperResolutionSource(string? Refusal, double VideoStartSeconds, int AttachmentCount, int BitDepth = 8)
+public sealed record SuperResolutionSource(
+    string? Refusal, double VideoStartSeconds, int AttachmentCount, int BitDepth = 8, SuperResolutionColour? Colour = null)
 {
+    public double? FrameRate { get; init; }
+
     private static readonly Dictionary<string, int> Supported420 = new()
     {
         ["yuv420p"] = 8, ["yuvj420p"] = 8, ["yuv420p10le"] = 10, ["yuv420p10be"] = 10,
@@ -32,12 +36,47 @@ public sealed record SuperResolutionSource(string? Refusal, double VideoStartSec
         }
 
         var video = videos[0];
-        var start = double.TryParse(Text(video, "start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
-            ? seconds
-            : 0;
-        var depth = Text(video, "pix_fmt") is { } format && Supported420.TryGetValue(format, out var bits) ? bits : 8;
-        return new(RefusalFor(video, videos.Count), start, attachments, depth);
+        // FFmpeg starts each input at its own earliest timestamp, so the picture's offset is measured
+        // from the file's start, not from zero.
+        var fileStart = document.RootElement.TryGetProperty("format", out var format) ? Seconds(Text(format, "start_time")) : 0;
+        var start = Seconds(Text(video, "start_time")) - fileStart;
+        var depth = Text(video, "pix_fmt") is { } pixelFormat && Supported420.TryGetValue(pixelFormat, out var bits) ? bits : 8;
+        var colour = ColourOf(video);
+        return new SuperResolutionSource(RefusalFor(video, videos.Count) ?? ColourRefusal(video), start, attachments, depth, colour)
+        {
+            FrameRate = MediaProbeService.Parse(ffprobeJson).VideoFrameRate,
+        };
     }
+
+    private static double Seconds(string? value) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) ? seconds : 0;
+
+    private static readonly HashSet<string> WideGamut = ["bt2020nc", "bt2020c", "bt2020", "bt2020-10", "bt2020-12", "smpte2084", "arib-std-b67"];
+
+    private static string? ColourRefusal(JsonElement video) =>
+        new[] { Text(video, "color_space"), Text(video, "color_primaries"), Text(video, "color_transfer") }.Any(tag => tag is not null && WideGamut.Contains(tag))
+            ? "Super-resolution supports standard-gamut (BT.709 or BT.601) colour only; this source uses wide-gamut or HDR colour."
+            : null;
+
+    private static SuperResolutionColour ColourOf(JsonElement video)
+    {
+        var space = Known(Text(video, "color_space"));
+        var matrix = space switch
+        {
+            "bt709" => "bt709",
+            "smpte170m" or "bt470bg" => "bt601",
+            "fcc" => "fcc",
+            "smpte240m" => "smpte240m",
+            // Untagged video follows the usual convention: HD pictures are BT.709, SD pictures BT.601.
+            _ => video.TryGetProperty("height", out var height) && height.TryGetInt32(out var rows) && rows < 720 ? "bt601" : "bt709",
+        };
+        var rangeTag = Known(Text(video, "color_range"));
+        var fullRange = rangeTag == "pc" || rangeTag is null && Text(video, "pix_fmt") == "yuvj420p";
+        return new(matrix, fullRange ? "pc" : "tv", Known(Text(video, "color_primaries")),
+            Known(Text(video, "color_transfer")), space, RangeTagged: rangeTag is "tv" or "pc" || fullRange);
+    }
+
+    private static string? Known(string? tag) => tag is null or "unknown" or "reserved" ? null : tag;
 
     private static string? RefusalFor(JsonElement video, int videoStreams)
     {

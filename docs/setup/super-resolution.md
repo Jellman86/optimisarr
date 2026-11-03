@@ -117,6 +117,11 @@ are refused before anything runs, and are left to the normal pipeline:
 - HDR and variable-frame-rate video;
 - libraries whose rules crop, downscale or cap the frame rate, and hardware encoders.
 
+The RGB round trip uses the source's colour matrix and range, then restores its colour tags.
+Untagged HD sources use BT.709 and untagged SD sources use BT.601 for that conversion; explicit
+wide-gamut colour is refused. Executable and model paths must be absolute, or empty to use the
+bundled engine. Linked scratch directories are refused and existing attempts are never reused.
+
 Audio and subtitles are copied untouched; the library's audio re-encode rules do not apply.
 
 ## Troubleshooting

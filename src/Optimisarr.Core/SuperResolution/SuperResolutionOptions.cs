@@ -103,6 +103,17 @@ public sealed record SuperResolutionOptions(
                 "Pick a supported combination of preset, scale and denoise."));
         }
 
+        foreach (var (path, label) in new[] { (BinaryPath, "engine executable"), (ModelsPath, "models directory") })
+        {
+            if (!string.IsNullOrWhiteSpace(path) && !Path.IsPathFullyQualified(path.Trim()))
+            {
+                // A relative path would be resolved against wherever the server happens to run.
+                errors.Add(new SuperResolutionValidationError(
+                    "superResolution.path",
+                    $"The {label} path must be absolute, or empty to use the bundled engine."));
+            }
+        }
+
         if (Device != "auto" && Device != "cpu" && !DeviceIsGpu)
         {
             errors.Add(new SuperResolutionValidationError(

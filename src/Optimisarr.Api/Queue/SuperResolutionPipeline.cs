@@ -43,7 +43,8 @@ internal static class SuperResolutionPipeline
     public static async Task<QueueDispatcher.FfmpegRun> RunAsync(
         SuperResolutionRunRequest request, SuperResolutionRunHooks hooks, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(request.Workspace);
+        if (SuperResolutionScratch.PrepareAttempt(request.Workspace) is { } refusal)
+            return new QueueDispatcher.FfmpegRun(-1, refusal, null);
         using var stalled = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stalled.Token);
         var token = linked.Token;
@@ -58,6 +59,12 @@ internal static class SuperResolutionPipeline
             var written = 0;
             for (var batch = 0; ; batch++)
             {
+                // Only another picture needs another batch's room: the end of the video must not be
+                // refused for space a batch that will never be read would have used.
+                if (await PngStreamReader.ReadNextAsync(decoder.Stdout!, token) is not { } first)
+                {
+                    break;
+                }
                 if (hooks.FreeBytes() is { } free && free - request.WorstCaseBatchBytes < request.ReserveBytes)
                 {
                     return Failed($"Super-resolution stopped: the next batch needs up to {Gib(request.WorstCaseBatchBytes)} GiB " +
@@ -68,19 +75,15 @@ internal static class SuperResolutionPipeline
                 var output = Path.Combine(request.Workspace, $"out-{batch:D6}");
                 Directory.CreateDirectory(input);
                 Directory.CreateDirectory(output);
-                var frames = 0;
+                await File.WriteAllBytesAsync(Path.Combine(input, FrameName(0)), first, token);
+                var frames = 1;
+                clock.Touch();
                 while (frames < request.FramesPerBatch
                     && await PngStreamReader.ReadNextAsync(decoder.Stdout!, token) is { } picture)
                 {
                     await File.WriteAllBytesAsync(Path.Combine(input, FrameName(frames)), picture, token);
                     frames++;
                     clock.Touch();
-                }
-                if (frames == 0)
-                {
-                    DeleteQuietly(input);
-                    DeleteQuietly(output);
-                    break;
                 }
 
                 var engine = await RunEngineAsync(request, hooks, processes, input, output, frames, clock, token);
@@ -148,7 +151,8 @@ internal static class SuperResolutionPipeline
                 await process.DisposeAsync();
             }
             try { await watchdog; } catch (OperationCanceledException) { }
-            DeleteQuietly(request.Workspace);
+            if (SuperResolutionScratch.MayRemoveAttempt(request.Workspace))
+                DeleteQuietly(request.Workspace);
         }
     }
 

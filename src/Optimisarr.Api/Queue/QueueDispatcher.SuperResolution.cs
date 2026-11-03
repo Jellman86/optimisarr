@@ -113,7 +113,18 @@ public sealed partial class QueueDispatcher
         return work with
         {
             VerificationPolicy = SuperResolutionPolicy.ForUpscaledCandidate(work.VerificationPolicy, qualityCheck),
-            Original = work.Original with { ExpectedWidth = upscaled.Width, ExpectedHeight = upscaled.Height },
+            // The encoder copies audio untouched, so nothing is re-encoded, downmixed or filtered,
+            // and no soundtrack bitrate search runs.
+            Original = work.Original with
+            {
+                ExpectedWidth = upscaled.Width,
+                ExpectedHeight = upscaled.Height,
+                AudioReencoded = false,
+                AudioDownmixed = false,
+                AudioFiltered = false,
+                ExpectedAudioCodec = null,
+            },
+            AdaptiveSoundtrackQuality = false,
             BypassSizePreflight = true,
             AutoReplace = false,
         };
@@ -148,7 +159,7 @@ public sealed partial class QueueDispatcher
         {
             throw new InvalidOperationException(refusal + " Leave the file to the normal pipeline.");
         }
-        var frameRate = work.VideoFrameRate ?? throw new InvalidOperationException(
+        var frameRate = source.FrameRate ?? work.VideoFrameRate ?? throw new InvalidOperationException(
             "Super-resolution needs the source's frame rate, which the probe does not report. Re-probe the file and retry.");
         var sourcePicture = work.SourcePicture!;
         var upscaled = options.UpscaledSize(sourcePicture)!;
@@ -168,7 +179,7 @@ public sealed partial class QueueDispatcher
 
         var encoderArguments = RealCuganCommandBuilder.BuildEncoder(
             work.Spec, work.VideoEncoder!, frameRate, work.CpuThreadLimit, OptimisedMarkerValue, source.VideoStartSeconds,
-            source.BitDepth);
+            source.BitDepth, source.Colour!);
         await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
         logger.LogInformation(
             "Job {JobId}: super-resolution — {Frames} pictures per batch, preset {Preset}, scale {Scale}x, noise {Noise}, device {Device}",
@@ -178,7 +189,7 @@ public sealed partial class QueueDispatcher
         var request = new SuperResolutionRunRequest(
             transcodeOptions.Ffmpeg,
             detection.BinaryPath,
-            RealCuganCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth),
+            RealCuganCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!),
             encoderArguments,
             (input, output) => RealCuganCommandBuilder.BuildEngineArguments(input, output, detection.ModelsRoot, options),
             WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid()),
@@ -235,7 +246,7 @@ public sealed partial class QueueDispatcher
                 CreateNoWindow = true,
             },
         };
-        foreach (var argument in new[] { "-v", "error", "-show_streams", "-of", "json", path })
+        foreach (var argument in new[] { "-v", "error", "-show_streams", "-show_format", "-of", "json", path })
         {
             process.StartInfo.ArgumentList.Add(argument);
         }

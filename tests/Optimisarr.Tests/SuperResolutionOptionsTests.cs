@@ -196,4 +196,13 @@ public sealed class SuperResolutionOptionsTests
         Assert.False(policy.QualityGateEnabled);
         Assert.False(policy.MeasureVmaf);
     }
+
+    [Theory]
+    [InlineData("realcugan-ncnn-vulkan", "")]
+    [InlineData("", "models")]
+    public void Engine_paths_must_be_absolute_or_empty(string binary, string models)
+    {
+        var problems = (SuperResolutionOptions.Defaults with { BinaryPath = binary, ModelsPath = models }).Validate();
+        Assert.Contains(problems, problem => problem.Code == "superResolution.path");
+    }
 }

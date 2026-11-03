@@ -87,6 +87,30 @@ public sealed class SuperResolutionPipelinePlanTests
         }
     }
 
+    [PosixFact]
+    public void Startup_never_follows_a_linked_scratch_root_out_of_the_work_folder()
+    {
+        var work = Directory.CreateTempSubdirectory("optimisarr-sr-linked-").FullName;
+        var outside = Directory.CreateTempSubdirectory("optimisarr-sr-outside-").FullName;
+        try
+        {
+            var original = Path.Combine(outside, "original.mkv");
+            File.WriteAllText(original, "keep me");
+            Directory.CreateDirectory(Path.Combine(outside, "1-abc"));
+            Directory.CreateSymbolicLink(WorkOutputRoot.SuperResolutionRoot(work), outside);
+
+            SuperResolutionScratch.ClearAtStartup(work);
+
+            Assert.True(File.Exists(original));
+            Assert.True(Directory.Exists(Path.Combine(outside, "1-abc")));
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
     [Fact]
     public void Upscaled_work_expects_the_upscaled_size_and_always_waits_for_review()
     {
@@ -100,6 +124,27 @@ public sealed class SuperResolutionPipelinePlanTests
         Assert.False(prepared.AutoReplace);
         Assert.False(prepared.VerificationPolicy.RequireSizeReduction);
         Assert.True(prepared.BypassSizePreflight);
+    }
+
+    [Fact]
+    public void Upscaled_work_is_verified_as_copying_its_audio()
+    {
+        // The encoder copies audio untouched, so verification must not expect a re-encode, a
+        // downmix or a filter, and no soundtrack bitrate search runs for it.
+        var work = VideoWork() with
+        {
+            SourcePicture = new PictureSize(1920, 1080),
+            AdaptiveSoundtrackQuality = true,
+        };
+        work = work with { Original = work.Original with { AudioReencoded = true, AudioDownmixed = true, AudioFiltered = true, ExpectedAudioCodec = "aac" } };
+
+        var prepared = QueueDispatcher.PrepareSuperResolutionWork(work, Options, SuperResolutionQualityCheck.BrokenFramesOnly);
+
+        Assert.False(prepared.Original.AudioReencoded);
+        Assert.False(prepared.Original.AudioDownmixed);
+        Assert.False(prepared.Original.AudioFiltered);
+        Assert.Null(prepared.Original.ExpectedAudioCodec);
+        Assert.False(prepared.AdaptiveSoundtrackQuality);
     }
 
     [Fact]
