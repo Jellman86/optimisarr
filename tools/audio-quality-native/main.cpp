@@ -15,6 +15,9 @@
 namespace {
 constexpr char revision[] = "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3";
 constexpr size_t rate = 48000;
+// Lossy decoders reconstruct peaks above full scale on loud masters; those are audio. Beyond
+// +12 dBFS a float stream is not a plausible decode and is refused as corrupt input.
+constexpr float maximum_sample_magnitude = 4.0f;
 
 std::filesystem::path NativePath(const std::filesystem::path& path) {
 #ifdef _WIN32
@@ -47,8 +50,8 @@ std::vector<std::vector<float>> Read(const std::filesystem::path& path, size_t c
       float value;
       static_assert(sizeof(value) == sizeof(bits));
       std::memcpy(&value, &bits, sizeof(value));
-      if (!std::isfinite(value) || std::abs(value) > 1)
-        throw std::runtime_error("PCM has non-finite samples or samples outside [-1,1].");
+      if (!std::isfinite(value) || std::abs(value) > maximum_sample_magnitude)
+        throw std::runtime_error("PCM has non-finite samples or samples beyond +12 dBFS.");
       result[channel][frame] = value;
     }
   }

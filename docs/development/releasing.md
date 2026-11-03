@@ -155,11 +155,14 @@ source revision must not be used to describe a newer binary build.
 
 ### Fleet verification and rollout
 
-Use [the real-media acceptance harness](media-acceptance.md) with every required
-physical worker named explicitly. Test ordinary verification and strict
-sidecar-only verification separately. Keep the selected encoder/fixture matrix
-and its omissions visible: a smoke run does not certify all drivers, HDR media
-or full-length content.
+Run the [release regression check](release-check.md) against the exact published image digest, with
+receipts for the matching native packages and every required worker named explicitly. Retain
+separate installed-package, signing and upgrade/recovery evidence. A passing smoke run alone does
+not qualify the release.
+
+Test ordinary verification and strict sidecar-only verification separately. Keep the selected
+encoder/fixture matrix and its omissions visible: a smoke run does not certify all drivers, HDR
+media or full-length content.
 
 Drain workers and wait for active leases to finish before installing. Preserve
 pairing and settings, then confirm the installed version checks in and restore
@@ -206,6 +209,8 @@ when, and whether there is a tradeoff.
 
 - [ ] The release title and tag match the application version.
 - [ ] The exact tag's CI and container smoke test are green.
+- [ ] The redacted `release-check.json` and `release-check.md` summaries for this tag are attached
+  and contain no failed or blocked coverage. Missing summaries block publication.
 - [ ] Both native packaging jobs succeeded for the same reviewed commit, and
       downloadable assets, checksums and corresponding sources are present.
 - [ ] Mac notarisation/stapling and Windows installation/upgrade evidence are

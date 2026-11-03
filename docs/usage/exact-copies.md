@@ -6,14 +6,18 @@ It works with Film, TV, Music, Photo and Other libraries. No media files are cha
 
 1. Scan each library so its files appear in **Inventory**.
 2. Open **Find duplicates** on a library card, or choose a **Library** in **Exact copies**.
-3. Optionally expand **Compare with other libraries** and select additional libraries.
+3. In the open **Compare with other libraries** section, optionally select additional libraries.
    The starting library is always included. Opening this page never starts a scan.
 4. Select **Find exact copies**. You can leave the page while it runs, or **Cancel scan**.
-5. Open a group to see artwork, library names, paths, other references to the same physical
-   file, reported link counts and **Last content read** dates.
+5. Open a group to inspect its filename, copy count, size, library names, copy locations and other
+   references to the same physical file. Unknown or multiple hard links are labelled; SHA-256 is
+   available in the group’s tooltip.
 6. Select the copies you want to keep, then **Save keep choices**. You can keep several copies,
    **Ignore this group**, or clear a saved preference with **Review again**.
 7. Use **Next groups** and **Previous groups** to browse the saved result.
+
+Progress advances during large-file reads and includes cached and skipped work. The percentage
+remains below 100% until the server reports completion.
 
 **Choose which copies to keep** offers manual selection, **Keep all copies**, and copies in a
 preferred library. These controls change the draft selection; saving is explicit. Nothing is

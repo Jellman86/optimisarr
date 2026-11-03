@@ -54,7 +54,9 @@ public sealed record JobDto(
     /// <summary>The audio filter chain the job's command applied, or null when it applied none.</summary>
     string? AppliedAudioFilter = null,
     /// <summary>A temporary local memory/workspace hold; an eligible worker may still claim it.</summary>
-    bool WaitingForResources = false);
+    bool WaitingForResources = false,
+    /// <summary>Per-soundtrack bitrate search evidence while final verification has not produced its own report.</summary>
+    string? SoundtrackSearchJson = null);
 
 public static class JobQueries
 {
@@ -177,7 +179,9 @@ public static class JobQueries
                 false,
                 false,
                 job.VerificationReportJson == null ? job.PerceptualSearchJson : null,
-                job.AppliedAudioFilter))
+                job.AppliedAudioFilter,
+                false,
+                job.VerificationReportJson == null ? job.SoundtrackSearchJson : null))
             .ToListAsync(cancellationToken);
 
         var pageIds = jobs.Select(job => job.Id).ToArray();

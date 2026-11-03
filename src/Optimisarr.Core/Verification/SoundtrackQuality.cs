@@ -4,7 +4,11 @@ using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Verification;
 
-public sealed record SoundtrackQualityRequest(IReadOnlyList<int> RemovedSourceAudioIndexes);
+/// <param name="DownmixToStereo">The encode downmixes to stereo, so mono and known-layout surround tracks
+/// are measured against the same downmix of their source.</param>
+/// <param name="AudioFiltered">The encode applies an audio filter, which a sampled reference cannot reproduce.</param>
+public sealed record SoundtrackQualityRequest(IReadOnlyList<int> RemovedSourceAudioIndexes, bool DownmixToStereo = false,
+    bool AudioFiltered = false);
 public sealed record SoundtrackQualityPair(int SourceAudioIndex, int CandidateAudioIndex, string? Language,
     string? Title, AudioQualityInput Reference, AudioQualityInput Candidate);
 public sealed record SoundtrackQualityPlan(IReadOnlyList<SoundtrackQualityPair> Tracks, string? Error);
@@ -28,6 +32,8 @@ public static class SoundtrackQualityPlanner
             using var b = JsonDocument.Parse(candidateProbe);
             var source = AudioStreams(a);
             var output = AudioStreams(b);
+            var mp4 = b.RootElement.GetProperty("format").TryGetProperty("format_name", out var formatName)
+                && formatName.GetString()?.Split(',').Contains("mp4") == true;
             var removed = request.RemovedSourceAudioIndexes;
             if (removed is null || removed.Distinct().Count() != removed.Count || removed.Any(index => index < 0 || index >= source.Length))
                 return Refused("The retained soundtrack assignment is invalid.");
@@ -40,14 +46,18 @@ public static class SoundtrackQualityPlanner
                 var sourceIndex = retained[index];
                 var original = source[sourceIndex];
                 var candidate = output[index];
-                var reference = AudioQualityInput.ParseTrack(sourceProbe, sourceIndex);
-                var distorted = AudioQualityInput.ParseTrack(candidateProbe, index);
+                var reference = AudioQualityInput.ParseTrack(sourceProbe, sourceIndex, downmixToStereo: request.DownmixToStereo);
+                var distorted = AudioQualityInput.ParseTrack(candidateProbe, index, writtenByFfmpeg: true);
                 if (reference is null || distorted is null)
-                    return Refused($"Soundtrack {index + 1}: assessment supports known-duration mono/stereo tracks. Surround and surround downmix assessment are not available.");
+                    return Refused($"Soundtrack {index + 1}: assessment supports known-duration mono/stereo tracks, and surround with a known layout when the library downmixes to stereo.");
+                if (reference.Downmixed && request.AudioFiltered)
+                    return Refused($"Soundtrack {index + 1}: a downmixed track cannot be assessed with an audio filter, which a sampled reference cannot reproduce.");
                 if (AudioQualityInput.Incompatibility(reference, distorted) is { } mismatch)
                     return Refused($"Soundtrack {index + 1}: {mismatch}");
-                if (Language(original) != Language(candidate) || Tag(original, "title") != Tag(candidate, "title")
-                    || Comment(original) != Comment(candidate))
+                // MP4 cannot store a track title or commentary flag, so their absence there is not a different track.
+                var dropped = mp4 && Tag(candidate, "title") is null && Comment(candidate) == 0;
+                if (Language(original) != Language(candidate)
+                    || (!dropped && (Tag(original, "title") != Tag(candidate, "title") || Comment(original) != Comment(candidate))))
                     return Refused($"Soundtrack {index + 1}: language or commentary identity does not match the retained source track.");
                 if (Math.Abs((Start(original) - VideoStart(a)) - (Start(candidate) - VideoStart(b))) > 0.05)
                     return Refused($"Soundtrack {index + 1}: start time differs by more than 50 ms. A perceptual score cannot approve a timing shift.");

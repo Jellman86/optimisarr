@@ -53,24 +53,28 @@
 <!-- A labelled region rather than a live one: it re-reads every fifteen seconds, and a region
      that announces each poll would talk over whatever the reader is doing on the page. -->
 <section class="status-strip card" aria-label={i18n.m.dashboard.state}>
+  <!-- One block: the artwork (or the state's dot), then the state over its reason. -->
   <div class="status-strip-state">
-    {#if state?.severity === 'live'}
+    {#if holds[0]?.artworkUrl}
+      <Thumbnail src={holds[0].artworkUrl} size="sm" shape={holds[0].kind === 'Track' ? 'square' : 'portrait'} />
+    {:else if state?.severity === 'live'}
       <span class="h-2 w-2 flex-none animate-pulse rounded-full bg-accent" aria-hidden="true"></span>
     {:else if state?.severity === 'attention'}
       <span class="h-2 w-2 flex-none rounded-full bg-bad" aria-hidden="true"></span>
     {:else}
-      <span class="h-2 w-2 flex-none rounded-full bg-ink-5" aria-hidden="true"></span>
+      <span class="h-2 w-2 flex-none rounded-full bg-ink-4" aria-hidden="true"></span>
     {/if}
-    <span class="label mb-0">{i18n.m.dashboard.state}</span>
-    <span class="status-strip-label text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
-    {#if detail}
-      {#if holds.length > 0}
-        {#if holds[0]?.artworkUrl}<Thumbnail src={holds[0].artworkUrl} size="sm" shape={holds[0].kind === 'Track' ? 'square' : 'portrait'} />{/if}
-        <a class="status-strip-reason status-strip-playback focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
-      {:else}
-        <span class="status-strip-reason" title={detailTitle}>{detail}</span>
+    <div class="status-strip-text">
+      <span class="sr-only">{i18n.m.dashboard.state}:</span>
+      <span class="status-strip-label text-sm font-semibold {tone}">{state ? LABEL[state.kind]() : '—'}</span>
+      {#if detail}
+        {#if holds.length > 0}
+          <a class="status-strip-reason status-strip-playback focus-ring" href="#/queue" title={detailTitle}>{detail}</a>
+        {:else}
+          <span class="status-strip-reason" title={detailTitle}>{detail}</span>
+        {/if}
       {/if}
-    {/if}
+    </div>
   </div>
 
   <div class="status-strip-fact">
@@ -125,11 +129,16 @@
   }
   .status-strip-state {
     display: flex;
-    flex-wrap: wrap;
     min-width: 0;
     flex: 1 1 16rem;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.75rem;
+  }
+  .status-strip-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.1rem;
   }
   .status-strip-reason {
     min-width: 0;
@@ -140,9 +149,15 @@
     color: var(--ink-2);
   }
   .status-strip-label { min-width:0; overflow-wrap:anywhere; }
+  /* A link that reads as text until it is hovered or focused, like the rest of the strip. */
   .status-strip-playback {
-    text-decoration: underline;
+    text-decoration: none;
     text-underline-offset: 0.2em;
+  }
+  .status-strip-playback:hover,
+  .status-strip-playback:focus-visible {
+    text-decoration: underline;
+    color: var(--ink);
   }
   @media (pointer: coarse) {
     .status-strip-playback { min-height: 44px; line-height: 44px; }

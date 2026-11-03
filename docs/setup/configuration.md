@@ -6,6 +6,12 @@ run at startup.
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
+## Appearance
+
+Appearance follows the browser or system theme by default, including changes while the page is open.
+The theme button first pins the opposite scheme, then the other scheme, then returns to following
+the system. Existing saved light/dark choices are retained.
+
 ## First-run setup
 
 A genuinely new database opens a five-step setup workspace before the normal dashboard. It verifies
@@ -156,6 +162,9 @@ or return with its breadcrumb; navigation keeps the current draft and **Save** s
 together. Music exposes its output codec and bitrate in **Encode**. Specialist controls have
 dedicated **Advanced eligibility**, **Advanced encoding**, and **Advanced verification** pages.
 Completed-output routing stays in **Schedule & replace**, beside automatic replacement.
+
+The stage bar remains available on configuration, Candidates and Excluded pages. The stage being
+edited is filled with the accent colour; selecting another stage retains the draft.
 
 Every job must pass decode health, output readability, and the media-kind checks
 that apply to it. Video jobs also have an always-on structural comparison: the output codec must
@@ -324,6 +333,10 @@ quality retry or change the other safety checks.
 
 ![Blocked audio quality report showing the selected limit](../images/optimisarr-audio-gate-dark.png)
 
+Audio assessment accepts finite decoded samples up to an absolute magnitude of 4.0, approximately
++12 dBFS, to accommodate lossy decoder overs. Larger or non-finite samples remain invalid. This does
+not relax a configured clipping gate.
+
 ### Assess re-encoded video soundtracks
 
 Soundtrack samples leave a 100 ms margin at the file end to avoid encoder padding. Each prepared sample must still contain its assigned frames within the 64-frame resampling allowance; missing audio is never padded. Coverage in the report shows what was actually assessed.
@@ -354,21 +367,71 @@ and sample of every retained track must meet the inclusive limit; a missing or u
 measurement blocks replacement. Encoding presets do not select or change this limit.
 
 Assessment supports one to eight retained mono/stereo tracks with matching channel layouts.
-The frozen job records intentional source-track removals. Remaining source tracks map in order
-to output audio tracks; matching language, title and commentary identity is required. It does
+The frozen job records intentional source-track removals. Retained tracks map in frozen source order
+and must preserve language identity. Title and commentary identity must also match, except that
+their absence in an MP4 output is accepted because that container cannot retain them through this
+path. It does
 not guess track matches from language alone. A missing, extra or reordered track makes assessment
-unavailable. Surround and surround-to-stereo downmix assessment are unavailable, including a
-retained surround track alongside otherwise supported stereo tracks. Track duration differences
-over 100 ms, start-time differences over 50 ms, and unsupported picture/container offsets are
+unavailable.
+
+With **Downmix surround to stereo** on, a surround track with a known channel layout (and a mono
+track, which the downmix makes stereo) is measured against the source track through the same
+`-ac 2` downmix the encode applied. The score therefore measures what the codec lost, not the
+downmix itself, which is the library's own choice. Its evidence records the source's channel count
+and layout and a separate preparation, so it can never be read as a plain comparison. A surround
+track whose layout is unknown is refused rather than downmixed by guesswork, and so is a downmixed
+track when the library also sets an audio filter, because a filter such as loudness normalisation
+behaves differently on a 30-second sample than on the whole file. Workers need sidecar protocol 14
+for soundtrack assessment. Without a downmix, retained surround tracks remain unassessable and block a gated
+replacement, including alongside otherwise supported stereo tracks. For FLAC tracks whose duration
+comes from Matroska statistics, the probe reads the exact STREAMINFO sample count: statistics can
+omit the final packet's duration. Missing sample counts or disagreement beyond one FLAC frame
+(plus 1 ms timestamp rounding) remain unassessable. The candidate must still match that exact
+duration within 100 ms. Other track duration differences over 100 ms, start-time differences
+over 50 ms, and unsupported picture/container offsets are
 also refused; a perceptual score cannot approve a timing shift or establish lip-sync quality.
 
 Each track up to 90 seconds is fully assessed; longer tracks use three 30-second samples at
 the start, middle and end. This cannot guarantee quality outside the assessed windows or
-inaudibility within them. Cost grows with retained tracks: serial decode/scoring, temporary
-PCM files, and repeated reads of both complete video files for identity hashes on the verifying
-host. Strict worker verification requires an updated protocol 8 sidecar and verification
+inaudibility within them. Cost scales with retained tracks through serial probing, decoding and
+scoring. The batch shares one source/candidate/tool hash snapshot and checks those identities again
+after all tracks; each track does not independently reread every complete file for hashing.
+Temporary PCM files also use scratch space. Windows within 100 ms of the container origin decode
+from the beginning and trim on the
+picture timeline, preserving Opus pre-roll without moving the assessed audio. Strict worker
+verification requires an updated protocol 14 sidecar and verification
 contract 3; measurement stays on the worker with no server fallback. Server verification mode
 measures on the server. See [evidence and resource limits](../development/perceptual-audio-image-quality-plan.md#video-soundtrack-reports-and-gate-in-development).
+
+#### Choose soundtrack bitrates by measurement (experimental)
+
+With **Require soundtrack quality** on, **Choose each soundtrack's bitrate by measurement** lets
+the server pick a bitrate per retained soundtrack before the full encode. It needs an explicit
+**Re-encode to** choice of AAC, Opus or MP3. While it is on, the soundtrack gate stays on. With
+**Downmix surround to stereo** also on, surround and mono tracks are searched as the stereo they
+become: each sample is cut from the source through the same downmix as the encode.
+
+The search always runs on the server, which holds the original. When a worker will encode the
+job, the server chooses the bitrates first and offers the job once they are ready; the worker
+receives a fixed per-track command. Per-track bitrate commands require protocol 12; strict
+soundtrack assessment of the resulting file requires protocol 14. Older sidecars are not offered
+incompatible jobs. The worker's own soundtrack gate then measures the file it actually produced,
+so a worker encoder that behaves differently from the server's is caught by measurement rather
+than assumed equivalent.
+
+Each retained mono/stereo track is sampled in the same windows the gate uses (up to three
+30-second windows) and measured at up to four bitrates from the codec's ladder, starting at the
+library bitrate. Each window is cut from the source sample-exact and every candidate bitrate
+encodes that same cut, so the measurement compares only the codec, even for lossy sources. The smallest measured bitrate that met **Maximum soundtrack difference** in
+every window becomes that track's bitrate. A track whose measurements never meet the limit
+keeps the library bitrate. If any retained track cannot be assessed (surround without a downmix,
+an unknown layout, unknown duration, more than eight tracks), the source cannot be probed or the tools are unavailable, no track is
+searched and every track keeps the library bitrate. Selection never blocks or fails the job on its
+own.
+
+The chosen rates are explanatory evidence, not approval. The finished file is measured track by
+track by the soundtrack gate exactly as without selection, and a failed gate blocks replacement.
+Queue job details show **Soundtrack bitrates** with each track's chosen rate and the reason.
 
 All other configured video, timing, stream, metadata, loudness/clipping and size gates still
 apply. A failed soundtrack gate leaves the original unchanged and adds no automatic quality
@@ -378,7 +441,7 @@ Dry-run blocks replacement and purge while allowing encoding and verification.
 
 ## Perceptual image quality reports and gates (development)
 
-The current quality-first development branch adds independent **Image quality first** and
+This build provides independent **Image quality first** and
 **Audio quality first** controls beneath their enabled quality gates. Both start off and require
 an explicit target. Local searches test at most four settings, choose the smallest measured
 passing candidate, and retain the samples and selection reason separately from final
@@ -386,7 +449,7 @@ verification. Images compare the whole supported still and preserve the saved SS
 standalone mono/stereo audio compares up to three disjoint windows totalling at most 90 seconds.
 Every probe comes from the original. Neither search permits replacement or weakens any final
 check. A missing/noisy measurement falls back to the saved setting and still requires final
-quality evidence. Resizing and downmixing are outside the current search contract.
+quality evidence. Resizing and standalone-audio downmixing are outside the current search contract.
 Enabling image quality first permits lossy WebP from lossless originals, judged against the
 explicit target and all final gates. Fixed WebP settings continue preserving lossless sources.
 
@@ -395,9 +458,11 @@ Only a finished search displays a selected setting. If only the final perceptual
 one higher-fidelity retry can run; both final verdicts remain in attempt history. Failures of
 size, decode, timing, metadata or other independent checks cannot trigger that retry.
 
-Worker search and adaptive soundtracks remain under implementation.
-Current workers refuse quality-first jobs rather than ignore the search;
-worker-only libraries wait. See the [parity completion matrix](../development/adaptive-audio-image-parity.md).
+Standalone audio and still-image quality-first jobs can run on compatible protocol-11-or-newer
+workers with the required proved tools and resources. Older workers cannot claim them; worker-only
+placement waits for a compatible worker. Per-soundtrack bitrate selection runs on the server before
+either a local or worker encode. See the [parity completion
+matrix](../development/adaptive-audio-image-parity.md).
 
 In a photo or mixed library, open **Verify**, then **Advanced verification**. Enable
 **Image quality report** for optional SSIMULACRA2 evidence. Reporting alone does not block
@@ -425,8 +490,9 @@ image uses the decoder's sRGB interpretation. A declared profile must be recogni
 it cannot silently fall back after a parse failure. Image metadata preservation remains a
 separate check.
 
-Image jobs and measurements currently run on the server. Sidecars package the same helper
-for platform qualification but do not advertise image work. The server runs one image metric
+Compatible protocol-11-or-newer workers can run still-image quality-first jobs and measurements with
+the required proved tools and resources. Disposable image comparisons remain local. The server runs
+one image metric
 at a time with a 90-second process deadline and cancellation. A 16-megapixel synthetic
 comparison used about 2.3 GiB of resident memory on both the development Mac and Quark,
 with a Mac peak memory footprint of 2.8 GiB. Allow adequate memory alongside encoding.
@@ -599,10 +665,8 @@ commit, share, or leave it in an unprotected download directory.
 
 ![Backup and restore card explaining export contents and providing Export config and Import config controls](../images/optimisarr-settings-backup-dark.png)
 
-New exports use configuration format version 3 so older builds reject them rather than silently
-lose soundtrack reporting or its gate. Version 1 and 2 backups remain importable on this build;
-omitted soundtrack controls preserve existing saved values, and new libraries keep them off.
-Omitted standalone audio gate settings also preserve an existing gate.
+New exports use configuration format version 4. This build accepts versions 1–4 and rejects newer
+formats. When an older backup omits a field, verification settings take the value from that backup's legacy global policy, or its defaults (for example, the VMAF gate off); audio quality reporting is off; and the newer audio, image and soundtrack quality controls keep the library's current values. New libraries retain their defaults.
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,

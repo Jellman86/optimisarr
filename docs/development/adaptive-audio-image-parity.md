@@ -6,6 +6,8 @@ Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
 ## Active checkpoint, 28 October 2026
 
+Soundtrack delivery status below was reconciled against current dev on **2 November 2026**.
+
 Experimental standalone audio/image quality-first workflows shipped in
 [0.2.24](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.24).
 #415 merged, protocol 11 is enabled for compatible workers, and #332 remains open
@@ -27,10 +29,13 @@ OS adapters/bootstrap were archived in #434. Reimplementing those adapters is no
 an active requirement. Existing owned-scratch recovery, live admission and Mac
 anchored accounting remain in place.
 
+Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
+encodes, including supported stereo-downmix references. The search runs on the server; the final
+candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
+retry/reconnect, history/export and package-lifetime qualification remain open.
+
 Current remaining work is:
 
-- Adaptive selection for every retained **re-encoded** video soundtrack, with frozen
-  source/output maps and copied tracks excluded.
 - Preview/calibration/target guidance and broader source, retry, interrupted-attempt
   history and export parity.
 - Wider exact-package restart/reconnect/resource-exhaustion acceptance, with
@@ -41,28 +46,22 @@ records keyboard/focus and recovery fixes, automated accessibility checks, enlar
 text/zoom-equivalent layouts and refreshed captures in `dev`. Major quality-check
 polish already shipped in 0.2.24; this audit does not broaden native media acceptance.
 
-### Next soundtrack slice
+### Retained-soundtrack delivery and remaining qualification
 
-Start with an opt-in end-to-end workflow in the currently supported mono/stereo
-assessment domain. Reuse the existing soundtrack identity/timing and final-gate
-planning; do not infer surround/downmix support from standalone tests.
+Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
+encodes, including supported stereo-downmix references. The search runs on the server; the final
+candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
+retry/reconnect, history/export and package-lifetime qualification remain open.
 
-1. Freeze the retained source audio indexes, output order, language/commentary
-   identity, codec and target for each re-encoded track before selection. Copied
-   and removed tracks receive no search and must preserve their existing handling.
-2. Run bounded candidate selection on the eventual encoding host. Track-specific
-   evidence and the chosen bitrate must not leak into another track, attempt or
-   source; define per-track and whole-job budgets before enabling it.
-3. Apply selected rates to their exact output tracks, then independently verify
-   the actual final candidate against the frozen maps and every configured gate.
-   A successful search or copied-track pass cannot excuse an unmeasured required track.
-4. Qualify mixed retained/removed/copied tracks, identity/timing mismatches,
-   unavailable evidence, retries, cancellation and reconnect. Original preservation
-   and exact rollback remain acceptance criteria on each supported execution host.
+Selection freezes source/output maps, codec, target and per-track evidence; copied and removed
+tracks are excluded. The server performs bounded sample searches before a local or worker encode and
+applies the selected rates to their exact output tracks. Selection cannot approve the finished file:
+every configured final gate still applies.
 
-Do not activate an unfinished planner or widen support merely because unit tests
-pass. This scope is the next implementation slice, not a claim that adaptive
-soundtrack selection has shipped.
+Continue qualification of mixed retained/removed/copied tracks, identity/timing mismatches,
+unavailable evidence, retries, cancellation and reconnect. Original preservation and exact rollback
+remain acceptance criteria on each supported execution host. This delivery does not complete full
+#332 parity or wider hardware/lifetime acceptance.
 
 ## Historical checkpoint, 20 October 2026
 
@@ -293,7 +292,9 @@ CI matrix includes these workflows and the audio/image searches.
 ## Qualification matrix
 
 Extend the existing isolated acceptance harness; do not use the installed service or replace
-personal media as a test fixture. `--regression quality-first` exercises JPEG and AAC/Opus/MP3
+personal media. Generated fixtures remain the public baseline. The release check's house corpus
+only reads short copies of the operator's own files on that host, and its clips, manifest and full
+reports are never committed or published. `--regression quality-first` exercises JPEG and AAC/Opus/MP3
 selection, deliberate impossible targets, original hashes, actual final encoder settings,
 replacement rejection and exact rollback. Its deliberately permissive success limits and
 zero-distance rejection limits are fixtures, not recommended policies.

@@ -79,6 +79,7 @@ public sealed class MigrationTests : IDisposable
         var library = await db.Libraries.SingleAsync();
         Assert.False(library.AdaptiveAudioQuality);
         Assert.False(library.AdaptiveImageQuality);
+        Assert.False(library.AdaptiveSoundtrackQuality);
         library.AdaptiveAudioQuality = true;
         library.AudioQualityGateEnabled = true;
         library.MaximumAudioQualityDistance = 0.02;

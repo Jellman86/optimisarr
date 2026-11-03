@@ -759,6 +759,8 @@
       <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-ink" tabindex="-1" data-quality-focus="preparing">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-accent">{Math.round(session.preparationProgress * 100)}%</span></div>
       <div class="mt-5 h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-label={i18n.m.calibration.preparing} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(session.preparationProgress * 100)}><div class="h-full rounded-full bg-accent-fill transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
       <p class="mt-4 text-sm leading-relaxed text-ink-2">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : compareVideoPresets ? i18n.m.calibration.preparing_hint : i18n.m.calibration.preparing_quality_hint}</p>
+      <!-- These are this server's readings, sampled only while it encodes; a worker's preparation has none. -->
+      {#if activity.metrics}
       <div class="mt-6 border-t border-line pt-5">
         <div class="mb-3 flex items-center gap-2">
           <Icon name="gpu" class="h-4 w-4 text-ink-4" />
@@ -776,6 +778,7 @@
           />
         </div>
       </div>
+      {/if}
       {#if error}<button class="btn mt-5 min-h-11" onclick={checkAnother}>{i18n.m.calibration.check_another}</button>{/if}
     </section>
   {:else if session.status === 'Failed'}

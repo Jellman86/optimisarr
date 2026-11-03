@@ -668,6 +668,68 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_protocol_13_worker_cannot_claim_a_soundtrack_gate(bool downmix)
+    {
+        await EnableRemoteWorkers(strict: true);
+        var worker = await PairWorker("Previous soundtrack verifier", 1, ["libx265"], [], audioEncoders: ["aac"], protocolMaximum: 13);
+        var jobId = await QueueAJob(videoAudioCodec: "aac");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = await db.Libraries.SingleAsync(l => l.Id == db.Jobs.Single(j => j.Id == jobId).LibraryId);
+            library.SoundtrackQualityGateEnabled = true;
+            library.MaximumSoundtrackQualityDistance = 0.01;
+            library.DownmixToStereo = downmix;
+            var media = await db.MediaFiles.SingleAsync(m => m.Id == db.Jobs.Single(j => j.Id == jobId).MediaFileId);
+            media.AudioTrackCount = 1; media.AudioCodecs = "flac"; media.MaxAudioChannels = 2;
+            await db.SaveChangesAsync();
+        }
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        Assert.Equal(JobStatus.Queued, await StatusOf(jobId));
+        using var check = _api.Services.CreateScope();
+        var workerId = await WorkerIdNamed("Previous soundtrack verifier");
+        var savedWorker = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Workers.SingleAsync(w => w.Id == workerId);
+        Assert.Contains("protocol 14", savedWorker.LastProblem);
+    }
+
+    [Fact]
+    public async Task A_worker_job_keeps_the_servers_soundtrack_bitrate_evidence()
+    {
+        // The server chooses a worker job's soundtrack bitrates, so it must also keep why. Without
+        // this a fallback left no trace, and the queue could not say what the worker was sent.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Soundtracks", 1, ["libx265"], [], audioEncoders: ["aac"]);
+        var jobId = await QueueAJob(videoAudioCodec: "aac");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = await db.Libraries.SingleAsync(l => l.Id == db.Jobs.Single(j => j.Id == jobId).LibraryId);
+            library.VideoAudioBitrateKbps = 128;
+            library.SoundtrackQualityGateEnabled = true;
+            library.MaximumSoundtrackQualityDistance = 0.01;
+            library.AdaptiveSoundtrackQuality = true;
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage claim;
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while ((claim = await worker.PostAsJsonAsync("/api/workers/claim", new { })).StatusCode == HttpStatusCode.NoContent
+            && DateTime.UtcNow < deadline)
+        {
+            claim.Dispose();
+            await Task.Delay(100);
+        }
+
+        using (claim) Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var evidence = (await JobRow(jobId)).GetProperty("soundtrackSearchJson").GetString();
+        Assert.NotNull(evidence);
+        Assert.Contains("library bitrate", evidence);
+    }
+
     [Fact]
     public async Task A_check_in_refreshes_what_the_worker_can_do()
     {

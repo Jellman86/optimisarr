@@ -391,11 +391,16 @@ internal static class WorkerLeaseEndpoints
                     }
 
                     var requiredProtocol = WorkerProtocol.MinimumForAssignment(assignment.Arguments, assignment.Kind, assignment.VmafModel,
-                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null, assignment.FullVerification?.CountVideoFrames == true, assignment.PerceptualSearch is not null);
+                        assignment.Quality is not null || assignment.Search is not null, assignment.FullVerification?.SoundtrackQuality is not null, assignment.FullVerification?.CountVideoFrames == true, assignment.PerceptualSearch is not null,
+                        assignment.FullVerification?.SoundtrackQuality?.DownmixToStereo == true);
                     if (worker.ProtocolVersion < requiredProtocol)
                     {
                         skipped++;
-                        lastReason = requiredProtocol == 9
+                        lastReason = requiredProtocol == WorkerProtocol.SoundtrackTimingVersion
+                            ? "Soundtrack quality requires an updated sidecar with exact duration and decoder pre-roll preparation (protocol 14)."
+                            : requiredProtocol == WorkerProtocol.TrackBitrateVersion
+                            ? "Per-soundtrack bitrates require an updated sidecar (protocol 12)."
+                            : requiredProtocol == 9
                             ? "Picture preservation requires an updated sidecar (protocol 9)."
                             : requiredProtocol == 8
                             ? "Soundtrack quality assessment requires an updated sidecar (protocol 8)."
@@ -535,6 +540,7 @@ internal static class WorkerLeaseEndpoints
                         job.VerifiedOutputSha256 = null;
                         job.VerificationReportJson = null;
                         job.PerceptualSearchJson = null;
+                        job.SoundtrackSearchJson = assignment.SoundtrackSearchJson;
                         job.AdaptiveAudioBitrateKbps = null;
                         job.AdaptiveImageQuality = null;
                         job.VerifiedAt = null;

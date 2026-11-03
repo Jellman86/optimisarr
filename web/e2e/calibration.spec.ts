@@ -103,17 +103,21 @@ function revealedSession(mediaKind: CalibrationMediaKind) {
   }
 }
 
-async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false) {
+async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false, serverEncoding = false) {
   await page.route('**/hubs/jobs/negotiate**', route => json(route, {
     negotiateVersion: 1, connectionId: 'quality-check', connectionToken: 'quality-check',
     availableTransports: [{ transport: 'WebSockets', transferFormats: ['Text'] }],
   }))
   await page.routeWebSocket('**/hubs/jobs?*', socket => {
+    let metrics: ReturnType<typeof setInterval> | undefined
     socket.onMessage(message => {
-      if (String(message).includes('"protocol"')) socket.send('{}\u001e')
+      if (!String(message).includes('"protocol"')) return
+      socket.send('{}\u001e')
+      // This server samples its own CPU and GPU only while it is encoding.
+      if (serverEncoding) metrics = setInterval(() => socket.send(JSON.stringify({ type: 1, target: 'systemMetrics', arguments: [{ cpuPercent: 37, gpuSupported: true, gpuPercent: 62, gpuEngine: 'Video' }] }) + '\u001e'), 250)
     })
     const ping = setInterval(() => socket.send('{"type":6}\u001e'), 10_000)
-    socket.onClose(() => clearInterval(ping))
+    socket.onClose(() => { clearInterval(ping); clearInterval(metrics) })
   })
   const currentLibrary = { ...library, mediaType: mediaKind === 'Audio' ? 'Music' : mediaKind === 'Image' ? 'Photo' : 'Film' }
   await page.route('**/api/**', async (route: Route) => {
@@ -190,13 +194,22 @@ test('video grading bay stays inside narrow portrait and landscape viewports', a
   })).toBe(true)
 })
 
-test('sample preparation shows the same live CPU and GPU usage cards as active queue work', async ({ page }) => {
-  await openLab(page, 'Video', false, true)
+test('sample preparation on this server shows the same live CPU and GPU usage cards as active queue work', async ({ page }) => {
+  await mockApp(page, 'Video', false, true, false, true)
+  await page.goto('/#/libraries/1/quality-check')
+  await page.getByRole('button', { name: 'Prepare blind samples' }).click()
 
   await expect(page.getByRole('heading', { name: 'Preparing blind samples' })).toBeVisible()
   await expect(page.getByText('42%', { exact: true })).toBeVisible()
   await expect(page.getByText('CPU', { exact: true })).toBeVisible()
   await expect(page.getByText('GPU', { exact: true })).toBeVisible()
+})
+
+test('sample preparation on a worker hides this server\'s idle usage cards instead of showing dashes', async ({ page }) => {
+  await openLab(page, 'Video', false, true)
+
+  await expect(page.getByRole('heading', { name: 'Preparing blind samples' })).toBeVisible()
+  await expect(page.getByText('Live system usage')).toHaveCount(0)
 })
 
 test('quality check marks the original reference while keeping media-specific candidates anonymous', async ({ page }) => {

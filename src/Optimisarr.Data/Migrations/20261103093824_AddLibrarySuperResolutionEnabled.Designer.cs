@@ -11,14 +11,14 @@ using Optimisarr.Data;
 namespace Optimisarr.Data.Migrations
 {
     [DbContext(typeof(OptimisarrDbContext))]
-    [Migration("20261028164012_AddLibrarySuperResolutionEnabled")]
+    [Migration("20261103093824_AddLibrarySuperResolutionEnabled")]
     partial class AddLibrarySuperResolutionEnabled
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
             modelBuilder.Entity("Optimisarr.Data.ActivityWatcher", b =>
                 {
@@ -800,6 +800,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("RetryReason")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SoundtrackSearchJson")
+                        .HasMaxLength(1048576)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SourceSha256")
                         .HasColumnType("TEXT");
 
@@ -1023,6 +1027,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("AdaptiveImageQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AdaptiveSoundtrackQuality")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("AudioBitrateKbps")

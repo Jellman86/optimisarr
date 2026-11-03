@@ -34,7 +34,7 @@ public sealed class SoundtrackQualityObservationService(
             {
                 var result = batch is null ? await measure!(source, candidate, pair.SourceAudioIndex, pair.CandidateAudioIndex, token) : batch[tracks.Count];
                 var evidence = RemoteAudioQualityEvidence.From(result);
-                var reason = AudioQualityReporting.Validate(evidence, result.ReferenceSha256, result.CandidateSha256, AudioQualityResultParser.SoundtrackPreparation);
+                var reason = AudioQualityReporting.Validate(evidence, result.ReferenceSha256, result.CandidateSha256, ExpectedPreparation(pair));
                 if (result.Reference != pair.Reference || result.Candidate != pair.Candidate
                     || result.ReferenceAudioIndex != pair.SourceAudioIndex || result.CandidateAudioIndex != pair.CandidateAudioIndex)
                     reason = "The measured audio profiles do not match the assigned soundtrack.";
@@ -49,6 +49,9 @@ public sealed class SoundtrackQualityObservationService(
         }
         return new(tracks, null);
     }
+
+    private static string ExpectedPreparation(SoundtrackQualityPair pair) => pair.Reference.Downmixed
+        ? AudioQualityResultParser.SoundtrackDownmixPreparation : AudioQualityResultParser.SoundtrackPreparation;
 
     public static SoundtrackQualityReport Validate(SoundtrackQualityReport? report, SoundtrackQualityPlan plan,
         string sourceHash, string candidateHash)
@@ -66,7 +69,7 @@ public sealed class SoundtrackQualityObservationService(
             if (actual?.Track != pair || actual.Report is null)
                 return new([], "The worker soundtrack mapping does not match the frozen assignment.");
             var evidence = actual.Report.Evidence;
-            var error = actual.Report.UnavailableReason ?? AudioQualityReporting.Validate(evidence, sourceHash, candidateHash, AudioQualityResultParser.SoundtrackPreparation);
+            var error = actual.Report.UnavailableReason ?? AudioQualityReporting.Validate(evidence, sourceHash, candidateHash, ExpectedPreparation(pair));
             if (evidence?.Assessment is not null && (evidence.Assessment.Reference != pair.Reference || evidence.Assessment.Candidate != pair.Candidate
                 || evidence.Assessment.ReferenceAudioIndex != pair.SourceAudioIndex || evidence.Assessment.CandidateAudioIndex != pair.CandidateAudioIndex))
                 error = "The worker measured different soundtrack profiles.";

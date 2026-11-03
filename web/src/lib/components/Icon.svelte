@@ -4,6 +4,8 @@
   export const icons: Record<string, string> = {
     sun: 'M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z',
     moon: 'M20.4 15.4A9 9 0 018.6 3.6 9 9 0 1020.4 15.4z',
+    // Half a circle: the page wears the scheme the system asks for rather than a pinned one.
+    auto: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18M12 3v18',
     check: 'M5 13l4 4L19 7',
     'arrow-up-right': 'M7 17 17 7M7 7h10v10',
     'shield-check': 'M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7zM8 12l3 3 5-6',

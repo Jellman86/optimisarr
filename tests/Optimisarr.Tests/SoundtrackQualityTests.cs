@@ -12,7 +12,14 @@ public sealed class SoundtrackQualityTests
         var root = json.RootElement;
         var plan = SoundtrackQualityPlanner.Plan(root.GetProperty("sourceProbe").GetString()!, root.GetProperty("candidateProbe").GetString()!, new([]));
         Assert.Null(plan.Error);
-        var native = JsonSerializer.Deserialize<SoundtrackQualityReport>(root.GetProperty("soundtrackQuality"), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        // The archived native capture used v1 preparation. Its profiles/windows still match;
+        // raw v1 evidence must be refused by this release before checking the current envelope.
+        var captured = root.GetProperty("soundtrackQuality").GetRawText();
+        var legacy = JsonSerializer.Deserialize<SoundtrackQualityReport>(captured, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.All(SoundtrackQualityObservationService.Validate(legacy, plan, root.GetProperty("sourceSha256").GetString()!, root.GetProperty("candidateSha256").GetString()!).Tracks,
+            track => Assert.Null(track.Report.Evidence));
+        var native = JsonSerializer.Deserialize<SoundtrackQualityReport>(captured.Replace("audio-f32le-48k-video-timeline-v1", AudioQualityResultParser.SoundtrackPreparation),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var validated = SoundtrackQualityObservationService.Validate(native, plan, root.GetProperty("sourceSha256").GetString()!, root.GetProperty("candidateSha256").GetString()!);
         Assert.Null(validated.UnavailableReason);
         Assert.Equal(2, validated.Tracks.Count);
@@ -52,6 +59,237 @@ public sealed class SoundtrackQualityTests
     }
 
     [Fact]
+    public void Mkvmerge_language_suffixed_statistics_give_the_track_length()
+    {
+        // mkvmerge writes only DURATION-eng when the statistics tags carry a language.
+        var json = """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0","channels":2,"sample_rate":"48000","tags":{"language":"ita","DURATION-eng":"00:42:48.640000000","_STATISTICS_WRITING_APP-eng":"mkvmerge v51"}}],"format":{"start_time":"0","duration":"2568.661","tags":{"encoder":"libebml v1.4.1 + libmatroska v1.6.2"}}}""";
+
+        Assert.Equal(2568.64, AudioQualityInput.ParseTrack(json, 0)!.DurationSeconds, 6);
+        // FFmpeg muxed it and mkvpropedit later replaced the statistics (Red Dwarf, Lavf58): with no plain
+        // DURATION left, the suffixed one is the length. A delayed track would still be ambiguous.
+        var propedited = json.Replace("libebml v1.4.1 + libmatroska v1.6.2", "Lavf58.29.100").Replace("mkvmerge v51", "mkvpropedit v28.2.0");
+        Assert.Equal(2568.64, AudioQualityInput.ParseTrack(propedited, 0)!.DurationSeconds, 6);
+        Assert.Null(AudioQualityInput.ParseTrack(propedited.Replace("\"start_time\":\"0\",\"channels\"", "\"start_time\":\"0.5\",\"channels\""), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(propedited, 0, writtenByFfmpeg: true));
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace(",\"_STATISTICS", ",\"DURATION-fre\":\"00:42:40.000000000\",\"_STATISTICS"), 0));
+    }
+
+    [Fact]
+    public void An_output_this_ffmpeg_wrote_reads_its_own_end_tag_despite_copied_statistics()
+    {
+        // FFmpeg rewrites DURATION as an end timestamp but copies the source's stale mkvmerge statistics.
+        var json = """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","start_time":"0.019","channels":2,"sample_rate":"48000","tags":{"language":"eng","DURATION":"00:11:48.199000000","DURATION-eng":"00:11:48.139000000","_STATISTICS_WRITING_APP":"mkvmerge v9.6.0"}}],"format":{"start_time":"0","duration":"708.285","tags":{"encoder":"Lavf62.3.103"}}}""";
+
+        Assert.Null(AudioQualityInput.ParseTrack(json, 0));
+        Assert.Equal(708.18, AudioQualityInput.ParseTrack(json, 0, writtenByFfmpeg: true)!.DurationSeconds, 6);
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("\"DURATION\":\"00:11:48.199000000\",", ""), 0, writtenByFfmpeg: true));
+    }
+
+    [Theory]
+    [InlineData("DURATION")]
+    [InlineData("DURATION-eng")]
+    public void Flac_statistics_use_the_exact_sample_count_and_still_refuse_truncation(string tag)
+    {
+        // 4,321,280 samples; the statistics end at the start of the final 4,096-sample packet.
+        var source = FlacStatisticsProbe(tag);
+        var reference = AudioQualityInput.ParseTrack(source, 0)!;
+        Assert.Equal(4321280 / 48000.0, reference.DurationSeconds, 8);
+        var honest = Probe(Track(title: null, duration: "90.048"));
+        Assert.Null(SoundtrackQualityPlanner.Plan(source, honest, new([])).Error);
+        Assert.Null(AudioQualityInput.Incompatibility(reference, AudioQualityInput.ParseTrack(honest, 0)!));
+        var truncated = Probe(Track(title: null, duration: "89.915"));
+        Assert.Contains("duration", SoundtrackQualityPlanner.Plan(source, truncated, new([])).Error);
+        Assert.NotNull(AudioQualityInput.Incompatibility(reference, AudioQualityInput.ParseTrack(truncated, 0)!));
+    }
+
+    [Fact]
+    public async Task Targeted_flac_statistics_probe_ignores_font_attachments_and_matches_worker_profiles()
+    {
+        var full = System.Text.Json.Nodes.JsonNode.Parse(FlacStatisticsProbe("DURATION-eng"))!;
+        var streams = full["streams"]!.AsArray();
+        var track = streams[1]!;
+        track["index"] = 2;
+        var targeted = new System.Text.Json.Nodes.JsonObject { ["streams"] = new System.Text.Json.Nodes.JsonArray(track.DeepClone()) }.ToJsonString();
+        track.AsObject().Remove("extradata");
+        streams.Insert(1, new System.Text.Json.Nodes.JsonObject { ["codec_type"] = "attachment", ["index"] = 1,
+            ["codec_name"] = "ttf", ["extradata_size"] = 2 * 1024 * 1024 });
+        var metadata = full.ToJsonString();
+        var calls = 0;
+        var enriched = await FlacStreamInfoProbe.EnrichAsync(metadata, async (index, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            Assert.Equal(0, index); // audio-relative index, not the absolute stream index (2).
+            calls++;
+            await Task.Yield();
+            return targeted;
+        }, CancellationToken.None);
+        Assert.Equal(1, calls);
+        Assert.True(enriched.Length < 4096);
+        var reference = AudioQualityInput.ParseTrack(enriched, 0)!;
+        Assert.Equal(4321280 / 48000.0, reference.DurationSeconds, 8);
+        Assert.Equal(AudioQualityInput.ParseTrack(FlacStatisticsProbe("DURATION-eng"), 0), reference);
+        Assert.Null(SoundtrackQualityPlanner.Plan(enriched, Probe(Track(title: null, duration: "90.048")), new([])).Error);
+        Assert.Contains("duration", SoundtrackQualityPlanner.Plan(enriched, Probe(Track(title: null, duration: "89.915")), new([])).Error);
+        var args = FlacStreamInfoProbe.Arguments("movie.mkv", 0).ToList();
+        Assert.Equal("a:0", args[args.IndexOf("-select_streams") + 1]);
+        Assert.Contains("-show_data", args);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Flac_stream_duration_and_ffmpeg_output_need_no_extra_probe(bool streamDuration, bool writtenByFfmpeg)
+    {
+        var probe = FlacStatisticsProbe("DURATION");
+        if (streamDuration) probe = probe.Replace("\"sample_rate\"", "\"duration\":\"90.027\",\"sample_rate\"");
+        Assert.Equal(probe, await FlacStreamInfoProbe.EnrichAsync(probe, (_, _) => throw new Exception("Unexpected probe"),
+            CancellationToken.None, writtenByFfmpeg));
+    }
+
+    [Fact]
+    public async Task Oversized_or_wrong_track_streaminfo_is_refused()
+    {
+        var metadata = FlacStatisticsProbe("DURATION-eng").Replace("extradata", "unavailable");
+        foreach (var targeted in new[] { new string('x', 16385), "null", "{}", "{\"streams\":null}", "{\"streams\":[]}",
+            FlacStatisticsProbe("DURATION-eng"), FlacStatisticsProbe("DURATION-eng").Replace("flac", "ttf") })
+        {
+            var enriched = await FlacStreamInfoProbe.EnrichAsync(metadata, (_, _) => Task.FromResult(targeted), CancellationToken.None);
+            Assert.Null(AudioQualityInput.ParseTrack(enriched, 0));
+        }
+    }
+
+    [Fact]
+    public void Flac_sample_counts_cannot_override_stream_durations_or_conflicting_statistics()
+    {
+        var json = FlacStatisticsProbe("DURATION-eng");
+        Assert.Equal(91, AudioQualityInput.ParseTrack(json.Replace("\"sample_rate\"", "\"duration\":\"91\",\"sample_rate\""), 0)!.DurationSeconds);
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("29.941", "28.941"), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("02f0 0041", "02f0 0000").Replace("f000 0000", "0000 0000"), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("0bb8 02f0", "0ac4 42f0"), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("1000 1000", "1000 0000"), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(json.Replace("extradata", "unavailable"), 0));
+        Assert.Null(AudioQualityInput.ParseTrack(json, 0, writtenByFfmpeg: true));
+        Assert.Equal(90.1, AudioQualityInput.ParseTrack(FlacStatisticsProbe("DURATION").Replace("29.941", "30.100"), 0, writtenByFfmpeg: true)!.DurationSeconds);
+        Assert.Equal(4321280 / 48000.0, AudioQualityInput.ParseTrack(json.Replace("29.941", "30.000"), 0)!.DurationSeconds, 8);
+    }
+
+    internal static string FlacStatisticsProbe(string tag) =>
+        """{"streams":[{"codec_type":"video","start_time":"0"},{"codec_type":"audio","codec_name":"flac","start_time":"0","channels":2,"sample_rate":"48000","extradata":"\n00000000: 1000 1000 0000 0000 0000 0bb8 02f0 0041  ...............A\n00000010: f000 0000 0000 0000 0000 0000 0000 0000  ................\n00000020: 0000                                     ..\n","tags":{"language":"eng","TAG":"00:01:29.941000000","_STATISTICS_WRITING_APP-eng":"mkvpropedit v95"}}],"format":{"start_time":"0","duration":"91","tags":{"encoder":"Lavf62"}}}""".Replace("TAG", tag);
+
+    [Theory]
+    [InlineData(0, 0.007, "0.007")]
+    [InlineData(0.04, 0.007, "0.047")]
+    [InlineData(0, 0.021, "0.021")]
+    [InlineData(0, 0, "0")]
+    public void Near_start_soundtrack_windows_trim_on_the_picture_timeline_without_input_seeking(double start, double lead, string trim)
+    {
+        // The same command builder prepares reference and candidate, including a candidate with priming.
+        foreach (var file in new[] { "reference-opus.mkv", "candidate-opus.mkv" })
+        {
+            var args = AudioQualityCommandBuilder.Decode(file, "decoded.raw", new(start, 30), containerLeadSeconds: lead, soundtrack: true).ToList();
+            Assert.DoesNotContain("-ss", args);
+            Assert.Equal($"aresample=48000,atrim=start={trim},asetpts=PTS-STARTPTS,atrim=end_sample=1440000", args[args.IndexOf("-af") + 1]);
+            Assert.Equal("30.1", args[args.IndexOf("-t") + 1]);
+            Assert.DoesNotContain("apad", string.Join(',', args));
+        }
+    }
+
+    [Theory]
+    [InlineData("0.009")]
+    [InlineData("0.022")]
+    public void Late_starting_soundtracks_count_samples_after_the_start_trim_without_a_timestamp_end(string start)
+    {
+        var probe = Probe(Track(start: start, duration: "8"));
+        var profile = AudioQualityInput.ParseTrack(probe, 0)!;
+        Assert.Equal(0, profile.ContainerLeadSeconds);
+        var window = AudioQualityWindowPlanner.Plan(profile.DurationSeconds, soundtrack: true)[0];
+        foreach (var file in new[] { "reference-late.mkv", "candidate-late.mkv" })
+        {
+            var args = AudioQualityCommandBuilder.Decode(file, "decoded.raw", window,
+                containerLeadSeconds: profile.ContainerLeadSeconds, soundtrack: true).ToList();
+            Assert.DoesNotContain("-ss", args);
+            Assert.Equal("aresample=48000,atrim=start=0,asetpts=PTS-STARTPTS,atrim=end_sample=379200",
+                args[args.IndexOf("-af") + 1]);
+        }
+    }
+
+    [Fact]
+    public void Mp4_outputs_that_cannot_carry_track_titles_keep_language_identity()
+    {
+        var source = Probe(Track("por", "Brazilian"), Track("eng", "English"));
+        var mp4 = Probe(Track("por", null), Track("eng", null)).Replace("\"start_time\":\"0\"}}", "\"start_time\":\"0\",\"format_name\":\"mov,mp4,m4a,3gp,3g2,mj2\"}}");
+
+        Assert.Null(SoundtrackQualityPlanner.Plan(source, mp4, new([])).Error);
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, Probe(Track("por", null), Track("eng", null)), new([])).Error);
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, mp4.Replace("\"por\"", "\"spa\""), new([])).Error);
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, Probe(Track("por", "English"), Track("eng", "Brazilian"))
+            .Replace("\"start_time\":\"0\"}}", "\"start_time\":\"0\",\"format_name\":\"mov,mp4,m4a,3gp,3g2,mj2\"}}"), new([])).Error);
+    }
+
+    [Fact]
+    public void A_downmixed_surround_track_is_assessed_against_the_same_stereo_downmix()
+    {
+        // The library downmixes to stereo, so the honest reference is the source through that same
+        // downmix: the score then measures the codec, not the downmix the library chose.
+        var source = Probe(Track("eng", "Main", channels: 6), Track("eng", "Commentary", channels: 1));
+        var output = Probe(Track("eng", "Main"), Track("eng", "Commentary"));
+
+        Assert.Contains("downmix", SoundtrackQualityPlanner.Plan(source, output, new([])).Error);
+        var plan = SoundtrackQualityPlanner.Plan(source, output, new([], DownmixToStereo: true));
+
+        Assert.Null(plan.Error);
+        Assert.Equal(new AudioQualityInput(3, 2, 48000, "stereo", 0, SourceChannels: 6, SourceChannelLayout: "5.1"), plan.Tracks[0].Reference);
+        Assert.Equal(new AudioQualityInput(3, 2, 48000, "stereo", 0, SourceChannels: 1, SourceChannelLayout: "mono"), plan.Tracks[1].Reference);
+        Assert.Equal(new AudioQualityInput(3, 2, 48000, "stereo"), plan.Tracks[1].Candidate);
+        Assert.Contains("audio filter", SoundtrackQualityPlanner.Plan(source, output, new([], DownmixToStereo: true, AudioFiltered: true)).Error);
+        Assert.Null(SoundtrackQualityPlanner.Plan(Probe(Track()), Probe(Track()), new([], DownmixToStereo: true, AudioFiltered: true)).Error);
+    }
+
+    [Fact]
+    public void A_surround_track_without_a_known_layout_is_not_downmixed_by_guesswork()
+    {
+        var source = Probe(Track("eng", "Main", channels: 6)).Replace("\"channel_layout\":\"5.1\",", "");
+        Assert.NotNull(SoundtrackQualityPlanner.Plan(source, Probe(Track()), new([], DownmixToStereo: true)).Error);
+        Assert.Null(AudioQualityInput.ParseTrack(source, 0, downmixToStereo: true));
+    }
+
+    [Fact]
+    public void The_encode_and_both_references_downmix_with_one_argument_list()
+    {
+        var spec = new Optimisarr.Core.Queue.TranscodeSpec("film.mkv", "out.mkv", "libx265", 24, null, false,
+            AudioEncoder: "aac", AudioBitrateKbps: 128, DownmixToStereo: true);
+        var encode = Optimisarr.Core.Queue.FfmpegCommandBuilder.Build(spec, 0, "libx265", optimisedMarker: null).ToList();
+        var channels = Optimisarr.Core.Queue.FfmpegCommandBuilder.StereoDownmixArguments;
+        Assert.Equal(channels, encode.Skip(encode.IndexOf("-ac")).Take(channels.Count));
+
+        var window = new AudioQualityWindow(10, 30);
+        var reference = AudioQualityCommandBuilder.Decode("film.mkv", "r.raw", window, 1, 0, soundtrack: true, downmixToStereo: true).ToList();
+        Assert.Equal(channels, reference.Skip(reference.IndexOf("-ac")).Take(channels.Count));
+        Assert.DoesNotContain("-ac", AudioQualityCommandBuilder.Decode("out.mkv", "c.raw", window, 1, 0, soundtrack: true));
+
+        var sample = Optimisarr.Core.Queue.PerceptualSamplePlanner.SoundtrackReference("film.mkv", "r.wav", 1,
+            new Optimisarr.Core.Queue.PerceptualAudioWindow(10, 30), downmixToStereo: true).ToList();
+        Assert.Equal(channels, sample.Skip(sample.IndexOf("-ac")).Take(channels.Count));
+        Assert.DoesNotContain("-ac", Optimisarr.Core.Queue.PerceptualSamplePlanner.SoundtrackCandidate(spec, "r.wav", "c.m4a", 96,
+            new Optimisarr.Core.Queue.PerceptualAudioWindow(10, 30)));
+    }
+
+    [Fact]
+    public void Downmixed_evidence_is_bound_to_its_own_preparation()
+    {
+        var reference = new AudioQualityInput(100, 2, 48000, "stereo", 0, SourceChannels: 6, SourceChannelLayout: "5.1(side)");
+        var plain = new AudioQualityAssessmentResult(true, null, reference with { SourceChannels = null, SourceChannelLayout = null },
+            new AudioQualityInput(100, 2, 48000, "stereo"), null, null, null, null, null, [], 0, 0, 0);
+        var downmixed = plain with { Reference = reference };
+
+        Assert.Equal(AudioQualityResultParser.SoundtrackPreparation, plain.Preparation);
+        Assert.Equal(AudioQualityResultParser.SoundtrackDownmixPreparation, downmixed.Preparation);
+        Assert.Equal("The audio metric or preparation does not match this release.",
+            AudioQualityReporting.Validate(RemoteAudioQualityEvidence.From(downmixed) with { Preparation = AudioQualityResultParser.SoundtrackPreparation },
+                null, null, AudioQualityResultParser.SoundtrackDownmixPreparation));
+    }
+
+    [Fact]
     public void Matroska_track_end_tags_keep_short_soundtracks_inside_their_own_timeline()
     {
         var source = Probe(Track(duration: "12", start: "-0.021"))
@@ -76,7 +314,7 @@ public sealed class SoundtrackQualityTests
         foreach (var w in windows)
         {
             var args = AudioQualityCommandBuilder.Decode("a", "b", w, 1, 0.0000111, soundtrack: true).ToArray();
-            Assert.DoesNotContain("E", args[Array.IndexOf(args, "-ss") + 1]);
+            Assert.DoesNotContain("E", args[Array.IndexOf(args, args.Contains("-ss") ? "-ss" : "-af") + 1]);
             Assert.Equal("0:a:1", args[Array.IndexOf(args, "-map") + 1]);
         }
     }
@@ -86,7 +324,7 @@ public sealed class SoundtrackQualityTests
         format = new { duration = "3", start_time = "0" }
     });
 
-    internal static object Track(string language = "eng", string title = "Main", int channels = 2,
+    internal static object Track(string language = "eng", string? title = "Main", int channels = 2,
         string start = "0", string duration = "3") => new
     {
         codec_type = "audio", codec_name = "aac", channels, sample_rate = "48000",
@@ -229,14 +467,14 @@ public sealed class SoundtrackQualityTests
         var args = AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3), 0, 0, soundtrack: true);
         Assert.DoesNotContain("-ss", args);
         Assert.Equal("3.1", args[args.ToList().IndexOf("-t") + 1]);
-        Assert.Contains("aresample=48000,atrim=end_sample=144000", args);
+        Assert.Contains("aresample=48000,atrim=start=0,asetpts=PTS-STARTPTS,atrim=end_sample=144000", args);
         Assert.DoesNotContain("-ss", AudioQualityCommandBuilder.Decode("source", "pcm", new(0, 3)));
     }
 
     [Theory]
-    [InlineData(0, 0.021, "0.021")]
+    [InlineData(0.2, 0.021, "0.221")]
     [InlineData(22.5, 0.021, "22.521")]
-    public void Soundtrack_seeks_preserve_the_demuxer_origin_including_the_picture_lead(double start, double lead, string expected)
+    public void Later_soundtrack_seeks_preserve_the_demuxer_origin_including_the_picture_lead(double start, double lead, string expected)
     {
         var args = AudioQualityCommandBuilder.Decode("source.mkv", "pcm", new(start, 3), 0, lead, soundtrack: true).ToList();
         var seek = args.IndexOf("-ss");

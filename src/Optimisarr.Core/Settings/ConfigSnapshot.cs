@@ -103,6 +103,7 @@ public sealed record LibrarySnapshot(
     bool? AdaptiveImageQuality = null,
     // Absent from backups made before the setting existed; importing those keeps the stored choice.
     bool? NormalizeOpusChannelLayout = null,
+    bool? AdaptiveSoundtrackQuality = null,
     // Same: null on an older snapshot keeps the stored per-library switch — the Real-CUGAN
     // super-resolution pipeline must not silently activate (or deactivate) on a config restore.
     bool? SuperResolutionEnabled = null);

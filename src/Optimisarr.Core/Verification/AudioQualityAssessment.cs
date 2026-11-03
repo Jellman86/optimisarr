@@ -28,12 +28,23 @@ public static class AudioQualityWindowPlanner
     }
 }
 
-public sealed record AudioQualityInput(double DurationSeconds, int Channels, int SampleRate, string ChannelLayout, double ContainerLeadSeconds = 0)
+/// <param name="SourceChannels">Set when this stereo reference is the source track through the job's stereo
+/// downmix; it binds the evidence to what was downmixed. Null for a track measured as it is.</param>
+public sealed record AudioQualityInput(double DurationSeconds, int Channels, int SampleRate, string ChannelLayout, double ContainerLeadSeconds = 0,
+    int? SourceChannels = null, string? SourceChannelLayout = null)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool Downmixed => SourceChannels is not null;
+
     public static AudioQualityInput? Parse(string json)
         => ParseTrack(json, 0, standalone: true);
 
-    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false)
+    /// <param name="writtenByFfmpeg">The file is an output this FFmpeg just muxed, so its plain DURATION tag is
+    /// FFmpeg's own end timestamp even when stale statistics were copied from the source.</param>
+    /// <param name="downmixToStereo">The job downmixes to stereo: a mono or known-layout surround track
+    /// becomes a stereo reference recording its source channels; it is never a standalone input.</param>
+    public static AudioQualityInput? ParseTrack(string json, int audioIndex, bool standalone = false, bool writtenByFfmpeg = false,
+        bool downmixToStereo = false)
     {
         try
         {
@@ -49,8 +60,16 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
             double duration;
             if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out duration))
             {
+                var format = doc.RootElement.GetProperty("format");
+                var encoder = format.TryGetProperty("tags", out var formatTags)
+                    ? formatTags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("encoder", StringComparison.OrdinalIgnoreCase)).Value : default;
+                var muxedByFfmpeg = encoder.ValueKind == JsonValueKind.String && encoder.GetString()!.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase);
+                // FFmpeg writes a plain DURATION, which wins over any stale suffixed copy. A file with only
+                // suffixed tags had them rewritten later (mkvmerge, or mkvpropedit after FFmpeg), except
+                // in an output this FFmpeg just wrote, where they can only be copies of the source's.
+                var suffixed = !writtenByFfmpeg;
                 if (!standalone && track.TryGetProperty("tags", out var tags)
-                    && tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("DURATION", StringComparison.OrdinalIgnoreCase)).Value is { ValueKind: JsonValueKind.String } end)
+                    && MatroskaTag(tags, "DURATION", suffixed) is { ValueKind: JsonValueKind.String } end)
                 {
                     var parts = end.GetString()!.Split(':');
                     if (parts.Length != 3 || !int.TryParse(parts[0], out var hours) || !int.TryParse(parts[1], out var minutes)
@@ -58,25 +77,38 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
                         || hours < 0 || minutes is < 0 or > 59 || seconds is < 0 or >= 60
                         || !track.TryGetProperty("start_time", out var start)
                         || !double.TryParse(start.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var began)) return null;
-                    var statistics = tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("_STATISTICS_WRITING_APP", StringComparison.OrdinalIgnoreCase)).Value;
-                    var format = doc.RootElement.GetProperty("format");
-                    var encoder = format.TryGetProperty("tags", out var formatTags)
-                        ? formatTags.EnumerateObject().FirstOrDefault(p => p.Name.Equals("encoder", StringComparison.OrdinalIgnoreCase)).Value : default;
-                    var statisticsLength = statistics.ValueKind == JsonValueKind.String
+                    var statistics = MatroskaTag(tags, "_STATISTICS_WRITING_APP", suffixed);
+                    var statisticsLength = !writtenByFfmpeg && statistics.ValueKind == JsonValueKind.String
                         && (statistics.GetString()!.StartsWith("mkvmerge", StringComparison.OrdinalIgnoreCase)
                             || statistics.GetString()!.StartsWith("mkvpropedit", StringComparison.OrdinalIgnoreCase));
                     // FFmpeg can retain stale statistics, or mkvpropedit can refresh them after muxing.
-                    if (statisticsLength && encoder.ValueKind == JsonValueKind.String
-                        && encoder.GetString()!.StartsWith("Lavf", StringComparison.OrdinalIgnoreCase) && began != 0) return null;
+                    if (statisticsLength && muxedByFfmpeg && began != 0) return null;
                     // MKVToolNix statistics store elapsed time; FFmpeg rewrites DURATION as an end timestamp.
                     duration = hours * 3600.0 + minutes * 60 + seconds - (statisticsLength ? 0 : began);
+                    if (statisticsLength && track.TryGetProperty("codec_name", out var codec) && codec.GetString() == "flac")
+                    {
+                        // Matroska statistics may stop at the last packet's start. STREAMINFO carries
+                        // the exact sample count; never guess a frame or widen the truncation tolerance.
+                        if (FlacDuration(track, sampleRate, duration) is not { } exact) return null;
+                        duration = exact;
+                    }
                 }
                 else if (!standalone || !double.TryParse(doc.RootElement.GetProperty("format").GetProperty("duration").GetString(),
                     NumberStyles.Float, CultureInfo.InvariantCulture, out duration)) return null;
             }
-            if (AudioQualityWindowPlanner.Plan(duration).Count == 0 || channels is not (1 or 2) || sampleRate is < 8000 or > 384000) return null;
-            var expectedLayout = channels == 1 ? "mono" : "stereo";
+            if (AudioQualityWindowPlanner.Plan(duration).Count == 0 || sampleRate is < 8000 or > 384000) return null;
             var layout = track.TryGetProperty("channel_layout", out var l) ? l.GetString() : null;
+            int? sourceChannels = null;
+            string? sourceLayout = null;
+            if (downmixToStereo && !standalone && channels != 2)
+            {
+                // A surround downmix follows the layout's own matrix; without a layout it would be a guess.
+                if (channels == 1 ? !string.IsNullOrEmpty(layout) && layout != "mono" : channels is < 3 or > 8 || string.IsNullOrWhiteSpace(layout))
+                    return null;
+                (sourceChannels, sourceLayout, channels, layout) = (channels, channels == 1 ? "mono" : layout, 2, null);
+            }
+            if (channels is not (1 or 2)) return null;
+            var expectedLayout = channels == 1 ? "mono" : "stereo";
             if (!string.IsNullOrEmpty(layout) && layout != expectedLayout) return null;
             var lead = 0.0;
             if (!standalone)
@@ -89,10 +121,46 @@ public sealed record AudioQualityInput(double DurationSeconds, int Channels, int
                     lead = Start(video) - Start(doc.RootElement.GetProperty("format"));
                 if (!double.IsFinite(lead) || lead is < 0 or > 0.1) return null;
             }
-            return new(duration, channels, sampleRate, expectedLayout, lead);
+            return new(duration, channels, sampleRate, expectedLayout, lead, sourceChannels, sourceLayout);
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException or ArgumentNullException)
         { return null; }
+    }
+
+    private static double? FlacDuration(JsonElement track, int sampleRate, double statisticsDuration)
+    {
+        if (sampleRate is < 8000 or > 384000 || !track.TryGetProperty("extradata", out var data)
+            || data.ValueKind != JsonValueKind.String || data.GetString() is not { Length: <= 1024 } dump) return null;
+        var hex = string.Concat(dump.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
+        {
+            var colon = line.IndexOf(':');
+            if (colon < 0) return "";
+            var fields = line[(colon + 1)..].TrimStart();
+            var ascii = fields.IndexOf("  ", StringComparison.Ordinal);
+            return (ascii < 0 ? fields : fields[..ascii]).Replace(" ", "");
+        }));
+        if (hex.Length != 68) return null;
+        var bytes = Convert.FromHexString(hex);
+        var minimumBlock = (bytes[0] << 8) | bytes[1];
+        var maximumBlock = (bytes[2] << 8) | bytes[3];
+        var info = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(bytes.AsSpan(10, 8));
+        var rate = (int)(info >> 44);
+        var samples = info & 0xfffffffffUL;
+        if (rate != sampleRate || samples == 0 || minimumBlock < 16 || maximumBlock < minimumBlock) return null;
+        var duration = samples / (double)sampleRate;
+        // Allow one omitted packet and Matroska's millisecond timestamp rounding, not stale headers.
+        var missing = duration - statisticsDuration;
+        return missing >= -0.001 && missing <= maximumBlock / (double)sampleRate + 0.001 ? duration : null;
+    }
+
+    // The plain tag, or else one agreed language-suffixed copy such as mkvmerge's DURATION-eng.
+    internal static JsonElement MatroskaTag(JsonElement tags, string name, bool allowLanguageSuffix)
+    {
+        var plain = tags.EnumerateObject().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
+        if (plain.ValueKind != JsonValueKind.Undefined || !allowLanguageSuffix) return plain;
+        var copies = tags.EnumerateObject().Where(p => p.Name.StartsWith(name + "-", StringComparison.OrdinalIgnoreCase)).Select(p => p.Value).ToArray();
+        return copies.Length > 0 && copies.All(c => c.ValueKind == JsonValueKind.String) && copies.Select(c => c.GetString()).Distinct().Count() == 1
+            ? copies[0] : default;
     }
 
     public static string? Incompatibility(AudioQualityInput reference, AudioQualityInput candidate) =>
@@ -116,24 +184,35 @@ public static class AudioQualityCommandBuilder
         // before it opens the input, including during the very first qualification.
         ["-protocol_whitelist", "file", "-format_whitelist", soundtrack ? SoundtrackFormats : AudioFormats];
 
-    public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window, int audioIndex = 0, double containerLeadSeconds = 0, bool soundtrack = false)
+    public static IReadOnlyList<string> Decode(string source, string output, AudioQualityWindow window, int audioIndex = 0, double containerLeadSeconds = 0, bool soundtrack = false,
+        bool downmixToStereo = false)
     {
+        if (downmixToStereo && !soundtrack) throw new ArgumentException("Only a soundtrack reference is downmixed.", nameof(downmixToStereo));
         ArgumentOutOfRangeException.ThrowIfNegative(audioIndex);
         if (!double.IsFinite(containerLeadSeconds) || containerLeadSeconds is < 0 or > 0.1) throw new ArgumentOutOfRangeException(nameof(containerLeadSeconds));
         var seek = window.StartSeconds + containerLeadSeconds;
-        var inputSeek = soundtrack ? seek : Math.Max(0, seek - 10);
+        // Opus needs up to 80 ms of decoder pre-roll. Near the origin, input seeking can
+        // discard valid samples, so decode from the start before trimming.
+        var fromStart = soundtrack && seek <= 0.1;
+        var inputSeek = soundtrack ? (fromStart ? 0 : seek) : Math.Max(0, seek - 10);
         var outputSeek = soundtrack ? 0 : seek - inputSeek;
         var frames = (long)Math.Round(window.DurationSeconds * 48000);
+        // Audio can start slightly after the picture. Count samples after the start trim;
+        // a timestamp end would shorten those windows. Start-time and lead checks enforce timing.
+        var trim = fromStart
+            ? $"atrim=start={seek.ToString("0.########", CultureInfo.InvariantCulture)},asetpts=PTS-STARTPTS,"
+            : "";
         return [
         "-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n",
-        // Standalone audio needs decoder context before exact trimming. Soundtracks keep
-        // their demuxer-relative picture origin; output seeking applies a different origin.
+        // Standalone audio uses output seeking; soundtracks trim on the demuxer-relative picture clock.
         .. inputSeek == 0 ? Array.Empty<string>() : ["-ss", inputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
         .. InputOptions(soundtrack), "-i", source,
         .. outputSeek == 0 ? Array.Empty<string>() : ["-ss", outputSeek.ToString("0.########", CultureInfo.InvariantCulture)],
         "-map", $"0:a:{audioIndex.ToString(CultureInfo.InvariantCulture)}", "-t", (window.DurationSeconds + (soundtrack ? 0.1 : 0)).ToString("0.########", CultureInfo.InvariantCulture),
         "-vn", "-sn", "-dn", "-ar", "48000",
-        .. soundtrack ? new[] { "-af", $"aresample=48000,atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [], "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
+        .. soundtrack ? new[] { "-af", $"aresample=48000,{trim}atrim=end_sample={frames.ToString(CultureInfo.InvariantCulture)}" } : [],
+        .. downmixToStereo ? Queue.FfmpegCommandBuilder.StereoDownmixArguments : [],
+        "-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output
         ];
     }
 }
@@ -147,7 +226,11 @@ public static class AudioQualityResultParser
 {
     public const string Revision = "f9e7364df2f6a41f761f513b7ea6be7e2d6f2ce3";
     public const string Preparation = "audio-f32le-48k-native-defaults-v1";
-    public const string SoundtrackPreparation = "audio-f32le-48k-video-timeline-v1";
+    public const string SoundtrackPreparation = "audio-f32le-48k-video-timeline-v2";
+    /// <summary>The reference is the source track through the job's stereo downmix.</summary>
+    public const string SoundtrackDownmixPreparation = "audio-f32le-48k-video-timeline-stereo-downmix-v2";
+
+    public static bool IsSoundtrack(string preparation) => preparation is SoundtrackPreparation or SoundtrackDownmixPreparation;
 
     public static AudioQualityDistances? Parse(string json, int channels, double durationSeconds)
     {

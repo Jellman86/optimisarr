@@ -39,6 +39,56 @@ public static class PerceptualSamplePlanner
             "-ar", "48000", "-c:a", "pcm_f32le", "-f", "wav", output];
     }
 
+    /// <summary>One video soundtrack's window, decoded to the same lossless reference as standalone audio.</summary>
+    public static IReadOnlyList<string> SoundtrackReference(string source, string output, int sourceAudioIndex, PerceptualAudioWindow window,
+        bool downmixToStereo = false)
+    {
+        Validate(window);
+        if (sourceAudioIndex < 0) throw new ArgumentOutOfRangeException(nameof(sourceAudioIndex));
+        var inputSeek = Math.Max(0, window.StartSeconds - 10);
+        // A lossy soundtrack decodes in whole packets, and a late first sample shortens a -t cut, so
+        // either lands hundreds of samples off the window and the assessment refuses the pair. The
+        // filter cuts the window itself, sample-exact, after the decoder context the input seek gives.
+        var first = (long)(window.StartSeconds - inputSeek) * 48000;
+        var frames = (long)window.DurationSeconds * 48000;
+        return ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n", "-progress", "pipe:1",
+            .. inputSeek == 0 ? Array.Empty<string>() : ["-ss", inputSeek.ToString(CultureInfo.InvariantCulture)],
+            "-i", source, "-map", $"0:a:{sourceAudioIndex}", "-vn", "-sn", "-dn", "-map_metadata", "-1",
+            "-af", string.Create(CultureInfo.InvariantCulture,
+                $"aresample=48000,atrim=start_sample={first},asetpts=PTS-STARTPTS,apad,atrim=end_sample={frames}"),
+            "-ar", "48000", .. downmixToStereo ? FfmpegCommandBuilder.StereoDownmixArguments : [], "-c:a", "pcm_f32le", "-f", "wav", output];
+    }
+
+    /// <summary>
+    /// The standalone container each search encoder is measured in. These trim encoder priming the
+    /// way the assessment expects; AAC and Opus in Matroska kept it and every sample was refused.
+    /// </summary>
+    public static string SoundtrackSampleExtension(string encoder) => encoder switch
+    {
+        "aac" => ".m4a",
+        "libopus" => ".opus",
+        "libmp3lame" => ".mp3",
+        _ => throw new ArgumentException("Unsupported soundtrack search encoder.", nameof(encoder))
+    };
+
+    /// <summary>
+    /// One soundtrack window encoded as the video job will encode it: same encoder, filter and
+    /// channel handling, at the bitrate under test. It encodes the prepared reference rather than
+    /// re-reading the source, so both sides hold exactly the same audio before the codec.
+    /// </summary>
+    public static List<string> SoundtrackCandidate(TranscodeSpec spec, string reference, string output, int bitrate, PerceptualAudioWindow window)
+    {
+        Validate(window);
+        if (spec.Kind != MediaKind.Video || spec.AudioEncoder is null || bitrate <= 0)
+            throw new ArgumentException("Soundtrack samples require a video job that re-encodes its audio.");
+        List<string> arguments = ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n", "-progress", "pipe:1",
+            "-i", reference, "-map", "0:a:0", "-vn", "-sn", "-dn", "-map_metadata", "-1", "-c:a", spec.AudioEncoder, "-b:a", $"{bitrate}k"];
+        // The reference already carries the job's stereo downmix when there is one.
+        if (FfmpegCommandBuilder.ResolveAudioFilter(spec).Chain is { } filter) arguments.AddRange(["-af", filter]);
+        arguments.Add(output);
+        return arguments;
+    }
+
     public static TranscodeSpec AudioCandidate(TranscodeSpec spec, string output, int bitrate, PerceptualAudioWindow window)
     {
         Validate(window);

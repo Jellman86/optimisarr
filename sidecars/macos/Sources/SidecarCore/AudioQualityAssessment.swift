@@ -6,10 +6,16 @@ public struct AudioQualityProfile: Codable, Sendable {
     let sampleRate: Int
     let channelLayout: String
     var containerLeadSeconds: Double = 0
-    enum CodingKeys: String, CodingKey { case durationSeconds, channels, sampleRate, channelLayout, containerLeadSeconds }
-    init(durationSeconds: Double, channels: Int, sampleRate: Int, channelLayout: String, containerLeadSeconds: Double = 0) {
+    /// Set when this stereo reference is the source track through the job's stereo downmix.
+    var sourceChannels: Int?
+    var sourceChannelLayout: String?
+    var downmixed: Bool { sourceChannels != nil }
+    enum CodingKeys: String, CodingKey { case durationSeconds, channels, sampleRate, channelLayout, containerLeadSeconds, sourceChannels, sourceChannelLayout }
+    init(durationSeconds: Double, channels: Int, sampleRate: Int, channelLayout: String, containerLeadSeconds: Double = 0,
+         sourceChannels: Int? = nil, sourceChannelLayout: String? = nil) {
         self.durationSeconds = durationSeconds; self.channels = channels; self.sampleRate = sampleRate
         self.channelLayout = channelLayout; self.containerLeadSeconds = containerLeadSeconds
+        self.sourceChannels = sourceChannels; self.sourceChannelLayout = sourceChannelLayout
     }
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -18,6 +24,8 @@ public struct AudioQualityProfile: Codable, Sendable {
         sampleRate = try values.decode(Int.self, forKey: .sampleRate)
         channelLayout = try values.decode(String.self, forKey: .channelLayout)
         containerLeadSeconds = try values.decodeIfPresent(Double.self, forKey: .containerLeadSeconds) ?? 0
+        sourceChannels = try values.decodeIfPresent(Int.self, forKey: .sourceChannels)
+        sourceChannelLayout = try values.decodeIfPresent(String.self, forKey: .sourceChannelLayout)
     }
 }
 public struct AudioQualitySample: Codable, Sendable {
@@ -50,7 +58,10 @@ public struct AudioQualityResult: Codable, Sendable {
 public struct RemoteAudioQualityEvidence: Codable, Sendable {
     let metric = "zimtohrli"
     let revision = AudioQualityAssessment.revision
-    var preparation: String { assessment.referenceAudioIndex == nil ? "audio-f32le-48k-native-defaults-v1" : "audio-f32le-48k-video-timeline-v1" }
+    var preparation: String {
+        assessment.referenceAudioIndex == nil ? "audio-f32le-48k-native-defaults-v1"
+            : assessment.reference?.downmixed == true ? "audio-f32le-48k-video-timeline-stereo-downmix-v2" : "audio-f32le-48k-video-timeline-v2"
+    }
     enum CodingKeys: String, CodingKey { case metric, revision, preparation, assessment }
     public init(assessment: AudioQualityResult) { self.assessment = assessment }
     public init(from decoder: any Decoder) throws {
@@ -105,15 +116,23 @@ public struct AudioQualityAssessment: Sendable {
             durationSeconds: Double(length + (index < remainder ? 1 : 0)) / 48000) }
     }
 
+    /// Mirrors the server's encode: the job's stereo downmix is `-ac 2`.
+    static let stereoDownmixArguments = ["-ac", "2"]
+
     static func decodeArguments(input: URL, output: URL, window: AudioQualitySample,
-                                audioIndex: Int, lead: Double, soundtrack: Bool) -> [String] {
+                                audioIndex: Int, lead: Double, soundtrack: Bool, downmixToStereo: Bool = false) -> [String] {
         let seek = window.startSeconds + lead
-        let inputSeek = soundtrack ? seek : max(0, seek - 10)
+        // Opus needs up to 80 ms of pre-roll. Trim near-start windows on the same picture clock.
+        let fromStart = soundtrack && seek <= 0.1
+        let inputSeek = soundtrack ? (fromStart ? 0 : seek) : max(0, seek - 10)
         let outputSeek = soundtrack ? 0 : seek - inputSeek
         let inputArgs: [String] = inputSeek == 0 ? [] : ["-ss", secondsText(inputSeek)]
         let outputArgs: [String] = outputSeek == 0 ? [] : ["-ss", secondsText(outputSeek)]
         let frames = Int((window.durationSeconds * 48000).rounded())
-        let filterArgs: [String] = soundtrack ? ["-af", "aresample=48000,atrim=end_sample=\(frames)"] : []
+        // Audio can start slightly after the picture. Count samples after the start trim;
+        // a timestamp end would shorten those windows. Start-time and lead checks enforce timing.
+        let trim = fromStart ? "atrim=start=\(secondsText(seek)),asetpts=PTS-STARTPTS," : ""
+        let filterArgs: [String] = soundtrack ? ["-af", "aresample=48000,\(trim)atrim=end_sample=\(frames)"] : []
         let duration = secondsText(window.durationSeconds + (soundtrack ? 0.1 : 0))
         // Standalone samples need decoder context; soundtracks keep the demuxer's picture origin.
         var arguments = ["-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-n"]
@@ -122,11 +141,16 @@ public struct AudioQualityAssessment: Sendable {
         arguments.append(contentsOf: outputArgs)
         arguments.append(contentsOf: ["-map", "0:a:\(audioIndex)", "-t", duration, "-vn", "-sn", "-dn", "-ar", "48000"])
         arguments.append(contentsOf: filterArgs)
+        if downmixToStereo && soundtrack { arguments.append(contentsOf: stereoDownmixArguments) }
         arguments.append(contentsOf: ["-c:a", "pcm_f32le", "-fs", "11520004", "-f", "f32le", output.path])
         return arguments
     }
 
-    static func profile(_ json: String, audioIndex: Int? = nil) -> AudioQualityProfile? {
+    /// `writtenByFfmpeg`: an output this FFmpeg just muxed, whose plain DURATION is its own end timestamp
+    /// even when stale statistics were copied from the source.
+    /// `downmixToStereo`: the job downmixes to stereo, so a mono or known-layout surround track becomes a
+    /// stereo reference recording its source channels.
+    static func profile(_ json: String, audioIndex: Int? = nil, writtenByFfmpeg: Bool = false, downmixToStereo: Bool = false) -> AudioQualityProfile? {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let streams = object["streams"] as? [[String: Any]] else { return nil }
@@ -134,28 +158,45 @@ public struct AudioQualityAssessment: Sendable {
         let selected = audioIndex ?? 0
         guard selected >= 0, selected < audio.count, (audioIndex != nil || (audio.count == 1 && !streams.contains(where: { stream in
             stream["codec_type"] as? String == "video" && (stream["disposition"] as? [String: Any])?["attached_pic"] as? Int != 1
-        }))), let channels = audio[selected]["channels"] as? Int, [1, 2].contains(channels),
+        }))), var channels = audio[selected]["channels"] as? Int,
               let rateText = audio[selected]["sample_rate"] as? String, let rate = Int(rateText), (8000...384000).contains(rate) else { return nil }
+        var named = audio[selected]["channel_layout"] as? String
+        var sourceChannels: Int?, sourceLayout: String?
+        if downmixToStereo, audioIndex != nil, channels != 2 {
+            // A surround downmix follows the layout's own matrix; without a layout it would be a guess.
+            if channels == 1 { guard named == nil || named == "" || named == "mono" else { return nil } }
+            else { guard (3...8).contains(channels), let known = named, !known.trimmingCharacters(in: .whitespaces).isEmpty else { return nil } }
+            (sourceChannels, sourceLayout, channels, named) = (channels, channels == 1 ? "mono" : named, 2, nil)
+        }
+        guard [1, 2].contains(channels) else { return nil }
         let layout = channels == 1 ? "mono" : "stereo"
-        if let named = audio[selected]["channel_layout"] as? String, !named.isEmpty && named != layout { return nil }
+        if let named, !named.isEmpty && named != layout { return nil }
         let streamDuration = audio[selected]["duration"] as? String
         let formatDuration = (object["format"] as? [String: Any])?["duration"] as? String
         var duration = streamDuration.flatMap(Double.init)
+        let formatTags = (object["format"] as? [String: Any])?["tags"] as? [String: Any]
+        let encoder = (formatTags?.first(where: { $0.key.lowercased() == "encoder" })?.value as? String ?? "").lowercased()
+        // FFmpeg writes a plain DURATION, which wins over any stale suffixed copy. A file with only
+        // suffixed tags had them rewritten later, except in an output this FFmpeg just wrote.
+        let suffixed = !writtenByFfmpeg
         if duration == nil, audioIndex != nil,
            let tags = audio[selected]["tags"] as? [String: Any],
-           let endText = tags.first(where: { $0.key.uppercased() == "DURATION" })?.value as? String {
+           let endText = matroskaTag(tags, "DURATION", allowLanguageSuffix: suffixed) {
             let parts = endText.split(separator: ":", omittingEmptySubsequences: false)
             guard parts.count == 3, let hours = Int(parts[0]), hours >= 0,
                   let minutes = Int(parts[1]), (0...59).contains(minutes),
                   let seconds = Double(parts[2]), (0..<60).contains(seconds),
                   let start = Double(audio[selected]["start_time"] as? String ?? "N/A") else { return nil }
-            let statistics = (tags.first(where: { $0.key.uppercased() == "_STATISTICS_WRITING_APP" })?.value as? String ?? "").lowercased()
-            let formatTags = (object["format"] as? [String: Any])?["tags"] as? [String: Any]
-            let encoder = (formatTags?.first(where: { $0.key.lowercased() == "encoder" })?.value as? String ?? "").lowercased()
-            let lengthTag = statistics.hasPrefix("mkvmerge") || statistics.hasPrefix("mkvpropedit")
+            let statistics = (matroskaTag(tags, "_STATISTICS_WRITING_APP", allowLanguageSuffix: suffixed) ?? "").lowercased()
+            let lengthTag = !writtenByFfmpeg && (statistics.hasPrefix("mkvmerge") || statistics.hasPrefix("mkvpropedit"))
             // A later tag edit and stale copied statistics have indistinguishable provenance.
             guard !(lengthTag && encoder.hasPrefix("lavf") && start != 0) else { return nil }
             duration = Double(hours) * 3600 + Double(minutes) * 60 + seconds - (lengthTag ? 0 : start)
+            if lengthTag, audio[selected]["codec_name"] as? String == "flac" {
+                // Statistics can omit the final packet. Use STREAMINFO's exact sample count instead.
+                guard let exact = flacDuration(audio[selected], sampleRate: rate, statisticsDuration: duration!) else { return nil }
+                duration = exact
+            }
         }
         if duration == nil, audioIndex == nil { duration = formatDuration.flatMap(Double.init) }
         guard let seconds = duration, !plan(seconds).isEmpty else { return nil }
@@ -167,7 +208,42 @@ public struct AudioQualityAssessment: Sendable {
             lead = videoStart - containerStart
             guard lead.isFinite, (0...0.1).contains(lead) else { return nil }
         }
-        return .init(durationSeconds: seconds, channels: channels, sampleRate: rate, channelLayout: layout, containerLeadSeconds: lead)
+        return .init(durationSeconds: seconds, channels: channels, sampleRate: rate, channelLayout: layout, containerLeadSeconds: lead,
+                     sourceChannels: sourceChannels, sourceChannelLayout: sourceLayout)
+    }
+
+    private static func flacDuration(_ track: [String: Any], sampleRate: Int, statisticsDuration: Double) -> Double? {
+        guard let dump = track["extradata"] as? String, dump.count <= 1024 else { return nil }
+        let hex = dump.split(separator: "\n").map { line -> String in
+            guard let colon = line.firstIndex(of: ":") else { return "" }
+            let fields = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            return (fields.components(separatedBy: "  ").first ?? "").replacingOccurrences(of: " ", with: "")
+        }.joined()
+        guard hex.count == 68 else { return nil }
+        var bytes: [UInt8] = []
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let end = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<end], radix: 16) else { return nil }
+            bytes.append(byte); index = end
+        }
+        let minimumBlock = Int(bytes[0]) << 8 | Int(bytes[1])
+        let maximumBlock = Int(bytes[2]) << 8 | Int(bytes[3])
+        let info = bytes[10..<18].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+        let rate = Int(info >> 44), samples = info & 0xfffffffff
+        guard rate == sampleRate, samples > 0, minimumBlock >= 16, maximumBlock >= minimumBlock else { return nil }
+        let duration = Double(samples) / Double(sampleRate), missing = duration - statisticsDuration
+        // One omitted packet plus millisecond timestamp rounding; conflicting headers fail closed.
+        return missing >= -0.001 && missing <= Double(maximumBlock) / Double(sampleRate) + 0.001 ? duration : nil
+    }
+
+    /// The plain tag, or else one agreed language-suffixed copy such as mkvmerge's DURATION-eng.
+    static func matroskaTag(_ tags: [String: Any], _ name: String, allowLanguageSuffix: Bool) -> String? {
+        if let plain = tags.first(where: { $0.key.uppercased() == name }) { return plain.value as? String }
+        guard allowLanguageSuffix else { return nil }
+        let copies = tags.filter { $0.key.uppercased().hasPrefix(name + "-") }.map { $0.value as? String }
+        guard let first = copies.first, let value = first, copies.allSatisfy({ $0 == value }) else { return nil }
+        return value
     }
 
     static func parse(_ json: String, channels: Int, seconds: Double) -> AudioQualityDistances? {
@@ -185,7 +261,8 @@ public struct AudioQualityAssessment: Sendable {
     }
 
     public func measure(ffmpeg: URL, ffprobe: URL, metric: URL, source: URL, candidate: URL,
-                        sourceProbe: String, candidateProbe: String, scratch: URL, sourceAudioIndex: Int? = nil, candidateAudioIndex: Int? = nil, sharedHashes: AudioQualityFileHashes? = nil) async throws -> RemoteAudioQualityEvidence {
+                        sourceProbe: String, candidateProbe: String, scratch: URL, sourceAudioIndex: Int? = nil, candidateAudioIndex: Int? = nil, sharedHashes: AudioQualityFileHashes? = nil,
+                        downmixToStereo: Bool = false) async throws -> RemoteAudioQualityEvidence {
         try Task.checkCancellation()
         let started = Date(), owned = scratch.appendingPathComponent("audio-assessment-" + UUID().uuidString)
         var result = AudioQualityResult()
@@ -193,7 +270,7 @@ public struct AudioQualityAssessment: Sendable {
         result.candidateAudioIndex = candidateAudioIndex
         defer { try? FileManager.default.removeItem(at: owned) }
         do {
-            guard let reference = Self.profile(sourceProbe, audioIndex: sourceAudioIndex), let output = Self.profile(candidateProbe, audioIndex: candidateAudioIndex) else {
+            guard let reference = Self.profile(sourceProbe, audioIndex: sourceAudioIndex, downmixToStereo: downmixToStereo), let output = Self.profile(candidateProbe, audioIndex: candidateAudioIndex, writtenByFfmpeg: true) else {
                 throw Failure("Assessment requires one known-duration mono/stereo audio track without video or unproved channel layouts.")
             }
             result.reference = reference; result.candidate = output
@@ -209,10 +286,11 @@ public struct AudioQualityAssessment: Sendable {
                 attributes: [.posixPermissions: 0o700])
             for window in Self.plan(min(reference.durationSeconds, output.durationSeconds), soundtrack: sourceAudioIndex != nil) {
                 let a = owned.appendingPathComponent("reference.raw"), b = owned.appendingPathComponent("candidate.raw")
-                for (input, pcm, audioIndex, lead) in [(source, a, sourceAudioIndex ?? 0, reference.containerLeadSeconds), (candidate, b, candidateAudioIndex ?? 0, output.containerLeadSeconds)] {
+                for (input, pcm, audioIndex, lead, downmix) in [(source, a, sourceAudioIndex ?? 0, reference.containerLeadSeconds, reference.downmixed),
+                                                                 (candidate, b, candidateAudioIndex ?? 0, output.containerLeadSeconds, false)] {
                     let soundtrack = sourceAudioIndex != nil
                     let decoded = try await run(ffmpeg, Self.decodeArguments(input: input, output: pcm, window: window,
-                        audioIndex: audioIndex, lead: lead, soundtrack: soundtrack))
+                        audioIndex: audioIndex, lead: lead, soundtrack: soundtrack, downmixToStereo: downmix))
                     guard decoded.exitCode == 0 else { throw Failure("Audio preparation failed: \(decoded.stderr)") }
                     let bytes = try size(pcm), stride = Int64(reference.channels * 4)
                     guard bytes >= 192000, bytes <= 11520000, bytes % stride == 0,

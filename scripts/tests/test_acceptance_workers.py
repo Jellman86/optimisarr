@@ -13,6 +13,32 @@ from acceptance.container_workers import ContainerWorkers
 
 
 class WorkerAvailabilityTests(unittest.TestCase):
+    def test_focused_early_return_still_reports_missing_required_workers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Report(Path(directory) / "report")
+            api = Mock()
+            api.request.return_value = []
+            harness = Harness(api, Mock(), Path(directory), report)
+            harness.preflight = Mock(return_value={})
+            harness.configure, harness.restore = Mock(), Mock(return_value=None)
+            harness.image_perceptual = Mock(return_value={})
+            harness.run(tier="fleet", regression="quality-first-source", expected_workers=["missing"])
+            self.assertTrue(any(row["status"] == "blocked" for row in report.results))
+
+    def test_named_native_worker_pairs_under_the_exact_required_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            api = Mock()
+            api.request.return_value = {}
+            api.post.return_value = {"code": "test-pin"}
+            workers = Workers(api, directory, "http://localhost:1234", "ffmpeg", "ffprobe",
+                              observe_local=False, name="required-worker")
+            process = Mock()
+            with patch("acceptance.workers.subprocess.Popen", return_value=process) as launch, patch.object(workers, "wait_online"):
+                result = workers.launch(["launcher"], {"operatingSystem": "windows"}, "libx265")
+            self.assertEqual("required-worker", result["name"])
+            self.assertEqual("required-worker", launch.call_args.kwargs["env"]["OPTIMISARR_ACCEPTANCE_NAME"])
+            workers.processes[0][1].close()
+
     def test_ram_scratch_is_separate_from_durable_configuration_and_reports(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "durable"
@@ -58,7 +84,73 @@ class WorkerAvailabilityTests(unittest.TestCase):
         with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
                 patch.object(harness, "create_job", side_effect=Blocked("fixture")), self.assertRaises(Blocked):
             harness.video("gpu", Path("source.mkv"), "hevc_qsv", {"id": 1}, hardware_decode=True)
-        configure.assert_called_once_with(encoderMode="Cpu", hardwareDecode=True)
+        configure.assert_called_once_with(encoderMode="IntelQsv", hardwareDecode=True)
+
+    def test_remote_hardware_video_uses_the_worker_encoder_mode(self):
+        # CPU mode binds every machine to software encoding (#425), so a hardware worker could never claim.
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        for encoder, mode in (("hevc_videotoolbox", "Auto"), ("hevc_nvenc", "NvidiaNvenc"), ("libx265", "Cpu")):
+            with self.subTest(encoder=encoder), patch.object(harness, "select_worker"), \
+                    patch.object(harness, "configure") as configure, \
+                    patch.object(harness, "create_job", side_effect=Blocked("fixture")), self.assertRaises(Blocked):
+                harness.video("remote", Path("source.mkv"), encoder, {"id": 2})
+            configure.assert_called_once_with(encoderMode=mode, hardwareDecode=False)
+
+    def test_worker_encoder_without_a_mode_is_blocked_rather_than_crashing(self):
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
+                patch.object(harness, "create_job") as create_job:
+            with self.assertRaisesRegex(Blocked, "hevc_amf"):
+                harness.video("remote", Path("source.mkv"), "hevc_amf", {"id": 3})
+        configure.assert_not_called()
+        create_job.assert_not_called()
+
+    def test_soundtrack_cases_select_the_proved_workers_encoder_policy_before_encoding(self):
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        for encoder, mode in (("hevc_videotoolbox", "Auto"), ("hevc_nvenc", "NvidiaNvenc"), ("libx265", "Cpu")):
+            worker = {"id": 2, "videoEncoders": [encoder]}
+            with self.subTest(encoder=encoder), patch.object(harness, "select_worker"), \
+                    patch.object(harness, "configure") as configure, \
+                    patch.object(harness.tools, "encode", side_effect=Blocked("fixture")), self.assertRaises(Blocked):
+                harness.soundtrack(worker=worker)
+            configure.assert_called_once_with(encoderMode=mode, hardwareDecode=False)
+
+    def test_local_soundtrack_restores_cpu_policy_after_a_hardware_case(self):
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
+                patch.object(harness.tools, "encode", side_effect=Blocked("fixture")), self.assertRaises(Blocked):
+            harness.soundtrack()
+        configure.assert_called_once_with(encoderMode="Cpu", hardwareDecode=False)
+
+    def test_soundtrack_job_uses_worker_encoder_defaults_instead_of_a_cpu_preset(self):
+        for encoder in ("hevc_videotoolbox", "hevc_nvenc", "libx265"):
+            with self.subTest(encoder=encoder), tempfile.TemporaryDirectory() as directory:
+                report = Mock(root=Path(directory) / "report")
+                tools = Mock()
+                tools.probe.return_value = {"streams": []}
+                harness = Harness(Mock(), tools, directory, report)
+                with patch.object(harness, "select_worker"), patch.object(harness, "configure"), \
+                        patch.object(harness, "create_job", side_effect=Blocked("fixture")) as create_job, self.assertRaises(Blocked):
+                    harness.soundtrack(worker={"id": 2, "videoEncoders": [encoder]})
+                self.assertEqual(encoder, create_job.call_args.kwargs["encoder"])
+
+    def test_soundtrack_fixture_video_meets_hardware_encoder_minimum_size(self):
+        # NVENC refuses frames below its minimum size (64x64 failed on a physical NVIDIA worker).
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        with patch.object(harness, "select_worker"), patch.object(harness, "configure"), \
+                patch.object(harness.tools, "encode", side_effect=Blocked("fixture")) as encode, self.assertRaises(Blocked):
+            harness.soundtrack(worker={"id": 2, "videoEncoders": ["hevc_nvenc"]})
+        source = next(arg for arg in encode.call_args.args[0] if arg.startswith("testsrc2="))
+        width, height = (int(v) for v in source.split("size=")[1].split(":")[0].split("x"))
+        self.assertGreaterEqual(width, 160)
+        self.assertGreaterEqual(height, 128)
+
+    def test_remote_running_cancel_uses_the_worker_encoder_mode(self):
+        harness = Harness(Mock(), Mock(), "/tmp/unused", Mock())
+        with patch.object(harness, "select_worker"), patch.object(harness, "configure") as configure, \
+                patch.object(harness, "create_job", side_effect=Blocked("fixture")), self.assertRaises(Blocked):
+            harness.cancel_running({"id": 2, "name": "mac"}, "hevc_videotoolbox")
+        configure.assert_called_once_with(encoderMode="Auto", hardwareDecode=False)
 
     def test_missing_encoder_does_not_prevent_available_encoder_startup(self):
         with tempfile.TemporaryDirectory() as directory:

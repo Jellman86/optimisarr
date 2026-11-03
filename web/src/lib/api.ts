@@ -189,6 +189,7 @@ export type LibraryRules = {
   maxLoudnessDriftLufs: number
   adaptiveAudioQuality?: boolean
   adaptiveImageQuality?: boolean
+  adaptiveSoundtrackQuality?: boolean
   imagePerceptualReportingEnabled?: boolean
   imagePerceptualGateEnabled?: boolean
   minimumImagePerceptualScore?: number | null
@@ -313,6 +314,7 @@ export function newLibraryDefaults(): SaveLibrary {
     maxLoudnessDriftLufs: 1,
     adaptiveAudioQuality: false,
     adaptiveImageQuality: false,
+    adaptiveSoundtrackQuality: false,
     imagePerceptualReportingEnabled: false,
     imagePerceptualGateEnabled: false,
     minimumImagePerceptualScore: null,
@@ -543,6 +545,17 @@ export type VerificationCheck = {
   detail: string
 }
 
+export type SoundtrackSearchSummary = {
+  encoder: string | null
+  baselineKbps: number
+  maximumDistance: number | null
+  unavailable: string | null
+  tracks: {
+    track: { sourceAudioIndex: number; outputIndex: number; language: string | null; title: string | null }
+    result: PerceptualSearchSummary['result']
+  }[]
+}
+
 export type PerceptualSearchSummary = {
   kind: 'Audio' | 'Image'
   encoder: string
@@ -562,6 +575,7 @@ export type PerceptualSearchSummary = {
 
 export type VerificationReport = {
   perceptualSearch?: PerceptualSearchSummary | null
+  soundtrackSearch?: SoundtrackSearchSummary | null
   checks: VerificationCheck[]
   imagePerceptualQuality?: ImagePerceptualReport | null
   soundtrackQuality?: SoundtrackQualityReport | null
@@ -805,6 +819,7 @@ export type Job = {
   verificationPassed: boolean | null
   verificationReportJson: string | null
   perceptualSearchJson?: string | null
+  soundtrackSearchJson?: string | null
   verifiedAt: string | null
   enqueuedAt: string
   startedAt: string | null
@@ -824,6 +839,30 @@ export type Job = {
   sidecarVerification?: boolean
   /** The verified output is currently being safely moved into place by the container. */
   finalizing?: boolean
+}
+
+/** One row of a bulk action that could not be completed, with the reason it was refused. */
+export type BatchFailure = { id: number; code: string; message: string }
+
+/** The outcome of a bulk action: what was handled, and what was not and why. */
+export type BatchResult = { requested: number; succeeded: number[]; failures: BatchFailure[] }
+
+/** What became of one file in a probe batch. */
+export type MediaProbeOutcome = 'Succeeded' | 'Failed' | 'Skipped'
+
+/** One file of a probe batch and what became of it. */
+export type MediaProbeBatchItem = { mediaFileId: number; outcome: MediaProbeOutcome; error: string | null }
+
+/** How a batch that inspects files again stands, and how far it has got. */
+export type MediaProbeBatch = {
+  id: number
+  total: number
+  completed: number
+  succeeded: number
+  failed: number
+  skipped: number
+  state: 'Queued' | 'Running' | 'Completed' | 'Cancelled' | 'Failed'
+  items: MediaProbeBatchItem[]
 }
 
 export type JobAttemptSnapshot = {
@@ -1527,6 +1566,35 @@ export const api = {
   clearJobs: (scope?: 'errored' | 'finished' | 'all') =>
     request<{ cleared: number }>(`/api/jobs/clear${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),
   clearPendingJobs: () => request<{ cleared: number }>('/api/jobs/clear-pending', { method: 'POST' }),
+  /** Removes several jobs at once, reporting what happened to each one. */
+  batchRemoveJobs: (ids: number[], cancelActive = false) =>
+    request<BatchResult>('/api/jobs/batch/remove', {
+      method: 'POST', body: JSON.stringify({ ids, cancelActive }),
+    }),
+  /** Re-queues several failed or cancelled jobs at once. */
+  batchRetryJobs: (ids: number[], higherQuality = false) =>
+    request<BatchResult>('/api/jobs/batch/retry', {
+      method: 'POST', body: JSON.stringify({ ids, higherQuality }),
+    }),
+  /** Excludes several files from optimisation at once. */
+  batchExcludeFiles: (mediaFileIds: number[], reason?: string) =>
+    request<BatchResult>('/api/media/batch/exclude', {
+      method: 'POST', body: JSON.stringify({ mediaFileIds, reason }),
+    }),
+  /** Lifts several exclusions at once, so the files are offered for optimisation again. */
+  batchRemoveExclusions: (ids: number[]) =>
+    request<BatchResult>('/api/exclusions/batch/remove', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }),
+  /** Starts a batch that inspects several files again; the batch is watched through probeBatch. */
+  batchProbeFiles: (ids: number[]) =>
+    request<MediaProbeBatch>('/api/media/batch/probe', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }),
+  /** How a probe batch stands, and what became of every file in it. */
+  probeBatch: (id: number) => request<MediaProbeBatch>(`/api/media/batch/probe/${id}`),
+  /** Stops a running probe batch; the file it is on finishes. */
+  cancelProbeBatch: (id: number) => request<void>(`/api/media/batch/probe/${id}`, { method: 'DELETE' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
   replaceReadyJobs: () =>

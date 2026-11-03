@@ -36,6 +36,7 @@ public sealed partial class QueueDispatcher(
     IHostEnvironment environment,
     VerificationService verification,
     WorkerSamplePreparations workerSamples,
+    WorkerSoundtrackSelections soundtrackSelections,
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
     QueuePauseManager pauseManager,
@@ -1108,6 +1109,12 @@ public sealed partial class QueueDispatcher(
                 preparedWork = selection.Value;
             }
 
+            if (!preparedWork.IsDisposable && preparedWork.AdaptiveSoundtrackQuality
+                && preparedWork.Spec.Kind == MediaKind.Video && preparedWork.Spec.AudioEncoder is not null && !preparedWork.Spec.VideoOnly)
+            {
+                preparedWork = await SelectSoundtrackQualityAsync(jobId, executionAttempt, preparedWork, nativeReservations, cancellationToken);
+            }
+
             var (spec, arguments) = preparedWork;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
             var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
@@ -1420,6 +1427,8 @@ public sealed partial class QueueDispatcher(
         bool AdaptiveAudioQuality = false,
         bool AdaptiveImageQuality = false,
         PerceptualSearchSummary? PerceptualSearch = null,
+        bool AdaptiveSoundtrackQuality = false,
+        SoundtrackSearchSummary? SoundtrackSearch = null,
         int PerceptualRetryCount = 0,
         string? SourcePixelFormat = null,
         PreparedWorkerSample? WorkerSample = null)
@@ -1507,6 +1516,15 @@ public sealed partial class QueueDispatcher(
 
         if (work.IsDisposable && work.Spec.Kind != MediaKind.Video)
             return RemoteWorkPlan.Refused("Audio and still-image comparisons currently run on this server; choose local placement.");
+        if (!work.IsDisposable && work.AdaptiveSoundtrackQuality && work.Spec.Kind == MediaKind.Video
+            && work.Spec.AudioEncoder is not null && !work.Spec.VideoOnly)
+        {
+            var selection = soundtrackSelections.TryTake(jobId, work.Original.Path, work.Spec, work.VerificationPolicy);
+            if (selection is null)
+                return RemoteWorkPlan.Refused("Choosing soundtrack bitrates on this server; the job will be offered when they are ready.");
+            work = RebuildWorkWithSpec(work, work.Spec with { AudioTrackBitratesKbps = selection.SelectedBitrates() })
+                with { SoundtrackSearch = selection };
+        }
 
         if (work.IsDisposable && work.Spec.ClipSeconds is { } seconds)
         {
@@ -1649,7 +1667,7 @@ public sealed partial class QueueDispatcher(
                 work.Spec.Kind != MediaKind.Image && (work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled),
                 work.VerificationPolicy.RequiresAudioQuality(work.Spec.Kind),
                 work.Spec.Kind == MediaKind.Video && work.VerificationPolicy.RequiresSoundtrackQuality(work.Original.AudioReencoded)
-                    ? new(work.Original.RemovedAudioStreamIndexes ?? []) : null,
+                    ? VerificationService.SoundtrackRequest(work.Original) : null,
                 CountVideoFrames: work.Spec.Kind == MediaKind.Video && work.Spec.FrameRate is null,
                 Image: work.Spec.Kind == MediaKind.Image ? new(work.VerificationPolicy.ImageQualityGateEnabled,
                     work.VerificationPolicy.ImageMetadataGateEnabled, work.VerificationPolicy.RequiresImagePerceptualQuality(work.Spec.Kind)) : null) : null,
@@ -1657,7 +1675,8 @@ public sealed partial class QueueDispatcher(
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
             work.VideoQuality?.Mode,
-            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder, work.WorkerSample?.Bytes, work.WorkerSample is null ? null : work.DurationSeconds));
+            work.Spec.Kind, perceptualStep, perceptualEncoding, work.Spec.ImageEncoder, work.WorkerSample?.Bytes, work.WorkerSample is null ? null : work.DurationSeconds,
+            work.SoundtrackSearch is null ? null : JsonSerializer.Serialize(work.SoundtrackSearch, ReportJsonOptions)));
     }
 
     /// <summary>
@@ -1948,7 +1967,7 @@ public sealed partial class QueueDispatcher(
                 .ToArray();
             if (keptSubtitleIndexes.Any(index => index is null))
                 throw new InvalidOperationException("Fresh source subtitle stream indexes are required for safe MP4 planning.");
-            var timeline = scope.ServiceProvider.GetRequiredService<SubtitleTimelineProbe>();
+            var timeline = scope.ServiceProvider.GetRequiredService<SubtitleTimelineVerdicts>();
             if (await timeline.RequiresMatroskaAsync(media.Path, keptSubtitleIndexes.Select(index => index!.Value).ToArray(), cancellationToken))
             {
                 spec = spec with { OutputPath = Path.ChangeExtension(spec.OutputPath, "mkv") };
@@ -2020,6 +2039,7 @@ public sealed partial class QueueDispatcher(
                 && media.AudioTrackCount > (spec.RemoveAudioStreamIndexes?.Count ?? 0),
             // An operator-requested stereo downmix is an intentional channel reduction.
             AudioDownmixed: spec.DownmixToStereo,
+            AudioFiltered: FfmpegCommandBuilder.ResolveAudioFilter(spec).Chain is not null,
             // A requested image downscale is an intentional dimension reduction, not corruption.
             ImageDownscaleRequested: spec.ImageScaleFilter is not null,
             // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
@@ -2273,6 +2293,7 @@ public sealed partial class QueueDispatcher(
             AdaptiveAudioQuality: library?.AdaptiveAudioQuality ?? false,
             AdaptiveImageQuality: library?.AdaptiveImageQuality ?? false,
             PerceptualSearch: ReadPerceptualRetry(job),
+            AdaptiveSoundtrackQuality: library?.AdaptiveSoundtrackQuality ?? false,
             PerceptualRetryCount: job.QualityRetryCount,
             SourcePixelFormat: media.PixelFormat);
     }
@@ -3348,6 +3369,7 @@ public sealed partial class QueueDispatcher(
         job.AdaptiveAudioBitrateKbps = null;
         job.AdaptiveImageQuality = null;
         if (job.RetryReason != "HigherPerceptualQualityRetry") job.PerceptualSearchJson = null;
+        job.SoundtrackSearchJson = null;
         job.StartedAt = nowUtc;
         job.UpdatedAt = nowUtc;
         job.ErrorMessage = null;
@@ -3540,6 +3562,7 @@ public sealed partial class QueueDispatcher(
             Report = outcome.Report with
             {
                 PerceptualSearch = work.PerceptualSearch,
+                SoundtrackSearch = work.SoundtrackSearch,
                 Context = new VerificationContext(
                     work.VideoEncoder,
                     work.VideoQuality?.Requested,

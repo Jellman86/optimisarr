@@ -36,7 +36,9 @@ public sealed record RemoteAssignment(
     RemotePerceptualSearchStep? PerceptualSearch = null,
     FrozenPerceptualEncoding? PerceptualEncoding = null,
     string? ImageEncoder = null,
-    long? SourceBytes = null, double? SourceDurationSeconds = null);
+    long? SourceBytes = null, double? SourceDurationSeconds = null,
+    /// <summary>How this server chose the soundtrack bitrates in the command, kept on the job; never sent.</summary>
+    string? SoundtrackSearchJson = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

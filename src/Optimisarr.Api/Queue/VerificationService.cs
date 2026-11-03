@@ -48,6 +48,8 @@ public sealed record OriginalSnapshot(
     // True for a track-cleanup job, whose promise includes an unchanged container type.
     bool ContainerMustMatch = false,
     string? ExpectedAudioCodec = null,
+    // The encode applies an audio filter chain, which a sampled downmix reference cannot reproduce.
+    bool AudioFiltered = false,
     // Frozen with a prepared job. Absent in pre-v1 snapshots, which retain legacy scoring.
     string? VmafModel = null);
 
@@ -504,7 +506,7 @@ public sealed class VerificationService(
                 report = report with { SoundtrackQuality = await (soundtrackQuality ?? new SoundtrackQualityObservationService(null)).ObserveAsync(
                     policy.RequiresSoundtrackQuality(soundtrackReencoded), soundtrackReencoded, decodeResult.Healthy, clip is not null,
                     reference.Path, outputPath, originalProbe.RawJson ?? "", outputProbe.RawJson ?? "",
-                    new(reference.RemovedAudioStreamIndexes ?? []), remoteEvidence, cancellationToken) };
+                    SoundtrackRequest(reference), remoteEvidence, cancellationToken) };
                 report = SoundtrackQualityGate.Apply(report, policy, soundtrackReencoded, preview: clip is not null);
             }
 
@@ -527,6 +529,10 @@ public sealed class VerificationService(
     // The original's audio tracks minus the ones the job removed on purpose. Falls back to
     // every track when nothing was removed (or the probe saw no audio, e.g. an unreadable
     // original — the aggregate fields then keep their existing conservative behaviour).
+    /// <summary>What the soundtrack gate must reproduce of the encode: the kept tracks, its downmix and any filter.</summary>
+    internal static SoundtrackQualityRequest SoundtrackRequest(OriginalSnapshot reference) =>
+        new(reference.RemovedAudioStreamIndexes ?? [], reference.AudioDownmixed, reference.AudioFiltered);
+
     private static IReadOnlyList<AudioTrackInfo> KeptAudioTracks(
         MediaProbeResult originalProbe,
         IReadOnlyList<int>? removedIndexes)

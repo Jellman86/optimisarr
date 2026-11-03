@@ -128,9 +128,10 @@ no support SLA or promise of a release schedule.
   no source is queued, replaced, moved, or deleted.
 - Video replacement verifies the resolved codec, exact resolution, pixel bit depth, chroma sampling,
   and encoder profile in addition to full decode, timing, HDR/colour, stream, size, and VMAF gates.
-- Music defaults to **AAC 128 kbps in M4A**, preserving common attached cover art, tags, and timed
-  lyrics. Opus remains an efficient option for art-free libraries; incompatible artwork/lyrics
-  combinations are rejected before queueing rather than being dropped or failing during muxing.
+- Music defaults to **AAC 128 kbps in M4A** for sources without attached cover art, with supported
+  tags and timed lyrics retained. Choose MP3 to preserve embedded cover art; AAC and Opus candidates
+  containing artwork are rejected before queueing. Opus remains an option for art-free sources
+  without embedded timed lyrics.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
   NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
 - Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.
@@ -206,7 +207,7 @@ mounted paths, free space, filesystem/mount relationships, permissions, and medi
 or inaccessible storage gets concrete Docker Compose, Unraid, TrueNAS, or local recovery steps and
 a real Re-test action. Setup lets you fully configure as many libraries as needed and starts in
 **Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
-then scan and queue a small test set deliberately. Use **Settings → Backup → First-run setup → Run
+then scan and queue a small test set deliberately. Use **Settings → System → First-run setup → Run
 setup again** to revisit the guided checks without deleting existing configuration.
 Add libraries from `/data/media`; the hidden work and quarantine directories remain below the same
 container mount boundary.
@@ -230,7 +231,7 @@ but a reverse proxy remains the recommended public-access boundary.
 Transcoding runs through a bundled **jellyfin-ffmpeg**, which includes FFmpeg support for NVENC and
 VA-API plus the Intel iHD/oneVPL userspace stack. The host must still provide a compatible kernel
 driver, device mapping, permissions, and (for NVIDIA) container runtime. The encoder is picked by
-**Settings → General → Queue → Encoder mode** (Auto by default); **Settings → Tools** shows what
+**Settings → Encoding → Queue → Encoder mode** (Auto by default); **Settings → System → Tools** shows what
 each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
@@ -256,7 +257,7 @@ configured quality; combined size and VMAF failures do the same because the safe
 conflict. The report records the effective quality and sampling context.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
-(**Settings → General → Queue → Hardware decoding**, on by default), so transcode frames stay
+(**Settings → Encoding → Queue → Hardware decoding**, on by default), so transcode frames stay
 on-device where the encoder supports it. If the GPU can't decode a particular source, the job
 automatically retries with software decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
 runs — GPU stats are read **without any elevated privileges** (per-process DRM fdinfo for

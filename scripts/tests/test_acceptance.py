@@ -165,7 +165,7 @@ class AcceptanceTests(unittest.TestCase):
         def track(index, distance=0.01):
             return {"track": {"sourceAudioIndex": index, "candidateAudioIndex": index, "language": "eng"},
                     "report": {"measurementLocation": "Worker", "gateEnabled": True, "gatePassed": distance <= 0.1,
-                        "evidence": {"preparation": "audio-f32le-48k-video-timeline-v1", "assessment": {
+                        "evidence": {"preparation": "audio-f32le-48k-video-timeline-v2", "assessment": {
                             "measured": True, "referenceAudioIndex": index, "candidateAudioIndex": index,
                             "windows": [{"distances": {"channelDistances": [distance, distance]}}]}}}}
         report = {"gateEnabled": True, "gatePassed": True, "tracks": [track(0), track(1)]}

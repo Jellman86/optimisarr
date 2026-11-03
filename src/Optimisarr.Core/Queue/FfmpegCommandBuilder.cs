@@ -67,6 +67,12 @@ public sealed record TranscodeSpec(
     /// <summary>Disposable audio quality probes exclude artwork and timed lyrics from their size and encode cost.</summary>
     public bool AudioSampleOnly { get; init; }
 
+    /// <summary>
+    /// Per-output-track rates chosen by soundtrack quality-first, in output order. Null keeps the
+    /// single library bitrate for every re-encoded track.
+    /// </summary>
+    public IReadOnlyList<int>? AudioTrackBitratesKbps { get; init; }
+
     /// <summary>Source subtitle codecs in subtitle-relative stream order, from a fresh probe.</summary>
     public IReadOnlyList<string?>? SourceSubtitleCodecs { get; init; }
 
@@ -533,7 +539,16 @@ public static class FfmpegCommandBuilder
         args.Add("-c:a");
         args.Add(spec.AudioEncoder!);
 
-        if (spec.AudioBitrateKbps is { } bitrate)
+        if (spec.AudioTrackBitratesKbps is { Count: > 0 } rates)
+        {
+            // FFmpeg addresses the output audio ordinal, which is already the retained-track order.
+            for (var track = 0; track < rates.Count; track++)
+            {
+                args.Add($"-b:a:{track}");
+                args.Add($"{rates[track]}k");
+            }
+        }
+        else if (spec.AudioBitrateKbps is { } bitrate)
         {
             args.Add("-b:a");
             args.Add($"{bitrate}k");
@@ -547,12 +562,14 @@ public static class FfmpegCommandBuilder
     // so the resolver only sets the flag when audio is actually being re-encoded.
     private static void AppendDownmix(List<string> args, TranscodeSpec spec)
     {
-        if (spec.DownmixToStereo)
-        {
-            args.Add("-ac");
-            args.Add("2");
-        }
+        if (spec.DownmixToStereo) args.AddRange(StereoDownmixArguments);
     }
+
+    /// <summary>
+    /// The stereo downmix, shared by the encode and by every soundtrack reference that stands for it,
+    /// so a quality score always compares the output with the same downmix of its source.
+    /// </summary>
+    public static IReadOnlyList<string> StereoDownmixArguments { get; } = ["-ac", "2"];
 
     /// <summary>
     /// The audio filter this command applies, and what became of the source's surround layout.
