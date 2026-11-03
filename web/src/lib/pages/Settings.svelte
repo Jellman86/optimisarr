@@ -447,7 +447,6 @@
   let realCuganLoading = $state(false)
   let probingRealCugan = $state(false)
   let realCuganProbe = $state<RealCuganProbe | null>(null)
-  let customDevice = $state(false)
 
   async function loadRealCuganStatus() {
     realCuganLoading = true
@@ -477,12 +476,15 @@
   function restoreSuperResolutionDefaults() {
     // Defaults cover the engine configuration only; the experimental switch stays as the operator left it.
     settings = { ...settings, superResolution: { ...defaultSuperResolution(), enabled: settings.superResolution.enabled } }
-    customDevice = false
     realCuganProbe = null
   }
 
-  function deviceIsSelectable(value: string): boolean {
-    return ['auto', 'cpu'].includes(value) || /^gpu:\d+$/.test(value)
+  /** The first four Vulkan devices, plus a saved higher index so it is never hidden. */
+  function gpuDeviceOptions(value: string): number[] {
+    const saved = /^gpu:(\d+)$/.exec(value)
+    const indexes = [0, 1, 2, 3]
+    if (saved && !indexes.includes(Number(saved[1]))) indexes.push(Number(saved[1]))
+    return indexes
   }
 
 let settings = $state<Settings>({
@@ -1130,17 +1132,13 @@ let settings = $state<Settings>({
 
       <div class="settings-field">
         <div class="settings-field-label"><label class="label" for="sr-device">{i18n.m.settings.sr_device} <InfoTip text={i18n.m.settings.sr_device_tip} /></label><p>{i18n.m.settings.sr_device_hint}</p></div>
-        <select id="sr-device" class="input" bind:value={settings.superResolution.device} onchange={() => { customDevice = !deviceIsSelectable(settings.superResolution.device); }}>
-          <option value="auto" selected={settings.superResolution.device === 'auto'}>{i18n.m.settings.sr_device_auto}</option>
-          <option value="cpu" selected={settings.superResolution.device === 'cpu'}>{i18n.m.settings.sr_device_cpu}</option>
-          {#if !deviceIsSelectable(settings.superResolution.device)}
-            <option value={settings.superResolution.device} selected>{settings.superResolution.device}</option>
-          {/if}
+        <select id="sr-device" class="input" bind:value={settings.superResolution.device}>
+          <option value="auto">{i18n.m.settings.sr_device_auto}</option>
+          <option value="cpu">{i18n.m.settings.sr_device_cpu}</option>
+          {#each gpuDeviceOptions(settings.superResolution.device) as index (index)}
+            <option value={`gpu:${index}`}>{tr(i18n.m.settings.sr_device_gpu, { index })}</option>
+          {/each}
         </select>
-        {#if customDevice || !deviceIsSelectable(settings.superResolution.device)}
-          <input class="input mt-2" bind:value={settings.superResolution.device} placeholder="gpu:0" />
-          <p class="text-xs text-ink-3 mt-1">{i18n.m.settings.sr_device_custom_hint}</p>
-        {/if}
       </div>
 
       <div class="settings-field">
@@ -1217,7 +1215,7 @@ let settings = $state<Settings>({
     title={i18n.m.settings.sr_output_title}
     description={i18n.m.settings.sr_output_desc}
   >
-    <p class="text-sm leading-relaxed text-ink-3">{tr(i18n.m.settings.sr_output_math, { scale: settings.superResolution.scale })}</p>
+    <p class="text-sm leading-relaxed text-ink-3">{tr(i18n.m.settings.sr_output_math, { scale: settings.superResolution.scale, height: 1080 * settings.superResolution.scale })}</p>
     <p class="text-xs leading-relaxed text-ink-3">{i18n.m.settings.sr_output_limit}</p>
   </ConfigSection>
   {:else if settings.superResolution.enabled}

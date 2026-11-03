@@ -871,3 +871,17 @@ test('the super-resolution probe reports a real sample run and a failed save sta
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByText('no model for scale 2x')).toBeVisible()
 })
+
+test('super-resolution offers specific GPUs, keeps a saved device visible, and describes the chosen scale', async ({ page }) => {
+  await mockSettings(page)
+  const saved = { ...settings, superResolution: { ...settings.superResolution, enabled: true, scale: 3, device: 'gpu:5' } }
+  await page.route('**/api/settings', route => json(route, saved))
+  await page.goto('/#/settings/super-resolution')
+
+  const device = page.locator('#sr-device')
+  await expect(device).toHaveValue('gpu:5')
+  await expect(device.locator('option')).toHaveText(['Automatic (Vulkan)', 'CPU', 'Vulkan GPU 0', 'Vulkan GPU 1', 'Vulkan GPU 2', 'Vulkan GPU 3', 'Vulkan GPU 5'])
+  await device.selectOption('gpu:1')
+  await expect(device).toHaveValue('gpu:1')
+  await expect(page.getByText('At 3×, a 1080p source becomes 3240p.')).toBeVisible()
+})
