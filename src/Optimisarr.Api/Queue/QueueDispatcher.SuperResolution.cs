@@ -1,11 +1,9 @@
 using System.Diagnostics;
-using Microsoft.EntityFrameworkCore;
-using Optimisarr.Api.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.SuperResolution;
-using Optimisarr.Data;
+using Optimisarr.Core.Rules;
 
 namespace Optimisarr.Api.Queue;
 
@@ -23,48 +21,17 @@ public sealed partial class QueueDispatcher
     /// attempt is never going to finish. A paused queue does not count.</summary>
     internal static readonly TimeSpan SuperResolutionStallLimit = TimeSpan.FromMinutes(10);
 
-    /// <summary>
-    /// The engine configuration this attempt would run under, or null when this attempt keeps
-    /// its normal path: the library opted in, the global engine is enabled, and the job is an
-    /// ordinary replace-bound video encode — previews, calibration candidates and non-video
-    /// jobs keep their normal path unchanged. Returning the options (rather than a bare flag)
-    /// lets the caller carry the engine's scale into the expectations verification holds the
-    /// candidate to.
-    /// </summary>
-    /// <summary>The engine options and the library's quality check for one super-resolution attempt.</summary>
+    /// <summary>The engine options and quality check frozen before this attempt is planned.</summary>
     internal sealed record SuperResolutionChoice(SuperResolutionOptions Options, SuperResolutionQualityCheck QualityCheck);
 
-    private async Task<SuperResolutionChoice?> ResolveSuperResolutionAsync(
-        JobWork work, CancellationToken cancellationToken)
-    {
-        // The shape gate is pure, so a preview or an audio job never reads settings at all. The
-        // Enabled check below repeats RoutesThroughSuperResolution for the same reason — it skips
-        // the library query when the engine is off. The pure function stays the authority; these
-        // early returns exist only to avoid the I/O it would otherwise answer anyway.
-        if (!IsSuperResolutionCandidate(work))
+    /// <summary>The pipeline copies audio; container selection must use that contract too.</summary>
+    internal static RuleSettings SuperResolutionRules(RuleSettings saved, bool enabledForAttempt) =>
+        enabledForAttempt ? saved with
         {
-            return null;
-        }
-
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
-        var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
-        if (!options.Enabled)
-        {
-            return null;
-        }
-
-        // The library decides per library, so an opted-in library can never change how another
-        // library's jobs run. The candidate's media file identifies the library.
-        var scopedDb = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-        var library = await scopedDb.Libraries
-            .AsNoTracking()
-            .FirstOrDefaultAsync(candidate => candidate.MediaFiles.Any(file => file.Id == work.MediaFileId),
-                cancellationToken);
-        return RoutesThroughSuperResolution(work, options, library?.SuperResolutionEnabled == true)
-            ? new SuperResolutionChoice(options, library!.SuperResolutionQualityCheck)
-            : null;
-    }
+            VideoAudioCodec = null,
+            DownmixToStereo = false,
+            NormalizeOpusChannelLayout = false,
+        } : saved;
 
     /// <summary>
     /// The job-side shape that may run through the engine at all: an ordinary replace-bound video
@@ -127,6 +94,9 @@ public sealed partial class QueueDispatcher
             AdaptiveSoundtrackQuality = false,
             BypassSizePreflight = true,
             AutoReplace = false,
+            MoveOnComplete = false,
+            TargetFolder = null,
+            MoveOverwrite = false,
         };
     }
 

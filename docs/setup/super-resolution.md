@@ -92,11 +92,14 @@ says, so a worker can never deliver an ordinary source-sized encode in place of 
    reserve) however long the video is.
 3. Encodes the upscaled frames with the library's software encoder and quality, and copies the
    source's audio, subtitles, chapters and metadata. For Matroska it also keeps attachments such
-   as subtitle fonts; a candidate missing any of them is not accepted.
+   as subtitle fonts; a candidate missing any of them is not accepted. Audio is copied even if
+   the library normally converts it to AAC or Opus. Container selection follows that copied
+   audio, falling back to Matroska when needed, including the Matroska ALAC safeguard.
 4. Hands the candidate to the normal verification. The size-saving gates are off, because
    upscaling grows the file; VMAF follows the library's quality check; every structural gate
    applies. A passing result waits for your review, then the normal safe replacement quarantines
-   the original, which can be rolled back as always.
+   the original, which can be rolled back as always. Auto-replace and move-on-complete settings
+   never bypass this review or overwrite a destination with an unreviewed upscale.
 
 The settings for an attempt are fixed when it starts; editing them affects later attempts.
 Turning the feature off stops new super-resolution work; an attempt already running finishes,

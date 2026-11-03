@@ -1064,7 +1064,7 @@ public sealed partial class QueueDispatcher(
             // A super-resolution job keeps the library's fixed quality: the adaptive search
             // samples the normal encode, whose size and quality say nothing about the upscaled
             // candidate, and its size forecast would only reject a job that was never predicted.
-            var superResolution = await ResolveSuperResolutionAsync(preparedWork, cancellationToken);
+            var superResolution = preparedWork.SuperResolution;
             var superResolutionPlanned = superResolution is not null;
             if (superResolution is { } choice)
             {
@@ -1409,7 +1409,8 @@ public sealed partial class QueueDispatcher(
         SoundtrackSearchSummary? SoundtrackSearch = null,
         int PerceptualRetryCount = 0,
         string? SourcePixelFormat = null,
-        PreparedWorkerSample? WorkerSample = null)
+        PreparedWorkerSample? WorkerSample = null,
+        SuperResolutionChoice? SuperResolution = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1485,7 +1486,7 @@ public sealed partial class QueueDispatcher(
         // this server's engine over this server's frames, and a worker lease carries only ffmpeg
         // arguments. Offering it would produce an ordinary source-sized candidate that passes
         // verification and replaces the original without the upscaling that was asked for.
-        if (await ResolveSuperResolutionAsync(work, cancellationToken) is not null)
+        if (work.SuperResolution is not null)
         {
             return RemoteWorkPlan.Refused(
                 "This library runs video through the Real-CUGAN super-resolution engine, which works on this " +
@@ -1726,6 +1727,18 @@ public sealed partial class QueueDispatcher(
         }
 
         var isVideoJob = media.MediaKind is not (MediaKind.Audio or MediaKind.Image);
+
+        // Freeze the feature choice before selecting a container or an audio contract. Planning
+        // AAC/Opus here and copying later could leave TrueHD or Matroska ALAC in an unsafe MP4.
+        SuperResolutionChoice? superResolution = null;
+        if (!isDisposable && rules.TargetVideoCodec is not null && media.MediaKind == MediaKind.Video
+            && library?.SuperResolutionEnabled == true)
+        {
+            var engine = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            if (SuperResolutionRouting.Applies(engine.Enabled, true, media.MediaKind, replaceBound: true))
+                superResolution = new SuperResolutionChoice(engine, library.SuperResolutionQualityCheck);
+        }
+        rules = SuperResolutionRules(rules, superResolution is not null);
 
         // Language-based removal is destructive, so the inventory cache is never the authority at
         // dispatch time. Fresh-probe every source governed by either language rule and fail before
@@ -2273,7 +2286,8 @@ public sealed partial class QueueDispatcher(
             PerceptualSearch: ReadPerceptualRetry(job),
             AdaptiveSoundtrackQuality: library?.AdaptiveSoundtrackQuality ?? false,
             PerceptualRetryCount: job.QualityRetryCount,
-            SourcePixelFormat: media.PixelFormat);
+            SourcePixelFormat: media.PixelFormat,
+            SuperResolution: superResolution);
     }
 
     /// <summary>
@@ -3713,7 +3727,17 @@ public sealed partial class QueueDispatcher(
     // leave it in the work directory as ReadyToReplace (safe replacement is a later phase).
     private async Task FinishSuccessfulJobAsync(int jobId, string outputPath, JobWork work, bool dryRunMode)
     {
-        if (work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
+        var requiresReview = work.SuperResolution is not null;
+        if (!requiresReview && (work.MoveOnComplete || work.AutoReplace))
+        {
+            // A recovered completion may carry an older plan; the persisted attempt flag is
+            // authoritative even if the global feature switch has since been turned off.
+            await using var scope = scopeFactory.CreateAsyncScope();
+            requiresReview = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs
+                .AsNoTracking().Where(job => job.Id == jobId).Select(job => job.SuperResolutionApplied)
+                .FirstOrDefaultAsync(CancellationToken.None);
+        }
+        if (!requiresReview && work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
         {
             // Resolve against this file's own work root so the per-media-file id segment is not
             // mirrored into the target folder — the destination keeps the library's structure.
@@ -3752,7 +3776,7 @@ public sealed partial class QueueDispatcher(
         // already passed every verification gate; ReplaceAsync still quarantines the original
         // first and records a rollback, so the safety model holds. A failure (e.g. an unwritable
         // folder) leaves the job ReadyToReplace for a manual retry rather than touching the original.
-        if (work.AutoReplace && !dryRunMode)
+        if (!requiresReview && work.AutoReplace && !dryRunMode)
         {
             var guarded = await pauseManager.TryRunAutomaticActionAsync(async () =>
             {

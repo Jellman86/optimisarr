@@ -2,6 +2,7 @@ using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.SuperResolution;
+using Optimisarr.Core.Rules;
 using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Tests;
@@ -124,6 +125,58 @@ public sealed class SuperResolutionPipelinePlanTests
         Assert.False(prepared.AutoReplace);
         Assert.False(prepared.VerificationPolicy.RequireSizeReduction);
         Assert.True(prepared.BypassSizePreflight);
+    }
+
+    [Fact]
+    public void Upscaled_work_cannot_move_or_overwrite_a_destination_before_review()
+    {
+        var work = VideoWork() with
+        {
+            SourcePicture = new PictureSize(640, 360),
+            MoveOnComplete = true,
+            TargetFolder = "/existing-destination",
+            MoveOverwrite = true,
+            AutoReplace = true,
+        };
+
+        var prepared = QueueDispatcher.PrepareSuperResolutionWork(work, Options, SuperResolutionQualityCheck.Off);
+
+        Assert.False(prepared.MoveOnComplete);
+        Assert.False(prepared.MoveOverwrite);
+        Assert.Null(prepared.TargetFolder);
+        Assert.False(prepared.AutoReplace);
+    }
+
+    [Theory]
+    [InlineData("truehd")]
+    [InlineData("mlp")]
+    [InlineData("pcm_bluray")]
+    [InlineData("pcm_dvd")]
+    [InlineData("alac")]
+    public void Upscale_planning_preserves_audio_in_matroska_despite_library_aac_rules(string sourceAudio)
+    {
+        var saved = RuleProfileDefaults.For(RuleProfile.ConservativeHevc) with
+        {
+            TargetContainer = "mp4", VideoAudioCodec = "aac", DownmixToStereo = true,
+            NormalizeOpusChannelLayout = true,
+        };
+        var effective = QueueDispatcher.SuperResolutionRules(saved, enabledForAttempt: true);
+        var spec = TranscodeSpecResolver.Resolve(effective, "/source/input.mkv", "input.mkv", "/work/1",
+            false, 18, "fast", sourceHasMp4IncompatibleAudio: AudioContainerCompatibility.IsMp4Incompatible(sourceAudio),
+            sourceAudioCodecs: [sourceAudio]);
+
+        Assert.Equal(".mkv", Path.GetExtension(spec.OutputPath));
+        Assert.Null(spec.AudioEncoder);
+        Assert.False(effective.DownmixToStereo);
+        Assert.False(effective.NormalizeOpusChannelLayout);
+        Assert.Equal("aac", saved.VideoAudioCodec);
+    }
+
+    [Fact]
+    public void Non_upscale_planning_keeps_the_saved_audio_rules()
+    {
+        var saved = RuleProfileDefaults.For(RuleProfile.ConservativeHevc);
+        Assert.Same(saved, QueueDispatcher.SuperResolutionRules(saved, enabledForAttempt: false));
     }
 
     [Fact]
