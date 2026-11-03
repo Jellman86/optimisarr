@@ -27,6 +27,10 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     {
         var binary = Path.Combine(_root, "realcugan-ncnn-vulkan");
         File.WriteAllBytes(binary, []);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(binary, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
         if (modelsPreset is not null)
         {
             InstallModels(modelsPreset, scale, noise);
@@ -98,6 +102,31 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
 
         Assert.False(detection.ModelsFound);
         Assert.Contains(detection.Problems, p => p.Contains("models"));
+    }
+
+    [Fact]
+    public async Task Missing_model_files_keep_the_engine_from_being_ready()
+    {
+        var binary = InstallBinary(modelsPreset: null);
+        var detection = await new RealCuganDetectionService(
+            OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => true).DetectAsync(CancellationToken.None);
+
+        Assert.Equal(RealCuganReadiness.Misconfigured, detection.Readiness);
+    }
+
+    [PosixFact]
+    public async Task A_binary_that_cannot_be_executed_is_not_ready()
+    {
+        var binary = InstallBinary();
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(binary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        var detection = await new RealCuganDetectionService(
+            OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => true).DetectAsync(CancellationToken.None);
+
+        Assert.NotEqual(RealCuganReadiness.Ready, detection.Readiness);
+        Assert.Contains(detection.Problems, p => p.Contains("not executable"));
     }
 
     [Fact]

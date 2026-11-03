@@ -104,6 +104,17 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
         return Directory.Exists(binaryDirectory) ? binaryDirectory : null;
     }
 
+    /// <summary>A file found by path must also be executable; one found on PATH already is.</summary>
+    private static bool IsExecutable(string path)
+    {
+        if (OperatingSystem.IsWindows() || !Path.IsPathRooted(path) || !File.Exists(path))
+        {
+            return true;
+        }
+        const UnixFileMode anyExecute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+        return (File.GetUnixFileMode(path) & anyExecute) != 0;
+    }
+
     public Task<RealCuganDetection> DetectAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -121,6 +132,12 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
                 (string.IsNullOrWhiteSpace(options.BinaryPath)
                     ? " on PATH. Install realcugan-ncnn-vulkan, or set its path in the super-resolution settings."
                     : $": '{options.BinaryPath}' does not exist."));
+        }
+
+        var executable = !binaryFound || IsExecutable(binaryPath);
+        if (!executable)
+        {
+            problems.Add($"The engine at '{binaryPath}' is not executable. Reinstall it, or fix its permissions.");
         }
 
         var modelsRoot = binaryFound ? ResolveModelsRoot(options.ModelsPath, binaryPath) : null;
@@ -155,7 +172,7 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
 
         var readiness = !binaryFound
             ? RealCuganReadiness.NotInstalled
-            : configurationProblems.Count > 0
+            : configurationProblems.Count > 0 || !executable || !modelsFound
                 ? RealCuganReadiness.Misconfigured
                 : !vulkanAvailable
                     ? RealCuganReadiness.VulkanUnavailable

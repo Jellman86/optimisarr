@@ -96,14 +96,23 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
         SettingKeys.RemoteWorkersEnabled,
         SettingKeys.WorkerVerificationRequired,
         SettingKeys.BrandStyle,
-        SettingKeys.RealCuganEnabled,
         SettingKeys.RealCuganPreset,
         SettingKeys.RealCuganScale,
         SettingKeys.RealCuganNoiseLevel,
-        SettingKeys.RealCuganDevice,
+        SettingKeys.RealCuganDevice
+    };
+
+    /// <summary>
+    /// Super-resolution values that belong to this machine: whether it runs the experimental engine
+    /// at all, and which executable and model files it trusts. A backup naming them is accepted, but
+    /// they are never exported or restored.
+    /// </summary>
+    private static readonly string[] HostLocalSuperResolutionKeys =
+    [
+        SettingKeys.RealCuganEnabled,
         SettingKeys.RealCuganBinaryPath,
         SettingKeys.RealCuganModelsPath
-    };
+    ];
 
     /// <summary>
     /// Setting keys accepted while reading a backup. Legacy verification keys remain recognised so
@@ -111,7 +120,7 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
     /// deliberately absent from <see cref="PortableSettingKeys"/> and are never persisted again.
     /// </summary>
     public static readonly IReadOnlySet<string> RecognizedImportSettingKeys = new HashSet<string>(
-        PortableSettingKeys.Concat(LegacyVerificationSettingKeys));
+        PortableSettingKeys.Concat(LegacyVerificationSettingKeys).Concat(HostLocalSuperResolutionKeys));
 
     /// <summary>
     /// The legacy single library root, if one was configured before the

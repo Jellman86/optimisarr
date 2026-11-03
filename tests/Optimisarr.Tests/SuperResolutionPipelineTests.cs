@@ -91,7 +91,10 @@ public sealed class SuperResolutionPipelineTests : IDisposable
     {
         var path = Path.Combine(_root, name);
         File.WriteAllText(path, script);
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
         return path;
     }
 

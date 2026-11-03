@@ -154,6 +154,47 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_backup_carries_super_resolution_preferences_but_never_turns_the_engine_on_or_names_its_files()
+    {
+        await using (var db = CreateDb())
+        {
+            await new SettingsStore(db).SetSuperResolutionOptionsAsync(Optimisarr.Core.SuperResolution.SuperResolutionOptions.Defaults with
+            {
+                Enabled = true, Preset = "pro", BinaryPath = "/opt/realcugan/realcugan-ncnn-vulkan", ModelsPath = "/opt/realcugan",
+            }, CancellationToken.None);
+        }
+
+        var snapshot = await ExportAsync();
+        Assert.Equal("pro", snapshot.Settings[SettingKeys.RealCuganPreset]);
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganEnabled));
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganBinaryPath));
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganModelsPath));
+
+        await using (var db = CreateDb())
+        {
+            await new SettingsStore(db).SetSuperResolutionOptionsAsync(Optimisarr.Core.SuperResolution.SuperResolutionOptions.Defaults, CancellationToken.None);
+        }
+        // A backup from elsewhere (or an older build) that names these host-local values is still accepted,
+        // but whether this machine runs the engine, and which files it executes, stay this machine's choice.
+        var foreign = snapshot with
+        {
+            Settings = new Dictionary<string, string>(snapshot.Settings)
+            {
+                [SettingKeys.RealCuganEnabled] = "true",
+                [SettingKeys.RealCuganBinaryPath] = "/tmp/not-the-engine",
+                [SettingKeys.RealCuganModelsPath] = "/tmp/models",
+            },
+        };
+        Assert.True((await ImportAsync(foreign)).Applied);
+        await using var restored = CreateDb();
+        var options = await new SettingsStore(restored).GetSuperResolutionOptionsAsync(CancellationToken.None);
+        Assert.False(options.Enabled);
+        Assert.Equal("", options.BinaryPath);
+        Assert.Equal("", options.ModelsPath);
+        Assert.Equal("pro", options.Preset);
+    }
+
+    [Fact]
     public async Task Export_omits_secrets_and_includes_settings_and_definitions()
     {
         await using (var db = CreateDb())
