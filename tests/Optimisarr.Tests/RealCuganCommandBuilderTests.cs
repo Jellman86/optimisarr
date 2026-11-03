@@ -76,34 +76,36 @@ public sealed class RealCuganCommandBuilderTests
         Assert.Equal(Path.Combine("/opt/models", "models-pro"), After(args, "-m"));
     }
 
-    [Fact]
-    public void Frame_extraction_writes_a_zero_based_png_sequence_at_source_timing()
-    {
-        var args = RealCuganCommandBuilder.BuildFrameExtraction(
-            "/media/source.mkv", "/work/1/frames-in", 23.976, 4);
+    private static TranscodeSpec Spec(string output = "/work/1/candidate.mkv", string input = "/media/source.mkv") =>
+        new(input, output, VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false);
 
-        var output = args[^1];
-        Assert.EndsWith("f%08d.png", output);
-        Assert.Contains("/work/1/frames-in", output);
-        Assert.Equal(new[] { "-start_number", "0" }, Pair(args, "-start_number"));
+    private static IReadOnlyList<string> Encoder(TranscodeSpec spec, double videoStart = 0, double frameRate = 24000.0 / 1001) =>
+        RealCuganCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart);
+
+    [Fact]
+    public void The_decoder_streams_the_first_video_streams_frames_as_rgb_png_on_stdout()
+    {
+        var args = RealCuganCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4);
+
+        Assert.Equal("/media/source.mkv", After(args, "-i"));
+        Assert.Equal(new[] { "-map", "0:v:0" }, Pair(args, "-map"));
         Assert.Equal(new[] { "-fps_mode", "passthrough" }, Pair(args, "-fps_mode"));
+        Assert.Equal(new[] { "-pix_fmt", "rgb24" }, Pair(args, "-pix_fmt"));
+        Assert.Equal(new[] { "-f", "image2pipe" }, Pair(args, "-f"));
+        Assert.Equal("-", args[^1]);
         // No filters: the engine owns the picture work.
         Assert.DoesNotContain("-vf", args);
         Assert.DoesNotContain("-filter", args);
     }
 
     [Fact]
-    public void Reassembly_encodes_the_frames_and_copies_the_source_streams()
+    public void The_encoder_reads_upscaled_frames_from_stdin_and_copies_the_source_streams()
     {
-        var spec = new TranscodeSpec(
-            "/media/source.mkv", "/work/1/candidate.mkv",
-            VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false);
-        var args = RealCuganCommandBuilder.BuildReassembly(
-            spec, resolvedEncoder: "libx265", "/work/1/frames-out", 23.976,
-            threads: 4, optimisedMarker: "optimisarr-1");
+        var args = Encoder(Spec());
 
-        Assert.Equal(new[] { "-framerate", "23.976" }, Pair(args, "-framerate"));
-        Assert.EndsWith("f%08d.png", After(args, "-i"));
+        Assert.Contains("-y", args);
+        Assert.Equal(new[] { "-f", "image2pipe" }, Pair(args, "-f"));
+        Assert.Equal("-", After(args, "-i"));
         // The original source rides along as the second input for audio, subtitles and attachments.
         Assert.Equal("/media/source.mkv", args[IndexOf(args, "-i", IndexOf(args, "-i") + 1) + 1]);
         Assert.Equal(new[] { "-c:v:0", "libx265" }, Pair(args, "-c:v:0"));
@@ -112,70 +114,60 @@ public sealed class RealCuganCommandBuilderTests
         // RGB PNG frames must not become an RGB/4:4:4 HEVC stream.
         Assert.Equal(new[] { "-pix_fmt", "yuv420p" }, Pair(args, "-pix_fmt"));
         Assert.Equal(new[] { "-c:a", "copy" }, Pair(args, "-c:a"));
-        // Subtitles in a Matroska output are copied verbatim.
         Assert.Equal(new[] { "-c:s", "copy" }, Pair(args, "-c:s"));
         Assert.Equal(new[] { "-metadata", "optimisarr=optimisarr-1" }, Pair(args, "-metadata"));
         Assert.Equal("/work/1/candidate.mkv", args[^1]);
     }
 
     [Fact]
-    public void Reassembly_honours_kept_language_removals_relative_to_the_source()
+    public void The_encoder_keeps_the_exact_frame_rate()
     {
-        var spec = new TranscodeSpec(
-            "/media/source.mkv", "/work/1/candidate.mkv",
-            VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false,
-            RemoveAudioStreamIndexes: [1], RemoveSubtitleStreamIndexes: [0]);
-        var args = RealCuganCommandBuilder.BuildReassembly(
-            spec, "libx265", "/work/1/frames-out", 23.976, threads: 0, optimisedMarker: null);
+        var args = Encoder(Spec(), frameRate: 24000.0 / 1001);
+        Assert.Equal(24000.0 / 1001, double.Parse(After(args, "-framerate"), System.Globalization.CultureInfo.InvariantCulture));
+    }
 
-        // The removals reference the SOURCE input (index 1 here), not the frame sequence.
+    [Fact]
+    public void A_matroska_candidate_keeps_the_sources_attachments_such_as_subtitle_fonts()
+    {
+        var args = Encoder(Spec());
+        Assert.Contains("1:t?", args);
+        Assert.Equal(new[] { "-c:t", "copy" }, Pair(args, "-c:t"));
+    }
+
+    [Fact]
+    public void An_mp4_candidate_uses_mov_text_and_maps_no_attachments_or_data()
+    {
+        var args = Encoder(Spec("/work/1/candidate.mp4", "/media/source.mp4"));
+        Assert.Equal(new[] { "-c:s", "mov_text" }, Pair(args, "-c:s"));
+        Assert.DoesNotContain("1:t?", args);
+        Assert.DoesNotContain("1:d", args);
+    }
+
+    [Fact]
+    public void A_late_starting_picture_is_placed_where_it_started_so_audio_stays_in_sync()
+    {
+        var args = Encoder(Spec(), videoStart: 0.042);
+        var offset = IndexOf(args, "-itsoffset");
+        Assert.Equal("0.042", args[offset + 1]);
+        // The offset applies to the frame input, which follows it.
+        Assert.True(offset < IndexOf(args, "-i"));
+        Assert.DoesNotContain("-itsoffset", Encoder(Spec()));
+    }
+
+    [Fact]
+    public void The_encoder_honours_kept_language_removals_relative_to_the_source()
+    {
+        var spec = Spec() with { RemoveAudioStreamIndexes = [1], RemoveSubtitleStreamIndexes = [0] };
+        var args = Encoder(spec);
+        // The removals reference the SOURCE input (index 1 here), not the frame stream.
         Assert.Contains("-1:a:1", args);
         Assert.Contains("-1:s:0", args);
     }
 
     [Fact]
-    public void Reassembly_into_mp4_uses_mov_text_and_drops_attachments_and_data()
+    public void The_encoder_carries_global_metadata_and_chapters_from_the_source()
     {
-        var spec = new TranscodeSpec(
-            "/media/source.mp4", "/work/1/candidate.mp4",
-            VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false);
-        var args = RealCuganCommandBuilder.BuildReassembly(
-            spec, "libx265", "/work/1/frames-out", 23.976, threads: 0, optimisedMarker: null);
-
-        Assert.Equal(new[] { "-c:s", "mov_text" }, Pair(args, "-c:s"));
-        // Attachments and data are whitelist-excluded: they are never mapped at all.
-        Assert.DoesNotContain("1:t", args);
-        Assert.DoesNotContain("1:d", args);
-    }
-
-    [Fact]
-    public void Reassembly_of_a_video_only_spec_does_not_map_source_streams()
-    {
-        var spec = new TranscodeSpec(
-            "/media/source.mkv", "/work/1/candidate.mkv",
-            VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false,
-            VideoOnly: true);
-        var args = RealCuganCommandBuilder.BuildReassembly(
-            spec, "libx265", "/work/1/frames-out", 23.976, threads: 0, optimisedMarker: null);
-
-        Assert.DoesNotContain("-c:a", args);
-        Assert.DoesNotContain("-c:s", args);
-        // Only the frame sequence is an input, and only its video stream is read.
-        Assert.Equal(1, args.Count(a => a == "-i"));
-        // With nothing copied from the source there is no metadata to point at.
-        Assert.DoesNotContain("-map_metadata", args);
-    }
-
-    [Fact]
-    public void Reassembly_carries_global_metadata_and_chapters_from_the_source()
-    {
-        var spec = new TranscodeSpec(
-            "/media/source.mkv", "/work/1/candidate.mkv",
-            VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false);
-        var args = RealCuganCommandBuilder.BuildReassembly(
-            spec, "libx265", "/work/1/frames-out", 23.976, threads: 0, optimisedMarker: null);
-
-        // The frame sequence (input 0) carries no global metadata; the source (input 1) does.
+        var args = Encoder(Spec());
         Assert.Equal(new[] { "-map_metadata", "1" }, Pair(args, "-map_metadata"));
         Assert.Equal(new[] { "-map_chapters", "1" }, Pair(args, "-map_chapters"));
     }

@@ -53,22 +53,38 @@ public sealed class SuperResolutionPipelinePlanTests
             SourceIsVariableFrameRate: variableFrameRate);
 
     [Fact]
-    public void The_plan_extracts_into_and_reassembles_from_the_job_work_directory()
+    public void Each_attempt_gets_its_own_scratch_outside_every_media_files_work_folder()
     {
-        var plan = QueueDispatcher.PlanSuperResolution(VideoWork(), Options, "/models");
+        var first = WorkOutputRoot.ForSuperResolution("/work", 42, Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        var second = WorkOutputRoot.ForSuperResolution("/work", 42, Guid.Parse("00000000-0000-0000-0000-000000000002"));
 
-        Assert.EndsWith($"{Path.DirectorySeparatorChar}realcugan", plan.WorkDirectory);
-        Assert.Contains(plan.ExtractionArguments, a => a.Contains("frames-in"));
-        Assert.Equal(960, plan.ExpectedFrameCount);
-        // The reassembly writes exactly the candidate the normal encode would have.
-        Assert.Equal("/work/42/candidate.mkv", plan.ReassemblyArguments[^1]);
-        // And the engine stage reads the extracted frames and writes the upscaled ones.
-        var engine = RealCuganCommandBuilder.BuildEngineArguments(
-            Path.Combine(plan.WorkDirectory, "frames-in"),
-            Path.Combine(plan.WorkDirectory, "frames-out"),
-            "/models", Options);
-        Assert.Equal(Path.Combine(plan.WorkDirectory, "frames-in"), engine[1]);
-        Assert.Equal(Path.Combine("/models", "models-se"), engine[Array.IndexOf(engine.ToArray(), "-m") + 1]);
+        Assert.NotEqual(first, second);
+        Assert.StartsWith("/work/super-resolution/", first);
+        Assert.DoesNotContain("/work/42/", first);
+    }
+
+    [Fact]
+    public void Startup_clears_only_the_super_resolution_scratch_root()
+    {
+        var work = Directory.CreateTempSubdirectory("optimisarr-sr-scratch-").FullName;
+        try
+        {
+            var stale = WorkOutputRoot.ForSuperResolution(work, 7, Guid.NewGuid());
+            Directory.CreateDirectory(Path.Combine(stale, "in-000000"));
+            File.WriteAllText(Path.Combine(stale, "in-000000", "f00000000.png"), "stale");
+            var candidate = Path.Combine(work, "7", "candidate.mkv");
+            Directory.CreateDirectory(Path.GetDirectoryName(candidate)!);
+            File.WriteAllText(candidate, "kept");
+
+            SuperResolutionScratch.ClearAtStartup(work);
+
+            Assert.False(Directory.Exists(stale));
+            Assert.True(File.Exists(candidate));
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
     }
 
     [Fact]

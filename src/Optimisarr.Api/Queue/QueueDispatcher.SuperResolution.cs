@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Tools;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.SuperResolution;
 using Optimisarr.Data;
@@ -18,17 +19,9 @@ namespace Optimisarr.Api.Queue;
 /// </summary>
 public sealed partial class QueueDispatcher
 {
-    // Share of the overall progress each stage owns. Extraction and reassembly are cheap I/O
-    // and re-encode work; the engine pass is where essentially all the time goes.
-    internal const double ExtractionProgressShare = 0.15;
-    internal const double EngineProgressShare = 0.70;
-    internal const double ReassemblyProgressShare = 0.15;
-
-    /// <summary>The engine writes nothing for long stretches between large tiles of a frame;
-    /// ten silent minutes means it is never going to finish this frame.</summary>
-    internal static readonly TimeSpan EngineStallLimit = TimeSpan.FromMinutes(10);
-
-    private static readonly TimeSpan EngineProgressPollInterval = TimeSpan.FromSeconds(2);
+    /// <summary>Nothing — no picture decoded, upscaled or encoded — for this long means the
+    /// attempt is never going to finish. A paused queue does not count.</summary>
+    internal static readonly TimeSpan SuperResolutionStallLimit = TimeSpan.FromMinutes(10);
 
     /// <summary>
     /// The engine configuration this attempt would run under, or null when this attempt keeps
@@ -104,9 +97,9 @@ public sealed partial class QueueDispatcher
         superResolution ? WorkPlacement.LocalOnly : placement;
 
     /// <summary>
-    /// The three-stage super-resolution run. Returns the reassembly's <see cref="FfmpegRun"/>,
-    /// so every existing failure, verification and replacement behaviour applies unchanged to
-    /// the candidate this pipeline produced.
+    /// One super-resolution attempt as a bounded stream (see <see cref="SuperResolutionPipeline"/>).
+    /// Returns the encoder's <see cref="FfmpegRun"/>, so every existing failure, verification and
+    /// replacement behaviour applies unchanged to the candidate it produced.
     /// </summary>
     private async Task<FfmpegRun> RunSuperResolutionAsync(
         int jobId,
@@ -127,120 +120,123 @@ public sealed partial class QueueDispatcher
                 string.Join(" ", detection.Problems));
         }
 
-        var plan = PlanSuperResolution(work, options, detection.ModelsRoot);
+        var source = await ProbeSuperResolutionSourceAsync(work.Spec.InputPath, cancellationToken);
+        if (source.Refusal is { } refusal)
+        {
+            throw new InvalidOperationException(refusal + " Leave the file to the normal pipeline.");
+        }
+        var frameRate = work.VideoFrameRate ?? throw new InvalidOperationException(
+            "Super-resolution needs the source's frame rate, which the probe does not report. Re-probe the file and retry.");
+        var sourcePicture = work.SourcePicture!;
+        var upscaled = options.UpscaledSize(sourcePicture)!;
+
+        var queue = await GetQueueSettingsAsync(cancellationToken);
+        var free = WorkPaths.TryGetAvailableFreeSpace(_workRoot);
+        var framesPerBatch = SuperResolutionBatchPlan.FramesPerBatch(
+            sourcePicture, options.Scale, free ?? long.MaxValue, queue.MinFreeDiskBytes);
+        var batchBytes = SuperResolutionBatchPlan.MinimumFrames
+            * SuperResolutionBatchPlan.WorstCaseBytesPerFrame(sourcePicture, options.Scale);
+        if (framesPerBatch is not { } frames)
+        {
+            throw new InvalidOperationException(
+                $"Super-resolution needs about {batchBytes / (1024.0 * 1024 * 1024):0.#} GiB of working space above the " +
+                "free-space reserve for even a small batch of pictures. Free some space on the work volume and retry.");
+        }
+
+        var encoderArguments = RealCuganCommandBuilder.BuildEncoder(
+            work.Spec, work.VideoEncoder!, frameRate, work.CpuThreadLimit, OptimisedMarkerValue, source.VideoStartSeconds);
+        await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
         logger.LogInformation(
-            "Job {JobId}: super-resolution pipeline — {Frames} frames, engine {Engine}, preset {Preset}, scale {Scale}x, noise {Noise}, device {Device}",
-            jobId, plan.ExpectedFrameCount, detection.BinaryPath, options.Preset, options.Scale,
-            options.NoiseLevel, options.Device);
+            "Job {JobId}: super-resolution — {Frames} pictures per batch, preset {Preset}, scale {Scale}x, noise {Noise}, device {Device}",
+            jobId, frames, options.Preset, options.Scale, options.NoiseLevel, options.Device);
 
-        var framesInDirectory = Path.Combine(plan.WorkDirectory, "frames-in");
-        var framesOutDirectory = Path.Combine(plan.WorkDirectory, "frames-out");
+        using var outputDirectory = WorkPaths.PrepareOutputDirectory(work.Spec.OutputPath, ReserveWorkDirectory);
+        var request = new SuperResolutionRunRequest(
+            transcodeOptions.Ffmpeg,
+            detection.BinaryPath,
+            RealCuganCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit),
+            encoderArguments,
+            (input, output) => RealCuganCommandBuilder.BuildEngineArguments(input, output, detection.ModelsRoot, options),
+            WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid()),
+            upscaled,
+            work.FrameCount,
+            frames,
+            frames * SuperResolutionBatchPlan.WorstCaseBytesPerFrame(sourcePicture, options.Scale),
+            queue.MinFreeDiskBytes,
+            SuperResolutionStallLimit);
+        var hooks = new SuperResolutionRunHooks(
+            () => WorkPaths.TryGetAvailableFreeSpace(_workRoot),
+            () => pauseManager.IsPaused,
+            processId =>
+            {
+                // Visible to the metrics broadcaster, and suspended by a manual pause like any encode.
+                var registration = encodes.Track(processId, hardwareEncoder: false);
+                pauseManager.OnEncodeStarted(processId);
+                return registration;
+            },
+            fraction => UpdateProgressAsync(jobId, fraction));
+        var run = await SuperResolutionPipeline.RunAsync(request, hooks, cancellationToken);
+        if (run.ExitCode != 0 || source.AttachmentCount == 0 || IsMp4Family(work.Spec.OutputPath))
+        {
+            return run;
+        }
 
+        // Verification does not compare attachments, so the subtitle fonts and other attachments
+        // this pipeline promises to keep are checked here, before the candidate is judged.
+        var candidate = await ProbeSuperResolutionSourceAsync(work.Spec.OutputPath, cancellationToken);
+        return candidate.AttachmentCount >= source.AttachmentCount
+            ? run
+            : run with
+            {
+                ExitCode = -1,
+                Error = $"The candidate kept {candidate.AttachmentCount} of the source's {source.AttachmentCount} attachments, " +
+                    "such as subtitle fonts; it was not accepted.",
+            };
+    }
+
+    private static bool IsMp4Family(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov";
+
+    /// <summary>One ffprobe of a file's streams, read by <see cref="SuperResolutionSource"/>.</summary>
+    private async Task<SuperResolutionSource> ProbeSuperResolutionSourceAsync(string path, CancellationToken cancellationToken)
+    {
+        var ffprobe = MediaToolCommands.ResolveFfprobe(Environment.GetEnvironmentVariable("OPTIMISARR_FFPROBE"), transcodeOptions.Ffmpeg);
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo(ffprobe)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            },
+        };
+        foreach (var argument in new[] { "-v", "error", "-show_streams", "-of", "json", path })
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(2));
+        process.Start();
         try
         {
-            // Stage 1 — extract every source frame as a PNG sequence.
-            var extractionArguments = plan.ExtractionArguments;
-            await UpdateStageArgumentsAsync(jobId, extractionArguments, cancellationToken);
-            var extractionRun = await RunFfmpegAsync(
-                jobId,
-                Path.Combine(framesInDirectory, RealCuganCommandBuilder.FramePattern),
-                extractionArguments,
-                work.DurationSeconds,
-                plan.ExpectedFrameCount,
-                hardwareEncoder: false,
-                cancellationToken,
-                reportProgress: true,
-                progressMap: fraction => fraction * ExtractionProgressShare);
-            if (extractionRun.ExitCode != 0)
+            var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var error = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            if (process.ExitCode != 0)
             {
-                return new FfmpegRun(extractionRun.ExitCode, extractionRun.Error,
-                    $"frame extraction failed: {extractionRun.Log}");
+                throw new InvalidOperationException($"Probing {Path.GetFileName(path)} for super-resolution failed: {(await error).Trim()}");
             }
-
-            var extractedFrames = CountFrames(framesInDirectory);
-            if (extractedFrames == 0)
-            {
-                throw new InvalidOperationException(
-                    "Frame extraction produced no frames; the source video stream could not be decoded.");
-            }
-
-            // Stage 2 — the engine pass, directory to directory.
-            var engineArguments = RealCuganCommandBuilder.BuildEngineArguments(
-                framesInDirectory, framesOutDirectory, detection.ModelsRoot, options);
-            await UpdateStageArgumentsAsync(jobId, engineArguments, cancellationToken);
-            var engineRun = await RunEngineAsync(
-                jobId,
-                detection.BinaryPath,
-                engineArguments,
-                framesOutDirectory,
-                extractedFrames,
-                cancellationToken);
-            if (engineRun.ExitCode != 0)
-            {
-                return engineRun;
-            }
-
-            var upscaledFrames = CountFrames(framesOutDirectory);
-            if (upscaledFrames != extractedFrames)
-            {
-                throw new InvalidOperationException(
-                    $"The engine produced {upscaledFrames} frames for {extractedFrames} extracted frames; " +
-                    "reassembling would drop or duplicate pictures.");
-            }
-
-            // Stage 3 — reassemble the upscaled frames with the source's other streams.
-            await UpdateStageArgumentsAsync(jobId, plan.ReassemblyArguments, cancellationToken);
-            return await RunFfmpegAsync(
-                jobId,
-                work.Spec.OutputPath,
-                plan.ReassemblyArguments,
-                work.DurationSeconds,
-                plan.ExpectedFrameCount,
-                hardwareEncoder: false,
-                cancellationToken,
-                reportProgress: true,
-                progressMap: fraction => ExtractionProgressShare + EngineProgressShare
-                    + fraction * ReassemblyProgressShare);
+            return SuperResolutionSource.Parse(await output);
         }
         finally
         {
-            // The frame trees are pure scratch — gigabytes per job — and must never outlive the
-            // attempt, success or failure. The candidate itself stays for verification.
-            DeleteDirectoryQuietly(framesInDirectory);
-            DeleteDirectoryQuietly(framesOutDirectory);
-            DeleteDirectoryQuietly(plan.WorkDirectory);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
         }
-    }
-
-    /// <summary>Everything decided before a single process starts: paths, commands, and the
-    /// frame count the progress reporting and the engine's output are held to.</summary>
-    internal sealed record SuperResolutionPlan(
-        string WorkDirectory,
-        IReadOnlyList<string> ExtractionArguments,
-        IReadOnlyList<string> ReassemblyArguments,
-        int ExpectedFrameCount);
-
-    internal static SuperResolutionPlan PlanSuperResolution(
-        JobWork work, SuperResolutionOptions options, string modelsRoot)
-    {
-        var frameRate = work.VideoFrameRate
-            ?? throw new InvalidOperationException(
-                "Super-resolution needs the source's frame rate, which the probe does not report. Re-probe the file and retry.");
-        var frameCount = work.FrameCount
-            ?? throw new InvalidOperationException(
-                "Super-resolution needs the source's frame count, which the probe does not report. Re-probe the file and retry.");
-
-        var workDirectory = Path.Combine(
-            Path.GetDirectoryName(work.Spec.OutputPath)!, "realcugan");
-
-        return new SuperResolutionPlan(
-            workDirectory,
-            RealCuganCommandBuilder.BuildFrameExtraction(
-                work.Spec.InputPath, Path.Combine(workDirectory, "frames-in"), frameRate, work.CpuThreadLimit),
-            RealCuganCommandBuilder.BuildReassembly(
-                work.Spec, work.VideoEncoder!, Path.Combine(workDirectory, "frames-out"), frameRate,
-                work.CpuThreadLimit, OptimisedMarkerValue),
-            frameCount);
     }
 
     /// <summary>A source the pipeline cannot faithfully upscale is refused with a clear reason
@@ -299,161 +295,6 @@ public sealed partial class QueueDispatcher
                 $"Super-resolution reassembles with the library's encoder ({work.VideoEncoder}), which is a " +
                 "hardware encoder needing its own upload filters on extracted frames. Switch the queue's " +
                 "encoder mode to software, or leave this file to the normal pipeline.");
-        }
-    }
-
-    /// <summary>
-    /// Runs the engine over the extracted frames with a dedicated process: argument array, both
-    /// output streams captured, cancellation honoured, progress from the frames appearing in the
-    /// output directory, and a stall limit that turns a hung GPU pass into a failed attempt.
-    /// The queue's shares, timings and process tracking bind the generic run below to a job.
-    /// </summary>
-    private Task<FfmpegRun> RunEngineAsync(
-        int jobId,
-        string binaryPath,
-        IReadOnlyList<string> arguments,
-        string framesOutDirectory,
-        int expectedFrames,
-        CancellationToken cancellationToken) =>
-        RunEngineProcessAsync(
-            binaryPath,
-            arguments,
-            framesOutDirectory,
-            expectedFrames,
-            EngineProgressPollInterval,
-            EngineStallLimit,
-            trackStarted: processId =>
-            {
-                // Make the engine visible to the metrics broadcaster and to a manual pause, the
-                // same way an ffmpeg run does; the caller owns the registration's lifetime only
-                // for as long as this process runs.
-                var registration = encodes.Track(processId, hardwareEncoder: false);
-                pauseManager.OnEncodeStarted(processId);
-                return registration;
-            },
-            reportStage: fraction =>
-                UpdateProgressAsync(jobId, ExtractionProgressShare + fraction * EngineProgressShare),
-            cancellationToken: cancellationToken);
-
-    /// <summary>
-    /// One engine pass as a bare child process. Static, with the timings and the job-bound hooks
-    /// injected, so the failure modes a real engine can produce are testable against a real
-    /// process without a queue behind them: a non-zero exit is reported with its code and its
-    /// captured output, a pass that stops producing frames is killed at the stall limit, and a
-    /// cancelled token kills the whole process tree.
-    /// </summary>
-    internal static async Task<FfmpegRun> RunEngineProcessAsync(
-        string binaryPath,
-        IReadOnlyList<string> arguments,
-        string framesOutDirectory,
-        int expectedFrames,
-        TimeSpan pollInterval,
-        TimeSpan stallLimit,
-        Func<int, IDisposable?>? trackStarted,
-        Func<double, Task>? reportStage,
-        CancellationToken cancellationToken)
-    {
-        Directory.CreateDirectory(framesOutDirectory);
-        using var process = new Process();
-        process.StartInfo = new ProcessStartInfo(binaryPath)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in arguments)
-        {
-            process.StartInfo.ArgumentList.Add(argument);
-        }
-
-        var output = new System.Text.StringBuilder();
-        var error = new System.Text.StringBuilder();
-        process.OutputDataReceived += (_, received) => { var line = received.Data; if (line is not null) lock (output) output.AppendLine(line); };
-        process.ErrorDataReceived += (_, received) => { var line = received.Data; if (line is not null) lock (error) error.AppendLine(line); };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        using var registration = trackStarted?.Invoke(process.Id);
-
-        // A cancelled job kills the engine's whole process tree; the frame trees go with the
-        // finally block in the caller.
-        await using var cancellation = cancellationToken.Register(() =>
-        {
-            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
-        });
-
-        var lastAdvance = DateTimeOffset.UtcNow;
-        var lastCount = 0;
-        while (!process.HasExited)
-        {
-            await Task.Delay(pollInterval, cancellationToken);
-            var done = CountFrames(framesOutDirectory);
-            if (done > lastCount)
-            {
-                lastCount = done;
-                lastAdvance = DateTimeOffset.UtcNow;
-            }
-            else if (DateTimeOffset.UtcNow - lastAdvance > stallLimit)
-            {
-                process.Kill(entireProcessTree: true);
-                return new FfmpegRun(-1,
-                    $"The super-resolution engine made no progress for {stallLimit.TotalMinutes:N0} minutes " +
-                    $"and was stopped at frame {lastCount} of {expectedFrames}.",
-                    error.ToString());
-            }
-
-            // Extraction owns the first share of the bar; the engine owns the share that follows.
-            if (reportStage is not null)
-            {
-                var stageFraction = expectedFrames > 0 ? Math.Min(1.0, (double)done / expectedFrames) : 0.0;
-                await reportStage(stageFraction);
-            }
-        }
-
-        await process.WaitForExitAsync(CancellationToken.None);
-        var log = output.ToString() + error.ToString();
-        if (process.ExitCode != 0)
-        {
-            return new FfmpegRun(process.ExitCode,
-                $"The super-resolution engine exited with code {process.ExitCode}.", log);
-        }
-
-        return new FfmpegRun(process.ExitCode, null, log);
-    }
-
-    private static int CountFrames(string directory)
-    {
-        if (!Directory.Exists(directory))
-        {
-            return 0;
-        }
-        var count = 0;
-        foreach (var file in Directory.EnumerateFiles(directory, "*.png"))
-        {
-            if (Path.GetFileName(file).StartsWith('f'))
-            {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static void DeleteDirectoryQuietly(string directory)
-    {
-        try
-        {
-            if (Directory.Exists(directory))
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // Scratch that will not go away is reclaimed by the startup recovery sweep; a
-            // leftover frame tree must never fail a job that otherwise succeeded.
         }
     }
 

@@ -164,6 +164,8 @@ public sealed partial class QueueDispatcher(
     {
         await pauseManager.RestoreAsync(stoppingToken);
         await FailLegacySizeReviewsAsync(stoppingToken);
+        // Nothing can be running yet, so any super-resolution scratch left is a crashed attempt's.
+        SuperResolutionScratch.ClearAtStartup(_workRoot);
 
         while (!stoppingToken.IsCancellationRequested)
         {

@@ -12,7 +12,7 @@ namespace Optimisarr.Core.SuperResolution;
 /// </summary>
 public static class RealCuganCommandBuilder
 {
-    /// <summary>The frame file name pattern both the extraction and the reassembly agree on.</summary>
+    /// <summary>The frame file name pattern for a batch directory handed to the engine.</summary>
     public const string FramePattern = "f%08d.png";
 
     /// <summary>
@@ -52,140 +52,99 @@ public static class RealCuganCommandBuilder
     }
 
     /// <summary>
-    /// Extracts every source frame as a zero-based PNG sequence. Frames pass through
-    /// untouched — the super-resolution engine does the scaling, so no filters run here.
+    /// Decodes the first video stream to a continuous stream of RGB PNG pictures on stdout. The
+    /// pipeline reads it one picture at a time, so the decoder blocks while a batch is with the
+    /// engine and scratch space never grows with the length of the video. No filters run: the
+    /// engine owns the picture work.
     /// </summary>
-    public static IReadOnlyList<string> BuildFrameExtraction(
-        string inputPath, string framesDirectory, double frameRate, int threads)
+    public static IReadOnlyList<string> BuildDecoder(string inputPath, int threads) =>
+    [
+        "-hide_banner", "-nostdin", "-loglevel", "error",
+        "-threads", threads.ToString(CultureInfo.InvariantCulture),
+        "-i", inputPath,
+        "-map", "0:v:0",
+        "-fps_mode", "passthrough",
+        "-pix_fmt", "rgb24",
+        "-c:v", "png",
+        "-f", "image2pipe",
+        "-",
+    ];
+
+    /// <summary>
+    /// Encodes the upscaled pictures arriving on stdin, with the original as the second input so
+    /// audio, subtitles, chapters, metadata and (for Matroska) attachments such as subtitle fonts
+    /// are copied exactly as the source carries them, minus the kept-language removals the spec
+    /// resolved. The pictures are placed at the source video's start so audio stays in sync.
+    /// </summary>
+    public static IReadOnlyList<string> BuildEncoder(
+        TranscodeSpec spec,
+        string resolvedEncoder,
+        double frameRate,
+        int threads,
+        string? optimisedMarker,
+        double videoStartSeconds)
     {
         var args = new List<string>
         {
+            "-hide_banner", "-nostdin", "-y",
             "-threads", threads.ToString(CultureInfo.InvariantCulture),
-            "-i", inputPath,
         };
-        AppendFrameExtractionFlags(args);
-        args.Add(JoinFramePath(framesDirectory));
-        return args;
-    }
+        if (videoStartSeconds != 0)
+        {
+            args.AddRange(["-itsoffset", videoStartSeconds.ToString("R", CultureInfo.InvariantCulture)]);
+        }
+        args.AddRange(["-f", "image2pipe", "-framerate", frameRate.ToString("R", CultureInfo.InvariantCulture), "-c:v", "png", "-i", "-"]);
 
-    /// <summary>
-    /// Reassembles the upscaled frames with the source's kept streams. The frame sequence is
-    /// the video; the original file rides along as the second input so audio, subtitles and
-    /// (for Matroska) attachments are stream-copied exactly as the source carries them, with
-    /// the kept-languages removals the spec already resolved. HDR tone mapping, crops and
-    /// downscales do not apply: an HDR source is refused before this stage, and the engine
-    /// owns the picture geometry.
-    /// </summary>
-    public static IReadOnlyList<string> BuildReassembly(
-        TranscodeSpec spec,
-        string resolvedEncoder,
-        string framesDirectory,
-        double frameRate,
-        int threads,
-        string? optimisedMarker)
-    {
-        var args = new List<string> { "-threads", threads.ToString(CultureInfo.InvariantCulture) };
-        AppendSequenceInput(args, framesDirectory, frameRate);
-
-        // The source input is only needed when something else is copied from it.
         var copiesSource = !spec.VideoOnly;
         if (copiesSource)
         {
-            args.Add("-i");
-            args.Add(spec.InputPath);
-
-            // The frames carry no global metadata or chapters; the source does. Point both at
-            // the source so the candidate keeps them, the way the normal path gets them for free
-            // from its single input.
-            args.AddRange(["-map_metadata", "1"]);
-            args.AddRange(["-map_chapters", "1"]);
-
-            // Mapping is a whitelist — the frames' video, the source's audio and subtitles, its
-            // metadata and chapters. Attachments and data streams are simply never mapped.
+            args.AddRange(["-i", spec.InputPath]);
+            // The pictures carry no global metadata or chapters; the source does.
+            args.AddRange(["-map_metadata", "1", "-map_chapters", "1"]);
         }
 
-        args.Add("-map");
-        args.Add("0:v:0");
-        args.Add("-c:v:0");
-        args.Add(resolvedEncoder);
-
+        args.AddRange(["-map", "0:v:0", "-c:v:0", resolvedEncoder]);
         if (spec.Crf is { } crf)
         {
-            // The reassembly encodes with the same encoder the normal path resolved, so the
-            // quality knob follows that encoder family's vocabulary. Super-resolution runs on
-            // the CPU encoder families only (a hardware family needs its upload filters, which
-            // is an untested combination this pipeline refuses — see SuperResolutionRefusals).
+            // Super-resolution runs on the CPU encoder families only (a hardware family needs its
+            // upload filters, a combination this pipeline refuses), so CRF is their quality knob.
             args.AddRange(["-crf", crf.ToString(CultureInfo.InvariantCulture)]);
         }
-        // The frames arrive as RGB PNGs; without this the encoder would happily produce an
-        // RGB/4:4:4 stream most delivery players cannot handle. The source's own 8-bit YUV
-        // planar layout is what a super-resolution job is judged against, so that is the target.
-        args.Add("-pix_fmt");
-        args.Add("yuv420p");
+        // The pictures arrive as RGB; the target is the source's own 8-bit 4:2:0 layout, the only
+        // layout super-resolution accepts.
+        args.AddRange(["-pix_fmt", "yuv420p"]);
         if (!string.IsNullOrWhiteSpace(spec.Preset))
         {
-            args.Add("-preset");
-            args.Add(spec.Preset);
+            args.AddRange(["-preset", spec.Preset]);
         }
 
-        if (!copiesSource)
+        if (copiesSource)
         {
-            AppendMarker(args, spec.OutputPath, optimisedMarker);
-            args.Add(spec.OutputPath);
-            return args;
+            // A video may carry no audio, subtitles or attachments; optional maps keep the
+            // candidate buildable either way.
+            args.AddRange(["-map", "1:a?"]);
+            foreach (var index in spec.RemoveAudioStreamIndexes ?? [])
+            {
+                args.AddRange(["-map", $"-1:a:{index}"]);
+            }
+            args.AddRange(["-map", "1:s?"]);
+            foreach (var index in spec.RemoveSubtitleStreamIndexes ?? [])
+            {
+                args.AddRange(["-map", $"-1:s:{index}"]);
+            }
+            // Audio and subtitles are copied verbatim: super-resolution replaces the picture only.
+            // A library's audio re-encode rules do not apply to a super-resolution job.
+            args.AddRange(["-c:a", "copy", "-c:s", IsMp4Family(spec.OutputPath) ? "mov_text" : "copy"]);
+            if (!IsMp4Family(spec.OutputPath))
+            {
+                // Fonts and other attachments are part of how Matroska subtitles render.
+                args.AddRange(["-map", "1:t?", "-c:t", "copy"]);
+            }
         }
-
-        // A video may carry no audio or no subtitles at all; the optional map keeps the
-        // candidate buildable either way, and the codec options below then apply to nothing.
-        args.Add("-map");
-        args.Add("1:a?");
-        foreach (var index in spec.RemoveAudioStreamIndexes ?? [])
-        {
-            args.Add("-map");
-            args.Add($"-1:a:{index}");
-        }
-        args.Add("-map");
-        args.Add("1:s?");
-        foreach (var index in spec.RemoveSubtitleStreamIndexes ?? [])
-        {
-            args.Add("-map");
-            args.Add($"-1:s:{index}");
-        }
-
-        // Audio and subtitles are copied verbatim: super-resolution replaces the picture only.
-        // A library's audio re-encode rules do not apply to a super-resolution job (documented
-        // limitation) — the spec's audio settings describe the normal path's encoder, and applying
-        // them here without the normal path's audio planning would be a silent behaviour change.
-        args.Add("-c:a");
-        args.Add("copy");
-        args.Add("-c:s");
-        args.Add(IsMp4Family(spec.OutputPath) ? "mov_text" : "copy");
 
         AppendMarker(args, spec.OutputPath, optimisedMarker);
         args.Add(spec.OutputPath);
         return args;
-    }
-
-    private static void AppendSequenceInput(List<string> args, string framesDirectory, double frameRate)
-    {
-        args.AddRange(["-f", "image2"]);
-        args.AddRange(["-framerate", frameRate.ToString("0.###", CultureInfo.InvariantCulture)]);
-        args.AddRange(["-start_number", "0"]);
-        args.Add("-i");
-        args.Add(JoinFramePath(framesDirectory));
-    }
-
-    private static string JoinFramePath(string framesDirectory) =>
-        framesDirectory.EndsWith('/') || framesDirectory.EndsWith(Path.DirectorySeparatorChar)
-            ? $"{framesDirectory}{FramePattern}"
-            : $"{framesDirectory}/{FramePattern}";
-
-    private static void AppendFrameExtractionFlags(List<string> args)
-    {
-        // Every frame, in source order and source timing; the sequence numbers from zero so the
-        // reassembly reads back exactly what was written.
-        args.AddRange(["-fps_mode", "passthrough"]);
-        args.AddRange(["-start_number", "0"]);
     }
 
     private static void AppendMarker(List<string> args, string outputPath, string? optimisedMarker)
