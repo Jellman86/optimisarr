@@ -3,6 +3,9 @@
   import {
     api,
     type Settings,
+    type SuperResolutionSettings,
+    type RealCuganStatus,
+    type RealCuganProbe,
     type TimedCleanupPreview,
     type ActivityWatcher,
     type ActivityWatcherType,
@@ -42,15 +45,16 @@
   // A tab strip could not do the reporting, and its numbered sections implied a sequence
   // that never existed: nobody configures their encoder before their notifications because
   // it happens to be numbered lower.
-  type RoomKey = 'encoding' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
+  type RoomKey = 'encoding' | 'superResolution' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
 
   const ROOM_ICONS: Record<RoomKey, string> = {
-    encoding: 'gpu', files: 'shield-check', servers: 'tv', downloads: 'download',
+    encoding: 'gpu', superResolution: 'film', files: 'shield-check', servers: 'tv', downloads: 'download',
     notifications: 'bell', workers: 'server', system: 'sliders',
   }
 
   const ROOM_PATHS: Record<RoomKey, string> = {
     encoding: 'encoding',
+    superResolution: 'super-resolution',
     files: 'files',
     servers: 'media-servers',
     downloads: 'download-managers',
@@ -432,7 +436,58 @@
     }
   }
 
-  let settings = $state<Settings>({
+    // The documented initial super-resolution configuration. The server holds the same defaults;
+  // this copy exists so the form can bind before (and regardless of) the first load.
+  function defaultSuperResolution(): SuperResolutionSettings {
+    return { enabled: false, preset: 'mixed', scale: 2, noiseLevel: 1, device: 'auto', binaryPath: '', modelsPath: '' }
+  }
+
+  let realCuganStatus = $state<RealCuganStatus | null>(null)
+  let realCuganError = $state<string | null>(null)
+  let realCuganLoading = $state(false)
+  let probingRealCugan = $state(false)
+  let realCuganProbe = $state<RealCuganProbe | null>(null)
+
+  async function loadRealCuganStatus() {
+    realCuganLoading = true
+    realCuganError = null
+    try {
+      realCuganStatus = await api.realCuganStatus()
+      realCuganError = null
+    } catch (err) {
+      realCuganError = err instanceof Error ? err.message : i18n.m.settings.error_load
+    } finally {
+      realCuganLoading = false
+    }
+  }
+
+  async function probeRealCugan() {
+    probingRealCugan = true
+    realCuganProbe = null
+    try {
+      realCuganProbe = await api.probeRealCugan()
+    } catch (err) {
+      realCuganError = err instanceof Error ? err.message : i18n.m.settings.error_load
+    } finally {
+      probingRealCugan = false
+    }
+  }
+
+  function restoreSuperResolutionDefaults() {
+    // Defaults cover the engine configuration only; the experimental switch stays as the operator left it.
+    settings = { ...settings, superResolution: { ...defaultSuperResolution(), enabled: settings.superResolution.enabled } }
+    realCuganProbe = null
+  }
+
+  /** The first four Vulkan devices, plus a saved higher index so it is never hidden. */
+  function gpuDeviceOptions(value: string): number[] {
+    const saved = /^gpu:(\d+)$/.exec(value)
+    const indexes = [0, 1, 2, 3]
+    if (saved && !indexes.includes(Number(saved[1]))) indexes.push(Number(saved[1]))
+    return indexes
+  }
+
+let settings = $state<Settings>({
     maxConcurrentJobs: 1,
     minFreeDiskBytes: 10 * 1024 * 1024 * 1024,
     cpuThreadLimit: 0,
@@ -451,6 +506,7 @@
     automaticNonVideoSlots: 0,
     automaticEvidenceValidationSlots: 1,
     replacementQuarantineRetentionDays: 0,
+    superResolution: defaultSuperResolution(),
   })
 
   // The values as the server last confirmed them. Everything the form binds to is a draft
@@ -467,13 +523,26 @@
   /** Which settings belong to which room, so a card can count its own unsaved edits. */
   const ROOM_FIELDS: Partial<Record<RoomKey, (keyof Settings)[]>> = {
     encoding: ['maxConcurrentJobs', 'workloadConcurrencyMode', 'nonVideoSlots', 'evidenceValidationSlots', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
+    superResolution: ['superResolution'],
     files: ['dryRunMode', 'remoteWorkersEnabled', 'workerVerificationRequired', 'replacementAllowCrossFilesystem', 'replacementQuarantineRetentionDays'],
   }
 
   function sameValue(a: unknown, b: unknown): boolean {
     // Number inputs hand back strings, so 5 and '5' are the same answer typed twice.
     if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b)
+    if (typeof a === 'object' && typeof b === 'object') return JSON.stringify(a) === JSON.stringify(b)
     return a === b
+  }
+
+  /**
+   * A copy of a settings object that is safe to edit or keep as a snapshot. `superResolution` is
+   * the one nested object in `Settings`: a top-level spread alone would leave the draft and its
+   * saved copy pointing at the same object, so an edit through a bound control would change both
+   * at once — and the change detector, which compares values, would report nothing changed. No
+   * save bar, no room badge, no leave-guard, and a save that silently drops the edit.
+   */
+  function detach(value: Settings): Settings {
+    return { ...value, superResolution: { ...value.superResolution } }
   }
 
   let changedFields = $derived.by(() => {
@@ -508,12 +577,12 @@
       minFreeDiskGiB = savedMinFreeDiskGiB
       return
     }
-    settings = { ...settings, [field]: savedSettings[field] }
+    settings = detach({ ...settings, [field]: savedSettings[field] })
   }
 
   function discardAll() {
     if (!savedSettings) return
-    settings = { ...savedSettings }
+    settings = detach(savedSettings)
     minFreeDiskGiB = savedMinFreeDiskGiB
     message = null
     error = null
@@ -530,6 +599,18 @@
         encoder: settings.encoderMode,
         hours: settings.libraryScanIntervalHours,
       }),
+    },
+    {
+      key: 'superResolution' as RoomKey,
+      title: i18n.m.settings.room_super_resolution,
+      description: i18n.m.settings.room_super_resolution_desc,
+      state: settings.superResolution.enabled
+        ? tr(i18n.m.settings.room_super_resolution_state_on, {
+            preset: settings.superResolution.preset,
+            scale: settings.superResolution.scale,
+            noise: settings.superResolution.noiseLevel,
+          })
+        : i18n.m.settings.room_super_resolution_state_off,
     },
     {
       key: 'files' as RoomKey,
@@ -628,6 +709,16 @@
     }
   })
 
+  // The status section answers "can this machine run the engine?" — so it detects the first
+  // time the room is opened instead of waiting for a Detect button that only exists once a
+  // status has come back. The button re-checks whenever the operator wants (after fixing a
+  // path or installing a driver), and it stays reachable in the error state below.
+  $effect(() => {
+    if (openRoom === 'superResolution' && savedSettings?.superResolution.enabled && !realCuganLoading && !realCuganStatus && !realCuganError) {
+      void loadRealCuganStatus()
+    }
+  })
+
   async function load() {
     loading = true
     error = null
@@ -640,9 +731,9 @@
       // expression reads it synchronously, which makes the calling $effect depend on it, so
       // assigning it here would retrigger the effect and loop forever on "Loading…".
       const loaded = await api.settings()
-      settings = { ...settings, ...loaded }
+      settings = { ...settings, ...loaded, superResolution: loaded.superResolution ?? defaultSuperResolution() }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
-      savedSettings = { ...settings }
+      savedSettings = detach(settings)
       savedMinFreeDiskGiB = minFreeDiskGiB
       await loadCleanupPreview()
     } catch (err) {
@@ -659,6 +750,7 @@
     try {
       const saved = await api.saveSettings({
         ...settings,
+        superResolution: settings.superResolution,
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         nonVideoSlots: Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)),
         evidenceValidationSlots: Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)),
@@ -669,7 +761,7 @@
       })
       settings = { ...settings, ...saved }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
-      savedSettings = { ...settings }
+      savedSettings = detach(settings)
       savedMinFreeDiskGiB = minFreeDiskGiB
       message = i18n.m.settings.saved
       await loadCleanupPreview()
@@ -980,6 +1072,155 @@
       </p>
     </div>
   </ConfigSection>
+  </div>
+  {/if}
+
+  {#if openRoom === 'superResolution'}
+  <div class="min-w-0 space-y-5">
+  <ConfigSection
+    id="super-resolution-engine"
+    title={i18n.m.settings.sr_engine_title}
+    description={i18n.m.settings.sr_engine_desc}
+  >
+    <div class="settings-fields">
+      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label">
+          <label class="label" for="sr-enabled">{i18n.m.settings.sr_enable}</label>
+          <p>{i18n.m.settings.sr_enable_hint}</p>
+        </div>
+        <Toggle bind:checked={settings.superResolution.enabled} label={i18n.m.settings.sr_enable} />
+        {@render wasChanged('superResolution', '')}
+      </div>
+
+      <!-- Every engine setting stays hidden until the experimental switch is on. -->
+      {#if settings.superResolution.enabled}
+      <div class="settings-field {isChanged('superResolution') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="sr-engine">{i18n.m.settings.sr_engine}</label><p>{i18n.m.settings.sr_engine_hint}</p></div>
+        <input id="sr-engine" class="input" value="Real-CUGAN (realcugan-ncnn-vulkan)" disabled />
+        <p class="text-xs text-ink-3 mt-2">{i18n.m.settings.sr_engine_note}</p>
+      </div>
+
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-preset">{i18n.m.settings.sr_preset} <InfoTip text={i18n.m.settings.sr_preset_tip} /></label><p>{i18n.m.settings.sr_preset_hint}</p></div>
+        <select id="sr-preset" class="input" bind:value={settings.superResolution.preset}>
+          <option value="mixed">{i18n.m.settings.sr_preset_mixed}</option>
+          <option value="pro">{i18n.m.settings.sr_preset_pro}</option>
+          <option value="nose">{i18n.m.settings.sr_preset_nose}</option>
+        </select>
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-scale">{i18n.m.settings.sr_scale} <InfoTip text={i18n.m.settings.sr_scale_tip} /></label><p>{i18n.m.settings.sr_scale_hint}</p></div>
+        <select id="sr-scale" class="input" bind:value={settings.superResolution.scale}>
+          <option value={2}>{i18n.m.settings.sr_scale_2}</option>
+          <option value={3}>{i18n.m.settings.sr_scale_3}</option>
+          <option value={4}>{i18n.m.settings.sr_scale_4}</option>
+        </select>
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-noise">{i18n.m.settings.sr_noise} <InfoTip text={i18n.m.settings.sr_noise_tip} /></label><p>{i18n.m.settings.sr_noise_hint}</p></div>
+        <select id="sr-noise" class="input" bind:value={settings.superResolution.noiseLevel}>
+          <option value={-1}>{i18n.m.settings.sr_noise_conservative}</option>
+          <option value={0}>{i18n.m.settings.sr_noise_none}</option>
+          <option value={1}>{i18n.m.settings.sr_noise_1}</option>
+          <option value={2}>{i18n.m.settings.sr_noise_2}</option>
+          <option value={3}>{i18n.m.settings.sr_noise_3}</option>
+        </select>
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-device">{i18n.m.settings.sr_device} <InfoTip text={i18n.m.settings.sr_device_tip} /></label><p>{i18n.m.settings.sr_device_hint}</p></div>
+        <select id="sr-device" class="input" bind:value={settings.superResolution.device}>
+          <option value="auto">{i18n.m.settings.sr_device_auto}</option>
+          <option value="cpu">{i18n.m.settings.sr_device_cpu}</option>
+          {#each gpuDeviceOptions(settings.superResolution.device) as index (index)}
+            <option value={`gpu:${index}`}>{tr(i18n.m.settings.sr_device_gpu, { index })}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-binary">{i18n.m.settings.sr_binary}</label><p>{i18n.m.settings.sr_binary_hint}</p></div>
+        <input id="sr-binary" class="input" bind:value={settings.superResolution.binaryPath} placeholder="realcugan-ncnn-vulkan" />
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-models">{i18n.m.settings.sr_models}</label><p>{i18n.m.settings.sr_models_hint}</p></div>
+        <input id="sr-models" class="input" bind:value={settings.superResolution.modelsPath} placeholder="/opt/realcugan-ncnn-vulkan/models" />
+      </div>
+
+      <div class="settings-video-fields">
+        <button type="button" class="btn btn-ghost min-h-11" onclick={restoreSuperResolutionDefaults}>{i18n.m.settings.sr_restore_defaults}</button>
+      </div>
+      {/if}
+    </div>
+  </ConfigSection>
+
+  <!-- Engine checks run against the saved configuration, so they wait for the switch to be saved on. -->
+  {#if savedSettings?.superResolution.enabled}
+  <ConfigSection
+    id="super-resolution-status"
+    title={i18n.m.settings.sr_status_title}
+    description={i18n.m.settings.sr_status_desc}
+  >
+    {#if realCuganLoading || (!realCuganStatus && !realCuganError)}
+      <div class="card p-6 text-center text-ink-4">{i18n.m.common.loading_short}</div>
+    {:else}
+      <div class="space-y-3">
+        {#if realCuganError}
+          <Banner kind="error">{realCuganError}</Banner>
+        {/if}
+        {#if realCuganStatus}
+          <div class="card p-5 space-y-3 text-sm">
+            <p>
+              <span class="font-medium">{i18n.m.settings.sr_status_readiness}</span>
+              {realCuganStatus.readiness === 'Ready' ? i18n.m.settings.sr_status_ready
+                : realCuganStatus.readiness === 'NotInstalled' ? i18n.m.settings.sr_status_not_installed
+                : realCuganStatus.readiness === 'VulkanUnavailable' ? i18n.m.settings.sr_status_no_vulkan
+                : i18n.m.settings.sr_status_misconfigured}
+            </p>
+            <p class="text-ink-3">{tr(i18n.m.settings.sr_status_models, {
+              dir: realCuganStatus.modelDirectory ?? '—',
+              root: realCuganStatus.modelsRoot ?? '—',
+            })}</p>
+            <p class="text-ink-3">{i18n.m.settings.sr_status_vulkan}: {realCuganStatus.vulkanLoaderAvailable ? i18n.m.settings.sr_status_vulkan_ok : i18n.m.settings.sr_status_vulkan_missing}</p>
+            {#if realCuganStatus.problems.length}
+              <ul class="list-disc pl-5 text-ink-3">
+                {#each realCuganStatus.problems as problem}
+                  <li>{problem}</li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        {/if}
+        {#if realCuganProbe}
+          <Banner kind={realCuganProbe.success ? 'success' : 'error'}>{realCuganProbe.success
+            ? tr(i18n.m.settings.sr_probe_ok, { device: realCuganProbe.deviceUsed ?? '' })
+            : (realCuganProbe.error ?? i18n.m.settings.sr_probe_failed)}</Banner>
+        {/if}
+        <div class="flex gap-3">
+          <button type="button" class="btn btn-ghost min-h-11" onclick={loadRealCuganStatus}>{i18n.m.settings.sr_detect}</button>
+          <button type="button" class="btn btn-ghost min-h-11" onclick={probeRealCugan} disabled={probingRealCugan}>
+            {probingRealCugan ? i18n.m.settings.sr_probing : i18n.m.settings.sr_probe}
+          </button>
+        </div>
+      </div>
+    {/if}
+  </ConfigSection>
+
+  <ConfigSection
+    id="super-resolution-output"
+    title={i18n.m.settings.sr_output_title}
+    description={i18n.m.settings.sr_output_desc}
+  >
+    <p class="text-sm leading-relaxed text-ink-3">{tr(i18n.m.settings.sr_output_math, { scale: settings.superResolution.scale, height: 1080 * settings.superResolution.scale })}</p>
+    <p class="text-xs leading-relaxed text-ink-3">{i18n.m.settings.sr_output_limit}</p>
+  </ConfigSection>
+  {:else if settings.superResolution.enabled}
+    <Banner kind="info">{i18n.m.settings.sr_save_to_test}</Banner>
+  {/if}
   </div>
   {/if}
 

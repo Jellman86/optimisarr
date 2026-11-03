@@ -16,6 +16,7 @@ using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -163,6 +164,8 @@ public sealed partial class QueueDispatcher(
     {
         await pauseManager.RestoreAsync(stoppingToken);
         await FailLegacySizeReviewsAsync(stoppingToken);
+        // Nothing can be running yet, so any super-resolution scratch left is a crashed attempt's.
+        SuperResolutionScratch.ClearAtStartup(_workRoot);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -240,7 +243,7 @@ public sealed partial class QueueDispatcher(
                     db.Libraries,
                     job => job.LibraryId,
                     library => library.Id,
-                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace })
+                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace, job.SuperResolutionApplied })
                 .ToListAsync(cancellationToken);
 
             jobIds = ready
@@ -249,7 +252,8 @@ public sealed partial class QueueDispatcher(
                     candidate.VerificationPassed,
                     candidate.AutoReplace,
                     queueSettings.DryRunMode,
-                    pauseManager.IsPaused))
+                    pauseManager.IsPaused,
+                    candidate.SuperResolutionApplied))
                 .OrderBy(candidate => candidate.Id)
                 .Take(AutoReplaceReconcileBatch)
                 .Select(candidate => candidate.Id)
@@ -342,6 +346,8 @@ public sealed partial class QueueDispatcher(
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var superResolutionOn = (await scope.ServiceProvider.GetRequiredService<SettingsStore>()
+                .GetSuperResolutionOptionsAsync(stoppingToken)).Enabled;
             // A library's placement only means something while work can actually go elsewhere:
             // both the saved switch and deployment availability. Otherwise "only on workers" would hold a
             // job for a claim that the worker routes refuse, which is a stall nobody asked for.
@@ -356,8 +362,8 @@ public sealed partial class QueueDispatcher(
 
             var placements = await db.Libraries
                 .AsNoTracking()
-                .Select(library => new { library.Id, library.WorkPlacement })
-                .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, stoppingToken);
+                .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled })
+                .ToDictionaryAsync(library => library.Id, library => (library.WorkPlacement, library.SuperResolutionEnabled), stoppingToken);
             // Libraries whose jobs a worker cannot be offered until this machine has chosen a
             // per-title quality for them.
             var adaptiveLibraries = await db.Libraries
@@ -396,12 +402,13 @@ public sealed partial class QueueDispatcher(
                     job.IgnoreLibraryWindow,
                     job.HonoursPlacement && job.LibraryId is { } libraryId
                         && placements.TryGetValue(libraryId, out var placement)
-                        ? placement
+                        ? EffectivePlacement(placement.WorkPlacement, SuperResolutionRouting.Applies(
+                            superResolutionOn, placement.SuperResolutionEnabled, job.Kind, replaceBound: !job.Interactive))
                         : WorkPlacement.Anywhere,
                     job.QualityChosen,
                     job.Kind,
                     WorkerRequired: job.Interactive && job.LibraryId is { } requiredId
-                        && placements.GetValueOrDefault(requiredId) == WorkPlacement.WorkerOnly))
+                        && placements.GetValueOrDefault(requiredId).WorkPlacement == WorkPlacement.WorkerOnly))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -1054,7 +1061,20 @@ public sealed partial class QueueDispatcher(
 
             var preparedWork = work.Value;
             await WithJobAsync(jobId, job => job.VmafModel = preparedWork.Original.VmafModel, cancellationToken);
-            if (ShouldSelectAdaptiveQuality(
+            // A super-resolution job keeps the library's fixed quality: the adaptive search
+            // samples the normal encode, whose size and quality say nothing about the upscaled
+            // candidate, and its size forecast would only reject a job that was never predicted.
+            var superResolution = preparedWork.SuperResolution;
+            var superResolutionPlanned = superResolution is not null;
+            if (superResolution is { } choice)
+            {
+                // The candidate is the source scaled by the engine's ratio, judged by the library's
+                // quality check with the size gates off; a person approves every upscaled replacement.
+                preparedWork = PrepareSuperResolutionWork(preparedWork, choice.Options, choice.QualityCheck);
+            }
+            // Recorded per attempt, so a later ordinary attempt is not held for review as an upscale.
+            await WithJobAsync(jobId, job => job.SuperResolutionApplied = superResolutionPlanned, cancellationToken);
+            if (!superResolutionPlanned && ShouldSelectAdaptiveQuality(
                 preparedWork.VideoQualityStrategy,
                 preparedWork.Spec.VideoCodec is not null,
                 preparedWork.VideoQuality is not null,
@@ -1125,16 +1145,29 @@ public sealed partial class QueueDispatcher(
                     work.Value.VideoFrameRate),
                 work.Value.VideoFrameRate,
                 spec.TargetFrameRate);
-            var run = await RunFfmpegAsync(
-                jobId,
-                spec.OutputPath,
-                arguments,
-                progressDuration,
-                expectedFrameCount,
-                hardwareEncoder,
-                cancellationToken,
-                maxCandidateBytes: maxCandidateBytes,
-                minCandidateBytes: minCandidateBytes);
+
+            // A library opted into super-resolution runs a three-stage pipeline (extract →
+            // engine → reassemble) that produces the same candidate the single-command encode
+            // would; everything after this point — size handling, verification, replacement —
+            // is unchanged. Disabled libraries, previews and non-video jobs never enter it.
+            FfmpegRun run;
+            if (superResolution is { } frozenSuperResolution)
+            {
+                run = await RunSuperResolutionAsync(jobId, preparedWork, frozenSuperResolution.Options, cancellationToken);
+            }
+            else
+            {
+                run = await RunFfmpegAsync(
+                    jobId,
+                    spec.OutputPath,
+                    arguments,
+                    progressDuration,
+                    expectedFrameCount,
+                    hardwareEncoder,
+                    cancellationToken,
+                    maxCandidateBytes: maxCandidateBytes,
+                    minCandidateBytes: minCandidateBytes);
+            }
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
@@ -1376,7 +1409,8 @@ public sealed partial class QueueDispatcher(
         SoundtrackSearchSummary? SoundtrackSearch = null,
         int PerceptualRetryCount = 0,
         string? SourcePixelFormat = null,
-        PreparedWorkerSample? WorkerSample = null)
+        PreparedWorkerSample? WorkerSample = null,
+        SuperResolutionChoice? SuperResolution = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1446,6 +1480,17 @@ public sealed partial class QueueDispatcher(
         if (prepared is not { } work)
         {
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
+        }
+
+        // The authority behind the claim endpoint's cheap first pass: a super-resolution job runs
+        // this server's engine over this server's frames, and a worker lease carries only ffmpeg
+        // arguments. Offering it would produce an ordinary source-sized candidate that passes
+        // verification and replaces the original without the upscaling that was asked for.
+        if (work.SuperResolution is not null)
+        {
+            return RemoteWorkPlan.Refused(
+                "This library runs video through the Real-CUGAN super-resolution engine, which works on this " +
+                "server only. Set the library's placement to keep it off workers.");
         }
 
         if (work.IsDisposable && work.Spec.Kind != MediaKind.Video)
@@ -1682,6 +1727,18 @@ public sealed partial class QueueDispatcher(
         }
 
         var isVideoJob = media.MediaKind is not (MediaKind.Audio or MediaKind.Image);
+
+        // Freeze the feature choice before selecting a container or an audio contract. Planning
+        // AAC/Opus here and copying later could leave TrueHD or Matroska ALAC in an unsafe MP4.
+        SuperResolutionChoice? superResolution = null;
+        if (!isDisposable && rules.TargetVideoCodec is not null && media.MediaKind == MediaKind.Video
+            && library?.SuperResolutionEnabled == true)
+        {
+            var engine = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            if (SuperResolutionRouting.Applies(engine.Enabled, true, media.MediaKind, replaceBound: true))
+                superResolution = new SuperResolutionChoice(engine, library.SuperResolutionQualityCheck);
+        }
+        rules = SuperResolutionRules(rules, superResolution is not null);
 
         // Language-based removal is destructive, so the inventory cache is never the authority at
         // dispatch time. Fresh-probe every source governed by either language rule and fail before
@@ -2229,7 +2286,8 @@ public sealed partial class QueueDispatcher(
             PerceptualSearch: ReadPerceptualRetry(job),
             AdaptiveSoundtrackQuality: library?.AdaptiveSoundtrackQuality ?? false,
             PerceptualRetryCount: job.QualityRetryCount,
-            SourcePixelFormat: media.PixelFormat);
+            SourcePixelFormat: media.PixelFormat,
+            SuperResolution: superResolution);
     }
 
     /// <summary>
@@ -2831,7 +2889,7 @@ public sealed partial class QueueDispatcher(
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 
-    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
+    internal sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
@@ -3669,7 +3727,17 @@ public sealed partial class QueueDispatcher(
     // leave it in the work directory as ReadyToReplace (safe replacement is a later phase).
     private async Task FinishSuccessfulJobAsync(int jobId, string outputPath, JobWork work, bool dryRunMode)
     {
-        if (work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
+        var requiresReview = work.SuperResolution is not null;
+        if (!requiresReview && (work.MoveOnComplete || work.AutoReplace))
+        {
+            // A recovered completion may carry an older plan; the persisted attempt flag is
+            // authoritative even if the global feature switch has since been turned off.
+            await using var scope = scopeFactory.CreateAsyncScope();
+            requiresReview = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs
+                .AsNoTracking().Where(job => job.Id == jobId).Select(job => job.SuperResolutionApplied)
+                .FirstOrDefaultAsync(CancellationToken.None);
+        }
+        if (!requiresReview && work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
         {
             // Resolve against this file's own work root so the per-media-file id segment is not
             // mirrored into the target folder — the destination keeps the library's structure.
@@ -3708,7 +3776,7 @@ public sealed partial class QueueDispatcher(
         // already passed every verification gate; ReplaceAsync still quarantines the original
         // first and records a rollback, so the safety model holds. A failure (e.g. an unwritable
         // folder) leaves the job ReadyToReplace for a manual retry rather than touching the original.
-        if (work.AutoReplace && !dryRunMode)
+        if (!requiresReview && work.AutoReplace && !dryRunMode)
         {
             var guarded = await pauseManager.TryRunAutomaticActionAsync(async () =>
             {
@@ -3871,9 +3939,11 @@ public sealed partial class QueueDispatcher(
                 Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown })
             .ToListAsync(cancellationToken);
         var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
+        var superResolutionOn = (await scope.ServiceProvider.GetRequiredService<SettingsStore>()
+            .GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
         var libraries = await db.Libraries.AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement, library.AutoEnqueueEnabled,
-                library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled,
+                library.AutoEnqueueEnabled, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
             .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var availability = await WorkerAvailability.ResolveAsync(db, settings.RemoteWorkersEnabled,
@@ -3882,10 +3952,14 @@ public sealed partial class QueueDispatcher(
         var scheduled = queued.Select(job => new QueuedJob(job.Id, job.LibraryId, 0,
             job.EnqueuedAt, IgnoreLibraryWindow: job.Type != JobType.Normal,
             Placement: job.LibraryId is { } id
-                && libraries.TryGetValue(id, out var library) ? library.WorkPlacement : WorkPlacement.Anywhere,
+                && libraries.TryGetValue(id, out var library)
+                    ? EffectivePlacement(library.WorkPlacement, SuperResolutionRouting.Applies(
+                        superResolutionOn, library.SuperResolutionEnabled, job.Kind, replaceBound: job.Type == JobType.Normal))
+                    : WorkPlacement.Anywhere,
             Kind: job.Kind,
             WorkerRequired: job.Type != JobType.Normal && job.LibraryId is { } requiredId
-                && libraries.TryGetValue(requiredId, out var requiredLibrary) && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly)).ToList();
+                && libraries.TryGetValue(requiredId, out var requiredLibrary)
+                && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly)).ToList();
         var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
             .ToDictionary(library => library.Id,
                 library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));

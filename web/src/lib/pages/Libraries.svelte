@@ -539,6 +539,9 @@
   // Work can go to a remote worker only when both the saved switch and deployment allow it.
   // Decides whether the placement choice is shown; the choice itself is stored either way.
   let remoteWorkersOn = $state(false)
+  // AI super-resolution is experimental: a library's switch appears only while the feature is on,
+  // and a hidden choice is kept unchanged for when it is turned back on.
+  let superResolutionOn = $state(false)
   const placements: WorkPlacement[] = ['Anywhere', 'LocalOnly', 'PreferWorker', 'WorkerOnly']
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
@@ -985,8 +988,10 @@
     try {
       const settings = await api.settings()
       remoteWorkersOn = settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
+      superResolutionOn = settings.superResolution?.enabled ?? false
     } catch {
       remoteWorkersOn = false
+      superResolutionOn = false
     }
   }
 
@@ -1123,6 +1128,10 @@
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
       optimiseDolbyVision: library.optimiseDolbyVision,
+      // Coerced like the hardlink switch: an older server omits the field, and undefined
+      // must read as off rather than blank the editor.
+      superResolutionEnabled: library.superResolutionEnabled ?? false,
+      superResolutionQualityCheck: library.superResolutionQualityCheck ?? 'BrokenFramesOnly',
       excludePaths: library.excludePaths,
       // Coerced rather than passed through: a two-way binding onto a boolean prop throws
       // props_invalid_value on undefined, which takes the whole editor down rather than
@@ -1259,6 +1268,8 @@
       targetContainer: emptyToNull(form.targetContainer),
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
+      superResolutionEnabled: form.superResolutionEnabled,
+      superResolutionQualityCheck: form.superResolutionQualityCheck,
       excludePaths: emptyToNull(form.excludePaths),
       excludeHardLinkedFiles: form.excludeHardLinkedFiles,
       workPlacement: form.workPlacement,
@@ -2649,6 +2660,34 @@
         </div>
 
 </ConfigSection>
+
+<!-- AI super-resolution is experimental and per library: an opted-in library never changes how
+     another library's jobs run. The section exists only while the feature is on in Settings. -->
+{#if superResolutionOn}
+<ConfigSection id="library-super-resolution" title={i18n.m.libraries.super_resolution_section} description={i18n.m.libraries.super_resolution_section_desc}>
+        <label class="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.superResolutionEnabled} />
+          <span>
+            {i18n.m.libraries.super_resolution_label}
+            <InfoTip text={i18n.m.libraries.super_resolution_tip} />
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
+              {i18n.m.libraries.super_resolution_hint}
+            </span>
+          </span>
+        </label>
+        {#if form.superResolutionEnabled}
+          <div class="mt-4">
+            <label class="label" for="library-sr-quality">{i18n.m.libraries.super_resolution_quality} <InfoTip text={i18n.m.libraries.super_resolution_quality_tip} /></label>
+            <select id="library-sr-quality" class="input" bind:value={form.superResolutionQualityCheck}>
+              <option value="BrokenFramesOnly">{i18n.m.libraries.super_resolution_quality_broken}</option>
+              <option value="FullGate">{i18n.m.libraries.super_resolution_quality_full}</option>
+              <option value="Off">{i18n.m.libraries.super_resolution_quality_off}</option>
+            </select>
+            <p class="mt-2 text-xs text-ink-3">{i18n.m.libraries.super_resolution_review_note}</p>
+          </div>
+        {/if}
+</ConfigSection>
+{/if}
 {/snippet}
 
 {#snippet videoAdvancedFields()}

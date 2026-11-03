@@ -138,4 +138,30 @@ public sealed class QueueDispatcherSafetyTests
             hasAdaptiveQuality: false,
             isCalibration: false));
     }
+
+    [Theory]
+    [InlineData(WorkPlacement.Anywhere)]
+    [InlineData(WorkPlacement.PreferWorker)]
+    [InlineData(WorkPlacement.WorkerOnly)]
+    [InlineData(WorkPlacement.LocalOnly)]
+    public void Super_resolution_work_runs_on_this_server_only(WorkPlacement placement)
+    {
+        // The engine runs on the server's frames, and a worker lease carries only ffmpeg
+        // arguments: offered to a worker, the job would come back as an ordinary source-sized
+        // encode that silently replaces the original without the super-resolution that was
+        // asked for. Local-only is the only placement that keeps the promise honest.
+        Assert.Equal(WorkPlacement.LocalOnly, QueueDispatcher.EffectivePlacement(placement, superResolution: true));
+    }
+
+    [Theory]
+    [InlineData(WorkPlacement.Anywhere)]
+    [InlineData(WorkPlacement.PreferWorker)]
+    [InlineData(WorkPlacement.WorkerOnly)]
+    [InlineData(WorkPlacement.LocalOnly)]
+    public void Work_that_is_not_super_resolution_keeps_the_operators_placement(WorkPlacement placement)
+    {
+        // Covers an opted-in library with the feature off, and its previews and calibration
+        // samples: none of them use the engine, so none of them may be pinned to this server.
+        Assert.Equal(placement, QueueDispatcher.EffectivePlacement(placement, superResolution: false));
+    }
 }

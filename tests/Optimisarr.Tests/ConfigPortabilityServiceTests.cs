@@ -117,6 +117,108 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_librarys_super_resolution_switch_survives_export_restore_and_repeated_import()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Animation", Path = "/data/anime", MediaType = MediaType.Film,
+                SuperResolutionEnabled = true, SuperResolutionQualityCheck = Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.Off });
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/films", MediaType = MediaType.Film });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(snapshot.Libraries.Single(library => library.Path == "/data/anime").SuperResolutionEnabled);
+        Assert.False(snapshot.Libraries.Single(library => library.Path == "/data/films").SuperResolutionEnabled);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using var restored = CreateDb();
+        Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/anime"))
+            .SuperResolutionEnabled);
+        Assert.Equal("Off", snapshot.Libraries.Single(library => library.Path == "/data/anime").SuperResolutionQualityCheck);
+        Assert.Equal(Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.Off,
+            (await restored.Libraries.SingleAsync(library => library.Path == "/data/anime")).SuperResolutionQualityCheck);
+        Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/films"))
+            .SuperResolutionEnabled);
+
+        // A backup taken before the field existed leaves each library's stored switch alone.
+        var legacy = snapshot with
+        {
+            Version = 1,
+            Libraries = snapshot.Libraries.Select(library => library with
+                { SuperResolutionEnabled = null }).ToArray()
+        };
+        Assert.True((await ImportAsync(legacy)).Applied);
+        await using var legacyRestored = CreateDb();
+        Assert.True((await legacyRestored.Libraries.SingleAsync(library => library.Path == "/data/anime"))
+            .SuperResolutionEnabled);
+        Assert.False((await legacyRestored.Libraries.SingleAsync(library => library.Path == "/data/films"))
+            .SuperResolutionEnabled);
+    }
+
+    [Fact]
+    public async Task A_backup_carries_super_resolution_preferences_but_never_turns_the_engine_on_or_names_its_files()
+    {
+        await using (var db = CreateDb())
+        {
+            await new SettingsStore(db).SetSuperResolutionOptionsAsync(Optimisarr.Core.SuperResolution.SuperResolutionOptions.Defaults with
+            {
+                Enabled = true, Preset = "pro", BinaryPath = "/opt/realcugan/realcugan-ncnn-vulkan", ModelsPath = "/opt/realcugan",
+            }, CancellationToken.None);
+        }
+
+        var snapshot = await ExportAsync();
+        Assert.Equal("pro", snapshot.Settings[SettingKeys.RealCuganPreset]);
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganEnabled));
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganBinaryPath));
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganModelsPath));
+
+        await using (var db = CreateDb())
+        {
+            await new SettingsStore(db).SetSuperResolutionOptionsAsync(Optimisarr.Core.SuperResolution.SuperResolutionOptions.Defaults, CancellationToken.None);
+        }
+        // A backup from elsewhere (or an older build) that names these host-local values is still accepted,
+        // but whether this machine runs the engine, and which files it executes, stay this machine's choice.
+        var foreign = snapshot with
+        {
+            Settings = new Dictionary<string, string>(snapshot.Settings)
+            {
+                [SettingKeys.RealCuganEnabled] = "true",
+                [SettingKeys.RealCuganBinaryPath] = "/tmp/not-the-engine",
+                [SettingKeys.RealCuganModelsPath] = "/tmp/models",
+            },
+        };
+        Assert.True((await ImportAsync(foreign)).Applied);
+        await using var restored = CreateDb();
+        var options = await new SettingsStore(restored).GetSuperResolutionOptionsAsync(CancellationToken.None);
+        Assert.False(options.Enabled);
+        Assert.Equal("", options.BinaryPath);
+        Assert.Equal("", options.ModelsPath);
+        Assert.Equal("pro", options.Preset);
+    }
+
+    [Fact]
+    public async Task A_backup_with_an_unknown_super_resolution_check_is_rejected_before_anything_changes()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Animation", Path = "/data/anime", MediaType = MediaType.Tv });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        var broken = snapshot with
+        {
+            Libraries = [snapshot.Libraries[0] with { Name = "Renamed", SuperResolutionQualityCheck = "Vibes" }],
+        };
+
+        var result = await ImportAsync(broken);
+
+        Assert.False(result.Applied);
+        await using var unchanged = CreateDb();
+        Assert.Equal("Animation", (await unchanged.Libraries.SingleAsync()).Name);
+    }
+
+    [Fact]
     public async Task Export_omits_secrets_and_includes_settings_and_definitions()
     {
         await using (var db = CreateDb())

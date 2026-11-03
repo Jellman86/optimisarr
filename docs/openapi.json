@@ -2797,6 +2797,18 @@
               "boolean"
             ]
           },
+          "superResolutionEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "superResolutionQualityCheck": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -4979,6 +4991,18 @@
               "boolean"
             ]
           },
+          "superResolutionEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "superResolutionQualityCheck": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -5269,6 +5293,16 @@
             "type": [
               "integer",
               "string"
+            ]
+          },
+          "superResolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SuperResolutionSettingsDto"
+              }
             ]
           },
           "workerVerificationRequired": {
@@ -5768,6 +5802,51 @@
         "required": [
           "durationHours",
           "scopedJobId"
+        ],
+        "type": "object"
+      },
+      "SuperResolutionSettingsDto": {
+        "properties": {
+          "binaryPath": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "modelsPath": {
+            "type": "string"
+          },
+          "noiseLevel": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "preset": {
+            "type": "string"
+          },
+          "scale": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "preset",
+          "scale",
+          "noiseLevel",
+          "device",
+          "binaryPath",
+          "modelsPath"
         ],
         "type": "object"
       },
@@ -9869,6 +9948,38 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/system/realcugan": {
+      "get": {
+        "operationId": "GetRealCuganStatus",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/system/realcugan/probe": {
+      "post": {
+        "operationId": "ProbeRealCugan",
         "responses": {
           "200": {
             "description": "OK"

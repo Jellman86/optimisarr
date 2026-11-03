@@ -1,3 +1,4 @@
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
@@ -86,7 +87,9 @@ internal readonly record struct ParsedLibrary(
     bool AdaptiveImageQuality = false,
     // The automatic surround-layout conversion is on unless the request turns it off.
     bool NormalizeOpusChannelLayout = true,
-    bool AdaptiveSoundtrackQuality = false);
+    bool AdaptiveSoundtrackQuality = false,
+    bool SuperResolutionEnabled = false,
+    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -182,6 +185,19 @@ internal static class LibraryRequestParser
             error =
                 $"Unknown work placement: {request.WorkPlacement}. " +
                 $"Expected one of {string.Join(", ", Enum.GetNames<WorkPlacement>())}.";
+            return false;
+        }
+
+        // Omitted means the recommended check, which catches broken upscales without refusing the
+        // intended changes a fidelity gate would.
+        var superResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly;
+        if (!string.IsNullOrWhiteSpace(request.SuperResolutionQualityCheck)
+            && (!Enum.TryParse(request.SuperResolutionQualityCheck, ignoreCase: true, out superResolutionQualityCheck)
+                || !Enum.IsDefined(superResolutionQualityCheck)))
+        {
+            error =
+                $"Unknown super-resolution quality check: {request.SuperResolutionQualityCheck}. " +
+                $"Expected one of {string.Join(", ", Enum.GetNames<SuperResolutionQualityCheck>())}.";
             return false;
         }
 
@@ -628,7 +644,9 @@ internal static class LibraryRequestParser
             request.AdaptiveAudioQuality ?? false,
             request.AdaptiveImageQuality ?? false,
             request.NormalizeOpusChannelLayout ?? true,
-            request.AdaptiveSoundtrackQuality ?? false);
+            request.AdaptiveSoundtrackQuality ?? false,
+            request.SuperResolutionEnabled ?? false,
+            superResolutionQualityCheck);
         error = null;
         return true;
     }

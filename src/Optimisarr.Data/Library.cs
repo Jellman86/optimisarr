@@ -114,6 +114,19 @@ public sealed class Library
     public string? SkipSourceCodecs { get; set; }
 
     /// <summary>
+    /// When true, eligible video jobs in this library run through the Real-CUGAN super-resolution
+    /// pipeline before the usual verification and replacement gates. Off by default, and off on
+    /// upgrade, so no existing library's jobs change behaviour until an operator opts this
+    /// library in. The engine configuration itself is global (the <c>realcugan.*</c> settings);
+    /// this flag only decides which libraries route video through it.
+    /// </summary>
+    public bool SuperResolutionEnabled { get; set; }
+
+    /// <summary>How this library judges its upscaled results; see <see cref="Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck"/>.</summary>
+    public Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck SuperResolutionQualityCheck { get; set; }
+        = Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.BrokenFramesOnly;
+
+    /// <summary>
     /// Portable content tune for video re-encodes ("Animation" or "Grain"). Null (the default)
     /// leaves every encoder on its own tuning. Only the software x264/x265 encoders understand
     /// content tuning; other families receive nothing rather than an approximation.

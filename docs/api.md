@@ -211,6 +211,8 @@ exists in quarantine.
 | `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Schema 4 job history, immutable captured gates, current/archived reports, worker leases and sanitized numeric evidence. Manifest identifies omissions and distinguishes frozen snapshots from current registration. |
 | `POST` | `/api/workers/diagnostics` | Worker-credential-authenticated schema 1 batches, up to 100 records/128 KiB. Consent, scope and lease ownership are checked; instance/sequence replay is idempotent. Final upload receipts are accepted for 90 seconds after capture ends. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
+| `GET` | `/api/system/realcugan` | Static super-resolution engine check: resolved binary, the model files the configured combination loads, Vulkan loader, and the effective configuration with its problems. |
+| `POST` | `/api/system/realcugan/probe` | Real small-sample engine run through the configured device and models. Proves the runtime; returns the outcome and output tail. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
 
@@ -244,7 +246,7 @@ Health response:
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/settings` | Read global queue, hardware, and replacement settings. |
-| `PUT` | `/api/settings` | Save global settings. Body is the full settings object. |
+| `PUT` | `/api/settings` | Save global settings. Body is the full settings object; a `superResolution` section is validated against the engine's shipped model matrix and rejected with a specific error code when unsupported. |
 | `GET` | `/api/settings/cleanup` | Preview files and bytes currently eligible under the saved cleanup policy without changing anything. |
 | `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |

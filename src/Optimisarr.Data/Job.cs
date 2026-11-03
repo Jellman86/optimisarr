@@ -170,6 +170,12 @@ public sealed class Job
     /// <summary>The measurement model frozen when this execution was prepared, preserved across automatic retries.</summary>
     public string? VmafModel { get; set; }
 
+    /// <summary>
+    /// This job's candidate was upscaled by AI super-resolution. Such a result always waits for a
+    /// person to approve its replacement, whatever the library's automatic-replacement setting.
+    /// </summary>
+    public bool SuperResolutionApplied { get; set; }
+
     /// <summary>Number of automatic or operator-requested higher-quality retries.</summary>
     public int QualityRetryCount { get; set; }
 

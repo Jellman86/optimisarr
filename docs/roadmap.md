@@ -1331,6 +1331,29 @@ The release check closes that gap:
       changed-file, linked-file, cross-filesystem or concurrent encode/replace cases. Models
       run locally, with pinned tools, audited licences and explicit RAM/storage budgets.
 
+16. **Run AI super-resolution on workers (planned).** Experimental super-resolution (#465) runs
+    on the server only. On an Intel Arrow Lake integrated GPU, 2× from 1080p to 2160p measured
+    about 6 seconds per frame, so practical use needs a fast GPU. Workers often have one, for
+    example a desktop NVIDIA card.
+    - **Protocol:** a super-resolution assignment kind (protocol 15) carrying the frozen engine
+      options and expected upscaled size. Workers advertise the capability only after a real
+      sample run proves the engine, models and Vulkan device. Older workers never receive these
+      jobs, and a worker-only library waits rather than falling back silently.
+    - **Execution:** move the bounded batch pipeline (decode, engine batches, encode, attachment
+      checks, owned processes, pause-aware watchdog, per-attempt scratch) into the shared worker
+      core, so the Linux container and the Windows sidecar use the same tested code. The Linux
+      worker image bundles the engine as the server image does. The Windows installer ships the
+      pinned Windows release and its licences. The Mac sidecar needs a Swift implementation and
+      the macOS (MoltenVK) release; it follows once Windows and Linux are proven.
+    - **Safety:** unchanged. The server verifies every candidate and owns replacement and
+      quarantine. The size-saving gates stay off for upscaled candidates and every other gate
+      applies. Results are larger (4K candidates), so upload limits and scratch budgets are sized
+      for them.
+    - **Evidence to call it complete:** TDD coverage for the assignment, capability proof and
+      pipeline in the shared core; a physical run on an NVIDIA Windows worker and a Linux worker
+      with measured speed; cancellation, crash recovery and server-restart reconnection; and
+      mixed-version fleets. Additional models are tracked in #491.
+
 ## Guiding principles
 
 - Safety beats savings.
