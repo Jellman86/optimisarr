@@ -965,22 +965,30 @@ class Harness:
             "targetVideoCodec": None, "targetContainer": "mkv", "videoAudioCodec": "aac", "videoAudioBitrateKbps": 128,
             "vmafQualityGateEnabled": False, "requireSizeReduction": False, "soundtrackQualityGateEnabled": True,
             "maximumSoundtrackQualityDistance": 1, "adaptiveSoundtrackQuality": True})
+        work = self.root / "work" / str(case["mediaId"])
         deadline = time.monotonic() + min(self.timeout, 300)
         while True:
             job = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")[0]
-            if job["status"] == "Probing":
+            # Interrupt only once the selection has written samples into its own workspace, so the
+            # restart provably leaves scratch for recovery to reclaim.
+            interrupted = [w for w in work.glob(f".adaptive-quality-{case['jobId']}-*")
+                           if any(p.name != ".optimisarr-owner" for p in w.iterdir())] if work.is_dir() else []
+            if job["status"] == "Probing" and interrupted:
                 break
             # The job is Transcoding while it prepares, before selection starts; once its full
             # encode reports progress or it reaches verification, the selection was missed.
-            if job["status"] not in ("Queued", "Transcoding") or job["progress"] > 0:
+            if job["status"] not in ("Queued", "Transcoding", "Probing") or job["progress"] > 0 and job["status"] != "Probing":
                 raise Blocked(f"Soundtrack selection was not observed before the job became {job['status']}")
             require(time.monotonic() < deadline, "Soundtrack selection never started")
-            time.sleep(.1)
+            time.sleep(.05)
+        attempt = job["executionAttempt"]
         self.restart()
         recovered = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")
         require(len(recovered) == 1 and recovered[0]["id"] == case["jobId"] and recovered[0]["status"] != "Failed",
                 f"Restart lost, duplicated or failed the interrupted job: {recovered}")
         job = self.wait_job(case)
+        require(job["executionAttempt"] > attempt, "The job finished without a new attempt after the restart")
+        require(not any(w.exists() for w in interrupted), f"Interrupted workspace was not reclaimed: {interrupted}")
         save(self.report.root / name / "job.json", job)
         require(job["status"] == "ReadyToReplace", f"Recovered soundtrack job failed: {job['errorMessage']}")
         require(sha256(case["source"]) == case["sourceSha256"], "Interrupted selection changed the original")

@@ -18,6 +18,9 @@ internal sealed class StartupWorkRecovery(
         string? Output, long? OutputSize, Guid? Session, string? Source, string? Error, double Progress);
     private Dictionary<int, Snapshot>? _pending;
     private Dictionary<string, DateTime>? _orphans;
+    // Interrupted jobs' own sample workspaces still to reclaim, retried until removed or ineligible.
+    private readonly Dictionary<string, int> _workspaces = new(OperatingSystem.IsLinux()
+        ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
     private static readonly StringComparison PathComparison = OperatingSystem.IsLinux()
         ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
@@ -25,7 +28,7 @@ internal sealed class StartupWorkRecovery(
 
     public async Task<StartupRecoveryResult> RunAsync(CancellationToken token)
     {
-        if (_pending is { Count: 0 } && _orphans is { Count: 0 }) return new(true, false);
+        if (_pending is { Count: 0 } && _orphans is { Count: 0 } && _workspaces.Count == 0) return new(true, false);
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         await using var write = await db.BeginDiagnosticWriteAsync(token);
@@ -117,8 +120,29 @@ internal sealed class StartupWorkRecovery(
             handled.Add(id);
             changed = true;
             if (job.Type == JobType.Normal)
-                RemoveInterruptedWorkspaces(job.Id, WorkOutputRoot.ForMediaFile(workRoot, job.MediaFileId),
-                    directory => libraries.Concat(retainedPaths).Any(p => Overlaps(directory, p)));
+                foreach (var workspace in InterruptedWorkspaces(job.Id, WorkOutputRoot.ForMediaFile(workRoot, job.MediaFileId)))
+                    _workspaces.TryAdd(workspace, job.Id);
+        }
+
+        if (_workspaces.Count > 0)
+        {
+            // Anything another job, lease, source, replacement or library still refers to stays,
+            // including a delivered candidate this recovery kept for verification.
+            var uploads = await db.JobLeases.AsNoTracking().Where(l => l.ResultUploadPath != null)
+                .Select(l => l.ResultUploadPath!).ToListAsync(token);
+            var referenced = libraries.Concat(retainedPaths).Concat(uploads)
+                .Concat(jobs.Select(j => j.WorkOutputPath).OfType<string>()).ToArray();
+            foreach (var (workspace, jobId) in _workspaces.ToArray())
+            {
+                token.ThrowIfCancellationRequested();
+                // Ineligible or referenced folders are kept for good; only a failed removal retries.
+                if (!IsReclaimable(workspace, jobId) || referenced.Any(p => Overlaps(workspace, p)) || RemoveTree(workspace))
+                {
+                    if (!Directory.Exists(workspace))
+                        logger.LogInformation("Startup reclaimed interrupted scratch for job {JobId} at {Path}", jobId, workspace);
+                    _workspaces.Remove(workspace);
+                }
+            }
         }
 
         var retiredOrphans = new List<string>();
@@ -139,7 +163,7 @@ internal sealed class StartupWorkRecovery(
         await write.CommitAsync(token);
         foreach (var id in handled) _pending.Remove(id);
         foreach (var path in retiredOrphans) _orphans.Remove(path);
-        return new(_pending.Count == 0 && _orphans.Count == 0, changed);
+        return new(_pending.Count == 0 && _orphans.Count == 0 && _workspaces.Count == 0, changed);
     }
 
     private static bool IsStartupTarget(Job j) => j.Type is JobType.Preview or JobType.Calibration
@@ -195,27 +219,27 @@ internal sealed class StartupWorkRecovery(
     /// A server stopped mid-search leaves that attempt's sample workspace behind, and nothing else
     /// would ever reclaim it. Only this job's own workspaces qualify: the folder name carries the
     /// job and a nonce, its marker holds the same nonce, and it contains nothing but plain files.
-    /// Anything else is kept.
     /// </summary>
-    private void RemoveInterruptedWorkspaces(int jobId, string ownerRoot, Func<string, bool> isProtected)
+    private IEnumerable<string> InterruptedWorkspaces(int jobId, string ownerRoot) =>
+        Directory.Exists(ownerRoot) && AncestorsAreSafe(Path.Combine(ownerRoot, "workspace"))
+            ? OwnedWorkspaceCandidates(ownerRoot, jobId, depth: 0).Where(directory => IsReclaimable(directory, jobId)).ToArray()
+            : [];
+
+    private static bool IsReclaimable(string directory, int jobId)
     {
-        if (!Directory.Exists(ownerRoot) || !AncestorsAreSafe(Path.Combine(ownerRoot, "workspace"))) return;
-        foreach (var directory in OwnedWorkspaceCandidates(ownerRoot, jobId, depth: 0))
+        if (OwnedScratchNames.NonceFor(Path.GetFileName(directory), jobId) is not { } nonce) return false;
+        var marker = Path.Combine(directory, OwnedScratchNames.MarkerFileName);
+        try
         {
-            if (isProtected(directory)) continue;
-            var nonce = OwnedScratchNames.NonceFor(Path.GetFileName(directory), jobId)!;
-            var marker = Path.Combine(directory, OwnedScratchNames.MarkerFileName);
-            try
-            {
-                if (!File.Exists(marker) || (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0
-                    || File.ReadAllText(marker) != nonce) continue;
-                if (Directory.EnumerateDirectories(directory).Any()) continue;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                continue;
-            }
-            if (RemoveTree(directory)) logger.LogInformation("Startup reclaimed interrupted scratch for job {JobId} at {Path}", jobId, directory);
+            return Directory.Exists(directory)
+                && (File.GetAttributes(directory) & FileAttributes.ReparsePoint) == 0
+                && File.Exists(marker) && (File.GetAttributes(marker) & FileAttributes.ReparsePoint) == 0
+                && File.ReadAllText(marker) == nonce
+                && !Directory.EnumerateDirectories(directory).Any();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 
