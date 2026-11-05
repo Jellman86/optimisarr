@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Separate what is specific to the Real-CUGAN engine (executable, model catalogue and invocation) from the engine-neutral super-resolution decode, batching and reassembly (#491). This prepares for a second ncnn-vulkan engine. Settings, the API and every engine argument are unchanged; the probe's temporary folder is now named `optimisarr-super-resolution-probe`.
+- Process-lifetime tests share one reader for the process id a fake tool publishes, so none can read the id before it is fully written. CI failed once on this race (fixed for one test in #486); five more tests used the same unsafe read, and a macOS RAM-disk test now publishes its id atomically. Reaping assertions still require a valid id. Test-only change.
 
 - Super-resolution preserves the source's SDR colour conversion and relative picture timing, verifies copied audio as copied, refuses linked or reused scratch attempts, and only reserves another batch when more pictures remain. Custom engine/model paths must be absolute. Container planning uses the copied audio even when the library normally converts it to AAC or Opus, retaining Matroska fallbacks for incompatible audio and ALAC. Upscales wait for review even when move-on-complete or destination overwrite is configured.
 

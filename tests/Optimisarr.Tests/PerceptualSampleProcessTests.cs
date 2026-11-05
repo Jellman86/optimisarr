@@ -24,31 +24,6 @@ public sealed class PerceptualSampleProcessTests : IDisposable
         ? await new ImageQualityService(Tool).MeasureSampleAsync(Source, Source, new(32, 32, false), token, timeout)
         : await new LoudnessService(Tool).MeasureSampleAsync(Source, token, timeout);
 
-    private async Task<int> StartedAsync()
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (File.Exists(Pid) && int.TryParse(await File.ReadAllTextAsync(Pid), out var pid) && pid > 0)
-                return pid;
-            await Task.Delay(20);
-        }
-        Assert.Fail("The sample tool did not publish a complete process id before the deadline.");
-        return 0;
-    }
-
-    [Fact]
-    public async Task Process_start_waits_for_the_pid_contents_after_the_file_appears()
-    {
-        Directory.CreateDirectory(_root);
-        await File.WriteAllTextAsync(Pid, "");
-        var waiting = StartedAsync();
-        await Task.Delay(40);
-        Assert.False(waiting.IsCompleted);
-        await File.WriteAllTextAsync(Pid, "123");
-        Assert.Equal(123, await waiting.WaitAsync(TimeSpan.FromSeconds(5)));
-    }
-
     [PosixFact]
     public async Task Sample_auxiliary_cancellation_reaps_both_tools_before_returning()
     {
@@ -58,7 +33,7 @@ public sealed class PerceptualSampleProcessTests : IDisposable
             File.Delete(Pid);
             using var cancellation = new CancellationTokenSource();
             var run = Run(image, cancellation.Token, TimeSpan.FromSeconds(30));
-            var pid = await StartedAsync();
+            var pid = await TestPidFile.WaitAsync(Pid, TimeSpan.FromSeconds(10));
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(5)));
             AssertExited(pid);
@@ -74,7 +49,7 @@ public sealed class PerceptualSampleProcessTests : IDisposable
         {
             File.Delete(Pid);
             var run = Run(image, CancellationToken.None, TimeSpan.FromSeconds(2));
-            var pid = await StartedAsync();
+            var pid = await TestPidFile.WaitAsync(Pid, TimeSpan.FromSeconds(10));
             var result = await run.WaitAsync(TimeSpan.FromSeconds(8));
             Assert.True(result is LoudnessResult { Measured: false } or ImageQualityResult { Measured: false });
             AssertExited(pid);
