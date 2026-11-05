@@ -17,7 +17,7 @@ public sealed class DedupeJournalStore(IServiceScopeFactory scopes, FileOperatio
     public async Task<DedupePreparationResult> TryPrepareAsync(DedupePreparation plan, CancellationToken token)
     {
         plan = plan with { Files = plan.Files.ToArray() };
-        if (!DedupePreparationPolicy.IsValid(plan) || !ValidPaths(plan)) return DedupePreparationResult.Invalid;
+        if (!DedupePreparationPolicy.IsValid(plan) || !DedupePreparationPolicy.HasValidPaths(plan)) return DedupePreparationResult.Invalid;
         var keys = Keys(plan.Files);
         using var held = claims.TryAcquire(keys);
         if (held is null) return DedupePreparationResult.Conflict;
@@ -108,7 +108,7 @@ public sealed class DedupeJournalStore(IServiceScopeFactory scopes, FileOperatio
                 files.Select(f => new DedupeFileSnapshot(f.MediaFileId, f.LibraryId, f.Root, f.Path, f.QuarantinePath,
                     f.Identity, f.SizeBytes, f.ModifiedUtcTicks, f.Sha256, f.IsKeeper)).ToArray());
             if (action.Contract != DedupePreparationPolicy.Contract || action.Retention != DedupePreparationPolicy.Retention
-                || !DedupePreparationPolicy.IsValid(plan) || !ValidPaths(plan) || DedupePreparationPolicy.Signature(plan) != action.PlanHash)
+                || !DedupePreparationPolicy.IsValid(plan) || !DedupePreparationPolicy.HasValidPaths(plan) || DedupePreparationPolicy.Signature(plan) != action.PlanHash)
                 throw new InvalidOperationException("An unresolved dedupe journal has unsupported or inconsistent rollback evidence. File operations cannot start safely.");
             foreach (var key in Keys(plan.Files))
             {
@@ -134,29 +134,6 @@ public sealed class DedupeJournalStore(IServiceScopeFactory scopes, FileOperatio
         FileOperationClaims.SnapshotKeys(f.MediaFileId, f.Path, f.Identity).Concat(f.QuarantinePath is { } destination
             ? FileOperationClaims.SnapshotKeys(f.MediaFileId, destination, null) : []))
         .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-
-    private static bool ValidPaths(DedupePreparation plan)
-    {
-        try
-        {
-            var comparer = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-            var sources = plan.Files.Select(f => f.Path).ToHashSet(comparer);
-            var destinations = plan.Files.Where(f => !f.IsKeeper).Select(f => f.QuarantinePath!).ToArray();
-            return sources.Count == plan.Files.Count && destinations.Distinct(comparer).Count() == destinations.Length
-                && destinations.All(p => !sources.Contains(p)) && plan.Files.All(f =>
-                    Canonical(f.Root) && Canonical(f.Path) && Within(f.Root, f.Path)
-                    && (f.QuarantinePath is null || Canonical(f.QuarantinePath) && Within(f.Root, f.QuarantinePath)));
-        }
-        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { return false; }
-    }
-
-    private static bool Canonical(string path) => Path.IsPathFullyQualified(path) && Path.GetFullPath(path) == path;
-    private static bool Within(string root, string path)
-    {
-        var relative = Path.GetRelativePath(root, path);
-        return relative != "." && relative != ".." && !Path.IsPathRooted(relative)
-            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
-    }
 }
 
 /// <summary>Run before queue workers so unresolved reservations cannot be silently lost on restart.</summary>
