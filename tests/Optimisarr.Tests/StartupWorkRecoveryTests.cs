@@ -385,6 +385,39 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task An_interrupted_jobs_own_marked_workspaces_are_reclaimed_and_everything_else_is_kept()
+    {
+        var job = await AddJob("interrupted");
+        const string nonce = "0123456789abcdef0123456789abcdef";
+        string Workspace(string relative, string purpose, int jobId, string? marker = nonce, bool nested = false)
+        {
+            var directory = Path.Combine(WorkRoot, "1", relative, OwnedScratchNames.DirectoryName(purpose, jobId, nonce));
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "reference-0-0.wav"), "sample");
+            if (marker is not null) File.WriteAllText(Path.Combine(directory, OwnedScratchNames.MarkerFileName), marker);
+            if (nested) Directory.CreateDirectory(Path.Combine(directory, "unexpected"));
+            return directory;
+        }
+        var owned = Workspace("", "adaptive-quality", job.Id);
+        var ownedNested = Workspace(Path.Combine("Season 1"), "verification-reference", job.Id);
+        var otherJob = Workspace("other", "adaptive-quality", job.Id + 100);
+        var wrongMarker = Workspace("wrong", "adaptive-quality", job.Id, marker: "fedcba9876543210fedcba9876543210");
+        var unmarked = Workspace("unmarked", "adaptive-quality", job.Id, marker: null);
+        var withFolder = Workspace("folder", "adaptive-quality", job.Id, nested: true);
+
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+
+        Assert.Equal(JobStatus.Queued, (await ReadJob(job.Id)).Status);
+        Assert.False(Directory.Exists(owned));
+        Assert.False(Directory.Exists(ownedNested));
+        Assert.True(Directory.Exists(otherJob));
+        Assert.True(Directory.Exists(wrongMarker));
+        Assert.True(Directory.Exists(unmarked));
+        Assert.True(Directory.Exists(withFolder));
+        Assert.Equal("unchanged source", await File.ReadAllTextAsync(Path.Combine(_root, "library", "source-1.mkv")));
+    }
+
     private StartupWorkRecovery NewRecovery() => new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance, _ => false);
     private async Task<Job> AddJob(string kind)
     {

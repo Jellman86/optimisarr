@@ -39,7 +39,7 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
         IServiceScopeFactory scopes, FileOperationClaims claims, string workRoot, int jobId, int attempt,
         string parent, string purpose, ILogger logger, CancellationToken token)
     {
-        if (purpose is not ("adaptive-quality" or "verification-reference")) throw new ArgumentException("Unknown scratch purpose.", nameof(purpose));
+        if (!OwnedScratchNames.Purposes.Contains(purpose)) throw new ArgumentException("Unknown scratch purpose.", nameof(purpose));
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         await using var write = await db.BeginDiagnosticWriteAsync(token);
@@ -67,10 +67,10 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
         while (!Directory.Exists(existing)) existing = Path.GetDirectoryName(existing) ?? throw new FileCleanupDeferredException();
         if (!ExactDuplicateScanner.SafePath(workRoot, existing)) throw new FileCleanupDeferredException();
         var nonce = Guid.NewGuid().ToString("N");
-        var root = Path.Combine(parent, $".{purpose}-{jobId}-{nonce}");
+        var root = Path.Combine(parent, OwnedScratchNames.DirectoryName(purpose, jobId, nonce));
         if (File.Exists(root) || Directory.Exists(root)) throw new FileCleanupDeferredException();
         Directory.CreateDirectory(root);
-        var marker = Path.Combine(root, ".optimisarr-owner");
+        var marker = Path.Combine(root, OwnedScratchNames.MarkerFileName);
         using (var stream = new FileStream(marker, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         using (var writer = new StreamWriter(stream)) writer.Write(nonce);
         var generation = FileGeneration.Read(marker) ?? throw new FileCleanupDeferredException();

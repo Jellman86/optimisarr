@@ -116,6 +116,9 @@ internal sealed class StartupWorkRecovery(
             }
             handled.Add(id);
             changed = true;
+            if (job.Type == JobType.Normal)
+                RemoveInterruptedWorkspaces(job.Id, WorkOutputRoot.ForMediaFile(workRoot, job.MediaFileId),
+                    directory => libraries.Concat(retainedPaths).Any(p => Overlaps(directory, p)));
         }
 
         var retiredOrphans = new List<string>();
@@ -185,6 +188,49 @@ internal sealed class StartupWorkRecovery(
         {
             logger.LogWarning(ex, "Startup cleanup retained work for retry at {Path}", path);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// A server stopped mid-search leaves that attempt's sample workspace behind, and nothing else
+    /// would ever reclaim it. Only this job's own workspaces qualify: the folder name carries the
+    /// job and a nonce, its marker holds the same nonce, and it contains nothing but plain files.
+    /// Anything else is kept.
+    /// </summary>
+    private void RemoveInterruptedWorkspaces(int jobId, string ownerRoot, Func<string, bool> isProtected)
+    {
+        if (!Directory.Exists(ownerRoot) || !AncestorsAreSafe(Path.Combine(ownerRoot, "workspace"))) return;
+        foreach (var directory in OwnedWorkspaceCandidates(ownerRoot, jobId, depth: 0))
+        {
+            if (isProtected(directory)) continue;
+            var nonce = OwnedScratchNames.NonceFor(Path.GetFileName(directory), jobId)!;
+            var marker = Path.Combine(directory, OwnedScratchNames.MarkerFileName);
+            try
+            {
+                if (!File.Exists(marker) || (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0
+                    || File.ReadAllText(marker) != nonce) continue;
+                if (Directory.EnumerateDirectories(directory).Any()) continue;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+            if (RemoveTree(directory)) logger.LogInformation("Startup reclaimed interrupted scratch for job {JobId} at {Path}", jobId, directory);
+        }
+    }
+
+    private static IEnumerable<string> OwnedWorkspaceCandidates(string directory, int jobId, int depth)
+    {
+        // Work trees mirror library folders, so a bounded walk is enough; links are never followed.
+        if (depth > 16) yield break;
+        string[] children;
+        try { children = Directory.GetDirectories(directory); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { yield break; }
+        foreach (var child in children)
+        {
+            if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0) continue;
+            if (OwnedScratchNames.NonceFor(Path.GetFileName(child), jobId) is not null) yield return child;
+            else foreach (var nested in OwnedWorkspaceCandidates(child, jobId, depth + 1)) yield return nested;
         }
     }
 

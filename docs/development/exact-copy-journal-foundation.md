@@ -448,7 +448,12 @@ was relaxed. Windows workspace/process behavior remains unqualified by this deli
 
 These markers and captured metadata are bounded runtime cleanup evidence, **not** a
 complete durable action/recovery journal or proof against unmanaged external writers.
-Restart does not adopt a leftover marker as fresh action authority. Later startup and
+Restart does not adopt a leftover marker as fresh action authority. When startup recovery
+handles an interrupted normal job, it reclaims that job's own workspaces under its media work
+root: the folder name must carry the job id and a 32-hex nonce, the marker must hold the same
+nonce, and the folder may contain only plain files. Other jobs' workspaces, unmarked or
+mismatched folders, nested folders, links and anything overlapping a library or retained path
+are kept. Before this, every restart during a search left that attempt's samples behind. Later startup and
 panel cleanup still use their own existing reservation/reference fences. Remaining metric
 and source-window helpers, retained-tree ownership, exhaustive aliases, import/manager
 coordination, persistent execution lifetime and recorded completion moves still require
