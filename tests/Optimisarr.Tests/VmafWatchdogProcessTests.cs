@@ -122,10 +122,10 @@ public sealed class VmafWatchdogProcessTests : IDisposable
 
         try
         {
-            while (!File.Exists(Pid)) await Task.Delay(20, deadline.Token);
+            var pid = await TestPidFile.WaitAsync(Pid, TimeSpan.FromSeconds(20), deadline.Token);
             try
             {
-                using var child = Process.GetProcessById(int.Parse(File.ReadAllText(Pid)));
+                using var child = Process.GetProcessById(pid);
                 // Do not resume the caller to let the timeout handler reap its child.
                 await child.WaitForExitAsync(deadline.Token);
             }
@@ -216,7 +216,10 @@ public sealed class VmafWatchdogProcessTests : IDisposable
 
     private void AssertReaped()
     {
-        try { using var child = Process.GetProcessById(int.Parse(File.ReadAllText(Pid))); Assert.True(child.HasExited); }
+        Assert.True(File.Exists(Pid));
+        // An id that was never completed means the tool was stopped before it could finish writing it.
+        if (TestPidFile.TryRead(Pid) is not { } pid) return;
+        try { using var child = Process.GetProcessById(pid); Assert.True(child.HasExited); }
         catch (ArgumentException) { }
     }
 
@@ -259,9 +262,9 @@ public sealed class VmafWatchdogProcessTests : IDisposable
 
     public void Dispose()
     {
-        if (File.Exists(Pid))
+        if (TestPidFile.TryRead(Pid) is { } pid)
         {
-            try { using var child = Process.GetProcessById(int.Parse(File.ReadAllText(Pid))); if (!child.HasExited) { child.Kill(true); child.WaitForExit(5000); } }
+            try { using var child = Process.GetProcessById(pid); if (!child.HasExited) { child.Kill(true); child.WaitForExit(5000); } }
             catch (ArgumentException) { }
         }
         if (Directory.Exists(_root)) Directory.Delete(_root, true);

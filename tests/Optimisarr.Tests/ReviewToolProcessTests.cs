@@ -101,7 +101,7 @@ public sealed class ReviewToolProcessTests
                 Assert.Equal("ffmpeg version review", (await task).Version?.Trim());
             }
             else Assert.IsAssignableFrom<OperationCanceledException>(error);
-            try { child = Process.GetProcessById(int.Parse(File.ReadAllText(pidPath))); }
+            try { if (TestPidFile.TryRead(pidPath) is { } pid) child = Process.GetProcessById(pid); }
             catch (ArgumentException) { }
             if (!floodStderr) Assert.True(child is null || child.HasExited);
         }
