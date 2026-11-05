@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add direct tests for choosing soundtrack bitrates for worker jobs (#332): an unfinished choice offers nothing yet, a crashed search offers the library bitrate and searches again next time, a changed setting or source is chosen again, and scratch abandoned by a stopped server is cleared once. The parity checkpoint now records that worker soundtrack selection shipped in 0.2.25.
 - Process-lifetime tests share one reader for the process id a fake tool publishes, so none can read the id before it is fully written. CI failed once on this race (fixed for one test in #486); five more tests used the same unsafe read, and a macOS RAM-disk test now publishes its id atomically. Reaping assertions still require a valid id. Test-only change.
 
 - Super-resolution preserves the source's SDR colour conversion and relative picture timing, verifies copied audio as copied, refuses linked or reused scratch attempts, and only reserves another batch when more pictures remain. Custom engine/model paths must be absolute. Container planning uses the copied audio even when the library normally converts it to AAC or Opus, retaining Matroska fallbacks for incompatible audio and ALAC. Upscales wait for review even when move-on-complete or destination overwrite is configured.
