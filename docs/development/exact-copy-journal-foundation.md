@@ -480,9 +480,11 @@ there; it is out of scope because the server ships as a Linux container.
    cleanup of unowned disposable trees still needs qualified ownership. Cover aliases of parent
    directories for absent destinations. Capture every physical alias and all affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
-2. Gather the fresh observations the preflight rule above judges (scope/generations,
-   permissions, link counts, volume identity and full reads of all selected keepers and copies)
-   and call the rule before any move.
+2. `DedupeFileObserver` gathers the fresh observations the preflight rule judges (link counts,
+   identity, volume, write access, full reads and standalone-file classification) and only reads.
+   Disc structures are refused by folder and extension; a sidecar beside a copy is left in place
+   and restored paths are unaffected. Scope and generation checks, and calling the rule before
+   any move, come with the mover.
    Block connected-manager paths, unknown/read-only storage and unsupported bundles. Qualify
    Windows identity and link probing before enabling Windows actions.
 3. Record per-file move/restore intent and progress before implementing a no-overwrite atomic
