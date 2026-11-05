@@ -319,3 +319,21 @@ test('a worker preview plays its bounded reference instead of seeking into the f
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(page.locator('video').first()).toHaveAttribute('src', '/api/preview/41/reference')
 })
+
+test('a preview lists each quality search it left out, in words', async ({ page }) => {
+  await mockPreview(page, { ...completedPreview, skippedQualitySearches: ['SoundtrackBitrates', 'VideoQuality', 'Unrecognised'] })
+  await page.goto('/#/inventory')
+  await page.getByText('Example Film.mkv', { exact: true }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+
+  const notes = page.getByTestId('preview-skipped-searches').locator('p')
+  await expect(notes).toHaveText([
+    "This preview kept the library's soundtrack bitrate. Real jobs first choose the smallest bitrate for each soundtrack that meets your limit.",
+    "This preview ran on a worker at the library's saved video quality. Real jobs first search for the per-title quality that meets your VMAF target.",
+  ])
+})
+
+test('a preview that left out no quality search shows no note', async ({ page }) => {
+  await openCompletedPreview(page)
+  await expect(page.getByTestId('preview-skipped-searches')).toHaveCount(0)
+})
