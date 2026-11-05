@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record the closing checkpoint for audio and image quality-first parity (#332): what shipped, and the limits that stay, such as no calibrated universal target and no assessment of surround kept without a downmix. Exact-copy cleanup (#397) becomes the active priority.
+
 - Reclaim the sample workspace of a search interrupted by a server restart (#332). An adaptive-quality, soundtrack or verification-reference search stopped by a restart or redeploy left its samples in the work folder forever; startup recovery now removes that job's own marked workspaces when it requeues the job, and keeps anything it cannot prove is that job's. A new container acceptance case restarts the server during soundtrack selection and proves the job is requeued, selects again, leaves no scratch, and replaces and rolls back with the original unchanged.
 - Duplicate-scan tests wait for background scans against a shared 60-second wall-clock deadline instead of fixed poll counts. One ran out after 250 polls on a loaded Windows runner; the cancellation wait allowed two seconds although the coordinator may take ten to flush its checkpoint (test-only).
 - Separate what is specific to the Real-CUGAN engine (executable, model catalogue and invocation) from the engine-neutral super-resolution decode, batching and reassembly (#491). This prepares for a second ncnn-vulkan engine. Settings, the API and every engine argument are unchanged; the probe's temporary folder is now named `optimisarr-super-resolution-probe`.

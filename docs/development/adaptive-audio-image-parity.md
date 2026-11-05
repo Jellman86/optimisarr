@@ -4,14 +4,18 @@ Operator priority: **13 October 2026**. Finish quality-first workflows for audio
 images before continuing perceptual dedupe or activating exact-copy file actions.
 Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
-## Active checkpoint, 28 October 2026
+## Closing checkpoint, 5 November 2026
 
-Soundtrack delivery status below was reconciled against current dev on **5 November 2026**.
+[#332](https://github.com/Jellman86/optimisarr/issues/332) is complete for the supported domain and
+closed. What follows records what shipped and the limits that stay. The workflows remain
+experimental and opt-in. Later sections, including the "required before parity" column of the table
+below, are the original completion contract and describe the plan as it stood; where they disagree
+with this checkpoint, this checkpoint is current.
 
 Experimental standalone audio/image quality-first workflows shipped in
 [0.2.24](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.24).
-#415 merged, protocol 11 is enabled for compatible workers, and #332 remains open
-for the parity obligations below. No target is calibrated as a universal default.
+#415 merged and protocol 11 is enabled for compatible workers. No target is calibrated as a
+universal default.
 
 The [published qualification record](https://github.com/Jellman86/optimisarr/releases/download/v0.2.24/Optimisarr-0.2.24-qualification.json)
 binds the exact tag to downloadable packages and hashes. Windows/NVIDIA,
@@ -36,12 +40,27 @@ receives fixed per-track rates and its own soundtrack gate measures the file it 
 0.2.25 qualification record covers the soundtrack cases on the Mac and Windows release workers.
 Surround kept without a downmix stays unassessable and is a recorded limit, not open work.
 
-Current remaining work is:
+On dev since 0.2.25: previews state which quality searches they left out, and startup recovery
+reclaims the sample workspace of a search interrupted by a restart. A container acceptance case
+restarts the server during soundtrack selection and proves the job is requeued, selects again, leaves
+no scratch, and replaces and rolls back with the original unchanged.
 
-- Preview/calibration/target guidance and broader source, retry, interrupted-attempt
-  history and export parity.
-- Wider exact-package restart/reconnect/resource-exhaustion acceptance, with
-  reboot/remount and physical Linux ARM64 coverage kept explicitly unqualified.
+Recorded limits, not open work:
+
+- **Targets:** no audio or image target is a calibrated universal default. Choosing one needs human
+  listening and viewing, so the operator sets it explicitly.
+- **Surround:** surround kept without a stereo downmix is unassessable, and an enabled gate blocks
+  replacement.
+- **Previews and calibration:** they keep their fixed settings and do not run the audio, image or
+  soundtrack searches. Previews say so.
+- **Soundtrack search location:** the search runs on the server. Workers receive fixed per-track
+  rates and measure their own output; they do not search.
+- **History and export:** interrupted-attempt search history and export are not retained beyond
+  what the attempt history and verification report already hold.
+- **Restart coverage:** a local restart during soundtrack selection is covered in the container
+  acceptance suite. Other search types share the same recovery but have no case of their own.
+- **Unqualified hosts and events:** power loss, reboot and remount, physical Linux ARM64, and other
+  hardware and source combinations beyond the selected release matrix.
 
 The [#441 UI acceptance follow-up](../reviews/2026-10-28-personal-quality-check-acceptance.md)
 records keyboard/focus and recovery fixes, automated accessibility checks, enlarged
@@ -60,10 +79,8 @@ tracks are excluded. The server performs bounded sample searches before a local 
 applies the selected rates to their exact output tracks. Selection cannot approve the finished file:
 every configured final gate still applies.
 
-Continue qualification of mixed retained/removed/copied tracks, identity/timing mismatches,
-unavailable evidence, retries, cancellation and reconnect. Original preservation and exact rollback
-remain acceptance criteria on each supported execution host. This delivery does not complete full
-#332 parity or wider hardware/lifetime acceptance.
+Original preservation and exact rollback remain acceptance criteria on each supported execution
+host, and later changes to these workflows requalify against them.
 
 ## Historical checkpoint, 20 October 2026
 

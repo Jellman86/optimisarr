@@ -48,15 +48,13 @@ and zoom-equivalent layouts, and refreshed screenshots in `dev`. Subsequent
 Mac work capacity (#460); those are not part of 0.2.24. The reporter-specific
 alignment and zero-capacity investigations remain separate from those fixes.
 
-**Active feature priority remains [#332](https://github.com/Jellman86/optimisarr/issues/332).**
-Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
-encodes, including supported stereo-downmix references. The search runs on the server; the final
-candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
-retry/reconnect, history/export and package-lifetime qualification remain open.
-The [current parity
-checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-28-october-2026) separates
-delivered work from remaining acceptance. Complete those obligations before perceptual dedupe or
-exact-copy file actions.
+**[#332](https://github.com/Jellman86/optimisarr/issues/332) is closed, so the active feature
+priority moves to exact-copy cleanup in [#397](https://github.com/Jellman86/optimisarr/issues/397).**
+Opt-in per-soundtrack bitrate selection for local and compatible worker video encodes shipped in
+0.2.25, including supported stereo-downmix references. The search runs on the server; the final
+candidate still passes the configured soundtrack gate. The [closing parity
+checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026) records
+what shipped and the limits that stay.
 
 **The 21 October operator decision still applies:** crash and restart recovery is
 the home-lab worker qualification bar. Power-loss durability is a recorded limit,
@@ -1293,14 +1291,12 @@ The release check closes that gap:
     shared replacement/rollback claims; it enables no file action. D3b fencing since then —
     most recently owned verification scratch in
     [#414](https://github.com/Jellman86/optimisarr/pull/414) (merged 2026-10-18) — hardens
-    cleanup ownership without enabling any file action, and further D3 work stays deferred
-    behind #332. The
+    cleanup ownership without enabling any file action. #332 has closed, so D3 work is active
+    again. The
     [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
     separate this groundwork from qualified quarantine and restore. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
-    Further dedupe implementation is paused behind audio/image parity in #332/#415, following
-    the operator's 13 October priority and 14 October pause. Existing read-only review and
-    qualified ownership foundations remain available; no cleanup action is enabled by this work.
+    The preflight rule and read-only file observer are in place; no cleanup action is enabled yet.
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.
