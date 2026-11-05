@@ -495,7 +495,7 @@ let settings = $state<Settings>({
     encoderMode: 'Auto',
     hardwareDecode: true,
     hdrToneMapMode: 'Software',
-    replacementAllowCrossFilesystem: false,
+    replacementAllowCrossFilesystem: true,
     dryRunMode: false,
     remoteWorkersEnabled: false,
     workerVerificationRequired: true,

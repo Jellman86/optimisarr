@@ -56,6 +56,14 @@ candidate still passes the configured soundtrack gate. The [closing parity
 checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026) records
 what shipped and the limits that stay.
 
+**Recorded default, 5 November 2026:** verified cross-filesystem replacement is allowed by default,
+by operator decision for a home-lab application. Separate bind mounts are a normal Docker layout,
+and refusing them would stop replacement on those installs without protecting anything: the copy is
+proved identical by SHA-256 before the source is deleted, and the quarantined original and installed
+file are hashed again afterwards. The cost is time and room for a temporary second copy. Turning the
+setting off now refuses such replacements; before this release the check could not detect these mounts
+and never fired, so existing saved values are migrated to on, which is what those installs were doing.
+
 **The 21 October operator decision still applies:** crash and restart recovery is
 the home-lab worker qualification bar. Power-loss durability is a recorded limit,
 not a release gate. The unused durable .NET journal was archived in #434; do not

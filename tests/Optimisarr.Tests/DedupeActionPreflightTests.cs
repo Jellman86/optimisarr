@@ -23,7 +23,7 @@ public sealed class DedupeActionPreflightTests
     private static DedupeFileObservation Observed(int id) => new(id, Exists: true, IsLink: false, HardLinkCount: 1,
         Identity: id == Keeper ? "dev1:100" : "dev1:200", SizeBytes: 4096, ModifiedUtcTicks: 638_000_000_000_000_000,
         FreshSha256: Hash, VolumeId: "dev1", ParentWritable: true, QuarantineDestinationExists: false, QuarantineVolumeId: "dev1",
-        IsIndependentFile: true);
+        QuarantinePathSafe: true, IsIndependentFile: true);
 
     private static DedupePreflightResult Evaluate(DedupeFileObservation? keeper = null, DedupeFileObservation? copy = null,
         DedupeActionContext? context = null) =>
@@ -140,8 +140,12 @@ public sealed class DedupeActionPreflightTests
     public void A_keeper_is_never_judged_on_move_conditions_because_it_never_moves() =>
         Assert.True(Evaluate(keeper: Observed(Keeper) with
         {
-            ParentWritable = false, QuarantineDestinationExists = true, QuarantineVolumeId = "dev2",
+            ParentWritable = false, QuarantineDestinationExists = true, QuarantineVolumeId = "dev2", QuarantinePathSafe = false,
         }).Allowed);
+
+    [Fact]
+    public void A_copy_whose_destination_path_is_redirected_or_obstructed_is_refused() =>
+        AssertRefused(Evaluate(copy: Observed(Copy) with { QuarantinePathSafe = false }), Copy, DedupePreflightRefusal.UnsafeDestination);
 
     [Fact]
     public void An_occupied_quarantine_destination_is_never_overwritten() =>
