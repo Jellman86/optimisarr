@@ -37,7 +37,8 @@ public sealed class ExactDuplicateCoordinatorTests
             Assert.Equal((2, 600_000L), (queued.Total, queued.TotalBytes));
             Assert.False(await service.TryStartAsync(2, root, input, false, default));
             Assert.False(service.Cancel(2)); Assert.True(service.Cancel(1));
-            for (var i = 0; i < 100 && (await service.ReadAsync(1, 0, default)).Status is "Queued" or "Running"; i++) await Task.Delay(20);
+            // Cancellation may take up to the coordinator's ten-second checkpoint flush.
+            await TestWait.UntilAsync(async () => (await service.ReadAsync(1, 0, default)).Status is not ("Queued" or "Running"));
             Assert.Equal("Cancelled", (await service.ReadAsync(1, 0, default)).Status);
             Assert.Null((await service.ReadAsync(1, 0, default)).Result);
             Assert.Equal("NotStarted", (await service.ReadAsync(2, 0, default)).Status);
