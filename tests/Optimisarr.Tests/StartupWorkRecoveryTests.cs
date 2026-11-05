@@ -451,7 +451,8 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
         File.WriteAllText(Path.Combine(workspace, "reference-0-0.wav"), "sample");
         var busy = true;
         _recovery = new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance,
-            directory => busy && string.Equals(directory, workspace, StringComparison.Ordinal));
+            // Matched by the unique folder name: Windows may spell the temp root differently.
+            directory => busy && Path.GetFileName(directory) == Path.GetFileName(workspace));
 
         Assert.False((await _recovery.RunAsync(default)).Complete);
         Assert.Equal(JobStatus.Queued, (await ReadJob(job.Id)).Status);
@@ -476,7 +477,9 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
         File.WriteAllText(Path.Combine(workspace, "reference-0-0.wav"), "sample");
         var busy = true;
         _recovery = new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance,
-            directory => busy && string.Equals(directory, mediaRoot, StringComparison.Ordinal));
+            // Matched by name under the work root: Windows may spell the temp root differently.
+            directory => busy && Path.GetFileName(directory) == "1"
+                && Path.GetFileName(Path.GetDirectoryName(directory)) == Path.GetFileName(WorkRoot));
 
         Assert.False((await _recovery.RunAsync(default)).Complete);
         Assert.Equal(JobStatus.Queued, (await ReadJob(job.Id)).Status);
