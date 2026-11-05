@@ -174,13 +174,16 @@ public sealed class CrossLibraryExactDuplicateTests : IAsyncLifetime
         try
         {
             Assert.True(await service.TryStartAsync(1, Path.Combine(_root, "1"), inputs, false, default, selected));
-            for (var i = 0; i < 250; i++)
+            // A wall-clock deadline, not an iteration count: each status read takes far longer than
+            // the 20 ms pause on a slow Windows runner, which made 250 reads time out there.
+            var deadline = DateTime.UtcNow.AddSeconds(60);
+            while (DateTime.UtcNow < deadline)
             {
                 var status = await service.ReadAsync(1, 0, default);
                 if (status.Status is not ("Running" or "Queued")) return status;
                 await Task.Delay(20);
             }
-            throw new TimeoutException();
+            throw new TimeoutException("The duplicate scan did not finish within 60 seconds.");
         }
         finally { await service.StopAsync(default); }
     }
