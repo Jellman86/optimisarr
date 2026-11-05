@@ -463,6 +463,30 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
         Assert.False(Directory.Exists(workspace));
     }
 
+    [Fact]
+    public async Task A_workspace_under_a_busy_media_folder_is_reclaimed_once_the_folder_is_released()
+    {
+        var job = await AddJob("interrupted");
+        await InDb(async db => { (await db.Jobs.SingleAsync(j => j.Id == job.Id)).WorkOutputPath = null; await db.SaveChangesAsync(); });
+        const string nonce = "0123456789abcdef0123456789abcdef";
+        var mediaRoot = Path.Combine(WorkRoot, "1");
+        var workspace = Path.Combine(mediaRoot, OwnedScratchNames.DirectoryName("adaptive-quality", job.Id, nonce));
+        Directory.CreateDirectory(workspace);
+        File.WriteAllText(Path.Combine(workspace, OwnedScratchNames.MarkerFileName), nonce);
+        File.WriteAllText(Path.Combine(workspace, "reference-0-0.wav"), "sample");
+        var busy = true;
+        _recovery = new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance,
+            directory => busy && string.Equals(directory, mediaRoot, StringComparison.Ordinal));
+
+        Assert.False((await _recovery.RunAsync(default)).Complete);
+        Assert.Equal(JobStatus.Queued, (await ReadJob(job.Id)).Status);
+        Assert.True(Directory.Exists(workspace));
+
+        busy = false;
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+        Assert.False(Directory.Exists(workspace));
+    }
+
     private StartupWorkRecovery NewRecovery() => new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance, _ => false);
     private async Task<Job> AddJob(string kind)
     {

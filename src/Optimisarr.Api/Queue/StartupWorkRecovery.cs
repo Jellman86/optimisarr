@@ -221,7 +221,9 @@ internal sealed class StartupWorkRecovery(
     /// job and a nonce, its marker holds the same nonce, and it contains nothing but plain files.
     /// </summary>
     private IEnumerable<string> InterruptedWorkspaces(int jobId, string ownerRoot) =>
-        Directory.Exists(ownerRoot) && AncestorsAreSafe(Path.Combine(ownerRoot, "workspace"))
+        // A linked ancestor disqualifies for good; a busy one only defers removal, which
+        // RemoveTree rechecks on every pass, so the workspace is recorded either way.
+        Directory.Exists(ownerRoot) && AncestorsAreLinkFree(Path.Combine(ownerRoot, "workspace"))
             ? OwnedWorkspaceCandidates(ownerRoot, jobId, depth: 0).Where(directory => IsReclaimable(directory, jobId)).ToArray()
             : [];
 
@@ -256,6 +258,16 @@ internal sealed class StartupWorkRecovery(
             if (OwnedScratchNames.NonceFor(Path.GetFileName(child), jobId) is not null) yield return child;
             else foreach (var nested in OwnedWorkspaceCandidates(child, jobId, depth + 1)) yield return nested;
         }
+    }
+
+    private bool AncestorsAreLinkFree(string path)
+    {
+        for (var parent = Path.GetDirectoryName(Path.GetFullPath(path)); parent is not null
+            && Contains(workRoot, parent); parent = Path.GetDirectoryName(parent))
+        {
+            if (Directory.Exists(parent) && (File.GetAttributes(parent) & FileAttributes.ReparsePoint) != 0) return false;
+        }
+        return true;
     }
 
     private bool AncestorsAreSafe(string path)
