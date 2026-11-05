@@ -804,6 +804,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("RetryReason")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SkippedQualitySearches")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SoundtrackSearchJson")
                         .HasMaxLength(1048576)
                         .HasColumnType("TEXT");

@@ -542,6 +542,7 @@ internal static class WorkerLeaseEndpoints
                         job.VerificationReportJson = null;
                         job.PerceptualSearchJson = null;
                         job.SoundtrackSearchJson = assignment.SoundtrackSearchJson;
+                        job.SkippedQualitySearches = assignment.SkippedQualitySearches;
                         job.AdaptiveAudioBitrateKbps = null;
                         job.AdaptiveImageQuality = null;
                         job.VerifiedAt = null;
