@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Duplicate-scan tests wait for background scans against a shared 60-second wall-clock deadline instead of fixed poll counts. One ran out after 250 polls on a loaded Windows runner; the cancellation wait allowed two seconds although the coordinator may take ten to flush its checkpoint (test-only).
+- Add the rule that will gate exact-copy cleanup (#397). Before any copy moves to quarantine it must still be exactly what was reviewed, read in full now, not linked or in use, and movable by a same-filesystem rename that overwrites nothing; libraries connected to a media manager and unqualified storage are refused. The rule is tested on its own and nothing calls it yet; cleanup actions stay disabled.
 - Add direct tests for choosing soundtrack bitrates for worker jobs (#332): an unfinished choice offers nothing yet, a crashed search offers the library bitrate and searches again next time, a changed setting or source is chosen again, and scratch abandoned by a stopped server is cleared once. The parity checkpoint now records that worker soundtrack selection shipped in 0.2.25.
 - Process-lifetime tests share one reader for the process id a fake tool publishes, so none can read the id before it is fully written. CI failed once on this race (fixed for one test in #486); five more tests used the same unsafe read, and a macOS RAM-disk test now publishes its id atomically. Reaping assertions still require a valid id. Test-only change.
 
