@@ -2421,7 +2421,7 @@ public sealed partial class QueueDispatcher(
                     work.BypassSizePreflight);
                 if (sizeReview.ShouldReject)
                 {
-                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
+                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, work.VideoEncoder, sizeReview, cancellationToken);
                     return null;
                 }
 
@@ -2703,7 +2703,7 @@ public sealed partial class QueueDispatcher(
     }
 
     internal async Task RejectPredictedSizeAsync(
-        int jobId, int selectedQuality, SizePreflightAssessment forecast, CancellationToken cancellationToken)
+        int jobId, int selectedQuality, string? encoder, SizePreflightAssessment forecast, CancellationToken cancellationToken)
     {
         await _dbLock.WaitAsync(cancellationToken);
         try
@@ -2713,7 +2713,7 @@ public sealed partial class QueueDispatcher(
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
             if (job is null || job.Status != JobStatus.Probing) return;
-            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow);
+            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow, rejectedOn: encoder);
             await ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

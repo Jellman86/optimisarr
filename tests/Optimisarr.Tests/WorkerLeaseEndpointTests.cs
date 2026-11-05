@@ -1586,7 +1586,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             failed.Status = JobStatus.Cancelled;
             await db.SaveChangesAsync();
         }
-        await dispatcher.RejectPredictedSizeAsync(jobId, 22, new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
+        await dispatcher.RejectPredictedSizeAsync(jobId, 22, "libx265", new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
         using var last = _api.Services.CreateScope();
         Assert.Equal(JobStatus.Cancelled, (await last.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId)).Status);
     }
@@ -1736,13 +1736,49 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    [Fact]
-    public void A_size_rejection_records_its_quality_with_the_encoder_and_retry_that_rejected_it()
+    [Theory]
+    [InlineData(23)]
+    [InlineData(20)]
+    public void A_size_rejection_records_its_quality_with_the_encoder_and_retry_that_rejected_it(int rejected)
     {
-        var job = new Job { VideoEncoder = "hevc_nvenc", QualityRetryCount = 1 };
+        // Even when the number matches the stored one, a different encoder and retry produced it.
+        var job = new Job();
         job.RecordAdaptiveVideoQuality(20, "hevc_videotoolbox");
-        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, 23, "Size saving prediction: too large.", DateTimeOffset.UtcNow);
-        Assert.Equal((23, "hevc_nvenc", 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+        job.QualityRetryCount = 1;
+        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, rejected, "Size saving prediction: too large.", DateTimeOffset.UtcNow, rejectedOn: "hevc_qsv");
+        Assert.Equal((rejected, "hevc_qsv", 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+    }
+
+    [Fact]
+    public void Converting_an_older_held_review_keeps_its_recorded_provenance()
+    {
+        var job = new Job();
+        job.RecordAdaptiveVideoQuality(20, "hevc_videotoolbox");
+        job.QualityRetryCount = 1;
+        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, job.AdaptiveVideoQuality, "held", DateTimeOffset.UtcNow);
+        Assert.Equal((20, "hevc_videotoolbox", 0), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+    }
+
+    [Fact]
+    public async Task A_local_size_rejection_records_the_encoder_whose_samples_rejected_it()
+    {
+        var jobId = await QueueAJob();
+        var dispatcher = _api.Services.GetRequiredService<Optimisarr.Api.Queue.QueueDispatcher>();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Probing;
+            job.VideoEncoder = null;
+            await db.SaveChangesAsync();
+        }
+
+        await dispatcher.RejectPredictedSizeAsync(jobId, 22, "hevc_qsv", new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
+
+        using var check = _api.Services.CreateScope();
+        var rejected = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Failed, rejected.Status);
+        Assert.Equal((22, "hevc_qsv"), (rejected.AdaptiveVideoQuality!.Value, rejected.AdaptiveVideoQualityEncoder));
     }
 
     [Fact]
