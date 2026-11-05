@@ -11,7 +11,7 @@ using Optimisarr.Data;
 namespace Optimisarr.Data.Migrations
 {
     [DbContext(typeof(OptimisarrDbContext))]
-    [Migration("20261105151025_ScopeAdaptiveVideoQualityToEncoder")]
+    [Migration("20261105175622_ScopeAdaptiveVideoQualityToEncoder")]
     partial class ScopeAdaptiveVideoQualityToEncoder
     {
         /// <inheritdoc />
@@ -805,6 +805,10 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("RetryReason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SkippedQualitySearches")
+                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("SoundtrackSearchJson")
