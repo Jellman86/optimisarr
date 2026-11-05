@@ -1077,8 +1077,8 @@ public sealed partial class QueueDispatcher(
             if (preparedWork.IsDisposable && !preparedWork.IsCalibration)
             {
                 // A local preview runs the per-title video search itself; the others never run here.
-                var skipped = SkippedPreviewSearches(preparedWork, adaptiveVideo: !superResolutionPlanned
-                    && preparedWork.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf, videoSearchRuns: true);
+                var skipped = SkippedPreviewSearches(preparedWork,
+                    adaptiveVideo: preparedWork.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf, videoSearchRuns: true);
                 await WithJobAsync(jobId, job => job.SkippedQualitySearches = skipped, cancellationToken);
             }
             if (!superResolutionPlanned && ShouldSelectAdaptiveQuality(
@@ -1359,7 +1359,8 @@ public sealed partial class QueueDispatcher(
 
     private static SkippedQualitySearch SkippedPreviewSearches(JobWork work, bool adaptiveVideo, bool videoSearchRuns) =>
         PreviewQualitySearch.Skipped(work.Spec.Kind, work.AdaptiveAudioQuality, work.AdaptiveImageQuality,
-            work.AdaptiveSoundtrackQuality, work.Spec.AudioEncoder is not null && !work.Spec.VideoOnly, adaptiveVideo, videoSearchRuns);
+            work.AdaptiveSoundtrackQuality, work.Spec.AudioEncoder is not null && !work.Spec.VideoOnly, adaptiveVideo, videoSearchRuns,
+            work.RealJobUpscales);
 
     internal static bool ShouldSelectAdaptiveQuality(
         VideoQualityStrategy strategy,
@@ -1421,7 +1422,9 @@ public sealed partial class QueueDispatcher(
         int PerceptualRetryCount = 0,
         string? SourcePixelFormat = null,
         PreparedWorkerSample? WorkerSample = null,
-        SuperResolutionChoice? SuperResolution = null)
+        SuperResolutionChoice? SuperResolution = null,
+        // A preview never upscales, but must not describe searches the real, upscaled job skips.
+        bool RealJobUpscales = false)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -1755,6 +1758,13 @@ public sealed partial class QueueDispatcher(
                 superResolution = new SuperResolutionChoice(engine, library.SuperResolutionQualityCheck);
         }
         rules = SuperResolutionRules(rules, superResolution is not null);
+        var realJobUpscales = superResolution is not null;
+        if (isDisposable && rules.TargetVideoCodec is not null && media.MediaKind == MediaKind.Video
+            && library?.SuperResolutionEnabled == true)
+        {
+            var engine = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            realJobUpscales = SuperResolutionRouting.Applies(engine.Enabled, true, media.MediaKind, replaceBound: true);
+        }
 
         // Language-based removal is destructive, so the inventory cache is never the authority at
         // dispatch time. Fresh-probe every source governed by either language rule and fail before
@@ -2303,7 +2313,8 @@ public sealed partial class QueueDispatcher(
             AdaptiveSoundtrackQuality: library?.AdaptiveSoundtrackQuality ?? false,
             PerceptualRetryCount: job.QualityRetryCount,
             SourcePixelFormat: media.PixelFormat,
-            SuperResolution: superResolution);
+            SuperResolution: superResolution,
+            RealJobUpscales: realJobUpscales);
     }
 
     /// <summary>
@@ -3372,6 +3383,7 @@ public sealed partial class QueueDispatcher(
     internal static void PrepareForAttempt(Job job, DateTimeOffset nowUtc)
     {
         job.Status = JobStatus.Transcoding;
+        job.SkippedQualitySearches = null;
         job.Attempt += 1;
         job.ExecutionAttempt += 1;
         job.AdaptiveAudioBitrateKbps = null;

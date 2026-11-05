@@ -33,6 +33,20 @@ public sealed class PreviewQualitySearchTests
     }
 
     [Fact]
+    public void A_preview_of_a_file_real_jobs_would_upscale_reports_no_video_search() =>
+        Assert.Equal(SkippedQualitySearch.None,
+            PreviewQualitySearch.Skipped(MediaKind.Video, false, false, adaptiveSoundtrack: true, soundtrackReencoded: true,
+                adaptiveVideo: true, videoSearchRuns: false, realJobUpscales: true));
+
+    [Fact]
+    public void A_new_attempt_starts_without_the_previous_attempts_notes()
+    {
+        var job = new Optimisarr.Data.Job { SkippedQualitySearches = SkippedQualitySearch.VideoQuality };
+        Optimisarr.Api.Queue.QueueDispatcher.PrepareForAttempt(job, DateTimeOffset.UtcNow);
+        Assert.Null(job.SkippedQualitySearches);
+    }
+
+    [Fact]
     public void Unknown_media_never_reports_a_skipped_search() =>
         Assert.Equal(SkippedQualitySearch.None, Skipped(MediaKind.Unknown, true, true, true, true, true, false));
 
