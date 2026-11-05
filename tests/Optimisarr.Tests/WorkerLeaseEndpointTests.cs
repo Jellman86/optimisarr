@@ -87,6 +87,31 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private Task<HttpClient> PairCapableWorker(string name, int concurrency = 1) =>
         PairWorkerWithEncoders(name, concurrency, "libx265");
 
+    [Fact]
+    public async Task A_worker_preview_records_that_it_left_out_the_per_title_video_search()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Preview search");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.FindAsync(id);
+            job!.Type = JobType.Preview;
+            job.RequestedVideoQuality = 24;
+            job.CalibrationClipSeconds = 12;
+            job.CalibrationClipStartSeconds = 24;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await ClaimWhenReady(worker);
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.FindAsync(id);
+        Assert.Equal(SkippedQualitySearch.VideoQuality, saved!.SkippedQualitySearches);
+    }
+
     [Theory]
     [InlineData(JobType.Preview, false)]
     [InlineData(JobType.Calibration, false)]
