@@ -385,6 +385,111 @@ public sealed class StartupWorkRecoveryTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task An_interrupted_jobs_own_marked_workspaces_are_reclaimed_and_everything_else_is_kept()
+    {
+        var job = await AddJob("interrupted");
+        const string nonce = "0123456789abcdef0123456789abcdef";
+        string Workspace(string relative, string purpose, int jobId, string? marker = nonce, bool nested = false)
+        {
+            var directory = Path.Combine(WorkRoot, "1", relative, OwnedScratchNames.DirectoryName(purpose, jobId, nonce));
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "reference-0-0.wav"), "sample");
+            if (marker is not null) File.WriteAllText(Path.Combine(directory, OwnedScratchNames.MarkerFileName), marker);
+            if (nested) Directory.CreateDirectory(Path.Combine(directory, "unexpected"));
+            return directory;
+        }
+        var owned = Workspace("", "adaptive-quality", job.Id);
+        var ownedNested = Workspace(Path.Combine("Season 1"), "verification-reference", job.Id);
+        var otherJob = Workspace("other", "adaptive-quality", job.Id + 100);
+        var wrongMarker = Workspace("wrong", "adaptive-quality", job.Id, marker: "fedcba9876543210fedcba9876543210");
+        var unmarked = Workspace("unmarked", "adaptive-quality", job.Id, marker: null);
+        var withFolder = Workspace("folder", "adaptive-quality", job.Id, nested: true);
+
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+
+        Assert.Equal(JobStatus.Queued, (await ReadJob(job.Id)).Status);
+        Assert.False(Directory.Exists(owned));
+        Assert.False(Directory.Exists(ownedNested));
+        Assert.True(Directory.Exists(otherJob));
+        Assert.True(Directory.Exists(wrongMarker));
+        Assert.True(Directory.Exists(unmarked));
+        Assert.True(Directory.Exists(withFolder));
+        Assert.Equal("unchanged source", await File.ReadAllTextAsync(Path.Combine(_root, "library", "source-1.mkv")));
+    }
+
+    [Fact]
+    public async Task A_workspace_holding_another_jobs_candidate_is_never_reclaimed()
+    {
+        var job = await AddJob("interrupted");
+        const string nonce = "0123456789abcdef0123456789abcdef";
+        var workspace = Path.Combine(WorkRoot, "1", OwnedScratchNames.DirectoryName("adaptive-quality", job.Id, nonce));
+        Directory.CreateDirectory(workspace);
+        File.WriteAllText(Path.Combine(workspace, OwnedScratchNames.MarkerFileName), nonce);
+        var candidate = Path.Combine(workspace, "candidate.mkv");
+        File.WriteAllText(candidate, "another job's delivered candidate");
+        await InDb(async db =>
+        {
+            db.Jobs.Add(new Job { MediaFileId = 2, LibraryId = 1, Type = JobType.Normal, Status = JobStatus.ReadyToReplace,
+                Attempt = 1, EnqueuedAt = DateTimeOffset.UtcNow, WorkOutputPath = candidate });
+            await db.SaveChangesAsync();
+        });
+
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+
+        Assert.Equal("another job's delivered candidate", await File.ReadAllTextAsync(candidate));
+    }
+
+    [Fact]
+    public async Task A_workspace_busy_at_startup_is_reclaimed_on_a_later_pass()
+    {
+        var job = await AddJob("interrupted");
+        const string nonce = "0123456789abcdef0123456789abcdef";
+        var workspace = Path.Combine(WorkRoot, "1", OwnedScratchNames.DirectoryName("adaptive-quality", job.Id, nonce));
+        Directory.CreateDirectory(workspace);
+        File.WriteAllText(Path.Combine(workspace, OwnedScratchNames.MarkerFileName), nonce);
+        File.WriteAllText(Path.Combine(workspace, "reference-0-0.wav"), "sample");
+        var busy = true;
+        _recovery = new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance,
+            // Matched by the unique folder name: Windows may spell the temp root differently.
+            directory => busy && Path.GetFileName(directory) == Path.GetFileName(workspace));
+
+        Assert.False((await _recovery.RunAsync(default)).Complete);
+        Assert.Equal(JobStatus.Queued, (await ReadJob(job.Id)).Status);
+        Assert.False(_recovery.BlocksDispatch(job.Id));
+        Assert.True(Directory.Exists(workspace));
+
+        busy = false;
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+        Assert.False(Directory.Exists(workspace));
+    }
+
+    [Fact]
+    public async Task A_workspace_under_a_busy_media_folder_is_reclaimed_once_the_folder_is_released()
+    {
+        var job = await AddJob("interrupted");
+        await InDb(async db => { (await db.Jobs.SingleAsync(j => j.Id == job.Id)).WorkOutputPath = null; await db.SaveChangesAsync(); });
+        const string nonce = "0123456789abcdef0123456789abcdef";
+        var mediaRoot = Path.Combine(WorkRoot, "1");
+        var workspace = Path.Combine(mediaRoot, OwnedScratchNames.DirectoryName("adaptive-quality", job.Id, nonce));
+        Directory.CreateDirectory(workspace);
+        File.WriteAllText(Path.Combine(workspace, OwnedScratchNames.MarkerFileName), nonce);
+        File.WriteAllText(Path.Combine(workspace, "reference-0-0.wav"), "sample");
+        var busy = true;
+        _recovery = new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance,
+            // Matched by name under the work root: Windows may spell the temp root differently.
+            directory => busy && Path.GetFileName(directory) == "1"
+                && Path.GetFileName(Path.GetDirectoryName(directory)) == Path.GetFileName(WorkRoot));
+
+        Assert.False((await _recovery.RunAsync(default)).Complete);
+        Assert.Equal(JobStatus.Queued, (await ReadJob(job.Id)).Status);
+        Assert.True(Directory.Exists(workspace));
+
+        busy = false;
+        Assert.True((await _recovery.RunAsync(default)).Complete);
+        Assert.False(Directory.Exists(workspace));
+    }
+
     private StartupWorkRecovery NewRecovery() => new(_services.GetRequiredService<IServiceScopeFactory>(), WorkRoot, _claims, NullLogger.Instance, _ => false);
     private async Task<Job> AddJob(string kind)
     {

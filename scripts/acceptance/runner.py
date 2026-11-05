@@ -945,6 +945,67 @@ class Harness:
         self.replace_restore(case, candidate)
         return {"jobId": case["jobId"], "queueSurvivedAbruptRestart": True, "scores": scores, "restoredOriginal": True}
 
+    def restart_during_soundtrack_selection(self):
+        """A server stopped while it chooses soundtrack bitrates requeues the job, leaves the original
+        and no selection scratch behind, and the next attempt selects again before its full encode."""
+        if not self.restart:
+            raise Blocked("This runner cannot restart its test server")
+        self.select_worker(None)
+        self.configure(encoderMode=encoder_mode("libx264"), hardwareDecode=False)
+        name = "restart-during-soundtrack-selection"
+        fixture = self.root / "fixtures" / (name + ".mkv")
+        # Long enough that the selection is still sampling when the poll below sees it start.
+        seconds = 120
+        self.tools.encode(["-f", "lavfi", "-i", f"testsrc2=size=320x180:rate=10:duration={seconds}",
+            "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.1:duration={seconds}:sample_rate=48000:seed=42",
+            "-f", "lavfi", "-i", f"sine=frequency=700:sample_rate=48000:duration={seconds}",
+            "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264", *soundtrack_source_audio(),
+            "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=fra", self.tools.path(fixture)])
+        case = self.create_job(name, fixture, encoder="libx264", overrides={
+            "targetVideoCodec": None, "targetContainer": "mkv", "videoAudioCodec": "aac", "videoAudioBitrateKbps": 128,
+            "vmafQualityGateEnabled": False, "requireSizeReduction": False, "soundtrackQualityGateEnabled": True,
+            "maximumSoundtrackQualityDistance": 1, "adaptiveSoundtrackQuality": True})
+        work = self.root / "work" / str(case["mediaId"])
+        deadline = time.monotonic() + min(self.timeout, 300)
+        while True:
+            job = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")[0]
+            # Interrupt only once the selection has written samples into its own workspace, so the
+            # restart provably leaves scratch for recovery to reclaim.
+            interrupted = [w for w in work.glob(f".adaptive-quality-{case['jobId']}-*")
+                           if any(p.name != ".optimisarr-owner" for p in w.iterdir())] if work.is_dir() else []
+            if job["status"] == "Probing" and interrupted:
+                break
+            # The job is Transcoding while it prepares, before selection starts; once its full
+            # encode reports progress or it reaches verification, the selection was missed.
+            if job["status"] not in ("Queued", "Transcoding", "Probing") or job["progress"] > 0 and job["status"] != "Probing":
+                raise Blocked(f"Soundtrack selection was not observed before the job became {job['status']}")
+            require(time.monotonic() < deadline, "Soundtrack selection never started")
+            time.sleep(.05)
+        attempt = job["executionAttempt"]
+        self.restart()
+        recovered = self.api.request(f"/api/jobs?libraryId={case['libraryId']}")
+        require(len(recovered) == 1 and recovered[0]["id"] == case["jobId"] and recovered[0]["status"] != "Failed",
+                f"Restart lost, duplicated or failed the interrupted job: {recovered}")
+        job = self.wait_job(case)
+        require(job["executionAttempt"] > attempt, "The job finished without a new attempt after the restart")
+        require(not any(w.exists() for w in interrupted), f"Interrupted workspace was not reclaimed: {interrupted}")
+        save(self.report.root / name / "job.json", job)
+        require(job["status"] == "ReadyToReplace", f"Recovered soundtrack job failed: {job['errorMessage']}")
+        require(sha256(case["source"]) == case["sourceSha256"], "Interrupted selection changed the original")
+        leftovers = [str(p) for p in (self.root / "work").rglob(".adaptive-quality-*")]
+        require(not leftovers, f"Interrupted selection left scratch behind: {leftovers}")
+        verification = json.loads(job["verificationReportJson"] or "{}")
+        search = verification.get("soundtrackSearch") or {}
+        require(search.get("unavailable") is None, f"Recovered attempt did not select again: {search.get('unavailable')}")
+        for output, track in enumerate(search["tracks"]):
+            selected = track["result"]["decision"]["selectedValue"]
+            require(f"-b:a:{output} {selected}k" in job["ffmpegArguments"], "Recovered encode ignored the selected soundtrack bitrate")
+        validate_soundtrack_report(verification.get("soundtrackQuality"), [0, 1], "Server", 1, passes=True, downmixed=())
+        candidate = self.output(case)
+        self.replace_restore(case, candidate)
+        return {"jobId": case["jobId"], "selectionInterrupted": True, "selectedAgain": True,
+                "originalUnchanged": True, "scratchCleared": True, "restoredOriginal": True}
+
     def cancel_running(self, worker=None, encoder="libx265"):
         self.select_worker(worker)
         name = f"cancel-running-worker-{worker['id']}-{encoder}" if worker else "cancel-running"
@@ -1338,6 +1399,7 @@ class Harness:
             # scenario is added to fleet runs; the container/native server case stands alone.
             if tier == "smoke":
                 self.report.case("abrupt-restart-preserves-queue", lambda: self.restart_queue(primary))
+                self.report.case("abrupt-restart-during-soundtrack-selection", self.restart_during_soundtrack_selection)
             if tier != "smoke":
                 self.report.case("local-adaptive", lambda: self.video("local-adaptive", primary, strategy="AdaptiveVmaf"))
                 self.report.case("calibration-playable-samples", self.calibration)
