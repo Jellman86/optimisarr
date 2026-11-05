@@ -42,7 +42,9 @@ additionally confirms that the database, FFmpeg/ffprobe, and required writable
 paths are available; wait for it to succeed before using the queue.
 
 Keep media, work, and quarantine below one container mount boundary when possible so replacement
-can use atomic moves. Separate bind mounts require the verified cross-filesystem replacement option.
+can use atomic moves. Separate bind mounts work too: replacement then uses a slower verified copy,
+which needs room for a temporary second copy of each file and deletes the source only after the copy
+is proved identical. This is on by default, under **Settings → Files & safety**.
 The setup wizard reports the effective relationship rather than inferring it from host path names.
 Ensure `PUID` and `PGID` can write every configured path.
 

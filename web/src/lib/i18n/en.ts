@@ -307,7 +307,7 @@ export const en = {
     atomic_quarantine_separate: 'Quarantine is on a separate mount',
     atomic_both_separate: 'Work and quarantine are on separate mounts',
     atomic_unknown: 'Mount relationship unavailable',
-    atomic_fix: 'For atomic moves, expose one common host parent as a single container mount, then set the library, OPTIMISARR_WORK_DIR, and OPTIMISARR_TRASH_DIR to folders beneath it. Otherwise enable verified cross-filesystem replacement after reviewing the trade-off.',
+    atomic_fix: "For faster atomic moves, expose one common host parent as a single container mount, then set the library, OPTIMISARR_WORK_DIR, and OPTIMISARR_TRASH_DIR to folders beneath it. Otherwise replacement uses the slower verified copy.",
     fallback_enabled: 'Verified cross-filesystem replacement is enabled.',
     fallback_disabled: 'Replacement across these mounts is currently blocked.',
     toolchain_heading: 'Media tools',
@@ -1444,7 +1444,7 @@ filter_all: 'All ({count})',
       'Scan, queue, transcode, and verify normally, but never replace originals or purge quarantined originals. Verified outputs stop at Ready to replace for review. Expired failed scratch outputs are still cleaned because originals are untouched.',
     cross_fs: 'Allow cross-filesystem replacement',
     cross_fs_hint:
-      'Falls back to copy-plus-delete instead of an atomic move. Off is safer; enable only for intentional split-mount layouts.',
+      "Uses a slower copy when a rename isn't possible, such as between separate mounts. The original is deleted only after the copy is proved identical. Turn off to refuse those replacements instead.",
     cleanup_retention: 'Cleanup retention',
     cleanup_retention_tip:
       'How long quarantined originals and failed /work outputs are kept before being removed to free space. Failed-job diagnostics remain. 0 keeps both indefinitely.',

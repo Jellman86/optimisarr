@@ -99,6 +99,32 @@ public sealed class FileMoverTests : IDisposable
     }
 
     [Fact]
+    public void The_probe_reports_a_rename_as_atomic_and_cleans_up_after_itself()
+    {
+        var first = Path.Combine(_dir, "first");
+        var second = Path.Combine(_dir, "second");
+
+        Assert.True(FileMover.CanMoveAtomically(first, second));
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(first));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(second));
+    }
+
+    [PosixFact]
+    public void The_probe_reports_a_cross_device_pair_as_not_atomic()
+    {
+        const string memory = "/dev/shm";
+        if (!Directory.Exists(memory) || DeviceOf(memory) == DeviceOf(_dir)) return;
+        var folder = Path.Combine(memory, "optimisarr-tests-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.False(FileMover.CanMoveAtomically(_dir, folder));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [Fact]
     public void Rename_moves_a_file_on_one_volume_and_leaves_nothing_at_the_source()
     {
         var source = Path.Combine(_dir, "source.bin");

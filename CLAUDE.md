@@ -23,8 +23,9 @@ Optimisarr's entire reason to exist is that it is safer than the alternatives.
   rollback path before it runs, not after.
 - Defaults are conservative. When in doubt, do nothing and report why. Recorded default
   decisions include Adaptive per-title VMAF for new video re-encode libraries while still
-  labelled Experimental, and remote workers available/enabled for fresh installations with
-  explicit pairing and strict verification. Their reasoning is documented in
+  labelled Experimental, remote workers available/enabled for fresh installations with
+  explicit pairing and strict verification, and verified cross-filesystem replacement allowed,
+  because the source is deleted only after its copy is proved identical. Their reasoning is documented in
   [`docs/roadmap.md`](docs/roadmap.md) under the corresponding roadmap entries. Do not treat
   these as licence to default other unproven paths on;
   a new exception needs the same explicit reasoning and a matching record.

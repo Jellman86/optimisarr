@@ -92,7 +92,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
         Assert.False(settings.VerificationPolicy.ClipVmafEnabled);
         Assert.Equal(1, settings.VerificationPolicy.VmafFrameSubsample);
-        Assert.False(settings.ReplacementAllowCrossFilesystem);
+        Assert.True(settings.ReplacementAllowCrossFilesystem);
         Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
     }
@@ -209,7 +209,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
         Assert.True(settings.VerificationPolicy.RequireSizeReduction);
         Assert.Equal(1, settings.VerificationPolicy.VmafFrameSubsample);
-        Assert.False(settings.ReplacementAllowCrossFilesystem);
+        Assert.True(settings.ReplacementAllowCrossFilesystem);
         Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
     }
