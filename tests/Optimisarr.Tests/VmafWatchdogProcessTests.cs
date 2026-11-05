@@ -216,9 +216,7 @@ public sealed class VmafWatchdogProcessTests : IDisposable
 
     private void AssertReaped()
     {
-        Assert.True(File.Exists(Pid));
-        // An id that was never completed means the tool was stopped before it could finish writing it.
-        if (TestPidFile.TryRead(Pid) is not { } pid) return;
+        var pid = Assert.NotNull(TestPidFile.TryRead(Pid));
         try { using var child = Process.GetProcessById(pid); Assert.True(child.HasExited); }
         catch (ArgumentException) { }
     }
