@@ -56,7 +56,7 @@ public sealed class FileMoverTests : IDisposable
         Assert.Equal(identity, Optimisarr.Api.Library.ExactFileIdentity.Read(destination));
     }
 
-    [PosixFact]
+    [Fact]
     public void Rename_never_replaces_a_destination_that_appeared_after_the_check()
     {
         var source = Path.Combine(_dir, "source.bin");
@@ -96,6 +96,19 @@ public sealed class FileMoverTests : IDisposable
             Assert.Equal("payload", File.ReadAllText(destination));
         }
         finally { Directory.Delete(folder, true); }
+    }
+
+    [Fact]
+    public void Rename_moves_a_file_on_one_volume_and_leaves_nothing_at_the_source()
+    {
+        var source = Path.Combine(_dir, "source.bin");
+        var destination = Path.Combine(_dir, "dest.bin");
+        File.WriteAllText(source, "payload");
+
+        Assert.Equal(RenameOutcome.Renamed, RenameOnly.Rename(source, destination));
+
+        Assert.False(File.Exists(source));
+        Assert.Equal("payload", File.ReadAllText(destination));
     }
 
     [Fact]
