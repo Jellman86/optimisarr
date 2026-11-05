@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The cross-library duplicate scan test waits on a 60-second deadline instead of 250 status reads, which timed out on a slow Windows runner (test-only).
+- Duplicate-scan tests wait for background scans against a shared 60-second wall-clock deadline instead of fixed poll counts. One ran out after 250 polls on a loaded Windows runner; the cancellation wait allowed two seconds although the coordinator may take ten to flush its checkpoint (test-only).
 
 - Super-resolution preserves the source's SDR colour conversion and relative picture timing, verifies copied audio as copied, refuses linked or reused scratch attempts, and only reserves another batch when more pictures remain. Custom engine/model paths must be absolute. Container planning uses the copied audio even when the library normally converts it to AAC or Opus, retaining Matroska fallbacks for incompatible audio and ALAC. Upscales wait for review even when move-on-complete or destination overwrite is configured.
 
