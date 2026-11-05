@@ -12,7 +12,11 @@ public static class TestPidFile
     {
         try
         {
-            return int.TryParse(File.ReadAllText(path), out var pid) && pid > 0 ? pid : null;
+            // Share every access so a reader never blocks the fixture that is still writing the id:
+            // Windows refuses a writer while another handle holds the file without write sharing.
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            return int.TryParse(reader.ReadToEnd(), out var pid) && pid > 0 ? pid : null;
         }
         catch (IOException)
         {
