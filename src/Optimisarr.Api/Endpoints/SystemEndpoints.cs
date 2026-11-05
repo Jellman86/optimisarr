@@ -47,7 +47,7 @@ internal static class SystemEndpoints
             CancellationToken cancellationToken) =>
         {
             var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
-            var detection = await new RealCuganDetectionService(options).DetectAsync(cancellationToken);
+            var detection = await new SuperResolutionDetectionService(options).DetectAsync(cancellationToken);
             return Results.Ok(RealCuganStatusDto.From(detection, options));
         })
         .WithName("GetRealCuganStatus");
@@ -69,7 +69,7 @@ internal static class SystemEndpoints
             }
             var ffmpeg = MediaToolCommands.ResolveFfmpeg(
                 Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG"));
-            var probe = await new RealCuganDetectionService(options).ProbeAsync(ffmpeg, cancellationToken);
+            var probe = await new SuperResolutionDetectionService(options).ProbeAsync(ffmpeg, cancellationToken);
             return Results.Ok(RealCuganProbeDto.From(probe));
         })
         .WithName("ProbeRealCugan");
@@ -189,7 +189,7 @@ internal sealed record RealCuganStatusDto(
     string Device,
     IReadOnlyList<string> Problems)
 {
-    public static RealCuganStatusDto From(RealCuganDetection detection, SuperResolutionOptions options) => new(
+    public static RealCuganStatusDto From(SuperResolutionDetection detection, SuperResolutionOptions options) => new(
         detection.Engine,
         detection.Readiness.ToString(),
         detection.BinaryFound,
@@ -214,7 +214,7 @@ internal sealed record RealCuganProbeDto(
     string? OutputTail,
     string? DeviceUsed)
 {
-    public static RealCuganProbeDto From(RealCuganProbeResult probe) => new(
+    public static RealCuganProbeDto From(SuperResolutionProbeResult probe) => new(
         probe.Success,
         probe.ExitCode,
         probe.Error,
