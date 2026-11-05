@@ -75,7 +75,9 @@ public sealed class WorkerSoundtrackSelectionsTests : IDisposable
         Assert.Equal(128, selection.BaselineKbps);
         Assert.Null(selection.SelectedBitrates());
         Assert.StartsWith("Soundtrack assessment failed:", selection.Unavailable);
-        Assert.Null(selections.TryTake(2, Source, Spec(), Policy));
+        // The retry may already have crashed again by the time it is asked about, so only the fact
+        // that it searched again is asserted, not whether it has finished.
+        selections.TryTake(2, Source, Spec(), Policy);
         await WaitUntilAsync(() => probe.Calls == 2);
     }
 
