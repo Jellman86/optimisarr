@@ -23,7 +23,7 @@ public sealed class QueueDispatcherSafetyTests
     {
         var now = DateTimeOffset.UtcNow;
         var job = new Job { Status = JobStatus.Probing, SourceSha256 = new string('a', 64) };
-        SizePredictionFailure.Apply(job, 20, "Size saving prediction: samples project 125%. The full encode was not run.", now);
+        SizePredictionFailure.Apply(job, 20, "Size saving prediction: samples project 125%. The full encode was not run.", now, rejectedOn: "libx265");
         Assert.Equal(JobStatus.Failed, job.Status);
         Assert.Equal(FailureCategory.SizeSaving, job.FailureCategory);
         Assert.Equal(now, job.FinishedAt);

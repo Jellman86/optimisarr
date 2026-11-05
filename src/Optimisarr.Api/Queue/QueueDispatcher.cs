@@ -2093,6 +2093,7 @@ public sealed partial class QueueDispatcher(
         // instead of silently falling back to the CPU library encoder.
         string? videoEncoderName = null;
         EncoderQuality? videoQuality = null;
+        int? adaptiveVideoQuality = null;
         if (spec.VideoCodec is not null)
         {
             var sourceBitDepth = PixelFormatInfo.Parse(
@@ -2123,6 +2124,8 @@ public sealed partial class QueueDispatcher(
             }
 
             videoEncoderName = videoEncoder.EncoderName;
+            adaptiveVideoQuality = AdaptiveQualityScope.For(
+                job.AdaptiveVideoQuality, job.AdaptiveVideoQualityEncoder, videoEncoderName);
             var videoPreset = EncoderPresetPolicy.Resolve(videoEncoderName, spec.Preset);
             if (!videoPreset.Succeeded)
             {
@@ -2133,12 +2136,13 @@ public sealed partial class QueueDispatcher(
             if (spec.Crf is { } requestedQuality)
             {
                 videoQuality = library?.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf
-                    && job.AdaptiveVideoQuality is { } adaptiveQuality
+                    && adaptiveVideoQuality is { } adaptiveQuality
                     ? EncoderQualityPolicy.ResolveAdaptive(
                         videoEncoderName,
                         requestedQuality,
                         adaptiveQuality,
-                        job.QualityRetryCount)
+                        job.QualityRetryCount,
+                        job.AdaptiveVideoQualityRetry ?? 0)
                     : EncoderQualityPolicy.Resolve(
                         videoEncoderName,
                         requestedQuality,
@@ -2294,7 +2298,7 @@ public sealed partial class QueueDispatcher(
             verificationPolicy,
             library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
             library?.WorkPlacement ?? WorkPlacement.Anywhere,
-            job.AdaptiveVideoQuality,
+            adaptiveVideoQuality,
             library?.AutoReplace ?? false,
             queueSettings.CpuThreadLimit,
             hardwareDecode,
@@ -2444,7 +2448,7 @@ public sealed partial class QueueDispatcher(
                     work.BypassSizePreflight);
                 if (sizeReview.ShouldReject)
                 {
-                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, sizeReview, cancellationToken);
+                    await RejectPredictedSizeAsync(jobId, decision.SelectedQuality, work.VideoEncoder, sizeReview, cancellationToken);
                     return null;
                 }
 
@@ -2702,7 +2706,7 @@ public sealed partial class QueueDispatcher(
         {
             job.Status = JobStatus.Transcoding;
             job.Progress = 0;
-            job.AdaptiveVideoQuality = selectedQuality;
+            job.RecordAdaptiveVideoQuality(selectedQuality, work.VideoEncoder);
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
         // A fall-back is a warning, not news. The search running and learning nothing is the
@@ -2726,7 +2730,7 @@ public sealed partial class QueueDispatcher(
     }
 
     internal async Task RejectPredictedSizeAsync(
-        int jobId, int selectedQuality, SizePreflightAssessment forecast, CancellationToken cancellationToken)
+        int jobId, int selectedQuality, string? encoder, SizePreflightAssessment forecast, CancellationToken cancellationToken)
     {
         await _dbLock.WaitAsync(cancellationToken);
         try
@@ -2736,7 +2740,7 @@ public sealed partial class QueueDispatcher(
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
             if (job is null || job.Status != JobStatus.Probing) return;
-            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow);
+            SizePredictionFailure.Apply(job, selectedQuality, forecast.Reason, DateTimeOffset.UtcNow, rejectedOn: encoder);
             await ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

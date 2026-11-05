@@ -1553,7 +1553,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     private async Task<(HttpClient Worker, int JobId, string LeaseId, int Quality, int Windows)> ClaimASizeGatedSearch(
-        string workerName, double minimumVmaf)
+        string workerName, double minimumVmaf, int qualityRetryCount = 0)
     {
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker(workerName);
@@ -1568,6 +1568,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             library.MinVmafHarmonicMean = minimumVmaf;
             library.MinVmafMin = 90;
             library.MinVmafCatastrophicMin = 90;
+            job.QualityRetryCount = qualityRetryCount;
             await db.SaveChangesAsync();
         }
 
@@ -1610,7 +1611,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             failed.Status = JobStatus.Cancelled;
             await db.SaveChangesAsync();
         }
-        await dispatcher.RejectPredictedSizeAsync(jobId, 22, new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
+        await dispatcher.RejectPredictedSizeAsync(jobId, 22, "libx265", new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
         using var last = _api.Services.CreateScope();
         Assert.Equal(JobStatus.Cancelled, (await last.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId)).Status);
     }
@@ -1688,6 +1689,151 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
         Assert.Equal(jobId, (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("jobId").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_quality_selected_on_another_encoder_is_searched_again_on_this_worker()
+    {
+        // A recovered or higher-quality retry can be claimed by a machine with a different
+        // encoder. The recorded value is on the other encoder's scale, so it must not be reused.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Different encoder");
+        var jobId = await QueueAJob(strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        await RecordAdaptiveQuality(jobId, 20, "hevc_videotoolbox", qualityRetryCount: 1);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Object, assignment.GetProperty("search").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_quality_selected_on_the_same_encoder_is_reused_one_retry_step_higher()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Same encoder");
+        var jobId = await QueueAJob(strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        await RecordAdaptiveQuality(jobId, 20, "libx265", qualityRetryCount: 1);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, assignment.GetProperty("search").ValueKind);
+        var arguments = assignment.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Equal("17", arguments[arguments.IndexOf("-crf") + 1]);
+    }
+
+    [Fact]
+    public async Task A_completed_worker_search_records_the_encoder_that_selected_the_quality()
+    {
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Recorder", 90);
+
+        for (var step = 0; step < 8; step++)
+        {
+            using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+            {
+                quality,
+                encodedBytes = 240_000_000L,
+                windowEncodedBytes = new[] { 80_000_000L, 80_000_000L, 80_000_000L },
+                logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+            });
+            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+            var direction = await report.Content.ReadFromJsonAsync<JsonElement>();
+            if (direction.GetProperty("nextStep").ValueKind == JsonValueKind.Null) break;
+            quality = direction.GetProperty("nextStep").GetProperty("quality").GetInt32();
+        }
+
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.NotNull(job.AdaptiveVideoQuality);
+        Assert.Equal("libx265", job.AdaptiveVideoQualityEncoder);
+    }
+
+    private async Task RecordAdaptiveQuality(int jobId, int quality, string encoder, int qualityRetryCount)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+        job.RecordAdaptiveVideoQuality(quality, encoder);
+        job.QualityRetryCount = qualityRetryCount;
+        await db.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(23)]
+    [InlineData(20)]
+    public void A_size_rejection_records_its_quality_with_the_encoder_and_retry_that_rejected_it(int rejected)
+    {
+        // Even when the number matches the stored one, a different encoder and retry produced it.
+        var job = new Job();
+        job.RecordAdaptiveVideoQuality(20, "hevc_videotoolbox");
+        job.QualityRetryCount = 1;
+        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, rejected, "Size saving prediction: too large.", DateTimeOffset.UtcNow, rejectedOn: "hevc_qsv");
+        Assert.Equal((rejected, "hevc_qsv", 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+    }
+
+    [Fact]
+    public void Converting_an_older_held_review_keeps_its_recorded_provenance()
+    {
+        var job = new Job();
+        job.RecordAdaptiveVideoQuality(20, "hevc_videotoolbox");
+        job.QualityRetryCount = 1;
+        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, job.AdaptiveVideoQuality, "held", DateTimeOffset.UtcNow);
+        Assert.Equal((20, "hevc_videotoolbox", 0), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+    }
+
+    [Fact]
+    public async Task A_local_size_rejection_records_the_encoder_whose_samples_rejected_it()
+    {
+        var jobId = await QueueAJob();
+        var dispatcher = _api.Services.GetRequiredService<Optimisarr.Api.Queue.QueueDispatcher>();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Probing;
+            job.VideoEncoder = null;
+            await db.SaveChangesAsync();
+        }
+
+        await dispatcher.RejectPredictedSizeAsync(jobId, 22, "hevc_qsv", new(true, 1300, 30, 1.3, null, "predicted"), CancellationToken.None);
+
+        using var check = _api.Services.CreateScope();
+        var rejected = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Failed, rejected.Status);
+        Assert.Equal((22, "hevc_qsv"), (rejected.AdaptiveVideoQuality!.Value, rejected.AdaptiveVideoQualityEncoder));
+    }
+
+    [Fact]
+    public async Task A_worker_search_during_a_retry_encodes_at_the_quality_it_selected()
+    {
+        // A retry claimed by another encoder searches again. The quality those samples selected is
+        // the one size preflight checked, so the full encode must use it, not one step beyond it.
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Retry search", 90, qualityRetryCount: 1);
+        JsonElement direction = default;
+        for (var step = 0; step < 8; step++)
+        {
+            using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+            {
+                quality,
+                encodedBytes = 240_000_000L,
+                windowEncodedBytes = new[] { 80_000_000L, 80_000_000L, 80_000_000L },
+                logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+            });
+            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+            direction = await report.Content.ReadFromJsonAsync<JsonElement>();
+            if (direction.GetProperty("nextStep").ValueKind == JsonValueKind.Null) break;
+            quality = direction.GetProperty("nextStep").GetProperty("quality").GetInt32();
+        }
+
+        var selected = direction.GetProperty("selectedQuality").GetInt32();
+        var arguments = direction.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Equal(selected.ToString(System.Globalization.CultureInfo.InvariantCulture), arguments[arguments.IndexOf("-crf") + 1]);
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal((selected, 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityRetry!.Value));
     }
 
     [Fact]

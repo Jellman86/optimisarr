@@ -142,6 +142,34 @@ public sealed class Job
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
 
+    /// <summary>
+    /// The encoder whose samples selected <see cref="AdaptiveVideoQuality"/>. The value is on that
+    /// encoder's own scale, so an attempt claimed by any other encoder searches again.
+    /// </summary>
+    public string? AdaptiveVideoQualityEncoder { get; set; }
+
+    /// <summary>
+    /// The quality retry count when <see cref="AdaptiveVideoQuality"/> was selected. Only later
+    /// retries step the value toward quality; the selecting attempt encodes at it unchanged.
+    /// </summary>
+    public int? AdaptiveVideoQualityRetry { get; set; }
+
+    /// <summary>Records a per-title quality together with the encoder and retry that selected it.</summary>
+    public void RecordAdaptiveVideoQuality(int quality, string? encoder)
+    {
+        AdaptiveVideoQuality = quality;
+        AdaptiveVideoQualityEncoder = encoder;
+        AdaptiveVideoQualityRetry = QualityRetryCount;
+    }
+
+    /// <summary>Forgets the per-title quality so the next attempt searches again.</summary>
+    public void ClearAdaptiveVideoQuality()
+    {
+        AdaptiveVideoQuality = null;
+        AdaptiveVideoQualityEncoder = null;
+        AdaptiveVideoQualityRetry = null;
+    }
+
     public int? AdaptiveAudioBitrateKbps { get; set; }
     public int? AdaptiveImageQuality { get; set; }
     public string? PerceptualSearchJson { get; set; }
