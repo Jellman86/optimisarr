@@ -131,6 +131,8 @@ internal static class DedupeFileObserver
             var relative = Path.GetRelativePath(root, Path.GetDirectoryName(destination)!);
             if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
                 || Path.IsPathRooted(relative)) return (false, null);
+            // The root's own parents may be operator-chosen aliases, but the root itself must be real.
+            if (new FileInfo(root).LinkTarget is not null) return (false, null);
             var folder = root;
             if (relative == ".") return (true, folder);
             foreach (var part in relative.Split(Path.DirectorySeparatorChar))

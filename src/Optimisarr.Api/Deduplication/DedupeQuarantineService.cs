@@ -79,7 +79,7 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
             foreach (var copy in copies)
             {
                 if (token.IsCancellationRequested) return await UndoAsync(id, action, "The action was cancelled.");
-                if (keepers.Append(copy).FirstOrDefault(f => !IsReviewedFile(f, f.Path, stamps[f.MediaFileId])) is { } changed)
+                if (keepers.Append(copy).FirstOrDefault(f => !IsUnchangedSinceRead(f, stamps[f.MediaFileId])) is { } changed)
                     return await UndoAsync(id, action, $"{changed.Path} changed before the move.");
                 if (!PathsAreSafe(copy, copy.QuarantinePath!) || !PathsAreSafe(copy, copy.Path))
                     return await UndoAsync(id, action, $"A folder on the way to {copy.QuarantinePath} is redirected.");
@@ -90,8 +90,9 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
                 afterMove?.Invoke(copy);
             }
             // The last move has to leave a reviewed keeper behind, or it must not stand.
-            if (keepers.FirstOrDefault(f => !IsReviewedFile(f, f.Path, stamps[f.MediaFileId])) is { } lost)
+            if (keepers.FirstOrDefault(f => !IsUnchangedSinceRead(f, stamps[f.MediaFileId])) is { } lost)
                 return await UndoAsync(id, action, $"{lost.Path} changed during the move.");
+            if (token.IsCancellationRequested) return await UndoAsync(id, action, "The action was cancelled.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -201,6 +202,10 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
             && ExactFileIdentity.Read(path) == file.Identity
             && (changeStamp is null || ExactFileIdentity.ChangeStamp(path)?.ToString() == changeStamp);
     }
+
+    // Still at a path inside the library that the read vouched for. No stamp means no vouching.
+    private static bool IsUnchangedSinceRead(DedupeFileSnapshot file, string? changeStamp) =>
+        changeStamp is not null && PathsAreSafe(file, file.Path) && IsReviewedFile(file, file.Path, changeStamp);
 
     // The move's own rename changes the change time, so restoring proves the content by reading it.
     private static async Task<bool> HoldsReviewedContentAsync(DedupeFileSnapshot file, string path)

@@ -315,6 +315,52 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
     }
 
     [PosixFact]
+    public async Task A_keepers_folder_redirected_between_moves_undoes_the_action()
+    {
+        var keeperFolder = Path.Combine(_root, "Keeper");
+        Directory.CreateDirectory(keeperFolder);
+        var keeper = Path.Combine(keeperFolder, "Film.mkv");
+        File.Move(Keeper, keeper);
+        var id = Guid.NewGuid();
+        var plan = new DedupePreparation(id, 1, new('a', 64), new('b', 64),
+            [Snapshot(1, keeper, id, true), Snapshot(2, CopyA, id, false), Snapshot(3, CopyB, id, false)]);
+        Assert.Equal(DedupePreparationResult.Created, await Journal.TryPrepareAsync(plan, default));
+        var outside = Directory.CreateTempSubdirectory("optimisarr-dedupe-elsewhere-").FullName;
+        try
+        {
+            var moved = Path.Combine(outside, "Keeper");
+            var redirected = false;
+            var result = await Quarantine(plan, _ =>
+            {
+                if (redirected) return;
+                Directory.Move(keeperFolder, moved);
+                Directory.CreateSymbolicLink(keeperFolder, moved);
+                redirected = true;
+            });
+
+            Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+            Assert.Equal(Content, await File.ReadAllBytesAsync(CopyA));
+            Assert.Equal(Content, await File.ReadAllBytesAsync(CopyB));
+        }
+        finally { Directory.Delete(outside, true); }
+    }
+
+    [PosixFact]
+    public async Task Cancelling_after_the_last_move_still_returns_what_moved()
+    {
+        var plan = await PreparedAsync();
+        using var cancel = new CancellationTokenSource();
+        var moves = 0;
+
+        var result = await Service.QuarantineAsync(plan.Id, cancel.Token, TimeSpan.Zero, _ => { if (++moves == 2) cancel.Cancel(); });
+
+        Assert.Equal(2, moves);
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        AssertAllInPlace();
+        Assert.Equal((DedupeActionState.Restored, 0), await ReadAsync(plan.Id));
+    }
+
+    [PosixFact]
     public async Task Restore_refuses_an_original_folder_redirected_outside_the_library()
     {
         var plan = await PreparedAsync();
