@@ -175,6 +175,9 @@
     </div>
 
     <div class="preview-body">
+    {#if preview?.qualitySearchSkipped}
+      <p class="card tone-info mb-3 p-3 text-xs" data-testid="preview-saved-quality">{i18n.m.shared.preview_saved_quality_note}</p>
+    {/if}
     {#if error}
       <div class="card tone-bad p-3 text-sm">{error}</div>
     {:else if !preview || isRunning}

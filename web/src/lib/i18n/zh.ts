@@ -1863,6 +1863,7 @@ export const zh: Messages = {
     adaptive_quality_progress: "正在选择质量…{percent}%",
     verifying_sample: "验证样品...",
     preview_safety: "这会运行该文件的真实转码；它从未触及原作。",
+    preview_saved_quality_note: "此预览使用媒体库保存的质量设置。该媒体库的实际任务会先寻找满足质量目标的最小设置，因此大小和质量可能不同。",
     preview_failed: "预览未完成：{error}。原件未动过。",
     unknown_error: "未知错误",
     original: "原始文件",

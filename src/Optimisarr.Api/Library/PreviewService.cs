@@ -35,7 +35,9 @@ public sealed record PreviewComparison(
     int? ClipDurationSeconds,
     bool? VerificationPassed,
     string? VerificationReportJson,
-    string? OriginalUrl = null);
+    string? OriginalUrl = null,
+    // True when real jobs in this library search for a quality this preview does not run.
+    bool QualitySearchSkipped = false);
 
 /// <summary>
 /// Drives throwaway "preview" jobs: a one-off transcode of a single file with its library's
@@ -105,6 +107,10 @@ public sealed class PreviewService(
         }
 
         var media = job.MediaFile;
+        var searches = await db.Libraries.AsNoTracking()
+            .Where(library => library.Id == (job.LibraryId ?? media.LibraryId))
+            .Select(library => new { library.AdaptiveAudioQuality, library.AdaptiveImageQuality, library.AdaptiveSoundtrackQuality })
+            .FirstOrDefaultAsync(cancellationToken);
         MediaSideStats? original = null;
         MediaSideStats? encoded = null;
         double? saving = null;
@@ -146,7 +152,9 @@ public sealed class PreviewService(
             workerSample?.Probe.DurationSeconds is > 0 ? (int)Math.Ceiling(workerSample.Probe.DurationSeconds.Value) : clipped ? PreviewClipPolicy.DurationSeconds : null,
             job.VerificationPassed,
             job.VerificationReportJson,
-            workerSample is not null ? $"/api/preview/{jobId}/reference" : null);
+            workerSample is not null ? $"/api/preview/{jobId}/reference" : null,
+            searches is not null && PreviewQualitySearch.UsesSavedSettingInstead(media.MediaKind,
+                searches.AdaptiveAudioQuality, searches.AdaptiveImageQuality, searches.AdaptiveSoundtrackQuality));
     }
 
     /// <summary>

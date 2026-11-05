@@ -319,3 +319,18 @@ test('a worker preview plays its bounded reference instead of seeking into the f
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(page.locator('video').first()).toHaveAttribute('src', '/api/preview/41/reference')
 })
+
+test('a preview says when it used the saved setting instead of the library quality search', async ({ page }) => {
+  await mockPreview(page, { ...completedPreview, qualitySearchSkipped: true })
+  await page.goto('/#/inventory')
+  await page.getByText('Example Film.mkv', { exact: true }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+
+  await expect(page.getByTestId('preview-saved-quality')).toHaveText(
+    "This preview uses the library's saved quality setting. Real jobs in this library first search for the smallest setting that meets your quality target, so their size and quality can differ.")
+})
+
+test('a preview of a library without a skipped search shows no saved-setting note', async ({ page }) => {
+  await openCompletedPreview(page)
+  await expect(page.getByTestId('preview-saved-quality')).toHaveCount(0)
+})
