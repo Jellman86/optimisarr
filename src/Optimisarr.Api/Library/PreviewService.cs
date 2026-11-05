@@ -35,7 +35,9 @@ public sealed record PreviewComparison(
     int? ClipDurationSeconds,
     bool? VerificationPassed,
     string? VerificationReportJson,
-    string? OriginalUrl = null);
+    string? OriginalUrl = null,
+    // The quality searches a real job would run that this preview left out, once it has started.
+    IReadOnlyList<string>? SkippedQualitySearches = null);
 
 /// <summary>
 /// Drives throwaway "preview" jobs: a one-off transcode of a single file with its library's
@@ -146,7 +148,8 @@ public sealed class PreviewService(
             workerSample?.Probe.DurationSeconds is > 0 ? (int)Math.Ceiling(workerSample.Probe.DurationSeconds.Value) : clipped ? PreviewClipPolicy.DurationSeconds : null,
             job.VerificationPassed,
             job.VerificationReportJson,
-            workerSample is not null ? $"/api/preview/{jobId}/reference" : null);
+            workerSample is not null ? $"/api/preview/{jobId}/reference" : null,
+            PreviewQualitySearch.Names(job.SkippedQualitySearches));
     }
 
     /// <summary>

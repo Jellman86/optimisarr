@@ -32,6 +32,17 @@
 
   const TERMINAL = ['Completed', 'Failed']
 
+  // A name this panel does not know is left out rather than shown raw.
+  function skippedSearchNote(search: string): string | null {
+    switch (search) {
+      case 'AudioQuality': return i18n.m.shared.preview_skipped_audio_quality
+      case 'ImageQuality': return i18n.m.shared.preview_skipped_image_quality
+      case 'SoundtrackBitrates': return i18n.m.shared.preview_skipped_soundtrack_bitrates
+      case 'VideoQuality': return i18n.m.shared.preview_skipped_video_quality
+      default: return null
+    }
+  }
+
   start()
 
   async function start() {
@@ -175,6 +186,13 @@
     </div>
 
     <div class="preview-body">
+    {#if preview?.skippedQualitySearches?.length}
+      <div class="card tone-info mb-3 space-y-1 p-3 text-xs" data-testid="preview-skipped-searches">
+        {#each preview.skippedQualitySearches as search (search)}
+          {#if skippedSearchNote(search)}<p>{skippedSearchNote(search)}</p>{/if}
+        {/each}
+      </div>
+    {/if}
     {#if error}
       <div class="card tone-bad p-3 text-sm">{error}</div>
     {:else if !preview || isRunning}
