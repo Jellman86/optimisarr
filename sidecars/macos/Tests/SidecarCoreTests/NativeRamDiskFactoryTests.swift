@@ -111,7 +111,8 @@ struct NativeRamDiskFactoryTests {
         try """
         trap '' TERM
         exec 3<> "$1"
-        printf '%s' "$$" > "$2"
+        printf '%s' "$$" > "$2.tmp"
+        mv "$2.tmp" "$2"
         IFS= read -r -t 10 release <&3
         """.write(to: script, atomically: true, encoding: .utf8)
         let events = RamFactoryEvents(), owner = NativeAccountedOwner(owner: UUID(), jobId: 12, leaseId: UUID()), boot = UUID()
