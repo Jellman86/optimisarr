@@ -55,10 +55,16 @@ Recorded limits, not open work:
   soundtrack searches. Previews say so.
 - **Soundtrack search location:** the search runs on the server. Workers receive fixed per-track
   rates and measure their own output; they do not search.
-- **History and export:** interrupted-attempt search history and export are not retained beyond
-  what the attempt history and verification report already hold.
+- **History and export:** startup recovery does not archive an interrupted search, and the next
+  attempt clears its partial search evidence, so there is no complete history of interrupted
+  searches. Attempt history keeps the last eight archived retries with any verification report,
+  commands and bounded logs. Diagnostic exports carry report summaries, not raw candidate-search
+  evidence.
 - **Restart coverage:** a local restart during soundtrack selection is covered in the container
   acceptance suite. Other search types share the same recovery but have no case of their own.
+- **Unqualified inputs and faults:** broader unsupported-input and retry combinations, and
+  exact-package reconnect and resource-exhaustion behaviour, have not been exercised beyond the
+  selected cases above. Each fails towards keeping the original, but none is claimed as qualified.
 - **Unqualified hosts and events:** power loss, reboot and remount, physical Linux ARM64, and other
   hardware and source combinations beyond the selected release matrix.
 
