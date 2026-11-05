@@ -688,7 +688,7 @@ export type PreviewComparison = {
   clipDurationSeconds: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
-  qualitySearchSkipped?: boolean
+  skippedQualitySearches?: string[]
 }
 
 export type CalibrationSource = {

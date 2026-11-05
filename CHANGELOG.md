@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Previews say when they did not run the library's quality search (#332). Audio, image and soundtrack quality searches are skipped for throwaway previews, which encode at the saved setting, so a preview of a library with one of those searches on now explains that real jobs may come out a different size and quality. The preview API reports this as `qualitySearchSkipped`.
+- Previews say which quality searches they left out (#332). Throwaway previews never run the audio, image or soundtrack searches, and a preview sampled on a worker also encodes video at the saved quality. The dispatcher now records exactly which searches a real job of that library would have run that the preview did not, and the preview panel explains each one. A search the real job would not run either, such as soundtrack selection when audio is copied or for an upscale, is never reported. The preview API reports this as `skippedQualitySearches`; one nullable column is added through a migration.
 
 - Super-resolution preserves the source's SDR colour conversion and relative picture timing, verifies copied audio as copied, refuses linked or reused scratch attempts, and only reserves another batch when more pictures remain. Custom engine/model paths must be absolute. Container planning uses the copied audio even when the library normally converts it to AAC or Opus, retaining Matroska fallbacks for incompatible audio and ALAC. Upscales wait for review even when move-on-complete or destination overwrite is configured.
 
