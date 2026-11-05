@@ -307,7 +307,7 @@ export const en = {
     atomic_quarantine_separate: 'Quarantine is on a separate mount',
     atomic_both_separate: 'Work and quarantine are on separate mounts',
     atomic_unknown: 'Mount relationship unavailable',
-    atomic_fix: "For faster atomic moves, expose one common host parent as a single container mount, then set the library, OPTIMISARR_WORK_DIR, and OPTIMISARR_TRASH_DIR to folders beneath it. Otherwise replacement uses the slower verified copy.",
+    atomic_fix: "For faster atomic moves, expose one common host parent as a single container mount, then set the library, OPTIMISARR_WORK_DIR, and OPTIMISARR_TRASH_DIR to folders beneath it. Otherwise, with cross-filesystem replacement on, replacement uses the slower verified copy.",
     fallback_enabled: 'Verified cross-filesystem replacement is enabled.',
     fallback_disabled: 'Replacement across these mounts is currently blocked.',
     toolchain_heading: 'Media tools',
