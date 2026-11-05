@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Read the facts the exact-copy cleanup rule judges directly from disk (#397): link counts, file identity, a fresh full hash, filesystem identity and write access, with disc structures classified as not standalone. This only reads; nothing calls it yet and cleanup actions stay disabled.
+
 - Replacement never deletes a source before its copy is verified. Between separate Docker bind mounts, such as `/data`, `/trash` and `/work`, the kernel refuses a rename even on one filesystem, and .NET's file move then silently copied and deleted the source with no content check. The verified copy path was never reached and every such move was recorded as an atomic rename. Moves now use a rename that cannot copy or overwrite; anything else goes through the SHA-256 verified copy, which removes the source only after the copy is proved identical, and is recorded as cross-filesystem. These moves take longer because both files are hashed. Replacements already hash the quarantined original and the installed file after moving, so existing results stay trustworthy.
 
 - Reclaim the sample workspace of a search interrupted by a server restart (#332). An adaptive-quality, soundtrack or verification-reference search stopped by a restart or redeploy left its samples in the work folder forever; startup recovery now removes that job's own marked workspaces when it requeues the job, and keeps anything it cannot prove is that job's. A new container acceptance case restarts the server during soundtrack selection and proves the job is requeued, selects again, leaves no scratch, and replaces and rolls back with the original unchanged.

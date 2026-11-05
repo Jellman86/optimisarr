@@ -44,11 +44,31 @@ internal static class ExactFileIdentity
         return null;
     }
 
+    /// <summary>
+    /// When this file's data or metadata last changed, by the clock a writer cannot set back. A
+    /// modification time can be restored after a write; this cannot. Null where it is unavailable.
+    /// </summary>
+    public static (long Seconds, long Nanoseconds)? ChangeStamp(SafeFileHandle handle)
+    {
+        try
+        {
+            if (OperatingSystem.IsLinux())
+                return Statx(handle.DangerousGetHandle().ToInt32(), "", 0x1000, 0x80, out var linux) == 0 && (linux.Mask & 0x80) != 0
+                    ? (linux.ChangeSeconds, linux.ChangeNanoseconds) : null;
+            if (OperatingSystem.IsMacOS())
+                return Fstat(handle, out var mac) == 0 ? (mac.ChangeSeconds, mac.ChangeNanoseconds) : null;
+        }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException) { }
+        return null;
+    }
+
     [StructLayout(LayoutKind.Explicit, Size = 256)]
     private struct LinuxStat
     {
         [FieldOffset(0)] public uint Mask;
         [FieldOffset(32)] public ulong Inode;
+        [FieldOffset(96)] public long ChangeSeconds;
+        [FieldOffset(104)] public uint ChangeNanoseconds;
         [FieldOffset(136)] public uint DeviceMajor;
         [FieldOffset(140)] public uint DeviceMinor;
     }
@@ -57,6 +77,8 @@ internal static class ExactFileIdentity
     {
         [FieldOffset(0)] public int Device;
         [FieldOffset(8)] public ulong Inode;
+        [FieldOffset(64)] public long ChangeSeconds;
+        [FieldOffset(72)] public long ChangeNanoseconds;
     }
     [StructLayout(LayoutKind.Explicit, Size = 52)]
     private struct WindowsFileInfo
