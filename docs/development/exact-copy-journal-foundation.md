@@ -454,6 +454,21 @@ and source-window helpers, retained-tree ownership, exhaustive aliases, import/m
 coordination, persistent execution lifetime and recorded completion moves still require
 qualification. D3 file actions remain disabled; quality-based keeper ranking remains planned.
 
+## D3 action preflight rule
+
+`DedupeActionPreflight` (Core, pure) is the last gate before an exact copy may move. Given the
+prepared plan, a fresh observation of every planned file and the library/server context, it
+refuses when the plan is invalid; the library is connected to a media manager; storage is not
+qualified; any file has active work, is missing, unobserved, a link or hard linked, changed in
+identity, size or modification time, was not read in full now, or no longer matches the reviewed
+hash; two paths are one physical file; or a copy's folder is not writable, its quarantine
+destination is occupied, or the move cannot be proved to stay on one filesystem. Keepers never
+move, so only content and identity are judged for them. Every refusal is reported together.
+
+The rule has no filesystem access and enables nothing: no endpoint or mover calls it yet. Links,
+hard links, bundles and manager-connected libraries are refused rather than given adapters, and
+Windows action qualification is out of scope because the server ships as a Linux container.
+
 ## Remaining D3 work, in dependency order
 
 1. Complete cleanup, inventory reconciliation and import/manager ownership coordination after
@@ -462,8 +477,9 @@ qualification. D3 file actions remain disabled; quality-based keeper ranking rem
    cleanup of unowned disposable trees still needs qualified ownership. Cover aliases of parent
    directories for absent destinations. Capture every physical alias and all affected references without silently widening the selected scope. Add races between each
    operation and dedupe preparation. No action can become eligible until these tests pass.
-2. Add an action preflight using current scope/generations, permissions, supported independent
-   assets, qualified writable storage and fresh full reads of all selected keepers and copies.
+2. Gather the fresh observations the preflight rule above judges (scope/generations,
+   permissions, link counts, volume identity and full reads of all selected keepers and copies)
+   and call the rule before any move.
    Block connected-manager paths, unknown/read-only storage and unsupported bundles. Qualify
    Windows identity and link probing before enabling Windows actions.
 3. Record per-file move/restore intent and progress before implementing a no-overwrite atomic
