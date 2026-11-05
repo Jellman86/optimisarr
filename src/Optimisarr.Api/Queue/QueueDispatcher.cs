@@ -2115,7 +2115,8 @@ public sealed partial class QueueDispatcher(
                         videoEncoderName,
                         requestedQuality,
                         adaptiveQuality,
-                        job.QualityRetryCount)
+                        job.QualityRetryCount,
+                        job.AdaptiveVideoQualityRetry ?? 0)
                     : EncoderQualityPolicy.Resolve(
                         videoEncoderName,
                         requestedQuality,
@@ -2678,8 +2679,7 @@ public sealed partial class QueueDispatcher(
         {
             job.Status = JobStatus.Transcoding;
             job.Progress = 0;
-            job.AdaptiveVideoQuality = selectedQuality;
-            job.AdaptiveVideoQualityEncoder = work.VideoEncoder;
+            job.RecordAdaptiveVideoQuality(selectedQuality, work.VideoEncoder);
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
         // A fall-back is a warning, not news. The search running and learning nothing is the

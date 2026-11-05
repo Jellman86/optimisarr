@@ -16,6 +16,12 @@ namespace Optimisarr.Data.Migrations
                 type: "TEXT",
                 maxLength: 64,
                 nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "AdaptiveVideoQualityRetry",
+                table: "Jobs",
+                type: "INTEGER",
+                nullable: true);
         }
 
         /// <inheritdoc />
@@ -23,6 +29,10 @@ namespace Optimisarr.Data.Migrations
         {
             migrationBuilder.DropColumn(
                 name: "AdaptiveVideoQualityEncoder",
+                table: "Jobs");
+
+            migrationBuilder.DropColumn(
+                name: "AdaptiveVideoQualityRetry",
                 table: "Jobs");
         }
     }

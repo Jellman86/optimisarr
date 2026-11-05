@@ -1528,7 +1528,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     private async Task<(HttpClient Worker, int JobId, string LeaseId, int Quality, int Windows)> ClaimASizeGatedSearch(
-        string workerName, double minimumVmaf)
+        string workerName, double minimumVmaf, int qualityRetryCount = 0)
     {
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker(workerName);
@@ -1543,6 +1543,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             library.MinVmafHarmonicMean = minimumVmaf;
             library.MinVmafMin = 90;
             library.MinVmafCatastrophicMin = 90;
+            job.QualityRetryCount = qualityRetryCount;
             await db.SaveChangesAsync();
         }
 
@@ -1730,10 +1731,48 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
-        job.AdaptiveVideoQuality = quality;
-        job.AdaptiveVideoQualityEncoder = encoder;
+        job.RecordAdaptiveVideoQuality(quality, encoder);
         job.QualityRetryCount = qualityRetryCount;
         await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public void A_size_rejection_records_its_quality_with_the_encoder_and_retry_that_rejected_it()
+    {
+        var job = new Job { VideoEncoder = "hevc_nvenc", QualityRetryCount = 1 };
+        job.RecordAdaptiveVideoQuality(20, "hevc_videotoolbox");
+        Optimisarr.Api.Queue.SizePredictionFailure.Apply(job, 23, "Size saving prediction: too large.", DateTimeOffset.UtcNow);
+        Assert.Equal((23, "hevc_nvenc", 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityEncoder, job.AdaptiveVideoQualityRetry!.Value));
+    }
+
+    [Fact]
+    public async Task A_worker_search_during_a_retry_encodes_at_the_quality_it_selected()
+    {
+        // A retry claimed by another encoder searches again. The quality those samples selected is
+        // the one size preflight checked, so the full encode must use it, not one step beyond it.
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Retry search", 90, qualityRetryCount: 1);
+        JsonElement direction = default;
+        for (var step = 0; step < 8; step++)
+        {
+            using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+            {
+                quality,
+                encodedBytes = 240_000_000L,
+                windowEncodedBytes = new[] { 80_000_000L, 80_000_000L, 80_000_000L },
+                logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+            });
+            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+            direction = await report.Content.ReadFromJsonAsync<JsonElement>();
+            if (direction.GetProperty("nextStep").ValueKind == JsonValueKind.Null) break;
+            quality = direction.GetProperty("nextStep").GetProperty("quality").GetInt32();
+        }
+
+        var selected = direction.GetProperty("selectedQuality").GetInt32();
+        var arguments = direction.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Equal(selected.ToString(System.Globalization.CultureInfo.InvariantCulture), arguments[arguments.IndexOf("-crf") + 1]);
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.Equal((selected, 1), (job.AdaptiveVideoQuality!.Value, job.AdaptiveVideoQualityRetry!.Value));
     }
 
     [Fact]

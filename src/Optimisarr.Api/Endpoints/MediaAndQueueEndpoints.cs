@@ -527,8 +527,7 @@ internal static class MediaAndQueueEndpoints
             }
 
             job.BypassSizePreflight = true;
-            job.AdaptiveVideoQuality = null;
-            job.AdaptiveVideoQualityEncoder = null;
+            job.ClearAdaptiveVideoQuality();
             job.AdaptiveAudioBitrateKbps = null;
             job.AdaptiveImageQuality = null;
             job.PerceptualSearchJson = null;

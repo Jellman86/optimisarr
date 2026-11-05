@@ -691,6 +691,9 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("AdaptiveVideoQualityRetry")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("AppliedAudioFilter")
                         .HasColumnType("TEXT");
 

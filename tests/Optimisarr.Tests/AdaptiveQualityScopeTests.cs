@@ -27,6 +27,18 @@ public sealed class AdaptiveQualityScopeTests
         Assert.Null(AdaptiveQualityScope.For(20, selectedOn, "hevc_qsv"));
 
     [Fact]
+    public void A_quality_selected_during_the_current_retry_is_encoded_unchanged()
+    {
+        var quality = EncoderQualityPolicy.ResolveAdaptive("hevc_qsv", 24, 20, retryCount: 1, selectedAtRetry: 1);
+        Assert.Equal(20, quality.Effective);
+        Assert.Equal(1, quality.RetryCount);
+    }
+
+    [Fact]
+    public void Each_retry_after_the_selection_steps_one_further_toward_quality() =>
+        Assert.Equal(17, EncoderQualityPolicy.ResolveAdaptive("hevc_qsv", 24, 20, retryCount: 1, selectedAtRetry: 0).Effective);
+
+    [Fact]
     public void No_selected_quality_stays_unselected() =>
         Assert.Null(AdaptiveQualityScope.For(null, "hevc_qsv", "hevc_qsv"));
 }

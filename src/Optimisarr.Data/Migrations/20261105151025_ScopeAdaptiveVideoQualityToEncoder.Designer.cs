@@ -11,7 +11,7 @@ using Optimisarr.Data;
 namespace Optimisarr.Data.Migrations
 {
     [DbContext(typeof(OptimisarrDbContext))]
-    [Migration("20261105141903_ScopeAdaptiveVideoQualityToEncoder")]
+    [Migration("20261105151025_ScopeAdaptiveVideoQualityToEncoder")]
     partial class ScopeAdaptiveVideoQualityToEncoder
     {
         /// <inheritdoc />
@@ -693,6 +693,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("AdaptiveVideoQualityEncoder")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("AdaptiveVideoQualityRetry")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("AppliedAudioFilter")
                         .HasColumnType("TEXT");

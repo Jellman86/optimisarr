@@ -35,7 +35,7 @@ internal static class SizePredictionFailure
     public static void Apply(Job job, int? quality, string? reason, DateTimeOffset now)
     {
         job.Status = JobStatus.Failed;
-        job.AdaptiveVideoQuality = quality;
+        if (quality is { } rejected && rejected != job.AdaptiveVideoQuality) job.RecordAdaptiveVideoQuality(rejected, job.VideoEncoder);
         job.Progress = 0;
         var explanation = reason?.Replace("The full encode is held until you choose to run it.", "The full encode was not run.")
             .Replace("and the final size and quality checks still apply.", "and no replacement was made.");

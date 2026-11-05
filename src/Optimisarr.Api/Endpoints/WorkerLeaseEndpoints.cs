@@ -852,8 +852,7 @@ internal static class WorkerLeaseEndpoints
                 // and the queue would show no chosen quality at all.
                 if (lease.Job is { } searched)
                 {
-                    searched.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
-                    searched.AdaptiveVideoQualityEncoder = searched.VideoEncoder;
+                    searched.RecordAdaptiveVideoQuality(progress.Decision.SelectedQuality, searched.VideoEncoder);
                     searched.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
@@ -884,8 +883,7 @@ internal static class WorkerLeaseEndpoints
                 lease.AdaptiveAskedQuality = null;
                 if (lease.Job is { } stalled)
                 {
-                    stalled.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
-                    stalled.AdaptiveVideoQualityEncoder = stalled.VideoEncoder;
+                    stalled.RecordAdaptiveVideoQuality(progress.Decision.SelectedQuality, stalled.VideoEncoder);
                     stalled.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
