@@ -36,6 +36,17 @@ public sealed class LibraryScannerTests : IDisposable
     }
 
     [Fact]
+    public void Scan_skips_a_child_librarys_quarantine_when_scanning_its_parent()
+    {
+        var quarantined = Path.Combine(_root, "child", Optimisarr.Core.Deduplication.DedupeQuarantinePaths.FolderName, "action", "Copy.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(quarantined)!);
+        File.WriteAllText(quarantined, "copy");
+        File.SetLastWriteTimeUtc(quarantined, _now.UtcDateTime.AddDays(-30));
+
+        Assert.Empty(_scanner.Scan(_root, new LibraryScanOptions(), _now).Files);
+    }
+
+    [Fact]
     public void Scan_ignores_non_media_files()
     {
         WriteFile("Movies/Example.mkv", modifiedMinutesAgo: 30);

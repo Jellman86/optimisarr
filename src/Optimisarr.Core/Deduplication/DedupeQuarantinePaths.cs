@@ -11,9 +11,7 @@ public static class DedupeQuarantinePaths
     public static string For(string root, Guid actionId, string path) =>
         Path.Combine(root, FolderName, actionId.ToString("N"), Path.GetRelativePath(root, path));
 
-    public static bool IsInside(string root, string path)
-    {
-        var relative = Path.GetRelativePath(root, path);
-        return relative == FolderName || relative.StartsWith(FolderName + Path.DirectorySeparatorChar, StringComparison.Ordinal);
-    }
+    /// <summary>Whether any folder between the root and the path is a quarantine folder, such as a child library's.</summary>
+    public static bool IsInside(string root, string path) =>
+        Path.GetRelativePath(root, path).Split(Path.DirectorySeparatorChar).Contains(FolderName, StringComparer.Ordinal);
 }

@@ -36,13 +36,13 @@ internal static class DedupeFileObserver
         var identity = ExactFileIdentity.Read(file.Path);
         var size = info.Exists ? info.Length : 0;
         var modified = info.Exists ? info.LastWriteTimeUtc.Ticks : 0;
-        var hash = isLink || identity is null
-            ? null : await ReadFullHashAsync(info, identity, size, modified, changeSettle ?? ChangeSettle, afterRead, token);
+        var (hash, stamp) = isLink || identity is null
+            ? (null, null) : await ReadFullHashAsync(info, identity, size, modified, changeSettle ?? ChangeSettle, afterRead, token);
         // Whatever the read saw, the path it was reached by must still be free of links now.
         isLink = isLink || IsLinked(file.Root, file.Path, info);
         if (isLink) hash = null;
         var (quarantineSafe, quarantineFolder) = file.QuarantinePath is { } destination
-            ? WalkQuarantinePath(file.Root, destination) : (false, null);
+            ? WalkFolders(file.Root, destination) : (false, null);
         return new DedupeFileObservation(
             file.MediaFileId,
             Exists: true,
@@ -58,7 +58,8 @@ internal static class DedupeFileObserver
             QuarantineVolumeId: quarantineFolder is null ? null : VolumeOf(ExactFileIdentity.Read(quarantineFolder)),
             QuarantinePathSafe: quarantineSafe,
             // The whole path, because a library rooted at a disc's BDMV folder is still a disc.
-            IsIndependentFile: DedupeFileEligibility.IsIndependentFile(file.Path));
+            IsIndependentFile: DedupeFileEligibility.IsIndependentFile(file.Path),
+            ChangeStamp: isLink ? null : stamp);
     }
 
     /// <summary>The filesystem part of a file identity; null when the platform gives none.</summary>
@@ -95,7 +96,7 @@ internal static class DedupeFileObserver
     // Null unless the same unchanged file was read from start to end: a hash of bytes that may
     // have moved underneath the read proves nothing about the file that would be quarantined.
     // Size and modification time alone cannot show that, because a writer can restore the time.
-    private static async Task<string?> ReadFullHashAsync(FileInfo info, string identity, long size, long modified,
+    private static async Task<(string? Hash, string? Stamp)> ReadFullHashAsync(FileInfo info, string identity, long size, long modified,
         TimeSpan settle, Func<Task>? afterRead, CancellationToken token)
     {
         try
@@ -104,26 +105,26 @@ internal static class DedupeFileObserver
             {
                 Mode = FileMode.Open, Access = FileAccess.Read, Share = FileShare.Read, Options = FileOptions.SequentialScan | FileOptions.Asynchronous,
             });
-            if (ExactFileIdentity.Read(stream.SafeFileHandle) != identity) return null;
-            if (ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) is not { } before) return null;
+            if (ExactFileIdentity.Read(stream.SafeFileHandle) != identity) return (null, null);
+            if (ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) is not { } before) return (null, null);
             var changedAt = DateTimeOffset.FromUnixTimeSeconds(before.Seconds).AddTicks(before.Nanoseconds / 100);
-            if (DateTimeOffset.UtcNow - changedAt < settle) return null;
+            if (DateTimeOffset.UtcNow - changedAt < settle) return (null, null);
             var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, token));
             if (afterRead is not null) await afterRead();
             info.Refresh();
             return ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) == before
                 && info.Exists && info.Length == size && info.LastWriteTimeUtc.Ticks == modified
-                && ExactFileIdentity.Read(info.FullName) == identity ? hash : null;
+                && ExactFileIdentity.Read(info.FullName) == identity ? (hash, before.ToString()) : (null, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return null;
+            return (null, null);
         }
     }
 
     // Walks down from the library root, because looking upward from the destination would step
     // over a dangling link or a file in the way and report the folder above it as fine.
-    private static (bool Safe, string? NearestFolder) WalkQuarantinePath(string root, string destination)
+    internal static (bool Safe, string? NearestFolder) WalkFolders(string root, string destination)
     {
         try
         {

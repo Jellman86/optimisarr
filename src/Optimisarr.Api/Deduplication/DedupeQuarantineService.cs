@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Replacement;
@@ -31,14 +32,19 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
 {
     /// <param name="changeSettle">How long files must have been unchanged to be read; tests shorten it.</param>
     /// <param name="afterMove">Runs after each move, so tests can stop the action at that boundary.</param>
+    /// <param name="beforeIntent">Runs just before intent is recorded, so tests can race cancellation.</param>
     public async Task<DedupeActionResult> QuarantineAsync(Guid id, CancellationToken token,
-        TimeSpan? changeSettle = null, Action<DedupeFileSnapshot>? afterMove = null)
+        TimeSpan? changeSettle = null, Action<DedupeFileSnapshot>? afterMove = null, Func<Task>? beforeIntent = null)
     {
         var loaded = await LoadAsync(id, token);
         if (loaded is not { } action) return DedupeActionResult.NotFound;
         if (action.State == DedupeActionState.Quarantined) return DedupeActionResult.Completed;
         if (action.State != DedupeActionState.Prepared)
             return DedupeActionResult.Refused($"This action is {action.State} and cannot start a move.");
+        // Only this layout is skipped by library scans; anywhere else the copy would return as media.
+        if (action.Plan.Files.FirstOrDefault(f => !f.IsKeeper && f.QuarantinePath != DedupeQuarantinePaths.For(f.Root, id, f.Path)) is { } misplaced)
+            return DedupeActionResult.Refused($"{misplaced.Path} has a quarantine destination outside the action's folder.",
+                new DedupePreflightIssue(misplaced.MediaFileId, DedupePreflightRefusal.UnsafeDestination));
 
         using var held = claims.TryAcquire(DedupeJournalStore.Keys(action.Plan.Files));
         if (held is null) return DedupeActionResult.Refused("Another file operation is using these files. Try again shortly.");
@@ -50,38 +56,50 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         var copies = action.Plan.Files.Where(f => !f.IsKeeper).ToArray();
         // Equal volume identifiers cannot prove a rename will work across bind mounts, so try one.
         if (issues.Count == 0)
-            issues.AddRange(copies.Where(f => !FileMover.CanMoveAtomically(Path.GetDirectoryName(f.Path)!, Path.GetDirectoryName(f.QuarantinePath!)!))
-                .Select(f => new DedupePreflightIssue(f.MediaFileId, DedupePreflightRefusal.CrossFilesystem)));
+            issues.AddRange(copies.Where(f => !CanRename(f)).Select(f => new DedupePreflightIssue(f.MediaFileId, DedupePreflightRefusal.CrossFilesystem)));
         if (issues.Count > 0)
         {
             RemoveEmptyQuarantineFolders(copies);
             return DedupeActionResult.Refused("The files cannot be moved safely.", issues.ToArray());
         }
 
-        // Exceptions other than file errors deliberately leave this recorded: a stopped server
-        // resolves it at restart through the journal, never by assuming how far the moves got.
-        await TransitionAsync(id, DedupeActionState.Quarantining, null, token);
+        var stamps = observations.ToDictionary(o => o.MediaFileId, o => o.ChangeStamp);
+        var keepers = action.Plan.Files.Where(f => f.IsKeeper).ToArray();
+        if (beforeIntent is not null) await beforeIntent();
+        if (!await TryTransitionAsync(id, DedupeActionState.Prepared, DedupeActionState.Quarantining, null))
+        {
+            RemoveEmptyQuarantineFolders(copies);
+            return DedupeActionResult.Refused("This action changed before it could start, so nothing moved.");
+        }
+
+        // From here the journal always gets an answer, so cancelling undoes the moves rather than
+        // abandoning them. Anything else escaping is resolved at restart, or by a later restore.
         try
         {
             foreach (var copy in copies)
             {
-                token.ThrowIfCancellationRequested();
-                if (action.Plan.Files.Where(f => f.IsKeeper).Append(copy).FirstOrDefault(f => !IsReviewedFile(f, f.Path)) is { } changed)
-                    return await UndoAsync(id, action, $"{changed.Path} changed before the move.", token);
+                if (token.IsCancellationRequested) return await UndoAsync(id, action, "The action was cancelled.");
+                if (keepers.Append(copy).FirstOrDefault(f => !IsReviewedFile(f, f.Path, stamps[f.MediaFileId])) is { } changed)
+                    return await UndoAsync(id, action, $"{changed.Path} changed before the move.");
+                if (!PathsAreSafe(copy, copy.QuarantinePath!) || !PathsAreSafe(copy, copy.Path))
+                    return await UndoAsync(id, action, $"A folder on the way to {copy.QuarantinePath} is redirected.");
                 Directory.CreateDirectory(Path.GetDirectoryName(copy.QuarantinePath!)!);
                 var renamed = RenameOnly.Rename(copy.Path, copy.QuarantinePath!);
                 if (renamed != RenameOutcome.Renamed)
-                    return await UndoAsync(id, action, $"Could not move {copy.Path}: {renamed}.", token);
+                    return await UndoAsync(id, action, $"Could not move {copy.Path}: {renamed}.");
                 afterMove?.Invoke(copy);
             }
+            // The last move has to leave a reviewed keeper behind, or it must not stand.
+            if (keepers.FirstOrDefault(f => !IsReviewedFile(f, f.Path, stamps[f.MediaFileId])) is { } lost)
+                return await UndoAsync(id, action, $"{lost.Path} changed during the move.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(ex, "Quarantine of dedupe action {ActionId} failed", id);
-            return await UndoAsync(id, action, ex.Message, CancellationToken.None);
+            return await UndoAsync(id, action, ex.Message);
         }
 
-        await TransitionAsync(id, DedupeActionState.Quarantined, null, token);
+        await TransitionAsync(id, DedupeActionState.Quarantined, null);
         return DedupeActionResult.Completed;
     }
 
@@ -95,38 +113,44 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         var loaded = await LoadAsync(id, token);
         if (loaded is not { } action) return DedupeActionResult.NotFound;
         if (action.State == DedupeActionState.Restored) return DedupeActionResult.Completed;
-        if (action.State is not (DedupeActionState.Quarantined or DedupeActionState.NeedsAttention))
+        if (action.State is DedupeActionState.Prepared or DedupeActionState.Cancelled)
             return DedupeActionResult.Refused($"This action is {action.State} and has nothing to restore.");
 
         using var held = claims.TryAcquire(DedupeJournalStore.Keys(action.Plan.Files));
         if (held is null) return DedupeActionResult.Refused("Another file operation is using these files. Try again shortly.");
-        await TransitionAsync(id, DedupeActionState.Restoring, null, token);
-        return await ReturnCopiesAsync(id, action, token);
+        // Holding the claim means no action is running, so a state left mid-way has nobody to finish
+        // it: an earlier attempt stopped, and the files themselves say how far it got.
+        if (action.State is DedupeActionState.Quarantining or DedupeActionState.Restoring)
+            await TransitionAsync(id, DedupeActionState.NeedsAttention, "An earlier attempt stopped part-way.");
+        await TransitionAsync(id, DedupeActionState.Restoring, null);
+        return await ReturnCopiesAsync(id, action);
     }
 
-    private async Task<DedupeActionResult> UndoAsync(Guid id, LoadedAction action, string reason, CancellationToken token)
+    private async Task<DedupeActionResult> UndoAsync(Guid id, LoadedAction action, string reason)
     {
-        await TransitionAsync(id, DedupeActionState.NeedsAttention, reason, token);
-        await TransitionAsync(id, DedupeActionState.Restoring, null, token);
-        var undone = await ReturnCopiesAsync(id, action, token);
+        await TransitionAsync(id, DedupeActionState.NeedsAttention, reason);
+        await TransitionAsync(id, DedupeActionState.Restoring, null);
+        var undone = await ReturnCopiesAsync(id, action);
         return undone.Outcome == DedupeActionOutcome.Completed
             ? DedupeActionResult.Refused(reason + " Every file was returned to its original path.")
             : DedupeActionResult.Attention(reason + " " + undone.Reason);
     }
 
-    private async Task<DedupeActionResult> ReturnCopiesAsync(Guid id, LoadedAction action, CancellationToken token)
+    // Not cancellable: once files are moving, stopping half way would only leave more to resolve.
+    private async Task<DedupeActionResult> ReturnCopiesAsync(Guid id, LoadedAction action)
     {
+        var token = CancellationToken.None;
         var copies = action.Plan.Files.Where(f => !f.IsKeeper).ToArray();
         string? problem = null;
         foreach (var copy in copies)
         {
-            try { problem = ReturnCopy(copy); }
+            try { problem = await ReturnCopyAsync(copy); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { problem = $"Could not restore {copy.Path}: {ex.Message}"; }
             if (problem is not null) break;
         }
         if (problem is not null)
         {
-            await TransitionAsync(id, DedupeActionState.NeedsAttention, problem, token);
+            await TransitionAsync(id, DedupeActionState.NeedsAttention, problem);
             return DedupeActionResult.Attention(problem);
         }
 
@@ -147,16 +171,19 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
     }
 
     // Null when the copy is back at its original path, otherwise why it could not be put there.
-    private static string? ReturnCopy(DedupeFileSnapshot copy)
+    private static async Task<string?> ReturnCopyAsync(DedupeFileSnapshot copy)
     {
         var quarantine = copy.QuarantinePath!;
+        if (!PathsAreSafe(copy, copy.Path) || !PathsAreSafe(copy, quarantine))
+            return $"A folder on the way to {copy.Path} is redirected, so {quarantine} was left in place.";
         var atQuarantine = Occupied(quarantine);
         var atOriginal = Occupied(copy.Path);
         if (!atQuarantine && atOriginal)
-            return IsReviewedFile(copy, copy.Path) ? null : $"{copy.Path} is not the reviewed file.";
+            return await HoldsReviewedContentAsync(copy, copy.Path) ? null : $"{copy.Path} is not the reviewed file.";
         if (!atQuarantine) return $"{copy.Path} is at neither its original path nor {quarantine}.";
         if (atOriginal) return $"{copy.Path} is occupied, so {quarantine} was left in place.";
-        if (!IsReviewedFile(copy, quarantine)) return $"{quarantine} is not the reviewed file.";
+        if (!await HoldsReviewedContentAsync(copy, quarantine)) return $"{quarantine} is not the reviewed file.";
+        Directory.CreateDirectory(Path.GetDirectoryName(copy.Path)!);
         return RenameOnly.Rename(quarantine, copy.Path) switch
         {
             RenameOutcome.Renamed => null,
@@ -164,24 +191,42 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         };
     }
 
-    // A rename keeps the inode, size and modification time, so any difference means a different file.
-    private static bool IsReviewedFile(DedupeFileSnapshot file, string path)
+    // A rename keeps the inode, size and modification time, so any difference means a different
+    // file. The change time catches a rewrite that put the others back; a rename also moves it, so
+    // it can only be compared for a file that has not moved since it was read.
+    private static bool IsReviewedFile(DedupeFileSnapshot file, string path, string? changeStamp = null)
     {
         var info = new FileInfo(path);
         return info.Exists && info.LinkTarget is null && info.Length == file.SizeBytes && info.LastWriteTimeUtc.Ticks == file.ModifiedUtcTicks
-            && ExactFileIdentity.Read(path) == file.Identity;
+            && ExactFileIdentity.Read(path) == file.Identity
+            && (changeStamp is null || ExactFileIdentity.ChangeStamp(path)?.ToString() == changeStamp);
+    }
+
+    // The move's own rename changes the change time, so restoring proves the content by reading it.
+    private static async Task<bool> HoldsReviewedContentAsync(DedupeFileSnapshot file, string path)
+    {
+        if (!IsReviewedFile(file, path)) return false;
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Convert.ToHexStringLower(await SHA256.HashDataAsync(stream)) == file.Sha256;
+    }
+
+    private static bool PathsAreSafe(DedupeFileSnapshot file, string path) => DedupeFileObserver.WalkFolders(file.Root, path).Safe;
+
+    private static bool CanRename(DedupeFileSnapshot copy)
+    {
+        try { return FileMover.CanMoveAtomically(Path.GetDirectoryName(copy.Path)!, Path.GetDirectoryName(copy.QuarantinePath!)!); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
     }
 
     private static bool Occupied(string path) => Path.Exists(path) || new FileInfo(path).LinkTarget is not null;
 
-    // Only empty folders this action's paths name, and only inside the quarantine folder.
+    // Only empty folders on this action's paths, and only inside its quarantine folder.
     private static void RemoveEmptyQuarantineFolders(IEnumerable<DedupeFileSnapshot> copies)
     {
         foreach (var copy in copies)
         {
-            var quarantineRoot = Path.Combine(copy.Root, DedupeQuarantinePaths.FolderName);
             for (var folder = Path.GetDirectoryName(copy.QuarantinePath!); folder is not null
-                && folder.StartsWith(quarantineRoot, StringComparison.Ordinal); folder = Path.GetDirectoryName(folder))
+                && DedupeQuarantinePaths.IsInside(copy.Root, folder); folder = Path.GetDirectoryName(folder))
             {
                 try
                 {
@@ -224,16 +269,23 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         return new(managed, !OperatingSystem.IsWindows(), busy.ToHashSet());
     }
 
-    private async Task TransitionAsync(Guid id, DedupeActionState to, string? reason, CancellationToken token)
+    // Conditional on the state stored now, so a concurrent change is noticed rather than overwritten.
+    private async Task<bool> TryTransitionAsync(Guid id, DedupeActionState from, DedupeActionState to, string? reason)
+    {
+        if (!DedupeJournalPolicy.CanTransition(from, to)) return false;
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var now = DateTimeOffset.UtcNow;
+        return await db.DedupeActions.Where(a => a.Id == id && a.State == from)
+            .ExecuteUpdateAsync(set => set.SetProperty(a => a.State, to).SetProperty(a => a.AttentionReason, reason).SetProperty(a => a.UpdatedAt, now)) == 1;
+    }
+
+    private async Task TransitionAsync(Guid id, DedupeActionState to, string? reason)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-        var row = await db.DedupeActions.SingleAsync(a => a.Id == id, token);
-        if (!DedupeJournalPolicy.CanTransition(row.State, to))
-            throw new InvalidOperationException($"A dedupe action cannot move from {row.State} to {to}.");
-        row.State = to;
-        row.AttentionReason = reason;
-        row.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(token);
+        var from = await db.DedupeActions.AsNoTracking().Where(a => a.Id == id).Select(a => a.State).SingleAsync();
+        if (!await TryTransitionAsync(id, from, to, reason))
+            throw new InvalidOperationException($"A dedupe action cannot move from {from} to {to}.");
     }
 }

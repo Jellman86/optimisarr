@@ -62,6 +62,17 @@ internal static class ExactFileIdentity
         return null;
     }
 
+    /// <summary>The change stamp of the file now at this path; null when it cannot be read.</summary>
+    public static (long Seconds, long Nanoseconds)? ChangeStamp(string path)
+    {
+        try
+        {
+            using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return ChangeStamp(handle);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
     [StructLayout(LayoutKind.Explicit, Size = 256)]
     private struct LinuxStat
     {

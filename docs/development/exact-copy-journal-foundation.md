@@ -502,9 +502,12 @@ there; it is out of scope because the server ships as a Linux container.
    Windows identity and link probing before enabling Windows actions.
 3. `DedupeQuarantineService` implements the no-overwrite same-filesystem move and restore behind no
    endpoint. The journal records intent before any move; progress per file is read back from the
-   files themselves rather than stored, because a stored step could disagree with the disk. Identity,
-   size and modification time are rechecked before each move, and a full preflight read precedes the
-   action. Any enabled media-manager connection refuses the action, because connections are not
+   files themselves rather than stored, because a stored step could disagree with the disk. A full
+   preflight read precedes the action; keepers are rechecked by identity, size, modification time and
+   the change time from that read before each move and after the last, redirected folders are refused
+   on both sides of each move, and restore re-reads the file and proves its hash. Any failure or
+   cancellation returns what moved. Unmanaged writers racing a check remain out of scope, as above.
+   Any enabled media-manager connection refuses the action, because connections are not
    scoped to a library. Tests cover refusal, keeper loss, an occupied restore path and stopping at
    each move; ambiguous files keep their journal and claims.
 4. Add concrete media-rich preview and separate confirmation to the current library review:

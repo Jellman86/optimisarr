@@ -230,6 +230,187 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
     }
 
     [PosixFact]
+    public async Task Cancelling_as_the_action_starts_stops_it_and_keeps_the_cancellation()
+    {
+        var plan = await PreparedAsync();
+
+        var result = await Service.QuarantineAsync(plan.Id, default, TimeSpan.Zero, beforeIntent: async () =>
+            Assert.True(await Journal.CancelPreparedAsync(plan.Id, default)));
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        AssertAllInPlace();
+        Assert.Equal((DedupeActionState.Cancelled, 0), await ReadAsync(plan.Id));
+    }
+
+    [PosixFact]
+    public async Task A_started_action_cannot_be_cancelled_out_from_under_its_moves()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan, _ => { });
+
+        Assert.False(await Journal.CancelPreparedAsync(plan.Id, default));
+
+        var (state, claims) = await ReadAsync(plan.Id);
+        Assert.Equal(DedupeActionState.Quarantined, state);
+        Assert.True(claims > 0);
+    }
+
+    [PosixFact]
+    public async Task A_keeper_rewritten_with_its_size_and_time_restored_stops_the_action()
+    {
+        var plan = await PreparedAsync();
+        var modified = File.GetLastWriteTimeUtc(Keeper);
+        var rewritten = false;
+
+        var result = await Quarantine(plan, _ =>
+        {
+            if (rewritten) return;
+            Thread.Sleep(50);
+            File.WriteAllBytes(Keeper, [9, 9, 9, 9, 9]);
+            File.SetLastWriteTimeUtc(Keeper, modified);
+            rewritten = true;
+        });
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        Assert.Equal(Content, await File.ReadAllBytesAsync(CopyA));
+        Assert.Equal(Content, await File.ReadAllBytesAsync(CopyB));
+    }
+
+    [PosixFact]
+    public async Task A_keeper_lost_after_the_last_move_undoes_the_action()
+    {
+        var plan = await PreparedAsync();
+        var moves = 0;
+
+        var result = await Quarantine(plan, _ => { if (++moves == 2) File.Delete(Keeper); });
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        Assert.Equal(Content, await File.ReadAllBytesAsync(CopyA));
+        Assert.Equal(Content, await File.ReadAllBytesAsync(CopyB));
+    }
+
+    [PosixFact]
+    public async Task A_quarantine_folder_redirected_between_moves_undoes_the_action()
+    {
+        var plan = await PreparedAsync();
+        var elsewhere = Directory.CreateTempSubdirectory("optimisarr-dedupe-elsewhere-").FullName;
+        try
+        {
+            var folder = Path.GetDirectoryName(plan.Files[2].QuarantinePath!)!;
+            var redirected = false;
+            var result = await Quarantine(plan, _ =>
+            {
+                if (redirected) return;
+                Directory.CreateDirectory(Path.GetDirectoryName(folder)!);
+                Directory.CreateSymbolicLink(folder, elsewhere);
+                redirected = true;
+            });
+
+            Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+            Assert.Equal(Content, await File.ReadAllBytesAsync(CopyA));
+            Assert.Equal(Content, await File.ReadAllBytesAsync(CopyB));
+        }
+        finally { Directory.Delete(elsewhere, true); }
+    }
+
+    [PosixFact]
+    public async Task Restore_refuses_an_original_folder_redirected_outside_the_library()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var elsewhere = Directory.CreateTempSubdirectory("optimisarr-dedupe-elsewhere-").FullName;
+        try
+        {
+            var folder = Path.GetDirectoryName(CopyA)!;
+            Directory.Delete(folder);
+            Directory.CreateSymbolicLink(folder, elsewhere);
+
+            var result = await Service.RestoreAsync(plan.Id, default);
+
+            Assert.Equal(DedupeActionOutcome.NeedsAttention, result.Outcome);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+            Assert.Equal(Content, await File.ReadAllBytesAsync(plan.Files[1].QuarantinePath!));
+            Assert.True((await ReadAsync(plan.Id)).Claims > 0);
+        }
+        finally { Directory.Delete(elsewhere, true); }
+    }
+
+    [PosixFact]
+    public async Task A_quarantined_copy_rewritten_with_its_size_and_time_restored_is_not_restored()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var quarantined = plan.Files[1].QuarantinePath!;
+        var modified = File.GetLastWriteTimeUtc(quarantined);
+        await File.WriteAllBytesAsync(quarantined, [9, 9, 9, 9, 9]);
+        File.SetLastWriteTimeUtc(quarantined, modified);
+
+        var result = await Service.RestoreAsync(plan.Id, default);
+
+        Assert.Equal(DedupeActionOutcome.NeedsAttention, result.Outcome);
+        Assert.False(File.Exists(CopyA));
+        Assert.True((await ReadAsync(plan.Id)).Claims > 0);
+    }
+
+    [PosixFact]
+    public async Task Cancelling_part_way_returns_what_moved_and_finishes_the_journal()
+    {
+        var plan = await PreparedAsync();
+        using var cancel = new CancellationTokenSource();
+
+        var result = await Service.QuarantineAsync(plan.Id, cancel.Token, TimeSpan.Zero, _ => cancel.Cancel());
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        AssertAllInPlace();
+        Assert.Equal((DedupeActionState.Restored, 0), await ReadAsync(plan.Id));
+    }
+
+    [PosixFact]
+    public async Task An_action_that_stopped_part_way_can_be_restored_without_a_restart()
+    {
+        var plan = await PreparedAsync();
+        await Assert.ThrowsAsync<StopAtBoundary>(() => Quarantine(plan, _ => throw new StopAtBoundary()));
+
+        Assert.Equal(DedupeActionOutcome.Completed, (await Service.RestoreAsync(plan.Id, default)).Outcome);
+
+        AssertAllInPlace();
+        Assert.Equal((DedupeActionState.Restored, 0), await ReadAsync(plan.Id));
+    }
+
+    [PosixFact]
+    public async Task A_destination_outside_the_actions_folder_is_refused_before_anything_moves()
+    {
+        var id = Guid.NewGuid();
+        var plan = new DedupePreparation(id, 1, new('a', 64), new('b', 64),
+        [
+            Snapshot(1, Keeper, id, true),
+            Snapshot(2, CopyA, id, false) with { QuarantinePath = Path.Combine(_root, "ordinary-folder", "Film.mkv") },
+            Snapshot(3, CopyB, id, false),
+        ]);
+        Assert.Equal(DedupePreparationResult.Created, await Journal.TryPrepareAsync(plan, default));
+
+        var result = await Quarantine(plan);
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        AssertAllInPlace();
+        Assert.False(Directory.Exists(Path.Combine(_root, "ordinary-folder")));
+    }
+
+    [PosixFact]
+    public async Task Cleaning_up_a_refusal_leaves_a_similarly_named_sibling_folder()
+    {
+        var sibling = Path.Combine(_root, DedupeQuarantinePaths.FolderName + "-other");
+        Directory.CreateDirectory(sibling);
+        var plan = await PreparedAsync();
+        await File.WriteAllBytesAsync(Keeper, [9, 9, 9, 9, 9]);
+
+        await Quarantine(plan);
+
+        Assert.True(Directory.Exists(sibling));
+    }
+
+    [PosixFact]
     public async Task Another_operation_holding_the_files_refuses_without_changing_anything()
     {
         var plan = await PreparedAsync();

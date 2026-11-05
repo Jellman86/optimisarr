@@ -87,10 +87,13 @@ public sealed class DedupeJournalStore(IServiceScopeFactory scopes, FileOperatio
         if (action is null) return false;
         if (action.State == DedupeActionState.Cancelled) return true;
         if (!DedupeJournalPolicy.CanTransition(action.State, DedupeActionState.Cancelled)) return false;
-        action.State = DedupeActionState.Cancelled;
-        action.UpdatedAt = DateTimeOffset.UtcNow;
+        // Conditional on the stored state, so an action that started moving since the read above keeps
+        // its state and reservations instead of being overwritten.
+        var now = DateTimeOffset.UtcNow;
+        var cancelled = await db.DedupeActions.Where(a => a.Id == id && a.State == action.State)
+            .ExecuteUpdateAsync(set => set.SetProperty(a => a.State, DedupeActionState.Cancelled).SetProperty(a => a.UpdatedAt, now), token);
+        if (cancelled == 0) return false;
         await db.DedupeFileClaims.Where(c => c.ActionId == id).ExecuteDeleteAsync(token);
-        await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return true;
     }
