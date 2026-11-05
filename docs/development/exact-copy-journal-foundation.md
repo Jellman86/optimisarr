@@ -485,7 +485,11 @@ there; it is out of scope because the server ships as a Linux container.
 2. `DedupeFileObserver` gathers the fresh observations the preflight rule judges (link counts,
    identity, volume, write access, full reads and standalone-file classification) and only reads.
    A hash is reported only when the same file was unchanged, by its change time, across the whole
-   read, and the file was last changed more than two seconds earlier. Disc structures are refused by
+   read, and the file was last changed more than two seconds earlier. A process writing through an
+   already dirtied writable memory mapping can change bytes without moving that time, which no
+   metadata check can see. This is a recorded limit, not a gate: it needs such a writer active on a
+   media file during the read, and the action only renames a copy into quarantine, where it stays
+   restorable and is never purged automatically. Disc structures are refused by
    folder and extension anywhere in the full path; a sidecar beside a copy is left in place and
    restored paths are unaffected. Scope and generation checks, and calling the rule before
    any move, come with the mover.
