@@ -687,6 +687,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("AdaptiveVideoQuality")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AdaptiveVideoQualityEncoder")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("AppliedAudioFilter")
                         .HasColumnType("TEXT");
 

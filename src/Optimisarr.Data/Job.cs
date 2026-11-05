@@ -142,6 +142,12 @@ public sealed class Job
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
 
+    /// <summary>
+    /// The encoder whose samples selected <see cref="AdaptiveVideoQuality"/>. The value is on that
+    /// encoder's own scale, so an attempt claimed by any other encoder searches again.
+    /// </summary>
+    public string? AdaptiveVideoQualityEncoder { get; set; }
+
     public int? AdaptiveAudioBitrateKbps { get; set; }
     public int? AdaptiveImageQuality { get; set; }
     public string? PerceptualSearchJson { get; set; }

@@ -183,6 +183,7 @@ public static class JobOperations
         // A retry must re-evaluate the samples against the current settings and whichever
         // encoder claims the job. Reusing the old selected quality also skips size preflight.
         job.AdaptiveVideoQuality = null;
+        job.AdaptiveVideoQualityEncoder = null;
         job.AdaptiveAudioBitrateKbps = null;
         job.AdaptiveImageQuality = null;
         job.PerceptualSearchJson = null;

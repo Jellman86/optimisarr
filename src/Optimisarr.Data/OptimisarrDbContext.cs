@@ -304,6 +304,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(job => job.VerifiedOutputSha256).HasMaxLength(64);
             entity.Property(job => job.WorkOutputPath).HasMaxLength(1024);
             entity.Property(job => job.VideoEncoder).HasMaxLength(64);
+            entity.Property(job => job.AdaptiveVideoQualityEncoder).HasMaxLength(64);
             entity.Property(job => job.EnqueueReason).HasMaxLength(512);
             entity.Property(job => job.VideoQualityMode).HasMaxLength(16);
             entity.Property(job => job.VmafModel).HasMaxLength(64);

@@ -1666,6 +1666,77 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_quality_selected_on_another_encoder_is_searched_again_on_this_worker()
+    {
+        // A recovered or higher-quality retry can be claimed by a machine with a different
+        // encoder. The recorded value is on the other encoder's scale, so it must not be reused.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Different encoder");
+        var jobId = await QueueAJob(strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        await RecordAdaptiveQuality(jobId, 20, "hevc_videotoolbox", qualityRetryCount: 1);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Object, assignment.GetProperty("search").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_quality_selected_on_the_same_encoder_is_reused_one_retry_step_higher()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Same encoder");
+        var jobId = await QueueAJob(strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+        await RecordAdaptiveQuality(jobId, 20, "libx265", qualityRetryCount: 1);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, assignment.GetProperty("search").ValueKind);
+        var arguments = assignment.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Equal("17", arguments[arguments.IndexOf("-crf") + 1]);
+    }
+
+    [Fact]
+    public async Task A_completed_worker_search_records_the_encoder_that_selected_the_quality()
+    {
+        var (worker, jobId, leaseId, quality, windows) = await ClaimASizeGatedSearch("Recorder", 90);
+
+        for (var step = 0; step < 8; step++)
+        {
+            using var report = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality-probe", new
+            {
+                quality,
+                encodedBytes = 240_000_000L,
+                windowEncodedBytes = new[] { 80_000_000L, 80_000_000L, 80_000_000L },
+                logs = Enumerable.Repeat(LibvmafLog, windows).ToArray()
+            });
+            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+            var direction = await report.Content.ReadFromJsonAsync<JsonElement>();
+            if (direction.GetProperty("nextStep").ValueKind == JsonValueKind.Null) break;
+            quality = direction.GetProperty("nextStep").GetProperty("quality").GetInt32();
+        }
+
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.SingleAsync(j => j.Id == jobId);
+        Assert.NotNull(job.AdaptiveVideoQuality);
+        Assert.Equal("libx265", job.AdaptiveVideoQualityEncoder);
+    }
+
+    private async Task RecordAdaptiveQuality(int jobId, int quality, string encoder, int qualityRetryCount)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+        job.AdaptiveVideoQuality = quality;
+        job.AdaptiveVideoQualityEncoder = encoder;
+        job.QualityRetryCount = qualityRetryCount;
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
     public async Task A_worker_sample_that_fits_keeps_the_search_going()
     {
         var (worker, _, leaseId, quality, windows) = await ClaimASizeGatedSearch("Fitter", 90);

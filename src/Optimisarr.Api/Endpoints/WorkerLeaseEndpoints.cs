@@ -853,6 +853,7 @@ internal static class WorkerLeaseEndpoints
                 if (lease.Job is { } searched)
                 {
                     searched.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    searched.AdaptiveVideoQualityEncoder = searched.VideoEncoder;
                     searched.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
@@ -884,6 +885,7 @@ internal static class WorkerLeaseEndpoints
                 if (lease.Job is { } stalled)
                 {
                     stalled.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    stalled.AdaptiveVideoQualityEncoder = stalled.VideoEncoder;
                     stalled.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
