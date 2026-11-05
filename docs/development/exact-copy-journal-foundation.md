@@ -459,7 +459,9 @@ qualification. D3 file actions remain disabled; quality-based keeper ranking rem
 `DedupeActionPreflight` (Core, pure) is the last gate before an exact copy may move. Given the
 prepared plan, a fresh observation of every planned file and the library/server context, it
 refuses when the plan is invalid; the library is connected to a media manager; storage is not
-qualified; any file has active work, is missing, unobserved, a link or hard linked, changed in
+qualified; the plan breaks the journal's path rules; any file has active work, is missing,
+unobserved, a link, hard linked or not classified by the observer as a standalone file (bundle
+members and anything unclassifiable), changed in
 identity, size or modification time, was not read in full now, or no longer matches the reviewed
 hash; two paths are one physical file; or a copy's folder is not writable, its quarantine
 destination is occupied, or the move cannot be proved to stay on one filesystem. Keepers never
@@ -467,7 +469,8 @@ move, so only content and identity are judged for them. Every refusal is reporte
 
 The rule has no filesystem access and enables nothing: no endpoint or mover calls it yet. Links,
 hard links, bundles and manager-connected libraries are refused rather than given adapters, and
-Windows action qualification is out of scope because the server ships as a Linux container.
+Windows needs its own observer and link/identity qualification before any action is enabled
+there; it is out of scope because the server ships as a Linux container.
 
 ## Remaining D3 work, in dependency order
 

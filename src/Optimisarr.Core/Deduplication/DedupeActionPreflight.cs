@@ -4,6 +4,10 @@ namespace Optimisarr.Core.Deduplication;
 /// <param name="FreshSha256">A full read of the file's content now, or null when it was not read.</param>
 /// <param name="VolumeId">The filesystem the file lives on; a move must stay on it.</param>
 /// <param name="QuarantineVolumeId">The filesystem of the copy's quarantine destination folder.</param>
+/// <param name="IsIndependentFile">
+/// The observer found an ordinary standalone media file, not part of a bundle, package or other
+/// multi-file asset whose pieces must stay together. Anything the observer cannot classify is false.
+/// </param>
 public sealed record DedupeFileObservation(
     int MediaFileId,
     bool Exists,
@@ -16,7 +20,8 @@ public sealed record DedupeFileObservation(
     string? VolumeId,
     bool ParentWritable,
     bool QuarantineDestinationExists,
-    string? QuarantineVolumeId);
+    string? QuarantineVolumeId,
+    bool IsIndependentFile);
 
 /// <summary>Facts about the library and the server that decide whether any file may move at all.</summary>
 public sealed record DedupeActionContext(
@@ -33,6 +38,7 @@ public enum DedupePreflightRefusal
     Missing,
     Link,
     HardLinked,
+    NotIndependent,
     Changed,
     NotRead,
     ContentDiffers,
@@ -55,14 +61,16 @@ public sealed record DedupePreflightResult(IReadOnlyList<DedupePreflightIssue> I
 /// review saw; this proves the files are still exactly that, read in full now, and that the move
 /// can be a same-filesystem rename that overwrites nothing. Every refusal is reported, not just the
 /// first, so the operator sees everything that must change. Refusal is the safe answer to anything
-/// unknown: a link, a shared physical file, an unread file or unqualified storage never moves.
+/// unknown: a link, a bundle member, a shared physical file, an unread file, an unproven filesystem
+/// or unqualified storage never moves. Plans must also pass the journal's path rules.
 /// </summary>
 public static class DedupeActionPreflight
 {
     public static DedupePreflightResult Evaluate(DedupePreparation plan, IReadOnlyList<DedupeFileObservation> observations,
         DedupeActionContext context)
     {
-        if (!DedupePreparationPolicy.IsValid(plan)) return new([new(null, DedupePreflightRefusal.InvalidPlan)]);
+        if (!DedupePreparationPolicy.IsValid(plan) || !DedupePreparationPolicy.HasValidPaths(plan))
+            return new([new(null, DedupePreflightRefusal.InvalidPlan)]);
 
         var issues = new List<DedupePreflightIssue>();
         if (context.ManagerConnected) issues.Add(new(null, DedupePreflightRefusal.ManagerConnected));
@@ -88,6 +96,7 @@ public static class DedupeActionPreflight
             }
             if (now.IsLink) Refuse(DedupePreflightRefusal.Link);
             if (now.HardLinkCount != 1) Refuse(DedupePreflightRefusal.HardLinked);
+            if (!now.IsIndependentFile) Refuse(DedupePreflightRefusal.NotIndependent);
             if (now.Identity != file.Identity || now.SizeBytes != file.SizeBytes || now.ModifiedUtcTicks != file.ModifiedUtcTicks)
                 Refuse(DedupePreflightRefusal.Changed);
             if (now.FreshSha256 is null) Refuse(DedupePreflightRefusal.NotRead);
@@ -98,7 +107,7 @@ public static class DedupeActionPreflight
             if (file.IsKeeper) continue;
             if (!now.ParentWritable) Refuse(DedupePreflightRefusal.NotWritable);
             if (now.QuarantineDestinationExists) Refuse(DedupePreflightRefusal.DestinationOccupied);
-            if (now.VolumeId is null || now.QuarantineVolumeId is null
+            if (string.IsNullOrWhiteSpace(now.VolumeId) || string.IsNullOrWhiteSpace(now.QuarantineVolumeId)
                 || !string.Equals(now.VolumeId, now.QuarantineVolumeId, StringComparison.Ordinal))
                 Refuse(DedupePreflightRefusal.CrossFilesystem);
         }
