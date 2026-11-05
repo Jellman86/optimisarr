@@ -116,8 +116,8 @@ public sealed partial class QueueDispatcher
         // must not change the engine run.
         RefuseUnsuitableSource(work, options);
 
-        var detection = await new RealCuganDetectionService(options).DetectAsync(cancellationToken);
-        if (detection.Readiness != RealCuganReadiness.Ready || detection.BinaryPath is null || detection.ModelsRoot is null)
+        var detection = await new SuperResolutionDetectionService(options).DetectAsync(cancellationToken);
+        if (detection.Readiness != SuperResolutionReadiness.Ready || detection.BinaryPath is null || detection.ModelsRoot is null)
         {
             throw new InvalidOperationException(
                 "Super-resolution is enabled for this library but the engine is not usable: " +
@@ -147,7 +147,7 @@ public sealed partial class QueueDispatcher
                 "free-space reserve for even a small batch of pictures. Free some space on the work volume and retry.");
         }
 
-        var encoderArguments = RealCuganCommandBuilder.BuildEncoder(
+        var encoderArguments = SuperResolutionCommandBuilder.BuildEncoder(
             work.Spec, work.VideoEncoder!, frameRate, work.CpuThreadLimit, OptimisedMarkerValue, source.VideoStartSeconds,
             source.BitDepth, source.Colour!);
         await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
@@ -159,9 +159,9 @@ public sealed partial class QueueDispatcher
         var request = new SuperResolutionRunRequest(
             transcodeOptions.Ffmpeg,
             detection.BinaryPath,
-            RealCuganCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!),
+            SuperResolutionCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!),
             encoderArguments,
-            (input, output) => RealCuganCommandBuilder.BuildEngineArguments(input, output, detection.ModelsRoot, options),
+            (input, output) => options.Engine.BuildArguments(input, output, detection.ModelsRoot, options),
             WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid()),
             upscaled,
             work.FrameCount,

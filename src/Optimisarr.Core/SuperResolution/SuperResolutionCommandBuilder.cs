@@ -4,52 +4,16 @@ using Optimisarr.Core.Queue;
 namespace Optimisarr.Core.SuperResolution;
 
 /// <summary>
-/// Builds the three command stages of a Real-CUGAN video job: extracting the source's frames
-/// as a PNG sequence, running the engine directory-to-directory over them, and reassembling the
-/// upscaled frames with the source's audio, subtitles and attachments. Every command is a flat
+/// Builds the engine-neutral command stages of a super-resolution video job: decoding the source's
+/// pictures as a PNG stream and reassembling the upscaled pictures with the source's audio,
+/// subtitles and attachments. The engine's own invocation comes from <see cref="ISuperResolutionEngine"/>. Every command is a flat
 /// argument array — never a shell string — per the repository's safety standard. Pure and unit
 /// tested; it runs nothing.
 /// </summary>
-public static class RealCuganCommandBuilder
+public static class SuperResolutionCommandBuilder
 {
     /// <summary>The frame file name pattern for a batch directory handed to the engine.</summary>
     public const string FramePattern = "f%08d.png";
-
-    /// <summary>
-    /// The engine invocation. Only flags the realcugan-ncnn-vulkan CLI actually documents are
-    /// passed: input and output directories, the model directory selected by the preset, the
-    /// scale, the noise level, the device, and the PNG output format. Tuning knobs the operator
-    /// has not configured (tile size, sync gap, thread ratios, TTA) stay at the engine defaults.
-    /// </summary>
-    public static IReadOnlyList<string> BuildEngineArguments(
-        string inputDirectory,
-        string outputDirectory,
-        string modelsRoot,
-        SuperResolutionOptions options)
-    {
-        var modelDirectory = Path.Combine(modelsRoot, RealCuganModelCatalog.ModelDirectoryFor(options.Preset)!);
-        var args = new List<string>
-        {
-            "-i", inputDirectory,
-            "-o", outputDirectory,
-            "-m", modelDirectory,
-            "-s", options.Scale.ToString(CultureInfo.InvariantCulture),
-            "-n", options.NoiseLevel.ToString(CultureInfo.InvariantCulture),
-        };
-        if (options.Device == "cpu")
-        {
-            // The engine's documented CPU fallback: gpu id -1.
-            args.AddRange(["-g", "-1"]);
-        }
-        else if (options.GpuIndex is { } gpu)
-        {
-            args.AddRange(["-g", gpu.ToString(CultureInfo.InvariantCulture)]);
-        }
-        // "auto" passes nothing: the engine's own default picks the Vulkan device.
-
-        args.AddRange(["-f", "png"]);
-        return args;
-    }
 
     /// <summary>
     /// Decodes the first video stream to a continuous stream of RGB PNG pictures on stdout. The

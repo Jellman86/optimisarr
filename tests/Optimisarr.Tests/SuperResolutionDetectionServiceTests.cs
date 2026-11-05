@@ -8,11 +8,11 @@ namespace Optimisarr.Tests;
 /// — Vulkan availability is reported, and a real run is only proven by a probe, which these
 /// tests never exercise against actual hardware.
 /// </summary>
-public sealed class RealCuganDetectionServiceTests : IDisposable
+public sealed class SuperResolutionDetectionServiceTests : IDisposable
 {
     private readonly string _root;
 
-    public RealCuganDetectionServiceTests()
+    public SuperResolutionDetectionServiceTests()
     {
         _root = Directory.CreateTempSubdirectory("optimisarr-realcugan-detect").FullName;
     }
@@ -54,8 +54,8 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     [Fact]
     public async Task Missing_binary_reports_not_installed_with_an_actionable_problem()
     {
-        var detection = await new RealCuganDetectionService(SuperResolutionOptions.Defaults).DetectAsync(CancellationToken.None);
-        Assert.Equal(RealCuganReadiness.NotInstalled, detection.Readiness);
+        var detection = await new SuperResolutionDetectionService(SuperResolutionOptions.Defaults).DetectAsync(CancellationToken.None);
+        Assert.Equal(SuperResolutionReadiness.NotInstalled, detection.Readiness);
         Assert.False(detection.BinaryFound);
         Assert.Contains(detection.Problems, p => p.Contains("realcugan-ncnn-vulkan"));
     }
@@ -64,7 +64,7 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     public async Task A_complete_install_with_an_available_loader_is_ready()
     {
         var binary = InstallBinary();
-        var detection = await new RealCuganDetectionService(
+        var detection = await new SuperResolutionDetectionService(
             OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => true)
             .DetectAsync(CancellationToken.None);
 
@@ -74,7 +74,7 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
         Assert.True(detection.ModelsFound);
         Assert.Equal("models-se", detection.ModelDirectory);
         Assert.True(detection.VulkanLoaderAvailable);
-        Assert.Equal(RealCuganReadiness.Ready, detection.Readiness);
+        Assert.Equal(SuperResolutionReadiness.Ready, detection.Readiness);
         Assert.DoesNotContain(detection.Problems, p => p.Contains("Vulkan loader"));
     }
 
@@ -82,14 +82,14 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     public async Task A_complete_install_with_an_unloadable_loader_is_vulkanunavailable()
     {
         var binary = InstallBinary();
-        var detection = await new RealCuganDetectionService(
+        var detection = await new SuperResolutionDetectionService(
             OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => false)
             .DetectAsync(CancellationToken.None);
 
         Assert.True(detection.BinaryFound);
         Assert.True(detection.ModelsFound);
         Assert.False(detection.VulkanLoaderAvailable);
-        Assert.Equal(RealCuganReadiness.VulkanUnavailable, detection.Readiness);
+        Assert.Equal(SuperResolutionReadiness.VulkanUnavailable, detection.Readiness);
         Assert.Contains(detection.Problems, p => p.Contains("Vulkan loader"));
     }
 
@@ -97,7 +97,7 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     public async Task Missing_model_files_are_named_in_the_problems()
     {
         var binary = InstallBinary(modelsPreset: null); // binary only, no models
-        var detection = await new RealCuganDetectionService(
+        var detection = await new SuperResolutionDetectionService(
             OptionsFor(binary, Path.Combine(_root, "models"))).DetectAsync(CancellationToken.None);
 
         Assert.False(detection.ModelsFound);
@@ -108,10 +108,10 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     public async Task Missing_model_files_keep_the_engine_from_being_ready()
     {
         var binary = InstallBinary(modelsPreset: null);
-        var detection = await new RealCuganDetectionService(
+        var detection = await new SuperResolutionDetectionService(
             OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => true).DetectAsync(CancellationToken.None);
 
-        Assert.Equal(RealCuganReadiness.Misconfigured, detection.Readiness);
+        Assert.Equal(SuperResolutionReadiness.Misconfigured, detection.Readiness);
     }
 
     [PosixFact]
@@ -122,10 +122,10 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
         {
             File.SetUnixFileMode(binary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
-        var detection = await new RealCuganDetectionService(
+        var detection = await new SuperResolutionDetectionService(
             OptionsFor(binary, Path.Combine(_root, "models")), loaderProbe: _ => true).DetectAsync(CancellationToken.None);
 
-        Assert.NotEqual(RealCuganReadiness.Ready, detection.Readiness);
+        Assert.NotEqual(SuperResolutionReadiness.Ready, detection.Readiness);
         Assert.Contains(detection.Problems, p => p.Contains("not executable"));
     }
 
@@ -133,11 +133,11 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
     public async Task A_combination_the_model_set_does_not_ship_is_reported_as_misconfigured()
     {
         var binary = InstallBinary(modelsPreset: "pro", scale: 2, noise: 3);
-        var detection = await new RealCuganDetectionService(
+        var detection = await new SuperResolutionDetectionService(
             OptionsFor(binary, Path.Combine(_root, "models")) with { Preset = "pro", Scale = 2, NoiseLevel = 1 })
             .DetectAsync(CancellationToken.None);
 
-        Assert.Equal(RealCuganReadiness.Misconfigured, detection.Readiness);
+        Assert.Equal(SuperResolutionReadiness.Misconfigured, detection.Readiness);
         Assert.Contains(detection.Problems, p => p.Contains("up2x-denoise1x"));
     }
 
@@ -149,6 +149,6 @@ public sealed class RealCuganDetectionServiceTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_root, "bin", "models-se"));
 
         Assert.Equal(Path.Combine(_root, "bin"),
-            RealCuganDetectionService.ResolveModelsRoot(null, binary));
+            SuperResolutionDetectionService.ResolveModelsRoot(RealCuganEngine.Instance, null, binary));
     }
 }

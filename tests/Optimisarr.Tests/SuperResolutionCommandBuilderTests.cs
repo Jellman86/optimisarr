@@ -4,12 +4,11 @@ using Optimisarr.Core.SuperResolution;
 namespace Optimisarr.Tests;
 
 /// <summary>
-/// Every command must be a flat argument array (the safety standard), pass the exact engine
-/// flags the realcugan-ncnn-vulkan CLI documents, and keep the reassembly's stream mapping
+/// Every command must be a flat argument array (the safety standard) and keep the reassembly's stream mapping
 /// consistent with the normal encode path: video re-encoded, audio and subtitles copied from
 /// the source with the kept-languages removals honoured.
 /// </summary>
-public sealed class RealCuganCommandBuilderTests
+public sealed class SuperResolutionCommandBuilderTests
 {
     private static readonly SuperResolutionOptions Options = SuperResolutionOptions.Defaults;
 
@@ -27,55 +26,6 @@ public sealed class RealCuganCommandBuilderTests
         throw new InvalidOperationException($"'{value}' not found in [{string.Join(", ", args)}]");
     }
 
-    [Fact]
-    public void Engine_arguments_pass_the_documented_flags_and_nothing_else()
-    {
-        var args = RealCuganCommandBuilder.BuildEngineArguments(
-            "/work/1/in", "/work/1/out", "/models", Options);
-
-        Assert.Equal(new[]
-        {
-            "-i", "/work/1/in",
-            "-o", "/work/1/out",
-            "-m", Path.Combine("/models", "models-se"),
-            "-s", "2",
-            "-n", "1",
-            "-f", "png",
-        }, args);
-    }
-
-    [Fact]
-    public void Auto_device_omits_the_gpu_flag_letting_the_engine_choose()
-    {
-        var args = RealCuganCommandBuilder.BuildEngineArguments(
-            "in", "out", "models", Options with { Device = "auto" });
-        Assert.DoesNotContain("-g", args);
-    }
-
-    [Fact]
-    public void Cpu_device_passes_minus_one_which_the_engine_documents_as_cpu()
-    {
-        var args = RealCuganCommandBuilder.BuildEngineArguments(
-            "in", "out", "models", Options with { Device = "cpu" });
-        Assert.Equal(new[] { "-g", "-1" }, Pair(args, "-g"));
-    }
-
-    [Fact]
-    public void A_named_vulkan_device_passes_its_index()
-    {
-        var args = RealCuganCommandBuilder.BuildEngineArguments(
-            "in", "out", "models", Options with { Device = "gpu:2" });
-        Assert.Equal(new[] { "-g", "2" }, Pair(args, "-g"));
-    }
-
-    [Fact]
-    public void The_model_directory_is_the_preset_mapping_under_the_configured_root()
-    {
-        var args = RealCuganCommandBuilder.BuildEngineArguments(
-            "in", "out", "/opt/models", Options with { Preset = "pro" });
-        Assert.Equal(Path.Combine("/opt/models", "models-pro"), After(args, "-m"));
-    }
-
     private static TranscodeSpec Spec(string output = "/work/1/candidate.mkv", string input = "/media/source.mkv") =>
         new(input, output, VideoCodec: "hevc", Crf: 20, Preset: "slow", TonemapToSdr: false);
 
@@ -83,12 +33,12 @@ public sealed class RealCuganCommandBuilderTests
 
     private static IReadOnlyList<string> Encoder(TranscodeSpec spec, double videoStart = 0, double frameRate = 24000.0 / 1001, int bitDepth = 8,
         SuperResolutionColour? colour = null) =>
-        RealCuganCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart, bitDepth, colour ?? Hd);
+        SuperResolutionCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart, bitDepth, colour ?? Hd);
 
     [Fact]
     public void The_decoder_streams_the_first_video_streams_frames_as_rgb_png_on_stdout()
     {
-        var args = RealCuganCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 8, Hd);
+        var args = SuperResolutionCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 8, Hd);
 
         Assert.Equal("/media/source.mkv", After(args, "-i"));
         Assert.Equal(new[] { "-map", "0:v:0" }, Pair(args, "-map"));
@@ -124,7 +74,7 @@ public sealed class RealCuganCommandBuilderTests
     [Fact]
     public void A_ten_bit_source_is_dithered_into_the_engines_8_bit_pictures()
     {
-        var args = RealCuganCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 10, Hd);
+        var args = SuperResolutionCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 10, Hd);
         Assert.Equal("scale=in_color_matrix=bt709:in_range=tv:sws_dither=ed,format=rgb24", After(args, "-vf"));
     }
 

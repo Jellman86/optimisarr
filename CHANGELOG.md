@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Separate what is specific to the Real-CUGAN engine (executable, model catalogue and invocation) from the engine-neutral super-resolution decode, batching and reassembly (#491). This prepares for a second ncnn-vulkan engine. Settings, the API and every engine argument are unchanged; the probe's temporary folder is now named `optimisarr-super-resolution-probe`.
 - The shared test reader for fake-tool process ids opens the file with full sharing, so on Windows it can no longer block the fixture that is still writing the id (test-only).
 
 - A per-title video quality chosen by adaptive VMAF is now reused only by the encoder that chose it. Automatic quality retries and recovered attempts could be claimed by another machine and encode at a number on a different encoder's scale: on Quark, a VideoToolbox quality was reused for Intel QSV and a QSV quality for NVENC, and the size check that a fresh search runs was skipped. A different encoder now searches again on its own samples, and the full encode uses the quality those samples selected; only a later quality retry steps it further. Jobs queued before this update that already hold a selected quality search once more. Adds two nullable columns through a migration.
