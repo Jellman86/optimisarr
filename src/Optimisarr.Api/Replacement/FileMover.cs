@@ -73,25 +73,22 @@ public static class FileMover
 
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 
-        try
+        return RenameOnly.Rename(source, destination) switch
         {
-            File.Move(source, destination);
-            return new FileMoveResult(CrossFilesystem: false);
-        }
-        catch (IOException)
-        {
-            // Most likely a cross-device link error: copy, verify size, then delete.
-            return CopyVerifyDelete(source, destination);
-        }
+            RenameOutcome.Renamed => new FileMoveResult(CrossFilesystem: false),
+            RenameOutcome.DestinationExists => throw new IOException($"Destination already exists: {destination}"),
+            _ => CopyVerifyDelete(source, destination),
+        };
     }
 
-    private static FileMoveResult CopyVerifyDelete(string source, string destination)
+    /// <summary>The source is deleted only after the copy is proved identical to it.</summary>
+    internal static FileMoveResult CopyVerifyDelete(string source, string destination, Action<string, string>? verify = null)
     {
         File.Copy(source, destination, overwrite: false);
 
         try
         {
-            VerifyCopiedContent(source, destination);
+            (verify ?? VerifyCopiedContent)(source, destination);
         }
         catch
         {
