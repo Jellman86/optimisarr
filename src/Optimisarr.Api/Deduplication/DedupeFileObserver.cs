@@ -11,10 +11,23 @@ namespace Optimisarr.Api.Deduplication;
 /// filesystem and never from cached inventory. It only reads. Anything it cannot establish is
 /// reported in the form the rule refuses: an unknown link count, volume or hash is never assumed.
 /// Only Linux and macOS report a volume and write access, so no other platform can pass.
+/// <para>
+/// This is evidence, not a guarantee. Equal volumes do not prove a rename will work: separate bind
+/// mounts of one filesystem share a device yet refuse rename, and overlayfs can report different
+/// devices within one mount. The move itself must be rename-only and refuse EXDEV, as
+/// <c>RenameOnly</c> does, and must recheck the file around that rename.
+/// </para>
 /// </summary>
 internal static class DedupeFileObserver
 {
-    public static async Task<DedupeFileObservation> ObserveAsync(DedupeFileSnapshot file, CancellationToken token)
+    // A write in the same clock tick as the stamp would not change it, so a file touched this
+    // recently cannot be proved stable by comparing stamps. It is judged again on a later attempt.
+    private static readonly TimeSpan ChangeSettle = TimeSpan.FromSeconds(2);
+
+    /// <param name="changeSettle">How long a file must have been unchanged to be read; tests shorten it.</param>
+    /// <param name="afterRead">Runs between the read and the final checks, so tests can interfere there.</param>
+    public static async Task<DedupeFileObservation> ObserveAsync(DedupeFileSnapshot file, CancellationToken token,
+        TimeSpan? changeSettle = null, Func<Task>? afterRead = null)
     {
         var info = new FileInfo(file.Path);
         var isLink = IsLinked(file.Root, file.Path, info);
@@ -23,8 +36,13 @@ internal static class DedupeFileObserver
         var identity = ExactFileIdentity.Read(file.Path);
         var size = info.Exists ? info.Length : 0;
         var modified = info.Exists ? info.LastWriteTimeUtc.Ticks : 0;
-        var hash = isLink || identity is null ? null : await ReadFullHashAsync(info, identity, size, modified, token);
-        var quarantineFolder = file.QuarantinePath is { } destination ? NearestExistingFolder(destination) : null;
+        var hash = isLink || identity is null
+            ? null : await ReadFullHashAsync(info, identity, size, modified, changeSettle ?? ChangeSettle, afterRead, token);
+        // Whatever the read saw, the path it was reached by must still be free of links now.
+        isLink = isLink || IsLinked(file.Root, file.Path, info);
+        if (isLink) hash = null;
+        var (quarantineSafe, quarantineFolder) = file.QuarantinePath is { } destination
+            ? WalkQuarantinePath(file.Root, destination) : (false, null);
         return new DedupeFileObservation(
             file.MediaFileId,
             Exists: true,
@@ -38,7 +56,9 @@ internal static class DedupeFileObserver
             ParentWritable: CanWriteFolder(info.DirectoryName) && (file.QuarantinePath is null || CanWriteFolder(quarantineFolder)),
             QuarantineDestinationExists: file.QuarantinePath is { } occupied && Occupied(occupied),
             QuarantineVolumeId: quarantineFolder is null ? null : VolumeOf(ExactFileIdentity.Read(quarantineFolder)),
-            IsIndependentFile: DedupeFileEligibility.IsIndependentFile(Path.GetRelativePath(file.Root, file.Path)));
+            QuarantinePathSafe: quarantineSafe,
+            // The whole path, because a library rooted at a disc's BDMV folder is still a disc.
+            IsIndependentFile: DedupeFileEligibility.IsIndependentFile(file.Path));
     }
 
     /// <summary>The filesystem part of a file identity; null when the platform gives none.</summary>
@@ -55,7 +75,8 @@ internal static class DedupeFileObserver
 
     private static DedupeFileObservation Absent(DedupeFileSnapshot file) => new(file.MediaFileId, Exists: false, IsLink: false,
         HardLinkCount: 0, Identity: null, SizeBytes: 0, ModifiedUtcTicks: 0, FreshSha256: null, VolumeId: null,
-        ParentWritable: false, QuarantineDestinationExists: false, QuarantineVolumeId: null, IsIndependentFile: false);
+        ParentWritable: false, QuarantineDestinationExists: false, QuarantineVolumeId: null, QuarantinePathSafe: false,
+        IsIndependentFile: false);
 
     // A link at the file or at any folder inside the library root redirects the path elsewhere.
     private static bool IsLinked(string root, string path, FileInfo info)
@@ -73,7 +94,9 @@ internal static class DedupeFileObserver
 
     // Null unless the same unchanged file was read from start to end: a hash of bytes that may
     // have moved underneath the read proves nothing about the file that would be quarantined.
-    private static async Task<string?> ReadFullHashAsync(FileInfo info, string identity, long size, long modified, CancellationToken token)
+    // Size and modification time alone cannot show that, because a writer can restore the time.
+    private static async Task<string?> ReadFullHashAsync(FileInfo info, string identity, long size, long modified,
+        TimeSpan settle, Func<Task>? afterRead, CancellationToken token)
     {
         try
         {
@@ -82,9 +105,14 @@ internal static class DedupeFileObserver
                 Mode = FileMode.Open, Access = FileAccess.Read, Share = FileShare.Read, Options = FileOptions.SequentialScan | FileOptions.Asynchronous,
             });
             if (ExactFileIdentity.Read(stream.SafeFileHandle) != identity) return null;
+            if (ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) is not { } before) return null;
+            var changedAt = DateTimeOffset.FromUnixTimeSeconds(before.Seconds).AddTicks(before.Nanoseconds / 100);
+            if (DateTimeOffset.UtcNow - changedAt < settle) return null;
             var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, token));
+            if (afterRead is not null) await afterRead();
             info.Refresh();
-            return info.Exists && info.Length == size && info.LastWriteTimeUtc.Ticks == modified
+            return ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) == before
+                && info.Exists && info.Length == size && info.LastWriteTimeUtc.Ticks == modified
                 && ExactFileIdentity.Read(info.FullName) == identity ? hash : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -93,11 +121,30 @@ internal static class DedupeFileObserver
         }
     }
 
-    private static string? NearestExistingFolder(string path)
+    // Walks down from the library root, because looking upward from the destination would step
+    // over a dangling link or a file in the way and report the folder above it as fine.
+    private static (bool Safe, string? NearestFolder) WalkQuarantinePath(string root, string destination)
     {
-        for (var folder = Path.GetDirectoryName(path); folder is not null; folder = Path.GetDirectoryName(folder))
-            if (Directory.Exists(folder)) return folder;
-        return null;
+        try
+        {
+            var relative = Path.GetRelativePath(root, Path.GetDirectoryName(destination)!);
+            if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                || Path.IsPathRooted(relative)) return (false, null);
+            var folder = root;
+            if (relative == ".") return (true, folder);
+            foreach (var part in relative.Split(Path.DirectorySeparatorChar))
+            {
+                var next = Path.Combine(folder, part);
+                if (new FileInfo(next).LinkTarget is not null || File.Exists(next)) return (false, null);
+                if (!Directory.Exists(next)) return (true, folder);
+                folder = next;
+            }
+            return (true, folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return (false, null);
+        }
     }
 
     // A dangling link is occupied too, although File.Exists follows it and reports nothing there.

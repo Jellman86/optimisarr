@@ -4,6 +4,10 @@ namespace Optimisarr.Core.Deduplication;
 /// <param name="FreshSha256">A full read of the file's content now, or null when it was not read.</param>
 /// <param name="VolumeId">The filesystem the file lives on; a move must stay on it.</param>
 /// <param name="QuarantineVolumeId">The filesystem of the copy's quarantine destination folder.</param>
+/// <param name="QuarantinePathSafe">
+/// Every existing folder on the way to the destination is a real folder inside the library: no
+/// link, dangling link or file stands in the path. Always false when it could not be established.
+/// </param>
 /// <param name="IsIndependentFile">
 /// The observer found an ordinary standalone media file, not part of a bundle, package or other
 /// multi-file asset whose pieces must stay together. Anything the observer cannot classify is false.
@@ -21,6 +25,7 @@ public sealed record DedupeFileObservation(
     bool ParentWritable,
     bool QuarantineDestinationExists,
     string? QuarantineVolumeId,
+    bool QuarantinePathSafe,
     bool IsIndependentFile);
 
 /// <summary>Facts about the library and the server that decide whether any file may move at all.</summary>
@@ -46,6 +51,7 @@ public enum DedupePreflightRefusal
     InUse,
     NotWritable,
     DestinationOccupied,
+    UnsafeDestination,
     CrossFilesystem,
 }
 
@@ -107,6 +113,7 @@ public static class DedupeActionPreflight
             if (file.IsKeeper) continue;
             if (!now.ParentWritable) Refuse(DedupePreflightRefusal.NotWritable);
             if (now.QuarantineDestinationExists) Refuse(DedupePreflightRefusal.DestinationOccupied);
+            if (!now.QuarantinePathSafe) Refuse(DedupePreflightRefusal.UnsafeDestination);
             if (string.IsNullOrWhiteSpace(now.VolumeId) || string.IsNullOrWhiteSpace(now.QuarantineVolumeId)
                 || !string.Equals(now.VolumeId, now.QuarantineVolumeId, StringComparison.Ordinal))
                 Refuse(DedupePreflightRefusal.CrossFilesystem);

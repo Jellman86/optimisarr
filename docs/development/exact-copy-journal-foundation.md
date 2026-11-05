@@ -464,7 +464,9 @@ unobserved, a link, hard linked or not classified by the observer as a standalon
 members and anything unclassifiable), changed in
 identity, size or modification time, was not read in full now, or no longer matches the reviewed
 hash; two paths are one physical file; or a copy's folder is not writable, its quarantine
-destination is occupied, or the move cannot be proved to stay on one filesystem. Keepers never
+destination is occupied, a link or file stands in its path, or the move cannot be shown to stay
+on one filesystem. Equal volume identifiers are evidence, not proof: separate bind mounts of one
+filesystem share a device yet refuse rename, so the eventual move must be rename-only. Keepers never
 move, so only content and identity are judged for them. Every refusal is reported together.
 
 The rule has no filesystem access and enables nothing: no endpoint or mover calls it yet. Links,
@@ -482,8 +484,10 @@ there; it is out of scope because the server ships as a Linux container.
    operation and dedupe preparation. No action can become eligible until these tests pass.
 2. `DedupeFileObserver` gathers the fresh observations the preflight rule judges (link counts,
    identity, volume, write access, full reads and standalone-file classification) and only reads.
-   Disc structures are refused by folder and extension; a sidecar beside a copy is left in place
-   and restored paths are unaffected. Scope and generation checks, and calling the rule before
+   A hash is reported only when the same file was unchanged, by its change time, across the whole
+   read, and the file was last changed more than two seconds earlier. Disc structures are refused by
+   folder and extension anywhere in the full path; a sidecar beside a copy is left in place and
+   restored paths are unaffected. Scope and generation checks, and calling the rule before
    any move, come with the mover.
    Block connected-manager paths, unknown/read-only storage and unsupported bundles. Qualify
    Windows identity and link probing before enabling Windows actions.

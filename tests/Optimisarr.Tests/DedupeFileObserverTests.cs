@@ -28,12 +28,13 @@ public sealed class DedupeFileObserverTests : IDisposable
             info.Exists ? info.LastWriteTimeUtc.Ticks : 1, Hash, quarantine is null);
     }
 
-    private Task<DedupeFileObservation> ObserveCopy() => DedupeFileObserver.ObserveAsync(Snapshot(2, Copy, Quarantine), default);
+    private Task<DedupeFileObservation> ObserveCopy(Func<Task>? afterRead = null) =>
+        DedupeFileObserver.ObserveAsync(Snapshot(2, Copy, Quarantine), default, TimeSpan.Zero, afterRead);
 
     [PosixFact]
     public async Task Observing_an_untouched_keeper_and_copy_satisfies_the_preflight_rule()
     {
-        var keeper = await DedupeFileObserver.ObserveAsync(Snapshot(1, Keeper, null), default);
+        var keeper = await DedupeFileObserver.ObserveAsync(Snapshot(1, Keeper, null), default, TimeSpan.Zero);
         var copy = await ObserveCopy();
         var plan = new DedupePreparation(Guid.NewGuid(), 7, new string('c', 64), new string('d', 64),
         [
@@ -75,11 +76,95 @@ public sealed class DedupeFileObserverTests : IDisposable
     }
 
     [PosixFact]
+    public async Task A_file_changed_moments_ago_is_not_read_until_it_has_settled() =>
+        Assert.Null((await DedupeFileObserver.ObserveAsync(Snapshot(2, Copy, Quarantine), default)).FreshSha256);
+
+    [PosixFact]
+    public async Task A_write_during_the_read_that_restores_size_and_time_gives_no_hash()
+    {
+        var modified = File.GetLastWriteTimeUtc(Copy);
+        var written = false;
+        var copy = await ObserveCopy(async () =>
+        {
+            // Past the clock tick of the stamp taken before the read.
+            await Task.Delay(50);
+            await File.WriteAllBytesAsync(Copy, [9, 2, 3, 4, 5]);
+            File.SetLastWriteTimeUtc(Copy, modified);
+            written = true;
+        });
+
+        Assert.True(written);
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(Copy));
+        Assert.Null(copy.FreshSha256);
+    }
+
+    [PosixFact]
+    public async Task A_parent_swapped_for_a_link_during_the_read_is_reported_as_a_link()
+    {
+        var folder = Path.GetDirectoryName(Copy)!;
+        var moved = folder + "-moved";
+        var copy = await ObserveCopy(() =>
+        {
+            Directory.Move(folder, moved);
+            Directory.CreateSymbolicLink(folder, moved);
+            return Task.CompletedTask;
+        });
+
+        Assert.True(copy.IsLink);
+        Assert.Null(copy.FreshSha256);
+    }
+
+    [PosixFact]
+    public async Task A_quarantine_folder_that_is_a_link_is_refused_even_on_the_same_filesystem()
+    {
+        var elsewhere = Directory.CreateTempSubdirectory("optimisarr-dedupe-elsewhere-").FullName;
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(_root, ".optimisarr-quarantine"), elsewhere);
+            Assert.False((await ObserveCopy()).QuarantinePathSafe);
+        }
+        finally { Directory.Delete(elsewhere, true); }
+    }
+
+    [PosixFact]
+    public async Task A_dangling_link_or_file_in_the_quarantine_path_is_refused()
+    {
+        var first = Path.Combine(_root, ".optimisarr-quarantine");
+        File.CreateSymbolicLink(first, Path.Combine(_root, "nothing-here"));
+        Assert.False((await ObserveCopy()).QuarantinePathSafe);
+
+        File.Delete(first);
+        File.WriteAllText(first, "a file where a folder must go");
+        Assert.False((await ObserveCopy()).QuarantinePathSafe);
+    }
+
+    [PosixFact]
+    public async Task A_quarantine_path_that_does_not_exist_yet_is_safe()
+    {
+        var copy = await ObserveCopy();
+        Assert.True(copy.QuarantinePathSafe);
+        Assert.NotNull(copy.QuarantineVolumeId);
+    }
+
+    [PosixFact]
+    public async Task A_library_rooted_at_a_disc_folder_is_still_a_disc()
+    {
+        var disc = Path.Combine(_root, "BDMV");
+        var stream = Path.Combine(disc, "STREAM", "00001.m2ts");
+        Directory.CreateDirectory(Path.GetDirectoryName(stream)!);
+        File.WriteAllBytes(stream, Content);
+
+        var observed = await DedupeFileObserver.ObserveAsync(Snapshot(3, stream, null) with { Root = disc }, default, TimeSpan.Zero);
+
+        Assert.False(observed.IsIndependentFile);
+    }
+
+    [PosixFact]
     public async Task A_missing_file_is_reported_absent()
     {
         var snapshot = Snapshot(2, Copy, Quarantine);
         File.Delete(Copy);
-        Assert.False((await DedupeFileObserver.ObserveAsync(snapshot, default)).Exists);
+        Assert.False((await DedupeFileObserver.ObserveAsync(snapshot, default, TimeSpan.Zero)).Exists);
     }
 
     [PosixFact]
