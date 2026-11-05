@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.SuperResolution;
@@ -22,6 +23,10 @@ public sealed record SuperResolutionOptions(
 {
     public const string EngineName = "realcugan";
 
+    /// <summary>The engine these settings configure. The <c>realcugan.*</c> rows describe only it.</summary>
+    [JsonIgnore]
+    public ISuperResolutionEngine Engine => RealCuganEngine.Instance;
+
     /// <summary>
     /// The initial configuration. Enabled is deliberately false: a fresh install must not route
     /// video jobs through an engine that has not been proven present, and the preset, scale,
@@ -37,7 +42,7 @@ public sealed record SuperResolutionOptions(
         ModelsPath: string.Empty);
 
     /// <summary>Valid scales the shipped models cover.</summary>
-    public static IReadOnlyList<int> Scales { get; } = [2, 3, 4];
+    public static IReadOnlyList<int> Scales => RealCuganEngine.Instance.Scales;
 
     /// <summary>Whether this engine run targets a Vulkan device rather than the CPU fallback.</summary>
     public bool DeviceIsGpu => Device.StartsWith("gpu:", StringComparison.Ordinal);
@@ -69,39 +74,7 @@ public sealed record SuperResolutionOptions(
     /// </summary>
     public IReadOnlyList<SuperResolutionValidationError> Validate()
     {
-        var errors = new List<SuperResolutionValidationError>();
-
-        if (RealCuganModelCatalog.ModelDirectoryFor(Preset) is null)
-        {
-            errors.Add(new SuperResolutionValidationError(
-                "superResolution.preset",
-                $"Unknown content preset '{Preset}'. Known presets: {string.Join(", ", RealCuganModelCatalog.Presets)}."));
-        }
-
-        if (!Scales.Contains(Scale))
-        {
-            errors.Add(new SuperResolutionValidationError(
-                "superResolution.scale",
-                $"Scale must be one of {string.Join(", ", Scales)}: the shipped models cover 2x, 3x and 4x only."));
-        }
-
-        if (NoiseLevel is < -1 or > 3)
-        {
-            errors.Add(new SuperResolutionValidationError(
-                "superResolution.noiseLevel",
-                "Noise level must be -1 (conservative), 0 (no denoise) or 1 to 3 (denoise strength)."));
-        }
-
-        var expectedModelFile = RealCuganModelCatalog.ModelFileFor(Preset, Scale, NoiseLevel);
-        if (RealCuganModelCatalog.ModelDirectoryFor(Preset) is { } directory
-            && expectedModelFile is null)
-        {
-            errors.Add(new SuperResolutionValidationError(
-                "superResolution.modelUnavailable",
-                $"The '{directory}' model set ships no model for scale {Scale}x at noise level {NoiseLevel} " +
-                $"(the scheme would need {RealCuganModelCatalog.SchemeFileName(Scale, NoiseLevel)}). " +
-                "Pick a supported combination of preset, scale and denoise."));
-        }
+        var errors = new List<SuperResolutionValidationError>(Engine.ValidateModel(Preset, Scale, NoiseLevel));
 
         foreach (var (path, label) in new[] { (BinaryPath, "engine executable"), (ModelsPath, "models directory") })
         {

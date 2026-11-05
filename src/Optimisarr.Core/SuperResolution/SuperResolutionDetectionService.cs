@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Optimisarr.Core.SuperResolution;
 
 /// <summary>Where the engine stands, as far as static inspection can tell.</summary>
-public enum RealCuganReadiness
+public enum SuperResolutionReadiness
 {
     /// <summary>No executable was found at the configured path or on PATH.</summary>
     NotInstalled,
@@ -20,7 +20,7 @@ public enum RealCuganReadiness
 /// files the configured combination needs exist, and whether the Vulkan loader library loads.
 /// None of this claims a working GPU — only a real probe run can.
 /// </summary>
-public sealed record RealCuganDetection(
+public sealed record SuperResolutionDetection(
     string Engine,
     bool BinaryFound,
     string? BinaryPath,
@@ -30,10 +30,10 @@ public sealed record RealCuganDetection(
     string? MissingModelFile,
     bool VulkanLoaderAvailable,
     IReadOnlyList<string> Problems,
-    RealCuganReadiness Readiness);
+    SuperResolutionReadiness Readiness);
 
 /// <summary>The outcome of a real small-sample engine run.</summary>
-public sealed record RealCuganProbeResult(
+public sealed record SuperResolutionProbeResult(
     bool Success,
     int? ExitCode,
     string? Error,
@@ -41,7 +41,7 @@ public sealed record RealCuganProbeResult(
     string? DeviceUsed);
 
 /// <summary>
-/// Checks the Real-CUGAN engine's availability on this machine. The static check resolves the
+/// Checks the configured super-resolution engine's availability on this machine. The static check resolves the
 /// executable (a configured path wins, otherwise PATH), the model files the configured
 /// combination loads, and the Vulkan loader. <see cref="ProbeAsync"/> then runs a real 64x64
 /// frame through the configured device — the only check that proves the runtime actually works.
@@ -50,13 +50,12 @@ public sealed record RealCuganProbeResult(
 /// Overrides the loader probe, for tests, which must not assume the machine they run on has (or
 /// lacks) a Vulkan loader. Null keeps the real library load.
 /// </param>
-public sealed class RealCuganDetectionService(SuperResolutionOptions options, Func<string, bool>? loaderProbe = null)
+public sealed class SuperResolutionDetectionService(SuperResolutionOptions options, Func<string, bool>? loaderProbe = null)
 {
-    public const string BinaryName = "realcugan-ncnn-vulkan";
-
     /// <summary>The engine executable: a configured path, else PATH (plus the Windows suffix).</summary>
-    public static string ResolveBinary(string? configuredPath)
+    public static string ResolveBinary(ISuperResolutionEngine engine, string? configuredPath)
     {
+        var binaryName = engine.BinaryName;
         if (!string.IsNullOrWhiteSpace(configuredPath))
         {
             return configuredPath.Trim();
@@ -65,8 +64,8 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
         var pathDirectories = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var candidates = OperatingSystem.IsWindows()
-            ? [BinaryName + ".exe", BinaryName]
-            : new[] { BinaryName };
+            ? [binaryName + ".exe", binaryName]
+            : new[] { binaryName };
         foreach (var directory in pathDirectories)
         {
             foreach (var candidate in candidates)
@@ -80,15 +79,15 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
         }
 
         // Unresolved: report the bare name so the detection result explains what it looked for.
-        return BinaryName;
+        return binaryName;
     }
 
     /// <summary>
-    /// The model root: a configured directory, else the release layout — the model directories
-    /// (models-se/models-pro/models-nose) sit directly beside the binary. Null when that
-    /// directory does not exist; the caller reports it as missing models.
+    /// The model root: a configured directory, else where the engine's release layout keeps its
+    /// models relative to the binary. Null when that directory does not exist; the caller reports
+    /// it as missing models.
     /// </summary>
-    public static string? ResolveModelsRoot(string? configuredPath, string binaryPath)
+    public static string? ResolveModelsRoot(ISuperResolutionEngine engine, string? configuredPath, string binaryPath)
     {
         if (!string.IsNullOrWhiteSpace(configuredPath))
         {
@@ -101,7 +100,8 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
             return null;
         }
 
-        return Directory.Exists(binaryDirectory) ? binaryDirectory : null;
+        var modelsRoot = engine.ModelsRootBeside(binaryDirectory);
+        return Directory.Exists(modelsRoot) ? modelsRoot : null;
     }
 
     /// <summary>A file found by path must also be executable; one found on PATH already is.</summary>
@@ -115,7 +115,7 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
         return (File.GetUnixFileMode(path) & anyExecute) != 0;
     }
 
-    public Task<RealCuganDetection> DetectAsync(CancellationToken cancellationToken)
+    public Task<SuperResolutionDetection> DetectAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var problems = new List<string>();
@@ -123,14 +123,15 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
         var configurationProblems = options.Validate();
         problems.AddRange(configurationProblems.Select(problem => problem.Message));
 
-        var binaryPath = ResolveBinary(options.BinaryPath);
+        var engine = options.Engine;
+        var binaryPath = ResolveBinary(engine, options.BinaryPath);
         var binaryFound = File.Exists(binaryPath) || (!Path.IsPathRooted(binaryPath) && WhereFinds(binaryPath));
         if (!binaryFound)
         {
             problems.Add(
-                $"The {SuperResolutionOptions.EngineName} engine executable was not found" +
+                $"The {engine.Name} engine executable was not found" +
                 (string.IsNullOrWhiteSpace(options.BinaryPath)
-                    ? " on PATH. Install realcugan-ncnn-vulkan, or set its path in the super-resolution settings."
+                    ? $" on PATH. Install {engine.BinaryName}, or set its path in the super-resolution settings."
                     : $": '{options.BinaryPath}' does not exist."));
         }
 
@@ -140,9 +141,9 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
             problems.Add($"The engine at '{binaryPath}' is not executable. Reinstall it, or fix its permissions.");
         }
 
-        var modelsRoot = binaryFound ? ResolveModelsRoot(options.ModelsPath, binaryPath) : null;
-        var modelDirectory = RealCuganModelCatalog.ModelDirectoryFor(options.Preset);
-        var modelFile = RealCuganModelCatalog.ModelFileFor(options.Preset, options.Scale, options.NoiseLevel);
+        var modelsRoot = binaryFound ? ResolveModelsRoot(engine, options.ModelsPath, binaryPath) : null;
+        var modelDirectory = engine.ModelDirectory(options.Preset);
+        var modelFile = engine.ModelFile(options.Preset, options.Scale, options.NoiseLevel);
         var missingModel = (string?)null;
         var modelsFound = modelsRoot is not null
             && modelDirectory is not null
@@ -171,15 +172,15 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
         }
 
         var readiness = !binaryFound
-            ? RealCuganReadiness.NotInstalled
+            ? SuperResolutionReadiness.NotInstalled
             : configurationProblems.Count > 0 || !executable || !modelsFound
-                ? RealCuganReadiness.Misconfigured
+                ? SuperResolutionReadiness.Misconfigured
                 : !vulkanAvailable
-                    ? RealCuganReadiness.VulkanUnavailable
-                    : RealCuganReadiness.Ready;
+                    ? SuperResolutionReadiness.VulkanUnavailable
+                    : SuperResolutionReadiness.Ready;
 
-        return Task.FromResult(new RealCuganDetection(
-            SuperResolutionOptions.EngineName,
+        return Task.FromResult(new SuperResolutionDetection(
+            engine.Name,
             binaryFound,
             binaryFound ? binaryPath : null,
             modelsFound,
@@ -196,17 +197,17 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
     /// and models. This is the check that proves the Vulkan runtime and the model files work —
     /// static detection alone never does. Requires an ffmpeg on the host to draw the sample.
     /// </summary>
-    public async Task<RealCuganProbeResult> ProbeAsync(
+    public async Task<SuperResolutionProbeResult> ProbeAsync(
         string ffmpegCommand, CancellationToken cancellationToken)
     {
         var detection = await DetectAsync(cancellationToken);
-        if (detection.Readiness != RealCuganReadiness.Ready)
+        if (detection.Readiness != SuperResolutionReadiness.Ready)
         {
-            return new RealCuganProbeResult(false, null,
+            return new SuperResolutionProbeResult(false, null,
                 "Probe skipped: " + string.Join(" ", detection.Problems), null, options.Device);
         }
 
-        var scratch = Path.Combine(Path.GetTempPath(), "optimisarr-realcugan-probe", Guid.NewGuid().ToString("N"));
+        var scratch = Path.Combine(Path.GetTempPath(), "optimisarr-super-resolution-probe", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratch);
         try
         {
@@ -219,23 +220,22 @@ public sealed class RealCuganDetectionService(SuperResolutionOptions options, Fu
                 timeout: TimeSpan.FromMinutes(1));
             if (draw.ExitCode != 0 || !File.Exists(input))
             {
-                return new RealCuganProbeResult(false, draw.ExitCode,
+                return new SuperResolutionProbeResult(false, draw.ExitCode,
                     "Could not draw the probe sample with ffmpeg.", draw.Error, options.Device);
             }
 
-            var arguments = RealCuganCommandBuilder.BuildEngineArguments(
-                input, output, detection.ModelsRoot!, options);
+            var arguments = options.Engine.BuildArguments(input, output, detection.ModelsRoot!, options);
             var run = await Tools.BoundedToolProcess.RunAsync(
                 detection.BinaryPath!, arguments, cancellationToken,
                 timeout: TimeSpan.FromMinutes(5));
             var tail = string.Join("\n", new[] { run.Output, run.Error }.Where(text => !string.IsNullOrEmpty(text)));
             if (run.ExitCode != 0 || !File.Exists(output))
             {
-                return new RealCuganProbeResult(false, run.ExitCode,
+                return new SuperResolutionProbeResult(false, run.ExitCode,
                     $"The engine exited {run.ExitCode} without producing output.", tail, options.Device);
             }
 
-            return new RealCuganProbeResult(true, run.ExitCode, null, tail, options.Device);
+            return new SuperResolutionProbeResult(true, run.ExitCode, null, tail, options.Device);
         }
         finally
         {
