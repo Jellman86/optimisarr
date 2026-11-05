@@ -33,20 +33,24 @@ public static class EncoderQualityPolicy
 
     /// <summary>
     /// Rehydrates a persisted per-title effective value and applies the same one-step recovery
-    /// direction as a fixed-quality retry. This prevents a retry from discarding (or accidentally
-    /// lowering) the quality selected by adaptive VMAF.
+    /// direction as a fixed-quality retry, for each quality retry since the value was selected. A
+    /// value selected during the current retry was proved by its own samples and is used as it is.
+    /// This prevents a retry from discarding (or accidentally lowering) the selected quality.
     /// </summary>
+    /// <param name="selectedAtRetry">The job's quality retry count when the value was selected.</param>
     public static EncoderQuality ResolveAdaptive(
         string? encoder,
         int requested,
         int selectedEffective,
-        int retryCount)
+        int retryCount,
+        int selectedAtRetry = 0)
     {
         var baseline = Resolve(encoder, requested, retryCount: 0);
         var boundedRetry = Math.Max(0, retryCount);
+        var stepsSinceSelection = Math.Max(0, boundedRetry - Math.Max(0, selectedAtRetry));
         return baseline with
         {
-            Effective = Math.Max(0, Math.Clamp(selectedEffective, 0, 51) - (boundedRetry * RetryStep)),
+            Effective = Math.Max(0, Math.Clamp(selectedEffective, 0, 51) - (stepsSinceSelection * RetryStep)),
             RetryCount = boundedRetry
         };
     }
