@@ -78,6 +78,7 @@ public sealed class ReplacementServiceTests : IDisposable
         await SetCrossFilesystemReplacementAsync(false);
         var switched = false;
 
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await ReplaceAsync(id, canMoveAtomically: (_, _) =>
         {
             if (!switched)
@@ -194,6 +195,7 @@ public sealed class ReplacementServiceTests : IDisposable
         var id = await SeedReadyJobAsync(original, output, true);
         await AttachLibraryAsync(id, MediaType.Film, autoReplace: true);
         await using var db = new OptimisarrDbContext(_options);
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await NewService(db, canMoveAtomically: (_, _) =>
         {
             using var changed = new OptimisarrDbContext(_options);
@@ -218,6 +220,7 @@ public sealed class ReplacementServiceTests : IDisposable
         await using var db = new OptimisarrDbContext(_options);
         var row = await db.Jobs.FindAsync(id); row!.VerifiedSourceSha256 = null; await db.SaveChangesAsync();
         var changedOnce = false;
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await NewService(db, canMoveAtomically: (_, _) =>
         {
             if (!changedOnce)
@@ -373,7 +376,7 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal(ReplacementResultKind.Failed, result.Kind);
         Assert.Equal("ORIGINAL-DATA", File.ReadAllText(original));
         Assert.Equal("CORRUPT!!", File.ReadAllText(output));
-        Assert.Empty(Directory.GetFiles(_trashDir, "*", SearchOption.AllDirectories));
+        Assert.False(Directory.Exists(_trashDir) && Directory.EnumerateFiles(_trashDir, "*", SearchOption.AllDirectories).Any());
     }
 
     [Fact]
@@ -553,6 +556,7 @@ public sealed class ReplacementServiceTests : IDisposable
         var moveProbeCalls = 0;
 
         await using var db = new OptimisarrDbContext(_options);
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var service = NewService(
             db,
             canMoveAtomically: (_, _) =>
@@ -651,6 +655,7 @@ public sealed class ReplacementServiceTests : IDisposable
         var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
         var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
 
+        await SetCrossFilesystemReplacementAsync(allowed: false);
         var result = await ReplaceAsync(jobId, canMoveAtomically: (_, _) => false);
 
         Assert.Equal(ReplacementResultKind.Invalid, result.Kind);

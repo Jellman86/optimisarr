@@ -58,6 +58,14 @@ checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-28-octo
 delivered work from remaining acceptance. Complete those obligations before perceptual dedupe or
 exact-copy file actions.
 
+**Recorded default, 5 November 2026:** verified cross-filesystem replacement is allowed by default,
+by operator decision for a home-lab application. Separate bind mounts are a normal Docker layout,
+and refusing them would stop replacement on those installs without protecting anything: the copy is
+proved identical by SHA-256 before the source is deleted, and the quarantined original and installed
+file are hashed again afterwards. The cost is time and room for a temporary second copy. Turning the
+setting off now refuses such replacements; before this release the check could not detect these mounts
+and never fired, so existing saved values are migrated to on, which is what those installs were doing.
+
 **The 21 October operator decision still applies:** crash and restart recovery is
 the home-lab worker qualification bar. Power-loss durability is a recorded limit,
 not a release gate. The unused durable .NET journal was archived in #434; do not
