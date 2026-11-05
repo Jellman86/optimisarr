@@ -130,7 +130,7 @@ public sealed class DedupeJournalStore(IServiceScopeFactory scopes, FileOperatio
     public static Task<bool> IsReservedAsync(OptimisarrDbContext db, IReadOnlyList<string> keys, CancellationToken token) =>
         db.DedupeFileClaims.AsNoTracking().AnyAsync(c => keys.Contains(c.Key), token);
 
-    private static string[] Keys(IReadOnlyList<DedupeFileSnapshot> files) => files.SelectMany(f =>
+    internal static string[] Keys(IReadOnlyList<DedupeFileSnapshot> files) => files.SelectMany(f =>
         FileOperationClaims.SnapshotKeys(f.MediaFileId, f.Path, f.Identity).Concat(f.QuarantinePath is { } destination
             ? FileOperationClaims.SnapshotKeys(f.MediaFileId, destination, null) : []))
         .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add the reversible exact-copy move behind no endpoint (#397). A prepared copy moves into a quarantine folder inside its library by a rename that cannot copy or overwrite, after a full preflight, and restores to its exact path. Nothing is deleted. An interrupted action is resolved from where the files actually are, and anything uncertain keeps its reservations for the operator. Library scans skip the quarantine folder. Cleanup stays unavailable until the endpoint and review screen ship.
+
 - Read the facts the exact-copy cleanup rule judges directly from disk (#397): link counts, file identity, a fresh full hash, filesystem identity and write access, with disc structures classified as not standalone. This only reads; nothing calls it yet and cleanup actions stay disabled.
 
 - Replacement never deletes a source before its copy is verified. Between separate Docker bind mounts, such as `/data`, `/trash` and `/work`, the kernel refuses a rename even on one filesystem, and .NET's file move then silently copied and deleted the source with no content check. The verified copy path was never reached and every such move was recorded as an atomic rename. Moves now use a rename that cannot copy or overwrite; anything else goes through the SHA-256 verified copy, which removes the source only after the copy is proved identical, and is recorded as cross-filesystem. These moves take longer because both files are hashed. Replacements already hash the quarantined original and the installed file after moving, so existing results stay trustworthy.
