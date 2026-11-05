@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replacement never deletes a source before its copy is verified. Between separate Docker bind mounts, such as `/data`, `/trash` and `/work`, the kernel refuses a rename even on one filesystem, and .NET's file move then silently copied and deleted the source with no content check. The verified copy path was never reached and every such move was recorded as an atomic rename. Moves now use a rename that cannot copy or overwrite; anything else goes through the SHA-256 verified copy, which removes the source only after the copy is proved identical, and is recorded as cross-filesystem. These moves take longer because both files are hashed. Replacements already hash the quarantined original and the installed file after moving, so existing results stay trustworthy.
+
 - Duplicate-scan tests wait for background scans against a shared 60-second wall-clock deadline instead of fixed poll counts. One ran out after 250 polls on a loaded Windows runner; the cancellation wait allowed two seconds although the coordinator may take ten to flush its checkpoint (test-only).
 - Separate what is specific to the Real-CUGAN engine (executable, model catalogue and invocation) from the engine-neutral super-resolution decode, batching and reassembly (#491). This prepares for a second ncnn-vulkan engine. Settings, the API and every engine argument are unchanged; the probe's temporary folder is now named `optimisarr-super-resolution-probe`.
 - The shared test reader for fake-tool process ids opens the file with full sharing, so on Windows it can no longer block the fixture that is still writing the id (test-only).
