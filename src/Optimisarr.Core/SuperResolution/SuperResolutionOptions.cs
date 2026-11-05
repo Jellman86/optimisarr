@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.SuperResolution;
@@ -23,6 +24,7 @@ public sealed record SuperResolutionOptions(
     public const string EngineName = "realcugan";
 
     /// <summary>The engine these settings configure. The <c>realcugan.*</c> rows describe only it.</summary>
+    [JsonIgnore]
     public ISuperResolutionEngine Engine => RealCuganEngine.Instance;
 
     /// <summary>
