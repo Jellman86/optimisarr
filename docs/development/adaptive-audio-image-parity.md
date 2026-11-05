@@ -6,7 +6,7 @@ Tracking context: [#332](https://github.com/Jellman86/optimisarr/issues/332).
 
 ## Active checkpoint, 28 October 2026
 
-Soundtrack delivery status below was reconciled against current dev on **2 November 2026**.
+Soundtrack delivery status below was reconciled against current dev on **5 November 2026**.
 
 Experimental standalone audio/image quality-first workflows shipped in
 [0.2.24](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.24).
@@ -29,10 +29,12 @@ OS adapters/bootstrap were archived in #434. Reimplementing those adapters is no
 an active requirement. Existing owned-scratch recovery, live admission and Mac
 anchored accounting remain in place.
 
-Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
-encodes, including supported stereo-downmix references. The search runs on the server; the final
-candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
-retry/reconnect, history/export and package-lifetime qualification remain open.
+Released in [0.2.25](https://github.com/Jellman86/optimisarr/releases/tag/v0.2.25): opt-in
+per-soundtrack bitrate selection for local and worker video encodes (protocol 14), including
+surround and mono tracks a library downmixes to stereo. The search runs on the server; a worker
+receives fixed per-track rates and its own soundtrack gate measures the file it produces. The
+0.2.25 qualification record covers the soundtrack cases on the Mac and Windows release workers.
+Surround kept without a downmix stays unassessable and is a recorded limit, not open work.
 
 Current remaining work is:
 
@@ -228,7 +230,7 @@ for available-device media tests, discovered regressions and explicit limits.
 | Search | Shared four-candidate search, measured-byte selection, codec bitrate ladders, deduplicated JPEG quantizers, deterministic fallback | Broader source, boundary and failure cases beyond the selected per-host release matrix |
 | Images | Whole-image probes, copied colour metadata, independent alpha and saved SSIM target; shared native proof, conditional Swift collection, capacity-aware claim and real-server lifecycle tests; signed Swift JPEG/WebP jobs pass live admission, verification and rollback on disk and RAM; selected release packages pass advertisement/placement | Broader packaged image job/restart and source coverage |
 | Standalone audio | Up to three disjoint windows, at most 90 seconds; .NET runner and real server pass AAC/Opus/MP3 lifecycle and lost-response replay with lossless 48 kHz references; ordinary Swift claims pass all three codecs under live memory admission and selected released packages pass placement | Longer-track and difficult-passage qualification |
-| Soundtracks | Existing separate reporting and gate | Adaptive bitrate selection over every retained re-encoded track, frozen stream mapping, copied tracks excluded |
+| Soundtracks | 0.2.25: server-side bitrate selection for retained mono/stereo and downmixed tracks on local and worker encodes, frozen stream mapping, copied/removed tracks excluded, library-bitrate fallback; the soundtrack gate judges every final file | Restart during a selection; surround kept without a downmix remains a recorded limit |
 | Settings | Independent opt-ins, explicit enabled target required, additive migration, config round-trip | Full settings and unsupported-combination acceptance; no hidden fixed-quality worker fallback |
 | Calibration and previews | Existing disposable comparisons keep their fixed settings and cannot replace originals | WebP lossless-source calibration intent, target guidance and adaptive preview parity must be qualified explicitly |
 | Evidence | Candidate settings, bytes, raw metric reports, source hash, sampling, selected value and reason; completed local probes checkpointed and shown before final verification; lease-bound server exchange rejects replay conflicts and source/tool changes | Broader reconnect acceptance, interrupted-attempt history and export qualification |
