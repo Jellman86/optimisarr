@@ -98,6 +98,7 @@ public sealed class LibraryScanner
         foreach (var path in Directory.EnumerateFiles(root, "*", enumerationOptions))
         {
             if (!LibraryPathSafety.IsSafeFile(path, root)) continue;
+            if (Deduplication.DedupeQuarantinePaths.IsInside(root, path)) continue;
             var extension = System.IO.Path.GetExtension(path);
             if (!options.Extensions.Contains(extension))
             {

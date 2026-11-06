@@ -139,6 +139,20 @@ public sealed class DedupeFileObserverTests : IDisposable
     }
 
     [PosixFact]
+    public void A_library_root_that_is_itself_a_link_is_not_a_safe_path()
+    {
+        var link = _root + "-link";
+        Directory.CreateSymbolicLink(link, _root);
+        try
+        {
+            Assert.False(DedupeFileObserver.WalkFolders(link, Path.Combine(link, "Copy", "Film.mkv")).Safe);
+            Assert.False(DedupeFileObserver.WalkFolders(link, Path.Combine(link, "Film.mkv")).Safe);
+            Assert.True(DedupeFileObserver.WalkFolders(_root, Path.Combine(_root, "Copy", "Film.mkv")).Safe);
+        }
+        finally { Directory.Delete(link); }
+    }
+
+    [PosixFact]
     public async Task A_quarantine_path_that_does_not_exist_yet_is_safe()
     {
         var copy = await ObserveCopy();

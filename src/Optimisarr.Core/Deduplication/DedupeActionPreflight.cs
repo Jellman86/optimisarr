@@ -8,6 +8,9 @@ namespace Optimisarr.Core.Deduplication;
 /// Every existing folder on the way to the destination is a real folder inside the library: no
 /// link, dangling link or file stands in the path. Always false when it could not be established.
 /// </param>
+/// <param name="ChangeStamp">
+/// The file's change time across the full read, so later checks can tell whether it changed since.
+/// </param>
 /// <param name="IsIndependentFile">
 /// The observer found an ordinary standalone media file, not part of a bundle, package or other
 /// multi-file asset whose pieces must stay together. Anything the observer cannot classify is false.
@@ -26,7 +29,8 @@ public sealed record DedupeFileObservation(
     bool QuarantineDestinationExists,
     string? QuarantineVolumeId,
     bool QuarantinePathSafe,
-    bool IsIndependentFile);
+    bool IsIndependentFile,
+    string? ChangeStamp = null);
 
 /// <summary>Facts about the library and the server that decide whether any file may move at all.</summary>
 public sealed record DedupeActionContext(
