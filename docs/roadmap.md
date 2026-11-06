@@ -48,15 +48,13 @@ and zoom-equivalent layouts, and refreshed screenshots in `dev`. Subsequent
 Mac work capacity (#460); those are not part of 0.2.24. The reporter-specific
 alignment and zero-capacity investigations remain separate from those fixes.
 
-**Active feature priority remains [#332](https://github.com/Jellman86/optimisarr/issues/332).**
-Implemented on dev: opt-in per-soundtrack bitrate selection for local and compatible worker video
-encodes, including supported stereo-downmix references. The search runs on the server; the final
-candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
-retry/reconnect, history/export and package-lifetime qualification remain open.
-The [current parity
-checkpoint](development/adaptive-audio-image-parity.md#active-checkpoint-28-october-2026) separates
-delivered work from remaining acceptance. Complete those obligations before perceptual dedupe or
-exact-copy file actions.
+**[#332](https://github.com/Jellman86/optimisarr/issues/332) is closed, so the active feature
+priority moves to exact-copy cleanup in [#397](https://github.com/Jellman86/optimisarr/issues/397).**
+Opt-in per-soundtrack bitrate selection for local and compatible worker video encodes shipped in
+0.2.25, including supported stereo-downmix references. The search runs on the server; the final
+candidate still passes the configured soundtrack gate. The [closing parity
+checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026) records
+what shipped and the limits that stay.
 
 **Recorded default, 5 November 2026:** verified cross-filesystem replacement is allowed by default,
 by operator decision for a home-lab application. Separate bind mounts are a normal Docker layout,
@@ -1220,7 +1218,7 @@ The release check closes that gap:
       chosen quality and its evidence recorded against the job as they are today.
 
 
-14. **Perceptual quality for audio and still images: experimental standalone workflows released in 0.2.24; full parity remains active and incomplete, 2026-10-28.**
+14. **Perceptual quality for audio and still images: experimental workflows released in 0.2.24 and 0.2.25; complete for the supported domain with recorded limits, 2026-11-05.**
     Optional quality evidence complements structural, timing, loudness/clipping,
     SSIM and metadata checks. Reporting can be used without enabling a gate.
     An opt-in Zimtohrli gate uses an explicit operator-selected maximum distance, with
@@ -1251,16 +1249,16 @@ The release check closes that gap:
       settings and never choose a quality gate limit. A bounded sample search for a suitable
       bitrate is released for standalone audio, with measured candidates,
       bounded execution, source/size checks and independent final verification. Implemented on
-      dev: opt-in per-soundtrack bitrate selection for local and compatible worker video encodes,
+      0.2.25: opt-in per-soundtrack bitrate selection for local and compatible worker video encodes,
       including supported stereo-downmix references. The search runs on the server; the final
-      candidate still passes the configured soundtrack gate. Broader preview/calibration, source,
-      retry/reconnect, history/export and package-lifetime qualification remain open. See the
-      remaining [parity qualification](development/adaptive-audio-image-parity.md).
+      candidate still passes the configured soundtrack gate. See the
+      [closing checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026)
+      for the limits that stay.
     - **Native Mac lifetime:** app/session/runner wiring now restores independently anchored
       accounting before claims and uses scoped helper execution with positive writer/RAM retirement.
       Signed release-library trials cover AAC/Opus/MP3, actual RAM, busy delivery and parent-kill/
       same-identity replay. The selected 0.2.24 installed-package workflows are qualified;
-      broader restart and reboot/remount qualification remain open. See the
+      broader restart and reboot/remount behaviour stays unqualified. See the
       [runtime evidence and limits](engineering/hardware-validation/2026-10-15-native-work-runtime.md).
     - **Video soundtracks:** opt-in reporting and a separate explicit gate support up to eight
       retained re-encoded tracks, with up to 90 seconds of assessed coverage each. Frozen removals
@@ -1301,14 +1299,12 @@ The release check closes that gap:
     shared replacement/rollback claims; it enables no file action. D3b fencing since then —
     most recently owned verification scratch in
     [#414](https://github.com/Jellman86/optimisarr/pull/414) (merged 2026-10-18) — hardens
-    cleanup ownership without enabling any file action, and further D3 work stays deferred
-    behind #332. The
+    cleanup ownership without enabling any file action. #332 has closed, so D3 work is active
+    again. The
     [journal foundation and remaining D3 gates](development/exact-copy-journal-foundation.md)
     separate this groundwork from qualified quarantine and restore. The staged research and
     implementation plan is tracked in [#397](https://github.com/Jellman86/optimisarr/issues/397).
-    Further dedupe implementation is paused behind audio/image parity in #332/#415, following
-    the operator's 13 October priority and 14 October pause. Existing read-only review and
-    qualified ownership foundations remain available; no cleanup action is enabled by this work.
+    The preflight rule and read-only file observer are in place; no cleanup action is enabled yet.
     Cover image, audio, video and mixed libraries. Find exact file copies first,
     then offer review of matching content saved in different formats or qualities. Make
     scanning opt-in per library, with cross-library comparisons selected explicitly.

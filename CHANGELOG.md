@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Record the closing checkpoint for audio and image quality-first parity (#332): what shipped, and the limits that stay, such as no calibrated universal target and no assessment of surround kept without a downmix. Exact-copy cleanup (#397) becomes the active priority.
 - Verified cross-filesystem replacement is now on by default, and the setting finally works. Separate bind mounts are a normal Docker layout, so replacements across them use the slower verified copy, which deletes the source only after proving the copy identical. The old check could not detect these mounts, so the setting never refused anything and setup wrongly reported such replacements as blocked. Existing saved values are migrated to on, matching what those installs were already doing; turning it off now really does refuse them.
 - Read the facts the exact-copy cleanup rule judges directly from disk (#397): link counts, file identity, a fresh full hash, filesystem identity and write access, with disc structures classified as not standalone. This only reads; nothing calls it yet and cleanup actions stay disabled.
 
