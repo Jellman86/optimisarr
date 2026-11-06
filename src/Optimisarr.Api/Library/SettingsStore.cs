@@ -241,7 +241,7 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             // Opt-in because the established software path is the compatibility baseline.
             ParseEnum(settings.GetValueOrDefault(SettingKeys.HdrToneMapMode), HdrToneMapMode.Software),
             VerificationPolicy.Default,
-            ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
+            ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: true),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0),
             // Startup records the fresh-install default or preserves the historical choice.

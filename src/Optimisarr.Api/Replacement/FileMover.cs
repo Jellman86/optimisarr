@@ -27,8 +27,7 @@ public static class FileMover
         try
         {
             File.WriteAllBytes(source, Array.Empty<byte>());
-            File.Move(source, destination);
-            return true;
+            return RenameOnly.Rename(source, destination) == RenameOutcome.Renamed;
         }
         // A non-writable directory throws UnauthorizedAccessException (Linux: "Permission
         // denied"), which is not an IOException — catch it too so a permissions problem is
