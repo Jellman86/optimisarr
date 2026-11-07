@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Queue a single file from its Inventory details (#507), through `POST /api/media/{id}/enqueue`. Choosing a file only overrides "optimise automatically" being off: every eligibility rule, exclusion and reservation still applies, scheduling, playback holds and capacity still decide when it runs, and a previously failed file is retried from its own job. Retrying a job no longer queues a second job for a file that already has an active one.
+
 - Add the reversible exact-copy move behind no endpoint (#397). A prepared copy moves into a quarantine folder inside its library by a rename that cannot copy or overwrite, after a full preflight, and restores to its exact path. Nothing is deleted. An interrupted action is resolved from where the files actually are, and anything uncertain keeps its reservations for the operator. Library scans skip the quarantine folder. Cleanup stays unavailable until the endpoint and review screen ship.
 
 - Record the closing checkpoint for audio and image quality-first parity (#332): what shipped, and the limits that stay, such as no calibrated universal target and no assessment of surround kept without a downmix. Exact-copy cleanup (#397) becomes the active priority.

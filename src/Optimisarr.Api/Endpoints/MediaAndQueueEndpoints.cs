@@ -70,6 +70,36 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("ListMedia");
 
+        app.MapPost("/api/media/{id:int}/enqueue", async (
+            int id,
+            JobEnqueueService enqueue,
+            QueueDispatcher dispatcher,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await enqueue.EnqueueFileAsync(id, cancellationToken);
+            switch (result.Outcome)
+            {
+                case FileEnqueueOutcome.NotFound:
+                    return ApiErrors.NotFound("media.notFound", $"No media file with id {id}.", new { id });
+                case FileEnqueueOutcome.Enqueued:
+                    dispatcher.Wake();
+                    return Results.Ok(new FileEnqueueDto(result.JobId!.Value, AlreadyQueued: false));
+                case FileEnqueueOutcome.AlreadyActive:
+                    return Results.Ok(new FileEnqueueDto(result.JobId!.Value, AlreadyQueued: true));
+                default:
+                    return ApiErrors.Conflict(result.Outcome switch
+                    {
+                        FileEnqueueOutcome.NeedsProbe => "media.enqueue.needsProbe",
+                        FileEnqueueOutcome.Importing => "media.enqueue.importing",
+                        _ => "media.enqueue.ineligible",
+                    }, result.Reason!);
+            }
+        })
+        .WithName("EnqueueMediaFile")
+        .Produces<FileEnqueueDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         app.MapPost("/api/media/{id:int}/probe", async (
             int id,
             LibraryInventoryService inventory,
@@ -585,6 +615,7 @@ internal static class MediaAndQueueEndpoints
                 JobOperationFailure.NotFound => ApiErrors.NotFound("job.notFound", outcome.Message, outcome.Args ?? new { id }),
                 JobOperationFailure.InvalidState => ApiErrors.BadRequest("job.retry.invalidState", outcome.Message, outcome.Args ?? new { id }),
                 JobOperationFailure.Excluded => ApiErrors.Conflict("job.retry.excluded", outcome.Message),
+                JobOperationFailure.AlreadyActive => ApiErrors.Conflict("job.retry.alreadyActive", outcome.Message),
                 JobOperationFailure.RecoveryPending => ApiErrors.Conflict("job.recoveryPending", outcome.Message),
                 _ => ApiErrors.Conflict("job.workCleanupFailed", outcome.Message),
             };
@@ -620,3 +651,5 @@ internal static class MediaAndQueueEndpoints
         .WithName("ReplaceFromJob");
     }
 }
+
+internal sealed record FileEnqueueDto(int JobId, bool AlreadyQueued);
