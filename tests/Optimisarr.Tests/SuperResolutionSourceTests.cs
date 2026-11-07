@@ -37,6 +37,15 @@ public sealed class SuperResolutionSourceTests
         Assert.Equal(bitDepth, source.BitDepth);
     }
 
+    [Fact]
+    public void An_interlaced_source_is_accepted_only_when_the_decoder_deinterlaces_it()
+    {
+        var probe = Probe(video: "\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"1:1\", \"field_order\": \"tt\"");
+
+        Assert.NotNull(SuperResolutionSource.Parse(probe).Refusal);
+        Assert.Null(SuperResolutionSource.Parse(probe, deinterlaced: true).Refusal);
+    }
+
     [Theory]
     [InlineData("\"pix_fmt\": \"yuv420p12le\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
     [InlineData("\"pix_fmt\": \"yuv444p\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]

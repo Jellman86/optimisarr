@@ -1383,7 +1383,8 @@ internal static class WorkerLeaseEndpoints
         if (library is not null
             && (!WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement)
                 || SuperResolutionRouting.Applies(superResolutionEngineEnabled, library.SuperResolutionEnabled,
-                    media.MediaKind, replaceBound: job.Type == JobType.Normal)))
+                    media.MediaKind, replaceBound: job.Type == JobType.Normal)
+                || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, media.FieldOrder)))
         {
             return false;
         }

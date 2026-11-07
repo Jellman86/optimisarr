@@ -337,6 +337,26 @@ Audio assessment accepts finite decoded samples up to an absolute magnitude of 4
 +12 dBFS, to accommodate lossy decoder overs. Larger or non-finite samples remain invalid. This does
 not relax a configured clipping gate.
 
+### Interlaced video
+
+A source that ffprobe reports as interlaced is **left untouched by default**, and the inventory says
+why. Re-encoding it normally keeps its woven pictures but marks them progressive, so players stop
+deinterlacing and it plays combed, and verification cannot see that. Track cleanup still applies,
+because it copies the video. A source reporting an unknown field order is treated as progressive,
+because modern codecs commonly report that.
+
+**Deinterlace interlaced video** lets a library process these files. Their fields are combined with
+`bwdif` at the same frame rate before any crop or scale, and the result is written as progressive.
+VMAF judges it against the original deinterlaced the same way, so it measures the encode rather than
+the deinterlacing, and it cannot tell you the deinterlacing looks good. Check a short file first.
+
+- It changes the picture, so it is off by default.
+- It suits video that was really interlaced, such as camcorder footage, VHS and TV broadcasts.
+  Telecined film needs inverse telecine, which this does not do, so it comes out softer.
+- It keeps the frame rate, so 50i becomes 25p. It does not double the rate.
+- These jobs decode in software, and run on the server whatever the library's placement says.
+- Super-resolution upscales the combined pictures, if the library also opted in to that.
+
 ### Assess re-encoded video soundtracks
 
 Soundtrack samples leave a 100 ms margin at the file end to avoid encoder padding. Each prepared sample must still contain its assigned frames within the 64-frame resampling allowance; missing audio is never padded. Coverage in the report shows what was actually assessed.

@@ -108,7 +108,9 @@ public sealed record LibrarySnapshot(
     // super-resolution pipeline must not silently activate (or deactivate) on a config restore.
     bool? SuperResolutionEnabled = null,
     // Null on an older snapshot keeps the stored check.
-    string? SuperResolutionQualityCheck = null);
+    string? SuperResolutionQualityCheck = null,
+    // Null on an older snapshot means off, as those libraries left interlaced files untouched.
+    bool? DeinterlaceVideo = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

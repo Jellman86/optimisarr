@@ -362,8 +362,8 @@ public sealed partial class QueueDispatcher(
 
             var placements = await db.Libraries
                 .AsNoTracking()
-                .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled })
-                .ToDictionaryAsync(library => library.Id, library => (library.WorkPlacement, library.SuperResolutionEnabled), stoppingToken);
+                .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo })
+                .ToDictionaryAsync(library => library.Id, library => (library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo), stoppingToken);
             // Libraries whose jobs a worker cannot be offered until this machine has chosen a
             // per-title quality for them.
             var adaptiveLibraries = await db.Libraries
@@ -385,6 +385,7 @@ public sealed partial class QueueDispatcher(
                     job.Priority,
                     job.EnqueuedAt,
                     Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
+                    FieldOrder = job.MediaFile != null ? job.MediaFile.FieldOrder : null,
                     IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
                     IgnoreLibraryWindow = job.Type != JobType.Normal,
                     QualityChosen = job.AdaptiveVideoQuality != null,
@@ -403,12 +404,14 @@ public sealed partial class QueueDispatcher(
                     job.HonoursPlacement && job.LibraryId is { } libraryId
                         && placements.TryGetValue(libraryId, out var placement)
                         ? EffectivePlacement(placement.WorkPlacement, SuperResolutionRouting.Applies(
-                            superResolutionOn, placement.SuperResolutionEnabled, job.Kind, replaceBound: !job.Interactive))
+                            superResolutionOn, placement.SuperResolutionEnabled, job.Kind, replaceBound: !job.Interactive)
+                            || VideoFieldOrder.Deinterlaces(placement.DeinterlaceVideo, job.FieldOrder))
                         : WorkPlacement.Anywhere,
                     job.QualityChosen,
                     job.Kind,
                     WorkerRequired: job.Interactive && job.LibraryId is { } requiredId
-                        && placements.GetValueOrDefault(requiredId).WorkPlacement == WorkPlacement.WorkerOnly))
+                        && placements.GetValueOrDefault(requiredId).WorkPlacement == WorkPlacement.WorkerOnly
+                        && !VideoFieldOrder.Deinterlaces(placements.GetValueOrDefault(requiredId).DeinterlaceVideo, job.FieldOrder)))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -1507,6 +1510,11 @@ public sealed partial class QueueDispatcher(
         // this server's engine over this server's frames, and a worker lease carries only ffmpeg
         // arguments. Offering it would produce an ordinary source-sized candidate that passes
         // verification and replaces the original without the upscaling that was asked for.
+        if (work.Spec.Deinterlace)
+        {
+            return RemoteWorkPlan.Refused(
+                "This source is deinterlaced, which runs on this server: a worker cannot deinterlace the reference it would judge the result against.");
+        }
         if (work.SuperResolution is not null)
         {
             return RemoteWorkPlan.Refused(
@@ -1882,7 +1890,7 @@ public sealed partial class QueueDispatcher(
                             .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, fieldOrder), cancellationToken);
                 }
             }
-            if (VideoFieldOrder.IsInterlaced(fieldOrder))
+            if (!rules.DeinterlaceVideo && VideoFieldOrder.IsInterlaced(fieldOrder))
                 throw new JobNoLongerEligibleException(VideoFieldOrder.RefusalFor(fieldOrder!));
         }
         // A preview runs regardless, but warns about an interlaced source, and this probe has the answer.
@@ -1992,6 +2000,12 @@ public sealed partial class QueueDispatcher(
             sourceAudioCodecs: freshSourceProbe?.Success == true ? freshSourceProbe.AudioCodecs : null,
             adaptiveImageQuality: !isDisposable && library?.AdaptiveImageQuality == true,
             sourceAudioChannelLayout: sourceAudioChannelLayout);
+        // The probe just made is the authority when there is one, as it is for the other source facts.
+        var sourceFieldOrder = freshSourceProbe is { Success: true, FieldOrder: { } probedOrder } ? probedOrder : media.FieldOrder;
+        spec = spec with
+        {
+            Deinterlace = isVideoJob && spec.VideoCodec is not null && VideoFieldOrder.Deinterlaces(rules.DeinterlaceVideo, sourceFieldOrder),
+        };
 
         if (isVideoJob && !isDisposable && spec.VideoCodec is not null && spec.FrameRate is null)
         {
@@ -2135,6 +2149,7 @@ public sealed partial class QueueDispatcher(
             ExpectedHeight: spec.ExpectedSize?.Height,
             Crop: spec.CropTo,
             FrameRate: spec.FrameRate,
+            Deinterlaced: spec.Deinterlace,
             // The tracks the kept-languages rules remove on purpose; verification holds
             // the output to exactly this plan and judges fidelity against the kept tracks.
             RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes,
@@ -2694,6 +2709,7 @@ public sealed partial class QueueDispatcher(
                 ReferenceFrameRate: work.Spec.TargetFrameRate ?? sourceProbe.VideoFrameRate,
                 ReferenceCrop: work.Spec.CropTo,
                 ReferenceDecimation: work.Spec.FrameRate,
+                ReferenceDeinterlace: work.Spec.Deinterlace,
                 // As on a worker: the candidate is a clip cut out of the source, so the reference
                 // window is cut before its cadence is normalised rather than after.
                 DistortedIsCutClip: true,
@@ -4030,13 +4046,14 @@ public sealed partial class QueueDispatcher(
         var queued = await db.Jobs.AsNoTracking()
             .Where(job => job.Status == JobStatus.Queued)
             .Select(job => new { job.Id, job.LibraryId, job.Type, job.EnqueuedAt,
-                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown })
+                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
+                FieldOrder = job.MediaFile != null ? job.MediaFile.FieldOrder : null })
             .ToListAsync(cancellationToken);
         var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
         var superResolutionOn = (await scope.ServiceProvider.GetRequiredService<SettingsStore>()
             .GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
         var libraries = await db.Libraries.AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled,
+            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo,
                 library.AutoEnqueueEnabled, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
             .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
         var now = DateTimeOffset.UtcNow;
@@ -4048,12 +4065,14 @@ public sealed partial class QueueDispatcher(
             Placement: job.LibraryId is { } id
                 && libraries.TryGetValue(id, out var library)
                     ? EffectivePlacement(library.WorkPlacement, SuperResolutionRouting.Applies(
-                        superResolutionOn, library.SuperResolutionEnabled, job.Kind, replaceBound: job.Type == JobType.Normal))
+                        superResolutionOn, library.SuperResolutionEnabled, job.Kind, replaceBound: job.Type == JobType.Normal)
+                        || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, job.FieldOrder))
                     : WorkPlacement.Anywhere,
             Kind: job.Kind,
             WorkerRequired: job.Type != JobType.Normal && job.LibraryId is { } requiredId
                 && libraries.TryGetValue(requiredId, out var requiredLibrary)
-                && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly)).ToList();
+                && requiredLibrary.WorkPlacement == WorkPlacement.WorkerOnly
+                && !VideoFieldOrder.Deinterlaces(requiredLibrary.DeinterlaceVideo, job.FieldOrder))).ToList();
         var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
             .ToDictionary(library => library.Id,
                 library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));

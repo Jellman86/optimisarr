@@ -19,6 +19,7 @@ public sealed record RuleOverrides
     public string? TargetContainer { get; init; }
     public HdrHandling? Hdr { get; init; }
     public bool? OptimiseDolbyVision { get; init; }
+    public bool? DeinterlaceVideo { get; init; }
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
     public bool? ExcludeHardLinkedFiles { get; init; }
     public IReadOnlyList<string>? SkipSourceCodecs { get; init; }

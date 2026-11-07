@@ -89,7 +89,8 @@ internal readonly record struct ParsedLibrary(
     bool NormalizeOpusChannelLayout = true,
     bool AdaptiveSoundtrackQuality = false,
     bool SuperResolutionEnabled = false,
-    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly);
+    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly,
+    bool DeinterlaceVideo = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -646,7 +647,8 @@ internal static class LibraryRequestParser
             request.NormalizeOpusChannelLayout ?? true,
             request.AdaptiveSoundtrackQuality ?? false,
             request.SuperResolutionEnabled ?? false,
-            superResolutionQualityCheck);
+            superResolutionQualityCheck,
+            request.DeinterlaceVideo ?? false);
         error = null;
         return true;
     }

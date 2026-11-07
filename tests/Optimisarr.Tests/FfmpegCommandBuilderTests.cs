@@ -1533,4 +1533,34 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("channelmap=channel_layout=5.1", args[IndexOf(args, "-af") + 1]);
         Assert.Equal(AudioChannelLayoutOutcome.Normalised, resolution.Layout.Outcome);
     }
+
+    [Fact]
+    public void Deinterlacing_comes_before_the_crop_and_scale_and_keeps_the_source_frame_rate()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with
+        {
+            Deinterlace = true,
+            CropTo = new CropRect(720, 400, 0, 88),
+            DownscaleTo = new PictureSize(640, 356),
+        });
+
+        var chain = args[args.ToList().IndexOf("-filter:v:0") + 1];
+        Assert.StartsWith("bwdif=mode=send_frame:parity=auto:deint=all,crop=", chain);
+    }
+
+    [Theory]
+    [InlineData("hevc_nvenc")]
+    [InlineData("hevc_qsv")]
+    [InlineData("hevc_vaapi")]
+    public void Deinterlacing_decodes_in_software_because_the_filter_needs_frames_in_memory(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { Deinterlace = true }, videoEncoder: encoder, hardwareDecode: true);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.Contains(VideoFieldOrder.DeinterlaceFilter, args[args.ToList().IndexOf("-filter:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Without_the_choice_no_deinterlace_filter_is_added() =>
+        Assert.DoesNotContain(FfmpegCommandBuilder.Build(Reencode(crf: 24)), argument => argument.Contains("bwdif"));
 }

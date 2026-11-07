@@ -67,6 +67,7 @@ internal static class LibraryRuleResolution
             TargetContainer = library.TargetContainer,
             Hdr = library.HdrHandling,
             OptimiseDolbyVision = library.OptimiseDolbyVision,
+            DeinterlaceVideo = library.DeinterlaceVideo,
             ExcludePathSegments = ParseExcludePaths(library.ExcludePaths),
             ExcludeHardLinkedFiles = library.ExcludeHardLinkedFiles,
             SkipSourceCodecs = ParseCodecList(library.SkipSourceCodecs),

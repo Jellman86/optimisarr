@@ -68,6 +68,9 @@ Pairing is retained, and the updated protocol is negotiated on heartbeat.
 
 ## Choose where a library runs
 
+Whatever the placement, super-resolution and [deinterlacing](configuration.md#interlaced-video) jobs
+run on the server.
+
 ### RAM storage and GPU processing
 
 These are separate capabilities. The Mac sidecar's **Preferences → Where work happens → Memory**
