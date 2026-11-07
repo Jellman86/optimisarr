@@ -56,7 +56,7 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
         };
         parent = Path.GetFullPath(parent);
         if (!SamePath(parent, ownerRoot) && !WorkPaths.IsUnderRoot(ownerRoot, parent)) throw new FileCleanupDeferredException();
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token);
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token, parent);
         if (held is null) throw new FileCleanupDeferredException();
         var libraries = await db.Libraries.AsNoTracking().Select(l => l.Path).ToListAsync(token);
         if (libraries.Any(p => SamePath(p, parent) || WorkPaths.IsUnderRoot(p, parent))) throw new FileCleanupDeferredException();
@@ -129,7 +129,7 @@ internal sealed class OwnedScratchWorkspace : IAsyncDisposable
             // retain the workspace rather than broadening the scope of this disposal.
             if (Directory.EnumerateFileSystemEntries(Root).Any(p => !SamePath(p, _marker))) return;
             if (!await QueueOutputCleanup.TryDiscardScratchAsync(db, _claims, job!, _marker, _workRoot, MarkerMatches, default)) return;
-            using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _claims, default);
+            using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _claims, default, Root);
             if (held is null) return;
             Directory.Delete(Root, recursive: false);
             await write.CommitAsync();

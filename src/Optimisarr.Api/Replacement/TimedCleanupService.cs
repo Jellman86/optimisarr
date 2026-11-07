@@ -285,12 +285,9 @@ public sealed class TimedCleanupService
         foreach (var action in expired)
         {
             var result = await _duplicates.PurgeAsync(action.ActionId, cancellationToken);
-            if (result.Outcome == DedupeActionOutcome.Completed)
-            {
-                removed += action.Copies.Count;
-                reclaimed += action.Copies.Sum(file => file.Bytes);
-            }
-            else
+            removed += result.Deleted;
+            reclaimed += result.DeletedBytes;
+            if (result.Outcome != DedupeActionOutcome.Completed)
             {
                 _logger.LogWarning("Kept the quarantined copies of duplicate cleanup {ActionId}: {Reason}", action.ActionId, result.Reason);
             }

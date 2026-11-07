@@ -10,7 +10,10 @@ namespace Optimisarr.Api.Deduplication;
 
 public enum DedupeActionOutcome { Completed, Refused, NeedsAttention, NotFound }
 
-public sealed record DedupeActionResult(DedupeActionOutcome Outcome, IReadOnlyList<DedupePreflightIssue> Issues, string? Reason)
+/// <param name="Deleted">Quarantined copies this call deleted, for space accounting. A copy already gone counts nothing.</param>
+/// <param name="DeletedBytes">Their size.</param>
+public sealed record DedupeActionResult(DedupeActionOutcome Outcome, IReadOnlyList<DedupePreflightIssue> Issues, string? Reason,
+    int Deleted = 0, long DeletedBytes = 0)
 {
     public static DedupeActionResult Completed { get; } = new(DedupeActionOutcome.Completed, [], null);
     public static DedupeActionResult NotFound { get; } = new(DedupeActionOutcome.NotFound, [], null);
@@ -182,6 +185,8 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
             return DedupeActionResult.Refused("This action changed before it could start, so nothing was deleted.");
 
         var deleted = false;
+        var deletedCount = 0;
+        var deletedBytes = 0L;
         try
         {
             foreach (var (file, stamp) in copies)
@@ -195,17 +200,19 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
                     if (startedHere && !deleted && await TryTransitionAsync(id, DedupeActionState.Purging, DedupeActionState.Quarantined, null))
                         return DedupeActionResult.Refused(problem);
                     await NoteAttentionAsync(id, problem);
-                    return DedupeActionResult.Attention(problem);
+                    return DedupeActionResult.Attention(problem) with { Deleted = deletedCount, DeletedBytes = deletedBytes };
                 }
                 File.Delete(file.Path);
                 deleted = true;
+                deletedCount++;
+                deletedBytes += file.SizeBytes;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(ex, "Purge of dedupe action {ActionId} stopped part-way", id);
             await NoteAttentionAsync(id, ex.Message);
-            return DedupeActionResult.Attention(ex.Message);
+            return DedupeActionResult.Attention(ex.Message) with { Deleted = deletedCount, DeletedBytes = deletedBytes };
         }
 
         RemoveEmptyQuarantineFolders(action.Plan.Files.Where(f => !f.IsKeeper));
@@ -221,7 +228,7 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
             await db.SaveChangesAsync(CancellationToken.None);
             await transaction.CommitAsync(CancellationToken.None);
         }
-        return DedupeActionResult.Completed;
+        return DedupeActionResult.Completed with { Deleted = deletedCount, DeletedBytes = deletedBytes };
     }
 
     private static string KeeperChanged(DedupeFileSnapshot keeper) =>
@@ -239,11 +246,19 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
     // The reviewed bytes, read now, and the change time that proves they have not changed since.
     private static async Task<string?> ReadReviewedStampAsync(DedupeFileSnapshot file, CancellationToken token)
     {
-        if (!IsReviewedFile(file, file.Path)) return null;
-        await using var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        if (ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) is not { } before) return null;
-        var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, token));
-        return hash == file.Sha256 && ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) == before ? before.ToString() : null;
+        try
+        {
+            if (!IsReviewedFile(file, file.Path)) return null;
+            await using var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) is not { } before) return null;
+            var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, token));
+            return hash == file.Sha256 && ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) == before ? before.ToString() : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // A file that cannot be read cannot be proved to be the reviewed one.
+            return null;
+        }
     }
 
     private async Task<DedupeActionResult> UndoAsync(Guid id, LoadedAction action, string reason)

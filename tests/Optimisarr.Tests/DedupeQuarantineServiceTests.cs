@@ -274,13 +274,90 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
         Assert.True(await RecursiveCleanupAllowedAsync());
     }
 
-    private async Task<bool> RecursiveCleanupAllowedAsync()
+    private string Work => Path.Combine(Path.GetDirectoryName(_root)!, Path.GetFileName(_root) + "-work");
+
+    private async Task<bool> RecursiveCleanupAllowedAsync(params string[] targets)
     {
+        if (targets.Length == 0) targets = [Path.Combine(Work, "preview", "1")];
         await using var scope = _services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         await using var write = await db.Database.BeginTransactionAsync();
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _services.GetRequiredService<FileOperationClaims>(), default);
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _services.GetRequiredService<FileOperationClaims>(), default, targets);
         return held is not null;
+    }
+
+    [PosixFact]
+    public async Task Scratch_cleanup_that_could_reach_a_quarantined_copy_or_its_keeper_still_waits()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+
+        Assert.False(await RecursiveCleanupAllowedAsync(_root));
+        Assert.False(await RecursiveCleanupAllowedAsync(Path.Combine(_root, "A")));
+        Assert.False(await RecursiveCleanupAllowedAsync(Path.GetDirectoryName(_root)!));
+        await using (var scope = _services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await using var write = await db.Database.BeginTransactionAsync();
+            Assert.Null(await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _services.GetRequiredService<FileOperationClaims>(), default));
+        }
+    }
+
+    [PosixFact]
+    public async Task Scratch_cleanup_reached_through_a_link_into_the_library_still_waits()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        Directory.CreateDirectory(Work);
+        var link = Path.Combine(Work, "preview");
+        Directory.CreateSymbolicLink(link, _root);
+        try
+        {
+            Assert.False(await RecursiveCleanupAllowedAsync(Path.Combine(link, "A")));
+            Assert.True(await RecursiveCleanupAllowedAsync(Path.Combine(Work, "calibration", "x")));
+        }
+        finally
+        {
+            Directory.Delete(link);
+            Directory.Delete(Work, true);
+        }
+    }
+
+    [PosixFact]
+    public async Task A_quarantined_copy_that_cannot_be_read_is_kept_and_the_sweep_carries_on()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var copy = plan.Files.First(f => !f.IsKeeper);
+        if (OperatingSystem.IsWindows()) return;
+        File.SetUnixFileMode(copy.QuarantinePath!, UnixFileMode.None);
+        try
+        {
+            var result = await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero);
+
+            Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+            Assert.True(File.Exists(copy.QuarantinePath!));
+            Assert.Equal(0, result.Deleted);
+        }
+        finally
+        {
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(copy.QuarantinePath!, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    [PosixFact]
+    public async Task A_purge_reports_only_what_it_deleted()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var copies = plan.Files.Where(f => !f.IsKeeper).ToArray();
+        File.Delete(copies[0].QuarantinePath!);
+
+        var result = await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero);
+
+        Assert.Equal(DedupeActionOutcome.Completed, result.Outcome);
+        Assert.Equal(1, result.Deleted);
+        Assert.Equal(copies[1].SizeBytes, result.DeletedBytes);
     }
 
     [PosixFact]
