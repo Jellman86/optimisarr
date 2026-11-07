@@ -268,6 +268,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.Container).HasMaxLength(32);
             entity.Property(file => file.VideoCodec).HasMaxLength(64);
             entity.Property(file => file.VideoProfile).HasMaxLength(64);
+            entity.Property(file => file.FieldOrder).HasMaxLength(32);
             entity.Property(file => file.PixelFormat).HasMaxLength(32);
             entity.Property(file => file.AudioCodecs).HasMaxLength(256);
             entity.Property(file => file.AudioLanguages).HasMaxLength(256);

@@ -806,4 +806,29 @@ public sealed class MediaProbeParseTests
         Assert.True(result.IsHdr);
         Assert.False(result.IsDolbyVision);
     }
+
+    [Theory]
+    [InlineData("tt")]
+    [InlineData("progressive")]
+    public void Parse_reads_the_primary_videos_field_order(string fieldOrder)
+    {
+        var result = MediaProbeService.Parse($$"""
+            { "streams": [
+                { "codec_type": "video", "codec_name": "mpeg2video", "field_order": "{{fieldOrder}}" },
+                { "codec_type": "video", "codec_name": "h264", "field_order": "bb" }
+              ], "format": { "format_name": "matroska,webm" } }
+            """);
+
+        Assert.Equal(fieldOrder, result.FieldOrder);
+    }
+
+    [Fact]
+    public void Parse_leaves_the_field_order_unset_when_ffprobe_omits_it()
+    {
+        var result = MediaProbeService.Parse("""
+            { "streams": [ { "codec_type": "video", "codec_name": "h264" } ], "format": { "format_name": "matroska,webm" } }
+            """);
+
+        Assert.Null(result.FieldOrder);
+    }
 }

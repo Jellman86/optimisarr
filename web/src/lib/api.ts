@@ -689,6 +689,7 @@ export type PreviewComparison = {
   verificationPassed: boolean | null
   verificationReportJson: string | null
   skippedQualitySearches?: string[]
+  sourceInterlaced?: boolean
 }
 
 export type CalibrationSource = {

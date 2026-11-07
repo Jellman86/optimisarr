@@ -337,3 +337,12 @@ test('a preview that left out no quality search shows no note', async ({ page })
   await openCompletedPreview(page)
   await expect(page.getByTestId('preview-skipped-searches')).toHaveCount(0)
 })
+
+test('a preview of an interlaced source says a real job would leave it untouched', async ({ page }) => {
+  await mockPreview(page, { ...completedPreview, sourceInterlaced: true })
+  await page.goto('/#/inventory')
+  await page.getByText('Example Film.mkv', { exact: true }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+
+  await expect(page.getByTestId('preview-interlaced')).toContainText('a real job would leave it untouched')
+})

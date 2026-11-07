@@ -289,6 +289,15 @@ test('a software-decode retry shows its current worker and keeps the rejected Ma
   await expect(details.getByText('Frame mismatch.')).toBeVisible()
 })
 
+test('a job skipped before encoding says why', async ({ page }) => {
+  const skipped = { ...job(55, 'Cancelled', null), errorMessage: 'Skipped before encoding: Interlaced video (field order tb): re-encoding would bake in the combing and drop the interlace flag, so it is left untouched' }
+  await mockWorkingQueue(page, { jobs: [skipped] })
+  await page.goto('/#/queue?filter=all')
+  await page.getByRole('button', { name: new RegExp(skipped.relativePath ?? 'Example') }).first().click()
+
+  await expect(page.getByTestId('job-cancelled-reason')).toContainText('Interlaced video')
+})
+
 test('job detail downloads only a matching opt-in diagnostic capture', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false), job(9, 'Failed', false)] })
   let releaseLookup!: () => void

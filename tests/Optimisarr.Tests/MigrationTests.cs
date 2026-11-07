@@ -26,7 +26,11 @@ public sealed class MigrationTests : IDisposable
             VALUES (1, 'Music', 'fixtures', 'Other', 'ConservativeHevc', 1,
                 '2026-10-14T00:00:00+00:00', '2026-10-14T00:00:00+00:00');
             """);
-        db.MediaFiles.Add(new() { Id = 1, LibraryId = 1, Path = "fixtures/source.flac", RelativePath = "source.flac" });
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO MediaFiles (Id, LibraryId, Path, RelativePath, SizeBytes, ModifiedAt, DiscoveredAt, UpdatedAt, Status, MediaKind)
+            VALUES (1, 1, 'fixtures/source.flac', 'source.flac', 0, '2026-10-12T00:00:00+00:00',
+                '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00', 'Discovered', 'Unknown');
+            """);
         await db.SaveChangesAsync();
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO Jobs (Id, MediaFileId, LibraryId, Status, Type, Priority, Progress, Attempt,
@@ -112,7 +116,11 @@ public sealed class MigrationTests : IDisposable
             VALUES (1, 'Legacy uploads', 'legacy', 'Film', 'ConservativeHevc', 1,
                 '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00');
             """);
-        db.MediaFiles.Add(new() { Id = 1, LibraryId = 1, Path = "legacy/source.mkv", RelativePath = "source.mkv" });
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO MediaFiles (Id, LibraryId, Path, RelativePath, SizeBytes, ModifiedAt, DiscoveredAt, UpdatedAt, Status, MediaKind)
+            VALUES (1, 1, 'legacy/source.mkv', 'source.mkv', 0, '2026-10-12T00:00:00+00:00',
+                '2026-10-12T00:00:00+00:00', '2026-10-12T00:00:00+00:00', 'Discovered', 'Unknown');
+            """);
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO Workers (Id, Name, OperatingSystem, Architecture, ProtocolVersion, VideoEncoders,
                 HardwareDecoders, Vmaf, FreeScratchBytes, MaxConcurrency, PairedAt)
