@@ -2,9 +2,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Library;
+using Optimisarr.Core.Deduplication;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Endpoints;
+
+public sealed record QuarantinedCopy(string Path, string QuarantinePath, long SizeBytes);
+
+/// <summary>Spare copies from one duplicate group, and the copies kept in their place.</summary>
+public sealed record QuarantinedDuplicates(Guid Id, string State, DateTimeOffset HeldSince, string? AttentionReason,
+    IReadOnlyList<string> KeptPaths, IReadOnlyList<QuarantinedCopy> Copies);
 
 internal static class ExactDuplicateEndpoints
 {
@@ -82,5 +89,40 @@ internal static class ExactDuplicateEndpoints
             cleanup.Cancel(id) ? Results.Accepted() : ApiErrors.Conflict("duplicates.cleanupNotRunning", "No cleanup is running here."))
             .Produces(StatusCodes.Status202Accepted).Produces<ApiError>(StatusCodes.Status409Conflict)
             .WithName("CancelDuplicateCleanup");
+
+        // Spare copies waiting in quarantine, listed beside the originals optimisation holds there.
+        app.MapGet("/api/quarantine/duplicates", async (OptimisarrDbContext db, CancellationToken token) =>
+        {
+            var actions = await db.DedupeActions.AsNoTracking()
+                .Where(a => a.State == DedupeActionState.Quarantined || a.State == DedupeActionState.Purging
+                    || a.State == DedupeActionState.NeedsAttention)
+                .ToListAsync(token);
+            var ids = actions.Select(a => a.Id).ToArray();
+            var files = (await db.DedupeActionFiles.AsNoTracking().Where(f => ids.Contains(f.ActionId)).ToListAsync(token))
+                .ToLookup(f => f.ActionId);
+            return Results.Ok(actions.OrderByDescending(a => a.UpdatedAt).Select(a => new QuarantinedDuplicates(
+                a.Id, a.State.ToString(), a.UpdatedAt, a.AttentionReason,
+                files[a.Id].Where(f => f.IsKeeper).Select(f => f.Path).ToList(),
+                files[a.Id].Where(f => !f.IsKeeper).Select(f => new QuarantinedCopy(f.Path, f.QuarantinePath!, f.SizeBytes)).ToList())));
+        }).Produces<IReadOnlyList<QuarantinedDuplicates>>().WithName("ListQuarantinedDuplicates");
+
+        // Returns the copies to where they were. Reversible until they are deleted.
+        app.MapPost("/api/quarantine/duplicates/{id:guid}/restore", async (Guid id, DedupeQuarantineService quarantine, CancellationToken token) =>
+            ActionResult(await quarantine.RestoreAsync(id, token)))
+            .Produces(StatusCodes.Status204NoContent).Produces<ApiError>(StatusCodes.Status404NotFound).Produces<ApiError>(StatusCodes.Status409Conflict)
+            .WithName("RestoreQuarantinedDuplicates");
+
+        // Deletes the copies for good, after proving the kept copy is unchanged.
+        app.MapDelete("/api/quarantine/duplicates/{id:guid}", async (Guid id, DedupeQuarantineService quarantine, CancellationToken token) =>
+            ActionResult(await quarantine.PurgeAsync(id, token)))
+            .Produces(StatusCodes.Status204NoContent).Produces<ApiError>(StatusCodes.Status404NotFound).Produces<ApiError>(StatusCodes.Status409Conflict)
+            .WithName("DeleteQuarantinedDuplicates");
     }
+
+    private static IResult ActionResult(DedupeActionResult result) => result.Outcome switch
+    {
+        DedupeActionOutcome.Completed => Results.NoContent(),
+        DedupeActionOutcome.NotFound => ApiErrors.NotFound("duplicates.quarantineNotFound", "These copies are no longer in quarantine."),
+        _ => ApiErrors.Conflict("duplicates.quarantineRefused", result.Reason ?? "These copies could not be changed."),
+    };
 }

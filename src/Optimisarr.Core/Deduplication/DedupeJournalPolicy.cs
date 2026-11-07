@@ -8,19 +8,22 @@ public enum DedupeActionState
     Restoring,
     Restored,
     Cancelled,
-    NeedsAttention
+    NeedsAttention,
+    /// <summary>The copies are being deleted after the keeper was proved unchanged. Finished on restart.</summary>
+    Purging,
+    Purged
 }
 
 /// <summary>Journal state describes intent. It never proves filesystem completion.</summary>
 public static class DedupeJournalPolicy
 {
     public static bool HoldsClaims(DedupeActionState state) =>
-        state is not (DedupeActionState.Restored or DedupeActionState.Cancelled);
+        state is not (DedupeActionState.Restored or DedupeActionState.Cancelled or DedupeActionState.Purged);
 
     public static DedupeActionState AfterRestart(DedupeActionState state) => state switch
     {
         DedupeActionState.Quarantined or DedupeActionState.NeedsAttention or DedupeActionState.Restored
-            or DedupeActionState.Cancelled => state,
+            or DedupeActionState.Cancelled or DedupeActionState.Purging or DedupeActionState.Purged => state,
         _ => DedupeActionState.NeedsAttention
     };
 
@@ -29,7 +32,8 @@ public static class DedupeJournalPolicy
     {
         (DedupeActionState.Prepared, DedupeActionState.Quarantining or DedupeActionState.Cancelled) => true,
         (DedupeActionState.Quarantining, DedupeActionState.Quarantined or DedupeActionState.NeedsAttention) => true,
-        (DedupeActionState.Quarantined, DedupeActionState.Restoring or DedupeActionState.NeedsAttention) => true,
+        (DedupeActionState.Quarantined, DedupeActionState.Restoring or DedupeActionState.NeedsAttention or DedupeActionState.Purging) => true,
+        (DedupeActionState.Purging, DedupeActionState.Purged) => true,
         (DedupeActionState.Restoring, DedupeActionState.Restored or DedupeActionState.NeedsAttention) => true,
         (DedupeActionState.NeedsAttention, DedupeActionState.Restoring) => true,
         _ => false

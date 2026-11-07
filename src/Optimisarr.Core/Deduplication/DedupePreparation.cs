@@ -12,6 +12,8 @@ public sealed record DedupePreparation(Guid Id, int LibraryId, string ReviewKey,
 public static class DedupePreparationPolicy
 {
     public const string Contract = "exact-quarantine-journal-v1";
+    // Recorded in every plan's signature, so it stays as it is. Copies now also end when the shared
+    // quarantine retention purges them, or when an operator deletes them.
     public const string Retention = "UntilRestored";
 
     public static bool IsValid(DedupePreparation plan) => plan.Id != Guid.Empty && plan.LibraryId > 0

@@ -150,6 +150,152 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
         Assert.Equal(DedupeActionState.Prepared, (await ReadAsync(plan.Id)).State);
     }
 
+    private async Task<DedupeActionState> StateOf(Guid id)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        return (await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().DedupeActions.AsNoTracking().SingleAsync(a => a.Id == id)).State;
+    }
+
+    private async Task<int> ClaimsOf(Guid id)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().DedupeFileClaims.AsNoTracking().CountAsync(c => c.ActionId == id);
+    }
+
+    [PosixFact]
+    public async Task Deleting_removes_the_copies_keeps_the_keeper_and_releases_the_files()
+    {
+        var plan = await PreparedAsync();
+        Assert.Equal(DedupeActionOutcome.Completed, (await Quarantine(plan)).Outcome);
+        var held = plan.Files.Where(f => !f.IsKeeper).Select(f => f.QuarantinePath!).ToArray();
+
+        var result = await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero);
+
+        Assert.Equal(DedupeActionOutcome.Completed, result.Outcome);
+        Assert.All(held, path => Assert.False(File.Exists(path)));
+        Assert.True(File.Exists(Keeper));
+        Assert.False(Directory.Exists(Path.Combine(_root, DedupeQuarantinePaths.FolderName)));
+        Assert.Equal(DedupeActionState.Purged, await StateOf(plan.Id));
+        Assert.Equal(0, await ClaimsOf(plan.Id));
+        Assert.Equal(DedupeActionOutcome.Completed, (await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero)).Outcome);
+    }
+
+    [PosixFact]
+    public async Task A_deleted_copy_cannot_be_restored()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero);
+
+        Assert.Equal(DedupeActionOutcome.Refused, (await Service.RestoreAsync(plan.Id, default)).Outcome);
+    }
+
+    [PosixFact]
+    public async Task A_keeper_that_changed_keeps_the_copies_and_they_can_still_be_restored()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var modified = File.GetLastWriteTimeUtc(Keeper);
+        await File.WriteAllBytesAsync(Keeper, [9, 9, 9, 9, 9]);
+        File.SetLastWriteTimeUtc(Keeper, modified);
+
+        var result = await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero);
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        Assert.Contains("no longer the copy that was kept", result.Reason);
+        Assert.All(plan.Files.Where(f => !f.IsKeeper), f => Assert.True(File.Exists(f.QuarantinePath!)));
+        Assert.Equal(DedupeActionState.Quarantined, await StateOf(plan.Id));
+        Assert.Equal(DedupeActionOutcome.Completed, (await Service.RestoreAsync(plan.Id, default)).Outcome);
+        Assert.True(File.Exists(CopyA));
+    }
+
+    [PosixFact]
+    public async Task A_missing_keeper_keeps_the_copies()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        File.Delete(Keeper);
+
+        Assert.Equal(DedupeActionOutcome.Refused, (await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero)).Outcome);
+        Assert.All(plan.Files.Where(f => !f.IsKeeper), f => Assert.True(File.Exists(f.QuarantinePath!)));
+    }
+
+    [PosixFact]
+    public async Task A_purge_interrupted_by_a_restart_finishes_and_stays_held_until_then()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var copy = plan.Files.First(f => !f.IsKeeper);
+        await InDb(async db =>
+        {
+            (await db.DedupeActions.SingleAsync(a => a.Id == plan.Id)).State = DedupeActionState.Purging;
+            await db.SaveChangesAsync();
+        });
+        File.Delete(copy.QuarantinePath!);
+
+        await Journal.RecoverInterruptedAsync(default);
+        Assert.Equal(DedupeActionState.Purging, await StateOf(plan.Id));
+        Assert.True(await ClaimsOf(plan.Id) > 0);
+        Assert.Equal(DedupeActionOutcome.Refused, (await Service.RestoreAsync(plan.Id, default)).Outcome);
+
+        Assert.Equal(DedupeActionOutcome.Completed, (await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero)).Outcome);
+        Assert.Equal(DedupeActionState.Purged, await StateOf(plan.Id));
+        await Journal.RecoverInterruptedAsync(default);
+        Assert.Equal(0, await ClaimsOf(plan.Id));
+    }
+
+    [PosixFact]
+    public async Task Retention_deletes_only_copies_past_its_window_and_a_dry_run_leaves_them()
+    {
+        var expired = await PreparedAsync();
+        await Quarantine(expired);
+        await InDb(async db =>
+        {
+            (await db.DedupeActions.SingleAsync(a => a.Id == expired.Id)).UpdatedAt = DateTimeOffset.UtcNow.AddDays(-40);
+            db.AppSettings.Add(new AppSetting { Key = SettingKeys.ReplacementQuarantineRetentionDays, Value = "30" });
+            await db.SaveChangesAsync();
+        });
+
+        await using var scope = _services.CreateAsyncScope();
+        var db2 = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var service = new Optimisarr.Api.Replacement.TimedCleanupService(db2, new SettingsStore(db2), Path.Combine(_root, "work"),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Optimisarr.Api.Replacement.TimedCleanupService>.Instance,
+            _services.GetRequiredService<FileOperationClaims>(), Service);
+
+        var preview = await service.PreviewExpiredAsync(default);
+        Assert.Equal(2, preview.QuarantinedCopyCount);
+        Assert.Equal(10, preview.QuarantinedCopyBytes);
+        await Task.Delay(TimeSpan.FromSeconds(2.2));
+
+        var run = await service.RunExpiredAsync(default);
+
+        Assert.Equal(2, run.CleanedCount);
+        Assert.Equal(10, run.ReclaimedBytes);
+        Assert.Equal(DedupeActionState.Purged, await StateOf(expired.Id));
+        Assert.True(File.Exists(Keeper));
+    }
+
+    [PosixFact]
+    public async Task Copies_within_retention_are_left_alone()
+    {
+        var recent = await PreparedAsync();
+        await Quarantine(recent);
+        await InDb(async db =>
+        {
+            db.AppSettings.Add(new AppSetting { Key = SettingKeys.ReplacementQuarantineRetentionDays, Value = "30" });
+            await db.SaveChangesAsync();
+        });
+
+        await using var scope = _services.CreateAsyncScope();
+        var db2 = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var service = new Optimisarr.Api.Replacement.TimedCleanupService(db2, new SettingsStore(db2), Path.Combine(_root, "work"),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Optimisarr.Api.Replacement.TimedCleanupService>.Instance,
+            _services.GetRequiredService<FileOperationClaims>(), Service);
+
+        Assert.Equal(0, (await service.PreviewExpiredAsync(default)).QuarantinedCopyCount);
+        Assert.Equal(DedupeActionState.Quarantined, await StateOf(recent.Id));
+    }
+
     [PosixFact]
     public async Task A_media_manager_that_cannot_be_asked_refuses_the_action()
     {

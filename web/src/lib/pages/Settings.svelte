@@ -833,8 +833,8 @@ let settings = $state<Settings>({
       count: cleanupPreview.totalCount,
       failedCount: cleanupPreview.failedOutputCount,
       failedSpace: formatSize(cleanupPreview.failedOutputBytes),
-      quarantineCount: cleanupPreview.quarantinedOriginalCount,
-      quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes),
+      quarantineCount: cleanupPreview.quarantinedOriginalCount + cleanupPreview.quarantinedCopyCount,
+      quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes + cleanupPreview.quarantinedCopyBytes),
     }))
     if (!confirmed) return
 
@@ -1342,8 +1342,8 @@ let settings = $state<Settings>({
                 {tr(i18n.m.settings.cleanup_breakdown, {
                   failedCount: cleanupPreview.failedOutputCount,
                   failedSpace: formatSize(cleanupPreview.failedOutputBytes),
-                  quarantineCount: cleanupPreview.quarantinedOriginalCount,
-                  quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes),
+                  quarantineCount: cleanupPreview.quarantinedOriginalCount + cleanupPreview.quarantinedCopyCount,
+                  quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes + cleanupPreview.quarantinedCopyBytes),
                 })}
               </p>
             {/if}

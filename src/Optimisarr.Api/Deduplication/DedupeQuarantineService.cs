@@ -114,7 +114,7 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         var loaded = await LoadAsync(id, token);
         if (loaded is not { } action) return DedupeActionResult.NotFound;
         if (action.State == DedupeActionState.Restored) return DedupeActionResult.Completed;
-        if (action.State is DedupeActionState.Prepared or DedupeActionState.Cancelled)
+        if (action.State is DedupeActionState.Prepared or DedupeActionState.Cancelled or DedupeActionState.Purging or DedupeActionState.Purged)
             return DedupeActionResult.Refused($"This action is {action.State} and has nothing to restore.");
 
         using var held = claims.TryAcquire(DedupeJournalStore.Keys(action.Plan.Files));
@@ -125,6 +125,68 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
             await TransitionAsync(id, DedupeActionState.NeedsAttention, "An earlier attempt stopped part-way.");
         await TransitionAsync(id, DedupeActionState.Restoring, null);
         return await ReturnCopiesAsync(id, action);
+    }
+
+    /// <summary>
+    /// Deletes the quarantined copies for good, which is the only way this frees space. Nothing is
+    /// deleted unless every keeper is read in full now and is still the reviewed file: a keeper that
+    /// has changed may leave a quarantined copy as the last of those bytes, so it stays restorable.
+    /// </summary>
+    /// <param name="changeSettle">How long files must have been unchanged to be read; tests shorten it.</param>
+    public async Task<DedupeActionResult> PurgeAsync(Guid id, CancellationToken token, TimeSpan? changeSettle = null)
+    {
+        var loaded = await LoadAsync(id, token);
+        if (loaded is not { } action) return DedupeActionResult.NotFound;
+        if (action.State == DedupeActionState.Purged) return DedupeActionResult.Completed;
+        if (action.State is not (DedupeActionState.Quarantined or DedupeActionState.Purging))
+            return DedupeActionResult.Refused($"This action is {action.State}, so its copies cannot be deleted.");
+
+        using var held = claims.TryAcquire(DedupeJournalStore.Keys(action.Plan.Files));
+        if (held is null) return DedupeActionResult.Refused("Another file operation is using these files. Try again shortly.");
+
+        foreach (var keeper in action.Plan.Files.Where(f => f.IsKeeper))
+        {
+            var now = await DedupeFileObserver.ObserveAsync(keeper, token, changeSettle);
+            if (!now.Exists || now.IsLink || now.Identity != keeper.Identity || now.SizeBytes != keeper.SizeBytes
+                || now.ModifiedUtcTicks != keeper.ModifiedUtcTicks || !string.Equals(now.FreshSha256, keeper.Sha256, StringComparison.Ordinal))
+                return DedupeActionResult.Refused(
+                    $"{keeper.Path} is no longer the copy that was kept, so the quarantined copies stay and can be restored.");
+        }
+
+        var copies = action.Plan.Files.Where(f => !f.IsKeeper).ToArray();
+        if (action.State == DedupeActionState.Quarantined
+            && !await TryTransitionAsync(id, DedupeActionState.Quarantined, DedupeActionState.Purging, null))
+            return DedupeActionResult.Refused("This action changed before it could start, so nothing was deleted.");
+
+        try
+        {
+            foreach (var copy in copies)
+            {
+                if (!PathsAreSafe(copy, copy.QuarantinePath!))
+                    return DedupeActionResult.Attention($"A folder on the way to {copy.QuarantinePath} is redirected, so it was left in place.");
+                if (File.Exists(copy.QuarantinePath!)) File.Delete(copy.QuarantinePath!);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Purge of dedupe action {ActionId} stopped part-way", id);
+            return DedupeActionResult.Attention(ex.Message);
+        }
+
+        RemoveEmptyQuarantineFolders(copies);
+        await using (var scope = scopes.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);
+            var row = await db.DedupeActions.SingleAsync(a => a.Id == id, CancellationToken.None);
+            row.State = DedupeActionState.Purged;
+            row.AttentionReason = null;
+            row.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.DedupeFileClaims.Where(c => c.ActionId == id).ExecuteDeleteAsync(CancellationToken.None);
+            await db.SaveChangesAsync(CancellationToken.None);
+            await transaction.CommitAsync(CancellationToken.None);
+        }
+        return DedupeActionResult.Completed;
     }
 
     private async Task<DedupeActionResult> UndoAsync(Guid id, LoadedAction action, string reason)
