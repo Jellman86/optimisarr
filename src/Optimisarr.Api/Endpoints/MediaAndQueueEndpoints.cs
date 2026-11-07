@@ -70,6 +70,33 @@ internal static class MediaAndQueueEndpoints
         })
         .WithName("ListMedia");
 
+        app.MapPost("/api/media/{id:int}/enqueue", async (
+            int id,
+            JobEnqueueService enqueue,
+            QueueDispatcher dispatcher,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await enqueue.EnqueueFileAsync(id, cancellationToken);
+            switch (result.Outcome)
+            {
+                case FileEnqueueOutcome.NotFound:
+                    return ApiErrors.NotFound("media.notFound", $"No media file with id {id}.", new { id });
+                case FileEnqueueOutcome.Enqueued:
+                    dispatcher.Wake();
+                    return Results.Ok(new FileEnqueueDto(result.JobId!.Value, AlreadyQueued: false));
+                case FileEnqueueOutcome.AlreadyActive:
+                    return Results.Ok(new FileEnqueueDto(result.JobId!.Value, AlreadyQueued: true));
+                default:
+                    return ApiErrors.Conflict(result.Outcome switch
+                    {
+                        FileEnqueueOutcome.NeedsProbe => "media.enqueue.needsProbe",
+                        FileEnqueueOutcome.Importing => "media.enqueue.importing",
+                        _ => "media.enqueue.ineligible",
+                    }, result.Reason!);
+            }
+        })
+        .WithName("EnqueueMediaFile");
+
         app.MapPost("/api/media/{id:int}/probe", async (
             int id,
             LibraryInventoryService inventory,
@@ -620,3 +647,5 @@ internal static class MediaAndQueueEndpoints
         .WithName("ReplaceFromJob");
     }
 }
+
+internal sealed record FileEnqueueDto(int JobId, bool AlreadyQueued);

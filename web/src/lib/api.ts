@@ -1600,6 +1600,8 @@ export const api = {
   probeBatch: (id: number) => request<MediaProbeBatch>(`/api/media/batch/probe/${id}`),
   /** Stops a running probe batch; the file it is on finishes. */
   cancelProbeBatch: (id: number) => request<void>(`/api/media/batch/probe/${id}`, { method: 'DELETE' }),
+  enqueueFile: (id: number) =>
+    request<{ jobId: number; alreadyQueued: boolean }>(`/api/media/${id}/enqueue`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
   replaceReadyJobs: () =>

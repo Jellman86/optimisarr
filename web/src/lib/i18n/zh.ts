@@ -716,6 +716,11 @@ export const zh: Messages = {
     verdict_probe_hint: "探测此文件以根据媒体库规则对其进行评估。",
     probe_failed: "探测失败：{error}",
     probing: "探测……",
+    queue_file: "加入队列",
+    queueing: "正在加入…",
+    queue_added: "已加入队列。将在计划和容量允许时运行。",
+    queue_already: "此文件已在队列中。",
+    error_queue: "无法将此文件加入队列",
     probe: "探测",
     reprobe: "重新探测",
     preview: "预览"
