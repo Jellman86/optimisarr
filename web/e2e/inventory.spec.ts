@@ -156,3 +156,16 @@ test('a refused file shows the server reason and a skipped file offers no queue 
   await page.getByRole('button', { name: /Arrival.2016.1080p.HEVC.mkv/ }).click()
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Queue', exact: true })).toHaveCount(0)
 })
+
+test('the detail actions wrap instead of overflowing on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 })
+  await mockInventory(page)
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+  const footer = dialog.locator('.detail-actions')
+
+  for (const name of ['Re-probe', 'Preview', 'Queue']) await expect(footer.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 })
+  expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+  expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(2)
+})
