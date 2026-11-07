@@ -459,6 +459,38 @@ export type WorkloadLaneStatus = {
   reason: string | null
 }
 
+export type QuarantinedCopy = { path: string; quarantinePath: string; sizeBytes: number }
+
+/** Spare copies from one duplicate group, and the copies kept in their place. */
+export type QuarantinedDuplicates = {
+  id: string
+  state: 'Quarantined' | 'Purging' | 'NeedsAttention'
+  heldSince: string
+  attentionReason: string | null
+  keptPaths: string[]
+  copies: QuarantinedCopy[]
+}
+
+export type DuplicateCleanupRefusal = 'ManagerUnavailable' | 'Ignored' | 'LibraryType' | 'PossiblyTracked' | 'NamesDiffer' | 'SeparateLibraries' | 'SharedExtra' | 'NothingToMove'
+
+export type DuplicateCleanupPreview = {
+  ready: boolean
+  groups: number
+  copies: number
+  bytesToFree: number
+  leftAlone: Partial<Record<DuplicateCleanupRefusal, number>>
+}
+
+export type DuplicateCleanupStatus = {
+  libraryId: number
+  running: boolean
+  total: number
+  done: number
+  moved: number
+  bytesHeld: number
+  failures: { path: string; reason: string }[]
+}
+
 export type TimedCleanupPreview = {
   retentionDays: number
   dryRunMode: boolean
@@ -466,6 +498,8 @@ export type TimedCleanupPreview = {
   failedOutputBytes: number
   quarantinedOriginalCount: number
   quarantinedOriginalBytes: number
+  quarantinedCopyCount: number
+  quarantinedCopyBytes: number
   planToken: string
   totalCount: number
   totalBytes: number
@@ -1649,6 +1683,13 @@ export const api = {
   approveReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/approve`, { method: 'POST' }),
   clearReplacements: () => request<{ cleared: number }>('/api/replacements/clear', { method: 'POST' }),
+  quarantinedDuplicates: () => request<QuarantinedDuplicates[]>('/api/quarantine/duplicates'),
+  restoreQuarantinedDuplicates: (id: string) => request<void>(`/api/quarantine/duplicates/${id}/restore`, { method: 'POST' }),
+  deleteQuarantinedDuplicates: (id: string) => request<void>(`/api/quarantine/duplicates/${id}`, { method: 'DELETE' }),
+  duplicateCleanupPreview: (id: number) => request<DuplicateCleanupPreview>(`/api/libraries/${id}/duplicates/cleanup/preview`),
+  duplicateCleanup: (id: number) => request<DuplicateCleanupStatus>(`/api/libraries/${id}/duplicates/cleanup`),
+  startDuplicateCleanup: (id: number) => request<DuplicateCleanupStatus>(`/api/libraries/${id}/duplicates/cleanup`, { method: 'POST' }),
+  cancelDuplicateCleanup: (id: number) => request<void>(`/api/libraries/${id}/duplicates/cleanup`, { method: 'DELETE' }),
   stats: () => request<Stats>('/api/stats'),
   results: (take = 12) => request<OptimisationResult[]>(`/api/results?take=${take}`),
   // The browser's own offset, so a file finished after local midnight counts on the right day.

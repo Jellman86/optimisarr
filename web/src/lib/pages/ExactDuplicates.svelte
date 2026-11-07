@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { api, type Library, type ExactDuplicateStatus } from '../api'
+  import { api, type DuplicateCleanupPreview, type DuplicateCleanupRefusal, type DuplicateCleanupStatus, type Library, type ExactDuplicateStatus } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { formatSize } from '../format'
   import Banner from '../components/Banner.svelte'
@@ -40,8 +40,75 @@
   })
   let progressText = $derived(report ? t(i18n.m.duplicates.progress, { checked: report.progress.checked, total: report.progress.total, skipped: report.progress.skipped, bytes: formatSize(report.progress.bytesRead) }) : '')
   let groupCount = $derived(report?.result ? report.result.totalGroups ?? report.result.groups.length : 0)
+  let cleanupPreview = $state<DuplicateCleanupPreview | null>(null)
+  let cleanup = $state<DuplicateCleanupStatus | null>(null)
+  let cleanupError = $state<string | null>(null)
+  let startingCleanup = $state(false)
+  let cleanupTimer: ReturnType<typeof setTimeout> | undefined
+  let cleanupRequest = 0
+  let cleanable = $derived(report?.status === 'Completed' && !report.isStale && !scopeChanged && groupCount > 0)
+  const leftAloneReasons = $derived.by((): [DuplicateCleanupRefusal, string][] => [
+    ['ManagerUnavailable', i18n.m.duplicates.left_manager],
+    ['PossiblyTracked', i18n.m.duplicates.left_possibly_tracked],
+    ['NamesDiffer', i18n.m.duplicates.left_names],
+    ['SeparateLibraries', i18n.m.duplicates.left_libraries],
+    ['SharedExtra', i18n.m.duplicates.left_extra],
+    ['LibraryType', i18n.m.duplicates.left_type],
+    ['NothingToMove', i18n.m.duplicates.left_nothing],
+    ['Ignored', i18n.m.duplicates.left_ignored],
+  ])
+  // Asks Sonarr and Radarr what they track, so only once for each finished report.
+  let cleanupKey = $derived(cleanable && libraryId !== null ? `${libraryId}:${report?.finishedAt}` : null)
+  $effect(() => {
+    const key = cleanupKey, id = libraryId
+    cleanupPreview = null
+    startingCleanup = false
+    cleanupError = null
+    if (key !== null && id !== null) void loadCleanup(id)
+    return () => { cleanupRequest++; clearTimeout(cleanupTimer) }
+  })
+  async function loadCleanup(id: number) {
+    const request = ++cleanupRequest
+    try {
+      const [preview, status] = await Promise.all([api.duplicateCleanupPreview(id), api.duplicateCleanup(id)])
+      if (disposed || request !== cleanupRequest) return
+      cleanupPreview = preview
+      cleanup = status.total > 0 ? status : null
+      if (status.running) cleanupTimer = setTimeout(() => void followCleanup(id, request), 1500)
+    } catch (err) { if (!disposed && request === cleanupRequest) cleanupError = err instanceof Error ? err.message : i18n.m.duplicates.clean_error }
+  }
+  async function followCleanup(id: number, request: number) {
+    try {
+      const status = await api.duplicateCleanup(id)
+      if (disposed || request !== cleanupRequest) return
+      cleanup = status
+      if (status.running) { cleanupTimer = setTimeout(() => void followCleanup(id, request), 1500); return }
+      // What could move has changed, and the report may look the same if its first page did not.
+      cleanupPreview = null
+      await load(id)
+      if (!disposed && request === cleanupRequest && cleanable) await loadCleanup(id)
+    } catch (err) { if (!disposed && request === cleanupRequest) cleanupError = err instanceof Error ? err.message : i18n.m.duplicates.clean_error }
+  }
+  async function startCleanup() {
+    if (libraryId === null) return
+    const id = libraryId, request = cleanupRequest
+    cleanupError = null
+    startingCleanup = true
+    try {
+      const status = await api.startDuplicateCleanup(id)
+      if (disposed || request !== cleanupRequest) return
+      cleanup = status
+      cleanupTimer = setTimeout(() => void followCleanup(id, request), 1500)
+    } catch (err) { if (!disposed && request === cleanupRequest) cleanupError = err instanceof Error ? err.message : i18n.m.duplicates.clean_error }
+    finally { startingCleanup = false }
+  }
+  async function stopCleanup() {
+    if (libraryId === null) return
+    try { await api.cancelDuplicateCleanup(libraryId) }
+    catch (err) { if (!disposed) cleanupError = err instanceof Error ? err.message : i18n.m.duplicates.clean_error }
+  }
   onMount(() => { void loadLibraries() })
-  onDestroy(() => { disposed = true; revision++; clearTimeout(timer) })
+  onDestroy(() => { disposed = true; revision++; clearTimeout(timer); clearTimeout(cleanupTimer) })
 
   async function loadLibraries() {
     try {
@@ -164,6 +231,37 @@
       {#if report.result?.groups.length === 0}<p class="mt-3 text-sm text-ink">{i18n.m.duplicates.empty}</p>{/if}
       {#if report.libraries?.length}<div class="mt-4 border-t border-line pt-4"><h3 class="text-xs font-semibold text-ink-2">{i18n.m.duplicates.reportScope}</h3><ul class="mt-2 flex flex-wrap gap-2" aria-label={i18n.m.duplicates.reportScope}>{#each report.libraries as library (library.id)}<li class="badge tone-neutral" title={library.root}>{library.name}</li>{/each}</ul></div>{/if}
     </section>
+    {#if cleanupPreview || cleanup || cleanupError}
+      <section class="card p-5 sm:p-6" aria-labelledby="duplicate-cleanup" data-testid="duplicate-cleanup">
+        <h2 id="duplicate-cleanup" class="text-base font-semibold text-ink">{i18n.m.duplicates.clean_title}</h2>
+        {#if cleanupError}<p class="mt-2 text-sm text-bad" role="alert">{cleanupError}</p>{/if}
+        {#if cleanup?.running}
+          <p class="mt-2 text-sm text-ink-2" role="status">{t(i18n.m.duplicates.clean_running, { done: cleanup.done, total: cleanup.total, moved: cleanup.moved })}</p>
+          <button class="btn mt-3 min-h-11" onclick={stopCleanup}>{i18n.m.duplicates.cancel}</button>
+        {:else}
+          {#if cleanup}
+            <p class="mt-2 text-sm text-ink-2" role="status">{t(i18n.m.duplicates.clean_finished, { moved: cleanup.moved, size: formatSize(cleanup.bytesHeld) })} <a class="focus-ring underline" href="#/quarantine">{i18n.m.nav.quarantine}</a></p>
+            {#if cleanup.failures.length}
+              <ul class="mt-2 space-y-1 text-xs text-bad">{#each cleanup.failures as failure (failure.path + failure.reason)}<li class="break-all">{failure.path}: {failure.reason}</li>{/each}</ul>
+            {/if}
+          {/if}
+          {#if cleanupPreview && cleanupPreview.copies > 0}
+            <p class="mt-2 text-sm text-ink-2">{t(i18n.m.duplicates.clean_summary, { copies: cleanupPreview.copies, groups: cleanupPreview.groups, size: formatSize(cleanupPreview.bytesToFree) })}</p>
+            <button class="btn btn-primary mt-3 min-h-11" disabled={startingCleanup} onclick={startCleanup}>{i18n.m.duplicates.clean_start}</button>
+          {:else if cleanupPreview && !cleanup}
+            <p class="mt-2 text-sm text-ink-3">{i18n.m.duplicates.clean_none}</p>
+          {/if}
+          {#if cleanupPreview && Object.keys(cleanupPreview.leftAlone ?? {}).length > 0}
+            <h3 class="mt-4 text-xs font-semibold text-ink-2">{i18n.m.duplicates.left_title}</h3>
+            <ul class="mt-1 space-y-1 text-xs text-ink-3">
+              {#each leftAloneReasons as [reason, text] (reason)}
+                {#if cleanupPreview.leftAlone?.[reason]}<li>{text} ({cleanupPreview.leftAlone[reason]})</li>{/if}
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </section>
+    {/if}
     {#if report.isStale}<Banner kind="info">{i18n.m.duplicates.stale}</Banner>{/if}
     {#if report.result?.truncated}<Banner kind="info">{i18n.m.duplicates.truncated}</Banner>{/if}
     {#if scopeChanged}<Banner kind="info">{i18n.m.duplicates.scopeChanged}</Banner>{/if}

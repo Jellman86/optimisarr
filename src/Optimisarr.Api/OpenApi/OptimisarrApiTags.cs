@@ -28,7 +28,8 @@ internal static class OptimisarrApiTags
             || p.StartsWith("/api/preview", StringComparison.OrdinalIgnoreCase)) return "Inventory";
         if (p.StartsWith("/api/jobs", StringComparison.OrdinalIgnoreCase)) return "Queue";
         if (p.StartsWith("/api/workers", StringComparison.OrdinalIgnoreCase)) return "Workers";
-        if (p.StartsWith("/api/replacements", StringComparison.OrdinalIgnoreCase)) return "Replacements";
+        if (p.StartsWith("/api/replacements", StringComparison.OrdinalIgnoreCase)
+            || p.StartsWith("/api/quarantine", StringComparison.OrdinalIgnoreCase)) return "Replacements";
         if (p.StartsWith("/api/activity-watchers", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/notification-targets", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/arr-connections", StringComparison.OrdinalIgnoreCase)

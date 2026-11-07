@@ -4,6 +4,7 @@ using System.Text;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Deduplication;
 using Optimisarr.Core.Replacement;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
@@ -18,10 +19,12 @@ public sealed record TimedCleanupPreview(
     long FailedOutputBytes,
     int QuarantinedOriginalCount,
     long QuarantinedOriginalBytes,
+    int QuarantinedCopyCount,
+    long QuarantinedCopyBytes,
     string PlanToken)
 {
-    public int TotalCount => FailedOutputCount + QuarantinedOriginalCount;
-    public long TotalBytes => FailedOutputBytes + QuarantinedOriginalBytes;
+    public int TotalCount => FailedOutputCount + QuarantinedOriginalCount + QuarantinedCopyCount;
+    public long TotalBytes => FailedOutputBytes + QuarantinedOriginalBytes + QuarantinedCopyBytes;
 }
 
 /// <summary>The plan evaluated immediately before cleanup and what was actually reclaimed.</summary>
@@ -37,8 +40,9 @@ public sealed record TimedCleanupAttempt(
 
 /// <summary>
 /// Applies the configured retention window to space that Optimisarr deliberately keeps for later
-/// review: quarantined originals and failed outputs under <c>/work</c>. Quarantined originals lose
-/// their rollback path when purged; failed jobs keep their diagnostic row, report and FFmpeg log.
+/// review: quarantined originals, quarantined duplicate copies and failed outputs under <c>/work</c>.
+/// Quarantined originals lose their rollback path when purged, and duplicate copies stop being
+/// restorable; failed jobs keep their diagnostic row, report and FFmpeg log.
 /// A retention of zero keeps both indefinitely.
 /// </summary>
 public sealed class TimedCleanupService
@@ -48,14 +52,16 @@ public sealed class TimedCleanupService
     private readonly FileOperationClaims _claims;
     private readonly string _workRoot;
     private readonly ILogger<TimedCleanupService> _logger;
+    private readonly DedupeQuarantineService? _duplicates;
 
     public TimedCleanupService(
         OptimisarrDbContext db,
         SettingsStore settings,
         IHostEnvironment environment,
         ILogger<TimedCleanupService> logger,
-        FileOperationClaims claims)
-        : this(db, settings, WorkPaths.Resolve(environment), logger, claims)
+        FileOperationClaims claims,
+        DedupeQuarantineService duplicates)
+        : this(db, settings, WorkPaths.Resolve(environment), logger, claims, duplicates)
     {
     }
 
@@ -64,8 +70,10 @@ public sealed class TimedCleanupService
         SettingsStore settings,
         string workRoot,
         ILogger<TimedCleanupService> logger,
-        FileOperationClaims? claims = null)
+        FileOperationClaims? claims = null,
+        DedupeQuarantineService? duplicates = null)
     {
+        _duplicates = duplicates;
         _db = db;
         _claims = claims ?? new FileOperationClaims();
         _settings = settings;
@@ -135,10 +143,11 @@ public sealed class TimedCleanupService
             plan.QuarantinedOriginals, plan.Preview.RetentionDays, now, cancellationToken);
         var failedOutputs = await PurgeExpiredFailedOutputsAsync(
             plan.FailedOutputs, plan.Preview.RetentionDays, now, cancellationToken);
+        var copies = await PurgeExpiredCopiesAsync(plan.ExpiredCopies, cancellationToken);
         return new TimedCleanupRunResult(
             plan.Preview,
-            quarantined.Count + failedOutputs.Count,
-            quarantined.Bytes + failedOutputs.Bytes);
+            quarantined.Count + failedOutputs.Count + copies.Count,
+            quarantined.Bytes + failedOutputs.Bytes + copies.Bytes);
     }
 
     private async Task<CleanupPlan> BuildCleanupPlanAsync(
@@ -233,6 +242,8 @@ public sealed class TimedCleanupService
             .Select(replacement => new CleanupFile(
                 "quarantine", replacement.Id, replacement.QuarantinePath, TryGetFileLength(replacement.QuarantinePath)))
             .ToList();
+        var expiredCopies = queueSettings.DryRunMode ? [] : await ExpiredCopiesAsync(now.AddDays(-retentionDays), cancellationToken);
+        var copyFiles = expiredCopies.SelectMany(action => action.Copies).ToList();
         var preview = new TimedCleanupPreview(
             retentionDays,
             queueSettings.DryRunMode,
@@ -240,8 +251,48 @@ public sealed class TimedCleanupService
             failedFiles.Sum(file => file.Bytes),
             quarantinedOriginals.Count,
             quarantinedFiles.Sum(file => file.Bytes),
-            BuildPlanToken(retentionDays, queueSettings.DryRunMode, failedFiles, quarantinedFiles));
-        return new CleanupPlan(preview, quarantinedOriginals, failedOutputs);
+            copyFiles.Count,
+            copyFiles.Sum(file => file.Bytes),
+            BuildPlanToken(retentionDays, queueSettings.DryRunMode, failedFiles, [.. quarantinedFiles, .. copyFiles]));
+        return new CleanupPlan(preview, quarantinedOriginals, failedOutputs, expiredCopies);
+    }
+
+    // An interrupted purge has nothing left worth waiting for, so it is finished whatever its age.
+    private async Task<IReadOnlyList<ExpiredCopies>> ExpiredCopiesAsync(DateTimeOffset cutoff, CancellationToken cancellationToken)
+    {
+        var actions = await _db.DedupeActions.AsNoTracking()
+            .Where(action => action.State == DedupeActionState.Quarantined || action.State == DedupeActionState.Purging)
+            .Select(action => new { action.Id, action.State, action.UpdatedAt })
+            .ToListAsync(cancellationToken);
+        var expired = actions.Where(action => action.State == DedupeActionState.Purging || action.UpdatedAt <= cutoff).ToList();
+        var result = new List<ExpiredCopies>();
+        foreach (var action in expired)
+        {
+            var copies = await _db.DedupeActionFiles.AsNoTracking()
+                .Where(file => file.ActionId == action.Id && !file.IsKeeper)
+                .Select(file => file.QuarantinePath!)
+                .ToListAsync(cancellationToken);
+            result.Add(new ExpiredCopies(action.Id, copies.Select(path => new CleanupFile("duplicate", 0, path, TryGetFileLength(path))).ToList()));
+        }
+        return result;
+    }
+
+    private async Task<CleanupResult> PurgeExpiredCopiesAsync(IReadOnlyList<ExpiredCopies> expired, CancellationToken cancellationToken)
+    {
+        if (_duplicates is null) return CleanupResult.Empty;
+        var removed = 0;
+        long reclaimed = 0;
+        foreach (var action in expired)
+        {
+            var result = await _duplicates.PurgeAsync(action.ActionId, cancellationToken);
+            removed += result.Deleted;
+            reclaimed += result.DeletedBytes;
+            if (result.Outcome != DedupeActionOutcome.Completed)
+            {
+                _logger.LogWarning("Kept the quarantined copies of duplicate cleanup {ActionId}: {Reason}", action.ActionId, result.Reason);
+            }
+        }
+        return removed == 0 ? CleanupResult.Empty : new CleanupResult(removed, reclaimed);
     }
 
     private async Task<CleanupResult> PurgeExpiredQuarantinedOriginalsAsync(
@@ -468,6 +519,7 @@ public sealed class TimedCleanupService
             .Concat(quarantinedFiles)
             .OrderBy(file => file.Kind, StringComparer.Ordinal)
             .ThenBy(file => file.Id)
+            .ThenBy(file => file.Path, StringComparer.Ordinal)
             .Select(file => $"{file.Kind}\0{file.Id}\0{file.Path}\0{file.Bytes}");
         var payload = $"{retentionDays}\0{dryRunMode}\0{string.Join('\n', identities)}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
@@ -526,7 +578,8 @@ public sealed class TimedCleanupService
     private sealed record CleanupPlan(
         TimedCleanupPreview Preview,
         IReadOnlyList<Optimisarr.Data.Replacement> QuarantinedOriginals,
-        IReadOnlyList<Job> FailedOutputs)
+        IReadOnlyList<Job> FailedOutputs,
+        IReadOnlyList<ExpiredCopies> ExpiredCopies)
     {
         public static CleanupPlan Empty(int retentionDays, bool dryRunMode) => new(
             new TimedCleanupPreview(
@@ -536,10 +589,15 @@ public sealed class TimedCleanupService
                 0,
                 0,
                 0,
+                0,
+                0,
                 BuildPlanToken(retentionDays, dryRunMode, [], [])),
+            [],
             [],
             []);
     }
+
+    private sealed record ExpiredCopies(Guid ActionId, IReadOnlyList<CleanupFile> Copies);
 
     private sealed record CleanupFile(string Kind, int Id, string Path, long Bytes);
 

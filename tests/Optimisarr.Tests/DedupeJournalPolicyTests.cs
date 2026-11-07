@@ -93,4 +93,28 @@ public sealed class DedupeJournalPolicyTests
         }) Assert.NotEqual(signature,DedupePreparationPolicy.Signature(plan with { Files = [plan.Files[0],file] }));
     }
 
+    [Fact]
+    public void A_purge_interrupted_by_a_restart_stays_a_purge_and_keeps_its_files_held()
+    {
+        Assert.Equal(DedupeActionState.Purging, DedupeJournalPolicy.AfterRestart(DedupeActionState.Purging));
+        Assert.True(DedupeJournalPolicy.HoldsClaims(DedupeActionState.Purging));
+    }
+
+    [Fact]
+    public void A_finished_purge_holds_nothing_and_stays_finished()
+    {
+        Assert.Equal(DedupeActionState.Purged, DedupeJournalPolicy.AfterRestart(DedupeActionState.Purged));
+        Assert.False(DedupeJournalPolicy.HoldsClaims(DedupeActionState.Purged));
+    }
+
+    [Theory]
+    [InlineData(DedupeActionState.Quarantined, DedupeActionState.Purging, true)]
+    [InlineData(DedupeActionState.Purging, DedupeActionState.Purged, true)]
+    [InlineData(DedupeActionState.Purging, DedupeActionState.Quarantined, true)]
+    [InlineData(DedupeActionState.Purging, DedupeActionState.Restoring, false)]
+    [InlineData(DedupeActionState.Purged, DedupeActionState.Restoring, false)]
+    [InlineData(DedupeActionState.Restored, DedupeActionState.Purging, false)]
+    [InlineData(DedupeActionState.NeedsAttention, DedupeActionState.Purging, false)]
+    public void Only_a_held_copy_can_start_being_deleted(DedupeActionState from, DedupeActionState to, bool allowed) =>
+        Assert.Equal(allowed, DedupeJournalPolicy.CanTransition(from, to));
 }

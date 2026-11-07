@@ -2,7 +2,7 @@
 
 **Libraries → Find duplicates** opens an exact-copy review for that library. The library
 configuration overview has the same action. **Inventory → Exact copies** also remains available.
-It works with Film, TV, Music, Photo and Other libraries. No media files are changed.
+It works with Film, TV, Music, Photo and Other libraries. A scan changes no media files.
 
 1. Scan each library so its files appear in **Inventory**.
 2. Open **Find duplicates** on a library card, or choose a **Library** in **Exact copies**.
@@ -100,9 +100,33 @@ The cache retains one fingerprint per indexed entry, removed with that entry. Ea
 library retains its latest scan of up to 50,000 observations, removed with that library. Back up
 `/config`, including SQLite, to preserve reports and preferences.
 
-There are no removal, quarantine, automatic dedupe or hard-link conversion actions. Reversible
-exact-copy quarantine and separately qualified similarity matching remain in
+Hard-link conversion and similarity matching are not available. Similarity matching is tracked in
 [issue #397](https://github.com/Jellman86/optimisarr/issues/397).
 
 If a file is skipped, check access and let its unfinished job complete, then update the inventory
 and try again. If another duplicate scan is running, finish or cancel that scan first.
+
+## Clean up spare copies
+
+**Quarantine spare copies** moves the copies that can safely go, in one click. Once a report is
+current, the page shows how many can move and how much space they hold, and why any others are left
+alone. Copies go to Quarantine, marked **Duplicate**. Nothing is deleted at this point, and you can
+restore a copy from there. The space is freed when a copy is deleted, either by you or after the
+quarantine retention period set in Settings.
+
+Before anything is deleted, the kept copy is read in full. If it has changed or gone, the
+quarantined copies stay and can be restored.
+
+Optimisarr chooses what to keep:
+
+1. A copy Sonarr or Radarr tracks stays, because moving it would show as missing. They are asked
+   again just before each move, and nothing moves if one cannot answer.
+2. A copy with other hard links stays, because moving it frees nothing.
+3. A keeper you saved is honoured, but it never makes a tracked copy move.
+4. Otherwise the copy with the shallowest, then shortest, path stays.
+
+Identical bytes do not prove two placements are interchangeable, so these are left alone until you
+choose a keeper for the group: copies in different libraries, copies with different names, and
+extras such as trailers, samples and intros that can belong to several titles. Music, photo and other
+libraries are never cleaned automatically, because the same track can belong in two albums.
+

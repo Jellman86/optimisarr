@@ -359,6 +359,9 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `GET` | `/api/libraries/{id}/duplicates/cleanup` | Where a cleanup stands. |
 | `POST` | `/api/libraries/{id}/duplicates/cleanup` | Starts moving spare copies into quarantine, one group at a time. 409 when a report is out of date, nothing can move, or one is running. |
 | `DELETE` | `/api/libraries/{id}/duplicates/cleanup` | Stops a cleanup. A group already moving is undone. |
+| `GET` | `/api/quarantine/duplicates` | Spare copies waiting in quarantine, with the copies kept in their place. |
+| `POST` | `/api/quarantine/duplicates/{id}/restore` | Puts the copies back where they were. |
+| `DELETE` | `/api/quarantine/duplicates/{id}` | Deletes the copies for good, after reading the kept copy in full and proving it unchanged. 409 otherwise. |
 
 Create and update library bodies use the same shape. Common fields:
 

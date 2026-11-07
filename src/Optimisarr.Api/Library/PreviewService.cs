@@ -174,12 +174,12 @@ public sealed class PreviewService(
 
         await db.Entry(job).ReloadAsync(cancellationToken);
         if (db.Entry(job).State == EntityState.Detached || job.Type != JobType.Preview) return false;
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+        var dir = WorkOutputRoot.ForPreview(_workRoot, jobId);
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken, dir)
             ?? throw new FileCleanupDeferredException();
 
         dispatcher.RequestCancel(jobId);
 
-        var dir = WorkOutputRoot.ForPreview(_workRoot, jobId);
         var scratchRemoved = false;
         try
         {

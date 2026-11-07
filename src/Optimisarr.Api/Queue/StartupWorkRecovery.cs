@@ -43,7 +43,7 @@ internal sealed class StartupWorkRecovery(
         var ownedAtCapture = jobs.Where(j => OwnsScratch(j, leased)).Select(j => j.MediaFileId).ToHashSet();
         _orphans ??= WorkPaths.FindStaleOrphanDirectories(workRoot, ownedAtCapture, DateTime.UtcNow.AddDays(-7))
             .ToDictionary(p => p, Directory.GetLastWriteTimeUtc);
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token);
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token, workRoot);
         if (held is null) return new(false, false);
 
         var libraries = await db.Libraries.AsNoTracking().Select(l => l.Path).ToListAsync(token);

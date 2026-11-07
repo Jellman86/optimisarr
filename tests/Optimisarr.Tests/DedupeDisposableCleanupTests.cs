@@ -421,6 +421,62 @@ public sealed class DedupeDisposableCleanupTests(AdminTokenAuthEndpointTests.Tok
         Assert.Null(jobAfter.AttemptHistoryJson);
     }
 
+    [PosixFact]
+    public async Task Deleting_a_preview_reached_through_two_links_keeps_a_quarantined_copy_and_its_keeper()
+    {
+        await using var fixture = await Fixture.CreateAsync(api);
+        var jobId = await fixture.AddPreviewAsync(JobStatus.Completed);
+        var customBase = Directory.CreateTempSubdirectory("optimisarr-nested-alias-").FullName;
+        var logicalBase = Path.Combine(customBase, "logical");
+        var environment = new WorkEnvironment(logicalBase);
+        var customWork = Path.Combine(logicalBase, "work");
+        Assert.Equal(customWork, WorkPaths.Resolve(environment));
+        var tree = Path.Combine(fixture.Root, "physical", "work", "preview", jobId.ToString());
+        Directory.CreateDirectory(tree);
+        Directory.CreateSymbolicLink(Path.Combine(customBase, "alias"), fixture.Root);
+        Directory.CreateSymbolicLink(logicalBase, Path.Combine(customBase, "alias", "physical"));
+        Assert.True(ExactDuplicateScanner.SafePath(customWork, Path.Combine(customWork, "preview", jobId.ToString())));
+        var keeper = Path.Combine(tree, "keeper.mkv");
+        var copy = Path.Combine(tree, "copy.mkv");
+        await File.WriteAllTextAsync(keeper, "reviewed original bytes");
+        await File.WriteAllTextAsync(copy, "reviewed original bytes");
+        var id = Guid.NewGuid();
+        try
+        {
+            using var scope = api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.Libraries.SingleAsync(l => l.Id == fixture.LibraryId)).Path = tree;
+            (await db.MediaFiles.SingleAsync(m => m.Id == fixture.MediaId)).Path = keeper;
+            var copyRow = new MediaFile { LibraryId = fixture.LibraryId, Path = copy, RelativePath = "copy.mkv", SizeBytes = new FileInfo(copy).Length, Status = MediaFileStatus.Probed };
+            db.MediaFiles.Add(copyRow);
+            await db.SaveChangesAsync();
+            DedupeFileSnapshot Snapshot(int mediaId, string path, bool isKeeper) => new(mediaId, fixture.LibraryId, tree, path,
+                isKeeper ? null : DedupeQuarantinePaths.For(tree, id, path), ExactFileIdentity.Read(path)!, new FileInfo(path).Length,
+                File.GetLastWriteTimeUtc(path).Ticks, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))), isKeeper);
+            var plan = new DedupePreparation(id, fixture.LibraryId, new('a',64), new('b',64),
+                [Snapshot(fixture.MediaId, keeper, true), Snapshot(copyRow.Id, copy, false)]);
+            var journal = api.Services.GetRequiredService<DedupeJournalStore>();
+            var quarantine = api.Services.GetRequiredService<DedupeQuarantineService>();
+            Assert.Equal(DedupePreparationResult.Created, await journal.TryPrepareAsync(plan, default));
+            Assert.Equal(DedupeActionOutcome.Completed, (await quarantine.QuarantineAsync(id, default, TimeSpan.Zero)).Outcome);
+            var held = plan.Files[1].QuarantinePath!;
+            var preview = new PreviewService(db, null!, api.Services.GetRequiredService<QueueDispatcher>(),
+                environment, api.Services.GetRequiredService<FileOperationClaims>());
+            await Assert.ThrowsAsync<FileCleanupDeferredException>(() => preview.DeleteAsync(jobId, default));
+            Assert.True(File.Exists(keeper));
+            Assert.True(File.Exists(held));
+        }
+        finally
+        {
+            using var scope = api.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            await db.DedupeFileClaims.Where(a => a.ActionId == id).ExecuteDeleteAsync();
+            await db.DedupeActionFiles.Where(a => a.ActionId == id).ExecuteDeleteAsync();
+            await db.DedupeActions.Where(a => a.Id == id).ExecuteDeleteAsync();
+            Directory.Delete(customBase, true);
+        }
+    }
+
     private static async Task AssertDeferredAsync(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);

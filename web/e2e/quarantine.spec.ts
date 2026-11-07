@@ -16,6 +16,7 @@ async function mockQuarantine(page: Page, items = [replacement]) {
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { completed: true })
     if (path === '/api/replacements') return json(route, items)
+    if (path === '/api/quarantine/duplicates') return json(route, [])
     if (/^\/api\/replacements\/\d+$/.test(path)) {
       const item = items.find(item => item.id === Number(path.split('/').pop()))
       return item ? json(route, { ...detail, ...item }) : json(route, { error: 'Not found' }, 404)
@@ -190,3 +191,123 @@ test('the decision sits beside the sizes, above the comparison, and the players 
   // The backdrop belongs to this replacement's job; a missing one leaves the player plain.
   await expect(page.locator('video').first()).toHaveAttribute('poster', '/api/jobs/10/artwork')
 })
+
+const quarantinedSpare = {
+  id: '11111111-1111-1111-1111-111111111111',
+  state: 'Quarantined',
+  heldSince: '2026-11-07T10:00:00Z',
+  attentionReason: null,
+  keptPaths: ['/data/Film/Title/Title.mkv'],
+  copies: [{ path: '/data/Film/Backup/Title.mkv', quarantinePath: '/data/Film/.optimisarr-dedupe/1/Backup/Title.mkv', sizeBytes: 1_000_000 }],
+}
+
+test('duplicates and optimisation originals are labelled apart and can be filtered', async ({ page }) => {
+  await mockQuarantine(page, [])
+  await page.route('**/api/replacements', route => route.fulfill({ json: [{
+    id: 1, jobId: 1, mediaFileId: 1, originalPath: '/data/Film/A.mkv', quarantinePath: '/trash/A.mkv', finalPath: '/data/Film/A.mp4',
+    originalSizeBytes: 2000, newSizeBytes: 1000, crossFilesystem: false, status: 'Replaced', replacedAt: '2026-11-07T09:00:00Z', rolledBackAt: null, purgedAt: null,
+  }] }))
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: [quarantinedSpare] }))
+  await page.goto('/#/quarantine')
+
+  const duplicates = page.getByTestId('quarantined-duplicates')
+  await expect(duplicates).toContainText('Duplicate')
+  await expect(duplicates).toContainText('Kept: /data/Film/Title/Title.mkv')
+  await expect(page.locator('.quarantine-table')).toContainText('Optimisation')
+
+  await page.getByRole('button', { name: 'Duplicate (1)' }).click()
+  await expect(page.locator('.quarantine-table')).toHaveCount(0)
+  await expect(duplicates).toBeVisible()
+
+  await page.getByRole('button', { name: 'Optimisation (1)' }).click()
+  await expect(duplicates).toHaveCount(0)
+  await expect(page.locator('.quarantine-table')).toBeVisible()
+})
+
+test('a spare copy can be restored, and deleting it asks first', async ({ page }) => {
+  await mockQuarantine(page, [])
+  let held = [quarantinedSpare]
+  const calls: string[] = []
+  await page.route('**/api/replacements', route => route.fulfill({ json: [] }))
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: held }))
+  await page.route(`**/api/quarantine/duplicates/${quarantinedSpare.id}/restore`, route => {
+    calls.push('restore')
+    held = []
+    return route.fulfill({ status: 204 })
+  })
+  await page.route(`**/api/quarantine/duplicates/${quarantinedSpare.id}`, route => {
+    calls.push(route.request().method())
+    held = []
+    return route.fulfill({ status: 204 })
+  })
+  await page.goto('/#/quarantine')
+
+  page.once('dialog', dialog => dialog.dismiss())
+  await page.getByRole('button', { name: 'Delete copy' }).click()
+  expect(calls).toEqual([])
+
+  page.once('dialog', dialog => dialog.accept())
+  await page.getByRole('button', { name: 'Delete copy' }).click()
+  await expect(page.getByTestId('quarantined-duplicates')).toHaveCount(0)
+  expect(calls).toEqual(['DELETE'])
+
+  held = [quarantinedSpare]
+  await page.goto('/#/settings')
+  await page.goto('/#/quarantine')
+  await page.getByRole('button', { name: 'Restore copy' }).click()
+  await expect(page.getByTestId('quarantined-duplicates')).toHaveCount(0)
+  expect(calls).toEqual(['DELETE', 'restore'])
+})
+
+test('a refused delete says why and the copy stays', async ({ page }) => {
+  await mockQuarantine(page, [])
+  await page.route('**/api/replacements', route => route.fulfill({ json: [] }))
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: [quarantinedSpare] }))
+  await page.route(`**/api/quarantine/duplicates/${quarantinedSpare.id}`, route => route.fulfill({
+    status: 409, contentType: 'application/json',
+    body: JSON.stringify({ code: 'duplicates.quarantineRefused', error: 'The kept copy changed, so the quarantined copies stay.' }),
+  }))
+  await page.goto('/#/quarantine')
+
+  page.once('dialog', dialog => dialog.accept())
+  await page.getByRole('button', { name: 'Delete copy' }).click()
+
+  await expect(page.getByText('The kept copy changed, so the quarantined copies stay.')).toBeVisible()
+  await expect(page.getByTestId('quarantined-duplicate')).toBeVisible()
+})
+
+test('a page with nothing held shows the empty state', async ({ page }) => {
+  await mockQuarantine(page, [])
+  await page.route('**/api/replacements', route => route.fulfill({ json: [] }))
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: [] }))
+  await page.goto('/#/quarantine')
+
+  await expect(page.getByText(/^Nothing|No /).first()).toBeVisible()
+  await expect(page.getByTestId('quarantined-duplicates')).toHaveCount(0)
+})
+
+test('removing the last of a chosen kind shows what is left', async ({ page }) => {
+  let held = [quarantinedSpare]
+  await mockQuarantine(page)
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: held }))
+  await page.route(`**/api/quarantine/duplicates/${quarantinedSpare.id}/restore`, route => { held = []; return route.fulfill({ status: 204 }) })
+  await page.goto('/#/quarantine')
+
+  await page.getByRole('button', { name: 'Duplicate (1)' }).click()
+  await expect(page.locator('.quarantine-table')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Restore copy' }).click()
+
+  await expect(page.locator('.quarantine-table')).toBeVisible()
+})
+
+test('a delete that stopped part-way explains itself and can be retried', async ({ page }) => {
+  await mockQuarantine(page, [])
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: [{ ...quarantinedSpare, state: 'Purging', attentionReason: 'A folder is redirected.' }] }))
+  await page.goto('/#/quarantine')
+
+  const row = page.getByTestId('quarantined-duplicate')
+  await expect(row).toContainText('A folder is redirected.')
+  await expect(row.getByRole('button', { name: 'Delete copy' })).toBeVisible()
+  await expect(row.getByRole('button', { name: 'Restore copy' })).toHaveCount(0)
+})
+

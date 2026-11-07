@@ -103,7 +103,7 @@ public sealed class DedupeJournalStore(IServiceScopeFactory scopes, FileOperatio
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        var unresolved = await db.DedupeActions.Where(a => a.State != DedupeActionState.Restored && a.State != DedupeActionState.Cancelled).ToListAsync(token);
+        var unresolved = await db.DedupeActions.Where(a => a.State != DedupeActionState.Purged && a.State != DedupeActionState.Restored && a.State != DedupeActionState.Cancelled).ToListAsync(token);
         foreach (var action in unresolved)
         {
             var files = await db.DedupeActionFiles.AsNoTracking().Where(f => f.ActionId == action.Id).ToListAsync(token);

@@ -28,7 +28,7 @@ internal static class QueueOutputCleanup
     {
         // The caller must retain the writer through its job transition and commit. This also
         // fences independent coordinators, which do not share the in-memory claims registry.
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token);
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, token, path ?? workRoot);
         if (held is null) return false;
         if (await db.JobLeases.AsNoTracking().AnyAsync(l => l.JobId == job.Id && l.State == LeaseState.Held, token)
             || await db.Replacements.AsNoTracking().AnyAsync(r => r.JobId == job.Id

@@ -699,7 +699,8 @@ internal sealed class BlindCalibrationService(
         await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
         // Another deletion may have completed while this request waited for the writer.
         if (!_sessions.ContainsKey(id)) return false;
-        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken)
+        var root = Path.Combine(_workRoot, "calibration", id.ToString("N"));
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, claims, cancellationToken, root)
             ?? throw new FileCleanupDeferredException();
         var jobs = await db.Jobs
             .Where(job => job.CalibrationSessionId == id)
@@ -709,7 +710,6 @@ internal sealed class BlindCalibrationService(
             dispatcher.RequestCancel(job.Id);
         }
 
-        var root = Path.Combine(_workRoot, "calibration", id.ToString("N"));
         var scratchRemoved = false;
         try
         {

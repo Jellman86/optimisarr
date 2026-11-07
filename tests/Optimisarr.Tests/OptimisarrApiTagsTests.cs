@@ -21,6 +21,7 @@ public class OptimisarrApiTagsTests
     [InlineData("/api/jobs", "Queue")]
     [InlineData("/api/jobs/1/replace", "Queue")]
     [InlineData("/api/replacements/1/approve", "Replacements")]
+    [InlineData("/api/quarantine/duplicates", "Replacements")]
     [InlineData("/api/arr-connections", "Integrations")]
     [InlineData("/api/notification-targets", "Integrations")]
     [InlineData("/api/activity-watchers", "Integrations")]

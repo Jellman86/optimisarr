@@ -3722,6 +3722,72 @@
         ],
         "type": "object"
       },
+      "QuarantinedCopy": {
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "quarantinePath": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "quarantinePath",
+          "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "QuarantinedDuplicates": {
+        "properties": {
+          "attentionReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "copies": {
+            "items": {
+              "$ref": "#/components/schemas/QuarantinedCopy"
+            },
+            "type": "array"
+          },
+          "heldSince": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "keptPaths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "heldSince",
+          "attentionReason",
+          "keptPaths",
+          "copies"
+        ],
+        "type": "object"
+      },
       "QueueStatusDto": {
         "properties": {
           "blockedReason": {
@@ -6095,6 +6161,22 @@
           "planToken": {
             "type": "string"
           },
+          "quarantinedCopyBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "quarantinedCopyCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
           "quarantinedOriginalBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -6143,6 +6225,8 @@
           "failedOutputBytes",
           "quarantinedOriginalCount",
           "quarantinedOriginalBytes",
+          "quarantinedCopyCount",
+          "quarantinedCopyBytes",
           "planToken"
         ],
         "type": "object"
@@ -9687,6 +9771,126 @@
         },
         "tags": [
           "Inventory"
+        ]
+      }
+    },
+    "/api/quarantine/duplicates": {
+      "get": {
+        "operationId": "ListQuarantinedDuplicates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QuarantinedDuplicates"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Replacements"
+        ]
+      }
+    },
+    "/api/quarantine/duplicates/{id}": {
+      "delete": {
+        "operationId": "DeleteQuarantinedDuplicates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Replacements"
+        ]
+      }
+    },
+    "/api/quarantine/duplicates/{id}/restore": {
+      "post": {
+        "operationId": "RestoreQuarantinedDuplicates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Replacements"
         ]
       }
     },

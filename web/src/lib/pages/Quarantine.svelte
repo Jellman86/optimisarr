@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { api, type Replacement, type ReplacementDetail, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type QuarantinedDuplicates, type Replacement, type ReplacementDetail, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize } from '../format'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
@@ -16,6 +16,11 @@
   import PosterGlow from '../components/PosterGlow.svelte'
 
   let replacements = $state<Replacement[]>([])
+  let duplicates = $state<QuarantinedDuplicates[]>([])
+  let chosenKind = $state<'all' | 'optimisation' | 'duplicate'>('all')
+  // The filter only exists while both kinds do, so a choice cannot hide what is left.
+  const kind = $derived(duplicates.length > 0 && replacements.length > 0 ? chosenKind : 'all')
+  let busyDuplicateId = $state<string | null>(null)
   let error = $state<string | null>(null)
   let loadError = $state<string | null>(null)
   let loading = $state(true)
@@ -75,9 +80,10 @@
   async function load() {
     const request = ++listRequest
     try {
-      const result = await api.replacements()
+      const [result, spares] = await Promise.all([api.replacements(), api.quarantinedDuplicates()])
       if (request !== listRequest) return
       replacements = result
+      duplicates = spares
       loadError = null
     } catch (err) {
       if (request === listRequest) loadError = err instanceof Error ? err.message : i18n.m.quarantine.error_load
@@ -152,6 +158,20 @@
       error = plural(failed, i18n.m.quarantine.bulk_reject_failed_one, i18n.m.quarantine.bulk_reject_failed_other)
     await load()
     bulkAction = null
+  }
+
+  async function changeDuplicates(group: QuarantinedDuplicates, action: 'restore' | 'delete') {
+    if (action === 'delete' && !confirm(i18n.m.quarantine.duplicate_confirm_delete)) return
+    error = null
+    busyDuplicateId = group.id
+    try {
+      if (action === 'restore') await api.restoreQuarantinedDuplicates(group.id)
+      else await api.deleteQuarantinedDuplicates(group.id)
+    } catch (err) {
+      error = err instanceof Error ? err.message : i18n.m.quarantine.duplicate_error
+    }
+    await load()
+    busyDuplicateId = null
   }
 
   async function clearSpent() {
@@ -293,7 +313,48 @@
 
 {#if loadError}<Banner kind="error" class="mb-4">{loadError}<button class="btn ml-3" onclick={load}>{i18n.m.setup.retry}</button></Banner>{/if}
 
-{#if activeCount > 0 || spentCount > 0}
+{#if duplicates.length > 0 && replacements.length > 0}
+  <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label={i18n.m.quarantine.kind_label}>
+    {#each [['all', i18n.m.quarantine.kind_all, replacements.length + duplicates.length], ['optimisation', i18n.m.quarantine.kind_optimisation, replacements.length], ['duplicate', i18n.m.quarantine.kind_duplicate, duplicates.length]] as const as [value, label, count] (value)}
+      <button class="btn min-h-11 px-3 py-1.5 text-sm {kind === value ? 'btn-primary' : 'btn-ghost'}" aria-pressed={kind === value} onclick={() => { chosenKind = value }}>{label} ({count})</button>
+    {/each}
+  </div>
+{/if}
+
+{#if duplicates.length > 0 && kind !== 'optimisation'}
+  <section class="card mb-4 overflow-hidden" aria-labelledby="quarantine-duplicates" data-testid="quarantined-duplicates">
+    <div class="p-4 sm:px-5">
+      <h2 id="quarantine-duplicates" class="text-base font-semibold">{i18n.m.quarantine.duplicate_heading}</h2>
+      <p class="mt-1 text-xs text-ink-3">{i18n.m.quarantine.duplicate_note}</p>
+    </div>
+    <ul class="divide-y divide-line-soft">
+      {#each duplicates as group (group.id)}
+        <li class="flex flex-wrap items-start gap-3 px-4 py-3 sm:px-5" data-testid="quarantined-duplicate">
+          <div class="min-w-0 flex-1 basis-64">
+            <span class="badge tone-neutral">{i18n.m.quarantine.kind_duplicate}</span>
+            {#if group.state === 'NeedsAttention'}<span class="badge ml-1 tone-warn">{i18n.m.quarantine.duplicate_attention}</span>{/if}
+            {#if group.state === 'Purging'}<span class="badge ml-1 tone-muted">{i18n.m.quarantine.duplicate_deleting}</span>{/if}
+            {#each group.copies as copy (copy.quarantinePath)}
+              <div class="mt-2 break-all text-sm font-medium text-ink">{fileName(copy.path)}</div>
+              <div class="break-all font-mono text-[11px] text-ink-3" title={copy.quarantinePath}>{t(i18n.m.quarantine.duplicate_from, { path: copy.path })} · {formatSize(copy.sizeBytes)}</div>
+            {/each}
+            {#each group.keptPaths as path (path)}
+              <div class="mt-1 break-all font-mono text-[11px] text-ink-3">{t(i18n.m.quarantine.duplicate_kept, { path })}</div>
+            {/each}
+            {#if group.attentionReason}<p class="mt-1 text-xs text-warn">{group.attentionReason}</p>{/if}
+            <div class="mt-1 text-[11px] text-ink-3">{new Date(group.heldSince).toLocaleString()}</div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            {#if group.state !== 'Purging'}<button class="btn min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'restore')}><Icon name="rotate" class="h-4 w-4" />{i18n.m.quarantine.duplicate_restore}</button>{/if}
+            {#if group.state !== 'NeedsAttention'}<button class="btn btn-danger min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'delete')}><Icon name="trash" class="h-4 w-4" />{i18n.m.quarantine.duplicate_delete}</button>{/if}
+          </div>
+        </li>
+      {/each}
+    </ul>
+  </section>
+{/if}
+
+{#if kind !== 'duplicate' && (activeCount > 0 || spentCount > 0)}
   <div class="mb-4 flex flex-wrap items-center gap-2">
     {#if activeCount > 0}
       <button class="btn btn-primary px-3 py-1.5 text-sm" onclick={approveAll} disabled={busy}>
@@ -317,6 +378,8 @@
 
 {#if loading}
   <div class="card p-8 text-center text-ink-3">{i18n.m.common.loading_short}</div>
+{:else if kind === 'duplicate'}
+  <!-- Only the duplicates above were asked for. -->
 {:else if replacements.length > 0}
   <div class="card overflow-hidden">
     <div bind:this={tableScrollEl} data-quarantine-list class="max-h-[65vh] overflow-auto">
@@ -335,6 +398,7 @@
               class="text-ink-2 hover:bg-lit"
             >
               <td class="px-4 py-2">
+                {#if duplicates.length > 0}<span class="badge mb-1 tone-neutral">{i18n.m.quarantine.kind_optimisation}</span>{/if}
                 {#if r.status === 'Replaced'}
                   <span class="badge tone-ok">{i18n.m.quarantine.status_replaced}</span>
                 {:else if r.status === 'Purged'}
@@ -371,7 +435,7 @@
     </div>
   </div>
   <p class="mt-2 text-xs text-ink-3">{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</p>
-{:else}
+{:else if duplicates.length === 0}
   <div class="card p-8 text-center text-ink-3">
     {i18n.m.quarantine.empty}
   </div>
