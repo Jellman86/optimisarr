@@ -345,8 +345,9 @@ deinterlacing and it plays combed, and verification cannot see that. Track clean
 because it copies the video. A source reporting an unknown field order is treated as progressive,
 because modern codecs commonly report that.
 
-**Deinterlace interlaced video** lets a library process these files. Their fields are combined with
-`bwdif` at the same frame rate before any crop or scale, and the result is written as progressive.
+**Deinterlace interlaced video** lets a library process these files. Frames flagged interlaced have
+their fields combined with `bwdif` at the same frame rate before any crop or scale, progressive
+sections stay as they are, and the result is written as progressive.
 VMAF judges it against the original deinterlaced the same way, so it measures the encode rather than
 the deinterlacing, and it cannot tell you the deinterlacing looks good. Check a short file first.
 

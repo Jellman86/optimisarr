@@ -240,6 +240,31 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_stale_progressive_row_is_corrected_so_a_deinterlaced_job_moves_to_the_server()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Deinterlace stale");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced stale.mkv");
+        await OptIntoDeinterlacing(id);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            (await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == id)).MediaFile!.FieldOrder = "progressive";
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await result.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal("tt", job.MediaFile!.FieldOrder);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
     public async Task A_diagnostic_capture_records_a_job_skipped_at_claim()
     {
         await EnableRemoteWorkers();

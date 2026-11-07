@@ -1545,7 +1545,7 @@ public sealed class FfmpegCommandBuilderTests
         });
 
         var chain = args[args.ToList().IndexOf("-filter:v:0") + 1];
-        Assert.StartsWith("bwdif=mode=send_frame:parity=auto:deint=all,crop=", chain);
+        Assert.StartsWith("bwdif=mode=send_frame:parity=auto:deint=interlaced,crop=", chain);
     }
 
     [Theory]
@@ -1558,6 +1558,19 @@ public sealed class FfmpegCommandBuilderTests
 
         Assert.DoesNotContain("-hwaccel", args);
         Assert.Contains(VideoFieldOrder.DeinterlaceFilter, args[args.ToList().IndexOf("-filter:v:0") + 1]);
+    }
+
+    [Theory]
+    [InlineData("hevc_vaapi")]
+    [InlineData("hevc_qsv")]
+    public void Deinterlacing_uses_the_software_tone_map_because_a_hardware_one_needs_gpu_surfaces(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24, tonemap: true) with { Deinterlace = true }, videoEncoder: encoder, hardwareDecode: true, hardwareToneMap: true);
+
+        var chain = args[args.ToList().IndexOf("-filter:v:0") + 1];
+        Assert.DoesNotContain("tonemap_vaapi", chain);
+        Assert.DoesNotContain("vpp_qsv", chain);
+        Assert.StartsWith(VideoFieldOrder.DeinterlaceFilter, chain);
     }
 
     [Fact]

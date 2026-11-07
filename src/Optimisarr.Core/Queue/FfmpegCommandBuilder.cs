@@ -168,8 +168,10 @@ public static class FfmpegCommandBuilder
         var encoder = isVideoReencode ? (videoEncoder ?? EncoderFor(spec.VideoCodec!)) : null;
         var family = encoder is null ? EncoderFamily.Cpu : FamilyOf(encoder);
 
+        // A hardware tone-map reads GPU surfaces, which the software deinterlace filter never hands it.
         var useHardwareToneMap = hardwareToneMap
             && hardwareDecode
+            && !spec.Deinterlace
             && spec.TonemapToSdr
             && family is EncoderFamily.Qsv or EncoderFamily.Vaapi;
 

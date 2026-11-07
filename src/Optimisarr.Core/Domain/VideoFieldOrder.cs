@@ -20,10 +20,11 @@ public static class VideoFieldOrder
 
     /// <summary>
     /// Deinterlaces at the source's frame rate, so every frame still pairs with one frame of the
-    /// original. Parity comes from the decoded frames, not the probe: ffprobe's "tb" is commonly a
+    /// original. Only frames flagged interlaced are touched: a progressive section of mixed content
+    /// would lose detail, and VMAF could not see it because the reference loses the same. Parity comes from the decoded frames, not the probe: ffprobe's "tb" is commonly a
     /// top-field-first source, so deriving parity from its name would pick the wrong field first.
     /// </summary>
-    public const string DeinterlaceFilter = "bwdif=mode=send_frame:parity=auto:deint=all";
+    public const string DeinterlaceFilter = "bwdif=mode=send_frame:parity=auto:deint=interlaced";
 
     /// <summary>
     /// Whether this source is deinterlaced. Such a job runs on the server: a worker's quality

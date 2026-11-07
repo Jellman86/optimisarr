@@ -935,9 +935,12 @@ public sealed partial class QueueDispatcher(
             return null;
         }
 
+        // A deinterlaced job stays here, so a search already out on a worker stops rather than measure
+        // samples against a reference the worker cannot deinterlace.
         if (work is not { } loaded
             || loaded.Spec.VideoCodec is null
             || loaded.VideoEncoder is null
+            || loaded.Spec.Deinterlace
             || loaded.SourcePicture is not { } source)
         {
             return null;
@@ -1873,10 +1876,12 @@ public sealed partial class QueueDispatcher(
         // captured has no answer on record: ask, and keep the answer so the inventory shows the same
         // reason. A failed probe proves nothing and is not kept, so the later checks that need a
         // successful one still fail as they would have.
-        if (!isDisposable && isVideoJob && rules.TargetVideoCodec is not null)
+        // A library that deinterlaces also asks every time, because the encode and its verification
+        // are planned from the answer here and a later probe could not change them. The answer is kept
+        // whenever it differs, so the schedulers place the job by what the file really is.
+        if (isVideoJob && rules.TargetVideoCodec is not null && (!isDisposable || rules.DeinterlaceVideo))
         {
-            var fieldOrder = media.FieldOrder;
-            if (fieldOrder is null)
+            if (media.FieldOrder is null || rules.DeinterlaceVideo || freshSourceProbe is not null)
             {
                 var asked = freshSourceProbe ?? await scope.ServiceProvider
                     .GetRequiredService<IMediaProbeService>()
@@ -1884,14 +1889,14 @@ public sealed partial class QueueDispatcher(
                 if (asked.Success)
                 {
                     freshSourceProbe = asked;
-                    fieldOrder = asked.FieldOrder;
-                    if (fieldOrder is not null)
+                    if (asked.FieldOrder is { } answered && answered != media.FieldOrder)
                         await db.MediaFiles.Where(file => file.Id == media.Id)
-                            .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, fieldOrder), cancellationToken);
+                            .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, answered), cancellationToken);
                 }
             }
-            if (!rules.DeinterlaceVideo && VideoFieldOrder.IsInterlaced(fieldOrder))
-                throw new JobNoLongerEligibleException(VideoFieldOrder.RefusalFor(fieldOrder!));
+            var refusedOrder = VideoFieldOrder.IsInterlaced(media.FieldOrder) ? media.FieldOrder : freshSourceProbe?.FieldOrder;
+            if (!isDisposable && !rules.DeinterlaceVideo && VideoFieldOrder.IsInterlaced(refusedOrder))
+                throw new JobNoLongerEligibleException(VideoFieldOrder.RefusalFor(refusedOrder!));
         }
         // A preview runs regardless, but warns about an interlaced source, and this probe has the answer.
         if (isPreview && isVideoJob && media.FieldOrder is null && freshSourceProbe is { Success: true, FieldOrder: { } previewFieldOrder })

@@ -40,7 +40,7 @@ public sealed class SuperResolutionCommandBuilderTests
     {
         var args = SuperResolutionCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 8, Hd, deinterlace: true);
 
-        Assert.StartsWith("bwdif=mode=send_frame:parity=auto:deint=all,scale=", After(args, "-vf"));
+        Assert.StartsWith("bwdif=mode=send_frame:parity=auto:deint=interlaced,scale=", After(args, "-vf"));
     }
 
     [Fact]
