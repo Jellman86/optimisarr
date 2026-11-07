@@ -889,7 +889,7 @@ test('super-resolution offers specific GPUs, keeps a saved device visible, and d
 test('the managers can be asked which files they track, and one that cannot answer says so', async ({ page }) => {
   await mockSettings(page)
   await page.route('**/api/arr-connections', route => json(route, [
-    { id: 1, name: 'Radarr', type: 'Radarr', baseUrl: 'http://radarr:7878', hasApiKey: true, enabled: true, createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z' },
+    { id: 1, name: 'Radarr', type: 'Radarr', baseUrl: 'http://radarr:7878', hasApiKey: true, enabled: true, rescanAfterChanges: true, createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z' },
   ]))
   await page.route('**/api/arr-connections/tracking', route => json(route, [
     { id: 1, name: 'Radarr', reachable: true, trackedFiles: 412, foundInLibraries: 410, unclear: 3, notFound: 2 },
@@ -903,6 +903,27 @@ test('the managers can be asked which files they track, and one that cannot answ
   const results = page.getByTestId('arr-tracking')
   await expect(results).toContainText('Radarr tracks 412 files: 410 matched in your libraries, 3 possible matches, 2 not found.')
   await expect(results).toContainText('Sonarr could not be asked.')
+})
+
+test('a manager asked to rescan after changes says so, and the choice can be turned off', async ({ page }) => {
+  await mockSettings(page)
+  const radarr = { id: 1, name: 'Radarr', type: 'Radarr', baseUrl: 'http://radarr:7878', hasApiKey: true, enabled: true, rescanAfterChanges: true, createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z' }
+  await page.route('**/api/arr-connections', route => json(route, [radarr]))
+  let saved: Record<string, unknown> | null = null
+  await page.route('**/api/arr-connections/1', route => {
+    saved = route.request().postDataJSON()
+    return json(route, { ...radarr, rescanAfterChanges: false })
+  })
+  await page.goto('/#/settings/download-managers')
+
+  await expect(page.locator('li').filter({ hasText: 'http://radarr:7878' }).getByText('Rescans', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const rescan = page.getByRole('checkbox', { name: 'Rescan after changes' })
+  await expect(rescan).toBeChecked()
+  await rescan.uncheck()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+
+  await expect.poll(() => saved?.rescanAfterChanges).toBe(false)
 })
 
 test('each super-resolution engine can be checked and tested on its own', async ({ page }) => {

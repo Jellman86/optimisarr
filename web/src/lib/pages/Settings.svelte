@@ -195,7 +195,7 @@
   }
 
   const arrTypes: ArrConnectionType[] = ['Sonarr', 'Radarr']
-  const emptyArr = (): SaveArrConnection => ({ name: '', type: 'Sonarr', baseUrl: '', apiKey: '', enabled: true })
+  const emptyArr = (): SaveArrConnection => ({ name: '', type: 'Sonarr', baseUrl: '', apiKey: '', enabled: true, rescanAfterChanges: true })
 
   let arrs = $state<ArrConnection[]>([])
   let arrError = $state<string | null>(null)
@@ -234,7 +234,7 @@
 
   function startEditArr(c: ArrConnection) {
     editingArrId = c.id
-    arrDraft = { name: c.name, type: c.type, baseUrl: c.baseUrl, apiKey: '', enabled: c.enabled }
+    arrDraft = { name: c.name, type: c.type, baseUrl: c.baseUrl, apiKey: '', enabled: c.enabled, rescanAfterChanges: c.rescanAfterChanges }
   }
 
   async function saveArr() {
@@ -1551,6 +1551,7 @@ let settings = $state<Settings>({
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 {#if !c.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+                {#if c.enabled && c.rescanAfterChanges}<span class="badge tone-neutral" title={i18n.m.settings.arr_rescan_hint}>{i18n.m.settings.badge_rescans}</span>{/if}
                 {#if !c.hasApiKey}<span class="badge tone-warn" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
@@ -1609,6 +1610,9 @@ let settings = $state<Settings>({
         </div>
         <div class="mt-3">
           <Toggle bind:checked={arrDraft.enabled} label={i18n.m.settings.enabled} hint={i18n.m.settings.arr_enabled_hint} />
+        </div>
+        <div class="mt-3">
+          <Toggle bind:checked={arrDraft.rescanAfterChanges} label={i18n.m.settings.arr_rescan} hint={i18n.m.settings.arr_rescan_hint} />
         </div>
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveArr} disabled={savingArr}>

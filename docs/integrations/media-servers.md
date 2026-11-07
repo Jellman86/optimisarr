@@ -18,8 +18,8 @@ No copyrighted material is used.
 | Plex | Pause new work during active sessions; refresh libraries after replacement or rollback. | Plex sign-in/PIN flow, then choose a discovered server or enter the URL manually. |
 | Jellyfin | Pause new work during active sessions; refresh changed folders after replacement or rollback. | Quick Connect or API key. |
 | Emby | Pause new work during active sessions; refresh changed folders after replacement or rollback. | API key. |
-| Sonarr | Avoid immediately reprocessing recently imported TV files. | Base URL and API key. |
-| Radarr | Avoid immediately reprocessing recently imported movie files. | Base URL and API key. |
+| Sonarr | Avoid immediately reprocessing recently imported TV files; rescan a series after replacement or rollback. | Base URL and API key. |
+| Radarr | Avoid immediately reprocessing recently imported movie files; rescan a movie after replacement or rollback. | Base URL and API key. |
 
 Test each connection before enabling it. Keep only the pause and refresh
 behaviour you actually need.
@@ -55,6 +55,20 @@ After saving, the pause still identifies the titles while omitting viewers and d
 ## Sonarr and Radarr
 
 Configure import-aware exclusions under **Settings → Download managers**.
+
+**Rescan after changes** asks the manager to rescan a title after Optimisarr
+replaces one of its files or restores an original, so the manager tracks the
+file now on disk instead of waiting for its own scheduled scan. Optimisarr reads
+the manager's movie or series list, finds the one title whose folder holds the
+changed file, and sends `RescanMovie` or `RescanSeries`. It never deletes,
+searches, or changes the manager's settings. When no single title fits, it sends
+nothing and logs why. A failed rescan never affects the replacement itself.
+
+It is on for new connections and off for connections saved before it existed.
+When a replacement changes the file name, for example `.mkv` to `.mp4`, the
+manager sees the old file as gone. Radarr then unmonitors the movie if its
+**Unmonitor Deleted Movies** setting is on, so check that setting, or keep file
+names unchanged with the **Same as source** output container.
 
 ![Download managers settings showing a fabricated Radarr connection and its connection controls](../images/optimisarr-settings-downloads-dark.png)
 

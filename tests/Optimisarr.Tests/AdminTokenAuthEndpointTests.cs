@@ -101,6 +101,34 @@ public sealed class AdminTokenAuthEndpointTests
     }
 
     [Fact]
+    public async Task A_new_manager_connection_rescans_by_default_and_an_update_without_the_field_keeps_the_choice()
+    {
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        // Disabled so no other test asks this made-up manager anything.
+        var fields = new { name = "Rescan default test", type = "Radarr", baseUrl = "http://rescan-test:7878", apiKey = "k", enabled = false };
+        var created = await client.PostAsJsonAsync("/api/arr-connections", fields);
+        created.EnsureSuccessStatusCode();
+        var dto = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = dto.GetProperty("id").GetInt32();
+        try
+        {
+            Assert.True(dto.GetProperty("rescanAfterChanges").GetBoolean());
+            var off = await client.PutAsJsonAsync($"/api/arr-connections/{id}", new
+            {
+                fields.name, fields.type, fields.baseUrl, fields.enabled, rescanAfterChanges = false
+            });
+            Assert.False((await off.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rescanAfterChanges").GetBoolean());
+            var kept = await client.PutAsJsonAsync($"/api/arr-connections/{id}", fields);
+            Assert.False((await kept.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rescanAfterChanges").GetBoolean());
+        }
+        finally
+        {
+            await client.DeleteAsync($"/api/arr-connections/{id}");
+        }
+    }
+
+    [Fact]
     public async Task Audio_gate_policy_survives_legacy_updates_and_rejected_limits_cannot_weaken_it()
     {
         var root = Path.Combine(_api.LibraryDirectory, "audio-gate-" + Guid.NewGuid()); Directory.CreateDirectory(root);

@@ -144,6 +144,7 @@ builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<PreviewService>();
 builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();
 builder.Services.AddSingleton<BlindCalibrationService>();
+builder.Services.AddScoped<ArrRescanService>();
 builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();

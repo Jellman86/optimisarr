@@ -4738,6 +4738,12 @@
               "string"
             ]
           },
+          "rescanAfterChanges": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "type": {
             "type": [
               "null",

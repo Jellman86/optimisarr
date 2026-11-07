@@ -25,6 +25,12 @@ public sealed class ArrConnection
     /// <summary>When false, this connection is ignored by the import-exclusion gate.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// Ask the manager to rescan a title after Optimisarr replaces or restores one of its files, so it
+    /// tracks the file now on disk. Existing connections start off, because the rescan was never asked for.
+    /// </summary>
+    public bool RescanAfterChanges { get; set; } = true;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
