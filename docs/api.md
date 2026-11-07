@@ -346,6 +346,7 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `POST` | `/api/libraries/scan` | Scan all enabled libraries. |
 | `GET` | `/api/media?libraryId={id}` | List discovered files. Omit `libraryId` for all libraries. Optional `status`, `search` (path substring), and `page`/`pageSize`; the pre-paging total is returned in `X-Total-Count`. |
 | `POST` | `/api/media/{id}/probe` | Probe one media file. |
+| `POST` | `/api/media/{id}/enqueue` | Queue one eligible file, whatever the library's automatic enqueue setting. Returns the job, marking one already active. 409 with the reason when the rules refuse it, or it needs a fresh probe. |
 | `POST` | `/api/media/batch/probe` | Start a batch that probes several media files in the background; the batch is watched through `GET /api/media/batch/probe/{id}`. |
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
