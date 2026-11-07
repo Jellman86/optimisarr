@@ -94,6 +94,11 @@ public static class ConfigSnapshotValidator
                 RequireEnum<Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck>(
                     library.SuperResolutionQualityCheck, $"{where} super-resolution quality check", errors);
             }
+            if (Optimisarr.Core.SuperResolution.SuperResolutionModelChoice.Validate(
+                    library.SuperResolutionEngine, library.SuperResolutionModel, library.SuperResolutionScale) is { } modelProblem)
+            {
+                errors.Add($"{where}: {modelProblem}");
+            }
             if (!EncoderPresetPolicy.TryNormaliseSelection(library.EncoderPreset, out _))
             {
                 errors.Add(

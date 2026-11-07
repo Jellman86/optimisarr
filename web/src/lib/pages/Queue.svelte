@@ -808,6 +808,12 @@
           <div class="queue-detail-specs">
       <!-- Details -->
       <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 ">
+        {#if selectedJob.superResolutionRun}
+        <div class="flex justify-between gap-4" data-testid="job-super-resolution-run">
+          <dt class="text-ink-3">{i18n.m.queue.detail_super_resolution}</dt>
+          <dd class="text-right">{selectedJob.superResolutionRun}</dd>
+        </div>
+        {/if}
         {#if selectedJob.videoEncoder != null || selectedJob.videoQualityMode != null}
         <div class="flex justify-between gap-4">
           <dt class="text-ink-3">{i18n.m.queue.detail_encoder}</dt>

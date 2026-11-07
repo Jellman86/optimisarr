@@ -1079,7 +1079,11 @@ public sealed partial class QueueDispatcher(
                 preparedWork = PrepareSuperResolutionWork(preparedWork, choice.Options, choice.QualityCheck);
             }
             // Recorded per attempt, so a later ordinary attempt is not held for review as an upscale.
-            await WithJobAsync(jobId, job => job.SuperResolutionApplied = superResolutionPlanned, cancellationToken);
+            await WithJobAsync(jobId, job =>
+            {
+                job.SuperResolutionApplied = superResolutionPlanned;
+                job.SuperResolutionRun = superResolution?.Options.RunDescription;
+            }, cancellationToken);
             if (preparedWork.IsDisposable && !preparedWork.IsCalibration)
             {
                 // A local preview runs the per-title video search itself; the others never run here.
@@ -1521,7 +1525,7 @@ public sealed partial class QueueDispatcher(
         if (work.SuperResolution is not null)
         {
             return RemoteWorkPlan.Refused(
-                "This library runs video through the Real-CUGAN super-resolution engine, which works on this " +
+                "This library runs video through a super-resolution engine, which works on this " +
                 "server only. Set the library's placement to keep it off workers.");
         }
 
@@ -1795,7 +1799,8 @@ public sealed partial class QueueDispatcher(
         if (!isDisposable && rules.TargetVideoCodec is not null && media.MediaKind == MediaKind.Video
             && library?.SuperResolutionEnabled == true)
         {
-            var engine = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
+            var engine = await settings.GetSuperResolutionOptionsForAsync(
+                library.SuperResolutionEngine, library.SuperResolutionModel, library.SuperResolutionScale, cancellationToken);
             if (SuperResolutionRouting.Applies(engine.Enabled, true, media.MediaKind, replaceBound: true))
                 superResolution = new SuperResolutionChoice(engine, library.SuperResolutionQualityCheck);
         }

@@ -52,6 +52,10 @@ public static class SettingKeys
     public const string RealCuganBinaryPath = "realcugan.binaryPath";
     /// <summary>Directory containing the engine's model directories. Empty defaults next to the binary.</summary>
     public const string RealCuganModelsPath = "realcugan.modelsPath";
+    /// <summary>Path to the realesrgan-ncnn-vulkan executable. Empty resolves it on PATH.</summary>
+    public const string RealEsrganBinaryPath = "realesrgan.binaryPath";
+    /// <summary>Directory containing Real-ESRGAN's models folder. Empty defaults next to the binary.</summary>
+    public const string RealEsrganModelsPath = "realesrgan.modelsPath";
 
     /// <summary>
     /// Whether to hardware-decode the source when a hardware encoder is in use, falling back

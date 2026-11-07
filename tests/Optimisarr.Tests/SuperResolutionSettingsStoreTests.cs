@@ -102,4 +102,36 @@ public sealed class SuperResolutionSettingsStoreTests : IDisposable
         Assert.Equal(SuperResolutionOptions.Defaults, read);
         Assert.Equal(2, await new SettingsStore(db).GetMaxConcurrentJobsAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_librarys_real_esrgan_choice_uses_this_machines_device_and_paths()
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db);
+        await store.SetSuperResolutionOptionsAsync(SuperResolutionOptions.Defaults with { Enabled = true, Device = "gpu:1" }, CancellationToken.None);
+        var root = Path.Combine(Path.GetTempPath(), "esrgan");
+        var binary = Path.Combine(root, "bin");
+        await store.SetRealEsrganPathsAsync(new SuperResolutionEnginePaths(binary, root), CancellationToken.None);
+
+        var options = await store.GetSuperResolutionOptionsForAsync("realesrgan", RealEsrganEngine.LiveActionModel, 4, CancellationToken.None);
+
+        Assert.True(options.Enabled);
+        Assert.Equal("gpu:1", options.Device);
+        Assert.Equal(binary, options.BinaryPath);
+        Assert.Same(RealEsrganEngine.Instance, options.Engine);
+        Assert.Empty(options.Validate());
+    }
+
+    [Fact]
+    public async Task A_library_with_no_choice_runs_the_servers_real_cugan_settings()
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db);
+        await store.SetSuperResolutionOptionsAsync(SuperResolutionOptions.Defaults with { Scale = 3 }, CancellationToken.None);
+
+        var options = await store.GetSuperResolutionOptionsForAsync(null, null, null, CancellationToken.None);
+
+        Assert.Same(RealCuganEngine.Instance, options.Engine);
+        Assert.Equal(3, options.Scale);
+    }
 }

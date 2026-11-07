@@ -1080,7 +1080,7 @@ test('with the feature on, a library has its own AI super-resolution section', a
   await mockLibraries(page, library, true)
   await page.goto('/#/libraries/1/configure/encode/video')
   await expect(page.getByText('AI super-resolution (experimental)')).toBeVisible()
-  await page.getByRole('checkbox', { name: /Super-resolution \(Real-CUGAN\)/ }).check()
+  await page.getByRole('checkbox', { name: /^Super-resolution/ }).check()
   // Opting in offers how upscaled results are checked, recommending the broken-frame check, and
   // says plainly that every upscaled result waits for review.
   const check = page.locator('#library-sr-quality')
@@ -1090,6 +1090,44 @@ test('with the feature on, a library has its own AI super-resolution section', a
   const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ superResolutionEnabled: true, superResolutionQualityCheck: 'Off' })
+})
+
+test('a library chooses the model that suits its content, and only a model that offers a scale asks for one', async ({ page }) => {
+  await mockLibraries(page, { ...library, superResolutionEnabled: true }, true)
+  await page.goto('/#/libraries/1/configure/encode/video')
+  const model = page.locator('#library-sr-model')
+  const scale = page.locator('#library-sr-scale')
+  await expect(model).toHaveValue('')
+  await expect(scale).toHaveCount(0)
+
+  await model.selectOption('realesr-animevideov3')
+  await expect(scale).toHaveValue('2')
+  await scale.selectOption('3')
+
+  await model.selectOption('realesrgan-x4plus')
+  await expect(scale).toHaveCount(0)
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({
+    superResolutionEngine: 'realesrgan', superResolutionModel: 'realesrgan-x4plus', superResolutionScale: 4,
+  })
+})
+
+test('going back to Real-CUGAN clears the Real-ESRGAN choice', async ({ page }) => {
+  await mockLibraries(page, {
+    ...library, superResolutionEnabled: true,
+    superResolutionEngine: 'realesrgan', superResolutionModel: 'realesr-animevideov3', superResolutionScale: 3,
+  }, true)
+  await page.goto('/#/libraries/1/configure/encode/video')
+  await expect(page.locator('#library-sr-scale')).toHaveValue('3')
+
+  await page.locator('#library-sr-model').selectOption('')
+
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({
+    superResolutionEnabled: true, superResolutionEngine: 'realcugan', superResolutionModel: null, superResolutionScale: null,
+  })
 })
 
 test('a library can choose to deinterlace, and is off until it does', async ({ page }) => {

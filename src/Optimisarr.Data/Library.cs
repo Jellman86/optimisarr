@@ -125,6 +125,18 @@ public sealed class Library
     /// </summary>
     public bool SuperResolutionEnabled { get; set; }
 
+    /// <summary>
+    /// The engine this library's content calls for. Null means Real-CUGAN with the server's settings,
+    /// which is what every library did before there was a choice.
+    /// </summary>
+    public string? SuperResolutionEngine { get; set; }
+
+    /// <summary>The chosen engine's model. Null when <see cref="SuperResolutionEngine"/> is.</summary>
+    public string? SuperResolutionModel { get; set; }
+
+    /// <summary>The upscale factor for that model. Null when <see cref="SuperResolutionEngine"/> is.</summary>
+    public int? SuperResolutionScale { get; set; }
+
     /// <summary>How this library judges its upscaled results; see <see cref="Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck"/>.</summary>
     public Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck SuperResolutionQualityCheck { get; set; }
         = Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck.BrokenFramesOnly;

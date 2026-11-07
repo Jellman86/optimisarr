@@ -109,6 +109,10 @@ public sealed record LibrarySnapshot(
     bool? SuperResolutionEnabled = null,
     // Null on an older snapshot keeps the stored check.
     string? SuperResolutionQualityCheck = null,
+    // A library's model choice travels with it, unlike the engine's location on this machine.
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null,
     // Null on an older snapshot means off, as those libraries left interlaced files untouched.
     bool? DeinterlaceVideo = null);
 

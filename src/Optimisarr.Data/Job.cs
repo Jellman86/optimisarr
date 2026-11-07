@@ -207,6 +207,9 @@ public sealed class Job
     /// </summary>
     public bool SuperResolutionApplied { get; set; }
 
+    /// <summary>The engine, model and scale of the attempt that produced this candidate.</summary>
+    public string? SuperResolutionRun { get; set; }
+
     /// <summary>Number of automatic or operator-requested higher-quality retries.</summary>
     public int QualityRetryCount { get; set; }
 
