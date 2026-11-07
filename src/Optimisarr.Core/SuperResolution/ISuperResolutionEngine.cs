@@ -13,6 +13,9 @@ public interface ISuperResolutionEngine
     /// <summary>The executable's file name, looked up on PATH when no path is configured.</summary>
     string BinaryName { get; }
 
+    /// <summary>Whether the engine can run without a Vulkan GPU.</summary>
+    bool SupportsCpu { get; }
+
     /// <summary>The model choices an operator can pick from.</summary>
     IReadOnlyList<string> Presets { get; }
 

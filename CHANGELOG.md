@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add Real-ESRGAN as a second super-resolution engine, chosen per library (#491). Real-CUGAN is trained for drawn content; a library can now choose Real-ESRGAN `x4plus` for live action, or `x4plus anime` or `animevideov3` for drawn content. A library that does not choose keeps Real-CUGAN with the server's settings. Both engines ship in the x86-64 image, pinned by checksum. The two `x4plus` models only run at 4×, because the engine crops and misstitches smaller scales while still exiting successfully; a CPU device is refused for Real-ESRGAN, which has no CPU mode. Each engine has its own status and sample run, and a job records the engine, model and scale that made its result. A saved device number is no longer exported in backups, since it means nothing on another machine. Adds nullable columns through a migration.
+
 - Add the reversible exact-copy move behind no endpoint (#397). A prepared copy moves into a quarantine folder inside its library by a rename that cannot copy or overwrite, after a full preflight, and restores to its exact path. Nothing is deleted. An interrupted action is resolved from where the files actually are, and anything uncertain keeps its reservations for the operator. Library scans skip the quarantine folder. Cleanup stays unavailable until the endpoint and review screen ship.
 
 - Record the closing checkpoint for audio and image quality-first parity (#332): what shipped, and the limits that stay, such as no calibrated universal target and no assessment of surround kept without a downmix. Exact-copy cleanup (#397) becomes the active priority.

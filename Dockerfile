@@ -90,6 +90,26 @@ RUN mkdir -p /opt/realcugan /licenses \
         && chmod 0555 /opt/realcugan/realcugan-ncnn-vulkan; \
     fi
 
+# Real-ESRGAN super-resolution engine, for the live action Real-CUGAN is not trained for. Pinned and
+# verified the same way. The release carries no licence file; docker/licenses/realesrgan has them.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS realesrgan-fetch
+ARG TARGETARCH
+ARG REALESRGAN_RELEASE=v0.2.5.0
+ARG REALESRGAN_BUILD=20220424
+ARG REALESRGAN_SHA256=e5aa6eb131234b87c0c51f82b89390f5e3e642b7b70f2b9bbe95b6a285a40c96
+RUN mkdir -p /opt/realesrgan \
+    && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+        && curl -fsSL -o /tmp/realesrgan.zip \
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/${REALESRGAN_RELEASE}/realesrgan-ncnn-vulkan-${REALESRGAN_BUILD}-ubuntu.zip" \
+        && echo "${REALESRGAN_SHA256}  /tmp/realesrgan.zip" | sha256sum -c - \
+        && unzip -q /tmp/realesrgan.zip -d /tmp/realesrgan \
+        && cp -r /tmp/realesrgan/realesrgan-ncnn-vulkan /tmp/realesrgan/models /opt/realesrgan/ \
+        && chmod -R a-w,a+rX /opt/realesrgan \
+        && chmod 0555 /opt/realesrgan/realesrgan-ncnn-vulkan; \
+    fi
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS media-runtime
 WORKDIR /app
 
@@ -156,6 +176,8 @@ RUN apt-get update \
 COPY --from=realcugan-fetch /opt/realcugan/ /opt/realcugan/
 COPY --from=realcugan-fetch /licenses/ /app/licenses/realcugan/
 COPY docker/licenses/realcugan/ /app/licenses/realcugan/
+COPY --from=realesrgan-fetch /opt/realesrgan/ /opt/realesrgan/
+COPY docker/licenses/realesrgan/ /app/licenses/realesrgan/
 COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
 COPY --chmod=0755 scripts/nvenc_benchmark.sh /app/scripts/nvenc-benchmark
 COPY --from=api-build /app/publish/ /app/
@@ -167,7 +189,7 @@ ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_AUDIO_QUALITY=/app/optimisarr-audio-quality \
     OPTIMISARR_IMAGE_QUALITY=/app/optimisarr-image-quality \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
-    PATH=/opt/realcugan:$PATH \
+    PATH=/opt/realcugan:/opt/realesrgan:$PATH \
     PUID=1000 \
     PGID=1000 \
     UMASK=002

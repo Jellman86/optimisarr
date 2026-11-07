@@ -89,7 +89,10 @@ internal readonly record struct ParsedLibrary(
     bool NormalizeOpusChannelLayout = true,
     bool AdaptiveSoundtrackQuality = false,
     bool SuperResolutionEnabled = false,
-    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly);
+    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly,
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -198,6 +201,14 @@ internal static class LibraryRequestParser
             error =
                 $"Unknown super-resolution quality check: {request.SuperResolutionQualityCheck}. " +
                 $"Expected one of {string.Join(", ", Enum.GetNames<SuperResolutionQualityCheck>())}.";
+            return false;
+        }
+
+        var superResolutionEngine = Trim(request.SuperResolutionEngine);
+        var superResolutionModel = Trim(request.SuperResolutionModel);
+        if (SuperResolutionModelChoice.Validate(superResolutionEngine, superResolutionModel, request.SuperResolutionScale) is { } modelProblem)
+        {
+            error = modelProblem;
             return false;
         }
 
@@ -646,7 +657,10 @@ internal static class LibraryRequestParser
             request.NormalizeOpusChannelLayout ?? true,
             request.AdaptiveSoundtrackQuality ?? false,
             request.SuperResolutionEnabled ?? false,
-            superResolutionQualityCheck);
+            superResolutionQualityCheck,
+            superResolutionEngine,
+            superResolutionModel,
+            request.SuperResolutionScale);
         error = null;
         return true;
     }

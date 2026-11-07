@@ -246,6 +246,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.ContentTune).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.WorkPlacement).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.SuperResolutionQualityCheck).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.SuperResolutionEngine).HasMaxLength(32);
+            entity.Property(library => library.SuperResolutionModel).HasMaxLength(64);
             entity.Property(library => library.TargetVideoCodec).HasMaxLength(64);
             entity.Property(library => library.TargetContainer).HasMaxLength(32);
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
@@ -308,6 +310,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(job => job.AdaptiveVideoQualityEncoder).HasMaxLength(64);
             entity.Property(job => job.EnqueueReason).HasMaxLength(512);
             entity.Property(job => job.VideoQualityMode).HasMaxLength(16);
+            entity.Property(job => job.SuperResolutionRun).HasMaxLength(128);
             entity.Property(job => job.VmafModel).HasMaxLength(64);
             entity.Property(job => job.RequestedRuleProfile).HasConversion<string>().HasMaxLength(32);
 

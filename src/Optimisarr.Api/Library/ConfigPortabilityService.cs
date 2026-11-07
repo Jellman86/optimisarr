@@ -251,6 +251,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.SuperResolutionQualityCheck = snapshot.SuperResolutionQualityCheck is null
                 ? library.SuperResolutionQualityCheck
                 : ParseEnum<Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck>(snapshot.SuperResolutionQualityCheck);
+            library.SuperResolutionEngine = snapshot.SuperResolutionEngine;
+            library.SuperResolutionModel = snapshot.SuperResolutionModel;
+            library.SuperResolutionScale = snapshot.SuperResolutionScale;
             library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
                 ?? legacyVerificationPolicy.ImageQualityGateEnabled;
             library.MinimumImageSsim = snapshot.MinimumImageSsim
@@ -592,7 +595,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.NormalizeOpusChannelLayout,
         library.AdaptiveSoundtrackQuality,
         library.SuperResolutionEnabled,
-        library.SuperResolutionQualityCheck.ToString());
+        library.SuperResolutionQualityCheck.ToString(),
+        library.SuperResolutionEngine,
+        library.SuperResolutionModel,
+        library.SuperResolutionScale);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

@@ -7,10 +7,10 @@ namespace Optimisarr.Core.SuperResolution;
 public sealed record SuperResolutionValidationError(string Code, string Message);
 
 /// <summary>
-/// The Real-CUGAN super-resolution engine configuration. Stored as <c>realcugan.*</c> rows in
-/// the settings table. The engine choice itself is fixed — <see cref="EngineName"/> — because
-/// this is the only engine the pipeline integrates; the switch that matters is <see cref="Enabled"/>,
-/// which stays off until an operator turns it on, so no existing job changes behaviour.
+/// One engine's configuration for a run. The server's saved settings describe Real-CUGAN, stored as
+/// <c>realcugan.*</c> rows; a library that chose another engine gets them through
+/// <see cref="ForEngine"/>. The switch that matters is <see cref="Enabled"/>, which stays off until
+/// an operator turns it on, so no existing job changes behaviour.
 /// </summary>
 public sealed record SuperResolutionOptions(
     bool Enabled,
@@ -19,13 +19,29 @@ public sealed record SuperResolutionOptions(
     int NoiseLevel,
     string Device,
     string BinaryPath,
-    string ModelsPath)
+    string ModelsPath,
+    string EngineId = "realcugan")
 {
-    public const string EngineName = "realcugan";
-
-    /// <summary>The engine these settings configure. The <c>realcugan.*</c> rows describe only it.</summary>
+    /// <summary>The engine these settings configure.</summary>
     [JsonIgnore]
-    public ISuperResolutionEngine Engine => RealCuganEngine.Instance;
+    public ISuperResolutionEngine Engine => SuperResolutionEngines.Find(EngineId)
+        ?? throw new InvalidOperationException($"Unknown super-resolution engine '{EngineId}'.");
+
+    /// <summary>
+    /// The run a library chose, on this machine's device. No engine means the server's own settings.
+    /// </summary>
+    public SuperResolutionOptions ForEngine(SuperResolutionEnginePaths paths, string? engine, string? model, int? scale) =>
+        engine is null
+            ? this
+            : this with
+            {
+                EngineId = engine,
+                Preset = model ?? string.Empty,
+                Scale = scale ?? 0,
+                NoiseLevel = 0,
+                BinaryPath = paths.BinaryPath,
+                ModelsPath = paths.ModelsPath,
+            };
 
     /// <summary>
     /// The initial configuration. Enabled is deliberately false: a fresh install must not route
@@ -40,6 +56,10 @@ public sealed record SuperResolutionOptions(
         Device: "auto",
         BinaryPath: string.Empty,
         ModelsPath: string.Empty);
+
+    /// <summary>What this run used, recorded with the job so a result can be traced to its model.</summary>
+    [JsonIgnore]
+    public string RunDescription => $"{EngineId} {Preset} {Scale}x";
 
     /// <summary>Valid scales the shipped models cover.</summary>
     public static IReadOnlyList<int> Scales => RealCuganEngine.Instance.Scales;
@@ -74,6 +94,10 @@ public sealed record SuperResolutionOptions(
     /// </summary>
     public IReadOnlyList<SuperResolutionValidationError> Validate()
     {
+        if (SuperResolutionEngines.Find(EngineId) is null)
+        {
+            return [new SuperResolutionValidationError("superResolution.engine", $"Unknown super-resolution engine '{EngineId}'.")];
+        }
         var errors = new List<SuperResolutionValidationError>(Engine.ValidateModel(Preset, Scale, NoiseLevel));
 
         foreach (var (path, label) in new[] { (BinaryPath, "engine executable"), (ModelsPath, "models directory") })
@@ -98,6 +122,12 @@ public sealed record SuperResolutionOptions(
             errors.Add(new SuperResolutionValidationError(
                 "superResolution.device",
                 "A 'gpu:<index>' device needs a non-negative Vulkan device index."));
+        }
+        else if (Device == "cpu" && !Engine.SupportsCpu)
+        {
+            errors.Add(new SuperResolutionValidationError(
+                "superResolution.device",
+                $"The {Engine.Name} engine has no CPU mode. Choose Automatic or a Vulkan GPU in the super-resolution settings."));
         }
 
         return errors;

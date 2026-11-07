@@ -1,10 +1,23 @@
-# AI super-resolution (Real-CUGAN) — experimental
+# AI super-resolution — experimental
 
-Optimisarr can upscale the video of a library that opts in with the
-[Real-CUGAN](https://github.com/bilibili/ailab/tree/main/Real-CUGAN) engine, using
-[nihui's realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan) (MIT licensed;
-the Real-CUGAN models are MIT licensed by Bilibili). Real-CUGAN is trained for anime and
-other drawn content.
+Optimisarr can upscale the video of a library that opts in, with one of two engines:
+
+- [Real-CUGAN](https://github.com/bilibili/ailab/tree/main/Real-CUGAN), using
+  [nihui's realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan) (MIT licensed;
+  the models are MIT licensed by Bilibili). It is trained for anime and other drawn content.
+- [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN), using
+  [realesrgan-ncnn-vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan) (MIT licensed; the
+  project and its models are BSD-3 licensed). Its general model suits live action.
+
+| Library holds | Choose | Scales |
+|---|---|---|
+| Live-action film and TV | Real-ESRGAN `x4plus` | 4× |
+| Drawn content, where speed matters | Real-ESRGAN `animevideov3` | 2×, 3×, 4× |
+| Drawn content, fixed 4× | Real-ESRGAN `x4plus anime` | 4× |
+| Drawn content, with denoise control | Real-CUGAN | 2×, 3×, 4× |
+
+A model trained on drawn content can make live action look painted, so check a short file before
+committing a library to it.
 
 It is **experimental and off by default**. One switch controls everything: while it is off,
 its settings are hidden, nothing runs the engine, and a library that opted in behaves exactly
@@ -16,9 +29,10 @@ verification and safe replacement as any other job.
 
 ## What you need
 
-The server image for x86-64 includes the engine and its three model sets under
-`/opt/realcugan`, pinned to release `20220728` and checked against its published checksum. The
-image also includes the Vulkan loader and Mesa drivers.
+The server image for x86-64 includes both engines, each pinned to a release and checked against
+its checksum: Real-CUGAN `20220728` and its three model sets under `/opt/realcugan`, and Real-ESRGAN
+`20220424` and its models under `/opt/realesrgan`. The image also includes the Vulkan loader and
+Mesa drivers.
 
 - **Intel or AMD GPU:** pass the render device to the container (`/dev/dri`), as for hardware
   encoding. Optimisarr adds its user to the device's group at start-up.
@@ -26,6 +40,7 @@ image also includes the Vulkan loader and Mesa drivers.
   capability (for example `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility,graphics`). Render
   group membership alone is not enough.
 - **Other architectures:** no engine is bundled, and the settings report it as not installed.
+- **CPU:** Real-CUGAN has a CPU mode. Real-ESRGAN has none, so its jobs need a Vulkan GPU.
 - **Remote workers:** super-resolution runs on the server only, never on workers.
 
 Optimisarr does not change your Docker permissions, device mappings or host drivers; the
@@ -33,16 +48,30 @@ settings page tells you what it finds.
 
 ### How fast it is
 
-Upscaling is slow. On an Intel Arrow Lake integrated GPU, 2× from 1080p to 2160p took about
-**6 seconds per frame**: roughly 2.5 hours per minute of 24 fps video. A dedicated GPU is much
-faster, but plan for long jobs, and try a short file first.
+Upscaling is slow, and the model matters more than anything else. Measured on an Intel Arrow Lake
+integrated GPU:
+
+| Engine and model | Upscale | Time per frame | One minute of 24 fps video |
+|---|---|---|---|
+| Real-CUGAN `mixed` | 1080p, 2× | about 6 s | about 2.5 hours |
+| Real-ESRGAN `animevideov3` | 720p, 2× | about 2.5 s | about 1 hour |
+| Real-ESRGAN `animevideov3` | 720p, 4× | about 3.5 s | about 1.5 hours |
+| Real-ESRGAN `x4plus anime` | 720p, 4× | about 21 s | about 8 hours |
+| Real-ESRGAN `x4plus` | 720p, 4× | about 66 s | about 26 hours |
+
+The Real-ESRGAN figures come from short runs on synthetic frames, so treat them as a guide. Time
+grows with the source's size. `x4plus` is impractical on an integrated GPU for anything but short
+files. A dedicated GPU is much faster, but plan for long jobs, and try a short file first.
 
 ## Turn it on
 
-In **Settings → AI super-resolution / Real-CUGAN**, switch on **Enable AI super-resolution
-(experimental)** and save. The engine settings then appear, and the status card checks the
-machine. **Test with a real sample run** upscales one small picture: the only check that proves
+In **Settings → AI super-resolution**, switch on **Enable AI super-resolution (experimental)** and
+save. The engine settings then appear, and the status card checks the machine. Choose which engine
+to check, and **Test with a real sample run** upscales one small picture: the only check that proves
 the Vulkan runtime, device and models work.
+
+The preset, upscale factor and denoise level below are Real-CUGAN's, used by a library that has not
+chosen Real-ESRGAN. The device applies to both engines.
 
 | Setting | Values | Notes |
 |---|---|---|
@@ -50,19 +79,24 @@ the Vulkan runtime, device and models work.
 | Upscale factor | 2 (default) / 3 / 4 | Every frame is upscaled by this factor. |
 | Denoise level | −1 to 3 (default 1) | −1 conservative, 0 none, 1–3 strength. A combination the model set does not ship is rejected with a specific error, never substituted. |
 | Device | Automatic (default) / CPU / Vulkan GPU 0–3 | Automatic lets the engine pick. Only choose a specific GPU that the sample run has verified. |
-| Engine executable / models directory | empty or absolute paths | Empty uses the bundled engine. Set these only to use a different installation. |
+| Engine executable / models directory | empty or absolute paths | Empty uses the bundled engine. Set these only to use a different installation. Each engine has its own pair. Real-ESRGAN's models directory must contain a folder named `models`. |
 
-**Restore defaults** resets the engine settings but leaves the switch as it is. Backups keep the
-preset, scale, denoise level and device; they never turn the engine on or set its paths, because
-those depend on the machine.
+**Restore defaults** resets the engine settings but leaves the switch as it is. Backups keep
+Real-CUGAN's preset, scale and denoise level and each library's model choice. They never turn the
+engine on or set its device or paths, because those depend on the machine.
 
 ## Enable per library
 
 While the feature is on, each library has an **AI super-resolution (experimental)** section in its
-video settings. Tick **Super-resolution (Real-CUGAN)** for libraries whose files you want
-upscaled. Name the library whatever you like.
+video settings. Tick **Super-resolution** for libraries whose files you want upscaled, and choose
+its **Engine and model**. A library that has not chosen uses Real-CUGAN with the server's settings.
+The job's details in the Queue record the engine, model and scale that made its result.
 
-When a library opts in, choose its **Quality check for upscaled results**:
+The two Real-ESRGAN `x4plus` models are fixed 4× networks. Asked for a smaller scale, the engine
+exits successfully but crops and misstitches the picture, and no later check can tell, so Optimisarr
+refuses those combinations.
+
+When a library opts in, also choose its **Quality check for upscaled results**:
 
 | Choice | What it does |
 |---|---|

@@ -211,6 +211,8 @@ exists in quarantine.
 | `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Schema 4 job history, immutable captured gates, current/archived reports, worker leases and sanitized numeric evidence. Manifest identifies omissions and distinguishes frozen snapshots from current registration. |
 | `POST` | `/api/workers/diagnostics` | Worker-credential-authenticated schema 1 batches, up to 100 records/128 KiB. Consent, scope and lease ownership are checked; instance/sequence replay is idempotent. Final upload receipts are accepted for 90 seconds after capture ends. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
+| `GET` | `/api/system/super-resolution/{engine}` | Static check of one engine, `realcugan` or `realesrgan`: resolved binary, the model files a combination loads, Vulkan loader, and the effective configuration. `model` and `scale` name a combination to check. Unknown engine: 404. |
+| `POST` | `/api/system/super-resolution/{engine}/probe` | Real small-sample run of one engine through the configured device. 409 while the feature is off. |
 | `GET` | `/api/system/realcugan` | Static super-resolution engine check: resolved binary, the model files the configured combination loads, Vulkan loader, and the effective configuration with its problems. |
 | `POST` | `/api/system/realcugan/probe` | Real small-sample engine run through the configured device and models. Proves the runtime; returns the outcome and output tail. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |

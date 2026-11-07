@@ -19,7 +19,7 @@ public sealed class SuperResolutionRequestParserTests
         Assert.True(ok);
         Assert.Null(error);
         Assert.True(options.Enabled);
-        Assert.Equal(SuperResolutionOptions.EngineName, SuperResolutionSettingsDto.Engine);
+        Assert.Equal(SuperResolutionSettingsDto.Engine, SuperResolutionOptions.Defaults.EngineId);
     }
 
     [Fact]

@@ -108,7 +108,11 @@ public sealed record LibrarySnapshot(
     // super-resolution pipeline must not silently activate (or deactivate) on a config restore.
     bool? SuperResolutionEnabled = null,
     // Null on an older snapshot keeps the stored check.
-    string? SuperResolutionQualityCheck = null);
+    string? SuperResolutionQualityCheck = null,
+    // A library's model choice travels with it, unlike the engine's location on this machine.
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

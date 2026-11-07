@@ -8,7 +8,7 @@ using Optimisarr.Core.Rules;
 namespace Optimisarr.Api.Queue;
 
 /// <summary>
-/// The Real-CUGAN super-resolution pipeline: a video job's frames are extracted as a PNG
+/// The super-resolution pipeline: a video job's frames are extracted as a PNG
 /// sequence, upscaled by the engine directory-to-directory, and reassembled with the source's
 /// audio, subtitles and attachments into the candidate the normal verification and replacement
 /// flow then judges. It reuses <see cref="QueueDispatcher"/>'s process handling, progress
@@ -152,8 +152,8 @@ public sealed partial class QueueDispatcher
             source.BitDepth, source.Colour!);
         await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
         logger.LogInformation(
-            "Job {JobId}: super-resolution — {Frames} pictures per batch, preset {Preset}, scale {Scale}x, noise {Noise}, device {Device}",
-            jobId, frames, options.Preset, options.Scale, options.NoiseLevel, options.Device);
+            "Job {JobId}: super-resolution — {Frames} pictures per batch, {Run}, noise {Noise}, device {Device}",
+            jobId, frames, options.RunDescription, options.NoiseLevel, options.Device);
 
         using var outputDirectory = WorkPaths.PrepareOutputDirectory(work.Spec.OutputPath, ReserveWorkDirectory);
         var request = new SuperResolutionRunRequest(
