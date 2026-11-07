@@ -1414,6 +1414,11 @@ true_peak_tip:
     edit_download_manager: 'Editar gestor de descargas',
     arr_name_ph: 'Sonarr',
     arr_enabled_hint: 'Consulta este gestor para importaciones en curso antes de poner en cola.',
+    arr_tracking_check: "Comprobar archivos seguidos",
+    arr_tracking_checking: "Comprobando…",
+    arr_tracking_result: "{name} sigue {tracked} archivos: {found} coinciden en tus bibliotecas, {unclear} posibles coincidencias, {notFound} no encontrados.",
+    arr_tracking_unreachable: "No se pudo consultar a {name}. Comprueba su dirección y clave de API.",
+    arr_tracking_hint: "Solo lectura. Nada cambia en Sonarr ni Radarr.",
     add_download_manager_btn: 'Añadir gestor de descargas',
     notifications_desc:
       'Envía una solicitud POST a un webhook, chat de Discord o Telegram, tema de ntfy o endpoint de Apprise cuando se reemplaza un archivo o falla una tarea. La entrega es de mejor esfuerzo y nunca afecta al procesamiento.',

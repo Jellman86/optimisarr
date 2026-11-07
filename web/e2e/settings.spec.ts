@@ -886,6 +886,25 @@ test('super-resolution offers specific GPUs, keeps a saved device visible, and d
   await expect(page.getByText('At 3×, a 1080p source becomes 3240p.')).toBeVisible()
 })
 
+test('the managers can be asked which files they track, and one that cannot answer says so', async ({ page }) => {
+  await mockSettings(page)
+  await page.route('**/api/arr-connections', route => json(route, [
+    { id: 1, name: 'Radarr', type: 'Radarr', baseUrl: 'http://radarr:7878', hasApiKey: true, enabled: true, createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z' },
+  ]))
+  await page.route('**/api/arr-connections/tracking', route => json(route, [
+    { id: 1, name: 'Radarr', reachable: true, trackedFiles: 412, foundInLibraries: 410, unclear: 3, notFound: 2 },
+    { id: 2, name: 'Sonarr', reachable: false, trackedFiles: 0, foundInLibraries: 0, unclear: 0, notFound: 0 },
+    { id: 3, name: 'Sonarr', reachable: true, trackedFiles: 5, foundInLibraries: 5, unclear: 0, notFound: 0 },
+  ]))
+  await page.goto('/#/settings/download-managers')
+
+  await page.getByRole('button', { name: 'Check tracked files' }).click()
+
+  const results = page.getByTestId('arr-tracking')
+  await expect(results).toContainText('Radarr tracks 412 files: 410 matched in your libraries, 3 possible matches, 2 not found.')
+  await expect(results).toContainText('Sonarr could not be asked.')
+})
+
 test('each super-resolution engine can be checked and tested on its own', async ({ page }) => {
   await mockSettings(page)
   const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }

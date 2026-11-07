@@ -858,6 +858,7 @@ When updating, send an empty `apiToken` to keep the stored token.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/arr-connections` | List Sonarr/Radarr connections. |
+| `GET` | `/api/arr-connections/tracking` | Asks each enabled Sonarr and Radarr connection which files it tracks, and how many match the inventory. Reads only. |
 | `POST` | `/api/arr-connections` | Create connection. |
 | `PUT` | `/api/arr-connections/{id}` | Update connection. |
 | `DELETE` | `/api/arr-connections/{id}` | Delete connection. |

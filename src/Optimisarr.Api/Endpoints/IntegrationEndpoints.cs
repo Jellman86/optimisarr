@@ -244,6 +244,11 @@ internal static class IntegrationEndpoints
         })
         .WithName("ListArrConnections");
 
+        // What each manager tracks, as far as it could be matched to the inventory. Reads only.
+        app.MapGet("/api/arr-connections/tracking", async (ArrTrackedFilesService tracked, CancellationToken cancellationToken) =>
+            Results.Ok((await tracked.GetAsync(cancellationToken)).Connections))
+        .WithName("GetArrTracking");
+
         app.MapPost("/api/arr-connections", async (
             SaveArrConnectionRequest request,
             OptimisarrDbContext db,
