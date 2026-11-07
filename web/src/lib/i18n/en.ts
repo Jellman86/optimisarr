@@ -71,7 +71,7 @@ export const en = {
   },
   duplicates: {
     clean_title: "Clean up spare copies",
-    clean_summary: "Spare copies that can move: {copies}, in {groups} groups, holding {size}. They go to Quarantine, where you can restore them. The space is freed when they are deleted.",
+    clean_summary: "Spare copies that can move: {copies}. Groups: {groups}. Space they hold: {size}. They go to Quarantine, where you can restore them. The space is freed when they are deleted.",
     clean_start: "Quarantine spare copies",
     clean_none: "No spare copy here can move without your choice.",
     clean_running: "Checked {done} of {total} groups. Copies moved: {moved}.",
@@ -117,7 +117,7 @@ export const en = {
     scan: "Find exact copies",
     cancel: "Cancel scan",
     cost: "Reads same-sized inventory files on this server at up to about 8 MiB/s. Large libraries can take hours. Files with unfinished jobs are skipped.",
-    safe: "Nothing is removed or changed.",
+    safe: "Scanning changes nothing. Only cleaning up moves copies, to Quarantine.",
     snapshot: "Reports survive server restarts. Content-read dates stay unchanged when a hash is reused. Results are snapshots and can become outdated; scan again after files change.",
     progress: "{checked} of {total} candidates checked · {skipped} skipped · {bytes} read",
     found: "Groups of identical files: {count}",

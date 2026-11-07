@@ -17,7 +17,9 @@
 
   let replacements = $state<Replacement[]>([])
   let duplicates = $state<QuarantinedDuplicates[]>([])
-  let kind = $state<'all' | 'optimisation' | 'duplicate'>('all')
+  let chosenKind = $state<'all' | 'optimisation' | 'duplicate'>('all')
+  // The filter only exists while both kinds do, so a choice cannot hide what is left.
+  const kind = $derived(duplicates.length > 0 && replacements.length > 0 ? chosenKind : 'all')
   let busyDuplicateId = $state<string | null>(null)
   let error = $state<string | null>(null)
   let loadError = $state<string | null>(null)
@@ -314,7 +316,7 @@
 {#if duplicates.length > 0 && replacements.length > 0}
   <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label={i18n.m.quarantine.kind_label}>
     {#each [['all', i18n.m.quarantine.kind_all, replacements.length + duplicates.length], ['optimisation', i18n.m.quarantine.kind_optimisation, replacements.length], ['duplicate', i18n.m.quarantine.kind_duplicate, duplicates.length]] as const as [value, label, count] (value)}
-      <button class="btn min-h-11 px-3 py-1.5 text-sm {kind === value ? 'btn-primary' : 'btn-ghost'}" aria-pressed={kind === value} onclick={() => { kind = value }}>{label} ({count})</button>
+      <button class="btn min-h-11 px-3 py-1.5 text-sm {kind === value ? 'btn-primary' : 'btn-ghost'}" aria-pressed={kind === value} onclick={() => { chosenKind = value }}>{label} ({count})</button>
     {/each}
   </div>
 {/if}
@@ -342,12 +344,10 @@
             {#if group.attentionReason}<p class="mt-1 text-xs text-warn">{group.attentionReason}</p>{/if}
             <div class="mt-1 text-[11px] text-ink-3">{new Date(group.heldSince).toLocaleString()}</div>
           </div>
-          {#if group.state !== 'Purging'}
-            <div class="flex flex-wrap gap-2">
-              <button class="btn min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'restore')}><Icon name="rotate" class="h-4 w-4" />{i18n.m.quarantine.duplicate_restore}</button>
-              {#if group.state === 'Quarantined'}<button class="btn btn-danger min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'delete')}><Icon name="trash" class="h-4 w-4" />{i18n.m.quarantine.duplicate_delete}</button>{/if}
-            </div>
-          {/if}
+          <div class="flex flex-wrap gap-2">
+            {#if group.state !== 'Purging'}<button class="btn min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'restore')}><Icon name="rotate" class="h-4 w-4" />{i18n.m.quarantine.duplicate_restore}</button>{/if}
+            {#if group.state !== 'NeedsAttention'}<button class="btn btn-danger min-h-11 px-3 py-1.5 text-sm" disabled={busyDuplicateId !== null} onclick={() => changeDuplicates(group, 'delete')}><Icon name="trash" class="h-4 w-4" />{i18n.m.quarantine.duplicate_delete}</button>{/if}
+          </div>
         </li>
       {/each}
     </ul>

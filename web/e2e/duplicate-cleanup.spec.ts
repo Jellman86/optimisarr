@@ -44,7 +44,7 @@ test('the page says what can move and why others stay, and asks the managers onc
   await page.goto('/#/libraries/1/duplicates')
 
   const card = page.getByTestId('duplicate-cleanup')
-  await expect(card).toContainText('Spare copies that can move: 1, in 1 groups')
+  await expect(card).toContainText('Spare copies that can move: 1. Groups: 1.')
   await expect(card).toContainText('Extras such as trailers can belong to several titles')
   await expect(card).toContainText('(2)')
   await expect(card).toContainText('Sonarr or Radarr could not be asked')
@@ -75,10 +75,10 @@ test('a running cleanup shows progress and can be stopped', async ({ page }) => 
 })
 
 test('groups it could not clean are listed with their reason', async ({ page }) => {
-  await mock(page, { status: { libraryId: 1, running: false, total: 2, done: 2, moved: 1, bytesHeld: 1024, failures: [{ path: '/media/films/B/Title.mkv', reason: 'TrackedByManager' }] } })
+  await mock(page, { status: { libraryId: 1, running: false, total: 2, done: 2, moved: 1, bytesHeld: 1024, failures: [{ path: '/media/films/B/Title.mkv', reason: 'Sonarr or Radarr now tracks this copy. Scan again.' }] } })
   await page.goto('/#/libraries/1/duplicates')
 
-  await expect(page.getByTestId('duplicate-cleanup')).toContainText('/media/films/B/Title.mkv: TrackedByManager')
+  await expect(page.getByTestId('duplicate-cleanup')).toContainText('/media/films/B/Title.mkv: Sonarr or Radarr now tracks this copy. Scan again.')
 })
 
 test('with nothing that can move there is no button, and the reasons still show', async ({ page }) => {
@@ -98,4 +98,38 @@ test('a stale report offers no cleanup and does not ask the managers', async ({ 
   await expect(page.getByRole('heading', { name: 'Exact copies' }).or(page.locator('h1')).first()).toBeVisible()
   await expect(page.getByTestId('duplicate-cleanup')).toHaveCount(0)
   expect(calls).not.toContain('preview')
+})
+
+test('a slow start for one library never shows on another', async ({ page }) => {
+  await mock(page)
+  let release = () => {}
+  await page.route('**/api/libraries', route => route.fulfill({ json: [{ id: 1, name: 'Films' }, { id: 2, name: 'Shows' }] }))
+  await page.route('**/api/libraries/2/duplicates', route => route.fulfill({ json: { ...report, libraryId: 2, libraries: [{ id: 2, name: 'Shows', root: '/media/shows', mediaType: 'Tv' }] } }))
+  await page.route('**/api/libraries/2/duplicates/cleanup/preview', route => route.fulfill({ json: preview }))
+  await page.route('**/api/libraries/2/duplicates/cleanup', route => route.fulfill({ json: { ...idle, libraryId: 2 } }))
+  await page.route('**/api/libraries/1/duplicates/cleanup', async route => {
+    if (route.request().method() !== 'POST') return route.fulfill({ json: idle })
+    await new Promise<void>(resolve => { release = resolve })
+    return route.fulfill({ status: 202, json: { libraryId: 1, running: true, total: 9, done: 3, moved: 3, bytesHeld: 1, failures: [] } })
+  })
+  await page.goto('/#/inventory/duplicates')
+  await page.getByLabel('Library', { exact: true }).selectOption('1')
+  const button = page.getByRole('button', { name: 'Quarantine spare copies' })
+  await button.click()
+  await expect(button).toBeDisabled()
+
+  await page.getByLabel('Library', { exact: true }).selectOption('2')
+  await expect(page.getByRole('button', { name: 'Quarantine spare copies' })).toBeEnabled()
+  release()
+
+  await page.waitForTimeout(300)
+  await expect(page.getByTestId('duplicate-cleanup')).not.toContainText('Checked 3 of 9')
+})
+
+test('a finished run asks again what can move', async ({ page }) => {
+  const calls = await mock(page)
+  await page.goto('/#/libraries/1/duplicates')
+  await page.getByRole('button', { name: 'Quarantine spare copies' }).click()
+  await expect(page.getByTestId('duplicate-cleanup')).toContainText('Copies moved to Quarantine: 1')
+  await expect.poll(() => calls.filter(call => call === 'preview').length).toBeGreaterThanOrEqual(2)
 })

@@ -214,7 +214,7 @@ public sealed class DedupeCleanupRunnerTests : IAsyncLifetime
         var status = await CleanAsync();
 
         Assert.Equal(0, status.Moved);
-        Assert.Contains(nameof(DedupePreflightRefusal.TrackedByManager), Assert.Single(status.Failures).Reason);
+        Assert.Contains("now tracks this copy", Assert.Single(status.Failures).Reason);
         Assert.True(File.Exists(spare));
     }
 

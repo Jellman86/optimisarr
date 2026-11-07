@@ -69,7 +69,7 @@ export const pt: Messages = {
   },
   duplicates: {
     clean_title: "Limpar cópias a mais",
-    clean_summary: "Cópias a mais que podem ser movidas: {copies}, em {groups} grupos, ocupando {size}. Vão para a Quarentena, onde as pode restaurar. O espaço é libertado quando são eliminadas.",
+    clean_summary: "Cópias a mais que podem ser movidas: {copies}. Grupos: {groups}. Espaço ocupado: {size}. Vão para a Quarentena, onde as pode restaurar. O espaço é libertado quando são eliminadas.",
     clean_start: "Colocar cópias a mais em quarentena",
     clean_none: "Nenhuma cópia a mais pode ser movida aqui sem a sua escolha.",
     clean_running: "Verificados {done} de {total} grupos. Cópias movidas: {moved}.",
@@ -115,7 +115,7 @@ export const pt: Messages = {
     scan: "Encontrar cópias exatas",
     cancel: "Cancelar análise",
     cost: "Lê ficheiros indexados do mesmo tamanho neste servidor até cerca de 8 MiB/s. Pode demorar horas. Ignora ficheiros com tarefas incompletas.",
-    safe: "Nada é removido ou alterado.",
+    safe: "A análise não altera nada. Só a limpeza move cópias, para a Quarentena.",
     snapshot: "Os relatórios persistem após reinícios. A data de leitura não muda ao reutilizar um hash. Os resultados podem ficar desatualizados; analise após alterações.",
     progress: "{checked} de {total} candidatos verificados · {skipped} ignorados · {bytes} lidos",
     found: "Grupos de arquivos idênticos: {count}",

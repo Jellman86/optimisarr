@@ -69,7 +69,7 @@ export const fr: Messages = {
   },
   duplicates: {
     clean_title: "Nettoyer les copies superflues",
-    clean_summary: "Copies superflues déplaçables : {copies}, dans {groups} groupes, soit {size}. Elles vont en quarantaine, où vous pouvez les restaurer. L’espace est libéré à leur suppression.",
+    clean_summary: "Copies superflues déplaçables : {copies}. Groupes : {groups}. Espace occupé : {size}. Elles vont en quarantaine, où vous pouvez les restaurer. L’espace est libéré à leur suppression.",
     clean_start: "Mettre les copies superflues en quarantaine",
     clean_none: "Aucune copie superflue ne peut être déplacée ici sans votre choix.",
     clean_running: "{done} groupes sur {total} vérifiés. Copies déplacées : {moved}.",
@@ -115,7 +115,7 @@ export const fr: Messages = {
     scan: "Trouver les copies exactes",
     cancel: "Annuler l’analyse",
     cost: "Lit les fichiers indexés de même taille sur ce serveur à environ 8 Mio/s maximum. Cela peut prendre des heures. Ignore les fichiers avec des tâches inachevées.",
-    safe: "Rien n’est supprimé ni modifié.",
+    safe: "L’analyse ne change rien. Seul le nettoyage déplace des copies, en quarantaine.",
     snapshot: "Les rapports survivent aux redémarrages. La date de lecture reste inchangée si l’empreinte est réutilisée. Les résultats peuvent devenir obsolètes ; relancez après modification.",
     progress: "{checked} sur {total} candidats vérifiés · {skipped} ignorés · {bytes} lus",
     found: "Groupes de fichiers identiques : {count}",

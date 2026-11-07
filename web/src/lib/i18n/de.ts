@@ -71,7 +71,7 @@ export const de: Messages = {
   },
   duplicates: {
     clean_title: "Überzählige Kopien aufräumen",
-    clean_summary: "Verschiebbare überzählige Kopien: {copies}, in {groups} Gruppen, zusammen {size}. Sie kommen in die Quarantäne, wo du sie wiederherstellen kannst. Der Platz wird frei, wenn sie gelöscht werden.",
+    clean_summary: "Verschiebbare überzählige Kopien: {copies}. Gruppen: {groups}. Belegter Platz: {size}. Sie kommen in die Quarantäne, wo du sie wiederherstellen kannst. Der Platz wird frei, wenn sie gelöscht werden.",
     clean_start: "Überzählige Kopien in Quarantäne verschieben",
     clean_none: "Keine überzählige Kopie kann hier ohne deine Wahl verschoben werden.",
     clean_running: "{done} von {total} Gruppen geprüft. Verschobene Kopien: {moved}.",
@@ -117,7 +117,7 @@ export const de: Messages = {
     scan: "Exakte Kopien finden",
     cancel: "Scan abbrechen",
     cost: "Liest gleich große inventarisierte Dateien auf diesem Server mit bis zu etwa 8 MiB/s. Große Bibliotheken können Stunden dauern. Dateien mit offenen Aufträgen werden übersprungen.",
-    safe: "Nichts wird entfernt oder geändert.",
+    safe: "Das Scannen ändert nichts. Nur das Aufräumen verschiebt Kopien, in die Quarantäne.",
     snapshot: "Berichte bleiben nach Serverneustarts erhalten. Bei wiederverwendeten Hashes bleibt das Datum der Inhaltsprüfung unverändert. Ergebnisse können veralten; nach Änderungen erneut scannen.",
     progress: "{checked} von {total} Kandidaten geprüft · {skipped} übersprungen · {bytes} gelesen",
     found: "Gruppen identischer Dateien: {count}",

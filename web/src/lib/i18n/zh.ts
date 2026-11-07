@@ -69,7 +69,7 @@ export const zh: Messages = {
   },
   duplicates: {
     clean_title: "清理多余副本",
-    clean_summary: "可移动的多余副本：{copies} 个，共 {groups} 组，占用 {size}。它们会移到隔离区，你可以从那里恢复。删除后才会释放空间。",
+    clean_summary: "可移动的多余副本：{copies} 个。分组：{groups}。占用空间：{size}。它们会移到隔离区，你可以从那里恢复。删除后才会释放空间。",
     clean_start: "隔离多余副本",
     clean_none: "这里没有无需你选择即可移动的多余副本。",
     clean_running: "已检查 {done}/{total} 组。已移动副本：{moved} 个。",
@@ -115,7 +115,7 @@ export const zh: Messages = {
     scan: "查找重复文件",
     cancel: "取消扫描",
     cost: "在此服务器上以最高约8 MiB/秒读取已入库的同尺寸文件。可能需要数小时。有未完成任务的文件会跳过。",
-    safe: "不会删除或修改任何文件。",
+    safe: "扫描不会更改任何内容。只有清理才会把副本移到隔离区。",
     snapshot: "报告在服务器重启后保留。重用哈希不会更新内容读取时间。结果可能过时，文件更改后请重新扫描。",
     progress: "已检查{total}个候选中的{checked}个 · 跳过{skipped}个 · 已读取{bytes}",
     found: "{count} 组相同文件",

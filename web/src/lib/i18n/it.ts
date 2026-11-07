@@ -69,7 +69,7 @@ export const it: Messages = {
   },
   duplicates: {
     clean_title: "Pulisci le copie superflue",
-    clean_summary: "Copie superflue spostabili: {copies}, in {groups} gruppi, per {size}. Vanno in Quarantena, dove puoi ripristinarle. Lo spazio si libera quando vengono eliminate.",
+    clean_summary: "Copie superflue spostabili: {copies}. Gruppi: {groups}. Spazio occupato: {size}. Vanno in Quarantena, dove puoi ripristinarle. Lo spazio si libera quando vengono eliminate.",
     clean_start: "Metti in quarantena le copie superflue",
     clean_none: "Nessuna copia superflua può essere spostata qui senza una tua scelta.",
     clean_running: "Controllati {done} gruppi su {total}. Copie spostate: {moved}.",
@@ -115,7 +115,7 @@ export const it: Messages = {
     scan: "Trova copie esatte",
     cancel: "Annulla analisi",
     cost: "Legge file indicizzati della stessa dimensione su questo server fino a circa 8 MiB/s. Può richiedere ore. Salta file con lavori incompleti.",
-    safe: "Niente viene rimosso o modificato.",
+    safe: "La scansione non cambia nulla. Solo la pulizia sposta le copie, in Quarantena.",
     snapshot: "I rapporti restano dopo il riavvio. La data di lettura non cambia quando un hash è riutilizzato. I risultati possono diventare obsoleti; ripeti dopo le modifiche.",
     progress: "{checked} di {total} candidati controllati · {skipped} saltati · {bytes} letti",
     found: "Gruppi di file identici: {count}",

@@ -210,6 +210,107 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
     }
 
     [PosixFact]
+    public async Task A_keeper_that_changes_after_it_was_read_keeps_every_copy_restorable()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+
+        var result = await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero, async () =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+            await File.WriteAllBytesAsync(Keeper, [9, 9, 9, 9, 9]);
+        });
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        Assert.All(plan.Files.Where(f => !f.IsKeeper), f => Assert.True(File.Exists(f.QuarantinePath!)));
+        Assert.Equal(DedupeActionState.Quarantined, await StateOf(plan.Id));
+    }
+
+    [PosixFact]
+    public async Task A_quarantined_copy_that_was_rewritten_is_not_deleted()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var copy = plan.Files.First(f => !f.IsKeeper);
+        var modified = File.GetLastWriteTimeUtc(copy.QuarantinePath!);
+        await File.WriteAllBytesAsync(copy.QuarantinePath!, [7, 7, 7, 7, 7]);
+        File.SetLastWriteTimeUtc(copy.QuarantinePath!, modified);
+
+        var result = await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero);
+
+        Assert.Equal(DedupeActionOutcome.Refused, result.Outcome);
+        Assert.Equal([7, 7, 7, 7, 7], await File.ReadAllBytesAsync(copy.QuarantinePath!));
+        Assert.Equal(DedupeActionState.Quarantined, await StateOf(plan.Id));
+    }
+
+    [PosixFact]
+    public async Task A_delete_that_stops_part_way_records_why()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var deletes = 0;
+
+        var stopped = await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero, async () =>
+        {
+            if (++deletes != 2) return;
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+            File.SetLastWriteTimeUtc(Keeper, DateTime.UtcNow);
+        });
+
+        Assert.Equal(DedupeActionOutcome.NeedsAttention, stopped.Outcome);
+        Assert.Equal(DedupeActionState.Purging, await StateOf(plan.Id));
+        string? reason = null;
+        await InDb(async db => reason = (await db.DedupeActions.AsNoTracking().SingleAsync(a => a.Id == plan.Id)).AttentionReason);
+        Assert.Contains("no longer the copy that was kept", reason);
+    }
+
+    [PosixFact]
+    public async Task A_finished_purge_does_not_block_other_file_operations()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        await Service.PurgeAsync(plan.Id, default, TimeSpan.Zero);
+
+        Assert.True(await RecursiveCleanupAllowedAsync());
+    }
+
+    private async Task<bool> RecursiveCleanupAllowedAsync()
+    {
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        await using var write = await db.Database.BeginTransactionAsync();
+        using var held = await FileMutationGuard.TryAcquireRecursiveCleanupAsync(db, _services.GetRequiredService<FileOperationClaims>(), default);
+        return held is not null;
+    }
+
+    [PosixFact]
+    public async Task Copies_waiting_in_quarantine_do_not_hold_up_scratch_work_for_the_whole_retention_period()
+    {
+        var plan = await PreparedAsync();
+        Assert.False(await RecursiveCleanupAllowedAsync());
+
+        await Quarantine(plan);
+        Assert.Equal(DedupeActionState.Quarantined, await StateOf(plan.Id));
+        Assert.True(await ClaimsOf(plan.Id) > 0);
+
+        Assert.True(await RecursiveCleanupAllowedAsync());
+    }
+
+    [PosixFact]
+    public async Task A_purge_under_way_still_holds_up_scratch_work()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        await InDb(async db =>
+        {
+            (await db.DedupeActions.SingleAsync(a => a.Id == plan.Id)).State = DedupeActionState.Purging;
+            await db.SaveChangesAsync();
+        });
+
+        Assert.False(await RecursiveCleanupAllowedAsync());
+    }
+
+    [PosixFact]
     public async Task A_missing_keeper_keeps_the_copies()
     {
         var plan = await PreparedAsync();

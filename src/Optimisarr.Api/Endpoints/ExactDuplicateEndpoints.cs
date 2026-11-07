@@ -113,8 +113,10 @@ internal static class ExactDuplicateEndpoints
             .WithName("RestoreQuarantinedDuplicates");
 
         // Deletes the copies for good, after proving the kept copy is unchanged.
-        app.MapDelete("/api/quarantine/duplicates/{id:guid}", async (Guid id, DedupeQuarantineService quarantine, CancellationToken token) =>
-            ActionResult(await quarantine.PurgeAsync(id, token)))
+        app.MapDelete("/api/quarantine/duplicates/{id:guid}", async (Guid id, DedupeQuarantineService quarantine, SettingsStore settings, CancellationToken token) =>
+            (await settings.GetQueueSettingsAsync(token)).DryRunMode
+                ? ApiErrors.Conflict("duplicates.dryRun", "Dry-run mode is enabled, so quarantined copies are kept.")
+                : ActionResult(await quarantine.PurgeAsync(id, token)))
             .Produces(StatusCodes.Status204NoContent).Produces<ApiError>(StatusCodes.Status404NotFound).Produces<ApiError>(StatusCodes.Status409Conflict)
             .WithName("DeleteQuarantinedDuplicates");
     }

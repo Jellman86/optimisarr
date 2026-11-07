@@ -43,6 +43,7 @@
   let cleanupPreview = $state<DuplicateCleanupPreview | null>(null)
   let cleanup = $state<DuplicateCleanupStatus | null>(null)
   let cleanupError = $state<string | null>(null)
+  let startingCleanup = $state(false)
   let cleanupTimer: ReturnType<typeof setTimeout> | undefined
   let cleanupRequest = 0
   let cleanable = $derived(report?.status === 'Completed' && !report.isStale && !scopeChanged && groupCount > 0)
@@ -61,6 +62,7 @@
   $effect(() => {
     const key = cleanupKey, id = libraryId
     cleanupPreview = null
+    startingCleanup = false
     cleanupError = null
     if (key !== null && id !== null) void loadCleanup(id)
     return () => { cleanupRequest++; clearTimeout(cleanupTimer) }
@@ -80,18 +82,25 @@
       const status = await api.duplicateCleanup(id)
       if (disposed || request !== cleanupRequest) return
       cleanup = status
-      if (status.running) cleanupTimer = setTimeout(() => void followCleanup(id, request), 1500)
-      else await load(id)
+      if (status.running) { cleanupTimer = setTimeout(() => void followCleanup(id, request), 1500); return }
+      // What could move has changed, and the report may look the same if its first page did not.
+      cleanupPreview = null
+      await load(id)
+      if (!disposed && request === cleanupRequest && cleanable) await loadCleanup(id)
     } catch (err) { if (!disposed && request === cleanupRequest) cleanupError = err instanceof Error ? err.message : i18n.m.duplicates.clean_error }
   }
   async function startCleanup() {
     if (libraryId === null) return
     const id = libraryId, request = cleanupRequest
     cleanupError = null
+    startingCleanup = true
     try {
-      cleanup = await api.startDuplicateCleanup(id)
+      const status = await api.startDuplicateCleanup(id)
+      if (disposed || request !== cleanupRequest) return
+      cleanup = status
       cleanupTimer = setTimeout(() => void followCleanup(id, request), 1500)
     } catch (err) { if (!disposed && request === cleanupRequest) cleanupError = err instanceof Error ? err.message : i18n.m.duplicates.clean_error }
+    finally { startingCleanup = false }
   }
   async function stopCleanup() {
     if (libraryId === null) return
@@ -238,7 +247,7 @@
           {/if}
           {#if cleanupPreview && cleanupPreview.copies > 0}
             <p class="mt-2 text-sm text-ink-2">{t(i18n.m.duplicates.clean_summary, { copies: cleanupPreview.copies, groups: cleanupPreview.groups, size: formatSize(cleanupPreview.bytesToFree) })}</p>
-            <button class="btn btn-primary mt-3 min-h-11" onclick={startCleanup}>{i18n.m.duplicates.clean_start}</button>
+            <button class="btn btn-primary mt-3 min-h-11" disabled={startingCleanup} onclick={startCleanup}>{i18n.m.duplicates.clean_start}</button>
           {:else if cleanupPreview && !cleanup}
             <p class="mt-2 text-sm text-ink-3">{i18n.m.duplicates.clean_none}</p>
           {/if}

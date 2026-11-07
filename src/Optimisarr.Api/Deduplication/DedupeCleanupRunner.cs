@@ -165,9 +165,30 @@ public sealed class DedupeCleanupRunner(
             await journal.CancelPreparedAsync(plan.Id, CancellationToken.None);
         }
         if (result.Outcome == DedupeActionOutcome.Completed) return null;
-        var issues = result.Issues.Select(issue => issue.Refusal.ToString()).Distinct();
+        var issues = result.Issues.Select(issue => Describe(issue.Refusal)).Distinct();
         return new DedupeCleanupFailure(first, string.Join(" ", new[] { result.Reason }.Concat(issues).OfType<string>()));
     }
+
+    private static string Describe(DedupePreflightRefusal refusal) => refusal switch
+    {
+        DedupePreflightRefusal.ManagerUnavailable => "Sonarr or Radarr could not be asked. Check the connection and try again.",
+        DedupePreflightRefusal.TrackedByManager => "Sonarr or Radarr now tracks this copy. Scan again.",
+        DedupePreflightRefusal.PossiblyTrackedByManager => "Sonarr or Radarr may track this copy, so choose a keeper to clean it.",
+        DedupePreflightRefusal.StorageUnqualified => "Cleanup is not available on this storage.",
+        DedupePreflightRefusal.Missing => "A file is gone. Scan again.",
+        DedupePreflightRefusal.Link => "A file is a link, which cleanup does not move.",
+        DedupePreflightRefusal.HardLinked => "A copy has other hard links, so moving it would free nothing.",
+        DedupePreflightRefusal.NotIndependent => "A file is part of a bundle that has to stay together.",
+        DedupePreflightRefusal.Changed or DedupePreflightRefusal.ContentDiffers => "A file changed since the scan. Scan again.",
+        DedupePreflightRefusal.NotRead => "A file could not be read in full. Try again when it is not in use.",
+        DedupePreflightRefusal.SamePhysicalFile => "Two of these paths are the same file. Scan again.",
+        DedupePreflightRefusal.InUse => "A job is using a file. Try again when it finishes.",
+        DedupePreflightRefusal.NotWritable => "A folder cannot be written to.",
+        DedupePreflightRefusal.DestinationOccupied => "Something already occupies the quarantine path.",
+        DedupePreflightRefusal.UnsafeDestination => "A folder on the way to quarantine is redirected.",
+        DedupePreflightRefusal.CrossFilesystem => "Quarantine is on another filesystem, so the copy cannot be renamed there.",
+        _ => "The plan is no longer valid. Scan again.",
+    };
 
     private static DedupePreparation? BuildPlan(int libraryId, DedupeCleanupGroups inputs, ExactDuplicateGroup group, DedupeCleanupDecision decision)
     {

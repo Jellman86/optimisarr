@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Deduplication;
+using Optimisarr.Core.Library;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Deduplication;
@@ -128,12 +129,14 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
     }
 
     /// <summary>
-    /// Deletes the quarantined copies for good, which is the only way this frees space. Nothing is
-    /// deleted unless every keeper is read in full now and is still the reviewed file: a keeper that
-    /// has changed may leave a quarantined copy as the last of those bytes, so it stays restorable.
+    /// Deletes the quarantined copies for good, which is the only way this frees space. Every keeper
+    /// and every copy is read in full first. A keeper that has changed may leave a copy as the last of
+    /// those bytes, and a copy that has changed holds bytes nothing else has, so either keeps the copies
+    /// in place. The files are checked again against those reads just before each delete.
     /// </summary>
     /// <param name="changeSettle">How long files must have been unchanged to be read; tests shorten it.</param>
-    public async Task<DedupeActionResult> PurgeAsync(Guid id, CancellationToken token, TimeSpan? changeSettle = null)
+    /// <param name="beforeDelete">Runs before each delete, so tests can interfere at that boundary.</param>
+    public async Task<DedupeActionResult> PurgeAsync(Guid id, CancellationToken token, TimeSpan? changeSettle = null, Func<Task>? beforeDelete = null)
     {
         var loaded = await LoadAsync(id, token);
         if (loaded is not { } action) return DedupeActionResult.NotFound;
@@ -144,36 +147,68 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         using var held = claims.TryAcquire(DedupeJournalStore.Keys(action.Plan.Files));
         if (held is null) return DedupeActionResult.Refused("Another file operation is using these files. Try again shortly.");
 
+        // Purging has already deleted, or may have, so it cannot return to a state that promises every
+        // copy back. Its reason stays visible until a retry finishes it.
+        async Task<DedupeActionResult> StopAsync(string reason)
+        {
+            if (action.State == DedupeActionState.Quarantined) return DedupeActionResult.Refused(reason);
+            await NoteAttentionAsync(id, reason);
+            return DedupeActionResult.Attention(reason);
+        }
+
+        var keepers = new List<(DedupeFileSnapshot File, string? Stamp)>();
         foreach (var keeper in action.Plan.Files.Where(f => f.IsKeeper))
         {
             var now = await DedupeFileObserver.ObserveAsync(keeper, token, changeSettle);
             if (!now.Exists || now.IsLink || now.Identity != keeper.Identity || now.SizeBytes != keeper.SizeBytes
                 || now.ModifiedUtcTicks != keeper.ModifiedUtcTicks || !string.Equals(now.FreshSha256, keeper.Sha256, StringComparison.Ordinal))
-                return DedupeActionResult.Refused(
-                    $"{keeper.Path} is no longer the copy that was kept, so the quarantined copies stay and can be restored.");
+                return await StopAsync(KeeperChanged(keeper));
+            keepers.Add((keeper, now.ChangeStamp));
         }
 
-        var copies = action.Plan.Files.Where(f => !f.IsKeeper).ToArray();
-        if (action.State == DedupeActionState.Quarantined
-            && !await TryTransitionAsync(id, DedupeActionState.Quarantined, DedupeActionState.Purging, null))
+        var copies = new List<(DedupeFileSnapshot Held, string Stamp)>();
+        foreach (var copy in action.Plan.Files.Where(f => !f.IsKeeper))
+        {
+            var heldCopy = copy with { Path = copy.QuarantinePath!, QuarantinePath = null };
+            if (!PathsAreSafe(copy, heldCopy.Path)) return await StopAsync($"A folder on the way to {heldCopy.Path} is redirected, so it was left in place.");
+            if (!Occupied(heldCopy.Path)) continue;
+            if (await ReadReviewedStampAsync(heldCopy, token) is not { } stamp)
+                return await StopAsync($"{heldCopy.Path} is no longer the copy that was reviewed, so it was left in place.");
+            copies.Add((heldCopy, stamp));
+        }
+
+        var startedHere = action.State == DedupeActionState.Quarantined;
+        if (startedHere && !await TryTransitionAsync(id, DedupeActionState.Quarantined, DedupeActionState.Purging, null))
             return DedupeActionResult.Refused("This action changed before it could start, so nothing was deleted.");
 
+        var deleted = false;
         try
         {
-            foreach (var copy in copies)
+            foreach (var (file, stamp) in copies)
             {
-                if (!PathsAreSafe(copy, copy.QuarantinePath!))
-                    return DedupeActionResult.Attention($"A folder on the way to {copy.QuarantinePath} is redirected, so it was left in place.");
-                if (File.Exists(copy.QuarantinePath!)) File.Delete(copy.QuarantinePath!);
+                if (beforeDelete is not null) await beforeDelete();
+                var problem = keepers.Where(k => !IsUnchangedSinceRead(k.File, k.Stamp)).Select(k => KeeperChanged(k.File)).FirstOrDefault()
+                    ?? (IsUnchangedSinceRead(file, stamp) ? null : $"{file.Path} changed, so it was left in place.");
+                if (problem is not null)
+                {
+                    // Nothing has gone yet, so every copy can still be promised back.
+                    if (startedHere && !deleted && await TryTransitionAsync(id, DedupeActionState.Purging, DedupeActionState.Quarantined, null))
+                        return DedupeActionResult.Refused(problem);
+                    await NoteAttentionAsync(id, problem);
+                    return DedupeActionResult.Attention(problem);
+                }
+                File.Delete(file.Path);
+                deleted = true;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(ex, "Purge of dedupe action {ActionId} stopped part-way", id);
+            await NoteAttentionAsync(id, ex.Message);
             return DedupeActionResult.Attention(ex.Message);
         }
 
-        RemoveEmptyQuarantineFolders(copies);
+        RemoveEmptyQuarantineFolders(action.Plan.Files.Where(f => !f.IsKeeper));
         await using (var scope = scopes.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -187,6 +222,28 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
             await transaction.CommitAsync(CancellationToken.None);
         }
         return DedupeActionResult.Completed;
+    }
+
+    private static string KeeperChanged(DedupeFileSnapshot keeper) =>
+        $"{keeper.Path} is no longer the copy that was kept, so the quarantined copies were left in place.";
+
+    private async Task NoteAttentionAsync(Guid id, string reason)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var now = DateTimeOffset.UtcNow;
+        await db.DedupeActions.Where(a => a.Id == id)
+            .ExecuteUpdateAsync(set => set.SetProperty(a => a.AttentionReason, reason), CancellationToken.None);
+    }
+
+    // The reviewed bytes, read now, and the change time that proves they have not changed since.
+    private static async Task<string?> ReadReviewedStampAsync(DedupeFileSnapshot file, CancellationToken token)
+    {
+        if (!IsReviewedFile(file, file.Path)) return null;
+        await using var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) is not { } before) return null;
+        var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, token));
+        return hash == file.Sha256 && ExactFileIdentity.ChangeStamp(stream.SafeFileHandle) == before ? before.ToString() : null;
     }
 
     private async Task<DedupeActionResult> UndoAsync(Guid id, LoadedAction action, string reason)

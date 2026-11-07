@@ -285,3 +285,29 @@ test('a page with nothing held shows the empty state', async ({ page }) => {
   await expect(page.getByText(/^Nothing|No /).first()).toBeVisible()
   await expect(page.getByTestId('quarantined-duplicates')).toHaveCount(0)
 })
+
+test('removing the last of a chosen kind shows what is left', async ({ page }) => {
+  let held = [quarantinedSpare]
+  await mockQuarantine(page)
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: held }))
+  await page.route(`**/api/quarantine/duplicates/${quarantinedSpare.id}/restore`, route => { held = []; return route.fulfill({ status: 204 }) })
+  await page.goto('/#/quarantine')
+
+  await page.getByRole('button', { name: 'Duplicate (1)' }).click()
+  await expect(page.locator('.quarantine-table')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Restore copy' }).click()
+
+  await expect(page.locator('.quarantine-table')).toBeVisible()
+})
+
+test('a delete that stopped part-way explains itself and can be retried', async ({ page }) => {
+  await mockQuarantine(page, [])
+  await page.route('**/api/quarantine/duplicates', route => route.fulfill({ json: [{ ...quarantinedSpare, state: 'Purging', attentionReason: 'A folder is redirected.' }] }))
+  await page.goto('/#/quarantine')
+
+  const row = page.getByTestId('quarantined-duplicate')
+  await expect(row).toContainText('A folder is redirected.')
+  await expect(row.getByRole('button', { name: 'Delete copy' })).toBeVisible()
+  await expect(row.getByRole('button', { name: 'Restore copy' })).toHaveCount(0)
+})
+

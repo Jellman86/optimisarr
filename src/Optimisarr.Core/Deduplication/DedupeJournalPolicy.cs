@@ -33,7 +33,7 @@ public static class DedupeJournalPolicy
         (DedupeActionState.Prepared, DedupeActionState.Quarantining or DedupeActionState.Cancelled) => true,
         (DedupeActionState.Quarantining, DedupeActionState.Quarantined or DedupeActionState.NeedsAttention) => true,
         (DedupeActionState.Quarantined, DedupeActionState.Restoring or DedupeActionState.NeedsAttention or DedupeActionState.Purging) => true,
-        (DedupeActionState.Purging, DedupeActionState.Purged) => true,
+        (DedupeActionState.Purging, DedupeActionState.Purged or DedupeActionState.Quarantined) => true,
         (DedupeActionState.Restoring, DedupeActionState.Restored or DedupeActionState.NeedsAttention) => true,
         (DedupeActionState.NeedsAttention, DedupeActionState.Restoring) => true,
         _ => false

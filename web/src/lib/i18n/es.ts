@@ -69,7 +69,7 @@ export const es: Messages = {
   },
   duplicates: {
     clean_title: "Limpiar copias sobrantes",
-    clean_summary: "Copias sobrantes que se pueden mover: {copies}, en {groups} grupos, que ocupan {size}. Van a Cuarentena, donde puedes restaurarlas. El espacio se libera al eliminarlas.",
+    clean_summary: "Copias sobrantes que se pueden mover: {copies}. Grupos: {groups}. Espacio que ocupan: {size}. Van a Cuarentena, donde puedes restaurarlas. El espacio se libera al eliminarlas.",
     clean_start: "Mover copias sobrantes a cuarentena",
     clean_none: "Aquí ninguna copia sobrante se puede mover sin tu elección.",
     clean_running: "Comprobados {done} de {total} grupos. Copias movidas: {moved}.",
@@ -115,7 +115,7 @@ export const es: Messages = {
     scan: "Buscar copias exactas",
     cancel: "Cancelar análisis",
     cost: "Lee archivos del inventario del mismo tamaño en este servidor hasta unos 8 MiB/s. Puede tardar horas. Omite archivos con trabajos pendientes.",
-    safe: "No se elimina ni cambia nada.",
+    safe: "Escanear no cambia nada. Solo la limpieza mueve copias, a Cuarentena.",
     snapshot: "Los informes se conservan tras reiniciar. La fecha de lectura no cambia al reutilizar un hash. Los resultados pueden quedar obsoletos; analiza de nuevo tras cambios.",
     progress: "{checked} de {total} candidatos comprobados · {skipped} omitidos · {bytes} leídos",
     found: "Grupos de archivos idénticos: {count}",

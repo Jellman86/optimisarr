@@ -100,8 +100,7 @@ The cache retains one fingerprint per indexed entry, removed with that entry. Ea
 library retains its latest scan of up to 50,000 observations, removed with that library. Back up
 `/config`, including SQLite, to preserve reports and preferences.
 
-There are no removal, quarantine, automatic dedupe or hard-link conversion actions. Reversible
-exact-copy quarantine and separately qualified similarity matching remain in
+Hard-link conversion and similarity matching are not available. Similarity matching is tracked in
 [issue #397](https://github.com/Jellman86/optimisarr/issues/397).
 
 If a file is skipped, check access and let its unfinished job complete, then update the inventory

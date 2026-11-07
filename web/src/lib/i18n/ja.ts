@@ -69,7 +69,7 @@ export const ja: Messages = {
   },
   duplicates: {
     clean_title: "余分なコピーを整理",
-    clean_summary: "移動できる余分なコピー：{copies} 個（{groups} グループ、{size}）。隔離に移動し、そこから復元できます。削除すると空き容量が増えます。",
+    clean_summary: "移動できる余分なコピー：{copies} 個。グループ：{groups}。使用容量：{size}。隔離に移動し、そこから復元できます。削除すると空き容量が増えます。",
     clean_start: "余分なコピーを隔離",
     clean_none: "選択なしで移動できる余分なコピーはありません。",
     clean_running: "{total} グループ中 {done} グループを確認。移動したコピー：{moved} 個。",
@@ -115,7 +115,7 @@ export const ja: Messages = {
     scan: "完全一致のコピーを探す",
     cancel: "スキャンを中止",
     cost: "このサーバーで同じサイズの登録済みファイルを最大約8 MiB/秒で読みます。数時間かかる場合があります。未完了ジョブのファイルは除外します。",
-    safe: "削除や変更は行いません。",
+    safe: "スキャンでは何も変更されません。整理した場合のみ、コピーを隔離に移動します。",
     snapshot: "レポートはサーバー再起動後も保持されます。ハッシュ再利用時は内容の読み込み日時を更新しません。変更後は再スキャンしてください。",
     progress: "候補{total}件中{checked}件確認 · {skipped}件除外 · {bytes}読み取り",
     found: "同一ファイルのグループ: {count} 件",
