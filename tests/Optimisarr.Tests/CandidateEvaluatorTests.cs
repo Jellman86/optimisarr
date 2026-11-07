@@ -800,4 +800,37 @@ public sealed class CandidateEvaluatorTests
 
         Assert.True(decision.IsEligible);
     }
+
+    [Theory]
+    [InlineData("tt")]
+    [InlineData("bb")]
+    [InlineData("tb")]
+    [InlineData("bt")]
+    public void An_interlaced_source_is_not_re_encoded(string fieldOrder)
+    {
+        var decision = CandidateEvaluator.Evaluate(InterlaceCandidate(fieldOrder), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Interlaced", decision.Reason);
+        Assert.Contains(fieldOrder, decision.Reason);
+    }
+
+    [Theory]
+    [InlineData("progressive")]
+    [InlineData("unknown")]
+    [InlineData(null)]
+    public void A_source_not_reported_as_interlaced_stays_eligible(string? fieldOrder) =>
+        Assert.True(CandidateEvaluator.Evaluate(InterlaceCandidate(fieldOrder), Hevc).IsEligible);
+
+    [Fact]
+    public void Track_cleanup_of_an_interlaced_source_stays_available_because_it_copies_the_video()
+    {
+        var rules = Hevc with { TargetVideoCodec = null, KeepAudioLanguages = ["eng"] };
+
+        var decision = CandidateEvaluator.Evaluate(InterlaceCandidate("tt") with { AudioLanguages = ["eng", "fra"] }, rules);
+
+        Assert.DoesNotContain("Interlaced", decision.Reason);
+    }
+
+    private static MediaProperties InterlaceCandidate(string? fieldOrder) => File() with { FieldOrder = fieldOrder };
 }

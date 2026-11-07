@@ -49,7 +49,9 @@ public sealed record MediaProbeResult(
     // reports timestamps relative to this, so the video's start alone does not say where a picture
     // will appear in a filter graph. Null when ffprobe did not report it.
     double? ContainerStartSeconds = null,
-    string? ColorRange = null)
+    string? ColorRange = null,
+    // How the primary video's fields are ordered, as ffprobe reports it; see VideoFieldOrder.
+    string? FieldOrder = null)
 {
     /// <summary>Codec names in subtitle-relative order; null entries retain unknown streams.</summary>
     public IReadOnlyList<string?> SubtitleCodecs { get; init; } = [];
@@ -268,6 +270,7 @@ public sealed class MediaProbeService : IMediaProbeService
         var attachedPictureCount = 0;
         bool? isVariableFrameRate = null;
         string? videoProfile = null;
+        string? fieldOrder = null;
         double? videoFrameRate = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
@@ -330,6 +333,7 @@ public sealed class MediaProbeService : IMediaProbeService
                         isVariableFrameRate = DetectVariableFrameRate(stream);
                         videoFrameRate = ReadVideoFrameRate(stream);
                         videoProfile = ReadString(stream, "profile");
+                        fieldOrder = ReadString(stream, "field_order");
                         videoStart = ReadStartTime(stream);
                         break;
                     case "audio":
@@ -425,7 +429,8 @@ public sealed class MediaProbeService : IMediaProbeService
             null,
             videoFrameRate,
             containerStart,
-            colorRange) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, RawJson = json };
+            colorRange,
+            fieldOrder) { SubtitleCodecs = subtitleCodecs, SubtitleStreamIndexes = subtitleStreamIndexes, RawJson = json };
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still

@@ -255,6 +255,13 @@ public static class CandidateEvaluator
                 "Dolby Vision — re-encoding would drop the DV layer and risk a colour shift (Profile 5); left untouched");
         }
 
+        // Only a re-encode turns woven fields into progressive pictures. Track cleanup copies the
+        // video stream, so it stays available for these files.
+        if (rules.TargetVideoCodec is not null && VideoFieldOrder.IsInterlaced(media.FieldOrder))
+        {
+            return CandidateDecision.Skipped(VideoFieldOrder.RefusalFor(media.FieldOrder!));
+        }
+
         if (media.SizeBytes < rules.MinFileSizeBytes)
         {
             return CandidateDecision.Skipped(

@@ -112,6 +112,23 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(SkippedQualitySearch.VideoQuality, saved!.SkippedQualitySearches);
     }
 
+    [Fact]
+    public async Task A_file_probed_before_field_order_was_captured_is_refused_when_it_reaches_the_queue()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Interlace check");
+        var id = await QueueAJob(fileName: "interlaced tape.mkv");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal("tt", job.MediaFile!.FieldOrder);
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
     [Theory]
     [InlineData(JobType.Preview, false)]
     [InlineData(JobType.Calibration, false)]

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Leave interlaced video alone instead of re-encoding it combed (#507). A source ffprobe reports as interlaced kept its woven pictures through a re-encode but was written as progressive, so players stopped deinterlacing it and it played combed, while verification, including VMAF, still passed because both sides were compared weave to weave. Those files are now skipped with the reason shown, and super-resolution refuses them. Track cleanup, which copies the video, still applies. Files probed earlier are checked when they reach the queue. A source reporting an unknown field order is not refused, because modern codecs commonly report that; a sample of a real library was mostly unknown or progressive. Adds one nullable column through a migration.
+
 - Add the reversible exact-copy move behind no endpoint (#397). A prepared copy moves into a quarantine folder inside its library by a rename that cannot copy or overwrite, after a full preflight, and restores to its exact path. Nothing is deleted. An interrupted action is resolved from where the files actually are, and anything uncertain keeps its reservations for the operator. Library scans skip the quarantine folder. Cleanup stays unavailable until the endpoint and review screen ship.
 
 - Record the closing checkpoint for audio and image quality-first parity (#332): what shipped, and the limits that stay, such as no calibrated universal target and no assessment of surround kept without a downmix. Exact-copy cleanup (#397) becomes the active priority.

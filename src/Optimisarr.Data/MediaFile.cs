@@ -51,6 +51,9 @@ public sealed class MediaFile
 
     public string? VideoProfile { get; set; }
 
+    /// <summary>ffprobe's field order for the primary video. Null until probed since this was captured.</summary>
+    public string? FieldOrder { get; set; }
+
     public int? Width { get; set; }
 
     public int? Height { get; set; }

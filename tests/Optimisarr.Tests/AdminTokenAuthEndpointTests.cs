@@ -1423,6 +1423,7 @@ public sealed class AdminTokenAuthEndpointTests
                           "width": 1920,
                           "height": 1080,
                           "pix_fmt": "{{(tenBit ? "yuv420p10le" : "yuv420p")}}",
+                          "field_order": "{{(Path.GetFileName(path).Contains("interlaced", StringComparison.Ordinal) ? "tt" : "unknown")}}",
                           "profile": "High",
                           "bits_per_raw_sample": "{{(tenBit ? "10" : "8")}}",
                           "r_frame_rate": "{{(Path.GetFileName(path).Contains("high-fps", StringComparison.Ordinal) ? "60/1" : "24000/1001")}}",

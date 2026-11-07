@@ -42,6 +42,7 @@ public sealed class SuperResolutionSourceTests
     [InlineData("\"pix_fmt\": \"yuv444p\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
     [InlineData("\"pix_fmt\": \"yuv422p10le\", \"sample_aspect_ratio\": \"1:1\"", "4:2:0")]
     [InlineData("\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"32:27\"", "square")]
+    [InlineData("\"pix_fmt\": \"yuv420p\", \"sample_aspect_ratio\": \"1:1\", \"field_order\": \"tb\"", "interlaced")]
     [InlineData("\"pix_fmt\": \"yuv420p\", \"side_data_list\": [{ \"side_data_type\": \"Display Matrix\", \"rotation\": -90 }]", "rotat")]
     public void A_source_the_frames_cannot_reproduce_is_refused_with_a_reason(string video, string reason)
     {

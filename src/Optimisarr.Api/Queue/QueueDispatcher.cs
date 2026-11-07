@@ -1829,6 +1829,22 @@ public sealed partial class QueueDispatcher(
                     $"Fresh source probe required to apply the frame-rate cap failed: {freshSourceProbe.Error ?? "no detail available"}");
             }
         }
+        // A file probed before field order was captured has no answer on record, and the eligibility
+        // check that runs before encoding could not refuse it. Ask once, and keep the answer so the
+        // inventory shows the same reason.
+        if (!isDisposable && isVideoJob && rules.TargetVideoCodec is not null && media.FieldOrder is null)
+        {
+            freshSourceProbe ??= await scope.ServiceProvider
+                .GetRequiredService<IMediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (freshSourceProbe is { Success: true, FieldOrder: { } fieldOrder })
+            {
+                await db.MediaFiles.Where(file => file.Id == media.Id)
+                    .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, fieldOrder), cancellationToken);
+                if (VideoFieldOrder.IsInterlaced(fieldOrder))
+                    throw new JobNoLongerEligibleException(VideoFieldOrder.RefusalFor(fieldOrder));
+            }
+        }
         var mediaDurationSeconds = isPreview && isVideoJob
             ? MediaTimelineDuration.Resolve(
                 MediaKind.Video,
