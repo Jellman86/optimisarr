@@ -601,7 +601,7 @@ internal sealed class BlindCalibrationService(
             library.RuleProfile = session.RecommendedSetting.VideoProfile!.Value;
             var preset = RuleProfileDefaults.For(library.RuleProfile);
             library.TargetVideoCodec = null;
-            library.TargetContainer = null;
+            library.TargetContainer = OutputContainer.AfterPresetChange(library.TargetContainer);
             library.HdrHandling = preset.Hdr;
             library.VideoAudioCodec = preset.VideoAudioCodec ?? "copy";
             library.VideoAudioBitrateKbps = preset.VideoAudioBitrateKbps;
