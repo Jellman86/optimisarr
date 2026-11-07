@@ -282,7 +282,9 @@ export function newLibraryDefaults(): SaveLibrary {
     reencodeSameCodecAboveBytes: null,
     skipEfficientSources: true,
     targetVideoCodec: null,
-    targetContainer: null,
+    // A new library keeps each file's container, so its name and path stay the same and Sonarr and
+    // Radarr keep tracking it. Existing libraries keep what they have.
+    targetContainer: 'source',
     hdrHandling: null,
     optimiseDolbyVision: false,
     deinterlaceVideo: false,

@@ -104,11 +104,12 @@ public static class TranscodeSpecResolver
         // A null target container means "keep the source container" (the track-cleanup
         // promise). Every kept stream already lives in that container, so the MP4
         // image-subtitle / incompatible-audio fallback does not apply.
-        var container = rules.TargetContainer is null
+        var target = OutputContainer.For(rules.TargetContainer, relativePath);
+        var container = target is null
             ? Path.GetExtension(relativePath).TrimStart('.')
-            : (sourceHasImageSubtitles || audioForcesMkv) && IsMp4Container(rules.TargetContainer)
+            : (sourceHasImageSubtitles || audioForcesMkv) && IsMp4Container(target)
                 ? "mkv"
-                : rules.TargetContainer;
+                : target;
         var outputPath = BuildOutputPath(workRoot, relativePath, container);
 
         // Tone-map only when re-encoding an HDR source under a library that asks for it.

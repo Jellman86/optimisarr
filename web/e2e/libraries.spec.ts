@@ -1142,3 +1142,13 @@ test('a library can choose to deinterlace, and is off until it does', async ({ p
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ deinterlaceVideo: true })
 })
+
+test('a new library keeps each file container, and an existing one keeps its preset', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/new/encode/video/advanced')
+  await expect(page.locator('#lib-container')).toHaveValue('source')
+  await expect(page.getByText('Same as source (keeps file names)')).toBeAttached()
+
+  await page.goto('/#/libraries/1/configure/encode/video/advanced')
+  await expect(page.locator('#lib-container')).not.toHaveValue('source')
+})
