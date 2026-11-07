@@ -168,7 +168,7 @@ public sealed class RealEsrganEngineTests
     {
         var path = Path.Combine(dir.Path, name);
         File.WriteAllText(path, TestPython.Shebang + body);
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         return path;
     }
 
