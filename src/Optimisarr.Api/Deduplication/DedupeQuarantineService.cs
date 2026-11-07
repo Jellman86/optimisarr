@@ -34,7 +34,7 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
     /// <param name="afterMove">Runs after each move, so tests can stop the action at that boundary.</param>
     /// <param name="beforeIntent">Runs just before intent is recorded, so tests can race cancellation.</param>
     public async Task<DedupeActionResult> QuarantineAsync(Guid id, CancellationToken token,
-        TimeSpan? changeSettle = null, Action<DedupeFileSnapshot>? afterMove = null, Func<Task>? beforeIntent = null, ArrTracking? tracking = null)
+        TimeSpan? changeSettle = null, Action<DedupeFileSnapshot>? afterMove = null, Func<Task>? beforeIntent = null)
     {
         var loaded = await LoadAsync(id, token);
         if (loaded is not { } action) return DedupeActionResult.NotFound;
@@ -52,7 +52,7 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         var observations = new List<DedupeFileObservation>();
         foreach (var file in action.Plan.Files)
             observations.Add(await DedupeFileObserver.ObserveAsync(file, token, changeSettle));
-        var issues = DedupeActionPreflight.Evaluate(action.Plan, observations, await ContextAsync(action.Plan, tracking, token)).Issues.ToList();
+        var issues = DedupeActionPreflight.Evaluate(action.Plan, observations, await ContextAsync(action.Plan, token)).Issues.ToList();
         var copies = action.Plan.Files.Where(f => !f.IsKeeper).ToArray();
         // Equal volume identifiers cannot prove a rename will work across bind mounts, so try one.
         if (issues.Count == 0)
@@ -260,7 +260,7 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         return new(action.State, plan);
     }
 
-    private async Task<DedupeActionContext> ContextAsync(DedupePreparation plan, ArrTracking? tracking, CancellationToken token)
+    private async Task<DedupeActionContext> ContextAsync(DedupePreparation plan, CancellationToken token)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -268,10 +268,20 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         var busy = await db.Jobs.AsNoTracking().Where(j => ids.Contains(j.MediaFileId)
                 && j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled && j.Status != JobStatus.Failed)
             .Select(j => j.MediaFileId).ToListAsync(token);
-        // A media manager tracks files by path and would report a moved copy missing, so a caller
-        // working through many groups can pass one recent answer, and anyone else asks now.
-        tracking ??= await scope.ServiceProvider.GetRequiredService<ArrTrackedFilesService>().GetAsync(token);
-        return new(tracking.Complete, tracking.TrackedBy.Keys.ToHashSet(), tracking.PossiblyTrackedBy.Keys.ToHashSet(),
+        // A media manager tracks files by path and would report a moved copy missing. Asked now, after
+        // the full reads, because a manager can pick a file up while those take minutes.
+        var tracking = await scope.ServiceProvider.GetRequiredService<ArrTrackedFilesService>().GetAsync(token);
+        // One file can have several inventory paths. The manager may track any of them, and the plan
+        // only names one, so what it tracks counts for the physical file.
+        var identities = plan.Files.Select(f => f.Identity).ToArray();
+        var aliases = (await db.ExactDuplicateObservations.AsNoTracking()
+                .Where(o => o.Identity != null && identities.Contains(o.Identity))
+                .Select(o => new { o.MediaFileId, o.Identity }).Distinct().ToListAsync(token))
+            .ToLookup(o => o.Identity!, o => o.MediaFileId);
+        IReadOnlySet<int> Physical(IReadOnlyDictionary<int, IReadOnlyList<string>> byInventoryId) => plan.Files
+            .Where(f => byInventoryId.ContainsKey(f.MediaFileId) || aliases[f.Identity].Any(byInventoryId.ContainsKey))
+            .Select(f => f.MediaFileId).ToHashSet();
+        return new(tracking.Complete, Physical(tracking.TrackedBy), Physical(tracking.PossiblyTrackedBy),
             !OperatingSystem.IsWindows(), busy.ToHashSet());
     }
 

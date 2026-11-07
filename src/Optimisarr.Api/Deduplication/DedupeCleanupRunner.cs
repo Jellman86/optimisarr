@@ -26,7 +26,8 @@ public enum DedupeCleanupStart { Started, AlreadyRunning, NotReady, NothingToDo 
 /// Moves the spare copies a report found into quarantine, one group at a time, in the background:
 /// each move reads the files in full first, which takes a while on large films. Every move goes
 /// through the journal and the last-moment preflight, so this decides nothing a person could not.
-/// One run at a time. A restart stops it, and the journal settles whichever move was under way.
+/// One run at a time. A restart stops it, and the journal settles whichever move was under way. The
+/// plan is decided at the start, and the managers are asked again just before each group moves.
 /// </summary>
 public sealed class DedupeCleanupRunner(
     IServiceScopeFactory scopes,
@@ -37,8 +38,6 @@ public sealed class DedupeCleanupRunner(
     ILogger<DedupeCleanupRunner> logger,
     TimeSpan? changeSettle = null)
 {
-    private static readonly TimeSpan TrackingLifetime = TimeSpan.FromMinutes(5);
-
     private readonly Lock _lock = new();
     private DedupeCleanupStatus? _status;
     private CancellationTokenSource? _cancel;
@@ -82,8 +81,7 @@ public sealed class DedupeCleanupRunner(
         }
         var inputs = await store.ReadCleanupGroupsAsync(libraryId, token);
         if (inputs is null) return DedupeCleanupStart.NotReady;
-        var tracking = await TrackingAsync(token);
-        var work = Decide(inputs, tracking).Where(item => item.Decision.Refusal is null).ToList();
+        var work = Decide(inputs, await TrackingAsync(token)).Where(item => item.Decision.Refusal is null).ToList();
         if (work.Count == 0) return DedupeCleanupStart.NothingToDo;
 
         lock (_lock)
@@ -93,7 +91,7 @@ public sealed class DedupeCleanupRunner(
             _cancel = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
             _status = new DedupeCleanupStatus(libraryId, true, work.Count, 0, 0, 0, []);
             var cancellation = _cancel.Token;
-            _run = Task.Run(() => RunAsync(libraryId, inputs, work, tracking, cancellation), CancellationToken.None);
+            _run = Task.Run(() => RunAsync(libraryId, inputs, work, cancellation), CancellationToken.None);
         }
         return DedupeCleanupStart.Started;
     }
@@ -109,25 +107,18 @@ public sealed class DedupeCleanupRunner(
     }
 
     private async Task RunAsync(int libraryId, DedupeCleanupGroups inputs,
-        IReadOnlyList<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> work, ArrTracking tracking, CancellationToken token)
+        IReadOnlyList<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> work, CancellationToken token)
     {
         var failures = new List<DedupeCleanupFailure>();
         var done = 0;
         var moved = 0;
         var bytes = 0L;
-        var askedAt = DateTimeOffset.UtcNow;
         try
         {
             foreach (var (group, decision) in work)
             {
                 token.ThrowIfCancellationRequested();
-                if (DateTimeOffset.UtcNow - askedAt > TrackingLifetime)
-                {
-                    tracking = await TrackingAsync(token);
-                    askedAt = DateTimeOffset.UtcNow;
-                }
-
-                var failure = await CleanGroupAsync(libraryId, inputs, group, decision, tracking, token);
+                var failure = await CleanGroupAsync(libraryId, inputs, group, decision, token);
                 if (failure is null)
                 {
                     moved += decision.SpareIds.Count;
@@ -154,7 +145,7 @@ public sealed class DedupeCleanupRunner(
     }
 
     private async Task<DedupeCleanupFailure?> CleanGroupAsync(int libraryId, DedupeCleanupGroups inputs, ExactDuplicateGroup group,
-        DedupeCleanupDecision decision, ArrTracking tracking, CancellationToken token)
+        DedupeCleanupDecision decision, CancellationToken token)
     {
         var first = group.Copies[0].AbsolutePath ?? group.Copies[0].RelativePath;
         var plan = BuildPlan(libraryId, inputs, group, decision);
@@ -162,9 +153,18 @@ public sealed class DedupeCleanupRunner(
         if (await journal.TryPrepareAsync(plan, token) != DedupePreparationResult.Created)
             return new DedupeCleanupFailure(first, "Another operation is using these files, or they changed since the scan.");
 
-        var result = await quarantine.QuarantineAsync(plan.Id, token, changeSettle, tracking: tracking);
+        DedupeActionResult result;
+        try
+        {
+            result = await quarantine.QuarantineAsync(plan.Id, token, changeSettle);
+        }
+        finally
+        {
+            // However this ended, an action that never started moving must not keep holding its files.
+            // Only a still-prepared action can be cancelled, so this cannot disturb a move.
+            await journal.CancelPreparedAsync(plan.Id, CancellationToken.None);
+        }
         if (result.Outcome == DedupeActionOutcome.Completed) return null;
-        if (result.Outcome == DedupeActionOutcome.Refused) await journal.CancelPreparedAsync(plan.Id, CancellationToken.None);
         var issues = result.Issues.Select(issue => issue.Refusal.ToString()).Distinct();
         return new DedupeCleanupFailure(first, string.Join(" ", new[] { result.Reason }.Concat(issues).OfType<string>()));
     }
@@ -187,7 +187,7 @@ public sealed class DedupeCleanupRunner(
     private static List<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> Decide(DedupeCleanupGroups inputs, ArrTracking tracking) =>
         inputs.Groups.Select(group =>
         {
-            var copies = group.Copies.Select(copy => new DedupeCopy(copy.Id, copy.RelativePath, copy.LibraryType, copy.HardLinkCount,
+            var copies = group.Copies.Select(copy => new DedupeCopy(copy.Id, copy.LibraryId, copy.RelativePath, copy.LibraryType, copy.HardLinkCount,
                 tracking.TrackedBy.ContainsKey(copy.Id) || (copy.Aliases?.Any(alias => tracking.TrackedBy.ContainsKey(alias.Id)) ?? false),
                 tracking.PossiblyTrackedBy.ContainsKey(copy.Id) || (copy.Aliases?.Any(alias => tracking.PossiblyTrackedBy.ContainsKey(alias.Id)) ?? false)))
                 .ToList();

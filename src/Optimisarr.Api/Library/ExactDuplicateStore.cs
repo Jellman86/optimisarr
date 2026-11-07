@@ -185,6 +185,8 @@ public sealed class ExactDuplicateStore(IServiceScopeFactory scopes)
             var decision = decisions.SingleOrDefault(d => d.ReviewKey == g.ReviewKey && d.Sha256 == g.Sha256 && d.SizeBytes == g.SizeBytes);
             return g with { Decision = decision is null ? null : new(decision.Choice, JsonSerializer.Deserialize<int[]>(decision.KeepIds) ?? [], decision.SavedAt) };
         }).Where(g => g.ReviewKey is not null && g.Copies.Count <= 100).ToArray();
+        var members = groups.SelectMany(g => g.Copies.SelectMany(c => new[] { c.Id }.Concat(c.Aliases?.Select(a => a.Id) ?? []))).ToHashSet();
+        if (rows.Where(r => members.Contains(r.MediaFileId)).Any(r => !Matches(r))) return null;
         return new DedupeCleanupGroups(scopeKey, groups, rows.GroupBy(r => r.MediaFileId).ToDictionary(g => g.Key, g => g.First()));
     }
 

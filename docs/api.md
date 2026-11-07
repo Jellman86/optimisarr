@@ -358,7 +358,7 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `GET` | `/api/libraries/{id}/duplicates/cleanup/preview` | What a cleanup would do now: groups and copies that can move, the space they hold, and why others are left alone. Asks Sonarr and Radarr what they track. |
 | `GET` | `/api/libraries/{id}/duplicates/cleanup` | Where a cleanup stands. |
 | `POST` | `/api/libraries/{id}/duplicates/cleanup` | Starts moving spare copies into quarantine, one group at a time. 409 when a report is out of date, nothing can move, or one is running. |
-| `DELETE` | `/api/libraries/{id}/duplicates/cleanup` | Stops a cleanup after the group under way. |
+| `DELETE` | `/api/libraries/{id}/duplicates/cleanup` | Stops a cleanup. A group already moving is undone. |
 
 Create and update library bodies use the same shape. Common fields:
 
