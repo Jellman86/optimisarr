@@ -1086,11 +1086,13 @@ export type ArrConnection = {
 }
 
 export type ArrTracking = {
+  id: number
   name: string
   reachable: boolean
   trackedFiles: number
   foundInLibraries: number
-  ambiguous: number
+  unclear: number
+  notFound: number
 }
 
 export type SaveArrConnection = {

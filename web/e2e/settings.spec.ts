@@ -892,14 +892,15 @@ test('the managers can be asked which files they track, and one that cannot answ
     { id: 1, name: 'Radarr', type: 'Radarr', baseUrl: 'http://radarr:7878', hasApiKey: true, enabled: true, createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z' },
   ]))
   await page.route('**/api/arr-connections/tracking', route => json(route, [
-    { name: 'Radarr', reachable: true, trackedFiles: 412, foundInLibraries: 410, ambiguous: 0 },
-    { name: 'Sonarr', reachable: false, trackedFiles: 0, foundInLibraries: 0, ambiguous: 0 },
+    { id: 1, name: 'Radarr', reachable: true, trackedFiles: 412, foundInLibraries: 410, unclear: 3, notFound: 2 },
+    { id: 2, name: 'Sonarr', reachable: false, trackedFiles: 0, foundInLibraries: 0, unclear: 0, notFound: 0 },
+    { id: 3, name: 'Sonarr', reachable: true, trackedFiles: 5, foundInLibraries: 5, unclear: 0, notFound: 0 },
   ]))
   await page.goto('/#/settings/download-managers')
 
   await page.getByRole('button', { name: 'Check tracked files' }).click()
 
   const results = page.getByTestId('arr-tracking')
-  await expect(results).toContainText('Radarr tracks 412 files, and 410 match files in your libraries.')
+  await expect(results).toContainText('Radarr tracks 412 files: 410 matched in your libraries, 3 possible matches, 2 not found.')
   await expect(results).toContainText('Sonarr could not be asked.')
 })

@@ -44,8 +44,11 @@ public sealed class ArrTrackedFilesServiceTests : IDisposable
     private static ArrConnection Radarr() => new() { Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = "http://radarr:7878/", ApiKey = "secret" };
     private static ArrConnection Sonarr() => new() { Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989", ApiKey = "secret" };
 
-    private ArrTrackedFilesService Service(Handler handler) =>
-        new(new OptimisarrDbContext(_options), new Factory(handler), NullLogger<ArrTrackedFilesService>.Instance);
+    private ArrTrackedFilesService Service(Handler handler, TimeSpan? overall = null) =>
+        new(new OptimisarrDbContext(_options), new Factory(handler), NullLogger<ArrTrackedFilesService>.Instance, overall);
+
+    private const string RadarrStatus = """{ "appName": "Radarr", "version": "5.0" }""";
+    private const string SonarrStatus = """{ "appName": "Sonarr", "version": "4.0" }""";
 
     [Fact]
     public async Task Both_managers_are_asked_and_each_file_is_attributed()
@@ -53,9 +56,11 @@ public sealed class ArrTrackedFilesServiceTests : IDisposable
         var (film, episode, spare) = await SeedAsync(Radarr(), Sonarr());
         var handler = new Handler(new()
         {
-            ["http://radarr:7878/api/v3/movie"] = """[{ "movieFile": { "path": "/movies/A (2020)/A (2020).mkv" } }]""",
+            ["http://radarr:7878/api/v3/system/status"] = RadarrStatus,
+            ["http://radarr:7878/api/v3/movie"] = """[{ "id": 1, "movieFile": { "path": "/movies/A (2020)/A (2020).mkv" } }]""",
+            ["http://sonarr:8989/api/v3/system/status"] = SonarrStatus,
             ["http://sonarr:8989/api/v3/series"] = """[{ "id": 4 }]""",
-            ["http://sonarr:8989/api/v3/episodefile?seriesId=4"] = """[{ "path": "/tv/S/Season 1/S E1.mkv" }]""",
+            ["http://sonarr:8989/api/v3/episodefile?seriesId=4"] = """[{ "id": 1, "path": "/tv/S/Season 1/S E1.mkv" }]""",
         });
 
         var tracking = await Service(handler).GetAsync(CancellationToken.None);
@@ -76,7 +81,11 @@ public sealed class ArrTrackedFilesServiceTests : IDisposable
     {
         await SeedAsync(Radarr());
 
-        var tracking = await Service(new Handler(new() { ["http://radarr:7878/api/v3/movie"] = body }, status)).GetAsync(CancellationToken.None);
+        var tracking = await Service(new Handler(new()
+        {
+            ["http://radarr:7878/api/v3/system/status"] = RadarrStatus,
+            ["http://radarr:7878/api/v3/movie"] = body,
+        }, movieStatus: status)).GetAsync(CancellationToken.None);
 
         Assert.False(tracking.Complete);
         Assert.False(Assert.Single(tracking.Connections).Reachable);
@@ -88,11 +97,73 @@ public sealed class ArrTrackedFilesServiceTests : IDisposable
         await SeedAsync(Sonarr());
         var handler = new Handler(new()
         {
+            ["http://sonarr:8989/api/v3/system/status"] = SonarrStatus,
             ["http://sonarr:8989/api/v3/series"] = """[{ "id": 4 }, { "id": 5 }]""",
-            ["http://sonarr:8989/api/v3/episodefile?seriesId=4"] = """[{ "path": "/tv/S/Season 1/S E1.mkv" }]""",
+            ["http://sonarr:8989/api/v3/episodefile?seriesId=4"] = """[{ "id": 1, "path": "/tv/S/Season 1/S E1.mkv" }]""",
         });
 
         Assert.False((await Service(handler).GetAsync(CancellationToken.None)).Complete);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("""{ "appName": "Sonarr", "version": "4.0" }""")]
+    [InlineData("<html>a proxy login page</html>")]
+    public async Task An_empty_list_from_something_that_is_not_this_manager_is_not_believed(string status)
+    {
+        await SeedAsync(Radarr());
+        var handler = new Handler(new()
+        {
+            ["http://radarr:7878/api/v3/system/status"] = status,
+            ["http://radarr:7878/api/v3/movie"] = "[]",
+        });
+
+        Assert.False((await Service(handler).GetAsync(CancellationToken.None)).Complete);
+    }
+
+    [Fact]
+    public async Task A_manager_that_really_tracks_nothing_is_a_complete_answer()
+    {
+        await SeedAsync(Radarr());
+        var handler = new Handler(new()
+        {
+            ["http://radarr:7878/api/v3/system/status"] = RadarrStatus,
+            ["http://radarr:7878/api/v3/movie"] = "[]",
+        });
+
+        var tracking = await Service(handler).GetAsync(CancellationToken.None);
+
+        Assert.True(tracking.Complete);
+        Assert.Empty(tracking.TrackedBy);
+    }
+
+    [Fact]
+    public async Task A_slow_manager_runs_out_of_time_and_leaves_the_result_incomplete()
+    {
+        await SeedAsync(Sonarr());
+        var handler = new Handler(new()
+        {
+            ["http://sonarr:8989/api/v3/system/status"] = SonarrStatus,
+            ["http://sonarr:8989/api/v3/series"] = """[{ "id": 4 }]""",
+            ["http://sonarr:8989/api/v3/episodefile?seriesId=4"] = "[]",
+        }, delayFor: "episodefile");
+
+        var tracking = await Service(handler, TimeSpan.FromMilliseconds(200)).GetAsync(CancellationToken.None);
+
+        Assert.False(tracking.Complete);
+    }
+
+    [Fact]
+    public async Task Connections_with_the_same_name_are_told_apart_by_id()
+    {
+        var first = Radarr();
+        var second = Radarr();
+        second.BaseUrl = "http://radarr4k:7878";
+        await SeedAsync(first, second);
+
+        var tracking = await Service(new Handler([])).GetAsync(CancellationToken.None);
+
+        Assert.Equal(2, tracking.Connections.Select(connection => connection.Id).Distinct().Count());
     }
 
     [Fact]
@@ -109,16 +180,19 @@ public sealed class ArrTrackedFilesServiceTests : IDisposable
         Assert.True(tracking.Complete);
     }
 
-    private sealed class Handler(Dictionary<string, string> answers, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler
+    private sealed class Handler(Dictionary<string, string> answers, HttpStatusCode movieStatus = HttpStatusCode.OK, string? delayFor = null) : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Requests.Add(request);
-            return Task.FromResult(answers.TryGetValue(request.RequestUri!.ToString(), out var body)
+            var url = request.RequestUri!.ToString();
+            lock (Requests) Requests.Add(request);
+            if (delayFor is not null && url.Contains(delayFor, StringComparison.Ordinal)) await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken);
+            var status = url.EndsWith("/movie", StringComparison.Ordinal) ? movieStatus : HttpStatusCode.OK;
+            return answers.TryGetValue(url, out var body)
                 ? new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") }
-                : new HttpResponseMessage(HttpStatusCode.NotFound));
+                : new HttpResponseMessage(HttpStatusCode.NotFound);
         }
     }
 

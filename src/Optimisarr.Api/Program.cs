@@ -127,7 +127,12 @@ builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordi
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
-builder.Services.AddScoped<ArrTrackedFilesService>();
+builder.Services.AddHttpClient(ArrTrackedFilesService.ClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<ArrTrackedFilesService>(services => new ArrTrackedFilesService(
+    services.GetRequiredService<OptimisarrDbContext>(),
+    services.GetRequiredService<IHttpClientFactory>(),
+    services.GetRequiredService<ILogger<ArrTrackedFilesService>>()));
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<PreviewService>();
 builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();

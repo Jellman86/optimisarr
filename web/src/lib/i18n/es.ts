@@ -1409,7 +1409,7 @@ true_peak_tip:
     arr_enabled_hint: 'Consulta este gestor para importaciones en curso antes de poner en cola.',
     arr_tracking_check: "Comprobar archivos seguidos",
     arr_tracking_checking: "Comprobando…",
-    arr_tracking_result: "{name} sigue {tracked} archivos, y {found} coinciden con archivos de tus bibliotecas.",
+    arr_tracking_result: "{name} sigue {tracked} archivos: {found} coinciden en tus bibliotecas, {unclear} posibles coincidencias, {notFound} no encontrados.",
     arr_tracking_unreachable: "No se pudo consultar a {name}. Comprueba su dirección y clave de API.",
     arr_tracking_hint: "Solo lectura. Nada cambia en Sonarr ni Radarr.",
     add_download_manager_btn: 'Añadir gestor de descargas',

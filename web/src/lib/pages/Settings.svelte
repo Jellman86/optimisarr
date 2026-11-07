@@ -1530,10 +1530,10 @@ let settings = $state<Settings>({
           <p class="mt-1 text-xs text-ink-4">{i18n.m.settings.arr_tracking_hint}</p>
           {#if arrTracking}
             <ul class="mt-2 space-y-1 text-sm" data-testid="arr-tracking" role="status">
-              {#each arrTracking as result (result.name)}
+              {#each arrTracking as result (result.id)}
                 <li class={result.reachable ? 'text-ink-2' : 'text-bad'}>
                   {result.reachable
-                    ? tr(i18n.m.settings.arr_tracking_result, { name: result.name, tracked: result.trackedFiles, found: result.foundInLibraries })
+                    ? tr(i18n.m.settings.arr_tracking_result, { name: result.name, tracked: result.trackedFiles, found: result.foundInLibraries, unclear: result.unclear, notFound: result.notFound })
                     : tr(i18n.m.settings.arr_tracking_unreachable, { name: result.name })}
                 </li>
               {/each}

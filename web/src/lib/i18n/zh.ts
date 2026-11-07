@@ -1365,7 +1365,7 @@ export const zh: Messages = {
     arr_enabled_hint: "在排队之前查询此管理器是否有正在进行的导入。",
     arr_tracking_check: "检查已跟踪的文件",
     arr_tracking_checking: "正在检查…",
-    arr_tracking_result: "{name} 跟踪 {tracked} 个文件，其中 {found} 个与媒体库中的文件匹配。",
+    arr_tracking_result: "{name} 跟踪 {tracked} 个文件：媒体库中匹配 {found} 个，可能匹配 {unclear} 个，未找到 {notFound} 个。",
     arr_tracking_unreachable: "无法查询 {name}。请检查其地址和 API 密钥。",
     arr_tracking_hint: "只读取。不会更改 Sonarr 或 Radarr 中的任何内容。",
     add_download_manager_btn: "添加下载管理器",
