@@ -29,6 +29,10 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
         services.AddSingleton<FileOperationClaims>();
         services.AddSingleton<DedupeJournalStore>();
         services.AddSingleton<DedupeQuarantineService>();
+        services.AddHttpClient();
+        services.AddScoped<Optimisarr.Api.Library.ArrTrackedFilesService>(provider => new Optimisarr.Api.Library.ArrTrackedFilesService(
+            provider.GetRequiredService<OptimisarrDbContext>(), provider.GetRequiredService<IHttpClientFactory>(),
+            provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Optimisarr.Api.Library.ArrTrackedFilesService>>()));
         _services = services.BuildServiceProvider();
         await InDb(db => db.Database.MigrateAsync());
         foreach (var path in new[] { Keeper, CopyA, CopyB })
@@ -147,18 +151,18 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
     }
 
     [PosixFact]
-    public async Task An_enabled_media_manager_refuses_the_action()
+    public async Task A_media_manager_that_cannot_be_asked_refuses_the_action()
     {
         var plan = await PreparedAsync();
         await InDb(async db =>
         {
-            db.ArrConnections.Add(new ArrConnection { Name = "Radarr", BaseUrl = "http://radarr", Enabled = true });
+            db.ArrConnections.Add(new ArrConnection { Name = "Radarr", BaseUrl = "http://localhost:9", Enabled = true });
             await db.SaveChangesAsync();
         });
 
         var result = await Quarantine(plan);
 
-        Assert.Contains(new DedupePreflightIssue(null, DedupePreflightRefusal.ManagerConnected), result.Issues);
+        Assert.Contains(new DedupePreflightIssue(null, DedupePreflightRefusal.ManagerUnavailable), result.Issues);
         AssertAllInPlace();
     }
 

@@ -42,7 +42,7 @@ public sealed class DedupeFileObserverTests : IDisposable
             Snapshot(2, Copy, Quarantine) with { Identity = copy.Identity! },
         ]);
 
-        var result = DedupeActionPreflight.Evaluate(plan, [keeper, copy], new(false, true, new HashSet<int>()));
+        var result = DedupeActionPreflight.Evaluate(plan, [keeper, copy], new(true, new HashSet<int>(), new HashSet<int>(), true, new HashSet<int>()));
 
         Assert.Empty(result.Issues);
         Assert.Equal(Hash, copy.FreshSha256);

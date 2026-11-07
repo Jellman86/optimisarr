@@ -18,7 +18,7 @@ public sealed class DedupeActionPreflightTests
             "dev1:200", 4096, 638_000_000_000_000_000, Hash, false),
     ]);
 
-    private static readonly DedupeActionContext Ready = new(ManagerConnected: false, StorageQualified: true, BusyMediaFileIds: new HashSet<int>());
+    private static readonly DedupeActionContext Ready = new(ManagersAnswered: true, new HashSet<int>(), new HashSet<int>(), StorageQualified: true, BusyMediaFileIds: new HashSet<int>());
 
     private static DedupeFileObservation Observed(int id) => new(id, Exists: true, IsLink: false, HardLinkCount: 1,
         Identity: id == Keeper ? "dev1:100" : "dev1:200", SizeBytes: 4096, ModifiedUtcTicks: 638_000_000_000_000_000,
@@ -79,8 +79,32 @@ public sealed class DedupeActionPreflightTests
         AssertRefused(Evaluate(keeper: Observed(Keeper) with { IsIndependentFile = false }), Keeper, DedupePreflightRefusal.NotIndependent);
 
     [Fact]
-    public void A_library_connected_to_a_media_manager_never_moves_files() =>
-        AssertRefused(Evaluate(context: Ready with { ManagerConnected = true }), null, DedupePreflightRefusal.ManagerConnected);
+    public void A_manager_that_could_not_answer_moves_nothing() =>
+        AssertRefused(Evaluate(context: Ready with { ManagersAnswered = false }), null, DedupePreflightRefusal.ManagerUnavailable);
+
+    [Fact]
+    public void A_copy_a_manager_tracks_never_moves() =>
+        AssertRefused(Evaluate(context: Ready with { TrackedMediaFileIds = new HashSet<int> { Copy } }), Copy, DedupePreflightRefusal.TrackedByManager);
+
+    [Fact]
+    public void A_tracked_keeper_lets_a_copy_with_only_its_name_move() =>
+        Assert.True(Evaluate(context: Ready with
+        {
+            TrackedMediaFileIds = new HashSet<int> { Keeper },
+            PossiblyTrackedMediaFileIds = new HashSet<int> { Copy },
+        }).Allowed);
+
+    [Fact]
+    public void A_copy_that_might_be_tracked_stays_without_a_tracked_keeper() =>
+        AssertRefused(Evaluate(context: Ready with { PossiblyTrackedMediaFileIds = new HashSet<int> { Copy } }), Copy, DedupePreflightRefusal.PossiblyTrackedByManager);
+
+    [Fact]
+    public void A_hard_linked_keeper_can_stay_while_its_copy_moves() =>
+        Assert.True(Evaluate(keeper: Observed(Keeper) with { HardLinkCount = 3 }).Allowed);
+
+    [Fact]
+    public void A_hard_linked_copy_never_moves() =>
+        AssertRefused(Evaluate(copy: Observed(Copy) with { HardLinkCount = 2 }), Copy, DedupePreflightRefusal.HardLinked);
 
     [Fact]
     public void Unqualified_storage_never_moves_files() =>
@@ -165,10 +189,10 @@ public sealed class DedupeActionPreflightTests
     public void Every_refusal_is_reported_so_the_operator_sees_all_that_must_change()
     {
         var result = Evaluate(keeper: Observed(Keeper) with { FreshSha256 = null },
-            copy: Observed(Copy) with { QuarantineDestinationExists = true }, context: Ready with { ManagerConnected = true });
+            copy: Observed(Copy) with { QuarantineDestinationExists = true }, context: Ready with { ManagersAnswered = false });
         Assert.Equal(
         [
-            new DedupePreflightIssue(null, DedupePreflightRefusal.ManagerConnected),
+            new DedupePreflightIssue(null, DedupePreflightRefusal.ManagerUnavailable),
             new DedupePreflightIssue(Keeper, DedupePreflightRefusal.NotRead),
             new DedupePreflightIssue(Copy, DedupePreflightRefusal.DestinationOccupied),
         ], result.Issues);

@@ -33,15 +33,22 @@ public sealed record DedupeFileObservation(
     string? ChangeStamp = null);
 
 /// <summary>Facts about the library and the server that decide whether any file may move at all.</summary>
+/// <param name="ManagersAnswered">Every enabled Sonarr or Radarr said what it tracks.</param>
+/// <param name="TrackedMediaFileIds">Files a manager clearly tracks; moving one would show as missing.</param>
+/// <param name="PossiblyTrackedMediaFileIds">Files that share a tracked file's name without clearly being it.</param>
 public sealed record DedupeActionContext(
-    bool ManagerConnected,
+    bool ManagersAnswered,
+    IReadOnlySet<int> TrackedMediaFileIds,
+    IReadOnlySet<int> PossiblyTrackedMediaFileIds,
     bool StorageQualified,
     IReadOnlySet<int> BusyMediaFileIds);
 
 public enum DedupePreflightRefusal
 {
     InvalidPlan,
-    ManagerConnected,
+    ManagerUnavailable,
+    TrackedByManager,
+    PossiblyTrackedByManager,
     StorageUnqualified,
     NotObserved,
     Missing,
@@ -83,7 +90,7 @@ public static class DedupeActionPreflight
             return new([new(null, DedupePreflightRefusal.InvalidPlan)]);
 
         var issues = new List<DedupePreflightIssue>();
-        if (context.ManagerConnected) issues.Add(new(null, DedupePreflightRefusal.ManagerConnected));
+        if (!context.ManagersAnswered) issues.Add(new(null, DedupePreflightRefusal.ManagerUnavailable));
         if (!context.StorageQualified) issues.Add(new(null, DedupePreflightRefusal.StorageUnqualified));
 
         var observed = observations.GroupBy(o => o.MediaFileId).ToDictionary(g => g.Key, g => g.ToList());
@@ -105,7 +112,8 @@ public static class DedupeActionPreflight
                 continue;
             }
             if (now.IsLink) Refuse(DedupePreflightRefusal.Link);
-            if (now.HardLinkCount != 1) Refuse(DedupePreflightRefusal.HardLinked);
+            // A keeper stays where it is, so its other names do not matter; a moved copy frees nothing.
+            if (now.HardLinkCount != 1 && (!file.IsKeeper || now.HardLinkCount < 1)) Refuse(DedupePreflightRefusal.HardLinked);
             if (!now.IsIndependentFile) Refuse(DedupePreflightRefusal.NotIndependent);
             if (now.Identity != file.Identity || now.SizeBytes != file.SizeBytes || now.ModifiedUtcTicks != file.ModifiedUtcTicks)
                 Refuse(DedupePreflightRefusal.Changed);
@@ -115,6 +123,10 @@ public static class DedupeActionPreflight
                 Refuse(DedupePreflightRefusal.SamePhysicalFile);
 
             if (file.IsKeeper) continue;
+            if (context.TrackedMediaFileIds.Contains(file.MediaFileId)) Refuse(DedupePreflightRefusal.TrackedByManager);
+            if (context.PossiblyTrackedMediaFileIds.Contains(file.MediaFileId)
+                && !plan.Files.Any(other => other.IsKeeper && context.TrackedMediaFileIds.Contains(other.MediaFileId)))
+                Refuse(DedupePreflightRefusal.PossiblyTrackedByManager);
             if (!now.ParentWritable) Refuse(DedupePreflightRefusal.NotWritable);
             if (now.QuarantineDestinationExists) Refuse(DedupePreflightRefusal.DestinationOccupied);
             if (!now.QuarantinePathSafe) Refuse(DedupePreflightRefusal.UnsafeDestination);
