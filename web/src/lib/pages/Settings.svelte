@@ -15,6 +15,7 @@
     type SaveNotificationTarget,
     type ArrConnection,
     type ArrConnectionType,
+    type ArrTracking,
     type SaveArrConnection,
     type ConnectionTestResult,
     type PlexDiscoveredServer,
@@ -200,6 +201,21 @@
   let editingArrId = $state<number | null>(null)
   let arrDraft = $state<SaveArrConnection>(emptyArr())
   let savingArr = $state(false)
+  let arrTracking = $state<ArrTracking[] | null>(null)
+  let checkingArrTracking = $state(false)
+
+  async function checkArrTracking() {
+    checkingArrTracking = true
+    arrTracking = null
+    arrError = null
+    try {
+      arrTracking = await api.arrTracking()
+    } catch (err) {
+      arrError = err instanceof Error ? err.message : i18n.m.settings.error_load_arrs
+    } finally {
+      checkingArrTracking = false
+    }
+  }
 
   async function loadArrs() {
     try {
@@ -1509,6 +1525,21 @@ let settings = $state<Settings>({
             </li>
           {/each}
         </ul>
+        <div class="mb-4">
+          <button type="button" class="btn btn-ghost min-h-11" onclick={checkArrTracking} disabled={checkingArrTracking}>{checkingArrTracking ? i18n.m.settings.arr_tracking_checking : i18n.m.settings.arr_tracking_check}</button>
+          <p class="mt-1 text-xs text-ink-4">{i18n.m.settings.arr_tracking_hint}</p>
+          {#if arrTracking}
+            <ul class="mt-2 space-y-1 text-sm" data-testid="arr-tracking" role="status">
+              {#each arrTracking as result (result.name)}
+                <li class={result.reachable ? 'text-ink-2' : 'text-bad'}>
+                  {result.reachable
+                    ? tr(i18n.m.settings.arr_tracking_result, { name: result.name, tracked: result.trackedFiles, found: result.foundInLibraries })
+                    : tr(i18n.m.settings.arr_tracking_unreachable, { name: result.name })}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       {:else}
         <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.download_managers_empty}</p>
       {/if}

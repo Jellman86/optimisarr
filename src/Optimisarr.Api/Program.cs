@@ -127,6 +127,7 @@ builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordi
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
+builder.Services.AddScoped<ArrTrackedFilesService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<PreviewService>();
 builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();

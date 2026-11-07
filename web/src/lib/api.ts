@@ -1085,6 +1085,14 @@ export type ArrConnection = {
   updatedAt: string
 }
 
+export type ArrTracking = {
+  name: string
+  reachable: boolean
+  trackedFiles: number
+  foundInLibraries: number
+  ambiguous: number
+}
+
 export type SaveArrConnection = {
   name: string
   type: ArrConnectionType
@@ -1535,6 +1543,7 @@ export const api = {
     request<void>('/api/workers/pairing-code', { method: 'DELETE' }),
 
   arrConnections: () => request<ArrConnection[]>('/api/arr-connections'),
+  arrTracking: () => request<ArrTracking[]>('/api/arr-connections/tracking'),
   createArrConnection: (body: SaveArrConnection) =>
     request<ArrConnection>('/api/arr-connections', { method: 'POST', body: JSON.stringify(body) }),
   updateArrConnection: (id: number, body: SaveArrConnection) =>
