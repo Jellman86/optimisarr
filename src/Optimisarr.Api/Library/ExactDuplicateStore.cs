@@ -7,6 +7,9 @@ using Fingerprint = Optimisarr.Core.Library.ExactFileFingerprint;
 namespace Optimisarr.Api.Library;
 
 /// <summary>One retained snapshot per library, plus reusable completed file reads.</summary>
+/// <summary>Every group of a current report, with what a cleanup needs to plan a move.</summary>
+public sealed record DedupeCleanupGroups(string ScopeKey, IReadOnlyList<ExactDuplicateGroup> Groups, IReadOnlyDictionary<int, ExactDuplicateObservation> Rows);
+
 public sealed class ExactDuplicateStore(IServiceScopeFactory scopes)
 {
     public const int PageSize = 20;
@@ -162,6 +165,29 @@ public sealed class ExactDuplicateStore(IServiceScopeFactory scopes)
         }
         return new(libraryId, scan.State.ToString(), scan.StartedAt, scan.FinishedAt,
             new(scan.Checked, scan.Skipped, scan.Total, scan.BytesRead, scan.Reused), result, scan.Error, stale, selected);
+    }
+
+    /// <summary>The whole report, or null when there is none or it no longer matches the disk.</summary>
+    public async Task<DedupeCleanupGroups?> ReadCleanupGroupsAsync(int libraryId, CancellationToken token)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var scan = await db.ExactDuplicateScans.AsNoTracking().SingleOrDefaultAsync(s => s.LibraryId == libraryId, token);
+        if (scan is null || scan.State != ExactDuplicateScanState.Completed) return null;
+        var selected = await ScopeAsync(db, scan.Id, token);
+        if (await StaleAsync(db, scan, selected, token)) return null;
+        var rows = await db.ExactDuplicateObservations.AsNoTracking().Where(f => f.ScanId == scan.Id).ToListAsync(token);
+        var scopeKey = ExactDuplicateReview.ScopeSignature(selected.Select(l => new ExactReviewScope(l.Id, l.Root)));
+        var decisions = await db.ExactDuplicateReviewDecisions.AsNoTracking()
+            .Where(d => d.LibraryId == libraryId && d.ScopeKey == scopeKey).ToListAsync(token);
+        var groups = Groups(rows, selected).Select(g =>
+        {
+            var decision = decisions.SingleOrDefault(d => d.ReviewKey == g.ReviewKey && d.Sha256 == g.Sha256 && d.SizeBytes == g.SizeBytes);
+            return g with { Decision = decision is null ? null : new(decision.Choice, JsonSerializer.Deserialize<int[]>(decision.KeepIds) ?? [], decision.SavedAt) };
+        }).Where(g => g.ReviewKey is not null && g.Copies.Count <= 100).ToArray();
+        var members = groups.SelectMany(g => g.Copies.SelectMany(c => new[] { c.Id }.Concat(c.Aliases?.Select(a => a.Id) ?? []))).ToHashSet();
+        if (rows.Where(r => members.Contains(r.MediaFileId)).Any(r => !Matches(r))) return null;
+        return new DedupeCleanupGroups(scopeKey, groups, rows.GroupBy(r => r.MediaFileId).ToDictionary(g => g.Key, g => g.First()));
     }
 
     public async Task<bool> DecideAsync(int libraryId, string reviewKey, string choice, IReadOnlyList<int> keepIds, CancellationToken token)

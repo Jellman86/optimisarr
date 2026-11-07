@@ -268,10 +268,21 @@ public sealed class DedupeQuarantineService(IServiceScopeFactory scopes, FileOpe
         var busy = await db.Jobs.AsNoTracking().Where(j => ids.Contains(j.MediaFileId)
                 && j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled && j.Status != JobStatus.Failed)
             .Select(j => j.MediaFileId).ToListAsync(token);
-        // A media manager tracks files by path and would re-import or mark a moved copy missing.
-        // Connections are not scoped to a library, so any enabled one refuses for now.
-        var managed = await db.ArrConnections.AsNoTracking().AnyAsync(c => c.Enabled, token);
-        return new(managed, !OperatingSystem.IsWindows(), busy.ToHashSet());
+        // A media manager tracks files by path and would report a moved copy missing. Asked now, after
+        // the full reads, because a manager can pick a file up while those take minutes.
+        var tracking = await scope.ServiceProvider.GetRequiredService<ArrTrackedFilesService>().GetAsync(token);
+        // One file can have several inventory paths. The manager may track any of them, and the plan
+        // only names one, so what it tracks counts for the physical file.
+        var identities = plan.Files.Select(f => f.Identity).ToArray();
+        var aliases = (await db.ExactDuplicateObservations.AsNoTracking()
+                .Where(o => o.Identity != null && identities.Contains(o.Identity))
+                .Select(o => new { o.MediaFileId, o.Identity }).Distinct().ToListAsync(token))
+            .ToLookup(o => o.Identity!, o => o.MediaFileId);
+        IReadOnlySet<int> Physical(IReadOnlyDictionary<int, IReadOnlyList<string>> byInventoryId) => plan.Files
+            .Where(f => byInventoryId.ContainsKey(f.MediaFileId) || aliases[f.Identity].Any(byInventoryId.ContainsKey))
+            .Select(f => f.MediaFileId).ToHashSet();
+        return new(tracking.Complete, Physical(tracking.TrackedBy), Physical(tracking.PossiblyTrackedBy),
+            !OperatingSystem.IsWindows(), busy.ToHashSet());
     }
 
     // Conditional on the state stored now, so a concurrent change is noticed rather than overwritten.

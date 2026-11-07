@@ -119,6 +119,13 @@ builder.Services.AddSingleton<Optimisarr.Api.Deduplication.FileOperationClaims>(
 builder.Services.AddSingleton<IFileReservationKeys>(sp => sp.GetRequiredService<Optimisarr.Api.Deduplication.FileOperationClaims>());
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeJournalStore>();
 builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeQuarantineService>();
+builder.Services.AddSingleton<Optimisarr.Api.Deduplication.DedupeCleanupRunner>(services => new Optimisarr.Api.Deduplication.DedupeCleanupRunner(
+    services.GetRequiredService<IServiceScopeFactory>(),
+    services.GetRequiredService<ExactDuplicateStore>(),
+    services.GetRequiredService<Optimisarr.Api.Deduplication.DedupeJournalStore>(),
+    services.GetRequiredService<Optimisarr.Api.Deduplication.DedupeQuarantineService>(),
+    services.GetRequiredService<IHostApplicationLifetime>(),
+    services.GetRequiredService<ILogger<Optimisarr.Api.Deduplication.DedupeCleanupRunner>>()));
 builder.Services.AddHostedService<Optimisarr.Api.Deduplication.DedupeJournalRecovery>();
 builder.Services.AddSingleton<ExactDuplicateStore>();
 builder.Services.AddSingleton<ExactDuplicateScanner>();

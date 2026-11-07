@@ -355,6 +355,10 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `POST` | `/api/libraries/{id}/duplicates` | Start a read-only, rate-limited scan of same-sized indexed files. No body. Optional repeated `libraryIds=1&libraryIds=2` selects 1–16 unique existing libraries, including `{id}`; omission uses `{id}` only. Optional `forceRefresh=true` rereads every candidate. Returns `202`, `400` for invalid scope, or `409` if busy or over 50,000 total candidates. |
 | `DELETE` | `/api/libraries/{id}/duplicates` | Cancel this library's running scan. Does not delete files or results. Returns `202`, or `409` if the scan has stopped. |
 | `PUT` | `/api/libraries/{id}/duplicates/review` | Save a preference for a complete current group. Body: `reviewKey` (64 characters), `choice` (`Keep`, `Ignore`, `Review`), `keepIds` (distinct physical-copy representative IDs, at most 100). `Keep` requires at least one; `Ignore` and `Review` require an empty array. `Review` clears the preference. Returns `204`; invalid, stale, shortened or mismatched evidence returns `409`, null fields `400`. Never changes media files. |
+| `GET` | `/api/libraries/{id}/duplicates/cleanup/preview` | What a cleanup would do now: groups and copies that can move, the space they hold, and why others are left alone. Asks Sonarr and Radarr what they track. |
+| `GET` | `/api/libraries/{id}/duplicates/cleanup` | Where a cleanup stands. |
+| `POST` | `/api/libraries/{id}/duplicates/cleanup` | Starts moving spare copies into quarantine, one group at a time. 409 when a report is out of date, nothing can move, or one is running. |
+| `DELETE` | `/api/libraries/{id}/duplicates/cleanup` | Stops a cleanup. A group already moving is undone. |
 
 Create and update library bodies use the same shape. Common fields:
 
