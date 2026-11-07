@@ -1863,6 +1863,7 @@ export const zh: Messages = {
     adaptive_quality_progress: "正在选择质量…{percent}%",
     verifying_sample: "验证样品...",
     preview_safety: "这会运行该文件的真实转码；它从未触及原作。",
+    preview_interlaced: "此源为隔行扫描，实际任务不会处理它。此预览显示的是不会实际运行的编码。",
     preview_skipped_audio_quality: "此预览使用了媒体库保存的音频质量。实际任务会先寻找满足音频目标的最小设置。",
     preview_skipped_image_quality: "此预览使用了媒体库保存的图像质量。实际任务会先寻找满足图像目标的最小设置。",
     preview_skipped_soundtrack_bitrates: "此预览保留了媒体库的音轨码率。实际任务会先为每条音轨选择满足上限的最小码率。",

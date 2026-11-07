@@ -366,6 +366,8 @@ internal static class WorkerLeaseEndpoints
                     {
                         skipped++;
                         lastReason = verdict.Reason;
+                        await dispatcher.SkipQueuedJobAsync(job.Id, verdict.Reason, cancellationToken);
+                        db.Entry(job).State = EntityState.Detached;
                         continue;
                     }
 

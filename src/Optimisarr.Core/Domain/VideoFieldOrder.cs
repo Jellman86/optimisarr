@@ -9,7 +9,9 @@ namespace Optimisarr.Core.Domain;
 /// </summary>
 public static class VideoFieldOrder
 {
-    public static bool IsInterlaced(string? fieldOrder) => fieldOrder is "tt" or "bb" or "tb" or "bt";
+    public static readonly string[] InterlacedValues = ["tt", "bb", "tb", "bt"];
+
+    public static bool IsInterlaced(string? fieldOrder) => fieldOrder is not null && InterlacedValues.Contains(fieldOrder);
 
     /// <summary>Why this source is left alone, for the inventory and the queue to show.</summary>
     public static string RefusalFor(string fieldOrder) =>

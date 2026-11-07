@@ -170,6 +170,8 @@ internal sealed class BlindCalibrationService(
                 && file.Status == MediaFileStatus.Probed
                 && (file.MediaKind == MediaKind.Video
                     && !file.IsDolbyVision
+                    // A real job would refuse it, so a comparison would judge an encode never run.
+                    && (file.FieldOrder == null || !VideoFieldOrder.InterlacedValues.Contains(file.FieldOrder))
                     && file.DurationSeconds >= BlindCalibrationPolicy.SampleSeconds * 4
                     || file.MediaKind == MediaKind.Audio
                     && file.DurationSeconds >= BlindCalibrationPolicy.AudioSampleSeconds * 4

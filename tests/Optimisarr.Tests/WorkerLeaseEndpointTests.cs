@@ -120,13 +120,63 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var id = await QueueAJob(fileName: "interlaced tape.mkv");
 
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        using var again = await worker.PostAsJsonAsync("/api/workers/claim", new { });
 
         Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         var job = await db.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id);
         Assert.Equal("tt", job.MediaFile!.FieldOrder);
+        Assert.Equal(JobStatus.Cancelled, job.Status);
+        Assert.Contains("Interlaced", job.ErrorMessage);
         Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Theory]
+    [InlineData(MediaFileStatus.Probed)]
+    [InlineData(MediaFileStatus.Discovered)]
+    [InlineData(MediaFileStatus.ProbeFailed)]
+    public async Task A_known_interlaced_file_never_gets_a_lease_whatever_its_inventory_says(MediaFileStatus status)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Known interlace " + status);
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == id);
+            job.MediaFile!.FieldOrder = "tt";
+            job.MediaFile.Status = status;
+            await db.SaveChangesAsync();
+        }
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        }
+
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(JobStatus.Cancelled, (await result.Jobs.AsNoTracking().SingleAsync(j => j.Id == id)).Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_failed_field_order_probe_does_not_produce_an_assignment()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Failing probe");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "probe-fails.mkv");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+        Assert.Null((await db.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id)).MediaFile!.FieldOrder);
     }
 
     [Theory]

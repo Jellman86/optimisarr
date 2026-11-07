@@ -1413,6 +1413,8 @@ public sealed class AdminTokenAuthEndpointTests
         {
             public Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken)
             {
+                if (Path.GetFileName(path).Contains("probe-fails", StringComparison.Ordinal))
+                    return Task.FromResult(MediaProbeResult.Failure("the fixture's probe failed"));
                 var tenBit = Path.GetFileName(path).Contains("ten-bit", StringComparison.Ordinal);
                 return Task.FromResult(MediaProbeService.Parse($$"""
                     {
