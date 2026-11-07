@@ -1,10 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Activity;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
 
 public sealed record EnqueueResult(int Enqueued, int AlreadyQueued, int Ineligible, int Importing);
+
+public enum FileEnqueueOutcome { Enqueued, AlreadyActive, NotFound, NeedsProbe, Ineligible, Importing }
+
+public sealed record FileEnqueueResult(FileEnqueueOutcome Outcome, int? JobId, string? Reason);
 
 /// <summary>
 /// Creates queued <see cref="Job"/>s from a library's eligible candidates. Idempotent:
@@ -90,6 +95,60 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
         await db.SaveChangesAsync(cancellationToken);
         await write.CommitAsync(cancellationToken);
         return new EnqueueResult(enqueued, eligible.Count - enqueued - importing, ineligible, importing);
+    }
+
+    /// <summary>
+    /// Queues one file the operator chose. Choosing it only overrides "optimise automatically" being
+    /// off: every eligibility rule, exclusion and reservation still applies, and scheduling, playback
+    /// holds and capacity still decide when it runs. A previously failed file is retried from its own
+    /// job, so its attempt history stays together. Evaluated inside the writer reservation so
+    /// concurrent requests cannot both add a job.
+    /// </summary>
+    public async Task<FileEnqueueResult> EnqueueFileAsync(int mediaFileId, CancellationToken cancellationToken)
+    {
+        var activeImports = await arrActivity.GetActiveImportsAsync(cancellationToken);
+        await using var write = await db.BeginDiagnosticWriteAsync(cancellationToken);
+        var file = await db.MediaFiles.AsNoTracking().Include(f => f.Library)
+            .SingleOrDefaultAsync(f => f.Id == mediaFileId, cancellationToken);
+        if (file is null) return new(FileEnqueueOutcome.NotFound, null, null);
+
+        var active = await db.Jobs.AsNoTracking()
+            .Where(job => job.Type == JobType.Normal && job.MediaFileId == mediaFileId && ActiveStatuses.Contains(job.Status))
+            .Select(job => (int?)job.Id).FirstOrDefaultAsync(cancellationToken);
+        if (active is not null) return new(FileEnqueueOutcome.AlreadyActive, active, null);
+
+        if (file.Status != MediaFileStatus.Probed)
+            return new(FileEnqueueOutcome.NeedsProbe, null, "Probe this file before queueing it.");
+        // A stale inventory row is the more useful answer, so it comes before the path check,
+        // which also fails for a file that is simply gone.
+        var info = new FileInfo(file.Path);
+        if (!info.Exists || info.Length != file.SizeBytes || info.LastWriteTimeUtc != file.ModifiedAt.UtcDateTime)
+            return new(FileEnqueueOutcome.NeedsProbe, null, "This file has changed since it was scanned. Scan and probe it again.");
+        if (!LibraryPathSafety.IsSafeFile(file.Path, file.Library?.Path))
+            return new(FileEnqueueOutcome.Ineligible, null, LibraryPathSafety.Refusal);
+
+        var candidate = (await candidates.EvaluateAsync(file.LibraryId, cancellationToken))
+            .FirstOrDefault(c => c.MediaFileId == mediaFileId);
+        if (candidate is not { Eligible: true })
+            return new(FileEnqueueOutcome.Ineligible, null, candidate?.Reason ?? "This file can't be optimised.");
+        if (ArrImportExclusionEvaluator.ExclusionReason(file.Path, activeImports) is { } importing)
+            return new(FileEnqueueOutcome.Importing, null, importing);
+
+        var now = DateTimeOffset.UtcNow;
+        var added = new Job
+        {
+            MediaFileId = mediaFileId,
+            LibraryId = file.LibraryId,
+            Status = JobStatus.Queued,
+            Priority = file.Library?.Priority ?? 0,
+            EnqueueReason = Truncate("Queued manually: " + candidate.Reason),
+            EnqueuedAt = now,
+            UpdatedAt = now,
+        };
+        db.Jobs.Add(added);
+        await db.SaveChangesAsync(cancellationToken);
+        await write.CommitAsync(cancellationToken);
+        return new(FileEnqueueOutcome.Enqueued, added.Id, null);
     }
 
     // The reason column is bounded; an overlong reason keeps its head, which carries
