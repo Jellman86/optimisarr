@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
+using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Library;
 using Optimisarr.Data;
 
@@ -54,5 +55,32 @@ internal static class ExactDuplicateEndpoints
                 ? Results.NoContent() : ApiErrors.Conflict("duplicates.reviewChanged", "This group or its scope changed. Scan again before saving a preference.");
         }).Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status400BadRequest)
             .WithName("SaveExactDuplicateReview");
+
+        // What cleaning this library would do, asking the managers what they track.
+        app.MapGet("/api/libraries/{id:int}/duplicates/cleanup/preview", async (int id, DedupeCleanupRunner cleanup, CancellationToken token) =>
+            Results.Ok(await cleanup.PreviewAsync(id, token)))
+            .Produces<DedupeCleanupPreview>()
+            .WithName("PreviewDuplicateCleanup");
+
+        app.MapGet("/api/libraries/{id:int}/duplicates/cleanup", (int id, DedupeCleanupRunner cleanup) => Results.Ok(cleanup.Status(id)))
+            .Produces<DedupeCleanupStatus>()
+            .WithName("GetDuplicateCleanup");
+
+        // Moves the spare copies into quarantine, where they can be restored.
+        app.MapPost("/api/libraries/{id:int}/duplicates/cleanup", async (int id, DedupeCleanupRunner cleanup, CancellationToken token) =>
+            await cleanup.TryStartAsync(id, token) switch
+            {
+                DedupeCleanupStart.Started => Results.Accepted($"/api/libraries/{id}/duplicates/cleanup", cleanup.Status(id)),
+                DedupeCleanupStart.AlreadyRunning => ApiErrors.Conflict("duplicates.cleanupRunning", "A cleanup is already running."),
+                DedupeCleanupStart.NotReady => ApiErrors.Conflict("duplicates.reportChanged", "This report is missing or out of date. Scan again before cleaning."),
+                _ => ApiErrors.Conflict("duplicates.nothingToClean", "No group here has a copy that can safely move."),
+            })
+            .Produces<DedupeCleanupStatus>(StatusCodes.Status202Accepted).Produces<ApiError>(StatusCodes.Status409Conflict)
+            .WithName("StartDuplicateCleanup");
+
+        app.MapDelete("/api/libraries/{id:int}/duplicates/cleanup", (int id, DedupeCleanupRunner cleanup) =>
+            cleanup.Cancel(id) ? Results.Accepted() : ApiErrors.Conflict("duplicates.cleanupNotRunning", "No cleanup is running here."))
+            .Produces(StatusCodes.Status202Accepted).Produces<ApiError>(StatusCodes.Status409Conflict)
+            .WithName("CancelDuplicateCleanup");
     }
 }

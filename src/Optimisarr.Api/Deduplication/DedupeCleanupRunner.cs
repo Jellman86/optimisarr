@@ -1,0 +1,210 @@
+using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Library;
+using Optimisarr.Core.Deduplication;
+using Optimisarr.Core.Library;
+using Optimisarr.Data;
+
+namespace Optimisarr.Api.Deduplication;
+
+/// <summary>What a cleanup would do now.</summary>
+/// <param name="Ready">False when the report is missing or out of date, so nothing can start.</param>
+/// <param name="Groups">Groups with a copy that can move.</param>
+/// <param name="Copies">Copies that would move.</param>
+/// <param name="BytesToFree">Their total size, freed once quarantine is purged.</param>
+/// <param name="LeftAlone">Groups left alone, by reason.</param>
+public sealed record DedupeCleanupPreview(bool Ready, int Groups, int Copies, long BytesToFree, IReadOnlyDictionary<string, int> LeftAlone);
+
+/// <summary>One group a run could not clean.</summary>
+public sealed record DedupeCleanupFailure(string Path, string Reason);
+
+/// <summary>Where a cleanup run stands.</summary>
+public sealed record DedupeCleanupStatus(int LibraryId, bool Running, int Total, int Done, int Moved, long BytesHeld, IReadOnlyList<DedupeCleanupFailure> Failures);
+
+public enum DedupeCleanupStart { Started, AlreadyRunning, NotReady, NothingToDo }
+
+/// <summary>
+/// Moves the spare copies a report found into quarantine, one group at a time, in the background:
+/// each move reads the files in full first, which takes a while on large films. Every move goes
+/// through the journal and the last-moment preflight, so this decides nothing a person could not.
+/// One run at a time. A restart stops it, and the journal settles whichever move was under way.
+/// </summary>
+public sealed class DedupeCleanupRunner(
+    IServiceScopeFactory scopes,
+    ExactDuplicateStore store,
+    DedupeJournalStore journal,
+    DedupeQuarantineService quarantine,
+    IHostApplicationLifetime lifetime,
+    ILogger<DedupeCleanupRunner> logger,
+    TimeSpan? changeSettle = null)
+{
+    private static readonly TimeSpan TrackingLifetime = TimeSpan.FromMinutes(5);
+
+    private readonly Lock _lock = new();
+    private DedupeCleanupStatus? _status;
+    private CancellationTokenSource? _cancel;
+    private Task _run = Task.CompletedTask;
+
+    /// <summary>Lets a test wait for the run it started.</summary>
+    internal Task Completion => _run;
+
+    public DedupeCleanupStatus Status(int libraryId)
+    {
+        lock (_lock)
+        {
+            return _status is { } status && status.LibraryId == libraryId
+                ? status
+                : new DedupeCleanupStatus(libraryId, false, 0, 0, 0, 0, []);
+        }
+    }
+
+    public async Task<DedupeCleanupPreview> PreviewAsync(int libraryId, CancellationToken token)
+    {
+        var inputs = await store.ReadCleanupGroupsAsync(libraryId, token);
+        if (inputs is null) return new DedupeCleanupPreview(false, 0, 0, 0, new Dictionary<string, int>());
+        var decisions = Decide(inputs, await TrackingAsync(token));
+        var spareSizes = decisions.Where(item => item.Decision.Refusal is null)
+            .Select(item => (item.Group.SizeBytes, item.Decision.SpareIds.Count)).ToList();
+        return new DedupeCleanupPreview(
+            true,
+            spareSizes.Count,
+            spareSizes.Sum(item => item.Count),
+            spareSizes.Sum(item => item.SizeBytes * item.Count),
+            decisions.Where(item => item.Decision.Refusal is not null)
+                .GroupBy(item => item.Decision.Refusal!.Value.ToString())
+                .ToDictionary(group => group.Key, group => group.Count()));
+    }
+
+    public async Task<DedupeCleanupStart> TryStartAsync(int libraryId, CancellationToken token)
+    {
+        lock (_lock)
+        {
+            if (_status is { Running: true }) return DedupeCleanupStart.AlreadyRunning;
+        }
+        var inputs = await store.ReadCleanupGroupsAsync(libraryId, token);
+        if (inputs is null) return DedupeCleanupStart.NotReady;
+        var tracking = await TrackingAsync(token);
+        var work = Decide(inputs, tracking).Where(item => item.Decision.Refusal is null).ToList();
+        if (work.Count == 0) return DedupeCleanupStart.NothingToDo;
+
+        lock (_lock)
+        {
+            if (_status is { Running: true }) return DedupeCleanupStart.AlreadyRunning;
+            _cancel?.Dispose();
+            _cancel = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
+            _status = new DedupeCleanupStatus(libraryId, true, work.Count, 0, 0, 0, []);
+            var cancellation = _cancel.Token;
+            _run = Task.Run(() => RunAsync(libraryId, inputs, work, tracking, cancellation), CancellationToken.None);
+        }
+        return DedupeCleanupStart.Started;
+    }
+
+    public bool Cancel(int libraryId)
+    {
+        lock (_lock)
+        {
+            if (_status is not { Running: true } status || status.LibraryId != libraryId) return false;
+            _cancel?.Cancel();
+            return true;
+        }
+    }
+
+    private async Task RunAsync(int libraryId, DedupeCleanupGroups inputs,
+        IReadOnlyList<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> work, ArrTracking tracking, CancellationToken token)
+    {
+        var failures = new List<DedupeCleanupFailure>();
+        var done = 0;
+        var moved = 0;
+        var bytes = 0L;
+        var askedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            foreach (var (group, decision) in work)
+            {
+                token.ThrowIfCancellationRequested();
+                if (DateTimeOffset.UtcNow - askedAt > TrackingLifetime)
+                {
+                    tracking = await TrackingAsync(token);
+                    askedAt = DateTimeOffset.UtcNow;
+                }
+
+                var failure = await CleanGroupAsync(libraryId, inputs, group, decision, tracking, token);
+                if (failure is null)
+                {
+                    moved += decision.SpareIds.Count;
+                    bytes += group.SizeBytes * decision.SpareIds.Count;
+                }
+                else
+                {
+                    failures.Add(failure);
+                }
+                done++;
+                Publish(libraryId, true, work.Count, done, moved, bytes, failures);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            logger.LogInformation("Duplicate cleanup of library {LibraryId} stopped after {Done} groups", libraryId, done);
+        }
+        catch (Exception error)
+        {
+            logger.LogError(error, "Duplicate cleanup of library {LibraryId} failed", libraryId);
+            failures.Add(new DedupeCleanupFailure(string.Empty, error.Message));
+        }
+        Publish(libraryId, false, work.Count, done, moved, bytes, failures);
+    }
+
+    private async Task<DedupeCleanupFailure?> CleanGroupAsync(int libraryId, DedupeCleanupGroups inputs, ExactDuplicateGroup group,
+        DedupeCleanupDecision decision, ArrTracking tracking, CancellationToken token)
+    {
+        var first = group.Copies[0].AbsolutePath ?? group.Copies[0].RelativePath;
+        var plan = BuildPlan(libraryId, inputs, group, decision);
+        if (plan is null) return new DedupeCleanupFailure(first, "This group changed since the scan. Scan again.");
+        if (await journal.TryPrepareAsync(plan, token) != DedupePreparationResult.Created)
+            return new DedupeCleanupFailure(first, "Another operation is using these files, or they changed since the scan.");
+
+        var result = await quarantine.QuarantineAsync(plan.Id, token, changeSettle, tracking: tracking);
+        if (result.Outcome == DedupeActionOutcome.Completed) return null;
+        if (result.Outcome == DedupeActionOutcome.Refused) await journal.CancelPreparedAsync(plan.Id, CancellationToken.None);
+        var issues = result.Issues.Select(issue => issue.Refusal.ToString()).Distinct();
+        return new DedupeCleanupFailure(first, string.Join(" ", new[] { result.Reason }.Concat(issues).OfType<string>()));
+    }
+
+    private static DedupePreparation? BuildPlan(int libraryId, DedupeCleanupGroups inputs, ExactDuplicateGroup group, DedupeCleanupDecision decision)
+    {
+        var id = Guid.NewGuid();
+        var files = new List<DedupeFileSnapshot>();
+        foreach (var copy in group.Copies)
+        {
+            if (!inputs.Rows.TryGetValue(copy.Id, out var row) || row.Identity is null) return null;
+            var keeper = decision.KeepIds.Contains(copy.Id);
+            files.Add(new DedupeFileSnapshot(copy.Id, row.LibraryId, row.Root, row.Path,
+                keeper ? null : DedupeQuarantinePaths.For(row.Root, id, row.Path),
+                row.Identity, row.SizeBytes, row.ModifiedUtcTicks, row.Sha256, keeper));
+        }
+        return new DedupePreparation(id, libraryId, group.ReviewKey ?? string.Empty, inputs.ScopeKey, files);
+    }
+
+    private static List<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> Decide(DedupeCleanupGroups inputs, ArrTracking tracking) =>
+        inputs.Groups.Select(group =>
+        {
+            var copies = group.Copies.Select(copy => new DedupeCopy(copy.Id, copy.RelativePath, copy.LibraryType, copy.HardLinkCount,
+                tracking.TrackedBy.ContainsKey(copy.Id) || (copy.Aliases?.Any(alias => tracking.TrackedBy.ContainsKey(alias.Id)) ?? false),
+                tracking.PossiblyTrackedBy.ContainsKey(copy.Id) || (copy.Aliases?.Any(alias => tracking.PossiblyTrackedBy.ContainsKey(alias.Id)) ?? false)))
+                .ToList();
+            return (group, DedupeKeeperRule.Decide(copies, tracking.Complete, group.Decision?.Choice, group.Decision?.KeepIds));
+        }).ToList();
+
+    private async Task<ArrTracking> TrackingAsync(CancellationToken token)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<ArrTrackedFilesService>().GetAsync(token);
+    }
+
+    private void Publish(int libraryId, bool running, int total, int done, int moved, long bytes, List<DedupeCleanupFailure> failures)
+    {
+        lock (_lock)
+        {
+            _status = new DedupeCleanupStatus(libraryId, running, total, done, moved, bytes, [.. failures]);
+        }
+    }
+}
