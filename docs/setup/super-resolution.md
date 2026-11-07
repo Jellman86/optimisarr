@@ -48,20 +48,20 @@ settings page tells you what it finds.
 
 ### How fast it is
 
-Upscaling is slow, and the model matters more than anything else. Measured on an Intel Arrow Lake
-integrated GPU:
+Upscaling is slow, and the model matters more than anything else. Time per frame, and what that
+means for one minute of 24 fps video:
 
-| Engine and model | Upscale | Time per frame | One minute of 24 fps video |
+| Engine and model | Upscale | Intel Arrow Lake integrated GPU | NVIDIA RTX 4070 |
 |---|---|---|---|
-| Real-CUGAN `mixed` | 1080p, 2× | about 6 s | about 2.5 hours |
-| Real-ESRGAN `animevideov3` | 720p, 2× | about 2.5 s | about 1 hour |
-| Real-ESRGAN `animevideov3` | 720p, 4× | about 3.5 s | about 1.5 hours |
-| Real-ESRGAN `x4plus anime` | 720p, 4× | about 21 s | about 8 hours |
-| Real-ESRGAN `x4plus` | 720p, 4× | about 66 s | about 26 hours |
+| Real-CUGAN `mixed` | 1080p, 2× | about 6 s (2.5 hours) | not measured |
+| Real-ESRGAN `animevideov3` | 720p, 2× | about 2.5 s (1 hour) | about 1.2 s (30 minutes) |
+| Real-ESRGAN `animevideov3` | 720p, 4× | about 3.5 s (1.5 hours) | about 1.3 s (30 minutes) |
+| Real-ESRGAN `x4plus anime` | 720p, 4× | about 21 s (8 hours) | about 2.7 s (1 hour) |
+| Real-ESRGAN `x4plus` | 720p, 4× | about 66 s (26 hours) | about 7 s (3 hours) |
 
-The Real-ESRGAN figures come from short runs on synthetic frames, so treat them as a guide. Time
-grows with the source's size. `x4plus` is impractical on an integrated GPU for anything but short
-files. A dedicated GPU is much faster, but plan for long jobs, and try a short file first.
+The Real-ESRGAN figures come from short runs on synthetic frames, with the engine started for each
+run, so treat them as a guide. Time grows with the source's size. `x4plus` is impractical on an
+integrated GPU for anything but short files. Plan for long jobs, and try a short file first.
 
 ## Turn it on
 
