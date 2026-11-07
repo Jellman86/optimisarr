@@ -1336,7 +1336,9 @@
   /** Only animevideov3 offers a choice of scale; the other Real-ESRGAN models are fixed 4x networks. */
   function chooseSuperResolutionModel(model: string) {
     form.superResolutionModel = model || null
-    form.superResolutionEngine = model ? 'realesrgan' : null
+    // Naming Real-CUGAN is what returns a library to the server's settings: a server reads a missing
+    // engine as a client that knows nothing of this choice, and keeps what is saved.
+    form.superResolutionEngine = model ? 'realesrgan' : 'realcugan'
     form.superResolutionScale = !model ? null : model === 'realesr-animevideov3' ? form.superResolutionScale ?? 2 : 4
   }
 

@@ -267,9 +267,12 @@ internal static class LibraryEndpoints
             library.NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout;
             library.SuperResolutionEnabled = parsed.SuperResolutionEnabled;
             library.SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck;
-            library.SuperResolutionEngine = parsed.SuperResolutionEngine;
-            library.SuperResolutionModel = parsed.SuperResolutionModel;
-            library.SuperResolutionScale = parsed.SuperResolutionScale;
+            if (parsed.SuperResolutionChoiceSent)
+            {
+                library.SuperResolutionEngine = parsed.SuperResolutionEngine;
+                library.SuperResolutionModel = parsed.SuperResolutionModel;
+                library.SuperResolutionScale = parsed.SuperResolutionScale;
+            }
             library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.KeepSubtitleLanguages = parsed.KeepSubtitleLanguages;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;

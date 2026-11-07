@@ -92,7 +92,10 @@ internal readonly record struct ParsedLibrary(
     SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly,
     string? SuperResolutionEngine = null,
     string? SuperResolutionModel = null,
-    int? SuperResolutionScale = null);
+    int? SuperResolutionScale = null,
+    // False when the request named no choice, as a client older than the choice does, so an update
+    // keeps what is saved rather than quietly returning the library to Real-CUGAN.
+    bool SuperResolutionChoiceSent = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -206,6 +209,12 @@ internal static class LibraryRequestParser
 
         var superResolutionEngine = Trim(request.SuperResolutionEngine);
         var superResolutionModel = Trim(request.SuperResolutionModel);
+        var superResolutionChoiceSent = superResolutionEngine is not null || superResolutionModel is not null || request.SuperResolutionScale is not null;
+        // Naming Real-CUGAN alone is how a client asks to go back to the server's settings.
+        if (superResolutionEngine == RealCuganEngine.Instance.Name && superResolutionModel is null && request.SuperResolutionScale is null)
+        {
+            superResolutionEngine = null;
+        }
         if (SuperResolutionModelChoice.Validate(superResolutionEngine, superResolutionModel, request.SuperResolutionScale) is { } modelProblem)
         {
             error = modelProblem;
@@ -660,7 +669,8 @@ internal static class LibraryRequestParser
             superResolutionQualityCheck,
             superResolutionEngine,
             superResolutionModel,
-            request.SuperResolutionScale);
+            request.SuperResolutionScale,
+            superResolutionChoiceSent);
         error = null;
         return true;
     }

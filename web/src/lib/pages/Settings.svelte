@@ -462,11 +462,13 @@
   async function loadEngineStatus() {
     engineLoading = true
     engineError = null
+    // The operator can switch engines while this runs, and the answer is not about the new one.
+    const engine = statusEngine
     try {
-      engineStatus = await api.superResolutionStatus(statusEngine)
-      engineError = null
+      const status = await api.superResolutionStatus(engine)
+      if (engine === statusEngine) engineStatus = status
     } catch (err) {
-      engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
+      if (engine === statusEngine) engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
     } finally {
       engineLoading = false
     }
@@ -475,10 +477,12 @@
   async function probeEngine() {
     probingEngine = true
     engineProbe = null
+    const engine = statusEngine
     try {
-      engineProbe = await api.probeSuperResolution(statusEngine)
+      const probe = await api.probeSuperResolution(engine)
+      if (engine === statusEngine) engineProbe = probe
     } catch (err) {
-      engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
+      if (engine === statusEngine) engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
     } finally {
       probingEngine = false
     }

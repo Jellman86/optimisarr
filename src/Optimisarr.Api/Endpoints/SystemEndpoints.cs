@@ -185,6 +185,22 @@ internal static class SystemEndpoints
         if (await OptionsForCheckAsync(engine, model, scale, settings, cancellationToken) is not { } options)
             return UnknownEngine(engine);
         var detection = await new SuperResolutionDetectionService(options).DetectAsync(cancellationToken);
+        // Asked about the engine rather than one model, it must have every model a library can choose.
+        if (model is null && options.Engine != RealCuganEngine.Instance)
+        {
+            foreach (var preset in options.Engine.Presets.Skip(1))
+            {
+                var usable = options.Engine.Scales.First(candidate => options.Engine.ModelFile(preset, candidate, 0) is not null);
+                var other = await new SuperResolutionDetectionService(options with { Preset = preset, Scale = usable }).DetectAsync(cancellationToken);
+                detection = detection with
+                {
+                    Readiness = detection.Readiness == SuperResolutionReadiness.Ready ? other.Readiness : detection.Readiness,
+                    ModelsFound = detection.ModelsFound && other.ModelsFound,
+                    MissingModelFile = detection.MissingModelFile ?? other.MissingModelFile,
+                    Problems = [.. detection.Problems.Union(other.Problems)],
+                };
+            }
+        }
         return Results.Ok(SuperResolutionStatusDto.From(detection, options));
     }
 

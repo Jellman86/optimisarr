@@ -142,6 +142,36 @@ public sealed class RealEsrganEngineTests
         Assert.Equal("realesrgan", detection.Engine);
     }
 
+    [PosixFact]
+    public async Task A_sample_run_that_only_copied_the_picture_is_not_called_a_success()
+    {
+        using var dir = new TempDirectory();
+        const string Png = """
+            def png(path, w, h):
+                import struct
+                open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + struct.pack('>I', 13) + b'IHDR' + struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0) + b'\0' * 4)
+            """;
+        var ffmpeg = Script(dir, "ffmpeg", Png + "\nimport sys\npng(sys.argv[-1], 64, 64)\n");
+        var engine = Script(dir, Engine.BinaryName, Png + "\nimport sys, shutil\nshutil.copy(sys.argv[sys.argv.index('-i') + 1], sys.argv[sys.argv.index('-o') + 1])\n");
+        Directory.CreateDirectory(Path.Combine(dir.Path, "models"));
+        foreach (var extension in new[] { ".bin", ".param" }) File.WriteAllText(Path.Combine(dir.Path, "models", "realesr-animevideov3-x2" + extension), "");
+
+        var probe = await new SuperResolutionDetectionService(
+                Options(RealEsrganEngine.DrawnVideoModel, 2) with { BinaryPath = engine }, _ => true)
+            .ProbeAsync(ffmpeg, CancellationToken.None);
+
+        Assert.False(probe.Success);
+        Assert.Contains("128x128", probe.Error);
+    }
+
+    private static string Script(TempDirectory dir, string name, string body)
+    {
+        var path = Path.Combine(dir.Path, name);
+        File.WriteAllText(path, TestPython.Shebang + body);
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return path;
+    }
+
     private sealed class TempDirectory : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "esrgan-" + Guid.NewGuid().ToString("N"));

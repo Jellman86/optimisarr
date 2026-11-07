@@ -415,7 +415,9 @@ internal sealed record SuperResolutionSettingsDto(
         realEsrgan.BinaryPath,
         realEsrgan.ModelsPath);
 
-    public SuperResolutionEnginePaths ToRealEsrganPaths() => new(RealEsrganBinaryPath ?? string.Empty, RealEsrganModelsPath ?? string.Empty);
+    /// <summary>A path a client left out keeps what is saved; an empty one returns to the bundled engine.</summary>
+    public SuperResolutionEnginePaths ToRealEsrganPaths(SuperResolutionEnginePaths saved) =>
+        new(RealEsrganBinaryPath ?? saved.BinaryPath, RealEsrganModelsPath ?? saved.ModelsPath);
 
     public SuperResolutionOptions ToOptions() => new(
         Enabled, Preset, Scale, NoiseLevel, Device, BinaryPath, ModelsPath);

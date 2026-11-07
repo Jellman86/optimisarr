@@ -70,7 +70,8 @@ internal static class SettingsEndpoints
             if (superResolution is not null)
             {
                 await settings.SetSuperResolutionOptionsAsync(superResolution, cancellationToken);
-                await settings.SetRealEsrganPathsAsync(request.SuperResolution!.ToRealEsrganPaths(), cancellationToken);
+                await settings.SetRealEsrganPathsAsync(
+                    request.SuperResolution!.ToRealEsrganPaths(await settings.GetRealEsrganPathsAsync(cancellationToken)), cancellationToken);
             }
 
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);

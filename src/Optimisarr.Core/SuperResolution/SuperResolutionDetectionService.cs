@@ -235,12 +235,32 @@ public sealed class SuperResolutionDetectionService(SuperResolutionOptions optio
                     $"The engine exited {run.ExitCode} without producing output.", tail, options.Device);
             }
 
+            // An engine can exit cleanly having done nothing, so the picture itself has to show it worked.
+            var expected = new Queue.PictureSize(64 * options.Scale, 64 * options.Scale);
+            if (!IsPngOfSize(output, expected))
+            {
+                return new SuperResolutionProbeResult(false, run.ExitCode,
+                    $"The engine exited cleanly but did not produce a {expected.Width}x{expected.Height} picture.", tail, options.Device);
+            }
+
             return new SuperResolutionProbeResult(true, run.ExitCode, null, tail, options.Device);
         }
         finally
         {
             try { Directory.Delete(scratch, recursive: true); }
             catch (IOException) { /* the probe scratch is disposable; a straggler file is harmless */ }
+        }
+    }
+
+    private static bool IsPngOfSize(string path, Queue.PictureSize expected)
+    {
+        try
+        {
+            return PngStreamReader.Dimensions(File.ReadAllBytes(path)) == expected;
+        }
+        catch (Exception error) when (error is InvalidDataException or IOException or ArgumentException or IndexOutOfRangeException)
+        {
+            return false;
         }
     }
 

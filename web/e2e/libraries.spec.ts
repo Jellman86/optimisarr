@@ -1126,6 +1126,6 @@ test('going back to Real-CUGAN clears the Real-ESRGAN choice', async ({ page }) 
   const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({
-    superResolutionEnabled: true, superResolutionEngine: null, superResolutionModel: null, superResolutionScale: null,
+    superResolutionEnabled: true, superResolutionEngine: 'realcugan', superResolutionModel: null, superResolutionScale: null,
   })
 })

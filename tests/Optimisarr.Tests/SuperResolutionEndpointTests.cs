@@ -103,6 +103,7 @@ public sealed class SuperResolutionEndpointTests(AdminTokenAuthEndpointTests.Tok
     [InlineData("realesrgan", "realesrgan-x4plus", 4, HttpStatusCode.Created)]
     [InlineData(null, null, null, HttpStatusCode.Created)]
     [InlineData("realesrgan", "realesrgan-x4plus", 2, HttpStatusCode.BadRequest)]
+    [InlineData("realcugan", null, null, HttpStatusCode.Created)]
     [InlineData("realcugan", "mixed", 2, HttpStatusCode.BadRequest)]
     [InlineData("waifu2x", "any", 2, HttpStatusCode.BadRequest)]
     public async Task A_librarys_model_choice_is_validated_and_returned(string? engine, string? model, int? scale, HttpStatusCode expected)
@@ -120,9 +121,58 @@ public sealed class SuperResolutionEndpointTests(AdminTokenAuthEndpointTests.Tok
         Assert.Equal(expected, response.StatusCode);
         if (expected != HttpStatusCode.Created) return;
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-        Assert.Equal(engine, body["superResolutionEngine"]?.GetValue<string>());
+        Assert.Equal(engine == "realcugan" ? null : engine, body["superResolutionEngine"]?.GetValue<string>());
         Assert.Equal(model, body["superResolutionModel"]?.GetValue<string>());
         Assert.Equal(scale, body["superResolutionScale"]?.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task A_client_that_omits_the_model_choice_keeps_it_and_naming_real_cugan_clears_it()
+    {
+        using var client = Admin();
+        var path = Directory.CreateDirectory(Path.Combine(api.LibraryDirectory, "sr-keep-" + Guid.NewGuid().ToString("N"))).FullName;
+        var body = new Dictionary<string, object?>
+        {
+            ["name"] = "Keep choice", ["path"] = path, ["mediaType"] = "Film", ["ruleProfile"] = "ConservativeHevc", ["superResolutionEnabled"] = true,
+        };
+        using var created = await client.PostAsJsonAsync("/api/libraries", new Dictionary<string, object?>(body)
+        {
+            ["superResolutionEngine"] = "realesrgan", ["superResolutionModel"] = "realesrgan-x4plus", ["superResolutionScale"] = 4,
+        });
+        var id = JsonNode.Parse(await created.Content.ReadAsStringAsync())!["id"]!.GetValue<int>();
+
+        using var older = await client.PutAsJsonAsync($"/api/libraries/{id}", body);
+        var kept = JsonNode.Parse(await older.Content.ReadAsStringAsync())!;
+        Assert.Equal("realesrgan-x4plus", kept["superResolutionModel"]!.GetValue<string>());
+        Assert.Equal(4, kept["superResolutionScale"]!.GetValue<int>());
+
+        using var back = await client.PutAsJsonAsync($"/api/libraries/{id}", new Dictionary<string, object?>(body) { ["superResolutionEngine"] = "realcugan" });
+        var cleared = JsonNode.Parse(await back.Content.ReadAsStringAsync())!;
+        Assert.Null(cleared["superResolutionEngine"]);
+        Assert.Null(cleared["superResolutionModel"]);
+        Assert.Null(cleared["superResolutionScale"]);
+        await client.DeleteAsync($"/api/libraries/{id}");
+    }
+
+    [Fact]
+    public async Task A_client_that_omits_the_real_esrgan_paths_keeps_them_and_an_empty_path_clears_it()
+    {
+        await SetFeatureAsync(false);
+        using var client = Admin();
+        var binary = Path.Combine(Path.GetTempPath(), "esrgan", "realesrgan-ncnn-vulkan");
+        var request = (await client.GetFromJsonAsync<JsonObject>("/api/settings"))!.DeepClone().AsObject();
+        request["superResolution"]!["realEsrganBinaryPath"] = binary;
+        (await client.PutAsJsonAsync("/api/settings", request)).EnsureSuccessStatusCode();
+
+        var older = request.DeepClone().AsObject();
+        older["superResolution"]!.AsObject().Remove("realEsrganBinaryPath");
+        older["superResolution"]!.AsObject().Remove("realEsrganModelsPath");
+        (await client.PutAsJsonAsync("/api/settings", older)).EnsureSuccessStatusCode();
+        Assert.Equal(binary, (await client.GetFromJsonAsync<JsonObject>("/api/settings"))!["superResolution"]!["realEsrganBinaryPath"]!.GetValue<string>());
+
+        request["superResolution"]!["realEsrganBinaryPath"] = "";
+        (await client.PutAsJsonAsync("/api/settings", request)).EnsureSuccessStatusCode();
+        Assert.Equal("", (await client.GetFromJsonAsync<JsonObject>("/api/settings"))!["superResolution"]!["realEsrganBinaryPath"]!.GetValue<string>());
     }
 
     [Fact]

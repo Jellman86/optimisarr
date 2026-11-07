@@ -916,3 +916,23 @@ test('choosing the CPU warns that Real-ESRGAN cannot use it', async ({ page }) =
 
   await expect(page.getByText('Real-ESRGAN has no CPU mode')).toBeVisible()
 })
+
+test('switching engines while a check runs never shows the other engines answer', async ({ page }) => {
+  await mockSettings(page)
+  const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
+  await page.route('**/api/settings', route => json(route, enabled))
+  let answerCugan = () => {}
+  await page.route('**/api/system/super-resolution/realcugan', async route => {
+    await new Promise<void>(release => { answerCugan = release })
+    await json(route, realCugan)
+  })
+  await page.route('**/api/system/super-resolution/realesrgan', route => json(route, { ...realCugan, engine: 'realesrgan', readiness: 'NotInstalled' }))
+  await page.goto('/#/settings/super-resolution')
+  await expect.poll(() => answerCugan.toString()).not.toBe('() => {}')
+
+  await page.getByLabel('Engine to check').selectOption('realesrgan')
+  answerCugan()
+
+  await expect(page.getByText('Not installed — the engine executable was not found.')).toBeVisible()
+  await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toHaveCount(0)
+})

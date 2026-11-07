@@ -68,7 +68,8 @@ integrated GPU for anything but short files. Plan for long jobs, and try a short
 In **Settings → AI super-resolution**, switch on **Enable AI super-resolution (experimental)** and
 save. The engine settings then appear, and the status card checks the machine. Choose which engine
 to check, and **Test with a real sample run** upscales one small picture: the only check that proves
-the Vulkan runtime, device and models work.
+the Vulkan runtime and device work. For Real-ESRGAN it runs `animevideov3` at 2×, and the status
+checks that the files for every model are present.
 
 The preset, upscale factor and denoise level below are Real-CUGAN's, used by a library that has not
 chosen Real-ESRGAN. The device applies to both engines.

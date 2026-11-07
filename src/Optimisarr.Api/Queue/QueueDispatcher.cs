@@ -1514,7 +1514,7 @@ public sealed partial class QueueDispatcher(
         if (work.SuperResolution is not null)
         {
             return RemoteWorkPlan.Refused(
-                "This library runs video through the Real-CUGAN super-resolution engine, which works on this " +
+                "This library runs video through a super-resolution engine, which works on this " +
                 "server only. Set the library's placement to keep it off workers.");
         }
 
