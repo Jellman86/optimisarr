@@ -84,6 +84,11 @@ public sealed record SuperResolutionSource(
         {
             return "The file has more than one video stream; super-resolution upscales a single picture stream.";
         }
+        // The engine would treat the combing between woven fields as detail and enlarge it.
+        if (Text(video, "field_order") is { } fieldOrder && Domain.VideoFieldOrder.IsInterlaced(fieldOrder))
+        {
+            return $"Super-resolution does not support interlaced video; this source has field order {fieldOrder}.";
+        }
         var pixelFormat = Text(video, "pix_fmt");
         if (pixelFormat is null || !Supported420.ContainsKey(pixelFormat))
         {

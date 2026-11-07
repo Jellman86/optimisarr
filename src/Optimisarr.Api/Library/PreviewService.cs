@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Deduplication;
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Data;
@@ -37,7 +38,9 @@ public sealed record PreviewComparison(
     string? VerificationReportJson,
     string? OriginalUrl = null,
     // The quality searches a real job would run that this preview left out, once it has started.
-    IReadOnlyList<string>? SkippedQualitySearches = null);
+    IReadOnlyList<string>? SkippedQualitySearches = null,
+    // A real job would refuse this source, so the preview shows an encode that will not be run.
+    bool SourceInterlaced = false);
 
 /// <summary>
 /// Drives throwaway "preview" jobs: a one-off transcode of a single file with its library's
@@ -100,6 +103,7 @@ public sealed class PreviewService(
         var job = await db.Jobs
             .AsNoTracking()
             .Include(j => j.MediaFile)
+            .ThenInclude(file => file!.Library)
             .FirstOrDefaultAsync(j => j.Id == jobId && j.Type == JobType.Preview, cancellationToken);
         if (job?.MediaFile is null)
         {
@@ -149,7 +153,9 @@ public sealed class PreviewService(
             job.VerificationPassed,
             job.VerificationReportJson,
             workerSample is not null ? $"/api/preview/{jobId}/reference" : null,
-            PreviewQualitySearch.Names(job.SkippedQualitySearches));
+            PreviewQualitySearch.Names(job.SkippedQualitySearches),
+            VideoFieldOrder.IsInterlaced(media.FieldOrder)
+                && LibraryRuleResolution.Resolve(media.Library).TargetVideoCodec is not null);
     }
 
     /// <summary>

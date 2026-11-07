@@ -1490,7 +1490,14 @@ public sealed partial class QueueDispatcher(
         {
             prepared = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or JobNoLongerEligibleException)
+        catch (JobNoLongerEligibleException ex)
+        {
+            // Nothing else would ever end a job only workers can claim. Refusing it again on every
+            // poll would leave it queued for good, with no explanation.
+            await SkipQueuedJobAsync(jobId, ex.Message, cancellationToken);
+            return RemoteWorkPlan.Refused(ex.Message);
+        }
+        catch (InvalidOperationException ex)
         {
             return RemoteWorkPlan.Refused(ex.Message);
         }
@@ -1682,6 +1689,30 @@ public sealed partial class QueueDispatcher(
     }
 
     /// <summary>
+    /// Ends a job that has not started and must not run, as the local dispatcher does before
+    /// encoding. Only a job still queued is touched, so a claim that has moved on keeps its state.
+    /// </summary>
+    internal async Task SkipQueuedJobAsync(int jobId, string reason, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        await using (var write = await db.BeginDiagnosticWriteAsync(cancellationToken))
+        {
+            var job = await db.Jobs.FirstOrDefaultAsync(job => job.Id == jobId && job.Status == JobStatus.Queued, cancellationToken);
+            if (job is null) return;
+            var now = DateTimeOffset.UtcNow;
+            job.Status = JobStatus.Cancelled;
+            job.ErrorMessage = $"Skipped before encoding: {reason}";
+            job.FinishedAt = now;
+            job.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+            await write.CommitAsync(cancellationToken);
+        }
+        logger.LogInformation("Job {JobId}: skipped before encoding — {Reason}", jobId, reason);
+        await NotifyAsync();
+    }
+
+    /// <summary>
     /// Where an encode will run. Local work resolves its encoder from this machine's probe and may
     /// use its hardware decoder; remote work resolves it from the worker's proved capabilities and
     /// receives a portable command with placeholder paths.
@@ -1833,6 +1864,37 @@ public sealed partial class QueueDispatcher(
                 throw new InvalidOperationException(
                     $"Fresh source probe required to apply the frame-rate cap failed: {freshSourceProbe.Error ?? "no detail available"}");
             }
+        }
+        // The eligibility check before encoding only judges a probed inventory row, so a known
+        // interlaced file is refused here whatever its row says. A file probed before field order was
+        // captured has no answer on record: ask, and keep the answer so the inventory shows the same
+        // reason. A failed probe proves nothing and is not kept, so the later checks that need a
+        // successful one still fail as they would have.
+        if (!isDisposable && isVideoJob && rules.TargetVideoCodec is not null)
+        {
+            var fieldOrder = media.FieldOrder;
+            if (fieldOrder is null)
+            {
+                var asked = freshSourceProbe ?? await scope.ServiceProvider
+                    .GetRequiredService<IMediaProbeService>()
+                    .ProbeAsync(media.Path, cancellationToken);
+                if (asked.Success)
+                {
+                    freshSourceProbe = asked;
+                    fieldOrder = asked.FieldOrder;
+                    if (fieldOrder is not null)
+                        await db.MediaFiles.Where(file => file.Id == media.Id)
+                            .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, fieldOrder), cancellationToken);
+                }
+            }
+            if (VideoFieldOrder.IsInterlaced(fieldOrder))
+                throw new JobNoLongerEligibleException(VideoFieldOrder.RefusalFor(fieldOrder!));
+        }
+        // A preview runs regardless, but warns about an interlaced source, and this probe has the answer.
+        if (isPreview && isVideoJob && media.FieldOrder is null && freshSourceProbe is { Success: true, FieldOrder: { } previewFieldOrder })
+        {
+            await db.MediaFiles.Where(file => file.Id == media.Id)
+                .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, previewFieldOrder), cancellationToken);
         }
         var mediaDurationSeconds = isPreview && isVideoJob
             ? MediaTimelineDuration.Resolve(

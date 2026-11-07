@@ -15,6 +15,7 @@ public enum JobOperationFailure
     WorkCleanupFailed,
     Excluded,
     Reserved,
+    AlreadyActive,
 }
 
 /// <summary>
@@ -128,7 +129,8 @@ public static class JobOperations
     public static async Task<JobOperationOutcome> RetryAsync(
         OptimisarrDbContext db, QueueDispatcher dispatcher, int id, bool higherQuality, CancellationToken token)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        // The writer reservation makes the check below and the status change one step.
+        await using var transaction = await db.BeginDiagnosticWriteAsync(token);
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id && j.Type == JobType.Normal, token);
         if (job is null)
         {
@@ -141,6 +143,16 @@ public static class JobOperations
             return JobOperationOutcome.Rejected(id, JobOperationFailure.InvalidState, "job.retry.invalidState",
                 $"Only failed or cancelled jobs can be retried; job {id} is {job.Status}.",
                 new { id, status = job.Status.ToString() });
+        }
+
+        // A file can hold several finished attempts, and retrying one while another is queued would
+        // put two jobs to work on the same file.
+        if (await db.Jobs.AnyAsync(other => other.Id != id && other.Type == JobType.Normal
+            && other.MediaFileId == job.MediaFileId && JobEnqueueService.ActiveStatuses.Contains(other.Status), token))
+        {
+            return JobOperationOutcome.Rejected(id, JobOperationFailure.AlreadyActive, "job.retry.alreadyActive",
+                "This file already has an active job. Wait for it to finish, or cancel it, before retrying this one.",
+                new { id });
         }
 
         var excluded = await db.MediaFiles.AsNoTracking()

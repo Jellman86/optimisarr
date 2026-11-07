@@ -785,6 +785,9 @@
             <JobStages job={selectedJob} />
             {#if detailPhase(selectedJob)}<p class="queue-phase-note">{detailPhase(selectedJob)}</p>{/if}
           {/if}
+          {#if selectedJob.status === 'Cancelled' && selectedJob.errorMessage}
+            <p class="callout mt-4 p-4 text-sm" role="status" data-testid="job-cancelled-reason">{selectedJob.errorMessage}</p>
+          {/if}
           {#if selectedJob.status === 'Failed'}
             {@const story = jobFailureStory(selectedJob.failureCategory, selectedJob.errorMessage, fullReport(selectedJob)?.checks, i18n.m)}
             <div class="callout tone-bad mt-4 p-4" role="status">

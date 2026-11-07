@@ -700,6 +700,7 @@ export type PreviewComparison = {
   verificationPassed: boolean | null
   verificationReportJson: string | null
   skippedQualitySearches?: string[]
+  sourceInterlaced?: boolean
 }
 
 export type CalibrationSource = {
@@ -1297,6 +1298,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'job.cancel.invalidState': return t(i18n.m.common.api_job_cancel_state, args)
     case 'job.remove.active': return i18n.m.common.api_job_remove_active
     case 'job.retry.invalidState': return t(i18n.m.common.api_job_retry_state, args)
+    case 'job.retry.alreadyActive': return i18n.m.common.api_job_retry_active
     case 'job.workCleanupFailed': return i18n.m.common.api_job_work_cleanup_failed
     case 'job.status.invalid': return t(i18n.m.common.api_job_status_invalid, args)
     case 'job.failureCategory.invalid': return t(i18n.m.common.api_failure_category_invalid, args)
@@ -1613,6 +1615,8 @@ export const api = {
   probeBatch: (id: number) => request<MediaProbeBatch>(`/api/media/batch/probe/${id}`),
   /** Stops a running probe batch; the file it is on finishes. */
   cancelProbeBatch: (id: number) => request<void>(`/api/media/batch/probe/${id}`, { method: 'DELETE' }),
+  enqueueFile: (id: number) =>
+    request<{ jobId: number; alreadyQueued: boolean }>(`/api/media/${id}/enqueue`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
   replaceReadyJobs: () =>

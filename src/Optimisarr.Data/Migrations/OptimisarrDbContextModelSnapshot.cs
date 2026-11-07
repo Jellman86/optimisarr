@@ -1377,6 +1377,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int>("FailureCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("FieldOrder")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("FrameCount")
                         .HasColumnType("INTEGER");
 

@@ -170,6 +170,8 @@ internal sealed class BlindCalibrationService(
                 && file.Status == MediaFileStatus.Probed
                 && (file.MediaKind == MediaKind.Video
                     && !file.IsDolbyVision
+                    // A real job would refuse it, so a comparison would judge an encode never run.
+                    && (file.FieldOrder == null || !VideoFieldOrder.InterlacedValues.Contains(file.FieldOrder))
                     && file.DurationSeconds >= BlindCalibrationPolicy.SampleSeconds * 4
                     || file.MediaKind == MediaKind.Audio
                     && file.DurationSeconds >= BlindCalibrationPolicy.AudioSampleSeconds * 4
@@ -229,6 +231,15 @@ internal sealed class BlindCalibrationService(
             {
                 throw new InvalidOperationException(
                     $"Could not freshly probe the selected video before calibration: {sourceProbe.Error ?? "no detail available"}");
+            }
+
+            // A real job would refuse this source, so a comparison would judge an encode never run.
+            var fieldOrder = VideoFieldOrder.IsInterlaced(media.FieldOrder) ? media.FieldOrder : sourceProbe.FieldOrder ?? media.FieldOrder;
+            media.FieldOrder = fieldOrder;
+            if (VideoFieldOrder.IsInterlaced(fieldOrder))
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                throw new InvalidOperationException(VideoFieldOrder.RefusalFor(fieldOrder!));
             }
 
             duration = MediaTimelineDuration.Resolve(

@@ -151,6 +151,7 @@ are refused before anything runs, and are left to the normal pipeline:
 
 - other layouts and depths, such as 4:2:2, 4:4:4 or 12-bit video;
 - non-square pixels (anamorphic video), rotated video, or more than one video stream;
+- interlaced video, because the engine would enlarge the combing between fields as if it were detail;
 - HDR and variable-frame-rate video;
 - libraries whose rules crop, downscale or cap the frame rate, and hardware encoders.
 

@@ -186,6 +186,9 @@
     </div>
 
     <div class="preview-body">
+    {#if preview?.sourceInterlaced}
+      <p class="card tone-warn mb-3 p-3 text-xs" data-testid="preview-interlaced">{i18n.m.shared.preview_interlaced}</p>
+    {/if}
     {#if preview?.skippedQualitySearches?.length}
       <div class="card tone-info mb-3 space-y-1 p-3 text-xs" data-testid="preview-skipped-searches">
         {#each preview.skippedQualitySearches as search (search)}

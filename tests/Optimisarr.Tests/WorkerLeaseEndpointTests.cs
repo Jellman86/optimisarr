@@ -112,6 +112,125 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(SkippedQualitySearch.VideoQuality, saved!.SkippedQualitySearches);
     }
 
+    [Fact]
+    public async Task A_file_probed_before_field_order_was_captured_is_refused_when_it_reaches_the_queue()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Interlace check");
+        var id = await QueueAJob(fileName: "interlaced tape.mkv");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        using var again = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal("tt", job.MediaFile!.FieldOrder);
+        Assert.Equal(JobStatus.Cancelled, job.Status);
+        Assert.Contains("Interlaced", job.ErrorMessage);
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Theory]
+    [InlineData(MediaFileStatus.Probed)]
+    [InlineData(MediaFileStatus.Discovered)]
+    [InlineData(MediaFileStatus.ProbeFailed)]
+    public async Task A_known_interlaced_file_never_gets_a_lease_whatever_its_inventory_says(MediaFileStatus status)
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Known interlace " + status);
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).SingleAsync(j => j.Id == id);
+            job.MediaFile!.FieldOrder = "tt";
+            job.MediaFile.Status = status;
+            await db.SaveChangesAsync();
+        }
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        }
+
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(JobStatus.Cancelled, (await result.Jobs.AsNoTracking().SingleAsync(j => j.Id == id)).Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
+    public async Task A_preview_of_a_file_probed_before_field_order_was_captured_still_runs_and_warns()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Interlaced preview");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced preview.mkv");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(job => job.Id == id);
+            job.Type = JobType.Preview;
+            job.RequestedVideoQuality = 24;
+            job.CalibrationClipSeconds = 12;
+            job.CalibrationClipStartSeconds = 24;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await ClaimWhenReady(worker);
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var admin = Admin();
+        var preview = await admin.GetFromJsonAsync<JsonElement>($"/api/preview/{id}");
+        Assert.True(preview.GetProperty("sourceInterlaced").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_diagnostic_capture_records_a_job_skipped_at_claim()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Captured skip");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced capture.mkv");
+        using var admin = Admin();
+        using var started = await admin.PostAsJsonAsync("/api/diagnostics/capture", new { durationHours = 1, scopedJobId = id, includePaths = false });
+        Assert.Equal(HttpStatusCode.Created, started.StatusCode);
+        var captureId = (await started.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        try
+        {
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+
+            using var scope = _api.Services.CreateScope();
+            var entry = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().DiagnosticEvents.AsNoTracking()
+                .SingleAsync(e => e.JobId == id && e.ReasonCode == "Job.StatusChanged");
+            Assert.Equal("Cancelled", entry.CurrentStatus);
+        }
+        finally
+        {
+            (await admin.PostAsync($"/api/diagnostics/capture/{captureId}/stop", null)).EnsureSuccessStatusCode();
+        }
+    }
+
+    [Fact]
+    public async Task A_failed_field_order_probe_does_not_produce_an_assignment()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Failing probe");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "probe-fails.mkv");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
+        Assert.Null((await db.Jobs.Include(j => j.MediaFile).AsNoTracking().SingleAsync(j => j.Id == id)).MediaFile!.FieldOrder);
+    }
+
     [Theory]
     [InlineData(JobType.Preview, false)]
     [InlineData(JobType.Calibration, false)]
