@@ -171,7 +171,7 @@ internal sealed class BlindCalibrationService(
                 && (file.MediaKind == MediaKind.Video
                     && !file.IsDolbyVision
                     // A real job would refuse it, so a comparison would judge an encode never run.
-                    && (file.FieldOrder == null || !VideoFieldOrder.InterlacedValues.Contains(file.FieldOrder))
+                    && (file.FieldOrder == null || file.Library!.DeinterlaceVideo || !VideoFieldOrder.InterlacedValues.Contains(file.FieldOrder))
                     && file.DurationSeconds >= BlindCalibrationPolicy.SampleSeconds * 4
                     || file.MediaKind == MediaKind.Audio
                     && file.DurationSeconds >= BlindCalibrationPolicy.AudioSampleSeconds * 4
@@ -236,7 +236,7 @@ internal sealed class BlindCalibrationService(
             // A real job would refuse this source, so a comparison would judge an encode never run.
             var fieldOrder = VideoFieldOrder.IsInterlaced(media.FieldOrder) ? media.FieldOrder : sourceProbe.FieldOrder ?? media.FieldOrder;
             media.FieldOrder = fieldOrder;
-            if (VideoFieldOrder.IsInterlaced(fieldOrder))
+            if (!media.Library.DeinterlaceVideo && VideoFieldOrder.IsInterlaced(fieldOrder))
             {
                 await db.SaveChangesAsync(cancellationToken);
                 throw new InvalidOperationException(VideoFieldOrder.RefusalFor(fieldOrder!));

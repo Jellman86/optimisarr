@@ -2471,6 +2471,12 @@
               "boolean"
             ]
           },
+          "deinterlaceVideo": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "default": false,
             "type": "boolean"
@@ -4622,6 +4628,12 @@
             ]
           },
           "cropBlackBars": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "deinterlaceVideo": {
             "type": [
               "null",
               "boolean"

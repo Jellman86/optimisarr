@@ -155,7 +155,7 @@ public sealed class PreviewService(
             workerSample is not null ? $"/api/preview/{jobId}/reference" : null,
             PreviewQualitySearch.Names(job.SkippedQualitySearches),
             VideoFieldOrder.IsInterlaced(media.FieldOrder)
-                && LibraryRuleResolution.Resolve(media.Library).TargetVideoCodec is not null);
+                && LibraryRuleResolution.Resolve(media.Library) is { TargetVideoCodec: not null, DeinterlaceVideo: false });
     }
 
     /// <summary>
