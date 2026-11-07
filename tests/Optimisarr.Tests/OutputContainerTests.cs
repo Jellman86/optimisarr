@@ -1,5 +1,6 @@
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Replacement;
 using Optimisarr.Core.Rules;
 
 namespace Optimisarr.Tests;
@@ -8,7 +9,8 @@ public sealed class OutputContainerTests
 {
     [Theory]
     [InlineData("Film (2020)/Film (2020).mkv", "mkv")]
-    [InlineData("Film (2020)/Film (2020).MKV", "mkv")]
+    [InlineData("Film (2020)/Film (2020).MKV", "MKV")]
+    [InlineData("Show/Show S01E01.Mp4", "Mp4")]
     [InlineData("Show/Season 1/Show S01E01.mp4", "mp4")]
     [InlineData("Old/Clip.m4v", "mp4")]
     [InlineData("Old/Clip.mov", "mp4")]
@@ -26,6 +28,15 @@ public sealed class OutputContainerTests
     public void Any_other_setting_is_left_as_it_is(string? setting) =>
         Assert.Equal(setting, OutputContainer.For(setting, "Film.avi"));
 
+    [Theory]
+    [InlineData("source", "source")]
+    [InlineData("Source", "Source")]
+    [InlineData("mp4", null)]
+    [InlineData("mkv", null)]
+    [InlineData(null, null)]
+    public void Switching_to_a_preset_clears_a_chosen_container_but_keeps_same_as_source(string? setting, string? expected) =>
+        Assert.Equal(expected, OutputContainer.AfterPresetChange(setting));
+
     private static RuleSettings Rules() => RuleProfileDefaults.For(RuleProfile.ConservativeHevc) with { TargetContainer = OutputContainer.SameAsSource };
 
     private static TranscodeSpec Resolve(string relative, bool imageSubtitles = false, bool mp4IncompatibleAudio = false, RuleSettings? rules = null) =>
@@ -36,6 +47,16 @@ public sealed class OutputContainerTests
     public void A_matroska_source_keeps_its_name()
     {
         Assert.EndsWith("/Film (2020)/Film (2020).mkv", Resolve("Film (2020)/Film (2020).mkv").OutputPath);
+    }
+
+    [Theory]
+    [InlineData("Film/Film.MKV")]
+    [InlineData("Show/Show S01E01.MP4")]
+    public void An_upper_case_extension_keeps_its_spelling_so_the_replacement_lands_on_the_original(string relative)
+    {
+        var plan = ReplacementPlanner.Plan("/data/" + relative, Resolve(relative).OutputPath, "/trash", DateTimeOffset.UnixEpoch, "1");
+
+        Assert.Equal("/data/" + relative, plan.FinalPath.Replace('\\', '/'));
     }
 
     [Fact]

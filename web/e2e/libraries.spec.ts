@@ -1152,3 +1152,13 @@ test('a new library keeps each file container, and an existing one keeps its pre
   await page.goto('/#/libraries/1/configure/encode/video/advanced')
   await expect(page.locator('#lib-container')).not.toHaveValue('source')
 })
+
+test('choosing a preset keeps same as source, because keeping file names is not a preset override', async ({ page }) => {
+  await mockLibraries(page, { ...library, targetContainer: 'source' })
+  await page.goto('/#/libraries/1/configure/encode')
+  await page.getByRole('radio', { name: /Compatibility/ }).check()
+
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ ruleProfile: 'CompatibilityH264', targetContainer: 'source' })
+})

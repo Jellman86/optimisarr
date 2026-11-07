@@ -60,9 +60,12 @@ what shipped and the limits that stay.
 instead of following its preset's MP4. Changing `.mkv` to `.mp4` gives a file a new path. A real
 Radarr 6.4.4 adopted the new file on its next rescan, but unmonitored the movie when its "Unmonitor
 Deleted Movies" setting was on, and re-labelled a test file's quality from WEBDL-480p to SDTV, which
-can prompt an upgrade search that undoes the saving. Keeping the container keeps the path, keeps
-Matroska's image subtitles, TrueHD and attachments, and costs a little compatibility on players that
-cannot open Matroska. Existing libraries are unchanged; MP4 remains a choice.
+can prompt an upgrade search that undoes the saving. Keeping the container keeps the path for
+Matroska and MP4 files, keeps the Matroska streams the profile copies, such as image subtitles and
+attachments, and costs a little compatibility on players that cannot open Matroska. A profile that
+re-encodes audio still re-encodes it. M4V and MOV become MP4, other containers become Matroska, and
+an MP4 file still moves to Matroska when its image subtitles or copied audio need it, so those files
+change path. Existing libraries are unchanged; MP4 remains a choice.
 
 **Recorded default, 5 November 2026:** verified cross-filesystem replacement is allowed by default,
 by operator decision for a home-lab application. Separate bind mounts are a normal Docker layout,

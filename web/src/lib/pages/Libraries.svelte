@@ -759,7 +759,8 @@
     const preset = specFor(form.ruleProfile)
     videoAudioEncodingSelection = null
     form.targetVideoCodec = null
-    form.targetContainer = null
+    // Keeping file names is a choice about paths, not a preset override, so a preset leaves it alone.
+    if (isContainerOverride(form.targetContainer)) form.targetContainer = null
     form.hdrHandling = preset.hdrHandling
     form.videoAudioCodec = preset.videoAudioCodec ?? 'copy'
     form.videoAudioBitrateKbps = preset.videoAudioBitrateKbps

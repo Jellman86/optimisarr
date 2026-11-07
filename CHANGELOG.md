@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Let new libraries keep each file's container, so optimised files keep their names (#397). A new library now defaults to **Same as source**: Matroska and MP4 stay as they are, and other containers become Matroska. Changing `.mkv` to `.mp4` gives a file a new path, and a real Radarr re-labelled such a file's quality and, with "Unmonitor Deleted Movies" on, unmonitored the movie. Existing libraries are unchanged; MP4 is still available.
+- Let new libraries keep each file's container, so optimised files keep their names (#397). A new library now defaults to **Same as source**: Matroska and MP4 keep their container and extension, including its spelling; M4V and MOV become MP4, and other containers become Matroska. An MP4 file still moves to Matroska when its image subtitles or copied audio need it. Changing `.mkv` to `.mp4` gives a file a new path, and a real Radarr re-labelled such a file's quality and, with "Unmonitor Deleted Movies" on, unmonitored the movie. Choosing a preset, or applying a calibration's recommended preset, keeps this choice. Existing libraries are unchanged; MP4 is still available.
 
 - Add one-click duplicate cleanup, with duplicates marked in Quarantine (#397). **Quarantine spare copies** on the exact copies page moves the copies that can safely go into Quarantine and says why any others were left alone. Quarantine now labels **Duplicate** and **Optimisation** entries, with a filter when both exist; a copy can be restored or deleted there. Quarantined copies are deleted after the same retention period as originals, and only once the kept copy has been read in full and still matches, so a keeper that has changed never loses its last copy.
 

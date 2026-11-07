@@ -1596,7 +1596,7 @@ export const zh: Messages = {
     target_codec_tip: "重新编码时使用的目标视频编解码器。保留“配置文件默认值”即可跟随预设（“均衡”和 Scott 的设置使用 HEVC，“兼容性”使用 H.264，“效率”使用 AV1）。",
     profile_default: "配置文件默认值",
     container: "媒体容器",
-    container_tip: "文件封装到的输出容器。MP4 兼容性最高；MKV 可保留 MP4 不支持的图像字幕（蓝光/DVD）。保留“配置文件默认值”即可跟随预设。“与源文件相同”会保留每个文件的 Matroska 或 MP4 容器，文件名不变，Sonarr 和 Radarr 也会继续跟踪它；其他容器会转为 MKV。",
+    container_tip: "文件封装到的输出容器。MP4 兼容性最高；MKV 可保留 MP4 不支持的图像字幕（蓝光/DVD）。保留“配置文件默认值”即可跟随预设。“与源文件相同”会保留每个文件的 Matroska 或 MP4 容器，文件名不变，Sonarr 和 Radarr 也会继续跟踪它。M4V 和 MOV 会转为 MP4，其他容器转为 MKV。若字幕或复制的音轨需要，MP4 文件仍会转为 MKV。",
     container_source: "与源文件相同（保留文件名）",
     container_source_short: "与源文件相同",
     hdr_dv: "HDR / Dolby Vision",
