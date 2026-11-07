@@ -326,30 +326,31 @@ public static class CandidateEvaluator
                     : "No removable tracks (all tracks match the kept languages or are unknown)");
             }
 
+            var targetContainer = Queue.OutputContainer.For(rules.TargetContainer, media.RelativePath)!;
             var removalPlanKnown =
                 (rules.KeepAudioLanguages.Count == 0 || media.AudioLanguages is not null)
                 && (rules.KeepSubtitleLanguages.Count == 0 || media.SubtitleLanguages is not null);
-            if (rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            if (rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(targetContainer)
                 && removalPlanKnown && audioRemovals.Count + subtitleRemovals.Count == 0
                 && media.Container?.Contains("matroska", StringComparison.OrdinalIgnoreCase) == true
                 && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.RelativePath),
                     media.AudioCodecSummary?.Split(',', StringSplitOptions.TrimEntries), []))
                 return CandidateDecision.Skipped(AudioContainerCompatibility.AlacRemuxNoChangeReason);
 
-            var keyword = ContainerKeyword(rules.TargetContainer);
+            var keyword = ContainerKeyword(targetContainer);
             var alreadyClean = media.Container is not null &&
                 media.Container.Contains(keyword, StringComparison.OrdinalIgnoreCase);
 
             if (!alreadyClean)
             {
-                return CandidateDecision.Eligible($"Remux to {rules.TargetContainer} ({media.Container} → {rules.TargetContainer})");
+                return CandidateDecision.Eligible($"Remux to {targetContainer} ({media.Container} → {targetContainer})");
             }
 
             // A container-clean file can still carry tracks the kept-languages rules remove;
             // stripping them (a stream copy, no re-encode) is part of this profile's cleanup.
             return audioRemovals.Count + subtitleRemovals.Count > 0
                 ? CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals))
-                : CandidateDecision.Skipped($"Already in the target container ({rules.TargetContainer})");
+                : CandidateDecision.Skipped($"Already in the target container ({targetContainer})");
         }
 
         if (string.Equals(media.VideoCodec, rules.TargetVideoCodec, StringComparison.OrdinalIgnoreCase))

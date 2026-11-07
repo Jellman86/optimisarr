@@ -1821,7 +1821,7 @@ public sealed partial class QueueDispatcher(
             && ((media.SubtitleTrackCount ?? 0) > 0
                 || TranscodeSpecResolver.IsMp4Container(Path.GetExtension(media.Path)));
         var needsAudioCopyProbe = isVideoJob && rules.VideoAudioCodec is null
-            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, media.Path))
             && (media.AudioCodecs ?? "").Split(',').Any(codec => codec.Trim().Equals("alac", StringComparison.OrdinalIgnoreCase));
         var sourceAudioLanguages = TrackLanguages.ParseTrackLanguages(media.AudioLanguages);
         var needsLanguageProbe = isVideoJob && rules.KeepAudioLanguages.Count > 0;
@@ -1925,7 +1925,7 @@ public sealed partial class QueueDispatcher(
         // aborts the encode. The inventory already recorded the source's audio codecs, so this needs
         // no extra probe — the resolver falls back to MKV when such audio would be copied.
         var sourceHasMp4IncompatibleAudio = isVideoJob
-            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, media.Path))
             && AudioContainerCompatibility.ContainsMp4Incompatible(media.AudioCodecs);
 
         // Each file's output lives under a per-media-file work root so two sources that share a
@@ -2050,7 +2050,7 @@ public sealed partial class QueueDispatcher(
                         generatedPresentationTimes: spec.RegeneratePresentationTimestamps) };
         }
 
-        if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+        if (isVideoJob && rules.VideoAudioCodec is null && TranscodeSpecResolver.IsMp4Container(OutputContainer.For(rules.TargetContainer, media.Path))
             && AudioContainerCompatibility.CopiedAlacNeedsMatroska(Path.GetExtension(media.Path),
                 freshSourceProbe?.AudioCodecs, spec.RemoveAudioStreamIndexes ?? []))
         {

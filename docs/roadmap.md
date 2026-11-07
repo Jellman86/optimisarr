@@ -56,6 +56,17 @@ candidate still passes the configured soundtrack gate. The [closing parity
 checkpoint](development/adaptive-audio-image-parity.md#closing-checkpoint-5-november-2026) records
 what shipped and the limits that stay.
 
+**Recorded default, 7 November 2026:** a new library keeps each file's container ("Same as source")
+instead of following its preset's MP4. Changing `.mkv` to `.mp4` gives a file a new path. A real
+Radarr 6.4.4 adopted the new file on its next rescan, but unmonitored the movie when its "Unmonitor
+Deleted Movies" setting was on, and re-labelled a test file's quality from WEBDL-480p to SDTV, which
+can prompt an upgrade search that undoes the saving. Keeping the container keeps the path for
+Matroska and MP4 files, keeps the Matroska streams the profile copies, such as image subtitles and
+attachments, and costs a little compatibility on players that cannot open Matroska. A profile that
+re-encodes audio still re-encodes it. M4V and MOV become MP4, other containers become Matroska, and
+an MP4 file still moves to Matroska when its image subtitles or copied audio need it, so those files
+change path. Existing libraries are unchanged; MP4 remains a choice.
+
 **Recorded default, 5 November 2026:** verified cross-filesystem replacement is allowed by default,
 by operator decision for a home-lab application. Separate bind mounts are a normal Docker layout,
 and refusing them would stop replacement on those installs without protecting anything: the copy is

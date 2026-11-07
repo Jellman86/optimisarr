@@ -170,7 +170,7 @@
     const base = specFor(form.ruleProfile)
     return {
       codec: form.targetVideoCodec ? form.targetVideoCodec.toUpperCase() : base.codec,
-      container: form.targetContainer ? form.targetContainer.toUpperCase() : base.container,
+      container: form.targetContainer === 'source' ? i18n.m.libraries.container_source_short : form.targetContainer ? form.targetContainer.toUpperCase() : base.container,
       crf: form.qualityCrf ?? base.crf,
     }
   })
@@ -689,7 +689,7 @@
   // hoisted function declaration below, so referencing it here is fine.)
   let customSelected = $state(false)
   const isCustom = $derived(
-    showVideoOptions && !isNoEncodeProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
+    showVideoOptions && !isNoEncodeProfile && (customSelected || form.targetVideoCodec != null || isContainerOverride(form.targetContainer)),
   )
   function selectPresetMode() {
     customSelected = false
@@ -744,12 +744,14 @@
   // takes precedence, so the slider can imply a codec that isn't actually used. Surface that
   // divergence instead of hiding it — the slider stays editable (it still sets the baseline the
   // non-overridden values follow).
-  const presetOverridden = $derived(!isNoEncodeProfile && (form.targetVideoCodec != null || form.targetContainer != null))
+  const presetOverridden = $derived(!isNoEncodeProfile && (form.targetVideoCodec != null || isContainerOverride(form.targetContainer)))
+  // Keeping each file's container is the default for new libraries, not a departure from the preset.
+  function isContainerOverride(container: string | null) { return container != null && container !== 'source' }
 
   function overrideSummary(): string {
     const parts: string[] = []
     if (form.targetVideoCodec) parts.push(t(i18n.m.libraries.override_codec, { codec: form.targetVideoCodec.toUpperCase() }))
-    if (form.targetContainer) parts.push(t(i18n.m.libraries.override_container, { container: form.targetContainer }))
+    if (isContainerOverride(form.targetContainer)) parts.push(t(i18n.m.libraries.override_container, { container: form.targetContainer! }))
     return parts.join(i18n.m.libraries.override_join)
   }
 
@@ -757,7 +759,8 @@
     const preset = specFor(form.ruleProfile)
     videoAudioEncodingSelection = null
     form.targetVideoCodec = null
-    form.targetContainer = null
+    // Keeping file names is a choice about paths, not a preset override, so a preset leaves it alone.
+    if (isContainerOverride(form.targetContainer)) form.targetContainer = null
     form.hdrHandling = preset.hdrHandling
     form.videoAudioCodec = preset.videoAudioCodec ?? 'copy'
     form.videoAudioBitrateKbps = preset.videoAudioBitrateKbps
@@ -2756,6 +2759,7 @@
           <div>
             <label class="label" for="lib-container">{i18n.m.libraries.container} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.container })} text={i18n.m.libraries.container_tip} /></label>
             <select id="lib-container" aria-label={i18n.m.libraries.container} class="input" bind:value={form.targetContainer}>
+              <option value="source">{i18n.m.libraries.container_source}</option>
               <option value={null}>{i18n.m.libraries.profile_default}</option>
               {#each options.containers as container}<option value={container}>.{container}</option>{/each}
             </select>
