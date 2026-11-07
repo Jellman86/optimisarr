@@ -102,6 +102,12 @@ public sealed record RuleSettings
     /// </summary>
     public bool OptimiseDolbyVision { get; init; }
 
+    /// <summary>
+    /// Deinterlace a source reported as interlaced instead of leaving it untouched. Off by default:
+    /// it changes the picture, and it is wrong for telecined film, which needs inverse telecine.
+    /// </summary>
+    public bool DeinterlaceVideo { get; init; }
+
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
 

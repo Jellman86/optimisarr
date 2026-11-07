@@ -257,7 +257,7 @@ public static class CandidateEvaluator
 
         // Only a re-encode turns woven fields into progressive pictures. Track cleanup copies the
         // video stream, so it stays available for these files.
-        if (rules.TargetVideoCodec is not null && VideoFieldOrder.IsInterlaced(media.FieldOrder))
+        if (rules.TargetVideoCodec is not null && !rules.DeinterlaceVideo && VideoFieldOrder.IsInterlaced(media.FieldOrder))
         {
             return CandidateDecision.Skipped(VideoFieldOrder.RefusalFor(media.FieldOrder!));
         }

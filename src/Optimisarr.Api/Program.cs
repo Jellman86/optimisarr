@@ -367,7 +367,8 @@ internal sealed record SettingsDto(
     public static SettingsDto From(
         QueueSettings settings,
         bool remoteWorkersAvailable = false,
-        SuperResolutionOptions? superResolution = null) => new(
+        SuperResolutionOptions? superResolution = null,
+        SuperResolutionEnginePaths? realEsrgan = null) => new(
         settings.MaxConcurrentJobs,
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
@@ -388,13 +389,13 @@ internal sealed record SettingsDto(
             GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).NonVideo,
         WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
             GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).Evidence,
-        superResolution is null ? null : SuperResolutionSettingsDto.From(superResolution));
+        superResolution is null ? null : SuperResolutionSettingsDto.From(superResolution, realEsrgan ?? SuperResolutionEnginePaths.Bundled));
 }
 
 /// <summary>
-/// The Real-CUGAN super-resolution engine section of the settings. The engine choice itself is
-/// fixed ("realcugan") — the constant exists so the wire contract can name which engine these
-/// fields describe, and so a second engine later is a new section, not a reinterpretation.
+/// The super-resolution section of the settings. The preset, scale, denoise level and paths
+/// describe Real-CUGAN, which a library uses unless it chooses another engine; the device is this
+/// machine's for every engine, and Real-ESRGAN adds only where it is installed.
 /// </summary>
 internal sealed record SuperResolutionSettingsDto(
     bool Enabled,
@@ -403,18 +404,26 @@ internal sealed record SuperResolutionSettingsDto(
     int NoiseLevel,
     string Device,
     string BinaryPath,
-    string ModelsPath)
+    string ModelsPath,
+    string? RealEsrganBinaryPath = null,
+    string? RealEsrganModelsPath = null)
 {
-    public const string Engine = SuperResolutionOptions.EngineName;
+    public const string Engine = "realcugan";
 
-    public static SuperResolutionSettingsDto From(SuperResolutionOptions options) => new(
+    public static SuperResolutionSettingsDto From(SuperResolutionOptions options, SuperResolutionEnginePaths realEsrgan) => new(
         options.Enabled,
         options.Preset,
         options.Scale,
         options.NoiseLevel,
         options.Device,
         options.BinaryPath,
-        options.ModelsPath);
+        options.ModelsPath,
+        realEsrgan.BinaryPath,
+        realEsrgan.ModelsPath);
+
+    /// <summary>A path a client left out keeps what is saved; an empty one returns to the bundled engine.</summary>
+    public SuperResolutionEnginePaths ToRealEsrganPaths(SuperResolutionEnginePaths saved) =>
+        new(RealEsrganBinaryPath ?? saved.BinaryPath, RealEsrganModelsPath ?? saved.ModelsPath);
 
     public SuperResolutionOptions ToOptions() => new(
         Enabled, Preset, Scale, NoiseLevel, Device, BinaryPath, ModelsPath);
@@ -555,7 +564,11 @@ internal sealed record SaveLibraryRequest(
     bool? NormalizeOpusChannelLayout = null,
     bool? AdaptiveSoundtrackQuality = null,
     bool? SuperResolutionEnabled = null,
-    string? SuperResolutionQualityCheck = null);
+    string? SuperResolutionQualityCheck = null,
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null,
+    bool? DeinterlaceVideo = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -655,7 +668,11 @@ internal sealed record LibraryDto(
     bool NormalizeOpusChannelLayout,
     bool AdaptiveSoundtrackQuality,
     bool SuperResolutionEnabled,
-    string SuperResolutionQualityCheck)
+    string SuperResolutionQualityCheck,
+    string? SuperResolutionEngine,
+    string? SuperResolutionModel,
+    int? SuperResolutionScale,
+    bool DeinterlaceVideo)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -744,7 +761,11 @@ internal sealed record LibraryDto(
         library.NormalizeOpusChannelLayout,
         library.AdaptiveSoundtrackQuality,
         library.SuperResolutionEnabled,
-        library.SuperResolutionQualityCheck.ToString());
+        library.SuperResolutionQualityCheck.ToString(),
+        library.SuperResolutionEngine,
+        library.SuperResolutionModel,
+        library.SuperResolutionScale,
+        library.DeinterlaceVideo);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

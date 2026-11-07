@@ -52,6 +52,9 @@ public sealed record TranscodeSpec(
     // the source cadence. Always a clean halving of the source (see FrameRatePlanner), and the
     // same decimation the VMAF reference receives so the judged frames are the kept frames.
     FrameRateDecimation? FrameRate = null,
+    // Deinterlace before anything else touches the picture. The same filter reaches the VMAF
+    // reference, so a progressive candidate is not judged against woven fields.
+    bool Deinterlace = false,
     // The channel layout the source's audio tracks declare, or null when it was not reported.
     // Opus writes surround in the standard 5.1 order, so a source that declares the side
     // variant is mapped onto it (see AudioChannelLayoutPolicy).
@@ -165,8 +168,10 @@ public static class FfmpegCommandBuilder
         var encoder = isVideoReencode ? (videoEncoder ?? EncoderFor(spec.VideoCodec!)) : null;
         var family = encoder is null ? EncoderFamily.Cpu : FamilyOf(encoder);
 
+        // A hardware tone-map reads GPU surfaces, which the software deinterlace filter never hands it.
         var useHardwareToneMap = hardwareToneMap
             && hardwareDecode
+            && !spec.Deinterlace
             && spec.TonemapToSdr
             && family is EncoderFamily.Qsv or EncoderFamily.Vaapi;
 
@@ -174,7 +179,8 @@ public static class FfmpegCommandBuilder
         // work retains the software colour pipeline and therefore needs system-memory frames.
         var useHardwareDecode = hardwareDecode
             && family is EncoderFamily.Nvenc or EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.VideoToolbox
-            && (!spec.TonemapToSdr || useHardwareToneMap);
+            && (!spec.TonemapToSdr || useHardwareToneMap)
+            && !spec.Deinterlace;
 
         AppendHardwareDeviceInit(args, family, useHardwareDecode);
         if (useHardwareDecode && family is EncoderFamily.Qsv or EncoderFamily.Vaapi)
@@ -361,6 +367,11 @@ public static class FfmpegCommandBuilder
         // directly. The downscale goes first: it is a software filter so it must precede any
         // upload, and scaling before the tone-map does the expensive colour work on fewer pixels.
         var filters = new List<string>();
+        // Fields must be combined before cropping or scaling blends lines from different moments.
+        if (spec.Deinterlace)
+        {
+            filters.Add(VideoFieldOrder.DeinterlaceFilter);
+        }
         // Crop first, then scale: the downscale was computed from the cropped size, and scaling
         // bars only to cut them away afterwards would waste the work and blur the edge.
         if (spec.CropTo is { } crop)

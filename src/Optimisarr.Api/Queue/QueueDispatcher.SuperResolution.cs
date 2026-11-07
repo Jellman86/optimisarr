@@ -8,7 +8,7 @@ using Optimisarr.Core.Rules;
 namespace Optimisarr.Api.Queue;
 
 /// <summary>
-/// The Real-CUGAN super-resolution pipeline: a video job's frames are extracted as a PNG
+/// The super-resolution pipeline: a video job's frames are extracted as a PNG
 /// sequence, upscaled by the engine directory-to-directory, and reassembled with the source's
 /// audio, subtitles and attachments into the candidate the normal verification and replacement
 /// flow then judges. It reuses <see cref="QueueDispatcher"/>'s process handling, progress
@@ -124,7 +124,7 @@ public sealed partial class QueueDispatcher
                 string.Join(" ", detection.Problems));
         }
 
-        var source = await ProbeSuperResolutionSourceAsync(work.Spec.InputPath, cancellationToken);
+        var source = await ProbeSuperResolutionSourceAsync(work.Spec.InputPath, cancellationToken, work.Spec.Deinterlace);
         if (source.Refusal is { } refusal)
         {
             throw new InvalidOperationException(refusal + " Leave the file to the normal pipeline.");
@@ -152,14 +152,14 @@ public sealed partial class QueueDispatcher
             source.BitDepth, source.Colour!);
         await UpdateStageArgumentsAsync(jobId, encoderArguments, cancellationToken);
         logger.LogInformation(
-            "Job {JobId}: super-resolution — {Frames} pictures per batch, preset {Preset}, scale {Scale}x, noise {Noise}, device {Device}",
-            jobId, frames, options.Preset, options.Scale, options.NoiseLevel, options.Device);
+            "Job {JobId}: super-resolution — {Frames} pictures per batch, {Run}, noise {Noise}, device {Device}",
+            jobId, frames, options.RunDescription, options.NoiseLevel, options.Device);
 
         using var outputDirectory = WorkPaths.PrepareOutputDirectory(work.Spec.OutputPath, ReserveWorkDirectory);
         var request = new SuperResolutionRunRequest(
             transcodeOptions.Ffmpeg,
             detection.BinaryPath,
-            SuperResolutionCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!),
+            SuperResolutionCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!, work.Spec.Deinterlace),
             encoderArguments,
             (input, output) => options.Engine.BuildArguments(input, output, detection.ModelsRoot, options),
             WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid()),
@@ -203,7 +203,7 @@ public sealed partial class QueueDispatcher
         Path.GetExtension(path).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov";
 
     /// <summary>One ffprobe of a file's streams, read by <see cref="SuperResolutionSource"/>.</summary>
-    private async Task<SuperResolutionSource> ProbeSuperResolutionSourceAsync(string path, CancellationToken cancellationToken)
+    private async Task<SuperResolutionSource> ProbeSuperResolutionSourceAsync(string path, CancellationToken cancellationToken, bool deinterlaced = false)
     {
         var ffprobe = MediaToolCommands.ResolveFfprobe(Environment.GetEnvironmentVariable("OPTIMISARR_FFPROBE"), transcodeOptions.Ffmpeg);
         using var process = new Process
@@ -232,7 +232,7 @@ public sealed partial class QueueDispatcher
             {
                 throw new InvalidOperationException($"Probing {Path.GetFileName(path)} for super-resolution failed: {(await error).Trim()}");
             }
-            return SuperResolutionSource.Parse(await output);
+            return SuperResolutionSource.Parse(await output, deinterlaced);
         }
         finally
         {

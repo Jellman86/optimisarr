@@ -1128,10 +1128,15 @@
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
       optimiseDolbyVision: library.optimiseDolbyVision,
+      // Coerced like the hardlink switch: an older server omits the field.
+      deinterlaceVideo: library.deinterlaceVideo ?? false,
       // Coerced like the hardlink switch: an older server omits the field, and undefined
       // must read as off rather than blank the editor.
       superResolutionEnabled: library.superResolutionEnabled ?? false,
       superResolutionQualityCheck: library.superResolutionQualityCheck ?? 'BrokenFramesOnly',
+      superResolutionEngine: library.superResolutionEngine ?? null,
+      superResolutionModel: library.superResolutionModel ?? null,
+      superResolutionScale: library.superResolutionScale ?? null,
       excludePaths: library.excludePaths,
       // Coerced rather than passed through: a two-way binding onto a boolean prop throws
       // props_invalid_value on undefined, which takes the whole editor down rather than
@@ -1268,8 +1273,12 @@
       targetContainer: emptyToNull(form.targetContainer),
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
+      deinterlaceVideo: form.deinterlaceVideo,
       superResolutionEnabled: form.superResolutionEnabled,
       superResolutionQualityCheck: form.superResolutionQualityCheck,
+      superResolutionEngine: form.superResolutionEngine,
+      superResolutionModel: form.superResolutionModel,
+      superResolutionScale: form.superResolutionScale,
       excludePaths: emptyToNull(form.excludePaths),
       excludeHardLinkedFiles: form.excludeHardLinkedFiles,
       workPlacement: form.workPlacement,
@@ -1325,6 +1334,15 @@
   function soundtrackLimitForSave(): number | null {
     const limit = toNullableNumber(form.maximumSoundtrackQualityDistance ?? null)
     return form.soundtrackQualityGateEnabled || limit == null || (limit >= 0 && limit <= 1) ? limit : null
+  }
+
+  /** Only animevideov3 offers a choice of scale; the other Real-ESRGAN models are fixed 4x networks. */
+  function chooseSuperResolutionModel(model: string) {
+    form.superResolutionModel = model || null
+    // Naming Real-CUGAN is what returns a library to the server's settings: a server reads a missing
+    // engine as a client that knows nothing of this choice, and keeps what is saved.
+    form.superResolutionEngine = model ? 'realesrgan' : 'realcugan'
+    form.superResolutionScale = !model ? null : model === 'realesr-animevideov3' ? form.superResolutionScale ?? 2 : 4
   }
 
   async function save() {
@@ -2659,6 +2677,19 @@
           </label>
         </div>
 
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.deinterlaceVideo} />
+            <span>
+              {i18n.m.libraries.deinterlace_label}
+              <InfoTip text={i18n.m.libraries.deinterlace_tip} />
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
+                {i18n.m.libraries.deinterlace_hint}
+              </span>
+            </span>
+          </label>
+        </div>
+
 </ConfigSection>
 
 <!-- AI super-resolution is experimental and per library: an opted-in library never changes how
@@ -2676,6 +2707,25 @@
           </span>
         </label>
         {#if form.superResolutionEnabled}
+          <div class="mt-4">
+            <label class="label" for="library-sr-model">{i18n.m.libraries.super_resolution_model} <InfoTip text={i18n.m.libraries.super_resolution_model_tip} /></label>
+            <select id="library-sr-model" class="input" value={form.superResolutionModel ?? ''} onchange={event => chooseSuperResolutionModel(event.currentTarget.value)}>
+              <option value="">{i18n.m.libraries.super_resolution_model_cugan}</option>
+              <option value="realesrgan-x4plus">{i18n.m.libraries.super_resolution_model_live}</option>
+              <option value="realesrgan-x4plus-anime">{i18n.m.libraries.super_resolution_model_drawn}</option>
+              <option value="realesr-animevideov3">{i18n.m.libraries.super_resolution_model_video}</option>
+            </select>
+          </div>
+          {#if form.superResolutionModel === 'realesr-animevideov3'}
+            <div class="mt-4">
+              <label class="label" for="library-sr-scale">{i18n.m.libraries.super_resolution_scale}</label>
+              <select id="library-sr-scale" class="input" bind:value={form.superResolutionScale}>
+                <option value={2}>{i18n.m.settings.sr_scale_2}</option>
+                <option value={3}>{i18n.m.settings.sr_scale_3}</option>
+                <option value={4}>{i18n.m.settings.sr_scale_4}</option>
+              </select>
+            </div>
+          {/if}
           <div class="mt-4">
             <label class="label" for="library-sr-quality">{i18n.m.libraries.super_resolution_quality} <InfoTip text={i18n.m.libraries.super_resolution_quality_tip} /></label>
             <select id="library-sr-quality" class="input" bind:value={form.superResolutionQualityCheck}>

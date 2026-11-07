@@ -32,7 +32,7 @@ internal static class SettingsEndpoints
         {
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
             var superResolution = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolution));
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolution, await settings.GetRealEsrganPathsAsync(cancellationToken)));
         })
         .WithName("GetSettings");
 
@@ -60,17 +60,23 @@ internal static class SettingsEndpoints
                     return ApiErrors.BadRequest(superResolutionError!.Code, superResolutionError.Message);
                 }
                 superResolution = parsedSuperResolution;
+                if (SuperResolutionRequestParser.RealEsrganPathError(requestedSuperResolution) is { } pathError)
+                {
+                    return ApiErrors.BadRequest(pathError.Code, pathError.Message);
+                }
             }
 
             await settings.SetQueueSettingsAsync(parsed, cancellationToken);
             if (superResolution is not null)
             {
                 await settings.SetSuperResolutionOptionsAsync(superResolution, cancellationToken);
+                await settings.SetRealEsrganPathsAsync(
+                    request.SuperResolution!.ToRealEsrganPaths(await settings.GetRealEsrganPathsAsync(cancellationToken)), cancellationToken);
             }
 
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
             var superResolutionOptions = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
-            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolutionOptions));
+            return Results.Ok(SettingsDto.From(queue, settings.RemoteWorkersAvailable, superResolutionOptions, await settings.GetRealEsrganPathsAsync(cancellationToken)));
         })
         .WithName("UpdateSettings");
 

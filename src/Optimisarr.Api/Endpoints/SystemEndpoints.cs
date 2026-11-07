@@ -42,37 +42,32 @@ internal static class SystemEndpoints
 
         // Static super-resolution engine check: binary, model files, Vulkan loader. Cheap and
         // side-effect free; the UI calls it when the super-resolution settings are shown.
-        app.MapGet("/api/system/realcugan", async (
-            SettingsStore settings,
-            CancellationToken cancellationToken) =>
-        {
-            var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
-            var detection = await new SuperResolutionDetectionService(options).DetectAsync(cancellationToken);
-            return Results.Ok(RealCuganStatusDto.From(detection, options));
-        })
+        app.MapGet("/api/system/realcugan", (SettingsStore settings, CancellationToken cancellationToken) =>
+            SuperResolutionStatusAsync(RealCuganEngine.Instance.Name, null, null, settings, cancellationToken))
         .WithName("GetRealCuganStatus");
+
+        app.MapGet("/api/system/super-resolution/{engine}", (
+            string engine,
+            SettingsStore settings,
+            CancellationToken cancellationToken,
+            string? model = null,
+            int? scale = null) => SuperResolutionStatusAsync(engine, model, scale, settings, cancellationToken))
+        .WithName("GetSuperResolutionStatus");
 
         // A real small-sample engine run. This is the only check that proves the Vulkan
         // runtime and the configured model files actually work on this machine; it can take a
         // few seconds, so it runs on the operator's explicit "test environment" action.
-        app.MapPost("/api/system/realcugan/probe", async (
-            SettingsStore settings,
-            CancellationToken cancellationToken) =>
-        {
-            var options = await settings.GetSuperResolutionOptionsAsync(cancellationToken);
-            // A real engine run is part of the experimental feature: while it is off, nothing
-            // about super-resolution executes on this machine.
-            if (!options.Enabled)
-            {
-                return ApiErrors.Conflict("superResolution.disabled",
-                    "Turn on AI super-resolution in Settings before testing the engine.");
-            }
-            var ffmpeg = MediaToolCommands.ResolveFfmpeg(
-                Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG"));
-            var probe = await new SuperResolutionDetectionService(options).ProbeAsync(ffmpeg, cancellationToken);
-            return Results.Ok(RealCuganProbeDto.From(probe));
-        })
+        app.MapPost("/api/system/realcugan/probe", (SettingsStore settings, CancellationToken cancellationToken) =>
+            SuperResolutionProbeAsync(RealCuganEngine.Instance.Name, null, null, settings, cancellationToken))
         .WithName("ProbeRealCugan");
+
+        app.MapPost("/api/system/super-resolution/{engine}/probe", (
+            string engine,
+            SettingsStore settings,
+            CancellationToken cancellationToken,
+            string? model = null,
+            int? scale = null) => SuperResolutionProbeAsync(engine, model, scale, settings, cancellationToken))
+        .WithName("ProbeSuperResolution");
 
         app.MapGet("/api/system/hardware", async (
             HardwareCapabilityService hardware,
@@ -165,6 +160,66 @@ internal static class SystemEndpoints
         }))
         .WithName("GetLibraryOptions");
     }
+
+    /// <summary>
+    /// The configuration a status check or sample run uses: the server's settings for Real-CUGAN, and
+    /// otherwise the model asked about, or the engine's first when none was named.
+    /// </summary>
+    private static async Task<SuperResolutionOptions?> OptionsForCheckAsync(
+        string engine, string? model, int? scale, SettingsStore settings, CancellationToken cancellationToken)
+    {
+        var found = SuperResolutionEngines.Find(engine);
+        return found is null ? null : await settings.GetSuperResolutionOptionsForAsync(
+            found == RealCuganEngine.Instance ? null : engine,
+            model ?? found.Presets[0],
+            scale ?? found.Scales[0],
+            cancellationToken);
+    }
+
+    private static IResult UnknownEngine(string engine) =>
+        ApiErrors.NotFound("superResolution.engine", $"Unknown super-resolution engine '{engine}'.", new { engine });
+
+    private static async Task<IResult> SuperResolutionStatusAsync(
+        string engine, string? model, int? scale, SettingsStore settings, CancellationToken cancellationToken)
+    {
+        if (await OptionsForCheckAsync(engine, model, scale, settings, cancellationToken) is not { } options)
+            return UnknownEngine(engine);
+        var detection = await new SuperResolutionDetectionService(options).DetectAsync(cancellationToken);
+        // Asked about the engine rather than one model, it must have every model a library can choose.
+        if (model is null && options.Engine != RealCuganEngine.Instance)
+        {
+            foreach (var preset in options.Engine.Presets.Skip(1))
+            {
+                var usable = options.Engine.Scales.First(candidate => options.Engine.ModelFile(preset, candidate, 0) is not null);
+                var other = await new SuperResolutionDetectionService(options with { Preset = preset, Scale = usable }).DetectAsync(cancellationToken);
+                detection = detection with
+                {
+                    Readiness = detection.Readiness == SuperResolutionReadiness.Ready ? other.Readiness : detection.Readiness,
+                    ModelsFound = detection.ModelsFound && other.ModelsFound,
+                    MissingModelFile = detection.MissingModelFile ?? other.MissingModelFile,
+                    Problems = [.. detection.Problems.Union(other.Problems)],
+                };
+            }
+        }
+        return Results.Ok(SuperResolutionStatusDto.From(detection, options));
+    }
+
+    private static async Task<IResult> SuperResolutionProbeAsync(
+        string engine, string? model, int? scale, SettingsStore settings, CancellationToken cancellationToken)
+    {
+        if (await OptionsForCheckAsync(engine, model, scale, settings, cancellationToken) is not { } options)
+            return UnknownEngine(engine);
+        // A real engine run is part of the experimental feature: while it is off, nothing
+        // about super-resolution executes on this machine.
+        if (!options.Enabled)
+        {
+            return ApiErrors.Conflict("superResolution.disabled",
+                "Turn on AI super-resolution in Settings before testing the engine.");
+        }
+        var ffmpeg = MediaToolCommands.ResolveFfmpeg(Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG"));
+        var probe = await new SuperResolutionDetectionService(options).ProbeAsync(ffmpeg, cancellationToken);
+        return Results.Ok(SuperResolutionProbeDto.From(probe));
+    }
 }
 
 /// <summary>
@@ -172,7 +227,7 @@ internal static class SystemEndpoints
 /// configuration it was checked against — so the UI can show the operator exactly what a run
 /// would use and, when something is missing, exactly what to fix.
 /// </summary>
-internal sealed record RealCuganStatusDto(
+internal sealed record SuperResolutionStatusDto(
     string Engine,
     string Readiness,
     bool BinaryFound,
@@ -189,7 +244,7 @@ internal sealed record RealCuganStatusDto(
     string Device,
     IReadOnlyList<string> Problems)
 {
-    public static RealCuganStatusDto From(SuperResolutionDetection detection, SuperResolutionOptions options) => new(
+    public static SuperResolutionStatusDto From(SuperResolutionDetection detection, SuperResolutionOptions options) => new(
         detection.Engine,
         detection.Readiness.ToString(),
         detection.BinaryFound,
@@ -207,14 +262,14 @@ internal sealed record RealCuganStatusDto(
         detection.Problems);
 }
 
-internal sealed record RealCuganProbeDto(
+internal sealed record SuperResolutionProbeDto(
     bool Success,
     int? ExitCode,
     string? Error,
     string? OutputTail,
     string? DeviceUsed)
 {
-    public static RealCuganProbeDto From(SuperResolutionProbeResult probe) => new(
+    public static SuperResolutionProbeDto From(SuperResolutionProbeResult probe) => new(
         probe.Success,
         probe.ExitCode,
         probe.Error,

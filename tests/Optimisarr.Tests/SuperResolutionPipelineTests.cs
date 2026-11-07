@@ -83,6 +83,8 @@ public sealed class SuperResolutionPipelineTests : IDisposable
             w, h = (64, 36) if mode == 'wrong-size' else (64 * scale, 36 * scale)
             with open(os.path.join(dst, name), 'wb') as f:
                 f.write(png(w, h))
+            if mode == 'slow':
+                time.sleep(1.5)
         """;
         return Write("engine", script);
     }
@@ -153,6 +155,22 @@ public sealed class SuperResolutionPipelineTests : IDisposable
             .Select(int.Parse).Max();
         Assert.True(highWater <= 8, $"scratch held {highWater} pictures for a batch of 8");
         Assert.False(Directory.Exists(request.Workspace));
+    }
+
+    [PosixFact]
+    public async Task A_slow_model_reports_each_picture_and_is_not_mistaken_for_a_stall()
+    {
+        // The batch takes twice the stall limit, as a large batch of a slow model does for real.
+        var (request, output) = Request(FakeFfmpeg(4), FakeEngine("slow"), batch: 4, stall: TimeSpan.FromSeconds(3));
+        var reported = new List<double>();
+        var hooks = Hooks() with { ReportProgress = fraction => { lock (reported) reported.Add(fraction); return Task.CompletedTask; } };
+
+        var run = await SuperResolutionPipeline.RunAsync(request, hooks, CancellationToken.None);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("4", await File.ReadAllTextAsync(output));
+        Assert.Contains(reported, fraction => fraction < 4.0 / 50);
+        Assert.Equal(reported.Order(), reported);
     }
 
     [PosixFact]

@@ -11,6 +11,7 @@ public sealed class RealCuganEngine : ISuperResolutionEngine
 
     public string Name => "realcugan";
     public string BinaryName => "realcugan-ncnn-vulkan";
+    public bool SupportsCpu => true;
     public IReadOnlyList<string> Presets => RealCuganModelCatalog.Presets;
     public IReadOnlyList<int> Scales { get; } = [2, 3, 4];
 

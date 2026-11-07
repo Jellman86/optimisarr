@@ -118,6 +118,7 @@ internal static class LibraryEndpoints
                 TargetContainer = parsed.TargetContainer,
                 HdrHandling = parsed.HdrHandling,
                 OptimiseDolbyVision = parsed.OptimiseDolbyVision,
+                DeinterlaceVideo = parsed.DeinterlaceVideo,
                 ExcludePaths = parsed.ExcludePaths,
                 ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles,
                 SkipSourceCodecs = parsed.SkipSourceCodecs,
@@ -135,6 +136,9 @@ internal static class LibraryEndpoints
                 NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout,
                 SuperResolutionEnabled = parsed.SuperResolutionEnabled,
                 SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck,
+                SuperResolutionEngine = parsed.SuperResolutionEngine,
+                SuperResolutionModel = parsed.SuperResolutionModel,
+                SuperResolutionScale = parsed.SuperResolutionScale,
                 KeepAudioLanguages = parsed.KeepAudioLanguages,
                 KeepSubtitleLanguages = parsed.KeepSubtitleLanguages,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
@@ -247,6 +251,7 @@ internal static class LibraryEndpoints
             library.TargetContainer = parsed.TargetContainer;
             library.HdrHandling = parsed.HdrHandling;
             library.OptimiseDolbyVision = parsed.OptimiseDolbyVision;
+            library.DeinterlaceVideo = parsed.DeinterlaceVideo;
             library.ExcludePaths = parsed.ExcludePaths;
             library.ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles;
             library.SkipSourceCodecs = parsed.SkipSourceCodecs;
@@ -264,6 +269,12 @@ internal static class LibraryEndpoints
             library.NormalizeOpusChannelLayout = parsed.NormalizeOpusChannelLayout;
             library.SuperResolutionEnabled = parsed.SuperResolutionEnabled;
             library.SuperResolutionQualityCheck = parsed.SuperResolutionQualityCheck;
+            if (parsed.SuperResolutionChoiceSent)
+            {
+                library.SuperResolutionEngine = parsed.SuperResolutionEngine;
+                library.SuperResolutionModel = parsed.SuperResolutionModel;
+                library.SuperResolutionScale = parsed.SuperResolutionScale;
+            }
             library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.KeepSubtitleLanguages = parsed.KeepSubtitleLanguages;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;

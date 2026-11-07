@@ -89,7 +89,14 @@ internal readonly record struct ParsedLibrary(
     bool NormalizeOpusChannelLayout = true,
     bool AdaptiveSoundtrackQuality = false,
     bool SuperResolutionEnabled = false,
-    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly);
+    SuperResolutionQualityCheck SuperResolutionQualityCheck = SuperResolutionQualityCheck.BrokenFramesOnly,
+    string? SuperResolutionEngine = null,
+    string? SuperResolutionModel = null,
+    int? SuperResolutionScale = null,
+    // False when the request named no choice, as a client older than the choice does, so an update
+    // keeps what is saved rather than quietly returning the library to Real-CUGAN.
+    bool SuperResolutionChoiceSent = false,
+    bool DeinterlaceVideo = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -198,6 +205,20 @@ internal static class LibraryRequestParser
             error =
                 $"Unknown super-resolution quality check: {request.SuperResolutionQualityCheck}. " +
                 $"Expected one of {string.Join(", ", Enum.GetNames<SuperResolutionQualityCheck>())}.";
+            return false;
+        }
+
+        var superResolutionEngine = Trim(request.SuperResolutionEngine);
+        var superResolutionModel = Trim(request.SuperResolutionModel);
+        var superResolutionChoiceSent = superResolutionEngine is not null || superResolutionModel is not null || request.SuperResolutionScale is not null;
+        // Naming Real-CUGAN alone is how a client asks to go back to the server's settings.
+        if (superResolutionEngine == RealCuganEngine.Instance.Name && superResolutionModel is null && request.SuperResolutionScale is null)
+        {
+            superResolutionEngine = null;
+        }
+        if (SuperResolutionModelChoice.Validate(superResolutionEngine, superResolutionModel, request.SuperResolutionScale) is { } modelProblem)
+        {
+            error = modelProblem;
             return false;
         }
 
@@ -646,7 +667,12 @@ internal static class LibraryRequestParser
             request.NormalizeOpusChannelLayout ?? true,
             request.AdaptiveSoundtrackQuality ?? false,
             request.SuperResolutionEnabled ?? false,
-            superResolutionQualityCheck);
+            superResolutionQualityCheck,
+            superResolutionEngine,
+            superResolutionModel,
+            request.SuperResolutionScale,
+            superResolutionChoiceSent,
+            request.DeinterlaceVideo ?? false);
         error = null;
         return true;
     }

@@ -104,8 +104,8 @@ async function mockSettings(page: Page) {
       return json(route, [])
     }
     if (path === '/api/system/tools') return json(route, { tools })
-    if (path === '/api/system/realcugan') return json(route, realCugan)
-    if (path === '/api/system/realcugan/probe') return json(route, { success: true, exitCode: 0, error: null, outputTail: '', deviceUsed: 'auto' })
+    if (path === '/api/system/super-resolution/realcugan') return json(route, realCugan)
+    if (path === '/api/system/super-resolution/realcugan/probe') return json(route, { success: true, exitCode: 0, error: null, outputTail: '', deviceUsed: 'auto' })
     if (path === '/api/system/hardware') return json(route, { hardware })
     return json(route, {})
   })
@@ -816,7 +816,7 @@ test('AI super-resolution settings stay hidden behind the experimental switch un
     }
     return json(route, current)
   })
-  await page.route('**/api/system/realcugan', route => { detections++; return json(route, realCugan) })
+  await page.route('**/api/system/super-resolution/realcugan', route => { detections++; return json(route, realCugan) })
   await page.goto('/#/settings')
 
   await expect(page.getByText('Off — video jobs keep the normal pipeline')).toBeVisible()
@@ -854,7 +854,7 @@ test('the super-resolution probe reports a real sample run and a failed save sta
   await mockSettings(page)
   const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
   await page.route('**/api/settings', route => json(route, enabled))
-  await page.route('**/api/system/realcugan/probe', route =>
+  await page.route('**/api/system/super-resolution/realcugan/probe', route =>
     json(route, { success: true, exitCode: 0, error: null, outputTail: '', deviceUsed: 'auto' }))
   await page.goto("/#/settings/super-resolution")
 
@@ -903,4 +903,55 @@ test('the managers can be asked which files they track, and one that cannot answ
   const results = page.getByTestId('arr-tracking')
   await expect(results).toContainText('Radarr tracks 412 files: 410 matched in your libraries, 3 possible matches, 2 not found.')
   await expect(results).toContainText('Sonarr could not be asked.')
+})
+
+test('each super-resolution engine can be checked and tested on its own', async ({ page }) => {
+  await mockSettings(page)
+  const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
+  await page.route('**/api/settings', route => json(route, enabled))
+  await page.route('**/api/system/super-resolution/realesrgan', route => json(route, { ...realCugan, engine: 'realesrgan', modelDirectory: 'models', readiness: 'NotInstalled' }))
+  let probed = false
+  await page.route('**/api/system/super-resolution/realesrgan/probe', route => {
+    probed = true
+    return json(route, { success: true, exitCode: 0, error: null, outputTail: '', deviceUsed: 'auto' })
+  })
+  await page.goto('/#/settings/super-resolution')
+
+  await page.getByLabel('Engine to check').selectOption('realesrgan')
+
+  await expect(page.getByText('Not installed — the engine executable was not found.')).toBeVisible()
+  await page.getByRole('button', { name: 'Test with a real sample run' }).click()
+  await expect(page.getByText('The engine produced an upscaled sample on device auto.')).toBeVisible()
+  expect(probed).toBe(true)
+})
+
+test('choosing the CPU warns that Real-ESRGAN cannot use it', async ({ page }) => {
+  await mockSettings(page)
+  const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
+  await page.route('**/api/settings', route => json(route, enabled))
+  await page.goto('/#/settings/super-resolution')
+
+  await page.locator('#sr-device').selectOption('cpu')
+
+  await expect(page.getByText('Real-ESRGAN has no CPU mode')).toBeVisible()
+})
+
+test('switching engines while a check runs never shows the other engines answer', async ({ page }) => {
+  await mockSettings(page)
+  const enabled = { ...settings, superResolution: { ...settings.superResolution, enabled: true } }
+  await page.route('**/api/settings', route => json(route, enabled))
+  let answerCugan = () => {}
+  await page.route('**/api/system/super-resolution/realcugan', async route => {
+    await new Promise<void>(release => { answerCugan = release })
+    await json(route, realCugan)
+  })
+  await page.route('**/api/system/super-resolution/realesrgan', route => json(route, { ...realCugan, engine: 'realesrgan', readiness: 'NotInstalled' }))
+  await page.goto('/#/settings/super-resolution')
+  await expect.poll(() => answerCugan.toString()).not.toBe('() => {}')
+
+  await page.getByLabel('Engine to check').selectOption('realesrgan')
+  answerCugan()
+
+  await expect(page.getByText('Not installed — the engine executable was not found.')).toBeVisible()
+  await expect(page.getByText('Installed and configured — run the probe to prove the runtime.')).toHaveCount(0)
 })

@@ -92,6 +92,9 @@ public sealed class Library
     /// </summary>
     public bool OptimiseDolbyVision { get; set; }
 
+    /// <summary>Deinterlace sources reported as interlaced instead of leaving them untouched.</summary>
+    public bool DeinterlaceVideo { get; set; }
+
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 
@@ -121,6 +124,18 @@ public sealed class Library
     /// this flag only decides which libraries route video through it.
     /// </summary>
     public bool SuperResolutionEnabled { get; set; }
+
+    /// <summary>
+    /// The engine this library's content calls for. Null means Real-CUGAN with the server's settings,
+    /// which is what every library did before there was a choice.
+    /// </summary>
+    public string? SuperResolutionEngine { get; set; }
+
+    /// <summary>The chosen engine's model. Null when <see cref="SuperResolutionEngine"/> is.</summary>
+    public string? SuperResolutionModel { get; set; }
+
+    /// <summary>The upscale factor for that model. Null when <see cref="SuperResolutionEngine"/> is.</summary>
+    public int? SuperResolutionScale { get; set; }
 
     /// <summary>How this library judges its upscaled results; see <see cref="Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck"/>.</summary>
     public Optimisarr.Core.SuperResolution.SuperResolutionQualityCheck SuperResolutionQualityCheck { get; set; }

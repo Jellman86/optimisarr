@@ -146,6 +146,8 @@ export type LibraryRules = {
   targetContainer: string | null
   hdrHandling: string | null
   optimiseDolbyVision: boolean
+  /** Deinterlace sources reported as interlaced instead of leaving them untouched. */
+  deinterlaceVideo: boolean
   excludePaths: string | null
   excludeHardLinkedFiles: boolean
   skipSourceCodecs: string | null
@@ -162,9 +164,13 @@ export type LibraryRules = {
   downmixToStereo: boolean
   /** Map a 5.1(side) source onto the standard 5.1 order Opus writes. */
   normalizeOpusChannelLayout: boolean
-  /** Video jobs in this library run through the Real-CUGAN super-resolution pipeline. */
+  /** Video jobs in this library run through the super-resolution pipeline. */
   superResolutionEnabled: boolean
   superResolutionQualityCheck: SuperResolutionQualityCheck
+  /** All null means Real-CUGAN with the server's settings. */
+  superResolutionEngine: SuperResolutionEngine | null
+  superResolutionModel: string | null
+  superResolutionScale: number | null
   keepAudioLanguages: string | null
   keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
@@ -259,6 +265,9 @@ export function newLibraryDefaults(): SaveLibrary {
   return {
     superResolutionEnabled: false,
     superResolutionQualityCheck: 'BrokenFramesOnly',
+    superResolutionEngine: null,
+    superResolutionModel: null,
+    superResolutionScale: null,
     name: '',
     path: '',
     mediaType: 'Film',
@@ -276,6 +285,7 @@ export function newLibraryDefaults(): SaveLibrary {
     targetContainer: null,
     hdrHandling: null,
     optimiseDolbyVision: false,
+    deinterlaceVideo: false,
     excludePaths: null,
     excludeHardLinkedFiles: false,
     skipSourceCodecs: null,
@@ -382,13 +392,17 @@ export type SuperResolutionSettings = {
   device: string
   binaryPath: string
   modelsPath: string
+  realEsrganBinaryPath: string
+  realEsrganModelsPath: string
 }
 
-export type RealCuganReadiness = 'NotInstalled' | 'Misconfigured' | 'VulkanUnavailable' | 'Ready'
+export type SuperResolutionEngine = 'realcugan' | 'realesrgan'
 
-export type RealCuganStatus = {
+export type SuperResolutionReadiness = 'NotInstalled' | 'Misconfigured' | 'VulkanUnavailable' | 'Ready'
+
+export type SuperResolutionStatus = {
   engine: string
-  readiness: RealCuganReadiness
+  readiness: SuperResolutionReadiness
   binaryFound: boolean
   binaryPath: string | null
   modelsFound: boolean
@@ -404,7 +418,7 @@ export type RealCuganStatus = {
   problems: string[]
 }
 
-export type RealCuganProbe = {
+export type SuperResolutionProbe = {
   success: boolean
   exitCode: number | null
   error: string | null
@@ -819,6 +833,8 @@ export type Job = {
   effectiveVideoQuality: number | null
   videoQualityMode: string | null
   qualityRetryCount: number
+  /** The engine, model and scale that produced this candidate. */
+  superResolutionRun?: string | null
   /** The original's size when the job started; null for jobs that predate the record. */
   sourceSizeBytes: number | null
   outputSizeBytes: number | null
@@ -1494,8 +1510,8 @@ export const api = {
   removeExclusion: (id: number) => request<void>(`/api/exclusions/${id}`, { method: 'DELETE' }),
 
   settings: () => request<Settings>('/api/settings'),
-  realCuganStatus: () => request<RealCuganStatus>('/api/system/realcugan'),
-  probeRealCugan: () => request<RealCuganProbe>('/api/system/realcugan/probe', { method: 'POST' }),
+  superResolutionStatus: (engine: SuperResolutionEngine) => request<SuperResolutionStatus>(`/api/system/super-resolution/${engine}`),
+  probeSuperResolution: (engine: SuperResolutionEngine) => request<SuperResolutionProbe>(`/api/system/super-resolution/${engine}/probe`, { method: 'POST' }),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   appearance: () => request<{ brandStyle: string }>('/api/settings/appearance'),

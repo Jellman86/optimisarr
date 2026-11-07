@@ -53,6 +53,8 @@ public sealed record QualityMeasurementContext(
     // before any timestamp handling. Decimating by nearest timestamp instead can keep different
     // frames than the encode kept, and then the comparison is of neighbours, not of the same frame.
     Queue.FrameRateDecimation? ReferenceDecimation = null,
+    // The encode deinterlaced, so the reference is too. Frames stay paired one to one.
+    bool ReferenceDeinterlace = false,
     // How far into its own container each file's first picture sits (video start minus container
     // start). FFmpeg seeks and stamps frames relative to the container start, which is the earliest
     // stream, so two files whose pictures match frame for frame still present them at different
@@ -124,7 +126,7 @@ public static class QualityScoreCommandBuilder
     // same 10-bit pixels as the software path, including when choosing the executable.
     public static VmafAcceleration EffectiveAcceleration(QualityMeasurementContext context) =>
         context.ReferenceIsHdr || context.ReferenceCrop is not null || context.ReferenceDecimation is not null
-            || IsV1(SelectedModel(context)) ? VmafAcceleration.None : context.Acceleration;
+            || context.ReferenceDeinterlace || IsV1(SelectedModel(context)) ? VmafAcceleration.None : context.Acceleration;
 
     /// <summary>
     /// The viewing model for a picture of this size. Cropped cinema masters are commonly
@@ -216,9 +218,8 @@ public static class QualityScoreCommandBuilder
 
         // Thinning by frame index happens before anything touches timestamps, so the index each
         // frame is judged by is the one the encode judged it by.
-        var referenceDecimation = context.ReferenceDecimation is { } decimation
-            ? $"{Queue.FrameRatePlanner.Filter(decimation)},"
-            : string.Empty;
+        var referenceDecimation = (context.ReferenceDeinterlace ? $"{Domain.VideoFieldOrder.DeinterlaceFilter}," : string.Empty)
+            + (context.ReferenceDecimation is { } decimation ? $"{Queue.FrameRatePlanner.Filter(decimation)}," : string.Empty);
 
         // With a crop, the picture being judged is the cropped one: both streams are brought to
         // its size, and the viewing model is chosen from it.

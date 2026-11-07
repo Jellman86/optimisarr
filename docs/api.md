@@ -211,6 +211,8 @@ exists in quarantine.
 | `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Schema 4 job history, immutable captured gates, current/archived reports, worker leases and sanitized numeric evidence. Manifest identifies omissions and distinguishes frozen snapshots from current registration. |
 | `POST` | `/api/workers/diagnostics` | Worker-credential-authenticated schema 1 batches, up to 100 records/128 KiB. Consent, scope and lease ownership are checked; instance/sequence replay is idempotent. Final upload receipts are accepted for 90 seconds after capture ends. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
+| `GET` | `/api/system/super-resolution/{engine}` | Static check of one engine, `realcugan` or `realesrgan`: resolved binary, the model files a combination loads, Vulkan loader, and the effective configuration. `model` and `scale` name a combination to check. Unknown engine: 404. |
+| `POST` | `/api/system/super-resolution/{engine}/probe` | Real small-sample run of one engine through the configured device. 409 while the feature is off. |
 | `GET` | `/api/system/realcugan` | Static super-resolution engine check: resolved binary, the model files the configured combination loads, Vulkan loader, and the effective configuration with its problems. |
 | `POST` | `/api/system/realcugan/probe` | Real small-sample engine run through the configured device and models. Proves the runtime; returns the outcome and output tail. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
@@ -344,6 +346,7 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `POST` | `/api/libraries/scan` | Scan all enabled libraries. |
 | `GET` | `/api/media?libraryId={id}` | List discovered files. Omit `libraryId` for all libraries. Optional `status`, `search` (path substring), and `page`/`pageSize`; the pre-paging total is returned in `X-Total-Count`. |
 | `POST` | `/api/media/{id}/probe` | Probe one media file. |
+| `POST` | `/api/media/{id}/enqueue` | Queue one eligible file, whatever the library's automatic enqueue setting. Returns the job, marking one already active. 409 with the reason when the rules refuse it, or it needs a fresh probe. |
 | `POST` | `/api/media/batch/probe` | Start a batch that probes several media files in the background; the batch is watched through `GET /api/media/batch/probe/{id}`. |
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |

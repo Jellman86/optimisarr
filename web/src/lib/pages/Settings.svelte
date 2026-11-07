@@ -3,9 +3,10 @@
   import {
     api,
     type Settings,
+    type SuperResolutionEngine,
     type SuperResolutionSettings,
-    type RealCuganStatus,
-    type RealCuganProbe,
+    type SuperResolutionStatus,
+    type SuperResolutionProbe,
     type TimedCleanupPreview,
     type ActivityWatcher,
     type ActivityWatcherType,
@@ -455,44 +456,58 @@
     // The documented initial super-resolution configuration. The server holds the same defaults;
   // this copy exists so the form can bind before (and regardless of) the first load.
   function defaultSuperResolution(): SuperResolutionSettings {
-    return { enabled: false, preset: 'mixed', scale: 2, noiseLevel: 1, device: 'auto', binaryPath: '', modelsPath: '' }
+    return { enabled: false, preset: 'mixed', scale: 2, noiseLevel: 1, device: 'auto', binaryPath: '', modelsPath: '', realEsrganBinaryPath: '', realEsrganModelsPath: '' }
   }
 
-  let realCuganStatus = $state<RealCuganStatus | null>(null)
-  let realCuganError = $state<string | null>(null)
-  let realCuganLoading = $state(false)
-  let probingRealCugan = $state(false)
-  let realCuganProbe = $state<RealCuganProbe | null>(null)
+  let engineStatus = $state<SuperResolutionStatus | null>(null)
+  let engineError = $state<string | null>(null)
+  let engineLoading = $state(false)
+  let probingEngine = $state(false)
+  let engineProbe = $state<SuperResolutionProbe | null>(null)
 
-  async function loadRealCuganStatus() {
-    realCuganLoading = true
-    realCuganError = null
+  let statusEngine = $state<SuperResolutionEngine>('realcugan')
+
+  /** Clearing the last answer makes the effect below fetch this engine's. */
+  function checkEngine(engine: SuperResolutionEngine) {
+    statusEngine = engine
+    engineStatus = null
+    engineError = null
+    engineProbe = null
+  }
+
+  async function loadEngineStatus() {
+    engineLoading = true
+    engineError = null
+    // The operator can switch engines while this runs, and the answer is not about the new one.
+    const engine = statusEngine
     try {
-      realCuganStatus = await api.realCuganStatus()
-      realCuganError = null
+      const status = await api.superResolutionStatus(engine)
+      if (engine === statusEngine) engineStatus = status
     } catch (err) {
-      realCuganError = err instanceof Error ? err.message : i18n.m.settings.error_load
+      if (engine === statusEngine) engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
     } finally {
-      realCuganLoading = false
+      engineLoading = false
     }
   }
 
-  async function probeRealCugan() {
-    probingRealCugan = true
-    realCuganProbe = null
+  async function probeEngine() {
+    probingEngine = true
+    engineProbe = null
+    const engine = statusEngine
     try {
-      realCuganProbe = await api.probeRealCugan()
+      const probe = await api.probeSuperResolution(engine)
+      if (engine === statusEngine) engineProbe = probe
     } catch (err) {
-      realCuganError = err instanceof Error ? err.message : i18n.m.settings.error_load
+      if (engine === statusEngine) engineError = err instanceof Error ? err.message : i18n.m.settings.error_load
     } finally {
-      probingRealCugan = false
+      probingEngine = false
     }
   }
 
   function restoreSuperResolutionDefaults() {
     // Defaults cover the engine configuration only; the experimental switch stays as the operator left it.
     settings = { ...settings, superResolution: { ...defaultSuperResolution(), enabled: settings.superResolution.enabled } }
-    realCuganProbe = null
+    engineProbe = null
   }
 
   /** The first four Vulkan devices, plus a saved higher index so it is never hidden. */
@@ -730,8 +745,8 @@ let settings = $state<Settings>({
   // status has come back. The button re-checks whenever the operator wants (after fixing a
   // path or installing a driver), and it stays reachable in the error state below.
   $effect(() => {
-    if (openRoom === 'superResolution' && savedSettings?.superResolution.enabled && !realCuganLoading && !realCuganStatus && !realCuganError) {
-      void loadRealCuganStatus()
+    if (openRoom === 'superResolution' && savedSettings?.superResolution.enabled && !engineLoading && !engineStatus && !engineError) {
+      void loadEngineStatus()
     }
   })
 
@@ -1155,6 +1170,7 @@ let settings = $state<Settings>({
             <option value={`gpu:${index}`}>{tr(i18n.m.settings.sr_device_gpu, { index })}</option>
           {/each}
         </select>
+        {#if settings.superResolution.device === 'cpu'}<p class="text-xs text-warn mt-2">{i18n.m.settings.sr_device_no_cpu}</p>{/if}
       </div>
 
       <div class="settings-field">
@@ -1165,6 +1181,16 @@ let settings = $state<Settings>({
       <div class="settings-field">
         <div class="settings-field-label"><label class="label" for="sr-models">{i18n.m.settings.sr_models}</label><p>{i18n.m.settings.sr_models_hint}</p></div>
         <input id="sr-models" class="input" bind:value={settings.superResolution.modelsPath} placeholder="/opt/realcugan-ncnn-vulkan/models" />
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-esrgan-binary">{i18n.m.settings.sr_esrgan_binary}</label><p>{i18n.m.settings.sr_esrgan_binary_hint}</p></div>
+        <input id="sr-esrgan-binary" class="input" bind:value={settings.superResolution.realEsrganBinaryPath} placeholder="realesrgan-ncnn-vulkan" />
+      </div>
+
+      <div class="settings-field">
+        <div class="settings-field-label"><label class="label" for="sr-esrgan-models">{i18n.m.settings.sr_esrgan_models}</label><p>{i18n.m.settings.sr_esrgan_models_hint}</p></div>
+        <input id="sr-esrgan-models" class="input" bind:value={settings.superResolution.realEsrganModelsPath} placeholder="/opt/realesrgan" />
       </div>
 
       <div class="settings-video-fields">
@@ -1181,45 +1207,52 @@ let settings = $state<Settings>({
     title={i18n.m.settings.sr_status_title}
     description={i18n.m.settings.sr_status_desc}
   >
-    {#if realCuganLoading || (!realCuganStatus && !realCuganError)}
+    <div class="mb-3">
+      <label class="label" for="sr-status-engine">{i18n.m.settings.sr_status_engine}</label>
+      <select id="sr-status-engine" class="input" value={statusEngine} onchange={event => checkEngine(event.currentTarget.value as SuperResolutionEngine)}>
+        <option value="realcugan">Real-CUGAN</option>
+        <option value="realesrgan">Real-ESRGAN</option>
+      </select>
+    </div>
+    {#if engineLoading || (!engineStatus && !engineError)}
       <div class="card p-6 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else}
       <div class="space-y-3">
-        {#if realCuganError}
-          <Banner kind="error">{realCuganError}</Banner>
+        {#if engineError}
+          <Banner kind="error">{engineError}</Banner>
         {/if}
-        {#if realCuganStatus}
+        {#if engineStatus}
           <div class="card p-5 space-y-3 text-sm">
             <p>
               <span class="font-medium">{i18n.m.settings.sr_status_readiness}</span>
-              {realCuganStatus.readiness === 'Ready' ? i18n.m.settings.sr_status_ready
-                : realCuganStatus.readiness === 'NotInstalled' ? i18n.m.settings.sr_status_not_installed
-                : realCuganStatus.readiness === 'VulkanUnavailable' ? i18n.m.settings.sr_status_no_vulkan
+              {engineStatus.readiness === 'Ready' ? i18n.m.settings.sr_status_ready
+                : engineStatus.readiness === 'NotInstalled' ? i18n.m.settings.sr_status_not_installed
+                : engineStatus.readiness === 'VulkanUnavailable' ? i18n.m.settings.sr_status_no_vulkan
                 : i18n.m.settings.sr_status_misconfigured}
             </p>
             <p class="text-ink-3">{tr(i18n.m.settings.sr_status_models, {
-              dir: realCuganStatus.modelDirectory ?? '—',
-              root: realCuganStatus.modelsRoot ?? '—',
+              dir: engineStatus.modelDirectory ?? '—',
+              root: engineStatus.modelsRoot ?? '—',
             })}</p>
-            <p class="text-ink-3">{i18n.m.settings.sr_status_vulkan}: {realCuganStatus.vulkanLoaderAvailable ? i18n.m.settings.sr_status_vulkan_ok : i18n.m.settings.sr_status_vulkan_missing}</p>
-            {#if realCuganStatus.problems.length}
+            <p class="text-ink-3">{i18n.m.settings.sr_status_vulkan}: {engineStatus.vulkanLoaderAvailable ? i18n.m.settings.sr_status_vulkan_ok : i18n.m.settings.sr_status_vulkan_missing}</p>
+            {#if engineStatus.problems.length}
               <ul class="list-disc pl-5 text-ink-3">
-                {#each realCuganStatus.problems as problem}
+                {#each engineStatus.problems as problem}
                   <li>{problem}</li>
                 {/each}
               </ul>
             {/if}
           </div>
         {/if}
-        {#if realCuganProbe}
-          <Banner kind={realCuganProbe.success ? 'success' : 'error'}>{realCuganProbe.success
-            ? tr(i18n.m.settings.sr_probe_ok, { device: realCuganProbe.deviceUsed ?? '' })
-            : (realCuganProbe.error ?? i18n.m.settings.sr_probe_failed)}</Banner>
+        {#if engineProbe}
+          <Banner kind={engineProbe.success ? 'success' : 'error'}>{engineProbe.success
+            ? tr(i18n.m.settings.sr_probe_ok, { device: engineProbe.deviceUsed ?? '' })
+            : (engineProbe.error ?? i18n.m.settings.sr_probe_failed)}</Banner>
         {/if}
         <div class="flex gap-3">
-          <button type="button" class="btn btn-ghost min-h-11" onclick={loadRealCuganStatus}>{i18n.m.settings.sr_detect}</button>
-          <button type="button" class="btn btn-ghost min-h-11" onclick={probeRealCugan} disabled={probingRealCugan}>
-            {probingRealCugan ? i18n.m.settings.sr_probing : i18n.m.settings.sr_probe}
+          <button type="button" class="btn btn-ghost min-h-11" onclick={loadEngineStatus}>{i18n.m.settings.sr_detect}</button>
+          <button type="button" class="btn btn-ghost min-h-11" onclick={probeEngine} disabled={probingEngine}>
+            {probingEngine ? i18n.m.settings.sr_probing : i18n.m.settings.sr_probe}
           </button>
         </div>
       </div>

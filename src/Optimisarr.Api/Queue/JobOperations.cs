@@ -200,6 +200,7 @@ public static class JobOperations
         job.PerceptualSearchJson = null;
         job.SoundtrackSearchJson = null;
         job.SkippedQualitySearches = null;
+        job.SuperResolutionRun = null;
         job.VmafModel = null;
         if (higherQuality)
         {

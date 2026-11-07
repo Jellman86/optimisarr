@@ -11,7 +11,7 @@ public sealed class SuperResolutionOptionsTests
     {
         var defaults = SuperResolutionOptions.Defaults;
         Assert.False(defaults.Enabled);
-        Assert.Equal("realcugan", SuperResolutionOptions.EngineName);
+        Assert.Equal("realcugan", SuperResolutionOptions.Defaults.EngineId);
         Assert.Equal("mixed", defaults.Preset);
         Assert.Equal(2, defaults.Scale);
         Assert.Equal(1, defaults.NoiseLevel);

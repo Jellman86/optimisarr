@@ -26,4 +26,13 @@ internal static class SuperResolutionRequestParser
         error = null;
         return true;
     }
+
+    /// <summary>The same absolute-path rule as Real-CUGAN's, for where Real-ESRGAN is installed.</summary>
+    public static SettingsRequestError? RealEsrganPathError(SuperResolutionSettingsDto request)
+    {
+        var paths = request.ToRealEsrganPaths(SuperResolutionEnginePaths.Bundled);
+        var problem = (SuperResolutionOptions.Defaults with { BinaryPath = paths.BinaryPath, ModelsPath = paths.ModelsPath })
+            .Validate().FirstOrDefault(found => found.Code == "superResolution.path");
+        return problem is null ? null : new SettingsRequestError(problem.Code, problem.Message);
+    }
 }

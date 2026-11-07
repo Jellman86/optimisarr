@@ -117,6 +117,59 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_librarys_model_choice_travels_with_its_backup()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Films", Path = "/data/live", MediaType = MediaType.Film, SuperResolutionEnabled = true,
+                SuperResolutionEngine = "realesrgan", SuperResolutionModel = "realesrgan-x4plus", SuperResolutionScale = 4 });
+            await db.SaveChangesAsync();
+        }
+
+        var snapshot = await ExportAsync();
+        Assert.Equal("realesrgan-x4plus", snapshot.Libraries.Single(library => library.Path == "/data/live").SuperResolutionModel);
+
+        await using (var db = CreateDb())
+        {
+            var library = await db.Libraries.SingleAsync(candidate => candidate.Path == "/data/live");
+            library.SuperResolutionEngine = null;
+            library.SuperResolutionModel = null;
+            library.SuperResolutionScale = null;
+            await db.SaveChangesAsync();
+        }
+        Assert.True((await ImportAsync(snapshot)).Applied);
+
+        await using var restored = CreateDb();
+        var result = await restored.Libraries.SingleAsync(candidate => candidate.Path == "/data/live");
+        Assert.Equal("realesrgan", result.SuperResolutionEngine);
+        Assert.Equal(4, result.SuperResolutionScale);
+
+        var unusable = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { SuperResolutionScale = 2 }).ToArray() };
+        Assert.False((await ImportAsync(unusable)).Applied);
+    }
+
+    [Fact]
+    public async Task A_librarys_deinterlace_choice_travels_with_its_backup_and_an_older_backup_means_off()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Tapes", Path = "/data/tapes", MediaType = MediaType.Film, DeinterlaceVideo = true });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.True(snapshot.Libraries.Single(library => library.Path == "/data/tapes").DeinterlaceVideo);
+
+        var older = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { DeinterlaceVideo = null }).ToArray() };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.False((await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).DeinterlaceVideo);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.True((await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).DeinterlaceVideo);
+    }
+
+    [Fact]
     public async Task A_librarys_super_resolution_switch_survives_export_restore_and_repeated_import()
     {
         await using (var db = CreateDb())
@@ -172,6 +225,8 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganEnabled));
         Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganBinaryPath));
         Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganModelsPath));
+        // A device number means nothing on another machine.
+        Assert.False(snapshot.Settings.ContainsKey(SettingKeys.RealCuganDevice));
 
         await using (var db = CreateDb())
         {

@@ -829,6 +829,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("SuperResolutionApplied")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SuperResolutionRun")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1088,6 +1092,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("CropBlackBars")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("DeinterlaceVideo")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("DownmixToStereo")
                         .HasColumnType("INTEGER");
 
@@ -1268,10 +1275,21 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("SuperResolutionEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SuperResolutionEngine")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SuperResolutionModel")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SuperResolutionQualityCheck")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("SuperResolutionScale")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TargetContainer")
                         .HasMaxLength(32)

@@ -98,20 +98,23 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
         SettingKeys.BrandStyle,
         SettingKeys.RealCuganPreset,
         SettingKeys.RealCuganScale,
-        SettingKeys.RealCuganNoiseLevel,
-        SettingKeys.RealCuganDevice
+        SettingKeys.RealCuganNoiseLevel
     };
 
     /// <summary>
     /// Super-resolution values that belong to this machine: whether it runs the experimental engine
-    /// at all, and which executable and model files it trusts. A backup naming them is accepted, but
-    /// they are never exported or restored.
+    /// at all, which GPU it uses, since device numbers mean nothing on another machine, and which
+    /// executables and model files it trusts. A backup naming them is accepted, but they are never
+    /// exported or restored.
     /// </summary>
     private static readonly string[] HostLocalSuperResolutionKeys =
     [
         SettingKeys.RealCuganEnabled,
+        SettingKeys.RealCuganDevice,
         SettingKeys.RealCuganBinaryPath,
-        SettingKeys.RealCuganModelsPath
+        SettingKeys.RealCuganModelsPath,
+        SettingKeys.RealEsrganBinaryPath,
+        SettingKeys.RealEsrganModelsPath
     ];
 
     /// <summary>
@@ -359,6 +362,35 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             ParseDevice(settings.GetValueOrDefault(SettingKeys.RealCuganDevice), defaults.Device),
             settings.GetValueOrDefault(SettingKeys.RealCuganBinaryPath, defaults.BinaryPath),
             settings.GetValueOrDefault(SettingKeys.RealCuganModelsPath, defaults.ModelsPath));
+    }
+
+    /// <summary>Where this machine keeps Real-ESRGAN. Empty paths mean the bundled engine.</summary>
+    public async Task<SuperResolutionEnginePaths> GetRealEsrganPathsAsync(CancellationToken cancellationToken)
+    {
+        var settings = await db.AppSettings
+            .AsNoTracking()
+            .Where(setting => setting.Key == SettingKeys.RealEsrganBinaryPath || setting.Key == SettingKeys.RealEsrganModelsPath)
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
+        return new SuperResolutionEnginePaths(
+            settings.GetValueOrDefault(SettingKeys.RealEsrganBinaryPath, string.Empty),
+            settings.GetValueOrDefault(SettingKeys.RealEsrganModelsPath, string.Empty));
+    }
+
+    public Task SetRealEsrganPathsAsync(SuperResolutionEnginePaths paths, CancellationToken cancellationToken) =>
+        UpsertManyAsync(new Dictionary<string, string>
+        {
+            [SettingKeys.RealEsrganBinaryPath] = paths.BinaryPath,
+            [SettingKeys.RealEsrganModelsPath] = paths.ModelsPath,
+        }, cancellationToken);
+
+    /// <summary>The run a library's choice makes on this machine.</summary>
+    public async Task<SuperResolutionOptions> GetSuperResolutionOptionsForAsync(
+        string? engine, string? model, int? scale, CancellationToken cancellationToken)
+    {
+        var server = await GetSuperResolutionOptionsAsync(cancellationToken);
+        return engine is null
+            ? server
+            : server.ForEngine(await GetRealEsrganPathsAsync(cancellationToken), engine, model, scale);
     }
 
     /// <summary>

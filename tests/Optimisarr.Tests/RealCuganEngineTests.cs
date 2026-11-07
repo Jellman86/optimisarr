@@ -16,7 +16,7 @@ public sealed class RealCuganEngineTests
     public void The_settings_engine_is_real_cugan_under_its_recorded_name()
     {
         Assert.Same(Engine, Options.Engine);
-        Assert.Equal(SuperResolutionOptions.EngineName, Engine.Name);
+        Assert.Equal(SuperResolutionOptions.Defaults.EngineId, Engine.Name);
         Assert.Equal("realcugan-ncnn-vulkan", Engine.BinaryName);
     }
 

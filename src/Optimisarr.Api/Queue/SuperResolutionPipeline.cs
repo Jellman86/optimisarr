@@ -86,7 +86,7 @@ internal static class SuperResolutionPipeline
                     clock.Touch();
                 }
 
-                var engine = await RunEngineAsync(request, hooks, processes, input, output, frames, clock, token);
+                var engine = await RunEngineAsync(request, hooks, processes, input, output, written, clock, token);
                 if (engine is not null)
                 {
                     return engine;
@@ -160,7 +160,7 @@ internal static class SuperResolutionPipeline
 
     private static async Task<QueueDispatcher.FfmpegRun?> RunEngineAsync(
         SuperResolutionRunRequest request, SuperResolutionRunHooks hooks, List<OwnedProcess> processes,
-        string input, string output, int frames, ProgressClock clock, CancellationToken token)
+        string input, string output, int writtenBefore, ProgressClock clock, CancellationToken token)
     {
         var engine = Start(processes, request.EnginePath, request.EngineArguments(input, output), hooks, readStdout: false, writeStdin: false);
         var produced = 0;
@@ -173,6 +173,11 @@ internal static class SuperResolutionPipeline
             {
                 produced = count;
                 clock.Touch();
+                // A batch of a slow model can run for over an hour, so the bar moves with each picture.
+                if (request.ExpectedFrames is > 0 and var expected)
+                {
+                    await hooks.ReportProgress(Math.Min(1.0, (double)(writtenBefore + produced) / expected));
+                }
             }
         }
         await engine.WaitAsync(token);
