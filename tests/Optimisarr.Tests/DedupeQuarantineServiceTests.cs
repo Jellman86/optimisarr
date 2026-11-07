@@ -324,6 +324,46 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
     }
 
     [PosixFact]
+    public async Task Scratch_cleanup_reached_through_a_chain_of_links_still_waits()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var outer = Path.Combine(Work, "outer-real");
+        Directory.CreateDirectory(outer);
+        var first = Path.Combine(Work, "first");
+        Directory.CreateSymbolicLink(first, outer);
+        Directory.CreateSymbolicLink(Path.Combine(outer, "second"), _root);
+        try
+        {
+            Assert.False(await RecursiveCleanupAllowedAsync(Path.Combine(first, "second", "A")));
+        }
+        finally
+        {
+            Directory.Delete(first);
+            Directory.Delete(Work, true);
+        }
+    }
+
+    [PosixFact]
+    public async Task Scratch_cleanup_whose_tree_holds_a_quarantined_file_under_another_name_still_waits()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var tree = Path.Combine(Work, "preview", "7");
+        Directory.CreateDirectory(tree);
+        var copy = plan.Files.First(f => !f.IsKeeper);
+        using (var link = System.Diagnostics.Process.Start("ln", [copy.QuarantinePath!, Path.Combine(tree, "alias.mkv")])) await link.WaitForExitAsync();
+        try
+        {
+            Assert.False(await RecursiveCleanupAllowedAsync(tree));
+        }
+        finally
+        {
+            Directory.Delete(Work, true);
+        }
+    }
+
+    [PosixFact]
     public async Task A_quarantined_copy_that_cannot_be_read_is_kept_and_the_sweep_carries_on()
     {
         var plan = await PreparedAsync();

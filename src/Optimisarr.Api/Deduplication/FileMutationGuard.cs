@@ -1,5 +1,6 @@
 using Optimisarr.Data;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Library;
 using Optimisarr.Core.Deduplication;
 
 namespace Optimisarr.Api.Deduplication;
@@ -19,8 +20,11 @@ internal static class FileMutationGuard
         // recursive cleanup globally rather than infer safety from a directory's own key. Copies at
         // rest in quarantine are the exception: they wait for weeks, and holding every scratch folder
         // on the server for that long would stall previews and quality searches. Their action recorded
-        // every path it owns, so cleanup goes ahead only when its own targets, followed through links,
-        // cannot reach any of them. Any action moving files still defers cleanup.
+        // every path it owns, so cleanup goes ahead only when it can prove, by the filesystem's own
+        // identities, that its targets cannot reach them: no target or folder above it is one of their
+        // library folders, and nothing inside a target is one of those folders or files. Paths alone
+        // cannot prove that, because a link or a bind mount can make one folder appear in two places.
+        // Any action moving files still defers cleanup.
         var held = claims.TryAcquireRecursiveCleanup();
         if (held is null) return null;
         try
@@ -49,44 +53,51 @@ internal static class FileMutationGuard
             .ToListAsync(token);
         if (owned.Count == 0) return false;
         if (targets.Length == 0) return true;
-        var protectedPaths = owned.SelectMany(file => new[] { file.Root, file.Path, file.QuarantinePath })
-            .OfType<string>().Distinct().SelectMany(Forms).ToList();
-        return targets.SelectMany(Forms).Any(target => protectedPaths.Any(path => Overlaps(target, path)));
-    }
 
-    private static readonly StringComparison PathComparison =
-        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-
-    // A path as written and as reached through any link on the way, since either can lead into a library.
-    private static IEnumerable<string> Forms(string path)
-    {
-        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-        yield return full;
-        var real = RealPath(full);
-        if (!string.Equals(real, full, PathComparison)) yield return real;
-    }
-
-    private static string RealPath(string full)
-    {
-        var current = Path.GetPathRoot(full)!;
-        foreach (var part in full[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        // A library folder that cannot be identified cannot be proved out of reach.
+        var folders = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var root in owned.Select(file => file.Root).Distinct())
         {
-            current = Path.Combine(current, part);
-            try
-            {
-                FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
-                if (info.Exists && info.ResolveLinkTarget(returnFinalTarget: true) is { } target) current = Path.GetFullPath(target.FullName);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            if (ExactFileIdentity.Read(root) is not { } identity) return true;
+            folders.Add(identity);
         }
-        return Path.TrimEndingDirectorySeparator(current);
+        var files = owned.SelectMany(file => new[] { file.Path, file.QuarantinePath }).OfType<string>()
+            .Select(ExactFileIdentity.Read).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var all = folders.Concat(files).ToHashSet(StringComparer.Ordinal);
+        return targets.Any(target => InsideAnyOf(target, folders) || Contains(target, all));
     }
 
-    private static bool Overlaps(string first, string second) =>
-        string.Equals(first, second, PathComparison) || Inside(first, second) || Inside(second, first);
+    // The target, or the nearest folder above it that exists, and every folder above that.
+    private static bool InsideAnyOf(string target, HashSet<string> folders)
+    {
+        for (var current = Path.GetFullPath(target); current is not null; current = Path.GetDirectoryName(current))
+        {
+            if (!Path.Exists(current)) continue;
+            if (ExactFileIdentity.Read(current) is not { } identity) return true;
+            if (folders.Contains(identity)) return true;
+        }
+        return false;
+    }
 
-    private static bool Inside(string child, string parent) =>
-        child.StartsWith(Path.TrimEndingDirectorySeparator(parent) + Path.DirectorySeparatorChar, PathComparison);
+    // Anything inside the target, as a recursive delete would meet it. Links are not followed, as a
+    // recursive delete removes the link and not what it points to.
+    private static bool Contains(string target, HashSet<string> protectedIdentities)
+    {
+        if (!Directory.Exists(target)) return false;
+        try
+        {
+            var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
+            foreach (var entry in Directory.EnumerateFileSystemEntries(target, "*", options))
+            {
+                if (ExactFileIdentity.Read(entry) is not { } identity || protectedIdentities.Contains(identity)) return true;
+            }
+            return false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
 
     public static async Task<IDisposable?> TryAcquireAsync(
         OptimisarrDbContext db, FileOperationClaims claims, int mediaFileId,
