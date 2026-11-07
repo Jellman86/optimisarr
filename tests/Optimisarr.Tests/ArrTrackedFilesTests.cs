@@ -94,6 +94,8 @@ public sealed class ArrTrackedFilesTests
     [InlineData("/movies/Film/Film.mkv", "/data/film/film.mkv")]
     [InlineData("/movies/Caf\u00e9/Caf\u00e9.mkv", "/data/Cafe\u0301/Cafe\u0301.mkv")]
     [InlineData("/movies/Film./Film.mkv", "/data/Film/Film.mkv")]
+    [InlineData("/movies/Film/Film.mkv.", "/data/Film/Film.mkv")]
+    [InlineData("/movies/Film/Film.mkv", "/data/Film/Film.mkv.")]
     [InlineData(@"D:\Movies\Film (2020)\Film (2020).mkv", "/data/Film (2020)/Film (2020).mkv")]
     [InlineData("/movies/Film.2020.1080p/Film.2020.1080p.mkv", "/data/Film.2020.1080p/Film.2020.1080p.mp4")]
     public void Names_are_compared_as_a_filesystem_or_another_operating_system_would_see_them(string manager, string local) =>
@@ -136,7 +138,7 @@ public sealed class ArrTrackedFilesTests
     public void Radarr_movies_give_the_paths_of_those_that_have_a_file()
     {
         var paths = ArrTrackedFileParser.ParseMovieFilePaths(
-            """[{ "id": 1, "hasFile": true, "movieFile": { "path": "/movies/A/A.mkv" } }, { "id": 2, "hasFile": false }, { "id": 3, "movieFile": null }]""");
+            """[{ "id": 1, "hasFile": true, "movieFile": { "path": "/movies/A/A.mkv" } }, { "id": 2, "hasFile": false }, { "id": 3, "hasFile": false, "movieFile": null }]""");
 
         Assert.Equal(["/movies/A/A.mkv"], paths);
     }
@@ -164,7 +166,10 @@ public sealed class ArrTrackedFilesTests
     [Theory]
     [InlineData("""[{ "id": 1, "hasFile": true }]""")]
     [InlineData("""[{ "id": 1, "hasFile": true, "movieFile": { "relativePath": "Film.mkv" } }]""")]
-    [InlineData("""[{ "id": 1, "movieFile": { "path": "" } }]""")]
+    [InlineData("""[{ "id": 1, "hasFile": true, "movieFile": { "path": "" } }]""")]
+    [InlineData("""[{ "id": 1 }]""")]
+    [InlineData("""[{ "id": 1, "label": "not a movie" }]""")]
+    [InlineData("""[{ "id": 1, "hasFile": "true" }]""")]
     public void A_movie_that_claims_a_file_without_a_path_makes_the_answer_unusable(string json) =>
         Assert.Null(ArrTrackedFileParser.ParseMovieFilePaths(json));
 

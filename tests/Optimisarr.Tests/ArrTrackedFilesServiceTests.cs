@@ -57,7 +57,7 @@ public sealed class ArrTrackedFilesServiceTests : IDisposable
         var handler = new Handler(new()
         {
             ["http://radarr:7878/api/v3/system/status"] = RadarrStatus,
-            ["http://radarr:7878/api/v3/movie"] = """[{ "id": 1, "movieFile": { "path": "/movies/A (2020)/A (2020).mkv" } }]""",
+            ["http://radarr:7878/api/v3/movie"] = """[{ "id": 1, "hasFile": true, "movieFile": { "path": "/movies/A (2020)/A (2020).mkv" } }]""",
             ["http://sonarr:8989/api/v3/system/status"] = SonarrStatus,
             ["http://sonarr:8989/api/v3/series"] = """[{ "id": 4 }]""",
             ["http://sonarr:8989/api/v3/episodefile?seriesId=4"] = """[{ "id": 1, "path": "/tv/S/Season 1/S E1.mkv" }]""",

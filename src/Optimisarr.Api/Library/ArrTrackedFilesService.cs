@@ -23,7 +23,10 @@ public sealed record ArrTracking(
     IReadOnlyDictionary<int, IReadOnlyList<string>> TrackedBy,
     IReadOnlyDictionary<int, IReadOnlyList<string>> PossiblyTrackedBy)
 {
-    /// <summary>Every manager answered. Without that, no file can be called untracked.</summary>
+    /// <summary>
+    /// Every manager answered. Without that, no file can be called untracked. A manager too old to name
+    /// itself in its status, before about Sonarr 3.0.9 and Radarr 4.7, also counts as not answering.
+    /// </summary>
     public bool Complete => Connections.All(connection => connection.Reachable);
 }
 

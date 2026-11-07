@@ -29,13 +29,15 @@ public static class ArrTrackedFileParser
 
     /// <summary>
     /// The file path of every movie in a Radarr <c>/api/v3/movie</c> response. A movie without a file
-    /// is ordinary; one that claims a file without saying where makes the whole answer unusable.
+    /// is ordinary, but it has to say so: one that does not, or that claims a file without saying
+    /// where, is not a movie this answer can vouch for, so the whole answer is unusable.
     /// </summary>
     public static IReadOnlyList<string>? ParseMovieFilePaths(string json) => ReadArray(json, (movie, paths) =>
     {
-        if (!HasId(movie)) return false;
-        var claimsFile = movie.TryGetProperty("hasFile", out var hasFile) && hasFile.ValueKind == JsonValueKind.True;
-        if (!movie.TryGetProperty("movieFile", out var file) || file.ValueKind != JsonValueKind.Object) return !claimsFile;
+        if (!HasId(movie) || !movie.TryGetProperty("hasFile", out var hasFile)
+            || hasFile.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
+        if (!movie.TryGetProperty("movieFile", out var file) || file.ValueKind != JsonValueKind.Object)
+            return hasFile.ValueKind == JsonValueKind.False;
         if (ReadPath(file) is not { } path) return false;
         paths.Add(path);
         return true;
@@ -239,7 +241,8 @@ public static class ArrTrackedFileMatcher
         var parts = path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
         for (var index = 0; index < parts.Length; index++)
         {
-            parts[index] = Comparable(index == parts.Length - 1 ? Stem(parts[index]) : parts[index]);
+            var name = Comparable(parts[index]);
+            parts[index] = index == parts.Length - 1 ? Comparable(Stem(name)) : name;
         }
         return parts;
     }
