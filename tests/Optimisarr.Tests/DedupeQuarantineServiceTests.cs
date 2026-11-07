@@ -364,6 +364,44 @@ public sealed class DedupeQuarantineServiceTests : IAsyncLifetime
     }
 
     [PosixFact]
+    public async Task Deleting_a_single_file_that_is_a_keeper_under_another_name_still_waits()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        Directory.CreateDirectory(Work);
+        var alias = Path.Combine(Work, "output.mkv");
+        using (var link = System.Diagnostics.Process.Start("ln", [Keeper, alias])) await link.WaitForExitAsync();
+        try
+        {
+            Assert.False(await RecursiveCleanupAllowedAsync(alias));
+        }
+        finally
+        {
+            Directory.Delete(Work, true);
+        }
+    }
+
+    [PosixFact]
+    public async Task A_keeper_whose_recorded_path_has_gone_is_still_recognised_inside_a_tree()
+    {
+        var plan = await PreparedAsync();
+        await Quarantine(plan);
+        var tree = Path.Combine(Work, "preview", "8");
+        Directory.CreateDirectory(tree);
+        using (var link = System.Diagnostics.Process.Start("ln", [Keeper, Path.Combine(tree, "alias.mkv")])) await link.WaitForExitAsync();
+        File.Move(Keeper, Path.Combine(_root, "renamed.mkv"));
+        try
+        {
+            Assert.False(await RecursiveCleanupAllowedAsync(tree));
+        }
+        finally
+        {
+            File.Move(Path.Combine(_root, "renamed.mkv"), Keeper);
+            Directory.Delete(Work, true);
+        }
+    }
+
+    [PosixFact]
     public async Task A_quarantined_copy_that_cannot_be_read_is_kept_and_the_sweep_carries_on()
     {
         var plan = await PreparedAsync();

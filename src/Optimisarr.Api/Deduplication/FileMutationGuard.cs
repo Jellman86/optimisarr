@@ -49,7 +49,7 @@ internal static class FileMutationGuard
     {
         var owned = await db.DedupeActionFiles.AsNoTracking()
             .Where(file => db.DedupeActions.Any(action => action.Id == file.ActionId && action.State == DedupeActionState.Quarantined))
-            .Select(file => new { file.Root, file.Path, file.QuarantinePath })
+            .Select(file => new { file.Root, file.Path, file.QuarantinePath, file.Identity })
             .ToListAsync(token);
         if (owned.Count == 0) return false;
         if (targets.Length == 0) return true;
@@ -61,11 +61,18 @@ internal static class FileMutationGuard
             if (ExactFileIdentity.Read(root) is not { } identity) return true;
             folders.Add(identity);
         }
-        var files = owned.SelectMany(file => new[] { file.Path, file.QuarantinePath }).OfType<string>()
-            .Select(ExactFileIdentity.Read).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        // The identity each file had when it was reviewed, as well as whatever its paths hold now: a
+        // file whose recorded path has gone can still be reached through a mount.
+        var files = owned.Select(file => file.Identity)
+            .Concat(owned.SelectMany(file => new[] { file.Path, file.QuarantinePath }).OfType<string>().Select(ExactFileIdentity.Read))
+            .OfType<string>().ToHashSet(StringComparer.Ordinal);
         var all = folders.Concat(files).ToHashSet(StringComparer.Ordinal);
-        return targets.Any(target => InsideAnyOf(target, folders) || Contains(target, all));
+        return targets.Any(target => Is(target, all) || InsideAnyOf(target, folders) || Contains(target, all));
     }
+
+    // The target itself, which may be a protected file reached under another name.
+    private static bool Is(string target, HashSet<string> protectedIdentities) =>
+        Path.Exists(target) && (ExactFileIdentity.Read(target) is not { } identity || protectedIdentities.Contains(identity));
 
     // The target, or the nearest folder above it that exists, and every folder above that.
     private static bool InsideAnyOf(string target, HashSet<string> folders)
