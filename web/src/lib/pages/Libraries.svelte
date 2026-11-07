@@ -1128,6 +1128,8 @@
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
       optimiseDolbyVision: library.optimiseDolbyVision,
+      // Coerced like the hardlink switch: an older server omits the field.
+      deinterlaceVideo: library.deinterlaceVideo ?? false,
       // Coerced like the hardlink switch: an older server omits the field, and undefined
       // must read as off rather than blank the editor.
       superResolutionEnabled: library.superResolutionEnabled ?? false,
@@ -1271,6 +1273,7 @@
       targetContainer: emptyToNull(form.targetContainer),
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
+      deinterlaceVideo: form.deinterlaceVideo,
       superResolutionEnabled: form.superResolutionEnabled,
       superResolutionQualityCheck: form.superResolutionQualityCheck,
       superResolutionEngine: form.superResolutionEngine,
@@ -2669,6 +2672,19 @@
               <InfoTip text={i18n.m.libraries.dolby_vision_tip} />
               <span class="mt-0.5 block text-xs font-normal text-ink-4">
                 {i18n.m.libraries.dolby_vision_hint}
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.deinterlaceVideo} />
+            <span>
+              {i18n.m.libraries.deinterlace_label}
+              <InfoTip text={i18n.m.libraries.deinterlace_tip} />
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
+                {i18n.m.libraries.deinterlace_hint}
               </span>
             </span>
           </label>

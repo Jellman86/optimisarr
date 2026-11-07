@@ -19,7 +19,7 @@ public sealed class InterlacedComparisonTests(AdminTokenAuthEndpointTests.Tokene
         return client;
     }
 
-    private async Task<(int LibraryId, int MediaId)> SeedAsync(string fileName, string? fieldOrder, RuleProfile profile = RuleProfile.ConservativeHevc)
+    private async Task<(int LibraryId, int MediaId)> SeedAsync(string fileName, string? fieldOrder, RuleProfile profile = RuleProfile.ConservativeHevc, bool deinterlace = false)
     {
         var root = Path.Combine(api.LibraryDirectory, "interlace-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -27,7 +27,7 @@ public sealed class InterlacedComparisonTests(AdminTokenAuthEndpointTests.Tokene
         await File.WriteAllBytesAsync(path, new byte[1024]);
         using var scope = api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-        var library = new Library { Name = "Interlace", Path = root, RuleProfile = profile, AutoEnqueueEnabled = false, HdrHandling = HdrHandling.TonemapToSdr };
+        var library = new Library { Name = "Interlace", Path = root, RuleProfile = profile, AutoEnqueueEnabled = false, HdrHandling = HdrHandling.TonemapToSdr, DeinterlaceVideo = deinterlace };
         db.Libraries.Add(library);
         await db.SaveChangesAsync();
         var file = new MediaFile
@@ -87,5 +87,30 @@ public sealed class InterlacedComparisonTests(AdminTokenAuthEndpointTests.Tokene
         var jobId = await PreviewAsync(client, mediaId);
 
         Assert.Equal(warned, await SourceInterlacedAsync(client, jobId));
+    }
+
+    [Fact]
+    public async Task A_library_that_deinterlaces_can_calibrate_an_interlaced_source()
+    {
+        var (libraryId, mediaId) = await SeedAsync("interlaced tape.mkv", "tt", deinterlace: true);
+        using var client = Admin();
+
+        using var response = await client.PostAsJsonAsync($"/api/libraries/{libraryId}/calibration",
+            new { mediaFileId = mediaId, diagnosticsEnabled = false, ignoreActiveStreams = true, compareVideoPresets = false });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var session = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await client.DeleteAsync($"/api/calibration/{session}")).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task A_preview_in_a_library_that_deinterlaces_has_no_warning_because_a_real_job_would_run()
+    {
+        var (_, mediaId) = await SeedAsync("tape.mkv", "tt", deinterlace: true);
+        using var client = Admin();
+
+        var jobId = await PreviewAsync(client, mediaId);
+
+        Assert.False(await SourceInterlacedAsync(client, jobId));
     }
 }

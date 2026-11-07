@@ -146,6 +146,8 @@ export type LibraryRules = {
   targetContainer: string | null
   hdrHandling: string | null
   optimiseDolbyVision: boolean
+  /** Deinterlace sources reported as interlaced instead of leaving them untouched. */
+  deinterlaceVideo: boolean
   excludePaths: string | null
   excludeHardLinkedFiles: boolean
   skipSourceCodecs: string | null
@@ -283,6 +285,7 @@ export function newLibraryDefaults(): SaveLibrary {
     targetContainer: null,
     hdrHandling: null,
     optimiseDolbyVision: false,
+    deinterlaceVideo: false,
     excludePaths: null,
     excludeHardLinkedFiles: false,
     skipSourceCodecs: null,

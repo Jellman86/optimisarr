@@ -1092,6 +1092,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("CropBlackBars")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("DeinterlaceVideo")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("DownmixToStereo")
                         .HasColumnType("INTEGER");
 

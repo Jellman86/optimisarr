@@ -95,7 +95,8 @@ internal readonly record struct ParsedLibrary(
     int? SuperResolutionScale = null,
     // False when the request named no choice, as a client older than the choice does, so an update
     // keeps what is saved rather than quietly returning the library to Real-CUGAN.
-    bool SuperResolutionChoiceSent = false);
+    bool SuperResolutionChoiceSent = false,
+    bool DeinterlaceVideo = false);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -670,7 +671,8 @@ internal static class LibraryRequestParser
             superResolutionEngine,
             superResolutionModel,
             request.SuperResolutionScale,
-            superResolutionChoiceSent);
+            superResolutionChoiceSent,
+            request.DeinterlaceVideo ?? false);
         error = null;
         return true;
     }

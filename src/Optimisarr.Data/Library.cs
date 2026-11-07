@@ -92,6 +92,9 @@ public sealed class Library
     /// </summary>
     public bool OptimiseDolbyVision { get; set; }
 
+    /// <summary>Deinterlace sources reported as interlaced instead of leaving them untouched.</summary>
+    public bool DeinterlaceVideo { get; set; }
+
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 

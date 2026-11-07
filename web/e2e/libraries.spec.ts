@@ -1129,3 +1129,16 @@ test('going back to Real-CUGAN clears the Real-ESRGAN choice', async ({ page }) 
     superResolutionEnabled: true, superResolutionEngine: 'realcugan', superResolutionModel: null, superResolutionScale: null,
   })
 })
+
+test('a library can choose to deinterlace, and is off until it does', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/encode/video')
+  const toggle = page.getByRole('checkbox', { name: /Deinterlace interlaced video/ })
+  await expect(toggle).not.toBeChecked()
+
+  await toggle.check()
+
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ deinterlaceVideo: true })
+})

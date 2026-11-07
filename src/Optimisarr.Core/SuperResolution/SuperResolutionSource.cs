@@ -22,7 +22,9 @@ public sealed record SuperResolutionSource(
         ["yuv420p"] = 8, ["yuvj420p"] = 8, ["yuv420p10le"] = 10, ["yuv420p10be"] = 10,
     };
 
-    public static SuperResolutionSource Parse(string ffprobeJson)
+    /// <param name="ffprobeJson">The source's streams and format.</param>
+    /// <param name="deinterlaced">The decoder deinterlaces, so woven fields never reach the engine.</param>
+    public static SuperResolutionSource Parse(string ffprobeJson, bool deinterlaced = false)
     {
         using var document = JsonDocument.Parse(ffprobeJson);
         var streams = document.RootElement.TryGetProperty("streams", out var list) && list.ValueKind == JsonValueKind.Array
@@ -42,7 +44,7 @@ public sealed record SuperResolutionSource(
         var start = Seconds(Text(video, "start_time")) - fileStart;
         var depth = Text(video, "pix_fmt") is { } pixelFormat && Supported420.TryGetValue(pixelFormat, out var bits) ? bits : 8;
         var colour = ColourOf(video);
-        return new SuperResolutionSource(RefusalFor(video, videos.Count) ?? ColourRefusal(video), start, attachments, depth, colour)
+        return new SuperResolutionSource(RefusalFor(video, videos.Count, deinterlaced) ?? ColourRefusal(video), start, attachments, depth, colour)
         {
             FrameRate = MediaProbeService.Parse(ffprobeJson).VideoFrameRate,
         };
@@ -78,14 +80,14 @@ public sealed record SuperResolutionSource(
 
     private static string? Known(string? tag) => tag is null or "unknown" or "reserved" ? null : tag;
 
-    private static string? RefusalFor(JsonElement video, int videoStreams)
+    private static string? RefusalFor(JsonElement video, int videoStreams, bool deinterlaced)
     {
         if (videoStreams > 1)
         {
             return "The file has more than one video stream; super-resolution upscales a single picture stream.";
         }
         // The engine would treat the combing between woven fields as detail and enlarge it.
-        if (Text(video, "field_order") is { } fieldOrder && Domain.VideoFieldOrder.IsInterlaced(fieldOrder))
+        if (!deinterlaced && Text(video, "field_order") is { } fieldOrder && Domain.VideoFieldOrder.IsInterlaced(fieldOrder))
         {
             return $"Super-resolution does not support interlaced video; this source has field order {fieldOrder}.";
         }

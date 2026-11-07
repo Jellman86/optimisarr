@@ -561,7 +561,8 @@ internal sealed record SaveLibraryRequest(
     string? SuperResolutionQualityCheck = null,
     string? SuperResolutionEngine = null,
     string? SuperResolutionModel = null,
-    int? SuperResolutionScale = null);
+    int? SuperResolutionScale = null,
+    bool? DeinterlaceVideo = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -664,7 +665,8 @@ internal sealed record LibraryDto(
     string SuperResolutionQualityCheck,
     string? SuperResolutionEngine,
     string? SuperResolutionModel,
-    int? SuperResolutionScale)
+    int? SuperResolutionScale,
+    bool DeinterlaceVideo)
 {
     public static LibraryDto From(Library library, int fileCount) => new(
         library.Id,
@@ -756,7 +758,8 @@ internal sealed record LibraryDto(
         library.SuperResolutionQualityCheck.ToString(),
         library.SuperResolutionEngine,
         library.SuperResolutionModel,
-        library.SuperResolutionScale);
+        library.SuperResolutionScale,
+        library.DeinterlaceVideo);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

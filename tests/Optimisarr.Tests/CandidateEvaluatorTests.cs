@@ -833,4 +833,20 @@ public sealed class CandidateEvaluatorTests
     }
 
     private static MediaProperties InterlaceCandidate(string? fieldOrder) => File() with { FieldOrder = fieldOrder };
+
+    [Theory]
+    [InlineData("tt")]
+    [InlineData("tb")]
+    public void A_library_that_deinterlaces_takes_an_interlaced_source(string fieldOrder) =>
+        Assert.True(CandidateEvaluator.Evaluate(InterlaceCandidate(fieldOrder), Hevc with { DeinterlaceVideo = true }).IsEligible);
+
+    [Theory]
+    [InlineData(true, "tt", true)]
+    [InlineData(true, "bt", true)]
+    [InlineData(true, "progressive", false)]
+    [InlineData(true, "unknown", false)]
+    [InlineData(true, null, false)]
+    [InlineData(false, "tt", false)]
+    public void Only_a_reported_interlaced_source_in_an_opted_in_library_is_deinterlaced(bool optedIn, string? fieldOrder, bool expected) =>
+        Assert.Equal(expected, VideoFieldOrder.Deinterlaces(optedIn, fieldOrder));
 }

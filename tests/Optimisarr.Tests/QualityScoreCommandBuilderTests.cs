@@ -576,6 +576,24 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void A_deinterlaced_encode_is_judged_against_a_reference_deinterlaced_the_same_way()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            Legacy(new QualityMeasurementContext(720, 576, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Cuda,
+                ReferenceFrameRate: 25,
+                ReferenceDeinterlace: true)),
+            threads: 4);
+
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+        var reference = command.FilterGraph[command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)..];
+        Assert.StartsWith("[1:v]" + Optimisarr.Core.Domain.VideoFieldOrder.DeinterlaceFilter + ",", reference);
+        var distorted = command.FilterGraph[..command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)];
+        Assert.DoesNotContain("bwdif", distorted);
+    }
+
+    [Fact]
     public void A_decimated_reference_keeps_the_comparison_on_the_cpu_path()
     {
         // Same trade the crop and HDR make: the CPU graph is the one that reproduces the
