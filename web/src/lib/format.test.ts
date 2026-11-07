@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { containerLabel, formatRelative, languageList, mediaTitle, savedPercent } from './format.ts'
+import { containerLabel, formatSizeChangePercent, formatRelative, languageList, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from './format.ts'
 
 const now = new Date('2026-09-25T07:00:00Z')
 
@@ -11,10 +11,83 @@ test('recent times read as minutes, hours or days ago', () => {
   assert.equal(formatRelative('2026-09-25T06:59:50Z', now, 'en'), 'now')
 })
 
-test('saved percent is rounded and never claims a saving the file did not make', () => {
-  assert.equal(savedPercent(1_282_683_553, 368_922_428), 71)
-  assert.equal(savedPercent(1000, 1200), 0)
-  assert.equal(savedPercent(0, 0), 0)
+test('size change follows the size itself: negative when the output is smaller, positive when it grew', () => {
+  // A saving of 40%.
+  assert.equal(sizeChangePercent(1000, 600), -40)
+  // The same size.
+  assert.equal(sizeChangePercent(1000, 1000), 0)
+  // A rounding boundary: 0.1% smaller rounds to no change at all.
+  assert.equal(sizeChangePercent(1000, 999), 0)
+  // Rounding either way: -33.4% reads as -33, +15.5% reads as 16.
+  assert.equal(sizeChangePercent(1000, 666), -33)
+  assert.equal(sizeChangePercent(1000, 1155), 16)
+  // A file that grew.
+  assert.equal(sizeChangePercent(1000, 1200), 20)
+  assert.equal(sizeChangePercent(1000, 1500), 50)
+  // The whole file went.
+  assert.equal(sizeChangePercent(1000, 0), -100)
+  // A real pair of sizes.
+  assert.equal(sizeChangePercent(1_282_683_553, 368_922_428), -71)
+})
+
+test('a size change that cannot be judged is unknown, never a figure', () => {
+  assert.equal(sizeChangePercent(0, 1000), null)
+  assert.equal(sizeChangePercent(-1, 1000), null)
+  assert.equal(sizeChangePercent(1000, -1), null)
+  assert.equal(sizeChangePercent(Number.NaN, 1000), null)
+  assert.equal(sizeChangePercent(1000, Number.POSITIVE_INFINITY), null)
+  assert.equal(sizeChangePercent(0, 0), null)
+})
+
+test('a size change of nothing is never a negative zero', () => {
+  // Math.round(-0.1) is -0, and a -0 would slip past every `< 0` check as a saving.
+  assert.ok(!Object.is(sizeChangePercent(1000, 999), -0))
+  assert.ok(!Object.is(sizeChangePercent(1000, 1001), -0))
+  assert.equal(sizeChangePercent(1000, 1001), 0)
+})
+
+test('size change reads as saved, grew or unchanged, and unknown is not no-change', () => {
+  assert.equal(sizeChangeStatus(-40), 'saved')
+  assert.equal(sizeChangeStatus(20), 'grew')
+  assert.equal(sizeChangeStatus(0), 'unchanged')
+  assert.equal(sizeChangeStatus(-0), 'unchanged')
+  assert.equal(sizeChangeStatus(null), null)
+})
+
+test('size change text carries its sign once, from the one formatter', () => {
+  assert.equal(formatSizeChangePercent(-40), '−40%')
+  assert.equal(formatSizeChangePercent(20), '+20%')
+  assert.equal(formatSizeChangePercent(0), '0%')
+  assert.equal(formatSizeChangePercent(null), '—')
+})
+
+test('the size-change minus is the sign the app draws elsewhere, not an ASCII hyphen', () => {
+  // U+2212 MINUS SIGN, the sign the Quarantine list, the preview badge and the i18n copy
+  // already use. An ASCII hyphen here would read as a different sign in a different place.
+  assert.equal(formatSizeChangePercent(-40), '−40%')
+  assert.equal(formatSizeChangePercent(-40).includes('-'), false)
+  assert.equal(formatSizeChangePercent(-40).codePointAt(0), 0x2212)
+})
+
+test('the comparison bar is measured against the larger file, so growth cannot hide as a full bar', () => {
+  const smaller = sizeBarShares(1000, 600)
+  assert.equal(smaller?.source, 100)
+  assert.equal(smaller?.output, 60)
+  const same = sizeBarShares(1000, 1000)
+  assert.equal(same?.source, 100)
+  assert.equal(same?.output, 100)
+  const bigger = sizeBarShares(1000, 1500)
+  assert.ok(Math.abs((bigger?.source ?? 0) - 66.6667) < 0.001)
+  assert.equal(bigger?.output, 100)
+  const empty = sizeBarShares(1000, 0)
+  assert.equal(empty?.source, 100)
+  assert.equal(empty?.output, 0)
+})
+
+test('the comparison bar shares out nothing for sizes that cannot be judged', () => {
+  assert.equal(sizeBarShares(0, 1000), null)
+  assert.equal(sizeBarShares(1000, -1), null)
+  assert.equal(sizeBarShares(Number.NaN, 1000), null)
 })
 
 test('episode files read as show, episode and title without the release tags', () => {

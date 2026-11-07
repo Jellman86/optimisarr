@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Job, OptimisationResult } from '../api'
-  import { formatRelative, formatSize, mediaTitle, savedPercent } from '../format'
+  import { formatRelative, formatSize, mediaTitle } from '../format'
   import PosterGlow from './PosterGlow.svelte'
+  import SizeChange from './SizeChange.svelte'
   import Thumbnail from './Thumbnail.svelte'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
@@ -113,7 +114,7 @@
           <span class="label mb-0">{i18n.m.dashboard.last_finished}</span>
           <strong>{lastTitle.primary ?? i18n.m.dashboard.unnamed_file}</strong>
           {#if lastTitle.episode}<span class="text-sm text-ink-2">{[lastTitle.episode, lastTitle.secondary].filter(Boolean).join(' · ')}</span>{/if}
-          <span class="mt-2 text-sm tabular-nums text-ink-2">{formatSize(lastResult.sourceSizeBytes)} → {formatSize(lastResult.outputSizeBytes)} <span class="font-semibold text-accent">−{savedPercent(lastResult.sourceSizeBytes, lastResult.outputSizeBytes)}%</span></span>
+          <span class="mt-2 text-sm tabular-nums text-ink-2">{formatSize(lastResult.sourceSizeBytes)} → {formatSize(lastResult.outputSizeBytes)} <SizeChange sourceSizeBytes={lastResult.sourceSizeBytes} outputSizeBytes={lastResult.outputSizeBytes} class="font-semibold" /></span>
           <span class="text-xs text-ink-3">{[lastResult.libraryName, lastResult.workerName ?? i18n.m.dashboard.this_server, formatRelative(lastResult.finishedAt, new Date(), i18n.locale)].filter(Boolean).join(' · ')}</span>
         </span>
       </section>

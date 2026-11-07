@@ -29,16 +29,61 @@ export function formatRelative(value: string | Date, now: Date = new Date(), loc
   return format.format(Math.round(seconds / 86400), 'day')
 }
 
-// A candidate that grew saved nothing; it is never shown as a negative saving.
-export function savedPercent(sourceBytes: number, outputBytes: number): number {
-  if (sourceBytes <= 0 || outputBytes >= sourceBytes) return 0
-  return Math.round((1 - outputBytes / sourceBytes) * 100)
+// The rounded change in file size: negative means the output came out smaller than the source
+// (a saving), positive means it grew. The sign follows the size change itself, not the saving
+// it produced, so a file that grew can never read as a saving. Sizes that cannot describe a
+// change — non-finite, a missing or empty source, a negative output — leave null rather than a
+// number a reader would have to guess at.
+export function sizeChangePercent(sourceBytes: number, outputBytes: number): number | null {
+  if (![sourceBytes, outputBytes].every(Number.isFinite)) return null
+  if (sourceBytes <= 0 || outputBytes < 0) return null
+  const percent = Math.round((outputBytes / sourceBytes - 1) * 100)
+  // Math.round(-0.1) is -0, and a -0 would slip past every `< 0` check as a saving.
+  return Object.is(percent, -0) ? 0 : percent
+}
+
+export type SizeChangeStatus = 'saved' | 'unchanged' | 'grew'
+
+// The direction of a size change, for tone and wording. Unknown (null) is a state of its own;
+// it is not "unchanged".
+export function sizeChangeStatus(percent: number | null): SizeChangeStatus | null {
+  if (percent === null) return null
+  if (percent < 0) return 'saved'
+  if (percent > 0) return 'grew'
+  return 'unchanged'
+}
+
+// Every panel reads a size change from this one place, so the sign and the zero are written
+// once: smaller reads "−71%", larger reads "+12%", no change reads "0%", unknown reads "—".
+// The minus is U+2212, the sign the Quarantine list, the preview badge and the translated copy
+// already draw a saving with, and the sign that pairs with the plain plus above the number.
+export function formatSizeChangePercent(percent: number | null): string {
+  if (percent === null) return '—'
+  if (percent === 0) return '0%'
+  return percent < 0 ? `−${Math.abs(percent)}%` : `+${percent}%`
 }
 
 export interface MediaTitle {
   primary: string | null
   episode: string | null
   secondary: string | null
+}
+
+export interface SizeBarShares {
+  /** The source file's share of the comparison bar, in percent. */
+  source: number
+  /** The output file's share of the comparison bar, in percent. */
+  output: number
+}
+
+// The size comparison bar is drawn against whichever of the two files is the larger one, so a
+// file that grew shows the part that overflows the source rather than a full bar that reads as
+// a saving. Sizes that cannot be judged share out nothing at all.
+export function sizeBarShares(sourceBytes: number, outputBytes: number): SizeBarShares | null {
+  if (sizeChangePercent(sourceBytes, outputBytes) === null) return null
+  const scale = Math.max(sourceBytes, outputBytes)
+  if (scale <= 0) return null
+  return { source: (sourceBytes / scale) * 100, output: (outputBytes / scale) * 100 }
 }
 
 const RELEASE_TAGS = /\s+(?:WEBDL|WEB-DL|WEBRip|Bluray|BluRay|HDTV|SDTV|DVD|Remux)\b.*$/i

@@ -884,6 +884,32 @@ test('recent results show each file before and after, with what it saved', async
   await expect(page.getByRole('region', { name: 'Saved per day' }).getByRole('img')).toHaveAccessibleName('Last 2 days: 871 MB saved')
 })
 
+test('a file that grew says so, and never claims a saving', async ({ page }) => {
+  await mockDashboard(page, {
+    results: [{
+      jobId: 42, mediaFileId: 8, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E08 - The Quiet Hour WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_200_000_000, vmafHarmonicMean: 88.02,
+      videoEncoder: 'hevc_qsv', workerName: null, finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }, {
+      jobId: 43, mediaFileId: 9, libraryId: 1, libraryName: 'TV',
+      relativePath: 'Harborlight/Season 2/Harborlight - S02E09 - Low Tide WEBDL-1080p.mkv',
+      sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_000_000_000, vmafHarmonicMean: 90.11,
+      videoEncoder: 'hevc_qsv', workerName: null, finishedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    }],
+  })
+  await page.goto('/#/')
+
+  const results = page.getByRole('region', { name: 'Recent results' })
+  // The figure is signed by what happened: a larger output reads "+20%", an unchanged one "0%".
+  await expect(results.getByText('+20%')).toBeVisible()
+  await expect(results.getByText('0%', { exact: true })).toBeVisible()
+  await expect(results.getByText('−20%')).toHaveCount(0)
+  // The growth is drawn in the warning tone, and a figure with nothing to say in neutral ink.
+  await expect(results.getByText('+20%')).toHaveClass(/text-warn/)
+  await expect(results.getByText('0%', { exact: true })).toHaveClass(/text-ink-2/)
+})
+
 test('an idle in-flight panel shows the last finished title instead of an empty box', async ({ page }) => {
   await mockDashboard(page, {
     results: [{
