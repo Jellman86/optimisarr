@@ -1692,14 +1692,18 @@ public sealed partial class QueueDispatcher(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-        var now = DateTimeOffset.UtcNow;
-        var error = $"Skipped before encoding: {reason}";
-        var skipped = await db.Jobs.Where(job => job.Id == jobId && job.Status == JobStatus.Queued)
-            .ExecuteUpdateAsync(set => set.SetProperty(job => job.Status, JobStatus.Cancelled)
-                .SetProperty(job => job.ErrorMessage, error)
-                .SetProperty(job => job.FinishedAt, now)
-                .SetProperty(job => job.UpdatedAt, now), cancellationToken);
-        if (skipped == 0) return;
+        await using (var write = await db.BeginDiagnosticWriteAsync(cancellationToken))
+        {
+            var job = await db.Jobs.FirstOrDefaultAsync(job => job.Id == jobId && job.Status == JobStatus.Queued, cancellationToken);
+            if (job is null) return;
+            var now = DateTimeOffset.UtcNow;
+            job.Status = JobStatus.Cancelled;
+            job.ErrorMessage = $"Skipped before encoding: {reason}";
+            job.FinishedAt = now;
+            job.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+            await write.CommitAsync(cancellationToken);
+        }
         logger.LogInformation("Job {JobId}: skipped before encoding — {Reason}", jobId, reason);
         await NotifyAsync();
     }
@@ -1880,6 +1884,12 @@ public sealed partial class QueueDispatcher(
             }
             if (VideoFieldOrder.IsInterlaced(fieldOrder))
                 throw new JobNoLongerEligibleException(VideoFieldOrder.RefusalFor(fieldOrder!));
+        }
+        // A preview runs regardless, but warns about an interlaced source, and this probe has the answer.
+        if (isPreview && isVideoJob && media.FieldOrder is null && freshSourceProbe is { Success: true, FieldOrder: { } previewFieldOrder })
+        {
+            await db.MediaFiles.Where(file => file.Id == media.Id)
+                .ExecuteUpdateAsync(set => set.SetProperty(file => file.FieldOrder, previewFieldOrder), cancellationToken);
         }
         var mediaDurationSeconds = isPreview && isVideoJob
             ? MediaTimelineDuration.Resolve(

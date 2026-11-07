@@ -103,6 +103,7 @@ public sealed class PreviewService(
         var job = await db.Jobs
             .AsNoTracking()
             .Include(j => j.MediaFile)
+            .ThenInclude(file => file!.Library)
             .FirstOrDefaultAsync(j => j.Id == jobId && j.Type == JobType.Preview, cancellationToken);
         if (job?.MediaFile is null)
         {
@@ -153,7 +154,8 @@ public sealed class PreviewService(
             job.VerificationReportJson,
             workerSample is not null ? $"/api/preview/{jobId}/reference" : null,
             PreviewQualitySearch.Names(job.SkippedQualitySearches),
-            VideoFieldOrder.IsInterlaced(media.FieldOrder));
+            VideoFieldOrder.IsInterlaced(media.FieldOrder)
+                && LibraryRuleResolution.Resolve(media.Library).TargetVideoCodec is not null);
     }
 
     /// <summary>

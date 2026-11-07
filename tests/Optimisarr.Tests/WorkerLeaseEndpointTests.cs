@@ -164,6 +164,58 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_preview_of_a_file_probed_before_field_order_was_captured_still_runs_and_warns()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Interlaced preview");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced preview.mkv");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(job => job.Id == id);
+            job.Type = JobType.Preview;
+            job.RequestedVideoQuality = 24;
+            job.CalibrationClipSeconds = 12;
+            job.CalibrationClipStartSeconds = 24;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await ClaimWhenReady(worker);
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var admin = Admin();
+        var preview = await admin.GetFromJsonAsync<JsonElement>($"/api/preview/{id}");
+        Assert.True(preview.GetProperty("sourceInterlaced").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_diagnostic_capture_records_a_job_skipped_at_claim()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Captured skip");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly, fileName: "interlaced capture.mkv");
+        using var admin = Admin();
+        using var started = await admin.PostAsJsonAsync("/api/diagnostics/capture", new { durationHours = 1, scopedJobId = id, includePaths = false });
+        Assert.Equal(HttpStatusCode.Created, started.StatusCode);
+        var captureId = (await started.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        try
+        {
+            using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+            Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+
+            using var scope = _api.Services.CreateScope();
+            var entry = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().DiagnosticEvents.AsNoTracking()
+                .SingleAsync(e => e.JobId == id && e.ReasonCode == "Job.StatusChanged");
+            Assert.Equal("Cancelled", entry.CurrentStatus);
+        }
+        finally
+        {
+            (await admin.PostAsync($"/api/diagnostics/capture/{captureId}/stop", null)).EnsureSuccessStatusCode();
+        }
+    }
+
+    [Fact]
     public async Task A_failed_field_order_probe_does_not_produce_an_assignment()
     {
         await EnableRemoteWorkers();

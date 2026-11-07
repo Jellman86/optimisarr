@@ -233,6 +233,15 @@ internal sealed class BlindCalibrationService(
                     $"Could not freshly probe the selected video before calibration: {sourceProbe.Error ?? "no detail available"}");
             }
 
+            // A real job would refuse this source, so a comparison would judge an encode never run.
+            var fieldOrder = VideoFieldOrder.IsInterlaced(media.FieldOrder) ? media.FieldOrder : sourceProbe.FieldOrder ?? media.FieldOrder;
+            media.FieldOrder = fieldOrder;
+            if (VideoFieldOrder.IsInterlaced(fieldOrder))
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                throw new InvalidOperationException(VideoFieldOrder.RefusalFor(fieldOrder!));
+            }
+
             duration = MediaTimelineDuration.Resolve(
                     MediaKind.Video,
                     sourceProbe.VideoDurationSeconds,
