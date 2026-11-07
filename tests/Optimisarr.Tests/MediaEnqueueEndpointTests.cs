@@ -192,8 +192,8 @@ public sealed class MediaEnqueueEndpointTests(AdminTokenAuthEndpointTests.Tokene
         using var second = await client.PostAsync($"/api/jobs/{ids[1]}/retry", null);
 
         first.EnsureSuccessStatusCode();
-        Assert.False(second.IsSuccessStatusCode);
-        Assert.Contains("already has an active job", await second.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Contains("job.retry.alreadyActive", await second.Content.ReadAsStringAsync());
         Assert.Single(await JobsAsync(mediaId), job => job.Status == JobStatus.Queued);
     });
 }

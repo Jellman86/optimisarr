@@ -216,6 +216,7 @@ export const es: Messages = {
     api_job_cancel_state: 'La tarea {id} ya no puede ser cancelada.',
     api_job_remove_active: 'Detén la tarea activa antes de eliminarla de la cola.',
     api_job_retry_state: 'La tarea {id} solo puede ser reintentada después de que haya fallado o sido cancelada.',
+    api_job_retry_active: 'Este archivo ya tiene una tarea activa. Espera a que termine o cancélala antes de reintentar esta.',
     api_job_work_cleanup_failed: 'No se pudo eliminar la salida de trabajo. La tarea se conservó.',
     api_job_status_invalid: 'Estado de tarea desconocido: {value}',
     api_failure_category_invalid: 'Categoría de error desconocida: {value}',

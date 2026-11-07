@@ -216,6 +216,7 @@ export const it: Messages = {
     api_job_cancel_state: 'Il processo {id} non può più essere annullato.',
     api_job_remove_active: 'Ferma il processo attivo prima di rimuoverlo dalla coda.',
     api_job_retry_state: 'Il processo {id} può essere riprovato solo dopo un errore o annullamento.',
+    api_job_retry_active: 'Questo file ha già un processo attivo. Attendi che finisca o annullalo prima di riprovare questo.',
     api_job_work_cleanup_failed: 'Non è stato possibile rimuovere l’output di lavoro. Il processo è stato conservato.',
     api_job_status_invalid: 'Stato del processo sconosciuto: {value}',
     api_failure_category_invalid: 'Categoria errore sconosciuta: {value}',

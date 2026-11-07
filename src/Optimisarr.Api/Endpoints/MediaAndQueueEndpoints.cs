@@ -95,7 +95,10 @@ internal static class MediaAndQueueEndpoints
                     }, result.Reason!);
             }
         })
-        .WithName("EnqueueMediaFile");
+        .WithName("EnqueueMediaFile")
+        .Produces<FileEnqueueDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
 
         app.MapPost("/api/media/{id:int}/probe", async (
             int id,
@@ -612,6 +615,7 @@ internal static class MediaAndQueueEndpoints
                 JobOperationFailure.NotFound => ApiErrors.NotFound("job.notFound", outcome.Message, outcome.Args ?? new { id }),
                 JobOperationFailure.InvalidState => ApiErrors.BadRequest("job.retry.invalidState", outcome.Message, outcome.Args ?? new { id }),
                 JobOperationFailure.Excluded => ApiErrors.Conflict("job.retry.excluded", outcome.Message),
+                JobOperationFailure.AlreadyActive => ApiErrors.Conflict("job.retry.alreadyActive", outcome.Message),
                 JobOperationFailure.RecoveryPending => ApiErrors.Conflict("job.recoveryPending", outcome.Message),
                 _ => ApiErrors.Conflict("job.workCleanupFailed", outcome.Message),
             };

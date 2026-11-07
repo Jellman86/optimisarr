@@ -216,6 +216,7 @@ export const pt: Messages = {
     api_job_cancel_state: "A tarefa de processamento {id} não pode mais ser cancelada.",
     api_job_remove_active: "Pare a tarefa de processamento ativa antes de removê-la da fila.",
     api_job_retry_state: "A tarefa de processamento {id} só pode ser tentada novamente após falhar ou ser cancelada.",
+    api_job_retry_active: "Este ficheiro já tem uma tarefa ativa. Aguarde que termine ou cancele-a antes de tentar esta novamente.",
     api_job_work_cleanup_failed: "Não foi possível remover a saída de trabalho. A tarefa de processamento foi mantida.",
     api_job_status_invalid: "Status da tarefa de processamento desconhecido: {value}",
     api_failure_category_invalid: "Categoria de falha desconhecida: {value}",

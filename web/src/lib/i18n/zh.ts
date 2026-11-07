@@ -216,6 +216,7 @@ export const zh: Messages = {
     api_job_cancel_state: "处理任务 {id} 无法再取消。",
     api_job_remove_active: "在将活动处理任务从队列中删除之前，将其停止。",
     api_job_retry_state: "处理任务{id}只能在失败或被取消后重试。",
+    api_job_retry_active: "此文件已有进行中的任务。请等待其完成或取消后再重试此任务。",
     api_job_work_cleanup_failed: "无法删除工作输出。处理任务已保留。",
     api_job_status_invalid: "未知处理任务状态：{value}",
     api_failure_category_invalid: "未知故障类别：{value}",

@@ -15,6 +15,7 @@ public enum JobOperationFailure
     WorkCleanupFailed,
     Excluded,
     Reserved,
+    AlreadyActive,
 }
 
 /// <summary>
@@ -149,7 +150,7 @@ public static class JobOperations
         if (await db.Jobs.AnyAsync(other => other.Id != id && other.Type == JobType.Normal
             && other.MediaFileId == job.MediaFileId && JobEnqueueService.ActiveStatuses.Contains(other.Status), token))
         {
-            return JobOperationOutcome.Rejected(id, JobOperationFailure.InvalidState, "job.retry.alreadyActive",
+            return JobOperationOutcome.Rejected(id, JobOperationFailure.AlreadyActive, "job.retry.alreadyActive",
                 "This file already has an active job. Wait for it to finish, or cancel it, before retrying this one.",
                 new { id });
         }

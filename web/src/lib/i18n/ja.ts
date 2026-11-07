@@ -216,6 +216,7 @@ export const ja: Messages = {
     api_job_cancel_state: "処理中のタスク {id} はキャンセルできなくなりました。",
     api_job_remove_active: "アクティブな処理タスクをキューから削除する前に停止します。",
     api_job_retry_state: "処理タスク {id} は、失敗するかキャンセルされた後にのみ再試行できます。",
+    api_job_retry_active: "このファイルにはすでに実行中のタスクがあります。完了を待つか、キャンセルしてから再試行してください。",
     api_job_work_cleanup_failed: "作業出力を削除できなかったため、処理タスクを保持しました。",
     api_job_status_invalid: "不明な処理タスクのステータス: {value}",
     api_failure_category_invalid: "不明な障害カテゴリ: {value}",

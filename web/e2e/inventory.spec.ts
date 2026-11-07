@@ -169,3 +169,43 @@ test('the detail actions wrap instead of overflowing on a phone', async ({ page 
   expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
   expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(2)
 })
+
+test('a slow queue answer does not appear on the file opened since', async ({ page }) => {
+  await mockInventory(page)
+  let answerOrbit = () => {}
+  const orbitAsked = new Promise<void>(asked => {
+    void page.route('**/api/media/7/enqueue', async route => {
+      asked()
+      await new Promise<void>(release => { answerOrbit = release })
+      await route.fulfill({ json: { jobId: 41, alreadyQueued: false } })
+    })
+  })
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Queue', exact: true }).click()
+  await orbitAsked
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: /Arrival/ }).click()
+  const answered = page.waitForResponse('**/api/media/7/enqueue')
+
+  answerOrbit()
+  await answered
+
+  await expect(page.getByRole('dialog').getByRole('status')).toHaveCount(0)
+})
+
+test('the queue confirmation takes its own row on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await mockInventory(page)
+  await page.route('**/api/media/7/enqueue', route => route.fulfill({ json: { jobId: 41, alreadyQueued: false } }))
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Orbit.2025.2160p.mkv/ }).click()
+  const dialog = page.getByRole('dialog')
+  const footer = dialog.locator('.detail-actions')
+
+  await footer.getByRole('button', { name: 'Queue', exact: true }).click()
+
+  await expect(footer.getByRole('status')).toContainText('Added to the queue')
+  await expect(footer.getByRole('button', { name: 'Queue', exact: true })).toBeInViewport({ ratio: 1 })
+  expect(await footer.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+})

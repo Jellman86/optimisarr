@@ -216,6 +216,7 @@ export const fr: Messages = {
     api_job_cancel_state: 'La tâche {id} ne peut plus être annulée.',
     api_job_remove_active: 'Arrêtez la tâche active avant de la retirer de la file d’attente.',
     api_job_retry_state: 'La tâche {id} ne peut être réessayée qu’après un échec ou une annulation.',
+    api_job_retry_active: 'Ce fichier a déjà une tâche active. Attendez sa fin ou annulez-la avant de réessayer celle-ci.',
     api_job_work_cleanup_failed: 'La sortie de travail n’a pas pu être supprimée. La tâche a été conservée.',
     api_job_status_invalid: 'Statut de tâche inconnu : {value}',
     api_failure_category_invalid: 'Catégorie d’échec inconnue : {value}',
