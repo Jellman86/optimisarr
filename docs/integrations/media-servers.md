@@ -60,11 +60,14 @@ Configure import-aware exclusions under **Settings → Download managers**.
 replaces one of its files or restores an original, so the manager tracks the
 file now on disk instead of waiting for its own scheduled scan. Optimisarr reads
 the manager's movie or series list, finds the one title whose folder holds the
-changed file, and sends `RescanMovie` or `RescanSeries`. It never deletes,
+changed file, and sends `RescanMovie` or `RescanSeries`. Only the folders where
+the manager keeps files are compared: the file's own folder for a movie, and
+the file's folder or the one above it, such as a season folder, for a series. It never deletes,
 searches, or changes the manager's settings. When no single title fits, it sends
 nothing and logs why. A failed rescan never affects the replacement itself.
 
-It is on for new connections and off for connections saved before it existed.
+It is on for new connections and off for connections saved before it existed,
+including connections restored from a backup made before then.
 When a replacement changes the file name, for example `.mkv` to `.mp4`, the
 manager sees the old file as gone. Radarr then unmonitors the movie if its
 **Unmonitor Deleted Movies** setting is on, so check that setting, or keep file

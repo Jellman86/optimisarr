@@ -202,6 +202,12 @@
           "name": {
             "type": "string"
           },
+          "rescanAfterChanges": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "type": {
             "type": "string"
           }

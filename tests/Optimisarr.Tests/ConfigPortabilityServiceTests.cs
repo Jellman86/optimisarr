@@ -402,6 +402,44 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
             (await db.Libraries.SingleAsync()).ContentTune);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_manager_rescan_choice_survives_export_and_restore(bool rescan)
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection { Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = "http://radarr:7878", RescanAfterChanges = rescan });
+            await db.SaveChangesAsync();
+        }
+        var exported = await ExportAsync();
+
+        await ResetDatabaseAsync();
+        await ImportAsync(exported);
+        await ImportAsync(exported);
+
+        await using var restored = CreateDb();
+        Assert.Equal(rescan, (await restored.ArrConnections.SingleAsync()).RescanAfterChanges);
+    }
+
+    [Fact]
+    public async Task A_backup_from_before_the_rescan_setting_recreates_connections_with_it_off_and_keeps_existing_choices()
+    {
+        await using (var db = CreateDb())
+        {
+            db.ArrConnections.Add(new ArrConnection { Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr:8989", RescanAfterChanges = true });
+            await db.SaveChangesAsync();
+        }
+        var legacy = new ConfigSnapshot(ConfigSnapshot.CurrentVersion, _clock.GetUtcNow(), new Dictionary<string, string>(), [], [], [],
+            [new ArrConnectionSnapshot("Radarr", "Radarr", "http://radarr:7878", true), new ArrConnectionSnapshot("Sonarr", "Sonarr", "http://sonarr:8989", true)]);
+
+        await ImportAsync(legacy);
+
+        await using var restored = CreateDb();
+        Assert.False((await restored.ArrConnections.SingleAsync(c => c.Name == "Radarr")).RescanAfterChanges);
+        Assert.True((await restored.ArrConnections.SingleAsync(c => c.Name == "Sonarr")).RescanAfterChanges);
+    }
+
     [Fact]
     public async Task Import_creates_new_definitions_and_applies_settings()
     {

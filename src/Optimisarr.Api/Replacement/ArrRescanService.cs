@@ -46,7 +46,8 @@ public sealed class ArrRescanService(
                 logger.LogWarning("{Name} sent a title list Optimisarr could not read", connection.Name);
                 return;
             }
-            if (ArrRescanTarget.TitleFor(changedFilePath, titles) is not { } titleId)
+            if (ArrRescanTarget.TitleFor(changedFilePath, titles,
+                    radarr ? ArrRescanTarget.MovieFolderDepth : ArrRescanTarget.SeriesFolderDepth) is not { } titleId)
             {
                 logger.LogInformation("{Name} has no single title whose folder holds {Path}; not asking it to rescan", connection.Name, changedFilePath);
                 return;

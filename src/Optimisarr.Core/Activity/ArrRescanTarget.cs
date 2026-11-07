@@ -5,12 +5,20 @@ public sealed record ArrTitleFolder(int Id, string Path);
 
 /// <summary>
 /// Works out which title a manager should rescan after a file changed. Optimisarr and the manager often
-/// see the library under different mounts, so only folder names are compared, from the file's own folder
-/// outwards. A title is named only when exactly one fits; a wrong rescan is harmless but pointless.
+/// see the library under different mounts, so folder names are compared, but only where the manager keeps
+/// a title's files: Radarr puts a movie's file in the movie folder, and Sonarr puts an episode in the series
+/// folder or one folder below it, such as a season. A title is named only when exactly one fits there, so a
+/// series with a "Specials" folder never sends the rescan to a series called Specials.
 /// </summary>
 public static class ArrRescanTarget
 {
-    public static int? TitleFor(string changedFilePath, IReadOnlyList<ArrTitleFolder> titles)
+    /// <summary>A movie file sits directly in its movie folder.</summary>
+    public const int MovieFolderDepth = 1;
+
+    /// <summary>An episode sits in its series folder or one folder below it.</summary>
+    public const int SeriesFolderDepth = 2;
+
+    public static int? TitleFor(string changedFilePath, IReadOnlyList<ArrTitleFolder> titles, int folderDepth)
     {
         var segments = Folders(changedFilePath);
         if (segments.Length < 2) return null;
@@ -19,20 +27,22 @@ public static class ArrRescanTarget
             .Where(title => title.Folders.Length > 0)
             .ToList();
 
-        // Nearest folder first: an episode's season folder is passed over before its series folder.
-        for (var depth = folders.Length - 1; depth >= 0; depth--)
+        var found = new HashSet<int>();
+        for (var up = 0; up < folderDepth && up < folders.Length; up++)
         {
-            var within = folders[..(depth + 1)];
+            var within = folders[..^up];
             var named = candidates.Where(title => title.Folders[^1] == within[^1]).ToList();
             if (named.Count == 0) continue;
-            if (named.Count == 1) return named[0].Id;
 
+            // Two titles with the same folder name, as in separate HD and 4K root folders, are told apart
+            // by how much of the path above them also matches.
             var shared = named.Select(title => (title.Id, Shared: SharedEnding(title.Folders, within))).ToList();
             var best = shared.Max(title => title.Shared);
             var winners = shared.Where(title => title.Shared == best).ToList();
-            return winners.Count == 1 ? winners[0].Id : null;
+            if (winners.Count > 1) return null;
+            found.Add(winners[0].Id);
         }
-        return null;
+        return found.Count == 1 ? found.Single() : null;
     }
 
     private static string[] Folders(string path)
