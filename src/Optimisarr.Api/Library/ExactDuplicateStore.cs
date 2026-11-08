@@ -8,7 +8,16 @@ namespace Optimisarr.Api.Library;
 
 /// <summary>One retained snapshot per library, plus reusable completed file reads.</summary>
 /// <summary>Every group of a current report, with what a cleanup needs to plan a move.</summary>
-public sealed record DedupeCleanupGroups(string ScopeKey, IReadOnlyList<ExactDuplicateGroup> Groups, IReadOnlyDictionary<int, ExactDuplicateObservation> Rows);
+/// <param name="ScanId">The report these groups come from.</param>
+/// <param name="DecidedElsewhere">Content, as <c>sha256:size</c>, someone chose a keeper for or ignored in another report.</param>
+public sealed record DedupeCleanupGroups(string ScopeKey, IReadOnlyList<ExactDuplicateGroup> Groups, IReadOnlyDictionary<int, ExactDuplicateObservation> Rows,
+    long ScanId = 0, IReadOnlySet<string>? DecidedElsewhere = null)
+{
+    public static string ContentKey(string sha256, long sizeBytes) => $"{sha256}:{sizeBytes}";
+}
+
+/// <summary>A new scan may only replace the report the caller looked at; null means there was none.</summary>
+public sealed record ExactDuplicateScanExpectation(long? CurrentScanId);
 
 public sealed class ExactDuplicateStore(IServiceScopeFactory scopes)
 {
@@ -25,12 +34,15 @@ public sealed class ExactDuplicateStore(IServiceScopeFactory scopes)
     }
 
     public async Task<long?> TryCreateAsync(int libraryId, string root, int total, bool forceRefresh, CancellationToken token,
-        IReadOnlyList<ExactDuplicateInput>? inputs = null, IReadOnlyList<ExactDuplicateLibrary>? libraries = null)
+        IReadOnlyList<ExactDuplicateInput>? inputs = null, IReadOnlyList<ExactDuplicateLibrary>? libraries = null,
+        ExactDuplicateScanExpectation? expect = null)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         if (await db.ExactDuplicateScans.AsNoTracking().AnyAsync(s => s.ActiveSlot != null, token)) return null;
+        if (expect is not null && await db.ExactDuplicateScans.AsNoTracking().Where(s => s.LibraryId == libraryId)
+                .Select(s => (long?)s.Id).SingleOrDefaultAsync(token) != expect.CurrentScanId) return null;
         libraries ??= await db.Libraries.AsNoTracking().Where(l => l.Id == libraryId)
             .Select(l => new ExactDuplicateLibrary(l.Id, l.Name, l.Path, l.MediaType.ToString())).ToListAsync(token);
         if (libraries.Count is < 1 or > 16 || !libraries.Any(l => l.Id == libraryId)
@@ -50,6 +62,15 @@ public sealed class ExactDuplicateStore(IServiceScopeFactory scopes)
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return scan.Id;
+    }
+
+    /// <summary>How the scan with this id ended, or null when a newer scan has replaced it.</summary>
+    public async Task<ExactDuplicateScanState?> StateAsync(long scanId, CancellationToken token)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        return await db.ExactDuplicateScans.AsNoTracking().Where(s => s.Id == scanId)
+            .Select(s => (ExactDuplicateScanState?)s.State).SingleOrDefaultAsync(token);
     }
 
     public async Task<IReadOnlyDictionary<int, Fingerprint>> CacheAsync(IReadOnlyList<ExactDuplicateInput> inputs, CancellationToken token)
@@ -187,7 +208,12 @@ public sealed class ExactDuplicateStore(IServiceScopeFactory scopes)
         }).Where(g => g.ReviewKey is not null && g.Copies.Count <= 100).ToArray();
         var members = groups.SelectMany(g => g.Copies.SelectMany(c => new[] { c.Id }.Concat(c.Aliases?.Select(a => a.Id) ?? []))).ToHashSet();
         if (rows.Where(r => members.Contains(r.MediaFileId)).Any(r => !Matches(r))) return null;
-        return new DedupeCleanupGroups(scopeKey, groups, rows.GroupBy(r => r.MediaFileId).ToDictionary(g => g.Key, g => g.First()));
+        var contents = groups.Select(g => g.Sha256).ToHashSet();
+        var elsewhere = (await db.ExactDuplicateReviewDecisions.AsNoTracking()
+                .Where(d => contents.Contains(d.Sha256) && !(d.LibraryId == libraryId && d.ScopeKey == scopeKey))
+                .Select(d => new { d.Sha256, d.SizeBytes }).ToListAsync(token))
+            .Select(d => DedupeCleanupGroups.ContentKey(d.Sha256, d.SizeBytes)).ToHashSet();
+        return new DedupeCleanupGroups(scopeKey, groups, rows.GroupBy(r => r.MediaFileId).ToDictionary(g => g.Key, g => g.First()), scan.Id, elsewhere);
     }
 
     public async Task<bool> DecideAsync(int libraryId, string reviewKey, string choice, IReadOnlyList<int> keepIds, CancellationToken token)

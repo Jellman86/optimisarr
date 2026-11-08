@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { api, type DuplicateCleanupPreview, type DuplicateCleanupRefusal, type DuplicateCleanupStatus, type Library, type ExactDuplicateStatus } from '../api'
+  import { api, type AutoDuplicateCleanup, type DuplicateCleanupPreview, type DuplicateCleanupRefusal, type DuplicateCleanupStatus, type Library, type ExactDuplicateStatus } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { formatSize } from '../format'
   import Banner from '../components/Banner.svelte'
@@ -108,6 +108,43 @@
     catch (err) { if (!disposed) cleanupError = err instanceof Error ? err.message : i18n.m.duplicates.clean_error }
   }
   onMount(() => { void loadLibraries() })
+  let schedule = $state<AutoDuplicateCleanup | null>(null)
+  let scheduleError = $state<string | null>(null)
+  let savingSchedule = $state(false)
+  $effect(() => {
+    const id = libraryId
+    schedule = null
+    scheduleError = null
+    if (id === null) return
+    let current = true
+    const refresh = () => api.autoDuplicateCleanup(id)
+      .then(next => { if (current && !disposed) { schedule = next; scheduleError = null } })
+      .catch(err => { if (current && !disposed) scheduleError = err instanceof Error ? err.message : i18n.m.duplicates.auto_error })
+    void refresh()
+    // A run can finish while the page is open, so what it did is checked again every minute and on return to the page.
+    const again = () => { if (schedule?.enabled) void refresh() }
+    const every = setInterval(again, 60_000)
+    window.addEventListener('focus', again)
+    return () => { current = false; clearInterval(every); window.removeEventListener('focus', again) }
+  })
+  async function setSchedule(enabled: boolean) {
+    if (!schedule || savingSchedule) return
+    const id = schedule.libraryId
+    savingSchedule = true
+    scheduleError = null
+    try {
+      const next = await api.setAutoDuplicateCleanup(id, enabled)
+      if (!disposed && libraryId === id) schedule = next
+    } catch (err) { if (!disposed) scheduleError = err instanceof Error ? err.message : i18n.m.duplicates.auto_error }
+    finally { if (!disposed) savingSchedule = false }
+  }
+  function lastRunText(value: AutoDuplicateCleanup): string {
+    const outcome = value.lastOutcome
+    if (!value.lastRunAt || !outcome) return i18n.m.duplicates.auto_never
+    const result = t(i18n.m.duplicates[`auto_${outcome}`], { moved: value.lastMoved, size: formatSize(value.lastBytes) })
+    return t(i18n.m.duplicates.auto_last, { time: new Date(value.lastRunAt).toLocaleString(), result })
+  }
+
   onDestroy(() => { disposed = true; revision++; clearTimeout(timer); clearTimeout(cleanupTimer) })
 
   async function loadLibraries() {
@@ -258,6 +295,28 @@
                 {#if cleanupPreview.leftAlone?.[reason]}<li>{text} ({cleanupPreview.leftAlone[reason]})</li>{/if}
               {/each}
             </ul>
+          {/if}
+        {/if}
+      </section>
+    {/if}
+    {#if schedule || scheduleError}
+      <section class="card p-5 sm:p-6" aria-labelledby="duplicate-schedule" data-testid="duplicate-schedule">
+        <h2 id="duplicate-schedule" class="text-base font-semibold text-ink">{i18n.m.duplicates.auto_title}</h2>
+        {#if scheduleError}<p class="mt-2 text-sm text-bad" role="alert">{scheduleError}</p>{/if}
+        {#if schedule}
+          {#if schedule.supported}
+            <p class="mt-2 max-w-3xl text-sm leading-relaxed text-ink-3" id="duplicate-schedule-hint">{i18n.m.duplicates.auto_hint}</p>
+            <label class="mt-3 flex min-h-11 items-center gap-3 text-sm text-ink">
+              <input type="checkbox" class="h-4 w-4 shrink-0 accent-accent" aria-describedby="duplicate-schedule-hint" checked={schedule.enabled}
+                disabled={savingSchedule} onchange={event => void setSchedule((event.currentTarget as HTMLInputElement).checked)} />
+              {i18n.m.duplicates.auto_toggle}
+            </label>
+            {#if schedule.enabled && schedule.dryRun}<p class="mt-2 text-sm text-warn" role="status">{i18n.m.duplicates.auto_dry_run}</p>{/if}
+            {#if schedule.enabled || schedule.lastRunAt}
+              <p class="mt-2 text-sm text-ink-2" role="status">{lastRunText(schedule)}{#if schedule.enabled && schedule.lastRunAt && schedule.nextRunAfter} {t(i18n.m.duplicates.auto_next, { time: new Date(schedule.nextRunAfter).toLocaleString() })}{/if}</p>
+            {/if}
+          {:else}
+            <p class="mt-2 text-sm text-ink-3">{i18n.m.duplicates.auto_unsupported}</p>
           {/if}
         {/if}
       </section>

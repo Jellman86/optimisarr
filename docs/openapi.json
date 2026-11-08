@@ -719,6 +719,89 @@
         ],
         "type": "object"
       },
+      "AutoDedupeScheduleDto": {
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lastBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "lastMoved": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "lastOutcome": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastRunAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "nextRunAfter": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "supported": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "libraryId",
+          "enabled",
+          "supported",
+          "dryRun",
+          "lastRunAt",
+          "lastOutcome",
+          "lastMoved",
+          "lastBytes",
+          "nextRunAfter"
+        ],
+        "type": "object"
+      },
+      "AutoDedupeScheduleRequest": {
+        "properties": {
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
       "BatchExcludeRequest": {
         "properties": {
           "mediaFileIds": {
@@ -1121,6 +1204,10 @@
               "$ref": "#/components/schemas/DedupeCleanupFailure"
             },
             "type": "array"
+          },
+          "interrupted": {
+            "default": false,
+            "type": "boolean"
           },
           "libraryId": {
             "format": "int32",
@@ -2576,6 +2663,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "autoDedupeEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "autoEnqueueEnabled": {
@@ -9065,6 +9158,100 @@
           },
           "409": {
             "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/libraries/{id}/duplicates/schedule": {
+      "get": {
+        "operationId": "GetAutoDuplicateCleanup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoDedupeScheduleDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      },
+      "put": {
+        "operationId": "SetAutoDuplicateCleanup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoDedupeScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoDedupeScheduleDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "description": "Not Found"
           }
         },
         "tags": [

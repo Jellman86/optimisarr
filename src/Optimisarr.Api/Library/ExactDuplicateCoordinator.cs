@@ -13,10 +13,18 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
     ILogger<ExactDuplicateCoordinator>? logger = null) : BackgroundService
 {
     private sealed record Work(long ScanId, int LibraryId, string Root, IReadOnlyList<ExactDuplicateInput> Inputs,
-        bool ForceRefresh, CancellationTokenSource Cancel);
+        bool ForceRefresh, CancellationTokenSource Cancel)
+    {
+        /// <summary>Taken by the executor; until then the work can be withdrawn without waiting for it.</summary>
+        public bool Taken { get; set; }
+
+        /// <summary>Withdrawn before the executor took it, so the executor skips it.</summary>
+        public bool Withdrawn { get; set; }
+    }
     private readonly object _lock = new();
     private readonly SemaphoreSlim _start = new(1);
-    private readonly Channel<Work> _queue = Channel.CreateBounded<Work>(1);
+    // Only one scan is active at a time; a withdrawn item can still sit here until the executor skips it.
+    private readonly Channel<Work> _queue = Channel.CreateUnbounded<Work>();
     private Work? _active;
     private ExactDuplicateStatus? _status;
 
@@ -34,25 +42,77 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
     }
 
     public async Task<bool> TryStartAsync(int libraryId, string root, IReadOnlyList<ExactDuplicateInput> inputs,
-        bool forceRefresh, CancellationToken token, IReadOnlyList<ExactDuplicateLibrary>? libraries = null)
+        bool forceRefresh, CancellationToken token, IReadOnlyList<ExactDuplicateLibrary>? libraries = null) =>
+        await TryStartScanAsync(libraryId, root, inputs, forceRefresh, token, libraries) is not null;
+
+    /// <summary>The new scan's id, or null when another scan runs or the report changed from <paramref name="expect"/>.</summary>
+    public async Task<long?> TryStartScanAsync(int libraryId, string root, IReadOnlyList<ExactDuplicateInput> inputs,
+        bool forceRefresh, CancellationToken token, IReadOnlyList<ExactDuplicateLibrary>? libraries = null,
+        ExactDuplicateScanExpectation? expect = null)
     {
         await _start.WaitAsync(token);
         try
         {
-            lock (_lock) if (_active is not null) return false;
+            lock (_lock) if (_active is not null) return null;
             var initial = InitialProgress(inputs);
-            var scanId = await store.TryCreateAsync(libraryId, root, initial.Total, forceRefresh, token, inputs, libraries);
-            if (scanId is null) return false;
+            var scanId = await store.TryCreateAsync(libraryId, root, initial.Total, forceRefresh, token, inputs, libraries, expect);
+            if (scanId is null) return null;
             var queued = new ExactDuplicateStatus(libraryId, "Queued", DateTimeOffset.UtcNow, null,
                 initial, null, null, Libraries: libraries);
             lock (_lock)
             {
                 _active = new(scanId.Value, libraryId, root, inputs, forceRefresh, new());
                 _status = queued;
-                return _queue.Writer.TryWrite(_active);
+                return _queue.Writer.TryWrite(_active) ? scanId : null;
             }
         }
         finally { _start.Release(); }
+    }
+
+    /// <summary>The live status of the scan with this id, or null once it has stopped.</summary>
+    public ExactDuplicateStatus? Active(long scanId)
+    {
+        lock (_lock) return _active?.ScanId == scanId ? _status : null;
+    }
+
+    /// <summary>How the scan with this id ended, or null when a newer scan has replaced it.</summary>
+    public Task<ExactDuplicateScanState?> ReadStateAsync(long scanId, CancellationToken token) => store.StateAsync(scanId, token);
+
+    /// <summary>
+    /// Withdraws the scan with this id if the executor has not taken it yet, and frees its place so another scan can
+    /// start. False when it has started, or has gone: a running scan is only ever stopped, never abandoned.
+    /// </summary>
+    public async Task<bool> WithdrawQueuedAsync(long scanId, CancellationToken token)
+    {
+        await _start.WaitAsync(token);
+        try
+        {
+            Work work;
+            lock (_lock)
+            {
+                if (_active is not { } active || active.ScanId != scanId || active.Taken) return false;
+                active.Withdrawn = true;
+                work = active;
+                _active = null;
+                _status = null;
+            }
+            work.Cancel.Cancel();
+            work.Cancel.Dispose();
+            await store.SetStateAsync(scanId, ExactDuplicateScanState.Cancelled, CancellationToken.None,
+                "The scan waited too long to start and was withdrawn.");
+            return true;
+        }
+        finally { _start.Release(); }
+    }
+
+    /// <summary>Stops the scan only while it is still the one with this id.</summary>
+    public bool Cancel(int libraryId, long scanId)
+    {
+        lock (_lock)
+        {
+            if (_active?.LibraryId != libraryId || _active.ScanId != scanId) return false;
+            _active.Cancel.Cancel(); return true;
+        }
     }
 
     public bool Cancel(int libraryId)
@@ -68,6 +128,11 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
     {
         await foreach (var work in _queue.Reader.ReadAllAsync(stoppingToken))
         {
+            lock (_lock)
+            {
+                if (work.Withdrawn) continue;
+                work.Taken = true;
+            }
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, work.Cancel.Token);
             var pending = new List<ExactDuplicateCheckpoint>(32);
             var state = ExactDuplicateScanState.Completed;

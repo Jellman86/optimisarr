@@ -359,6 +359,8 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `GET` | `/api/libraries/{id}/duplicates/cleanup` | Where a cleanup stands. |
 | `POST` | `/api/libraries/{id}/duplicates/cleanup` | Starts moving spare copies into quarantine, one group at a time. 409 when a report is out of date, nothing can move, or one is running. |
 | `DELETE` | `/api/libraries/{id}/duplicates/cleanup` | Stops a cleanup. A group already moving is undone. |
+| `GET` | `/api/libraries/{id}/duplicates/schedule` | Whether this library cleans its duplicates once a day: `enabled`, `supported` (film and TV only), `dryRun`, `lastRunAt`, `lastOutcome`, `lastMoved`, `lastBytes` and `nextRunAfter`. |
+| `PUT` | `/api/libraries/{id}/duplicates/schedule` | Turns the daily scan and cleanup on or off. Body: `enabled`. Returns the schedule, `400` when `enabled` is missing or the library is not film or TV, `404` for an unknown library. |
 | `GET` | `/api/quarantine/duplicates` | Spare copies waiting in quarantine, with the copies kept in their place. |
 | `POST` | `/api/quarantine/duplicates/{id}/restore` | Puts the copies back where they were. |
 | `DELETE` | `/api/quarantine/duplicates/{id}` | Deletes the copies for good, after reading the kept copy in full and proving it unchanged. 409 otherwise. |

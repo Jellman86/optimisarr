@@ -13,10 +13,12 @@ const report = {
   }] },
 }
 const idle = { libraryId: 1, running: false, total: 0, done: 0, moved: 0, bytesHeld: 0, failures: [] }
+const offSchedule = { libraryId: 1, enabled: false, supported: true, dryRun: false, lastRunAt: null, lastOutcome: null, lastMoved: 0, lastBytes: 0, nextRunAfter: null }
 const preview = { ready: true, groups: 1, copies: 1, bytesToFree: 1024, leftAlone: { SharedExtra: 2, ManagerUnavailable: 1 } }
 
-async function mock(page: Page, options: { preview?: unknown; status?: unknown; report?: unknown } = {}) {
+async function mock(page: Page, options: { preview?: unknown; status?: unknown; report?: unknown; schedule?: Record<string, unknown>; nextSchedule?: () => Record<string, unknown> | null } = {}) {
   let status = options.status ?? idle
+  let schedule = options.schedule ?? offSchedule
   const calls: string[] = []
   await page.route('**/api/**', route => {
     const url = new URL(route.request().url()), path = url.pathname, method = route.request().method()
@@ -24,6 +26,14 @@ async function mock(page: Page, options: { preview?: unknown; status?: unknown; 
     if (path === '/api/setup') return route.fulfill({ json: { version: 1, completed: true } })
     if (path === '/api/libraries') return route.fulfill({ json: [{ id: 1, name: 'Films' }] })
     if (path === '/api/libraries/1/duplicates') return route.fulfill({ json: options.report ?? report })
+    if (path === '/api/libraries/1/duplicates/schedule') {
+      if (method === 'PUT') {
+        const enabled = route.request().postDataJSON().enabled
+        calls.push(`schedule:${enabled}`)
+        schedule = { ...schedule, enabled, nextRunAfter: enabled ? '2026-11-08T03:00:00Z' : null }
+      }
+      return route.fulfill({ json: options.nextSchedule?.() ?? schedule })
+    }
     if (path === '/api/libraries/1/duplicates/cleanup/preview') { calls.push('preview'); return route.fulfill({ json: options.preview ?? preview }) }
     if (path === '/api/libraries/1/duplicates/cleanup') {
       if (method === 'POST') {
@@ -132,4 +142,56 @@ test('a finished run asks again what can move', async ({ page }) => {
   await page.getByRole('button', { name: 'Quarantine spare copies' }).click()
   await expect(page.getByTestId('duplicate-cleanup')).toContainText('Copies moved to Quarantine: 1')
   await expect.poll(() => calls.filter(call => call === 'preview').length).toBeGreaterThanOrEqual(2)
+})
+
+test('automatic cleanup starts off, explains itself, and can be turned on', async ({ page }) => {
+  const calls = await mock(page)
+  await page.goto('/#/libraries/1/duplicates')
+
+  const card = page.getByTestId('duplicate-schedule')
+  await expect(card).toContainText('Once a day, Optimisarr scans this library for exact copies')
+  const toggle = card.getByRole('checkbox', { name: 'Find and quarantine spare copies every day' })
+  await expect(toggle).not.toBeChecked()
+  await toggle.check()
+
+  await expect(card).toContainText('It has not run yet. The first run starts within 15 minutes.')
+  expect(calls).toContain('schedule:true')
+})
+
+test('automatic cleanup says what its last run did and when the next one is', async ({ page }) => {
+  await mock(page, { schedule: { ...offSchedule, enabled: true, lastRunAt: '2026-11-07T03:00:00Z', lastOutcome: 'Cleaned', lastMoved: 2, lastBytes: 2048, nextRunAfter: '2026-11-08T03:00:00Z' } })
+  await page.goto('/#/libraries/1/duplicates')
+
+  const card = page.getByTestId('duplicate-schedule')
+  await expect(card).toContainText('moved 2 copies holding 2.0 KB to Quarantine')
+  await expect(card).toContainText('Next run after')
+})
+
+test('automatic cleanup warns when dry-run mode stops it, and is not offered outside film and TV', async ({ page }) => {
+  await mock(page, { schedule: { ...offSchedule, enabled: true, dryRun: true, lastRunAt: '2026-11-07T03:00:00Z', lastOutcome: 'DryRun' } })
+  await page.goto('/#/libraries/1/duplicates')
+  await expect(page.getByTestId('duplicate-schedule')).toContainText('Dry-run mode is on, so the daily cleanup moves nothing.')
+
+  await page.unrouteAll()
+  await mock(page, { schedule: { ...offSchedule, supported: false } })
+  await page.reload()
+  const card = page.getByTestId('duplicate-schedule')
+  await expect(card).toContainText('Only film and TV libraries can be cleaned automatically.')
+  await expect(card.getByRole('checkbox')).toHaveCount(0)
+})
+
+test('the automatic cleanup card shows a run that finished while the page was open', async ({ page }) => {
+  let finished = false
+  await mock(page, {
+    schedule: { ...offSchedule, enabled: true },
+    nextSchedule: () => finished ? { ...offSchedule, enabled: true, lastRunAt: '2026-11-08T03:00:00Z', lastOutcome: 'NothingToClean', nextRunAfter: '2026-11-09T03:00:00Z' } : null,
+  })
+  await page.goto('/#/libraries/1/duplicates')
+  const card = page.getByTestId('duplicate-schedule')
+  await expect(card).toContainText('It has not run yet.')
+
+  finished = true
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+
+  await expect(card).toContainText('nothing could move')
 })

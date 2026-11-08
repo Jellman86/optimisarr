@@ -1069,6 +1069,9 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AutoDedupeEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("AutoEnqueueEnabled")
                         .HasColumnType("INTEGER");
 
@@ -1151,6 +1154,19 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("KeepSubtitleLanguages")
                         .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastAutoDedupeAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastAutoDedupeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LastAutoDedupeMoved")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastAutoDedupeOutcome")
+                        .HasMaxLength(24)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("LastAutoEnqueueAt")

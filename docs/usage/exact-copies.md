@@ -130,3 +130,29 @@ choose a keeper for the group: copies in different libraries, copies with differ
 extras such as trailers, samples and intros that can belong to several titles. Music, photo and other
 libraries are never cleaned automatically, because the same track can belong in two albums.
 
+### Clean up automatically
+
+A film or TV library can clean up its spare copies every day. Turn on **Find and quarantine spare
+copies every day** on the exact copies page. It is off by default.
+
+Once a day, Optimisarr scans for exact copies and then runs the same cleanup as **Quarantine spare
+copies**, with tighter limits. It moves only groups whose copies are all in this library, so a
+library that has not turned this on is never touched. It leaves content you chose a keeper for, or
+ignored, in any other report. Moved copies wait in Quarantine until the retention period ends.
+
+The scan covers the same libraries as the last scan of this library, so the keepers you saved for
+that report still apply. If one of those libraries has gone, only this library is scanned. If you
+scan the library yourself while a run is starting, your report is kept and the run tries again
+later.
+
+Before each group moves, Optimisarr checks again that the setting is still on and that dry-run mode
+is off. Turning either one changes what happens from the next group on.
+
+The page shows when the last run happened and what it did. It might have moved copies, found nothing
+that could move, left everything because Sonarr or Radarr could not be asked, or stopped part way
+because you turned it off. Nothing runs in
+dry-run mode. A run waits for any scan or cleanup that is already running, and tries again 15 minutes
+later. A scan that stays queued for 5 minutes is withdrawn and reported, so later libraries still get
+their turn. A scan that makes no progress for 30 minutes is asked to stop. Later libraries wait for
+it to stop, and run on a later check.
+

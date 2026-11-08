@@ -267,6 +267,336 @@ public sealed class DedupeCleanupRunnerTests : IAsyncLifetime
         if (File.Exists(spare)) Assert.Empty(await db.DedupeFileClaims.AsNoTracking().ToListAsync());
     }
 
+    private static readonly DateTimeOffset Tonight = new(2026, 11, 8, 3, 0, 0, TimeSpan.Zero);
+
+    private readonly SettableClock _clock = new(Tonight);
+
+    private AutoDedupeService Automatic => AutomaticWith(_scans);
+
+    private AutoDedupeService AutomaticWith(ExactDuplicateCoordinator scans, AutoDedupeTimings? timings = null) =>
+        new(_services.GetRequiredService<IServiceScopeFactory>(), scans, Runner, _clock,
+            NullLogger<AutoDedupeService>.Instance, timings ?? new AutoDedupeTimings { Poll = TimeSpan.FromMilliseconds(10) });
+
+    private async Task RunAtAsync(DateTimeOffset now)
+    {
+        _clock.Now = now;
+        await Automatic.RunDueAsync(default);
+    }
+
+    private async Task<Library> LibraryAsync()
+    {
+        await using var scope = _services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Libraries.AsNoTracking().SingleAsync(l => l.Id == _libraryId);
+    }
+
+    private async Task ChangeLibraryAsync(Action<Library> change)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        change(await db.Libraries.SingleAsync(l => l.Id == _libraryId));
+        await db.SaveChangesAsync();
+    }
+
+    [PosixFact]
+    public async Task The_daily_cleanup_scans_and_moves_the_spare_and_says_what_it_did()
+    {
+        var keeper = await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+
+        await RunAtAsync(Tonight);
+
+        Assert.True(File.Exists(keeper));
+        Assert.False(File.Exists(spare));
+        Assert.Equal([1, 2, 3, 4], await File.ReadAllBytesAsync(Quarantined("Title.mkv")));
+        var library = await LibraryAsync();
+        Assert.Equal((Tonight, AutoDedupeOutcome.Cleaned, 1, 4L),
+            (library.LastAutoDedupeAt, library.LastAutoDedupeOutcome, library.LastAutoDedupeMoved, library.LastAutoDedupeBytes));
+    }
+
+    [PosixFact]
+    public async Task The_daily_cleanup_runs_once_a_day()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+        await RunAtAsync(Tonight);
+        Assert.Equal(AutoDedupeOutcome.NothingToClean, (await LibraryAsync()).LastAutoDedupeOutcome);
+        var spare = await AddAsync("B/Title.mkv", [1, 2, 3, 4]);
+
+        await RunAtAsync(Tonight.AddHours(12));
+        Assert.True(File.Exists(spare));
+
+        await RunAtAsync(Tonight.AddDays(1));
+        Assert.False(File.Exists(spare));
+    }
+
+    [PosixFact]
+    public async Task A_library_that_did_not_ask_is_never_cleaned()
+    {
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+
+        await RunAtAsync(Tonight);
+
+        Assert.True(File.Exists(spare));
+        Assert.Null((await LibraryAsync()).LastAutoDedupeAt);
+    }
+
+    [PosixFact]
+    public async Task Dry_run_mode_moves_nothing_and_says_so()
+    {
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+        await using (var scope = _services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.AppSettings.Add(new AppSetting { Key = SettingKeys.DryRunMode, Value = "True" });
+            await db.SaveChangesAsync();
+        }
+
+        await RunAtAsync(Tonight);
+
+        Assert.True(File.Exists(spare));
+        Assert.Equal(AutoDedupeOutcome.DryRun, (await LibraryAsync()).LastAutoDedupeOutcome);
+    }
+
+    [PosixFact]
+    public async Task A_manager_that_cannot_answer_leaves_every_copy_in_place()
+    {
+        var keeper = await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+        await using (var scope = _services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.ArrConnections.Add(new ArrConnection { Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = Radarr, ApiKey = "key" });
+            await db.SaveChangesAsync();
+        }
+
+        await RunAtAsync(Tonight);
+
+        Assert.True(File.Exists(keeper));
+        Assert.True(File.Exists(spare));
+        Assert.Equal(AutoDedupeOutcome.ManagerUnavailable, (await LibraryAsync()).LastAutoDedupeOutcome);
+    }
+
+    private async Task<int> AddLibraryAsync(string name, bool autoDedupe = false)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, name));
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var library = new Library { Name = name, Path = Path.Combine(_root, name), MediaType = MediaType.Film, AutoDedupeEnabled = autoDedupe };
+        db.Libraries.Add(library);
+        await db.SaveChangesAsync();
+        return library.Id;
+    }
+
+    private async Task<string> AddToAsync(int libraryId, string libraryName, string relative, byte[] content)
+    {
+        var path = Path.Combine(_root, libraryName, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllBytesAsync(path, content);
+        var info = new FileInfo(path);
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        db.MediaFiles.Add(new MediaFile
+        {
+            LibraryId = libraryId, Path = path, RelativePath = relative, SizeBytes = info.Length,
+            ModifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero), Status = MediaFileStatus.Probed,
+        });
+        await db.SaveChangesAsync();
+        return path;
+    }
+
+    private async Task ScanTogetherAsync(params int[] others)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        int[] ids = [_libraryId, .. others];
+        var inputs = await ExactDuplicateInputs.ReadAsync(db, ids, default);
+        var selected = await db.Libraries.AsNoTracking().Where(l => ids.Contains(l.Id)).OrderBy(l => l.Id)
+            .Select(l => new ExactDuplicateLibrary(l.Id, l.Name, l.Path, l.MediaType.ToString())).ToListAsync();
+        Assert.True(await _scans.TryStartAsync(_libraryId, Library, inputs, false, default, selected));
+        Assert.True(await TestWait.UntilAsync(async () => (await _scans.ReadAsync(_libraryId, 0, default)).Status == "Completed"));
+    }
+
+    [PosixFact]
+    public async Task The_daily_cleanup_moves_only_copies_inside_the_library_that_asked()
+    {
+        var other = await AddLibraryAsync("Other");
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        var ownSpare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await AddToAsync(other, "Other", "C/Clip.mkv", [5, 6, 7, 8]);
+        var otherSpare = await AddToAsync(other, "Other", "D/Deeper/Clip.mkv", [5, 6, 7, 8]);
+        await ScanTogetherAsync(other);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+
+        await RunAtAsync(Tonight);
+
+        Assert.False(File.Exists(ownSpare));
+        Assert.True(File.Exists(otherSpare));
+        Assert.Equal(1, (await LibraryAsync()).LastAutoDedupeMoved);
+    }
+
+    [PosixFact]
+    public async Task The_daily_cleanup_leaves_content_someone_decided_about_in_another_report()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+        await using (var scope = _services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            db.ExactDuplicateReviewDecisions.Add(new ExactDuplicateReviewDecision
+            {
+                LibraryId = _libraryId, ScopeKey = new string('c', 64), ReviewKey = new string('d', 64), Choice = "Ignore", KeepIds = "[]",
+                Sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(new byte[] { 1, 2, 3, 4 })), SizeBytes = 4,
+                SavedAt = Tonight,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await RunAtAsync(Tonight);
+
+        Assert.True(File.Exists(spare));
+        Assert.Equal(AutoDedupeOutcome.NothingToClean, (await LibraryAsync()).LastAutoDedupeOutcome);
+    }
+
+    [PosixFact]
+    public async Task An_automatic_cleanup_stops_before_the_next_group_once_it_is_no_longer_allowed()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await AddAsync("A/Second.mkv", [5, 6, 7, 8]);
+        await AddAsync("B/Deeper/Second.mkv", [5, 6, 7, 8]);
+        await ScanAsync();
+        long scanId;
+        await using (var scope = _services.CreateAsyncScope())
+            scanId = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().ExactDuplicateScans.Where(s => s.LibraryId == _libraryId).Select(s => s.Id).SingleAsync();
+        var checks = 0;
+
+        // Allowed when it starts and for the first group, then turned off.
+        var launch = await Runner.StartAsync(_libraryId, default, new DedupeCleanupLimits(scanId, _libraryId, _ => Task.FromResult(++checks <= 2)));
+        var status = await launch.Finished!;
+
+        Assert.Equal(1, status.Moved);
+        Assert.True(status.Interrupted);
+        Assert.Single(Directory.EnumerateFiles(Path.Combine(Library, DedupeQuarantinePaths.FolderName), "*.mkv", SearchOption.AllDirectories));
+    }
+
+    [PosixFact]
+    public async Task An_automatic_cleanup_that_is_not_allowed_at_the_start_says_so_and_moves_nothing()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await ScanAsync();
+        long scanId;
+        await using (var scope = _services.CreateAsyncScope())
+            scanId = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().ExactDuplicateScans.Where(s => s.LibraryId == _libraryId).Select(s => s.Id).SingleAsync();
+
+        var launch = await Runner.StartAsync(_libraryId, default, new DedupeCleanupLimits(scanId, _libraryId, _ => Task.FromResult(false)));
+
+        Assert.Equal(DedupeCleanupStart.NotAllowed, launch.Start);
+        Assert.True(File.Exists(spare));
+    }
+
+    [PosixFact]
+    public async Task An_automatic_cleanup_refuses_a_report_other_than_its_own()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await ScanAsync();
+
+        var launch = await Runner.StartAsync(_libraryId, default, new DedupeCleanupLimits(-1, _libraryId, _ => Task.FromResult(true)));
+
+        Assert.Equal(DedupeCleanupStart.NotReady, launch.Start);
+        Assert.True(File.Exists(spare));
+    }
+
+    [PosixFact]
+    public async Task An_automatic_scan_does_not_replace_a_report_made_after_it_looked()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await ScanAsync();
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var inputs = await ExactDuplicateInputs.ReadAsync(db, _libraryId, default);
+
+        Assert.Null(await _scans.TryStartScanAsync(_libraryId, Library, inputs, false, default, null, new ExactDuplicateScanExpectation(null)));
+    }
+
+    [PosixFact]
+    public async Task A_scan_stuck_in_the_queue_is_withdrawn_and_recorded_so_later_libraries_still_run()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+        var later = await AddLibraryAsync("Later", autoDedupe: true);
+        // Never started, so every scan it accepts stays queued.
+        var stuck = new ExactDuplicateCoordinator(new ExactDuplicateScanner(TimeSpan.Zero), _services.GetRequiredService<ExactDuplicateStore>());
+
+        await AutomaticWith(stuck, new AutoDedupeTimings { Poll = TimeSpan.FromMilliseconds(10), QueuedLimit = TimeSpan.Zero }).RunDueAsync(default);
+
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(AutoDedupeOutcome.ScanFailed, (await db.Libraries.AsNoTracking().SingleAsync(l => l.Id == _libraryId)).LastAutoDedupeOutcome);
+        Assert.Equal(AutoDedupeOutcome.ScanFailed, (await db.Libraries.AsNoTracking().SingleAsync(l => l.Id == later)).LastAutoDedupeOutcome);
+        Assert.False(await db.ExactDuplicateScans.AnyAsync(s => s.ActiveSlot != null));
+        stuck.Dispose();
+    }
+
+    [PosixFact]
+    public async Task A_withdrawn_scan_is_skipped_when_the_executor_reaches_it()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var inputs = await ExactDuplicateInputs.ReadAsync(db, _libraryId, default);
+        var late = new ExactDuplicateCoordinator(new ExactDuplicateScanner(TimeSpan.Zero), _services.GetRequiredService<ExactDuplicateStore>());
+        var withdrawn = await late.TryStartScanAsync(_libraryId, Library, inputs, false, default);
+        Assert.True(await late.WithdrawQueuedAsync(withdrawn!.Value, default));
+
+        var next = await late.TryStartScanAsync(_libraryId, Library, inputs, false, default);
+        await late.StartAsync(default);
+
+        Assert.NotNull(next);
+        Assert.True(await TestWait.UntilAsync(async () => await late.ReadStateAsync(next!.Value, default) == ExactDuplicateScanState.Completed));
+        await late.StopAsync(default);
+        late.Dispose();
+    }
+
+    [PosixFact]
+    public async Task Each_library_records_when_its_own_run_started()
+    {
+        var other = await AddLibraryAsync("Other", autoDedupe: true);
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
+        _clock.Step = TimeSpan.FromMinutes(1);
+
+        await AutomaticWith(_scans, new AutoDedupeTimings { Poll = TimeSpan.FromMilliseconds(10), StalledLimit = TimeSpan.FromDays(365), QueuedLimit = TimeSpan.FromDays(365) })
+            .RunDueAsync(default);
+
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var first = (await db.Libraries.AsNoTracking().SingleAsync(l => l.Id == _libraryId)).LastAutoDedupeAt;
+        var second = (await db.Libraries.AsNoTracking().SingleAsync(l => l.Id == other)).LastAutoDedupeAt;
+        Assert.True(second > first);
+    }
+
+    private sealed class SettableClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+        public TimeSpan Step { get; set; }
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var now = Now;
+            Now += Step;
+            return now;
+        }
+    }
+
     private sealed class Lifetime : IHostApplicationLifetime
     {
         public CancellationToken ApplicationStarted => CancellationToken.None;

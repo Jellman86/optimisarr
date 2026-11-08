@@ -131,6 +131,13 @@ builder.Services.AddSingleton<ExactDuplicateStore>();
 builder.Services.AddSingleton<ExactDuplicateScanner>();
 builder.Services.AddSingleton<ExactDuplicateCoordinator>();
 builder.Services.AddHostedService(s => s.GetRequiredService<ExactDuplicateCoordinator>());
+builder.Services.AddSingleton(services => new Optimisarr.Api.Deduplication.AutoDedupeService(
+    services.GetRequiredService<IServiceScopeFactory>(),
+    services.GetRequiredService<ExactDuplicateCoordinator>(),
+    services.GetRequiredService<Optimisarr.Api.Deduplication.DedupeCleanupRunner>(),
+    services.GetRequiredService<TimeProvider>(),
+    services.GetRequiredService<ILogger<Optimisarr.Api.Deduplication.AutoDedupeService>>()));
+builder.Services.AddHostedService<Optimisarr.Api.Deduplication.AutoDedupeWorker>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
