@@ -28,6 +28,9 @@ public enum AutoDedupeOutcome
 
     /// <summary>Sonarr or Radarr could not say what it tracks, so every copy stayed.</summary>
     ManagerUnavailable,
+
+    /// <summary>The setting was turned off during the run, so it stopped before the next group.</summary>
+    Stopped,
 }
 
 /// <summary>

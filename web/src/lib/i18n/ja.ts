@@ -85,6 +85,7 @@ export const ja: Messages = {
     auto_PartlyCleaned: "{size} を占める {moved} 個のコピーを隔離に移動しました。一部は移動できませんでした",
     auto_CleanupFailed: "移動できたコピーはありませんでした",
     auto_ManagerUnavailable: "Sonarr または Radarr に問い合わせできなかったため、すべてのコピーを残しました",
+    auto_Stopped: "実行中にオフにされました。それまでに {size} を占める {moved} 個のコピーを移動しました",
     clean_title: "余分なコピーを整理",
     clean_summary: "移動できる余分なコピー：{copies} 個。グループ：{groups}。使用容量：{size}。隔離に移動し、そこから復元できます。削除すると空き容量が増えます。",
     clean_start: "余分なコピーを隔離",

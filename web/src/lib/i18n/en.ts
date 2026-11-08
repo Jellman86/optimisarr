@@ -87,6 +87,7 @@ export const en = {
     auto_PartlyCleaned: "moved {moved} copies holding {size} to Quarantine; some could not move",
     auto_CleanupFailed: "no copy could move",
     auto_ManagerUnavailable: "Sonarr or Radarr could not be asked, so every copy stayed",
+    auto_Stopped: "it was turned off during the run after moving {moved} copies holding {size}",
     clean_title: "Clean up spare copies",
     clean_summary: "Spare copies that can move: {copies}. Groups: {groups}. Space they hold: {size}. They go to Quarantine, where you can restore them. The space is freed when they are deleted.",
     clean_start: "Quarantine spare copies",

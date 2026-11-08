@@ -149,8 +149,10 @@ Before each group moves, Optimisarr checks again that the setting is still on an
 is off. Turning either one changes what happens from the next group on.
 
 The page shows when the last run happened and what it did. It might have moved copies, found nothing
-that could move, or left everything because Sonarr or Radarr could not be asked. Nothing runs in
+that could move, left everything because Sonarr or Radarr could not be asked, or stopped part way
+because you turned it off. Nothing runs in
 dry-run mode. A run waits for any scan or cleanup that is already running, and tries again 15 minutes
-later. A scan that stays queued for 5 minutes, or makes no progress for 30, is stopped and reported,
-so later libraries still get their turn.
+later. A scan that stays queued for 5 minutes is withdrawn and reported, so later libraries still get
+their turn. A scan that makes no progress for 30 minutes is asked to stop. Later libraries wait for
+it to stop, and run on a later check.
 

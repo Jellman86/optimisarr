@@ -468,8 +468,8 @@ public sealed class DedupeCleanupRunnerTests : IAsyncLifetime
     {
         await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
         await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
-        await AddAsync("A/Other.mkv", [5, 6, 7, 8]);
-        await AddAsync("B/Deeper/Other.mkv", [5, 6, 7, 8]);
+        await AddAsync("A/Second.mkv", [5, 6, 7, 8]);
+        await AddAsync("B/Deeper/Second.mkv", [5, 6, 7, 8]);
         await ScanAsync();
         long scanId;
         await using (var scope = _services.CreateAsyncScope())
@@ -481,7 +481,24 @@ public sealed class DedupeCleanupRunnerTests : IAsyncLifetime
         var status = await launch.Finished!;
 
         Assert.Equal(1, status.Moved);
+        Assert.True(status.Interrupted);
         Assert.Single(Directory.EnumerateFiles(Path.Combine(Library, DedupeQuarantinePaths.FolderName), "*.mkv", SearchOption.AllDirectories));
+    }
+
+    [PosixFact]
+    public async Task An_automatic_cleanup_that_is_not_allowed_at_the_start_says_so_and_moves_nothing()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        var spare = await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
+        await ScanAsync();
+        long scanId;
+        await using (var scope = _services.CreateAsyncScope())
+            scanId = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().ExactDuplicateScans.Where(s => s.LibraryId == _libraryId).Select(s => s.Id).SingleAsync();
+
+        var launch = await Runner.StartAsync(_libraryId, default, new DedupeCleanupLimits(scanId, _libraryId, _ => Task.FromResult(false)));
+
+        Assert.Equal(DedupeCleanupStart.NotAllowed, launch.Start);
+        Assert.True(File.Exists(spare));
     }
 
     [PosixFact]
@@ -510,18 +527,43 @@ public sealed class DedupeCleanupRunnerTests : IAsyncLifetime
     }
 
     [PosixFact]
-    public async Task A_scan_stuck_in_the_queue_is_stopped_and_recorded_so_later_libraries_still_run()
+    public async Task A_scan_stuck_in_the_queue_is_withdrawn_and_recorded_so_later_libraries_still_run()
     {
         await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
         await AddAsync("B/Deeper/Title.mkv", [1, 2, 3, 4]);
         await ChangeLibraryAsync(l => l.AutoDedupeEnabled = true);
-        // Never started, so a scan it accepts stays queued.
+        var later = await AddLibraryAsync("Later", autoDedupe: true);
+        // Never started, so every scan it accepts stays queued.
         var stuck = new ExactDuplicateCoordinator(new ExactDuplicateScanner(TimeSpan.Zero), _services.GetRequiredService<ExactDuplicateStore>());
 
         await AutomaticWith(stuck, new AutoDedupeTimings { Poll = TimeSpan.FromMilliseconds(10), QueuedLimit = TimeSpan.Zero }).RunDueAsync(default);
 
-        Assert.Equal(AutoDedupeOutcome.ScanFailed, (await LibraryAsync()).LastAutoDedupeOutcome);
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(AutoDedupeOutcome.ScanFailed, (await db.Libraries.AsNoTracking().SingleAsync(l => l.Id == _libraryId)).LastAutoDedupeOutcome);
+        Assert.Equal(AutoDedupeOutcome.ScanFailed, (await db.Libraries.AsNoTracking().SingleAsync(l => l.Id == later)).LastAutoDedupeOutcome);
+        Assert.False(await db.ExactDuplicateScans.AnyAsync(s => s.ActiveSlot != null));
         stuck.Dispose();
+    }
+
+    [PosixFact]
+    public async Task A_withdrawn_scan_is_skipped_when_the_executor_reaches_it()
+    {
+        await AddAsync("A/Title.mkv", [1, 2, 3, 4]);
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var inputs = await ExactDuplicateInputs.ReadAsync(db, _libraryId, default);
+        var late = new ExactDuplicateCoordinator(new ExactDuplicateScanner(TimeSpan.Zero), _services.GetRequiredService<ExactDuplicateStore>());
+        var withdrawn = await late.TryStartScanAsync(_libraryId, Library, inputs, false, default);
+        Assert.True(await late.WithdrawQueuedAsync(withdrawn!.Value, default));
+
+        var next = await late.TryStartScanAsync(_libraryId, Library, inputs, false, default);
+        await late.StartAsync(default);
+
+        Assert.NotNull(next);
+        Assert.True(await TestWait.UntilAsync(async () => await late.ReadStateAsync(next!.Value, default) == ExactDuplicateScanState.Completed));
+        await late.StopAsync(default);
+        late.Dispose();
     }
 
     [PosixFact]

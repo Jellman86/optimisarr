@@ -85,6 +85,7 @@ export const fr: Messages = {
     auto_PartlyCleaned: "{moved} copies occupant {size} déplacées en Quarantaine ; certaines n’ont pas pu l’être",
     auto_CleanupFailed: "aucune copie n’a pu être déplacée",
     auto_ManagerUnavailable: "Sonarr ou Radarr n’a pas pu être interrogé, toutes les copies sont restées",
+    auto_Stopped: "il a été désactivé pendant l’exécution après avoir déplacé {moved} copies occupant {size}",
     clean_title: "Nettoyer les copies superflues",
     clean_summary: "Copies superflues déplaçables : {copies}. Groupes : {groups}. Espace occupé : {size}. Elles vont en quarantaine, où vous pouvez les restaurer. L’espace est libéré à leur suppression.",
     clean_start: "Mettre les copies superflues en quarantaine",

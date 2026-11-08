@@ -18,9 +18,11 @@ public sealed record DedupeCleanupPreview(bool Ready, int Groups, int Copies, lo
 public sealed record DedupeCleanupFailure(string Path, string Reason);
 
 /// <summary>Where a cleanup run stands.</summary>
-public sealed record DedupeCleanupStatus(int LibraryId, bool Running, int Total, int Done, int Moved, long BytesHeld, IReadOnlyList<DedupeCleanupFailure> Failures);
+/// <param name="Interrupted">An automatic run stopped before its last group because it was no longer allowed.</param>
+public sealed record DedupeCleanupStatus(int LibraryId, bool Running, int Total, int Done, int Moved, long BytesHeld, IReadOnlyList<DedupeCleanupFailure> Failures,
+    bool Interrupted = false);
 
-public enum DedupeCleanupStart { Started, AlreadyRunning, NotReady, NothingToDo }
+public enum DedupeCleanupStart { Started, AlreadyRunning, NotReady, NothingToDo, NotAllowed }
 
 /// <summary>
 /// Bounds a cleanup nobody clicked. Only the report <paramref name="ScanId"/> is cleaned, only groups whose every copy
@@ -104,7 +106,7 @@ public sealed class DedupeCleanupRunner(
         var tracking = await TrackingAsync(token);
         var work = Decide(inputs, tracking).Where(item => item.Decision.Refusal is null && Within(limits, inputs, item.Group)).ToList();
         if (work.Count == 0) return new(DedupeCleanupStart.NothingToDo, null, tracking.Complete);
-        if (limits is not null && !await limits.MayContinue(token)) return new(DedupeCleanupStart.NothingToDo, null, tracking.Complete);
+        if (limits is not null && !await limits.MayContinue(token)) return new(DedupeCleanupStart.NotAllowed, null, tracking.Complete);
 
         lock (_lock)
         {
@@ -137,6 +139,7 @@ public sealed class DedupeCleanupRunner(
         IReadOnlyList<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> work, DedupeCleanupLimits? limits, CancellationToken token)
     {
         var failures = new List<DedupeCleanupFailure>();
+        var interrupted = false;
         var done = 0;
         var moved = 0;
         var bytes = 0L;
@@ -148,6 +151,7 @@ public sealed class DedupeCleanupRunner(
                 if (limits is not null && !await limits.MayContinue(token))
                 {
                     logger.LogInformation("Automatic duplicate cleanup of library {LibraryId} stopped because it is no longer allowed", libraryId);
+                    interrupted = true;
                     break;
                 }
                 var failure = await CleanGroupAsync(libraryId, inputs, group, decision, token);
@@ -173,7 +177,7 @@ public sealed class DedupeCleanupRunner(
             logger.LogError(error, "Duplicate cleanup of library {LibraryId} failed", libraryId);
             failures.Add(new DedupeCleanupFailure(string.Empty, error.Message));
         }
-        return Publish(libraryId, false, work.Count, done, moved, bytes, failures);
+        return Publish(libraryId, false, work.Count, done, moved, bytes, failures, interrupted);
     }
 
     private async Task<DedupeCleanupFailure?> CleanGroupAsync(int libraryId, DedupeCleanupGroups inputs, ExactDuplicateGroup group,
@@ -253,9 +257,10 @@ public sealed class DedupeCleanupRunner(
         return await scope.ServiceProvider.GetRequiredService<ArrTrackedFilesService>().GetAsync(token);
     }
 
-    private DedupeCleanupStatus Publish(int libraryId, bool running, int total, int done, int moved, long bytes, List<DedupeCleanupFailure> failures)
+    private DedupeCleanupStatus Publish(int libraryId, bool running, int total, int done, int moved, long bytes, List<DedupeCleanupFailure> failures,
+        bool interrupted = false)
     {
-        var status = new DedupeCleanupStatus(libraryId, running, total, done, moved, bytes, [.. failures]);
+        var status = new DedupeCleanupStatus(libraryId, running, total, done, moved, bytes, [.. failures], interrupted);
         lock (_lock)
         {
             _status = status;

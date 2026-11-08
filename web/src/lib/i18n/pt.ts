@@ -85,6 +85,7 @@ export const pt: Messages = {
     auto_PartlyCleaned: "{moved} cópias com {size} movidas para a Quarentena; algumas não puderam ser movidas",
     auto_CleanupFailed: "nenhuma cópia pôde ser movida",
     auto_ManagerUnavailable: "não foi possível consultar o Sonarr ou o Radarr, por isso todas as cópias ficaram",
+    auto_Stopped: "foi desativada durante a execução depois de mover {moved} cópias com {size}",
     clean_title: "Limpar cópias a mais",
     clean_summary: "Cópias a mais que podem ser movidas: {copies}. Grupos: {groups}. Espaço ocupado: {size}. Vão para a Quarentena, onde as pode restaurar. O espaço é libertado quando são eliminadas.",
     clean_start: "Colocar cópias a mais em quarentena",

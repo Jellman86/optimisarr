@@ -87,6 +87,7 @@ export const de: Messages = {
     auto_PartlyCleaned: "{moved} Kopien mit {size} in die Quarantäne verschoben; einige konnten nicht verschoben werden",
     auto_CleanupFailed: "keine Kopie konnte verschoben werden",
     auto_ManagerUnavailable: "Sonarr oder Radarr konnte nicht gefragt werden, daher blieben alle Kopien",
+    auto_Stopped: "es wurde während des Laufs ausgeschaltet, nachdem {moved} Kopien mit {size} verschoben waren",
     clean_title: "Überzählige Kopien aufräumen",
     clean_summary: "Verschiebbare überzählige Kopien: {copies}. Gruppen: {groups}. Belegter Platz: {size}. Sie kommen in die Quarantäne, wo du sie wiederherstellen kannst. Der Platz wird frei, wenn sie gelöscht werden.",
     clean_start: "Überzählige Kopien in Quarantäne verschieben",

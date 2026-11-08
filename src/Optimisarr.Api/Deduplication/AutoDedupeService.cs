@@ -113,10 +113,14 @@ public sealed class AutoDedupeService(
                 await RecordAsync(libraryId, startedAt,
                     launch.ManagersAnswered ? AutoDedupeOutcome.NothingToClean : AutoDedupeOutcome.ManagerUnavailable, 0, 0, token);
                 return Turn.Done;
+            case DedupeCleanupStart.NotAllowed:
+                await RecordAsync(libraryId, startedAt, await StopReasonAsync(libraryId, token), 0, 0, token);
+                return Turn.Done;
         }
 
         var status = await launch.Finished!.WaitAsync(token);
-        var outcome = status.Failures.Count == 0 ? AutoDedupeOutcome.Cleaned
+        var outcome = status.Interrupted ? await StopReasonAsync(libraryId, token)
+            : status.Failures.Count == 0 ? AutoDedupeOutcome.Cleaned
             : status.Moved > 0 ? AutoDedupeOutcome.PartlyCleaned : AutoDedupeOutcome.CleanupFailed;
         await RecordAsync(libraryId, startedAt, outcome, status.Moved, status.BytesHeld, token);
         logger.LogInformation("Automatic duplicate cleanup of library {LibraryId} moved {Moved} copies ({Bytes} bytes) into quarantine",
@@ -145,7 +149,9 @@ public sealed class AutoDedupeService(
             if (stuck)
             {
                 logger.LogWarning("Automatic duplicate scan {ScanId} of library {LibraryId} stopped making progress; stopping it", scanId, libraryId);
-                scans.Cancel(libraryId, scanId);
+                // A scan that never started can be withdrawn at once. A running one is only asked to stop, and keeps
+                // its place until it has, so later libraries wait for a later tick rather than run beside it.
+                if (live.Status != "Queued" || !await scans.WithdrawQueuedAsync(scanId, token)) scans.Cancel(libraryId, scanId);
                 return false;
             }
             await Task.Delay(_timings.Poll, clock, token);
@@ -154,6 +160,10 @@ public sealed class AutoDedupeService(
     }
 
     private sealed record Allowance(DateTimeOffset? LastRunAt, bool DryRun);
+
+    /// <summary>Why a run that was no longer allowed stopped: dry-run mode, or the setting turned off.</summary>
+    private async Task<AutoDedupeOutcome> StopReasonAsync(int libraryId, CancellationToken token) =>
+        await AllowedAsync(libraryId, token) is { DryRun: true } ? AutoDedupeOutcome.DryRun : AutoDedupeOutcome.Stopped;
 
     /// <summary>Null when the library no longer asks for automatic cleanup or cannot have it.</summary>
     private async Task<Allowance?> AllowedAsync(int libraryId, CancellationToken token)

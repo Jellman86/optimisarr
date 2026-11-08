@@ -85,6 +85,7 @@ export const it: Messages = {
     auto_PartlyCleaned: "spostate in Quarantena {moved} copie che occupano {size}; alcune non è stato possibile spostarle",
     auto_CleanupFailed: "non è stato possibile spostare nessuna copia",
     auto_ManagerUnavailable: "non è stato possibile interrogare Sonarr o Radarr, quindi tutte le copie sono rimaste",
+    auto_Stopped: "è stata disattivata durante l’esecuzione dopo aver spostato {moved} copie che occupano {size}",
     clean_title: "Pulisci le copie superflue",
     clean_summary: "Copie superflue spostabili: {copies}. Gruppi: {groups}. Spazio occupato: {size}. Vanno in Quarantena, dove puoi ripristinarle. Lo spazio si libera quando vengono eliminate.",
     clean_start: "Metti in quarantena le copie superflue",

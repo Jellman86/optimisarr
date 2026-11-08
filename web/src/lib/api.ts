@@ -483,7 +483,7 @@ export type DuplicateCleanupPreview = {
   leftAlone: Partial<Record<DuplicateCleanupRefusal, number>>
 }
 
-export type AutoDuplicateCleanupOutcome = 'Cleaned' | 'NothingToClean' | 'DryRun' | 'TooManyFiles' | 'ScanFailed' | 'PartlyCleaned' | 'CleanupFailed' | 'ManagerUnavailable'
+export type AutoDuplicateCleanupOutcome = 'Cleaned' | 'NothingToClean' | 'DryRun' | 'TooManyFiles' | 'ScanFailed' | 'PartlyCleaned' | 'CleanupFailed' | 'ManagerUnavailable' | 'Stopped'
 
 export type AutoDuplicateCleanup = {
   libraryId: number
@@ -505,6 +505,7 @@ export type DuplicateCleanupStatus = {
   moved: number
   bytesHeld: number
   failures: { path: string; reason: string }[]
+  interrupted?: boolean
 }
 
 export type TimedCleanupPreview = {

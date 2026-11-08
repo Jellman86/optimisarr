@@ -85,6 +85,7 @@ export const zh: Messages = {
     auto_PartlyCleaned: "已将占用 {size} 的 {moved} 个副本移入隔离区；部分副本无法移动",
     auto_CleanupFailed: "没有副本能够移动",
     auto_ManagerUnavailable: "无法询问 Sonarr 或 Radarr，因此所有副本都保留了",
+    auto_Stopped: "运行期间被关闭，此前已移动占用 {size} 的 {moved} 个副本",
     clean_title: "清理多余副本",
     clean_summary: "可移动的多余副本：{copies} 个。分组：{groups}。占用空间：{size}。它们会移到隔离区，你可以从那里恢复。删除后才会释放空间。",
     clean_start: "隔离多余副本",
