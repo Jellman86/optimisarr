@@ -121,9 +121,11 @@
       .then(next => { if (current && !disposed) { schedule = next; scheduleError = null } })
       .catch(err => { if (current && !disposed) scheduleError = err instanceof Error ? err.message : i18n.m.duplicates.auto_error })
     void refresh()
-    // A run can finish while the page is open, so what it did is checked again every minute.
-    const every = setInterval(() => { if (schedule?.enabled) void refresh() }, 60_000)
-    return () => { current = false; clearInterval(every) }
+    // A run can finish while the page is open, so what it did is checked again every minute and on return to the page.
+    const again = () => { if (schedule?.enabled) void refresh() }
+    const every = setInterval(again, 60_000)
+    window.addEventListener('focus', again)
+    return () => { current = false; clearInterval(every); window.removeEventListener('focus', again) }
   })
   async function setSchedule(enabled: boolean) {
     if (!schedule || savingSchedule) return

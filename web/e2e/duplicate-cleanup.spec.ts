@@ -180,8 +180,7 @@ test('automatic cleanup warns when dry-run mode stops it, and is not offered out
   await expect(card.getByRole('checkbox')).toHaveCount(0)
 })
 
-test('the automatic cleanup card shows a run that finishes while the page is open', async ({ page }) => {
-  await page.clock.install()
+test('the automatic cleanup card shows a run that finished while the page was open', async ({ page }) => {
   let finished = false
   await mock(page, {
     schedule: { ...offSchedule, enabled: true },
@@ -192,7 +191,7 @@ test('the automatic cleanup card shows a run that finishes while the page is ope
   await expect(card).toContainText('It has not run yet.')
 
   finished = true
-  await page.clock.runFor(61_000)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
 
   await expect(card).toContainText('nothing could move')
 })
