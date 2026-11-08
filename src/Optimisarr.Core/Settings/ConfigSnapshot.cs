@@ -143,4 +143,5 @@ public sealed record ArrConnectionSnapshot(
     string Type,
     string BaseUrl,
     bool Enabled,
-    string? ApiKey = null);
+    string? ApiKey = null,
+    bool? RescanAfterChanges = null);

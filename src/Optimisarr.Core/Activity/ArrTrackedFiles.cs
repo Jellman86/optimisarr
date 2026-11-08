@@ -72,6 +72,27 @@ public static class ArrTrackedFileParser
         }
     }
 
+    /// <summary>Each movie or series a manager lists, with the folder it keeps the title in.</summary>
+    public static IReadOnlyList<ArrTitleFolder>? ParseTitleFolders(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) return null;
+            var titles = new List<ArrTitleFolder>();
+            foreach (var title in document.RootElement.EnumerateArray())
+            {
+                if (!HasId(title) || ReadPath(title) is not { } path) return null;
+                titles.Add(new ArrTitleFolder(title.GetProperty("id").GetInt32(), path));
+            }
+            return titles;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static bool HasId(JsonElement item) =>
         item.ValueKind == JsonValueKind.Object && item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number;
 
@@ -247,7 +268,7 @@ public static class ArrTrackedFileMatcher
         return parts;
     }
 
-    private static string Comparable(string name) =>
+    internal static string Comparable(string name) =>
         name.Normalize(NormalizationForm.FormC).TrimEnd(' ', '.').ToUpper(CultureInfo.InvariantCulture);
 
     private static string Stem(string name)

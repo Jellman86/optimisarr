@@ -1133,6 +1133,7 @@ export type ArrConnection = {
   baseUrl: string
   hasApiKey: boolean
   enabled: boolean
+  rescanAfterChanges: boolean
   createdAt: string
   updatedAt: string
 }
@@ -1153,6 +1154,7 @@ export type SaveArrConnection = {
   baseUrl: string
   apiKey: string
   enabled: boolean
+  rescanAfterChanges: boolean
 }
 
 export type PlexConnectStart = { id: number; code: string; authUrl: string }

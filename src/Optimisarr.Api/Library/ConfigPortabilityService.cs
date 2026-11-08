@@ -493,7 +493,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             var connection = await db.ArrConnections.FirstOrDefaultAsync(c => c.Name == name, cancellationToken);
             if (connection is null)
             {
-                connection = new ArrConnection { Name = name };
+                // A backup from before the setting existed recreates the connection with it off, the
+                // same as the migration left every connection that was saved then.
+                connection = new ArrConnection { Name = name, RescanAfterChanges = false };
                 db.ArrConnections.Add(connection);
                 created++;
             }
@@ -510,6 +512,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 connection.ApiKey = snapshot.ApiKey;
             }
             connection.Enabled = snapshot.Enabled;
+            connection.RescanAfterChanges = snapshot.RescanAfterChanges ?? connection.RescanAfterChanges;
         }
 
         return (created, updated);
@@ -630,7 +633,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         connection.Type.ToString(),
         connection.BaseUrl,
         connection.Enabled,
-        connection.ApiKey);
+        connection.ApiKey,
+        connection.RescanAfterChanges);
 
     // Snapshots are validated before import, so these parses cannot fail here.
     private static T ParseEnum<T>(string value) where T : struct, Enum =>
