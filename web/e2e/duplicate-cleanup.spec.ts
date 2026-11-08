@@ -16,7 +16,7 @@ const idle = { libraryId: 1, running: false, total: 0, done: 0, moved: 0, bytesH
 const offSchedule = { libraryId: 1, enabled: false, supported: true, dryRun: false, lastRunAt: null, lastOutcome: null, lastMoved: 0, lastBytes: 0, nextRunAfter: null }
 const preview = { ready: true, groups: 1, copies: 1, bytesToFree: 1024, leftAlone: { SharedExtra: 2, ManagerUnavailable: 1 } }
 
-async function mock(page: Page, options: { preview?: unknown; status?: unknown; report?: unknown; schedule?: Record<string, unknown> } = {}) {
+async function mock(page: Page, options: { preview?: unknown; status?: unknown; report?: unknown; schedule?: Record<string, unknown>; nextSchedule?: () => Record<string, unknown> | null } = {}) {
   let status = options.status ?? idle
   let schedule = options.schedule ?? offSchedule
   const calls: string[] = []
@@ -32,7 +32,7 @@ async function mock(page: Page, options: { preview?: unknown; status?: unknown; 
         calls.push(`schedule:${enabled}`)
         schedule = { ...schedule, enabled, nextRunAfter: enabled ? '2026-11-08T03:00:00Z' : null }
       }
-      return route.fulfill({ json: schedule })
+      return route.fulfill({ json: options.nextSchedule?.() ?? schedule })
     }
     if (path === '/api/libraries/1/duplicates/cleanup/preview') { calls.push('preview'); return route.fulfill({ json: options.preview ?? preview }) }
     if (path === '/api/libraries/1/duplicates/cleanup') {
@@ -178,4 +178,21 @@ test('automatic cleanup warns when dry-run mode stops it, and is not offered out
   const card = page.getByTestId('duplicate-schedule')
   await expect(card).toContainText('Only film and TV libraries can be cleaned automatically.')
   await expect(card.getByRole('checkbox')).toHaveCount(0)
+})
+
+test('the automatic cleanup card shows a run that finishes while the page is open', async ({ page }) => {
+  await page.clock.install()
+  let finished = false
+  await mock(page, {
+    schedule: { ...offSchedule, enabled: true },
+    nextSchedule: () => finished ? { ...offSchedule, enabled: true, lastRunAt: '2026-11-08T03:00:00Z', lastOutcome: 'NothingToClean', nextRunAfter: '2026-11-09T03:00:00Z' } : null,
+  })
+  await page.goto('/#/libraries/1/duplicates')
+  const card = page.getByTestId('duplicate-schedule')
+  await expect(card).toContainText('It has not run yet.')
+
+  finished = true
+  await page.clock.runFor(61_000)
+
+  await expect(card).toContainText('nothing could move')
 })

@@ -70,7 +70,7 @@ export const pt: Messages = {
   duplicates: {
     auto_title: "Limpar automaticamente",
     auto_toggle: "Encontrar e pôr em quarentena as cópias a mais todos os dias",
-    auto_hint: "Uma vez por dia, o Optimisarr procura cópias exatas nesta biblioteca, nas mesmas bibliotecas da sua última análise, e move as cópias a mais que «Colocar cópias a mais em quarentena» poderia mover. As cópias que não podem ser movidas com segurança ficam onde estão, e as movidas podem ser restauradas da Quarentena até ao fim do período de retenção.",
+    auto_hint: "Uma vez por dia, o Optimisarr procura cópias exatas nesta biblioteca, nas mesmas bibliotecas da sua última análise, e move as cópias a mais que «Colocar cópias a mais em quarentena» poderia mover, mas só quando todas as cópias estão nesta biblioteca. As cópias que não podem ser movidas com segurança ficam onde estão, e as movidas podem ser restauradas da Quarentena até ao fim do período de retenção.",
     auto_unsupported: "Só as bibliotecas de filmes e TV podem ser limpas automaticamente.",
     auto_dry_run: "O modo de simulação está ativo, por isso a limpeza diária não move nada.",
     auto_never: "Ainda não foi executada. A primeira execução começa dentro de 15 minutos.",

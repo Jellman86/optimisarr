@@ -72,7 +72,7 @@ export const de: Messages = {
   duplicates: {
     auto_title: "Automatisch aufräumen",
     auto_toggle: "Überzählige Kopien täglich finden und in Quarantäne verschieben",
-    auto_hint: "Einmal am Tag sucht Optimisarr in dieser Bibliothek nach exakten Kopien, über dieselben Bibliotheken wie bei Ihrem letzten Scan, und verschiebt die überzähligen Kopien, die auch die Schaltfläche „Überzählige Kopien in Quarantäne verschieben“ verschieben würde. Kopien, die nicht sicher verschoben werden können, bleiben, wo sie sind, und verschobene Kopien lassen sich bis zum Ende der Aufbewahrungsfrist aus der Quarantäne wiederherstellen.",
+    auto_hint: "Einmal am Tag sucht Optimisarr in dieser Bibliothek nach exakten Kopien, über dieselben Bibliotheken wie bei Ihrem letzten Scan, und verschiebt die überzähligen Kopien, die auch die Schaltfläche „Überzählige Kopien in Quarantäne verschieben“ verschieben würde, aber nur, wenn alle Kopien in dieser Bibliothek liegen. Kopien, die nicht sicher verschoben werden können, bleiben, wo sie sind, und verschobene Kopien lassen sich bis zum Ende der Aufbewahrungsfrist aus der Quarantäne wiederherstellen.",
     auto_unsupported: "Nur Film- und TV-Bibliotheken können automatisch aufgeräumt werden.",
     auto_dry_run: "Der Probelauf-Modus ist aktiv, daher verschiebt das tägliche Aufräumen nichts.",
     auto_never: "Es ist noch nicht gelaufen. Der erste Lauf beginnt innerhalb von 15 Minuten.",

@@ -72,7 +72,7 @@ export const en = {
   duplicates: {
     auto_title: "Clean up automatically",
     auto_toggle: "Find and quarantine spare copies every day",
-    auto_hint: "Once a day, Optimisarr scans this library for exact copies, over the same libraries as your last scan, and moves the spare copies that the “Quarantine spare copies” button could move. Copies it cannot safely move stay where they are, and moved copies can be restored from Quarantine until the retention period ends.",
+    auto_hint: "Once a day, Optimisarr scans this library for exact copies, over the same libraries as your last scan, and moves the spare copies that the “Quarantine spare copies” button could move, but only when every copy is in this library. Copies it cannot safely move stay where they are, and moved copies can be restored from Quarantine until the retention period ends.",
     auto_unsupported: "Only film and TV libraries can be cleaned automatically.",
     auto_dry_run: "Dry-run mode is on, so the daily cleanup moves nothing.",
     auto_never: "It has not run yet. The first run starts within 15 minutes.",

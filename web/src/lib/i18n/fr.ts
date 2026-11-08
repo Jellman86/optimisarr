@@ -70,7 +70,7 @@ export const fr: Messages = {
   duplicates: {
     auto_title: "Nettoyer automatiquement",
     auto_toggle: "Trouver et mettre en quarantaine les copies en trop chaque jour",
-    auto_hint: "Une fois par jour, Optimisarr cherche les copies exactes dans cette bibliothèque, sur les mêmes bibliothèques que votre dernière analyse, et déplace les copies en trop que « Mettre les copies superflues en quarantaine » pourrait déplacer. Les copies qui ne peuvent pas être déplacées sans risque restent en place, et les copies déplacées peuvent être restaurées depuis la Quarantaine jusqu’à la fin de la période de conservation.",
+    auto_hint: "Une fois par jour, Optimisarr cherche les copies exactes dans cette bibliothèque, sur les mêmes bibliothèques que votre dernière analyse, et déplace les copies en trop que « Mettre les copies superflues en quarantaine » pourrait déplacer, mais seulement quand toutes les copies sont dans cette bibliothèque. Les copies qui ne peuvent pas être déplacées sans risque restent en place, et les copies déplacées peuvent être restaurées depuis la Quarantaine jusqu’à la fin de la période de conservation.",
     auto_unsupported: "Seules les bibliothèques de films et de séries peuvent être nettoyées automatiquement.",
     auto_dry_run: "Le mode simulation est activé : le nettoyage quotidien ne déplace rien.",
     auto_never: "Il n’a pas encore été exécuté. La première exécution démarre dans les 15 minutes.",

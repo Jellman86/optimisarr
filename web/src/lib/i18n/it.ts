@@ -70,7 +70,7 @@ export const it: Messages = {
   duplicates: {
     auto_title: "Pulisci automaticamente",
     auto_toggle: "Trova e metti in quarantena le copie in eccesso ogni giorno",
-    auto_hint: "Una volta al giorno, Optimisarr cerca copie esatte in questa libreria, sulle stesse librerie della tua ultima scansione, e sposta le copie in eccesso che «Metti in quarantena le copie superflue» potrebbe spostare. Le copie che non si possono spostare in sicurezza restano dove sono, e quelle spostate si possono ripristinare dalla Quarantena fino alla fine del periodo di conservazione.",
+    auto_hint: "Una volta al giorno, Optimisarr cerca copie esatte in questa libreria, sulle stesse librerie della tua ultima scansione, e sposta le copie in eccesso che «Metti in quarantena le copie superflue» potrebbe spostare, ma solo quando tutte le copie sono in questa libreria. Le copie che non si possono spostare in sicurezza restano dove sono, e quelle spostate si possono ripristinare dalla Quarantena fino alla fine del periodo di conservazione.",
     auto_unsupported: "Solo le librerie di film e TV possono essere pulite automaticamente.",
     auto_dry_run: "La modalità di prova è attiva, quindi la pulizia giornaliera non sposta nulla.",
     auto_never: "Non è ancora stata eseguita. La prima esecuzione parte entro 15 minuti.",

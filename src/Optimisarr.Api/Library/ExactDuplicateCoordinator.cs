@@ -34,25 +34,50 @@ public sealed class ExactDuplicateCoordinator(ExactDuplicateScanner scanner, Exa
     }
 
     public async Task<bool> TryStartAsync(int libraryId, string root, IReadOnlyList<ExactDuplicateInput> inputs,
-        bool forceRefresh, CancellationToken token, IReadOnlyList<ExactDuplicateLibrary>? libraries = null)
+        bool forceRefresh, CancellationToken token, IReadOnlyList<ExactDuplicateLibrary>? libraries = null) =>
+        await TryStartScanAsync(libraryId, root, inputs, forceRefresh, token, libraries) is not null;
+
+    /// <summary>The new scan's id, or null when another scan runs or the report changed from <paramref name="expect"/>.</summary>
+    public async Task<long?> TryStartScanAsync(int libraryId, string root, IReadOnlyList<ExactDuplicateInput> inputs,
+        bool forceRefresh, CancellationToken token, IReadOnlyList<ExactDuplicateLibrary>? libraries = null,
+        ExactDuplicateScanExpectation? expect = null)
     {
         await _start.WaitAsync(token);
         try
         {
-            lock (_lock) if (_active is not null) return false;
+            lock (_lock) if (_active is not null) return null;
             var initial = InitialProgress(inputs);
-            var scanId = await store.TryCreateAsync(libraryId, root, initial.Total, forceRefresh, token, inputs, libraries);
-            if (scanId is null) return false;
+            var scanId = await store.TryCreateAsync(libraryId, root, initial.Total, forceRefresh, token, inputs, libraries, expect);
+            if (scanId is null) return null;
             var queued = new ExactDuplicateStatus(libraryId, "Queued", DateTimeOffset.UtcNow, null,
                 initial, null, null, Libraries: libraries);
             lock (_lock)
             {
                 _active = new(scanId.Value, libraryId, root, inputs, forceRefresh, new());
                 _status = queued;
-                return _queue.Writer.TryWrite(_active);
+                return _queue.Writer.TryWrite(_active) ? scanId : null;
             }
         }
         finally { _start.Release(); }
+    }
+
+    /// <summary>The live status of the scan with this id, or null once it has stopped.</summary>
+    public ExactDuplicateStatus? Active(long scanId)
+    {
+        lock (_lock) return _active?.ScanId == scanId ? _status : null;
+    }
+
+    /// <summary>How the scan with this id ended, or null when a newer scan has replaced it.</summary>
+    public Task<ExactDuplicateScanState?> ReadStateAsync(long scanId, CancellationToken token) => store.StateAsync(scanId, token);
+
+    /// <summary>Stops the scan only while it is still the one with this id.</summary>
+    public bool Cancel(int libraryId, long scanId)
+    {
+        lock (_lock)
+        {
+            if (_active?.LibraryId != libraryId || _active.ScanId != scanId) return false;
+            _active.Cancel.Cancel(); return true;
+        }
     }
 
     public bool Cancel(int libraryId)

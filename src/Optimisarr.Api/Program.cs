@@ -135,6 +135,7 @@ builder.Services.AddSingleton(services => new Optimisarr.Api.Deduplication.AutoD
     services.GetRequiredService<IServiceScopeFactory>(),
     services.GetRequiredService<ExactDuplicateCoordinator>(),
     services.GetRequiredService<Optimisarr.Api.Deduplication.DedupeCleanupRunner>(),
+    services.GetRequiredService<TimeProvider>(),
     services.GetRequiredService<ILogger<Optimisarr.Api.Deduplication.AutoDedupeService>>()));
 builder.Services.AddHostedService<Optimisarr.Api.Deduplication.AutoDedupeWorker>();
 builder.Services.AddScoped<CandidateService>();

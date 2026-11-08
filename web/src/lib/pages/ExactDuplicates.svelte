@@ -117,10 +117,13 @@
     scheduleError = null
     if (id === null) return
     let current = true
-    api.autoDuplicateCleanup(id)
-      .then(next => { if (current && !disposed) schedule = next })
+    const refresh = () => api.autoDuplicateCleanup(id)
+      .then(next => { if (current && !disposed) { schedule = next; scheduleError = null } })
       .catch(err => { if (current && !disposed) scheduleError = err instanceof Error ? err.message : i18n.m.duplicates.auto_error })
-    return () => { current = false }
+    void refresh()
+    // A run can finish while the page is open, so what it did is checked again every minute.
+    const every = setInterval(() => { if (schedule?.enabled) void refresh() }, 60_000)
+    return () => { current = false; clearInterval(every) }
   })
   async function setSchedule(enabled: boolean) {
     if (!schedule || savingSchedule) return

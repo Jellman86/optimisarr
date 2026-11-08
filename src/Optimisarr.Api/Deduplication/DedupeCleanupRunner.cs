@@ -23,6 +23,17 @@ public sealed record DedupeCleanupStatus(int LibraryId, bool Running, int Total,
 public enum DedupeCleanupStart { Started, AlreadyRunning, NotReady, NothingToDo }
 
 /// <summary>
+/// Bounds a cleanup nobody clicked. Only the report <paramref name="ScanId"/> is cleaned, only groups whose every copy
+/// is in <paramref name="LibraryId"/>, never one someone chose a keeper for or ignored in another report, and only while
+/// <paramref name="MayContinue"/> still says yes before each group.
+/// </summary>
+public sealed record DedupeCleanupLimits(long ScanId, int LibraryId, Func<CancellationToken, Task<bool>> MayContinue);
+
+/// <summary>How a start went, and for a started run, the status it ends with.</summary>
+/// <param name="ManagersAnswered">False when Sonarr or Radarr could not say what it tracks.</param>
+public sealed record DedupeCleanupLaunch(DedupeCleanupStart Start, Task<DedupeCleanupStatus>? Finished, bool ManagersAnswered);
+
+/// <summary>
 /// Moves the spare copies a report found into quarantine, one group at a time, in the background:
 /// each move reads the files in full first, which takes a while on large films. Every move goes
 /// through the journal and the last-moment preflight, so this decides nothing a person could not.
@@ -41,10 +52,16 @@ public sealed class DedupeCleanupRunner(
     private readonly Lock _lock = new();
     private DedupeCleanupStatus? _status;
     private CancellationTokenSource? _cancel;
-    private Task _run = Task.CompletedTask;
+    private Task<DedupeCleanupStatus> _run = Task.FromResult(new DedupeCleanupStatus(0, false, 0, 0, 0, 0, []));
 
     /// <summary>Lets a test wait for the run it started.</summary>
     internal Task Completion => _run;
+
+    /// <summary>A cleanup is running in some library. Only one runs at a time.</summary>
+    public bool IsRunning
+    {
+        get { lock (_lock) return _status is { Running: true }; }
+    }
 
     public DedupeCleanupStatus Status(int libraryId)
     {
@@ -73,28 +90,38 @@ public sealed class DedupeCleanupRunner(
                 .ToDictionary(group => group.Key, group => group.Count()));
     }
 
-    public async Task<DedupeCleanupStart> TryStartAsync(int libraryId, CancellationToken token)
+    public async Task<DedupeCleanupStart> TryStartAsync(int libraryId, CancellationToken token) =>
+        (await StartAsync(libraryId, token)).Start;
+
+    public async Task<DedupeCleanupLaunch> StartAsync(int libraryId, CancellationToken token, DedupeCleanupLimits? limits = null)
     {
         lock (_lock)
         {
-            if (_status is { Running: true }) return DedupeCleanupStart.AlreadyRunning;
+            if (_status is { Running: true }) return new(DedupeCleanupStart.AlreadyRunning, null, true);
         }
         var inputs = await store.ReadCleanupGroupsAsync(libraryId, token);
-        if (inputs is null) return DedupeCleanupStart.NotReady;
-        var work = Decide(inputs, await TrackingAsync(token)).Where(item => item.Decision.Refusal is null).ToList();
-        if (work.Count == 0) return DedupeCleanupStart.NothingToDo;
+        if (inputs is null || (limits is not null && inputs.ScanId != limits.ScanId)) return new(DedupeCleanupStart.NotReady, null, true);
+        var tracking = await TrackingAsync(token);
+        var work = Decide(inputs, tracking).Where(item => item.Decision.Refusal is null && Within(limits, inputs, item.Group)).ToList();
+        if (work.Count == 0) return new(DedupeCleanupStart.NothingToDo, null, tracking.Complete);
+        if (limits is not null && !await limits.MayContinue(token)) return new(DedupeCleanupStart.NothingToDo, null, tracking.Complete);
 
         lock (_lock)
         {
-            if (_status is { Running: true }) return DedupeCleanupStart.AlreadyRunning;
+            if (_status is { Running: true }) return new(DedupeCleanupStart.AlreadyRunning, null, true);
             _cancel?.Dispose();
             _cancel = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
             _status = new DedupeCleanupStatus(libraryId, true, work.Count, 0, 0, 0, []);
             var cancellation = _cancel.Token;
-            _run = Task.Run(() => RunAsync(libraryId, inputs, work, cancellation), CancellationToken.None);
+            _run = Task.Run(() => RunAsync(libraryId, inputs, work, limits, cancellation), CancellationToken.None);
+            return new(DedupeCleanupStart.Started, _run, tracking.Complete);
         }
-        return DedupeCleanupStart.Started;
     }
+
+    private static bool Within(DedupeCleanupLimits? limits, DedupeCleanupGroups inputs, ExactDuplicateGroup group) =>
+        limits is null
+        || (group.Copies.All(copy => copy.LibraryId == limits.LibraryId && (copy.Aliases?.All(alias => alias.LibraryId == limits.LibraryId) ?? true))
+            && !(inputs.DecidedElsewhere?.Contains(DedupeCleanupGroups.ContentKey(group.Sha256, group.SizeBytes)) ?? false));
 
     public bool Cancel(int libraryId)
     {
@@ -106,8 +133,8 @@ public sealed class DedupeCleanupRunner(
         }
     }
 
-    private async Task RunAsync(int libraryId, DedupeCleanupGroups inputs,
-        IReadOnlyList<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> work, CancellationToken token)
+    private async Task<DedupeCleanupStatus> RunAsync(int libraryId, DedupeCleanupGroups inputs,
+        IReadOnlyList<(ExactDuplicateGroup Group, DedupeCleanupDecision Decision)> work, DedupeCleanupLimits? limits, CancellationToken token)
     {
         var failures = new List<DedupeCleanupFailure>();
         var done = 0;
@@ -118,6 +145,11 @@ public sealed class DedupeCleanupRunner(
             foreach (var (group, decision) in work)
             {
                 token.ThrowIfCancellationRequested();
+                if (limits is not null && !await limits.MayContinue(token))
+                {
+                    logger.LogInformation("Automatic duplicate cleanup of library {LibraryId} stopped because it is no longer allowed", libraryId);
+                    break;
+                }
                 var failure = await CleanGroupAsync(libraryId, inputs, group, decision, token);
                 if (failure is null)
                 {
@@ -141,7 +173,7 @@ public sealed class DedupeCleanupRunner(
             logger.LogError(error, "Duplicate cleanup of library {LibraryId} failed", libraryId);
             failures.Add(new DedupeCleanupFailure(string.Empty, error.Message));
         }
-        Publish(libraryId, false, work.Count, done, moved, bytes, failures);
+        return Publish(libraryId, false, work.Count, done, moved, bytes, failures);
     }
 
     private async Task<DedupeCleanupFailure?> CleanGroupAsync(int libraryId, DedupeCleanupGroups inputs, ExactDuplicateGroup group,
@@ -221,11 +253,13 @@ public sealed class DedupeCleanupRunner(
         return await scope.ServiceProvider.GetRequiredService<ArrTrackedFilesService>().GetAsync(token);
     }
 
-    private void Publish(int libraryId, bool running, int total, int done, int moved, long bytes, List<DedupeCleanupFailure> failures)
+    private DedupeCleanupStatus Publish(int libraryId, bool running, int total, int done, int moved, long bytes, List<DedupeCleanupFailure> failures)
     {
+        var status = new DedupeCleanupStatus(libraryId, running, total, done, moved, bytes, [.. failures]);
         lock (_lock)
         {
-            _status = new DedupeCleanupStatus(libraryId, running, total, done, moved, bytes, [.. failures]);
+            _status = status;
         }
+        return status;
     }
 }
