@@ -1,5 +1,23 @@
 # Queue and Settings polish review — 16 September 2026
 
+## Queue toolbar correction — 8 November 2026
+
+The Queue grew two controls that fought for the same row: the status filters carried a
+**Manage queue** toggle whose expanded panel pushed the table down, and the multi-select
+batch bar inserted itself above the table header, so checking a row moved every row
+below it. The toolbar is now one row of one height. The filters sit in it with
+**Clear errored (X)** at their right end, shown only when a job has actually failed and
+quiet until it is pointed at. Picking a row replaces the filters where they stood with
+the batch bar on a dark slab, so the table never moves. The **Manage queue** toggle is
+gone; **Clear queue** and **Clear completed** stand in the section heading, and the
+redundant count that used to sit beside it is gone because the **All · X** filter already
+says how many rows there are. A selection is dropped when the operator changes tab and
+when a batch has run, so no pick is carried into rows the operator cannot see.
+
+The comparative assessment below records the earlier implementation; the bulk-cleanup
+row is superseded by this correction. Backend behaviour and replacement safety remain
+unchanged.
+
 ## Queue dialog correction — 17 September 2026
 
 The initial inline-detail decision failed for long queues: selecting a lower row expanded

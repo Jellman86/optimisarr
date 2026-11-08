@@ -988,7 +988,6 @@ filter_all: 'All ({count})',
     host_usage: "Host usage",
     remote_job: "Working on {worker}",
     no_matches: "No jobs match this filter.",
-    manage_queue: "Manage queue",
 
     subtitle: 'Transcode jobs. Outputs are verified before they are marked ready. Your originals are never touched.',
     active_suffix: ' · {count} active',

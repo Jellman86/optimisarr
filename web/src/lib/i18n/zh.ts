@@ -833,7 +833,6 @@ export const zh: Messages = {
     host_usage: "主机使用率",
     remote_job: "正在 {worker} 上处理",
     no_matches: "没有符合此筛选条件的任务。",
-    manage_queue: "管理队列",
 
     subtitle: "转码处理任务。输出在标记为就绪之前会经过验证 - 您的原件永远不会被触及。",
     active_suffix: "· {count} 主动",

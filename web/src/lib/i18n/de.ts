@@ -852,7 +852,6 @@ filter_all: 'Alle ({count})',
     host_usage: "Host-Auslastung",
     remote_job: "Verarbeitung auf {worker}",
     no_matches: "Keine Aufträge entsprechen diesem Filter.",
-    manage_queue: "Warteschlange verwalten",
 
     subtitle: 'Transkodierungsaufgaben. Ausgaben werden geprüft, bevor sie als bereit markiert werden — Ihre Originale werden nie angetastet.',
     active_suffix: ' · {count} aktiv',

@@ -361,9 +361,9 @@
         succeeded: result.succeeded.length,
         failures: result.failures,
       }
-      // The rows that were handled leave the selection; the ones that were refused stay picked,
-      // so the operator can act on them again.
-      selection.remove(result.succeeded)
+      // The batch is over, so the picks go with it. The result banner says what happened to
+      // every row it touched, and the next batch starts from what is on screen now.
+      selection.clear()
       await load()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.queue.error_retry
@@ -377,6 +377,15 @@
   function selectFilter(key: typeof filter) {
     filter = key
     queuePage = 1
+  }
+
+  // The Queue and the Failures tab show different sets of rows, so a pick made on one does not
+  // belong to the other: leaving a tab drops the selection instead of carrying rows the
+  // operator never saw into a list that is not showing them.
+  function selectTab(tab: 'queue' | 'failures') {
+    if (tab === activeTab) return
+    activeTab = tab
+    selection.clear()
   }
 
   async function showSizeReviews() {
@@ -655,7 +664,6 @@
   // Two clear buckets: finished = completed; errored = failed or cancelled.
   let finishedClearable = $derived(jobs.filter((j) => j.status === 'Completed' && j.clearable).length)
   let finishedProtected = $derived(jobs.filter((j) => j.status === 'Completed' && !j.clearable).length)
-  let erroredClearable = $derived(jobs.filter((j) => (j.status === 'Failed' || j.status === 'Cancelled') && j.clearable).length)
   // Pending = not-yet-applied work that a reset can safely discard (queued + verified-but-unreplaced).
   let pendingCount = $derived(jobs.filter((j) => j.status === 'Queued' || j.status === 'ReadyToReplace' || j.status === 'AwaitingSizeReview').length)
 </script>
@@ -665,8 +673,8 @@
     <div><h1 class="page-title">{i18n.m.nav.queue}</h1><p class="page-subtitle">{i18n.m.queue.subtitle}</p></div>
   </header>
   <div class="queue-tabs">
-    <button class="focus-ring" aria-pressed={activeTab === 'queue'} onclick={() => (activeTab = 'queue')}>{i18n.m.nav.queue}{#if activeCount > 0}{' '}({activeCount}){/if}</button>
-    <button class="focus-ring" aria-pressed={activeTab === 'failures'} onclick={() => (activeTab = 'failures')}>{i18n.m.queue.tab_failures}{#if failedCount > 0}{' '}({failedCount}){/if}</button>
+    <button class="focus-ring" aria-pressed={activeTab === 'queue'} onclick={() => selectTab('queue')}>{i18n.m.nav.queue}{#if activeCount > 0}{' '}({activeCount}){/if}</button>
+    <button class="focus-ring" aria-pressed={activeTab === 'failures'} onclick={() => selectTab('failures')}>{i18n.m.queue.tab_failures}{#if failedCount > 0}{' '}({failedCount}){/if}</button>
   </div>
   {#if activeTab === 'failures'}
     <FailuresPanel />
@@ -1002,21 +1010,59 @@
     {/if}
 
     <section id="queue-list" aria-labelledby="queue-list-title">
-      <div class="queue-section-heading"><h2 id="queue-list-title" class="focus-ring" tabindex="-1">{filter === 'review' ? i18n.m.queue.filter_review : i18n.m.queue.next_recent}</h2><span>{visibleJobs.length}</span></div>
+      <div class="queue-section-heading">
+        <h2 id="queue-list-title" class="focus-ring" tabindex="-1">{filter === 'review' ? i18n.m.queue.filter_review : i18n.m.queue.next_recent}</h2>
+        <!-- The housekeeping the queue used to hide behind a toggle: it is always on show, and it
+             only appears when it would do something. -->
+        <div class="queue-heading-actions">
+          {#if pendingCount > 0}<button class="btn btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title + (counts.review > 0 ? ` ${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
+          {#if counts.completed > 0}<button class="btn btn-ghost" onclick={() => clear('finished')} disabled={clearingScope !== null || finishedClearable === 0} title={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected}>{clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}</button>{/if}
+        </div>
+      </div>
       {#if jobs.length > 0}
-        <div class="queue-tools">
-          <div class="queue-filters">
-            {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['review', i18n.m.queue.filter_review], ['ready', i18n.m.queue.filter_ready], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed]].filter(([key]) => key !== 'review' || counts.review > 0 || filter === 'review') as [key, label]}
-              <button class="focus-ring" aria-pressed={filter === key} onclick={() => selectFilter(key as typeof filter)}>{label} · {counts[key as keyof typeof counts]}</button>
-            {/each}
+        <!-- One toolbar, two states. The filters and the batch bar share a single grid cell, so
+             picking a row replaces the filters where they stood: the table below never moves. -->
+        <div class="queue-toolbar" data-queue-toolbar>
+          <div class="queue-toolbar-layer" class:queue-toolbar-hidden={selection.count > 0} inert={selection.count > 0} data-queue-filters>
+            <div class="queue-filters">
+              {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['review', i18n.m.queue.filter_review], ['ready', i18n.m.queue.filter_ready], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed]].filter(([key]) => key !== 'review' || counts.review > 0 || filter === 'review') as [key, label]}
+                <button class="focus-ring" aria-pressed={filter === key} onclick={() => selectFilter(key as typeof filter)}>{label} · {counts[key as keyof typeof counts]}</button>
+              {/each}
+            </div>
+            <div class="queue-toolbar-actions">
+              {#if readyToReplaceCount > 0}<button class="btn btn-primary" onclick={replaceAll} disabled={replacingAll || replacingId !== null} title={i18n.m.queue.replace_all_title}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
+              {#if failedCount > 0}<button class="btn btn-ghost queue-clear-errors" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: failedCount })}</button>{/if}
+            </div>
           </div>
-          <div class="queue-bulk">
-            {#if readyToReplaceCount > 0}<button class="btn btn-primary" onclick={replaceAll} disabled={replacingAll || replacingId !== null} title={i18n.m.queue.replace_all_title}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
-            {#if pendingCount > 0 || erroredClearable > 0 || counts.completed > 0}<details class="queue-management"><summary class="focus-ring">{i18n.m.queue.manage_queue}</summary><div>
-              {#if pendingCount > 0}<button class="btn btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title + (counts.review > 0 ? ` ${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
-              {#if erroredClearable > 0}<button class="btn btn-ghost" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: erroredClearable })}</button>{/if}
-              {#if counts.completed > 0}<button class="btn btn-ghost" onclick={() => clear('finished')} disabled={clearingScope !== null || finishedClearable === 0} title={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected}>{clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}</button>{/if}
-            </div></details>{/if}
+          <div class="queue-toolbar-layer" class:queue-toolbar-hidden={selection.count === 0} inert={selection.count === 0} data-queue-batch>
+            <SelectionToolbar
+              variant="inline"
+              count={selection.count}
+              total={jobs.length}
+              limited={selection.isFull}
+              onclear={() => selection.clear()}
+            >
+              {#snippet actions()}
+                <button
+                  class="btn btn-ghost"
+                  onclick={() => askBatch('retry')}
+                  disabled={batchBusy || retryableJobIds.length === 0}
+                  title={retryableJobIds.length === 0 ? i18n.m.queue.batch_retry_unavailable : i18n.m.queue.batch_retry_title}
+                >
+                  <Icon name="retry" class="h-4 w-4" />
+                  {i18n.m.queue.batch_retry}
+                </button>
+                <button
+                  class="btn btn-danger"
+                  onclick={() => askBatch('remove')}
+                  disabled={batchBusy}
+                  title={i18n.m.queue.batch_remove_title}
+                >
+                  <Icon name="trash" class="h-4 w-4" />
+                  {i18n.m.queue.batch_remove}
+                </button>
+              {/snippet}
+            </SelectionToolbar>
           </div>
         </div>
       {/if}
@@ -1029,35 +1075,6 @@
             failures={batchOutcome.failures}
             ondismiss={() => (batchOutcome = null)}
           />
-        {/if}
-        {#if !selection.isEmpty}
-          <SelectionToolbar
-            count={selection.count}
-            total={jobs.length}
-            limited={selection.isFull}
-            onclear={() => selection.clear()}
-          >
-            {#snippet actions()}
-              <button
-                class="btn btn-ghost"
-                onclick={() => askBatch('retry')}
-                disabled={batchBusy || retryableJobIds.length === 0}
-                title={retryableJobIds.length === 0 ? i18n.m.queue.batch_retry_unavailable : i18n.m.queue.batch_retry_title}
-              >
-                <Icon name="retry" class="h-4 w-4" />
-                {i18n.m.queue.batch_retry}
-              </button>
-              <button
-                class="btn btn-danger"
-                onclick={() => askBatch('remove')}
-                disabled={batchBusy}
-                title={i18n.m.queue.batch_remove_title}
-              >
-                <Icon name="trash" class="h-4 w-4" />
-                {i18n.m.queue.batch_remove}
-              </button>
-            {/snippet}
-          </SelectionToolbar>
         {/if}
         <div class="queue-table-surface"><table class="queue-table">
           <thead><tr><th scope="col" class="selection-column"><SelectionCheckbox checked={selection.isEverySelected(filteredJobIds)} indeterminate={selection.isSomeSelected(filteredJobIds) && !selection.isEverySelected(filteredJobIds)} label={i18n.m.queue.batch_select_all} onchange={toggleSelectAllJobs} /></th><th scope="col">{i18n.m.queue.col_file}</th><th scope="col">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr></thead>
@@ -1150,7 +1167,7 @@
   .queue-review-alert small { color: var(--ink-3); font-size: .75rem; line-height: 1.45; }
 .queue-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }.queue-heading > div { flex: 1; min-width: 15rem; }.queue-heading .page-subtitle { max-width: 45rem; }
   .queue-tabs { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 1.5rem; border-radius: 999px; background: var(--lit); }.queue-tabs button { min-height: 2.25rem; padding: 0 1rem; border-radius: 999px; font-size: .8125rem; font-weight: 500; color: var(--ink-2); }.queue-tabs button[aria-pressed=true] { color: var(--ink); font-weight: 600; background: var(--control-on); box-shadow: var(--lift-1); }
-  .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
+  .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-heading-actions .btn { font-size: .75rem; }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
   .queue-lanes { margin-bottom: 1.5rem; }.queue-lanes-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .75rem; }.queue-lanes-heading h2 { font-size: .8125rem; font-weight: 600; color: var(--ink-2); }.queue-lanes-heading p { font-size: .6875rem; color: var(--ink-3); }.queue-lane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .625rem; }.queue-lane { min-width: 0; padding: .875rem 1rem; transition: transform .18s ease, box-shadow .18s ease; }.queue-lane:hover { transform: translateY(-2px); box-shadow: var(--lift-2); }.queue-lane-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; color: var(--ink-2); font-size: .75rem; }.queue-lane-head strong { flex: none; font-size: 1rem; color: var(--ink); font-variant-numeric: tabular-nums; }.queue-lane p { color: var(--ink-3); font-size: .6875rem; margin-top: .4rem; }.queue-lane small { display: block; color: var(--ink-3); font-size: .6875rem; line-height: 1.45; margin-top: .625rem; overflow-wrap: anywhere; }.queue-phase-note { margin-top: .75rem; font-size: .75rem; color: var(--ink-3); }
   .queue-execution-path { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }.queue-execution-path h3 { grid-column: 1/-1; margin: 0; font-size: .75rem; color: var(--ink-3); font-weight: 600; }.queue-execution-path div { min-width: 0; display: grid; gap: .25rem; font-size: .6875rem; color: var(--ink-3); }.queue-execution-path strong { color: var(--ink); font-size: .75rem; font-weight: 600; overflow-wrap: anywhere; }
   @media(max-width: 900px) { .queue-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -1194,12 +1211,21 @@
   .queue-diagnostic-pending { flex: none; color: var(--ink-3); font-size: .75rem; }
   .queue-detail-specs:first-child { margin-top: 0; }
   .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs > :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs > :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.queue-detail-actions > div { justify-content: flex-end; }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
-  .queue-tools { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; }.queue-filters { display: flex; flex-wrap: wrap; gap: .25rem; }.queue-filters button { padding: .5rem .8rem; font-size: .75rem; color: var(--ink-2); border-radius: 999px; }.queue-filters button:hover { background: var(--lit); }.queue-filters button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }.queue-bulk { display: flex; align-items: flex-start; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; }.queue-bulk .btn { font-size: .75rem; }.queue-management { font-size: .75rem; color: var(--ink-3); }.queue-management summary { padding: .75rem; cursor: pointer; border-radius: .5rem; }.queue-management > div { display: flex; flex-wrap: wrap; padding: .5rem; gap: .5rem; background: var(--panel); border-radius: .75rem; max-width: 100%; }
+  /* The toolbar is one row of one height. The filters sit in it, and the batch bar takes the
+     same grid cell when a row is picked, so the table below never moves. */
+  .queue-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 1rem; }
+  .queue-toolbar-layer { grid-area: 1 / 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; min-height: 3rem; transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms; }
+  .queue-toolbar-layer:not(.queue-toolbar-hidden) { transition: opacity 180ms ease, transform 180ms ease, visibility 0s; }
+  .queue-toolbar-hidden { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-.25rem); }
+  .queue-filters { display: flex; flex-wrap: wrap; gap: .25rem; }.queue-filters button { padding: .5rem .8rem; font-size: .75rem; color: var(--ink-2); border-radius: 999px; }.queue-filters button:hover { background: var(--lit); }.queue-filters button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+  .queue-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }.queue-toolbar-actions .btn { font-size: .75rem; }
+  /* Clearing the failed jobs is quiet until it is pointed at, then it says what it does. */
+  .queue-clear-errors { color: var(--ink-3); }.queue-clear-errors:hover { color: var(--bad); background: var(--bad-soft); }
   .queue-table-surface { border-radius: 14px; background: var(--panel); box-shadow: var(--lift-2); overflow: clip; }.queue-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.queue-table th { background: var(--panel); box-shadow: inset 0 -1px 0 var(--divide); color: var(--ink-3); padding: .75rem 1rem; font-size: .75rem; font-weight: 600; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 40%; }.queue-table th:nth-child(3) { width: 25%; }.queue-table th:nth-child(4) { width: 17%; }.queue-table th:last-child { width: 15%; }.queue-table td { padding: 1rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }.queue-table .badge { white-space: normal; }.queue-table tr:hover td,.queue-table .selected-row td { background: var(--lit); }.queue-table .selection-column { padding: 1rem .75rem; }.queue-table .selection-column :global(.checkbox) { display: block; }.queue-file { display: flex; align-items: center; width: 100%; min-width: 0; gap: .875rem; text-align: left; border-radius: .375rem; }.queue-file > span { min-width: 0; }.queue-file strong { display: block; color: var(--ink); font-size: .8125rem; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }.queue-file:hover strong { color: var(--accent); }.queue-file small { display: block; font-size: .6875rem; margin-top: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }.queue-row-note { display: block; font-size: .6875rem; margin-top: .375rem; }.queue-verification { border-radius: .25rem; text-align: left; }.action-column .btn { font-size: .75rem; padding: .5rem .75rem; max-width: 100%; white-space: normal; }
   .queue-empty { padding: 2rem 1.5rem; background: var(--panel); border-radius: .875rem; text-align: center; font-size: .8125rem; color: var(--ink-3); }.queue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--ink-3); font-size: .75rem; }.queue-pagination > div { display: flex; align-items: center; gap: .5rem; }
-  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs button { padding: 0 .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 63%; }.queue-table th:nth-child(3) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-bulk { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
+  @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs button { padding: 0 .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 3rem; }.queue-table th:nth-child(2) { width: 63%; }.queue-table th:nth-child(3) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs > :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-toolbar-actions,.queue-heading-actions { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
   @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
-  @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; } }
+  @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; }.queue-toolbar-layer { transition: none; } }
   @media(max-width: 639px) {
     .queue-detail-heading { gap: 1rem; }
     .queue-detail-poster :global([data-thumbnail]) { width: 3.5rem; height: 5.25rem; }

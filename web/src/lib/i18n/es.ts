@@ -848,7 +848,6 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     host_usage: "Uso del equipo",
     remote_job: "Procesando en {worker}",
     no_matches: "Ninguna tarea coincide con este filtro.",
-    manage_queue: "Gestionar cola",
 
     subtitle: 'Trabajos de transcodificación. Las salidas se verifican antes de marcarse como listas — tus originales nunca se modifican.',
     active_suffix: ' · {count} activos',

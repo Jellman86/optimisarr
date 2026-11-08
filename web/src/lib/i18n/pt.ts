@@ -833,7 +833,6 @@ filter_all: "Todos ({count})",
     host_usage: "Utilização do anfitrião",
     remote_job: "A processar em {worker}",
     no_matches: "Nenhuma tarefa corresponde a este filtro.",
-    manage_queue: "Gerir fila",
 
     subtitle: "Tarefas de processamento de transcodificação. As saídas são verificadas antes de serem marcadas como prontas — seus originais nunca são tocados.",
     active_suffix: "· {count} ativo",
