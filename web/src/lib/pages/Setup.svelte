@@ -65,7 +65,17 @@
   const retentionError = $derived(settings && (!Number.isInteger(settings.replacementQuarantineRetentionDays) || settings.replacementQuarantineRetentionDays < 0)
     ? i18n.m.setup.retention_invalid
     : null)
-  const scansFinished = $derived(scans.length > 0 && scans.every((scan) => scan.state !== 'scanning'))
+  const scanning = $derived(scans.some((scan) => scan.state === 'scanning'))
+  const filesFound = $derived(!scanning && scans.some((scan) => scan.state === 'done' && scan.found > 0))
+  const anyEnabledLibrary = $derived(libraries.some((library) => library.enabled))
+  // Finishing scans, and a scan can hand new files to a library that already optimises by itself.
+  const finishNote = $derived.by(() => {
+    const automatic = libraries.filter((library) => library.enabled && library.autoEnqueueEnabled)
+    if (automatic.length === 0) return i18n.m.setup.finish_no_work
+    return !settings?.dryRunMode && automatic.some((library) => library.autoReplace)
+      ? `${i18n.m.setup.finish_automation} ${i18n.m.setup.finish_auto_replace}`
+      : i18n.m.setup.finish_automation
+  })
   const encoderNames: Record<SetupRecommendation['encoderMode'], string> = { Cpu: 'CPU', NvidiaNvenc: 'NVIDIA NVENC', IntelQsv: 'Intel QSV', Vaapi: 'VAAPI' }
   const stepNames = $derived([
     i18n.m.setup.step_welcome,
@@ -222,6 +232,11 @@
       scan.error = err instanceof Error ? err.message : i18n.m.setup.scan_error
       scan.state = 'failed'
     }
+  }
+
+  // Only once the queue is idle, so two libraries are never scanned at the same time.
+  function retryScan(scan: LibraryScan) {
+    if (!scanning) void scanLibrary(scan)
   }
 
   function scanMessage(scan: LibraryScan): string {
@@ -433,7 +448,7 @@
               <Icon name="check" class="h-6 w-6" />
             </span>
             <h1 tabindex="-1" class="mt-5 text-3xl font-bold tracking-tight text-ink">{i18n.m.setup.receipt_heading}</h1>
-            <p class="mt-3 text-sm leading-6 text-ink-2">{i18n.m.setup.receipt_body}</p>
+            <p class="mt-3 text-sm leading-6 text-ink-2">{anyEnabledLibrary ? `${i18n.m.setup.receipt_body} ${finishNote}` : i18n.m.setup.receipt_no_enabled}</p>
             {#if scans.length > 0}
               <ul class="mt-5 space-y-3 text-sm" data-testid="setup-scans" aria-live="polite">
                 {#each scans as scan (scan.id)}
@@ -442,12 +457,12 @@
                     {#if scan.settling > 0}<div class="mt-1 text-xs text-ink-3">{t(i18n.m.setup.scan_settling, { count: scan.settling })}</div>{/if}
                     {#if scan.state === 'failed'}
                       <p class="mt-1 text-xs leading-5 text-ink-3">{i18n.m.setup.scan_failed_hint}</p>
-                      <button class="btn mt-2 min-h-11" type="button" onclick={() => void scanLibrary(scan)}>{i18n.m.setup.retry}</button>
+                      <button class="btn mt-2 min-h-11" type="button" disabled={scanning} onclick={() => retryScan(scan)}>{i18n.m.setup.retry}</button>
                     {/if}
                   </li>
                 {/each}
               </ul>
-              {#if scansFinished}<p class="mt-4 text-xs leading-5 text-ink-3">{i18n.m.setup.scan_next}</p>{/if}
+              {#if filesFound}<p class="mt-4 text-xs leading-5 text-ink-3">{i18n.m.setup.scan_next}</p>{/if}
             {/if}
             <div class="mt-7 flex flex-wrap gap-3">
               <button class="btn btn-primary min-h-11" onclick={() => void leaveReceipt('/inventory')}>
@@ -750,7 +765,7 @@
         {:else}
           <p class="mb-2 text-xs font-semibold text-ok">{i18n.m.setup.review_eyebrow}</p>
           <h1 tabindex="-1" class="page-title">{i18n.m.setup.review_heading}</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.review_body}</p>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.review_body} {finishNote}</p>
 
           <dl class="mt-7 max-w-3xl divide-y divide-line border-y border-line">
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.network_title}</dt><dd class="text-sm text-ink">{i18n.m.setup.network_body}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></dd></div>
@@ -761,7 +776,7 @@
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.nav.schedule}</dt><dd class="text-sm text-ink">{#each libraries as library}<span class="block">{library.name}: {librarySchedule(library)}</span>{/each}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.room_servers}</dt><dd class="text-sm text-ink">{i18n.m.setup.integrations_later}</dd><dd aria-hidden="true"></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-ink">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.originals_title}</dt><dd class="text-sm text-ink">{retentionLabel(settings?.replacementQuarantineRetentionDays ?? 0)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.originals_title}</dt><dd class="text-sm {retentionError ? 'text-bad' : 'text-ink'}">{retentionError ?? retentionLabel(settings?.replacementQuarantineRetentionDays ?? 0)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
           </dl>
         {/if}
       </fieldset>

@@ -94,7 +94,7 @@ public sealed class SetupVmafApplicationTests
             MinVmafHarmonicMean = 91,
         };
 
-        SetupEndpoints.ApplyVmafRecommendation(library, SetupVmafTier.Keep);
+        Assert.False(SetupEndpoints.ApplyVmafRecommendation(library, SetupVmafTier.Keep));
 
         Assert.Equal(VideoQualityStrategy.AdaptiveVmaf, library.VideoQualityStrategy);
         Assert.True(library.VmafQualityGateEnabled);
