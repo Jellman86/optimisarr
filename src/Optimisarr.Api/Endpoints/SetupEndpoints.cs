@@ -259,6 +259,11 @@ internal static class SetupEndpoints
 
     internal static void ApplyVmafRecommendation(Optimisarr.Data.Library library, SetupVmafTier tier)
     {
+        if (tier == SetupVmafTier.Keep)
+        {
+            return;
+        }
+
         library.VmafQualityGateEnabled = tier == SetupVmafTier.Balanced;
         if (tier == SetupVmafTier.Balanced)
         {

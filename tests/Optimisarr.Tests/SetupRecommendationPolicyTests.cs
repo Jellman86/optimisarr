@@ -24,7 +24,7 @@ public sealed class SetupRecommendationPolicyTests
     }
 
     [Fact]
-    public void Intel_is_preferred_to_vaapi_and_keeps_cpu_vmaf_off_by_default()
+    public void Intel_is_preferred_to_vaapi_and_software_vmaf_leaves_each_library_as_saved()
     {
         var result = SetupRecommendationPolicy.Recommend(
             [
@@ -36,7 +36,7 @@ public sealed class SetupRecommendationPolicyTests
 
         Assert.Equal(EncoderMode.IntelQsv, result.EncoderMode);
         Assert.True(result.HardwareDecode);
-        Assert.Equal(SetupVmafTier.Off, result.VmafTier);
+        Assert.Equal(SetupVmafTier.Keep, result.VmafTier);
         Assert.Equal("cpu-cost", result.VmafReason);
     }
 
@@ -64,7 +64,7 @@ public sealed class SetupRecommendationPolicyTests
 
         Assert.Equal(EncoderMode.Cpu, result.EncoderMode);
         Assert.False(result.HardwareDecode);
-        Assert.Equal(SetupVmafTier.Off, result.VmafTier);
+        Assert.Equal(SetupVmafTier.Keep, result.VmafTier);
     }
 }
 
@@ -82,6 +82,23 @@ public sealed class SetupVmafApplicationTests
         Assert.Equal(85, library.MinVmafHarmonicMean);
         Assert.Equal(70, library.MinVmafMin);
         Assert.Equal(40, library.MinVmafCatastrophicMin);
+    }
+
+    [Fact]
+    public void Keep_recommendation_leaves_the_library_exactly_as_saved()
+    {
+        var library = new Library
+        {
+            VideoQualityStrategy = VideoQualityStrategy.AdaptiveVmaf,
+            VmafQualityGateEnabled = true,
+            MinVmafHarmonicMean = 91,
+        };
+
+        SetupEndpoints.ApplyVmafRecommendation(library, SetupVmafTier.Keep);
+
+        Assert.Equal(VideoQualityStrategy.AdaptiveVmaf, library.VideoQualityStrategy);
+        Assert.True(library.VmafQualityGateEnabled);
+        Assert.Equal(91, library.MinVmafHarmonicMean);
     }
 
     [Fact]

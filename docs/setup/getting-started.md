@@ -57,7 +57,8 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 
 1. Enable **Dry-run mode** in **Settings → Files & safety → Replacement and cleanup**.
 2. Add a library below `/data/media` and select its media type and rule profile.
-3. Scan it; newly found files are probed in the background.
+3. Scan it, if you added it after first-run setup, which scans for you. Newly found files are probed
+   in the background.
 4. Review the explicit eligibility reason in **Inventory**.
 5. Use **Preview** on one representative file to compare the original with the encoded result.
    Long video previews use a 60-second middle sample and label the verification report as

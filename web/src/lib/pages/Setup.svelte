@@ -42,11 +42,14 @@
   let receipt = $state<SetupApplyReceipt | null>(null)
   let originalEncoderMode = 'Auto'
   let originalHardwareDecode = false
+  type LibraryScan = { id: number; name: string; state: 'scanning' | 'done' | 'failed'; found: number; settling: number; error: string | null }
+  let scans = $state<LibraryScan[]>([])
   const DRAFT_KEY = 'optimisarr.setup.plan.v1'
 
   type SetupDraft = {
     dryRunMode: boolean
     maxConcurrentJobs: number
+    retentionDays: number
     useRecommendedEncoder: boolean
     applyRecommendedVmaf: boolean
     applyRecommendedSchedule: boolean
@@ -59,6 +62,11 @@
   const concurrencyError = $derived(settings && (!Number.isInteger(settings.maxConcurrentJobs) || settings.maxConcurrentJobs < 1)
     ? i18n.m.setup.concurrent_invalid
     : null)
+  const retentionError = $derived(settings && (!Number.isInteger(settings.replacementQuarantineRetentionDays) || settings.replacementQuarantineRetentionDays < 0)
+    ? i18n.m.setup.retention_invalid
+    : null)
+  const scansFinished = $derived(scans.length > 0 && scans.every((scan) => scan.state !== 'scanning'))
+  const encoderNames: Record<SetupRecommendation['encoderMode'], string> = { Cpu: 'CPU', NvidiaNvenc: 'NVIDIA NVENC', IntelQsv: 'Intel QSV', Vaapi: 'VAAPI' }
   const stepNames = $derived([
     i18n.m.setup.step_welcome,
     i18n.m.setup.step_readiness,
@@ -172,14 +180,15 @@
           : unavailable && libraryAccess[unavailable.id] ? libraryAccess[unavailable.id]!.message : i18n.m.setup.access_checking)
         return
       }
-      if ((viewStep === 4 || viewStep === 5) && (!settings || concurrencyError)) {
-        await showError(concurrencyError ?? i18n.m.setup.settings_required_error)
+      if ((viewStep === 4 || viewStep === 5) && (!settings || concurrencyError || retentionError)) {
+        await showError(concurrencyError ?? retentionError ?? i18n.m.setup.settings_required_error)
         return
       }
       if (viewStep === 5 && settings) {
         receipt = await api.applySetup({ settings, useRecommendedEncoder, applyRecommendedVmaf, applyRecommendedSchedule })
         clearDraft()
         await focusStep()
+        void scanLibraries()
         return
       }
       if (viewStep <= setup.state.completedStep) changeStep(viewStep + 1)
@@ -192,6 +201,54 @@
     } finally {
       busy = false
     }
+  }
+
+  // One library at a time, so a library that fails can be retried without scanning the others again.
+  async function scanLibraries() {
+    scans = libraries.filter((library) => library.enabled).map((library) => (
+      { id: library.id, name: library.name, state: 'scanning', found: 0, settling: 0, error: null }))
+    for (const scan of scans) await scanLibrary(scan)
+  }
+
+  async function scanLibrary(scan: LibraryScan) {
+    scan.state = 'scanning'
+    scan.error = null
+    try {
+      const summary = await api.scanLibrary(scan.id)
+      scan.found = summary.discovered
+      scan.settling = summary.skippedUnsettled
+      scan.state = 'done'
+    } catch (err) {
+      scan.error = err instanceof Error ? err.message : i18n.m.setup.scan_error
+      scan.state = 'failed'
+    }
+  }
+
+  function scanMessage(scan: LibraryScan): string {
+    if (scan.state === 'scanning') return t(i18n.m.setup.scan_running, { name: scan.name })
+    if (scan.state === 'failed') return t(i18n.m.setup.scan_failed, { name: scan.name, error: scan.error ?? '' })
+    if (scan.found === 0 && scan.settling === 0) return t(i18n.m.setup.scan_empty, { name: scan.name })
+    return t(i18n.m.setup.scan_found, { name: scan.name, count: scan.found })
+  }
+
+  function vmafReason(reason: SetupRecommendation['vmafReason']): string {
+    if (reason === 'cuda-balanced') return i18n.m.setup.reason_vmaf_nvidia
+    if (reason === 'unavailable') return i18n.m.setup.reason_vmaf_unavailable
+    return i18n.m.setup.reason_vmaf_cpu
+  }
+
+  function encoderReason(reason: SetupRecommendation['encoderReason']): string {
+    if (reason === 'nvidia') return i18n.m.setup.reason_encoder_nvidia
+    if (reason === 'intel') return i18n.m.setup.reason_encoder_intel
+    if (reason === 'vaapi') return i18n.m.setup.reason_encoder_vaapi
+    return i18n.m.setup.reason_encoder_cpu
+  }
+
+  const settingsPlace = $derived(`${i18n.m.nav.settings} → ${i18n.m.settings.room_files}`)
+
+  function retentionLabel(days: number): string {
+    return days === 0 ? i18n.m.setup.review_retention_keep
+      : plural(days, i18n.m.setup.review_retention_one, i18n.m.setup.review_retention_other)
   }
 
   function stepStatus(step: number) {
@@ -290,7 +347,9 @@
       const draft = JSON.parse(raw) as Partial<SetupDraft>
       if (typeof draft.dryRunMode === 'boolean') target.dryRunMode = draft.dryRunMode
       if (typeof draft.maxConcurrentJobs === 'number') target.maxConcurrentJobs = draft.maxConcurrentJobs
-      applyRecommendedVmaf = draft.applyRecommendedVmaf === true
+      if (typeof draft.retentionDays === 'number') target.replacementQuarantineRetentionDays = draft.retentionDays
+      // A draft from before the recommendation changed must not show a choice no longer on offer.
+      applyRecommendedVmaf = draft.applyRecommendedVmaf === true && nextRecommendation.vmafTier !== 'Keep'
       applyRecommendedSchedule = draft.applyRecommendedSchedule === true
       useRecommendedEncoder = draft.useRecommendedEncoder === true
       if (useRecommendedEncoder) {
@@ -307,6 +366,7 @@
     const draft: SetupDraft = {
       dryRunMode: settings.dryRunMode,
       maxConcurrentJobs: Number(settings.maxConcurrentJobs),
+      retentionDays: Number(settings.replacementQuarantineRetentionDays),
       useRecommendedEncoder,
       applyRecommendedVmaf,
       applyRecommendedSchedule,
@@ -373,7 +433,22 @@
               <Icon name="check" class="h-6 w-6" />
             </span>
             <h1 tabindex="-1" class="mt-5 text-3xl font-bold tracking-tight text-ink">{i18n.m.setup.receipt_heading}</h1>
-            <p class="mt-3 text-sm leading-6 text-ink-2">{t(i18n.m.setup.receipt_body, { count: receipt.libraryCount })}</p>
+            <p class="mt-3 text-sm leading-6 text-ink-2">{i18n.m.setup.receipt_body}</p>
+            {#if scans.length > 0}
+              <ul class="mt-5 space-y-3 text-sm" data-testid="setup-scans" aria-live="polite">
+                {#each scans as scan (scan.id)}
+                  <li>
+                    <div class={scan.state === 'failed' ? 'text-bad' : 'text-ink-2'}>{scanMessage(scan)}</div>
+                    {#if scan.settling > 0}<div class="mt-1 text-xs text-ink-3">{t(i18n.m.setup.scan_settling, { count: scan.settling })}</div>{/if}
+                    {#if scan.state === 'failed'}
+                      <p class="mt-1 text-xs leading-5 text-ink-3">{i18n.m.setup.scan_failed_hint}</p>
+                      <button class="btn mt-2 min-h-11" type="button" onclick={() => void scanLibrary(scan)}>{i18n.m.setup.retry}</button>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+              {#if scansFinished}<p class="mt-4 text-xs leading-5 text-ink-3">{i18n.m.setup.scan_next}</p>{/if}
+            {/if}
             <div class="mt-7 flex flex-wrap gap-3">
               <button class="btn btn-primary min-h-11" onclick={() => void leaveReceipt('/inventory')}>
                 {i18n.m.setup.review_candidates}
@@ -591,8 +666,20 @@
             <div class="mt-7 max-w-2xl divide-y divide-line border-y border-line">
               <label class="flex cursor-pointer items-start gap-3 py-4">
                 <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={settings.dryRunMode} />
-                <span><span class="block font-semibold text-ink">{i18n.m.setup.dry_run_title}</span><span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.setup.dry_run_body}</span></span>
+                <span><span class="block font-semibold text-ink">{i18n.m.setup.dry_run_title}</span><span class="mt-1 block text-sm leading-6 text-ink-3">{t(i18n.m.setup.dry_run_body, { place: settingsPlace })}</span></span>
               </label>
+              <div class="grid gap-2 py-4 sm:grid-cols-[1fr_9rem] sm:items-center">
+                <div>
+                  <div class="font-semibold text-ink">{i18n.m.setup.originals_title}</div>
+                  <div class="mt-1 text-sm leading-6 text-ink-3">{i18n.m.setup.originals_body}</div>
+                  <label class="mt-2 block text-sm font-medium text-ink-2" for="setup-retention">{i18n.m.setup.retention_label}</label>
+                  <div class="mt-1 text-xs leading-5 text-ink-3" id="setup-retention-hint">{i18n.m.setup.retention_hint}</div>
+                </div>
+                <div>
+                  <input id="setup-retention" class="input" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} aria-describedby="setup-retention-hint" aria-invalid={retentionError ? 'true' : undefined} />
+                  {#if retentionError}<p class="mt-1 text-xs text-bad">{retentionError}</p>{/if}
+                </div>
+              </div>
               <div class="grid gap-2 py-4 sm:grid-cols-[1fr_9rem] sm:items-center">
                 <div><div class="font-semibold text-ink">{i18n.m.setup.concurrent_title}</div><div class="mt-1 text-sm text-ink-3">{i18n.m.setup.concurrent_body}</div></div>
                 <div>
@@ -616,19 +703,27 @@
                 <div class="grid gap-3 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div>
                     <div class="font-semibold text-ink">{i18n.m.settings.encoder_mode}</div>
-                    <div class="mt-1 text-sm text-ink-3">{recommendation.encoderMode} · {recommendation.hardwareDecode ? i18n.m.settings.hardware_decode : i18n.m.common.off}</div>
+                    <div class="mt-1 text-sm text-ink-3">{encoderNames[recommendation.encoderMode]} · {recommendation.hardwareDecode ? i18n.m.settings.hardware_decode : i18n.m.common.off}</div>
+                    <div class="mt-1 text-xs leading-5 text-ink-3">{encoderReason(recommendation.encoderReason)}</div>
                   </div>
                   <button class="btn min-h-11" type="button" onclick={acceptEncoderRecommendation} aria-pressed={useRecommendedEncoder}>
                     {useRecommendedEncoder ? i18n.m.setup.recommendation_applied : i18n.m.setup.use_recommendation}
                   </button>
                 </div>
-                <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
-                  <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={applyRecommendedVmaf} />
-                  <span>
-                    <span class="block font-semibold text-ink">{i18n.m.settings.vmaf_label}: {recommendation.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</span>
-                    <span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.setup.vmaf_recommendation_body}</span>
-                  </span>
-                </label>
+                {#if recommendation.vmafTier === 'Keep'}
+                  <div class="py-4">
+                    <div class="font-semibold text-ink">{i18n.m.settings.vmaf_label}</div>
+                    <div class="mt-1 text-sm leading-6 text-ink-3">{vmafReason(recommendation.vmafReason)}</div>
+                  </div>
+                {:else}
+                  <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
+                    <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={applyRecommendedVmaf} />
+                    <span>
+                      <span class="block font-semibold text-ink">{i18n.m.settings.vmaf_label}: {recommendation.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</span>
+                      <span class="mt-1 block text-sm leading-6 text-ink-3">{vmafReason(recommendation.vmafReason)} {i18n.m.setup.vmaf_recommendation_body}</span>
+                    </span>
+                  </label>
+                {/if}
                 <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
                   <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={applyRecommendedSchedule} />
                   <span>
@@ -666,6 +761,7 @@
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.nav.schedule}</dt><dd class="text-sm text-ink">{#each libraries as library}<span class="block">{library.name}: {librarySchedule(library)}</span>{/each}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.room_servers}</dt><dd class="text-sm text-ink">{i18n.m.setup.integrations_later}</dd><dd aria-hidden="true"></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-ink">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.originals_title}</dt><dd class="text-sm text-ink">{retentionLabel(settings?.replacementQuarantineRetentionDays ?? 0)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
           </dl>
         {/if}
       </fieldset>

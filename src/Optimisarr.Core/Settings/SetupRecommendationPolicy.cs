@@ -6,7 +6,10 @@ namespace Optimisarr.Core.Settings;
 public enum SetupVmafTier
 {
     Off,
-    Balanced
+    Balanced,
+
+    /// <summary>No change to offer: each library keeps the quality policy it has.</summary>
+    Keep
 }
 
 public sealed record SetupRecommendation(
@@ -31,9 +34,13 @@ public static class SetupRecommendationPolicy
     {
         var encoder = RecommendEncoder(encoders);
         var hardwareDecode = encoder is not EncoderMode.Cpu;
-        var vmafTier = vmafAvailable && cudaVmafAvailable && encoder == EncoderMode.NvidiaNvenc
-            ? SetupVmafTier.Balanced
-            : SetupVmafTier.Off;
+        // Off is offered only when VMAF cannot run. New video libraries use adaptive VMAF by default, so
+        // a software-only VMAF is no reason to recommend turning a quality check off.
+        var vmafTier = !vmafAvailable
+            ? SetupVmafTier.Off
+            : cudaVmafAvailable && encoder == EncoderMode.NvidiaNvenc
+                ? SetupVmafTier.Balanced
+                : SetupVmafTier.Keep;
 
         return new SetupRecommendation(
             encoder,
