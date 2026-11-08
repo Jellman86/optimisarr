@@ -198,6 +198,29 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_video_whose_library_reduces_noise_stays_on_the_server_and_stays_queued()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Noise reduction");
+        var id = await QueueAJob(fileName: "grainy tape.mkv");
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.Include(j => j.MediaFile).ThenInclude(m => m!.Library).SingleAsync(j => j.Id == id);
+            job.MediaFile!.Library!.NoiseReduction = Optimisarr.Core.Queue.NoiseReduction.Light;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var result = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        Assert.Equal(JobStatus.Queued, (await result.Jobs.AsNoTracking().SingleAsync(j => j.Id == id)).Status);
+        Assert.Equal(0, await result.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
+    [Fact]
     public async Task A_source_that_will_be_deinterlaced_stays_on_the_server_and_stays_queued()
     {
         await EnableRemoteWorkers();

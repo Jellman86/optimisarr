@@ -148,6 +148,8 @@ export type LibraryRules = {
   optimiseDolbyVision: boolean
   /** Deinterlace sources reported as interlaced instead of leaving them untouched. */
   deinterlaceVideo: boolean
+  /** How strongly video re-encodes reduce noise, such as tape grain. */
+  noiseReduction: NoiseReduction
   excludePaths: string | null
   excludeHardLinkedFiles: boolean
   skipSourceCodecs: string | null
@@ -288,6 +290,7 @@ export function newLibraryDefaults(): SaveLibrary {
     hdrHandling: null,
     optimiseDolbyVision: false,
     deinterlaceVideo: false,
+    noiseReduction: 'Off',
     excludePaths: null,
     excludeHardLinkedFiles: false,
     skipSourceCodecs: null,
@@ -1066,6 +1069,8 @@ export type NotificationTestResult = {
   ok: boolean
   error: string | null
 }
+
+export type NoiseReduction = 'Off' | 'Light' | 'Strong'
 
 export type ArrConnectionType = 'Sonarr' | 'Radarr'
 

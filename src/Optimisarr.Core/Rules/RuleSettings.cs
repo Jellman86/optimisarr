@@ -108,6 +108,12 @@ public sealed record RuleSettings
     /// </summary>
     public bool DeinterlaceVideo { get; init; }
 
+    /// <summary>
+    /// Reduce noise, such as tape grain, while re-encoding video. Off by default: it changes the picture,
+    /// and the quality gate then judges the encode against the cleaned picture rather than the original.
+    /// </summary>
+    public Queue.NoiseReduction NoiseReduction { get; init; }
+
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
 

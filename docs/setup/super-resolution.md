@@ -157,6 +157,10 @@ are refused before anything runs, and are left to the normal pipeline:
 - HDR and variable-frame-rate video;
 - libraries whose rules crop, downscale or cap the frame rate, and hardware encoders.
 
+A library that reduces noise (see [Reduce noise](configuration.md#reduce-noise)) cleans the
+pictures before the engine sees them, so the engine does not sharpen noise into false detail.
+Real-CUGAN's noise level then applies on top, so a library with both may want a lower one.
+
 The RGB round trip uses the source's colour matrix and range, then restores its colour tags.
 Untagged HD sources use BT.709 and untagged SD sources use BT.601 for that conversion; explicit
 wide-gamut colour is refused. Executable and model paths must be absolute, or empty to use the

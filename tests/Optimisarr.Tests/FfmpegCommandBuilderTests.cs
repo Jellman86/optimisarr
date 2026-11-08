@@ -1574,6 +1574,46 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Noise_is_reduced_after_deinterlacing_and_before_the_crop_and_scale()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with
+        {
+            Deinterlace = true,
+            Denoise = NoiseReduction.Light,
+            CropTo = new CropRect(720, 400, 0, 88),
+            DownscaleTo = new PictureSize(640, 356),
+        });
+
+        var chain = args[args.ToList().IndexOf("-filter:v:0") + 1];
+        Assert.StartsWith($"{VideoFieldOrder.DeinterlaceFilter},{NoiseReductionFilter.For(NoiseReduction.Light)},crop=", chain);
+    }
+
+    [Theory]
+    [InlineData("hevc_nvenc")]
+    [InlineData("hevc_qsv")]
+    [InlineData("hevc_vaapi")]
+    public void Noise_reduction_decodes_in_software_because_the_filter_needs_frames_in_memory(string encoder)
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24) with { Denoise = NoiseReduction.Strong }, videoEncoder: encoder, hardwareDecode: true);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.StartsWith(NoiseReductionFilter.For(NoiseReduction.Strong)!, args[args.ToList().IndexOf("-filter:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Noise_reduction_uses_the_software_tone_map_because_a_hardware_one_needs_gpu_surfaces()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24, tonemap: true) with { Denoise = NoiseReduction.Light },
+            videoEncoder: "hevc_vaapi", hardwareDecode: true, hardwareToneMap: true);
+
+        Assert.DoesNotContain("tonemap_vaapi", args[args.ToList().IndexOf("-filter:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Without_the_choice_no_noise_filter_is_added() =>
+        Assert.DoesNotContain(FfmpegCommandBuilder.Build(Reencode(crf: 24)), argument => argument.Contains("hqdn3d"));
+
+    [Fact]
     public void Without_the_choice_no_deinterlace_filter_is_added() =>
         Assert.DoesNotContain(FfmpegCommandBuilder.Build(Reencode(crf: 24)), argument => argument.Contains("bwdif"));
 }

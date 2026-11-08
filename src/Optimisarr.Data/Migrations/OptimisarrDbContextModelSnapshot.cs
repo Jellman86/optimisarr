@@ -1236,6 +1236,11 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("NoiseReduction")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("NormalizeOpusChannelLayout")
                         .HasColumnType("INTEGER");
 

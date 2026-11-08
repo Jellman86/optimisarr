@@ -1133,6 +1133,7 @@
       optimiseDolbyVision: library.optimiseDolbyVision,
       // Coerced like the hardlink switch: an older server omits the field.
       deinterlaceVideo: library.deinterlaceVideo ?? false,
+      noiseReduction: library.noiseReduction ?? 'Off',
       // Coerced like the hardlink switch: an older server omits the field, and undefined
       // must read as off rather than blank the editor.
       superResolutionEnabled: library.superResolutionEnabled ?? false,
@@ -1277,6 +1278,7 @@
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
       deinterlaceVideo: form.deinterlaceVideo,
+      noiseReduction: form.noiseReduction,
       superResolutionEnabled: form.superResolutionEnabled,
       superResolutionQualityCheck: form.superResolutionQualityCheck,
       superResolutionEngine: form.superResolutionEngine,
@@ -2691,6 +2693,19 @@
               </span>
             </span>
           </label>
+        </div>
+
+        <div class="mt-4 max-w-xs">
+          <label class="label" for="lib-noise">
+            {i18n.m.libraries.noise_label}
+            <InfoTip text={i18n.m.libraries.noise_tip} />
+          </label>
+          <select id="lib-noise" class="input" bind:value={form.noiseReduction} aria-describedby="lib-noise-hint">
+            <option value="Off">{i18n.m.libraries.noise_off}</option>
+            <option value="Light">{i18n.m.libraries.noise_light}</option>
+            <option value="Strong">{i18n.m.libraries.noise_strong}</option>
+          </select>
+          <p id="lib-noise-hint" class="mt-1 text-xs text-ink-4">{i18n.m.libraries.noise_hint}</p>
         </div>
 
 </ConfigSection>

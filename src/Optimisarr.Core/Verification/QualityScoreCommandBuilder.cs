@@ -55,6 +55,9 @@ public sealed record QualityMeasurementContext(
     Queue.FrameRateDecimation? ReferenceDecimation = null,
     // The encode deinterlaced, so the reference is too. Frames stay paired one to one.
     bool ReferenceDeinterlace = false,
+    // The encode reduced noise, so the reference is cleaned identically and the gate judges how faithfully
+    // the encode kept the cleaned picture.
+    Queue.NoiseReduction ReferenceDenoise = Queue.NoiseReduction.Off,
     // How far into its own container each file's first picture sits (video start minus container
     // start). FFmpeg seeks and stamps frames relative to the container start, which is the earliest
     // stream, so two files whose pictures match frame for frame still present them at different
@@ -126,7 +129,8 @@ public static class QualityScoreCommandBuilder
     // same 10-bit pixels as the software path, including when choosing the executable.
     public static VmafAcceleration EffectiveAcceleration(QualityMeasurementContext context) =>
         context.ReferenceIsHdr || context.ReferenceCrop is not null || context.ReferenceDecimation is not null
-            || context.ReferenceDeinterlace || IsV1(SelectedModel(context)) ? VmafAcceleration.None : context.Acceleration;
+            || context.ReferenceDeinterlace || context.ReferenceDenoise != Queue.NoiseReduction.Off
+            || IsV1(SelectedModel(context)) ? VmafAcceleration.None : context.Acceleration;
 
     /// <summary>
     /// The viewing model for a picture of this size. Cropped cinema masters are commonly
@@ -219,6 +223,7 @@ public static class QualityScoreCommandBuilder
         // Thinning by frame index happens before anything touches timestamps, so the index each
         // frame is judged by is the one the encode judged it by.
         var referenceDecimation = (context.ReferenceDeinterlace ? $"{Domain.VideoFieldOrder.DeinterlaceFilter}," : string.Empty)
+            + (Queue.NoiseReductionFilter.For(context.ReferenceDenoise) is { } denoise ? $"{denoise}," : string.Empty)
             + (context.ReferenceDecimation is { } decimation ? $"{Queue.FrameRatePlanner.Filter(decimation)}," : string.Empty);
 
         // With a crop, the picture being judged is the cropped one: both streams are brought to
@@ -256,6 +261,11 @@ public static class QualityScoreCommandBuilder
         // matching initial PTS. Absolute indices preserve correspondence without optimising
         // away a genuinely duplicated or missing picture (#406).
         var sequential = pairFrames && !completeFramePairing;
+        // A cleaned reference is named in the report, because the score then says nothing about the cleaning itself.
+        if (context.ReferenceDenoise != Queue.NoiseReduction.Off)
+        {
+            colourPreprocessing += $" · reference noise-reduced ({context.ReferenceDenoise.ToString().ToLowerInvariant()}) like the encode";
+        }
         var preprocessing = DescribePreprocessing(
             colourPreprocessing,
             acceleration,

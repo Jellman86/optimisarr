@@ -358,6 +358,33 @@ the deinterlacing, and it cannot tell you the deinterlacing looks good. Check a 
 - These jobs decode in software, and run on the server whatever the library's placement says.
 - Super-resolution upscales the combined pictures, if the library also opted in to that.
 
+### Reduce noise
+
+**Reduce noise** cleans grain and colour noise while a library re-encodes video, which helps old
+tape captures in particular. It has three levels, and it is **Off** by default:
+
+- **Light** keeps fine detail and mostly cleans colour noise.
+- **Strong** cleans more, and can soften faces and fine textures.
+
+It uses FFmpeg's `hqdn3d` filter, which is fast on the CPU. Colour is cleaned harder than
+brightness, because tape carries little colour detail and most of its visible noise is in the
+colour. Noise is reduced after any deinterlacing and before any crop, scale or frame-rate cap.
+
+VMAF judges the result against the original cleaned the same way, so it measures how faithfully the
+encode kept the cleaned picture. It cannot tell you whether the cleaning looks good, so preview a
+file first. The verification report notes that the reference was noise-reduced. The other checks,
+such as size, duration, audio and subtitles, are unchanged. A cleaner picture compresses better, so
+these files usually come out smaller.
+
+- It changes the picture, so it is off by default.
+- It applies only when the library re-encodes video. Remux and track cleanup copy the video, so they
+  leave it as it is.
+- These jobs decode in software, and run on the server whatever the library's placement says.
+- A short quality check of part of a file, such as Clip-VMAF or a preview, starts the filter fresh at
+  its start point, so the first frame or two can score slightly lower than in the full encode.
+- With super-resolution, noise is reduced before the engine sees the picture. Real-CUGAN's own noise
+  level then applies on top.
+
 ### Assess re-encoded video soundtracks
 
 Soundtrack samples leave a 100 ms margin at the file end to avoid encoder padding. Each prepared sample must still contain its assigned frames within the 64-frame resampling allowance; missing audio is never padded. Coverage in the report shows what was actually assessed.
