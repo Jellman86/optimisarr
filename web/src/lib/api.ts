@@ -483,6 +483,20 @@ export type DuplicateCleanupPreview = {
   leftAlone: Partial<Record<DuplicateCleanupRefusal, number>>
 }
 
+export type AutoDuplicateCleanupOutcome = 'Cleaned' | 'NothingToClean' | 'DryRun' | 'TooManyFiles' | 'ScanFailed' | 'PartlyCleaned' | 'CleanupFailed' | 'ManagerUnavailable'
+
+export type AutoDuplicateCleanup = {
+  libraryId: number
+  enabled: boolean
+  supported: boolean
+  dryRun: boolean
+  lastRunAt: string | null
+  lastOutcome: AutoDuplicateCleanupOutcome | null
+  lastMoved: number
+  lastBytes: number
+  nextRunAfter: string | null
+}
+
 export type DuplicateCleanupStatus = {
   libraryId: number
   running: boolean
@@ -1692,6 +1706,9 @@ export const api = {
   deleteQuarantinedDuplicates: (id: string) => request<void>(`/api/quarantine/duplicates/${id}`, { method: 'DELETE' }),
   duplicateCleanupPreview: (id: number) => request<DuplicateCleanupPreview>(`/api/libraries/${id}/duplicates/cleanup/preview`),
   duplicateCleanup: (id: number) => request<DuplicateCleanupStatus>(`/api/libraries/${id}/duplicates/cleanup`),
+  autoDuplicateCleanup: (id: number) => request<AutoDuplicateCleanup>(`/api/libraries/${id}/duplicates/schedule`),
+  setAutoDuplicateCleanup: (id: number, enabled: boolean) =>
+    request<AutoDuplicateCleanup>(`/api/libraries/${id}/duplicates/schedule`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
   startDuplicateCleanup: (id: number) => request<DuplicateCleanupStatus>(`/api/libraries/${id}/duplicates/cleanup`, { method: 'POST' }),
   cancelDuplicateCleanup: (id: number) => request<void>(`/api/libraries/${id}/duplicates/cleanup`, { method: 'DELETE' }),
   stats: () => request<Stats>('/api/stats'),

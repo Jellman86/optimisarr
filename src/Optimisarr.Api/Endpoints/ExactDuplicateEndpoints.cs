@@ -13,9 +13,24 @@ public sealed record QuarantinedCopy(string Path, string QuarantinePath, long Si
 public sealed record QuarantinedDuplicates(Guid Id, string State, DateTimeOffset HeldSince, string? AttentionReason,
     IReadOnlyList<string> KeptPaths, IReadOnlyList<QuarantinedCopy> Copies);
 
+/// <summary>Whether a library cleans its duplicates once a day, and what the last run did.</summary>
+/// <param name="Supported">Only film and TV libraries can be cleaned automatically.</param>
+/// <param name="DryRun">Dry-run mode is on, so the schedule moves nothing.</param>
+/// <param name="NextRunAfter">The earliest time the next run starts, when the schedule is on.</param>
+public sealed record AutoDedupeScheduleDto(int LibraryId, bool Enabled, bool Supported, bool DryRun,
+    DateTimeOffset? LastRunAt, string? LastOutcome, int LastMoved, long LastBytes, DateTimeOffset? NextRunAfter);
+
 internal static class ExactDuplicateEndpoints
 {
     public sealed record ReviewRequest(string ReviewKey, string Choice, int[] KeepIds);
+    public sealed record AutoDedupeScheduleRequest(bool? Enabled);
+
+    private static AutoDedupeScheduleDto Schedule(Data.Library library, bool dryRun, DateTimeOffset nowUtc) => new(
+        library.Id, library.AutoDedupeEnabled, AutoDedupeSchedule.Supports(library.MediaType), dryRun,
+        library.LastAutoDedupeAt, library.LastAutoDedupeOutcome?.ToString(), library.LastAutoDedupeMoved, library.LastAutoDedupeBytes,
+        library.AutoDedupeEnabled
+            ? AutoDedupeSchedule.IsDue(library.LastAutoDedupeAt, nowUtc) ? nowUtc : library.LastAutoDedupeAt!.Value + AutoDedupeSchedule.Interval
+            : null);
     public static void MapExactDuplicateEndpoints(this WebApplication app)
     {
         app.MapGet("/api/libraries/{id:int}/duplicates", async (int id, int? page, OptimisarrDbContext db,
@@ -62,6 +77,31 @@ internal static class ExactDuplicateEndpoints
                 ? Results.NoContent() : ApiErrors.Conflict("duplicates.reviewChanged", "This group or its scope changed. Scan again before saving a preference.");
         }).Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status400BadRequest)
             .WithName("SaveExactDuplicateReview");
+
+        app.MapGet("/api/libraries/{id:int}/duplicates/schedule", async (int id, OptimisarrDbContext db, TimeProvider clock, CancellationToken token) =>
+        {
+            var library = await db.Libraries.AsNoTracking().SingleOrDefaultAsync(l => l.Id == id, token);
+            if (library is null) return ApiErrors.NotFound("library.notFound", "Library not found.", new { id });
+            var dryRun = (await new SettingsStore(db).GetQueueSettingsAsync(token)).DryRunMode;
+            return Results.Ok(Schedule(library, dryRun, clock.GetUtcNow()));
+        }).Produces<AutoDedupeScheduleDto>().Produces(StatusCodes.Status404NotFound)
+            .WithName("GetAutoDuplicateCleanup");
+
+        // Turns the daily scan-and-cleanup on or off. It moves only what the cleanup button would.
+        app.MapPut("/api/libraries/{id:int}/duplicates/schedule", async (int id, AutoDedupeScheduleRequest request,
+            OptimisarrDbContext db, TimeProvider clock, CancellationToken token) =>
+        {
+            if (request.Enabled is not { } enabled) return ApiErrors.BadRequest("duplicates.schedule", "Say whether automatic cleanup is on.");
+            var library = await db.Libraries.SingleOrDefaultAsync(l => l.Id == id, token);
+            if (library is null) return ApiErrors.NotFound("library.notFound", "Library not found.", new { id });
+            if (enabled && !AutoDedupeSchedule.Supports(library.MediaType))
+                return ApiErrors.BadRequest("duplicates.scheduleType", "Automatic cleanup only runs in film and TV libraries.");
+            library.AutoDedupeEnabled = enabled;
+            await db.SaveChangesAsync(token);
+            var dryRun = (await new SettingsStore(db).GetQueueSettingsAsync(token)).DryRunMode;
+            return Results.Ok(Schedule(library, dryRun, clock.GetUtcNow()));
+        }).Produces<AutoDedupeScheduleDto>().Produces(StatusCodes.Status404NotFound).Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .WithName("SetAutoDuplicateCleanup");
 
         // What cleaning this library would do, asking the managers what they track.
         app.MapGet("/api/libraries/{id:int}/duplicates/cleanup/preview", async (int id, DedupeCleanupRunner cleanup, CancellationToken token) =>

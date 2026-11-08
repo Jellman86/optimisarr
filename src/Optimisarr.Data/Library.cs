@@ -1,3 +1,4 @@
+using Optimisarr.Core.Deduplication;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 
@@ -385,6 +386,24 @@ public sealed class Library
 
     /// <summary>When the library was last auto-enqueued; null means never.</summary>
     public DateTimeOffset? LastAutoEnqueueAt { get; set; }
+
+    // --- Automatic duplicate cleanup. Off by default: once a day it scans for exact copies and moves
+    // the spare copies that cleanup can safely move into quarantine, where they can be restored. ---
+
+    /// <summary>When true, exact copies are found and their spares quarantined once a day.</summary>
+    public bool AutoDedupeEnabled { get; set; }
+
+    /// <summary>When the last automatic duplicate cleanup started; null means never.</summary>
+    public DateTimeOffset? LastAutoDedupeAt { get; set; }
+
+    /// <summary>What the last automatic duplicate cleanup did.</summary>
+    public AutoDedupeOutcome? LastAutoDedupeOutcome { get; set; }
+
+    /// <summary>Copies the last automatic cleanup moved into quarantine.</summary>
+    public int LastAutoDedupeMoved { get; set; }
+
+    /// <summary>Bytes the last automatic cleanup moved into quarantine.</summary>
+    public long LastAutoDedupeBytes { get; set; }
 
     /// <summary>
     /// When true, a job in this library that passes every verification gate is replaced

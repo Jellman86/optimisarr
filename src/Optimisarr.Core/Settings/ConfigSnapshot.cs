@@ -114,7 +114,9 @@ public sealed record LibrarySnapshot(
     string? SuperResolutionModel = null,
     int? SuperResolutionScale = null,
     // Null on an older snapshot means off, as those libraries left interlaced files untouched.
-    bool? DeinterlaceVideo = null);
+    bool? DeinterlaceVideo = null,
+    // Null on an older snapshot means off, as those libraries never cleaned duplicates on a schedule.
+    bool? AutoDedupeEnabled = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

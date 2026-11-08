@@ -41,6 +41,7 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("GET", "/api/libraries/1/duplicates")]
     [InlineData("POST", "/api/libraries/1/duplicates")]
     [InlineData("DELETE", "/api/libraries/1/duplicates")]
+    [InlineData("PUT", "/api/libraries/1/duplicates/schedule")]
     [InlineData("PUT", "/api/settings")]
     [InlineData("GET", "/api/settings/cleanup")]
     [InlineData("POST", "/api/settings/cleanup")]
@@ -126,6 +127,38 @@ public sealed class AdminTokenAuthEndpointTests
         {
             await client.DeleteAsync($"/api/arr-connections/{id}");
         }
+    }
+
+    [Fact]
+    public async Task Automatic_duplicate_cleanup_starts_off_and_only_film_and_tv_libraries_can_turn_it_on()
+    {
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        async Task<int> CreateAsync(string mediaType)
+        {
+            var root = Path.Combine(_api.LibraryDirectory, "auto-dedupe-" + Guid.NewGuid()); Directory.CreateDirectory(root);
+            var created = await client.PostAsJsonAsync("/api/libraries", new { name = "Auto dedupe " + mediaType + Guid.NewGuid(), path = root,
+                mediaType, ruleProfile = "ConservativeHevc", enabled = false });
+            created.EnsureSuccessStatusCode();
+            return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        }
+        var film = await CreateAsync("Film");
+        var music = await CreateAsync("Music");
+
+        var initial = await client.GetFromJsonAsync<JsonElement>($"/api/libraries/{film}/duplicates/schedule");
+        Assert.False(initial.GetProperty("enabled").GetBoolean());
+        Assert.True(initial.GetProperty("supported").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, initial.GetProperty("nextRunAfter").ValueKind);
+
+        var on = await client.PutAsJsonAsync($"/api/libraries/{film}/duplicates/schedule", new { enabled = true });
+        on.EnsureSuccessStatusCode();
+        var schedule = await on.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(schedule.GetProperty("enabled").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Null, schedule.GetProperty("nextRunAfter").ValueKind);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/libraries/{music}/duplicates/schedule", new { enabled = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/libraries/{film}/duplicates/schedule", new { })).StatusCode);
+        (await client.PutAsJsonAsync($"/api/libraries/{film}/duplicates/schedule", new { enabled = false })).EnsureSuccessStatusCode();
     }
 
     [Fact]

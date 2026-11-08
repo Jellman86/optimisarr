@@ -153,6 +153,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.HdrHandling = snapshot.HdrHandling is null ? null : ParseEnum<HdrHandling>(snapshot.HdrHandling);
             library.OptimiseDolbyVision = snapshot.OptimiseDolbyVision ?? false;
             library.DeinterlaceVideo = snapshot.DeinterlaceVideo ?? false;
+            library.AutoDedupeEnabled = snapshot.AutoDedupeEnabled ?? false;
             library.ExcludePaths = snapshot.ExcludePaths;
             library.ExcludeHardLinkedFiles = snapshot.ExcludeHardLinkedFiles ?? false;
             library.SkipSourceCodecs = snapshot.SkipSourceCodecs;
@@ -603,7 +604,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.SuperResolutionEngine,
         library.SuperResolutionModel,
         library.SuperResolutionScale,
-        library.DeinterlaceVideo);
+        library.DeinterlaceVideo,
+        library.AutoDedupeEnabled);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)
