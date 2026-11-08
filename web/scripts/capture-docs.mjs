@@ -92,6 +92,7 @@ try {
   if(path==='/api/quarantine/duplicates')return json(route,[])
   if(path==='/api/libraries/1/duplicates/cleanup/preview')return json(route,{ready:true,groups:1,copies:1,bytesToFree:1024,leftAlone:{}})
   if(path==='/api/libraries/1/duplicates/cleanup')return json(route,{libraryId:1,running:false,total:0,done:0,moved:0,bytesHeld:0,failures:[]})
+  if(path==='/api/libraries/1/duplicates/schedule')return json(route,{libraryId:1,enabled:false,supported:true,dryRun:false,lastRunAt:null,lastOutcome:null,lastMoved:0,lastBytes:0,nextRunAfter:null})
   if(/^\/api\/replacements\/\d+$/.test(path))return json(route,f.replacements[Number(path.split('/').pop())-1])
   if(path.endsWith('/content')||path.includes('/stream'))return calibrationKind==='Image'&&path.includes('/calibration/')?route.fulfill({contentType:'image/svg+xml',body:f.artwork(1,true)}):route.fulfill({status:200,contentType:'video/webm',body:clip})
   if(path==='/api/workers')return json(route,f.workers)
