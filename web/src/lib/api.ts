@@ -90,7 +90,7 @@ export type SetupReadiness = {
 export type SetupRecommendation = {
   encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi'
   hardwareDecode: boolean
-  vmafTier: 'Off' | 'Balanced'
+  vmafTier: 'Off' | 'Balanced' | 'Keep'
   scheduleStart: string
   scheduleEnd: string
   encoderReason: 'nvidia' | 'intel' | 'vaapi' | 'cpu'

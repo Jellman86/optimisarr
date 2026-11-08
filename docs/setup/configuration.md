@@ -24,8 +24,21 @@ never claims to create a host mount or change host permissions. Setup then
 lets you add and fully configure as many libraries as needed before reviewing the starting safety
 posture. The same complete per-library rules editor is used inside and outside setup, and every
 configured path is rechecked before Continue. Progress is saved after each step, so refreshing or
-restarting resumes at the first incomplete step. Finishing setup does not scan, enqueue, encode,
-replace, or delete a file.
+restarting resumes at the first incomplete step. Finishing setup looks through each enabled library
+for files and shows what it found, and you can retry a library that fails. Files are then checked in
+the background. Finishing setup does not itself enqueue, encode, replace, or delete a file, but a
+library with automatic enqueue already on can start work on the files found, within its schedule,
+and replace originals if it also has auto-replace and dry-run is off.
+
+The Safety step explains what happens to originals. A replaced original stays in Quarantine and
+keeps using space until you approve it or it reaches the time limit you set there. `0`, the default,
+keeps originals until you approve them. In dry-run mode, replacing is blocked until you turn dry-run
+off in **Settings → Files & safety**.
+
+Setup recommends an encoder from what passed the test on your machine, and says why. It offers
+Balanced VMAF when VMAF can use an NVIDIA GPU. When VMAF would run on the CPU, it leaves each
+library's quality setting as it is. It offers VMAF off only when the VMAF tool is missing. Nothing
+is applied unless you select it.
 
 Fresh installations start in dry-run with one concurrent job. Every new library has automatic
 enqueue and automatic replacement disabled. New video re-encode libraries start on Adaptive

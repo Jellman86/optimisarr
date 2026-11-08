@@ -16,7 +16,7 @@ const settings = {
 const recommendation = {
   encoderMode: 'IntelQsv',
   hardwareDecode: true,
-  vmafTier: 'Off',
+  vmafTier: 'Keep',
   scheduleStart: '01:00',
   scheduleEnd: '06:00',
   encoderReason: 'intel',
@@ -94,7 +94,7 @@ function setupState(currentStep = 5) {
   }
 }
 
-async function mockSetup(page: Page, currentStep = 5, configuredLibrary: typeof library | null = library) {
+async function mockSetup(page: Page, currentStep = 5, configuredLibrary: typeof library | null = library, recommended: Partial<typeof recommendation> = {}) {
   let readinessCalls = 0
   let completed = false
   let currentLibraries = configuredLibrary ? [{ ...configuredLibrary }] : []
@@ -121,7 +121,7 @@ async function mockSetup(page: Page, currentStep = 5, configuredLibrary: typeof 
           { name: 'ffprobe', command: 'ffprobe', available: true, required: true, version: '7.1', error: null },
           { name: 'FFmpeg (VMAF)', command: 'ffmpeg', available: true, required: false, version: 'libvmaf', error: null },
         ],
-        recommendation,
+        recommendation: { ...recommendation, ...recommended },
       })
     }
     if (path === '/api/system/hardware') return json(route, {
@@ -141,6 +141,7 @@ async function mockSetup(page: Page, currentStep = 5, configuredLibrary: typeof 
       }
       return json(route, currentLibraries)
     }
+    if (/^\/api\/libraries\/\d+\/scan$/.test(path)) return json(route, { discovered: 12, added: 12, updated: 0, skippedUnsettled: 0 })
     if (path === '/api/libraries/1' && route.request().method() === 'PUT') {
       currentLibraries[0] = { ...currentLibraries[0], ...route.request().postDataJSON(), id: 1 }
       return json(route, currentLibraries[0])
@@ -313,7 +314,7 @@ test('system re-test announces completion without moving focus', async ({ page }
   await expect.poll(readinessCalls).toBe(2)
 })
 
-test('final apply sends one reviewed plan and shows a no-work-started receipt', async ({ page }) => {
+test('final apply sends one reviewed plan, then looks for files and says what it found', async ({ page }) => {
   await mockSetup(page)
   const settingsWrites: string[] = []
   page.on('request', (request) => {
@@ -334,8 +335,128 @@ test('final apply sends one reviewed plan and shows a no-work-started receipt', 
   })
   expect(settingsWrites).toEqual([])
   await expect(page.getByRole('heading', { name: 'Setup is safely applied' })).toBeVisible()
-  await expect(page.getByText(/No scan, encode, replacement, or deletion was started/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Review candidates' })).toBeVisible()
+  await expect(page.getByText(/Finishing setup doesn't encode, replace or delete anything/)).toBeVisible()
+  await expect(page.getByTestId('setup-scans')).toContainText('Films: files found: 12')
+  await expect(page.getByText(/checks each file in the background/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open Inventory' })).toBeVisible()
+})
+
+test('a failed library scan says so and can be tried again on its own', async ({ page }) => {
+  await mockSetup(page)
+  let attempts = 0
+  await page.route('**/api/libraries/1/scan', route => {
+    attempts += 1
+    return attempts === 1
+      ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Disk went away' }) })
+      : json(route, { discovered: 3, added: 3, updated: 0, skippedUnsettled: 2 })
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Finish setup' }).click()
+
+  const scans = page.getByTestId('setup-scans')
+  await expect(scans).toContainText("Films: couldn't finish looking for files.")
+  await expect(scans).toContainText('the next scheduled scan will still pick it up')
+  await scans.getByRole('button', { name: 'Try again' }).click()
+
+  await expect(scans).toContainText('Films: files found: 3')
+  await expect(scans).toContainText('Still being copied, so left for the next scan: 2')
+  await expect(page.getByRole('heading', { name: 'Setup is safely applied' })).toBeVisible()
+})
+
+test('a retry waits for the library still being scanned', async ({ page }) => {
+  await mockSetup(page, 5, library)
+  await page.route('**/api/libraries', route => json(route, [library, { ...library, id: 2, name: 'Shows', path: '/media/shows' }]))
+  await page.route('**/api/libraries/2/access', route => json(route, { path: '/media/shows', exists: true, readable: true, writable: true, ok: true, message: null, availableBytes: null, fileSystemId: null, mountId: null, fileSystemType: null, atomicWithWork: true, atomicWithQuarantine: true }))
+  let release = () => {}
+  const held = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/libraries/1/scan', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Disk went away' }) }))
+  await page.route('**/api/libraries/2/scan', async route => {
+    await held
+    return json(route, { discovered: 4, added: 4, updated: 0, skippedUnsettled: 0 })
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Finish setup' }).click()
+
+  const retry = page.getByTestId('setup-scans').getByRole('button', { name: 'Try again' })
+  await expect(retry).toBeDisabled()
+  release()
+  await expect(page.getByTestId('setup-scans')).toContainText('Shows: files found: 4')
+  await expect(retry).toBeEnabled()
+})
+
+test('finishing says when a scan can start work in a library that optimises by itself', async ({ page }) => {
+  await mockSetup(page, 5, { ...library, autoEnqueueEnabled: true, autoReplace: true })
+  await page.goto('/')
+  await expect(page.getByText(/can start encoding the files it finds/)).toBeVisible()
+  await expect(page.getByText(/doesn't encode, replace or delete anything/)).toHaveCount(0)
+})
+
+test('with no enabled library the receipt says nothing is being looked for', async ({ page }) => {
+  await mockSetup(page, 5, { ...library, enabled: false })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Finish setup' }).click()
+  await expect(page.getByText(/None of your libraries are enabled/)).toBeVisible()
+  await expect(page.getByTestId('setup-scans')).toHaveCount(0)
+  await expect(page.getByText(/checks each file in the background/)).toHaveCount(0)
+})
+
+test('when no scan succeeds the receipt does not claim files are being checked', async ({ page }) => {
+  await mockSetup(page)
+  await page.route('**/api/libraries/1/scan', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Disk went away' }) }))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Finish setup' }).click()
+  await expect(page.getByTestId('setup-scans')).toContainText("couldn't finish")
+  await expect(page.getByText(/checks each file in the background/)).toHaveCount(0)
+})
+
+test('an invalid time limit from a saved draft shows as an error, never as a deletion policy', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('optimisarr.setup.plan.v1', JSON.stringify({ retentionDays: -1 })))
+  await mockSetup(page)
+  await page.goto('/')
+  await expect(page.getByText('Enter a whole number, 0 or more.')).toBeVisible()
+  await expect(page.getByText(/Deleted from Quarantine after -1/)).toHaveCount(0)
+})
+
+test('safety explains what happens to originals and sends a chosen time limit', async ({ page }) => {
+  await mockSetup(page, 4)
+  await page.goto('/')
+  await expect(page.getByText(/you only get the space back once it's deleted/)).toBeVisible()
+  await expect(page.getByText('Replacing is blocked until you turn dry-run off in Settings → Files & safety', { exact: false })).toBeVisible()
+  const days = page.getByLabel('Delete originals after this many days')
+  await expect(days).toHaveValue('0')
+
+  await days.fill('1.5')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Enter a whole number, 0 or more.')
+
+  await days.fill('14')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByText('Deleted from Quarantine after 14 days')).toBeVisible()
+  const applied = page.waitForRequest(request => request.url().endsWith('/api/setup/apply'))
+  await page.getByRole('button', { name: 'Finish setup' }).click()
+  expect((await applied).postDataJSON().settings.replacementQuarantineRetentionDays).toBe(14)
+})
+
+test('software VMAF is left as saved and offers no way to switch it off', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('optimisarr.setup.plan.v1', JSON.stringify({ applyRecommendedVmaf: true })))
+  await mockSetup(page, 4)
+  await page.goto('/')
+
+  await expect(page.getByText(/VMAF runs on the CPU here/)).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: /Perceptual quality \(VMAF\)/ })).toHaveCount(0)
+  await expect(page.getByText('An Intel Quick Sync encoder passed the test on this machine.')).toBeVisible()
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  const applied = page.waitForRequest(request => request.url().endsWith('/api/setup/apply'))
+  await page.getByRole('button', { name: 'Finish setup' }).click()
+  expect((await applied).postDataJSON().applyRecommendedVmaf).toBe(false)
+})
+
+test('VMAF off is offered only with the reason when the tool is missing', async ({ page }) => {
+  await mockSetup(page, 4, library, { vmafTier: 'Off', vmafReason: 'unavailable' })
+  await page.goto('/')
+
+  await expect(page.getByRole('checkbox', { name: /Perceptual quality \(VMAF\): Off/ })).toBeVisible()
+  await expect(page.getByText(/The VMAF tool isn't available here/)).toBeVisible()
 })
 
 test('review remains usable at the WCAG 400% reflow equivalent and in landscape', async ({ page }) => {
@@ -461,7 +582,7 @@ for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: 'Finish setup', exact: true }).click()
     expect((await applied).postDataJSON().settings.maxConcurrentJobs).toBe(2)
     await expect(page.getByRole('heading', { name: 'Setup is safely applied' })).toBeVisible()
-    await page.getByRole('button', { name: 'Review candidates', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Inventory', exact: true }).click()
     await expect(page).toHaveURL(/#\/inventory$/)
     await expect(page.getByRole('heading', { name: 'Inventory', exact: true })).toBeVisible()
     expect(errors).toEqual([])

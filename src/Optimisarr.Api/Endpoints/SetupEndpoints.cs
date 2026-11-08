@@ -211,8 +211,7 @@ internal static class SetupEndpoints
                         && recommendation is not null
                         && library.MediaType is Optimisarr.Core.Domain.MediaType.Film or Optimisarr.Core.Domain.MediaType.Tv)
                     {
-                        ApplyVmafRecommendation(library, recommendation.VmafTier);
-                        changed = true;
+                        changed = ApplyVmafRecommendation(library, recommendation.VmafTier);
                     }
                     if (request.ApplyRecommendedSchedule && recommendation is not null)
                     {
@@ -241,7 +240,10 @@ internal static class SetupEndpoints
                 SetupStateDto.From(state),
                 libraries.Count,
                 SettingsApplied: true,
-                RecommendationsApplied: recommendation is not null,
+                RecommendationsApplied: recommendation is not null
+                    && (request.UseRecommendedEncoder
+                        || request.ApplyRecommendedSchedule
+                        || recommendation.VmafTier != SetupVmafTier.Keep),
                 AlreadyApplied: false));
         })
         .WithName("ApplySetupPlan");
@@ -257,8 +259,14 @@ internal static class SetupEndpoints
         .WithName("RestartSetup");
     }
 
-    internal static void ApplyVmafRecommendation(Optimisarr.Data.Library library, SetupVmafTier tier)
+    /// <summary>False when the recommendation leaves the library as it is.</summary>
+    internal static bool ApplyVmafRecommendation(Optimisarr.Data.Library library, SetupVmafTier tier)
     {
+        if (tier == SetupVmafTier.Keep)
+        {
+            return false;
+        }
+
         library.VmafQualityGateEnabled = tier == SetupVmafTier.Balanced;
         if (tier == SetupVmafTier.Balanced)
         {
@@ -273,6 +281,8 @@ internal static class SetupEndpoints
         {
             library.VideoQualityStrategy = VideoQualityStrategy.Fixed;
         }
+
+        return true;
     }
 }
 
