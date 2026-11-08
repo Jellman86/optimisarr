@@ -2966,6 +2966,12 @@
           "name": {
             "type": "string"
           },
+          "noiseReduction": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "normalizeOpusChannelLayout": {
             "type": [
               "null",
@@ -5234,6 +5240,12 @@
             ]
           },
           "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "noiseReduction": {
             "type": [
               "null",
               "string"

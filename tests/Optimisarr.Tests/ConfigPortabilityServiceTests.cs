@@ -149,6 +149,30 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_librarys_noise_reduction_travels_with_its_backup_and_an_older_backup_means_off()
+    {
+        await using (var db = CreateDb())
+        {
+            db.Libraries.Add(new Library { Name = "Tapes", Path = "/data/tapes", MediaType = MediaType.Film, NoiseReduction = NoiseReduction.Strong });
+            await db.SaveChangesAsync();
+        }
+        var snapshot = await ExportAsync();
+        Assert.Equal("Strong", snapshot.Libraries.Single(library => library.Path == "/data/tapes").NoiseReduction);
+
+        var older = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { NoiseReduction = null }).ToArray() };
+        Assert.True((await ImportAsync(older)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Equal(NoiseReduction.Off, (await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).NoiseReduction);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+        await using (var restored = CreateDb())
+            Assert.Equal(NoiseReduction.Strong, (await restored.Libraries.SingleAsync(library => library.Path == "/data/tapes")).NoiseReduction);
+
+        var invalid = snapshot with { Libraries = snapshot.Libraries.Select(library => library with { NoiseReduction = "Maximum" }).ToArray() };
+        Assert.False((await ImportAsync(invalid)).Applied);
+    }
+
+    [Fact]
     public async Task A_librarys_deinterlace_choice_travels_with_its_backup_and_an_older_backup_means_off()
     {
         await using (var db = CreateDb())

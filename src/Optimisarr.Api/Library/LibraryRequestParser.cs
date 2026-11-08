@@ -96,7 +96,9 @@ internal readonly record struct ParsedLibrary(
     // False when the request named no choice, as a client older than the choice does, so an update
     // keeps what is saved rather than quietly returning the library to Real-CUGAN.
     bool SuperResolutionChoiceSent = false,
-    bool DeinterlaceVideo = false);
+    bool DeinterlaceVideo = false,
+    // Null when the request named none, so an update keeps what is saved.
+    NoiseReduction? NoiseReduction = null);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -193,6 +195,18 @@ internal static class LibraryRequestParser
                 $"Unknown work placement: {request.WorkPlacement}. " +
                 $"Expected one of {string.Join(", ", Enum.GetNames<WorkPlacement>())}.";
             return false;
+        }
+
+        NoiseReduction? noiseReduction = null;
+        if (!string.IsNullOrWhiteSpace(request.NoiseReduction))
+        {
+            if (!Enum.TryParse<NoiseReduction>(request.NoiseReduction, ignoreCase: true, out var parsedNoise) || !Enum.IsDefined(parsedNoise)
+                || int.TryParse(request.NoiseReduction, out _))
+            {
+                error = $"Unknown noise reduction: {request.NoiseReduction}. Expected one of {string.Join(", ", Enum.GetNames<NoiseReduction>())}.";
+                return false;
+            }
+            noiseReduction = parsedNoise;
         }
 
         // Omitted means the recommended check, which catches broken upscales without refusing the
@@ -672,7 +686,8 @@ internal static class LibraryRequestParser
             superResolutionModel,
             request.SuperResolutionScale,
             superResolutionChoiceSent,
-            request.DeinterlaceVideo ?? false);
+            request.DeinterlaceVideo ?? false,
+            noiseReduction);
         error = null;
         return true;
     }

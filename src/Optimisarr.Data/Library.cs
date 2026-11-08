@@ -96,6 +96,9 @@ public sealed class Library
     /// <summary>Deinterlace sources reported as interlaced instead of leaving them untouched.</summary>
     public bool DeinterlaceVideo { get; set; }
 
+    /// <summary>How strongly video re-encodes reduce noise. Off by default.</summary>
+    public NoiseReduction NoiseReduction { get; set; }
+
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 

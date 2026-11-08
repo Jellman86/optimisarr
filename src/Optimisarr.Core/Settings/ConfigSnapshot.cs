@@ -115,6 +115,8 @@ public sealed record LibrarySnapshot(
     int? SuperResolutionScale = null,
     // Null on an older snapshot means off, as those libraries left interlaced files untouched.
     bool? DeinterlaceVideo = null,
+    // Null on an older snapshot means off, as those libraries never reduced noise.
+    string? NoiseReduction = null,
     // Null on an older snapshot means off, as those libraries never cleaned duplicates on a schedule.
     bool? AutoDedupeEnabled = null);
 

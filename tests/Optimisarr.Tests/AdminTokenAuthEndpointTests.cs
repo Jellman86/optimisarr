@@ -162,6 +162,27 @@ public sealed class AdminTokenAuthEndpointTests
     }
 
     [Fact]
+    public async Task Noise_reduction_starts_off_an_update_without_it_keeps_the_choice_and_unknown_levels_are_refused()
+    {
+        var root = Path.Combine(_api.LibraryDirectory, "noise-" + Guid.NewGuid()); Directory.CreateDirectory(root);
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var fields = new { name = "Noise test " + Guid.NewGuid(), path = root, mediaType = "Film", ruleProfile = "ConservativeHevc", enabled = false };
+        var created = await client.PostAsJsonAsync("/api/libraries", fields);
+        created.EnsureSuccessStatusCode();
+        var dto = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = dto.GetProperty("id").GetInt32();
+        Assert.Equal("Off", dto.GetProperty("noiseReduction").GetString());
+
+        var strong = await client.PutAsJsonAsync($"/api/libraries/{id}", new { fields.name, fields.path, fields.mediaType, fields.ruleProfile, fields.enabled, noiseReduction = "strong" });
+        Assert.Equal("Strong", (await strong.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noiseReduction").GetString());
+        var kept = await client.PutAsJsonAsync($"/api/libraries/{id}", fields);
+        Assert.Equal("Strong", (await kept.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noiseReduction").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PutAsJsonAsync($"/api/libraries/{id}", new { fields.name, fields.path, fields.mediaType, fields.ruleProfile, fields.enabled, noiseReduction = "2" })).StatusCode);
+    }
+
+    [Fact]
     public async Task Audio_gate_policy_survives_legacy_updates_and_rejected_limits_cannot_weaken_it()
     {
         var root = Path.Combine(_api.LibraryDirectory, "audio-gate-" + Guid.NewGuid()); Directory.CreateDirectory(root);

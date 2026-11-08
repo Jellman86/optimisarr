@@ -119,6 +119,7 @@ internal static class LibraryEndpoints
                 HdrHandling = parsed.HdrHandling,
                 OptimiseDolbyVision = parsed.OptimiseDolbyVision,
                 DeinterlaceVideo = parsed.DeinterlaceVideo,
+                NoiseReduction = parsed.NoiseReduction ?? NoiseReduction.Off,
                 ExcludePaths = parsed.ExcludePaths,
                 ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles,
                 SkipSourceCodecs = parsed.SkipSourceCodecs,
@@ -252,6 +253,7 @@ internal static class LibraryEndpoints
             library.HdrHandling = parsed.HdrHandling;
             library.OptimiseDolbyVision = parsed.OptimiseDolbyVision;
             library.DeinterlaceVideo = parsed.DeinterlaceVideo;
+            library.NoiseReduction = parsed.NoiseReduction ?? library.NoiseReduction;
             library.ExcludePaths = parsed.ExcludePaths;
             library.ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles;
             library.SkipSourceCodecs = parsed.SkipSourceCodecs;

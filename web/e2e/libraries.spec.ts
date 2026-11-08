@@ -1130,6 +1130,20 @@ test('going back to Real-CUGAN clears the Real-ESRGAN choice', async ({ page }) 
   })
 })
 
+test('a library can choose how strongly to reduce noise, and is off until it does', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/encode/video')
+  const level = page.getByLabel(/Reduce noise/)
+  await expect(level).toHaveValue('Off')
+  await expect(page.getByText('Off by default. Changes the picture. Applies only when this library re-encodes video')).toBeVisible()
+
+  await level.selectOption('Light')
+
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ noiseReduction: 'Light' })
+})
+
 test('a library can choose to deinterlace, and is off until it does', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/encode/video')

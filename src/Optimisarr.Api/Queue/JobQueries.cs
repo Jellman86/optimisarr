@@ -2,6 +2,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Workers;
+using Optimisarr.Api.Library;
+using Optimisarr.Core.Domain;
+using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
@@ -287,16 +290,34 @@ public static class JobQueries
             return [];
         }
 
-        var placements = await db.Libraries
+        var libraries = await db.Libraries
             .AsNoTracking()
-            .Select(library => new { library.Id, library.WorkPlacement })
-            .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, cancellationToken);
+            .Select(library => new { library.Id, library.WorkPlacement, library.SuperResolutionEnabled, library.DeinterlaceVideo, library.NoiseReduction })
+            .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
+        var ids = queued.Select(job => job.Id).ToList();
+        var facts = await db.Jobs
+            .AsNoTracking()
+            .Where(job => ids.Contains(job.Id))
+            .Select(job => new
+            {
+                job.Id,
+                job.Type,
+                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
+                FieldOrder = job.MediaFile != null ? job.MediaFile.FieldOrder : null,
+            })
+            .ToDictionaryAsync(job => job.Id, job => job, cancellationToken);
+        var superResolutionOn = (await new SettingsStore(db).GetSuperResolutionOptionsAsync(cancellationToken)).Enabled;
 
         var now = DateTimeOffset.UtcNow;
         return queued
-            .Where(job => placements.TryGetValue(job.LibraryId!.Value, out var placement)
+            .Where(job => libraries.TryGetValue(job.LibraryId!.Value, out var library)
+                && facts.TryGetValue(job.Id, out var fact)
                 && !WorkPlacementPolicy.MayRunLocally(
-                    placement, availability.RemoteWorkersOn, availability.AWorkerCouldTakeWork, job.EnqueuedAt, now))
+                    QueueDispatcher.EffectivePlacement(library.WorkPlacement,
+                        SuperResolutionRouting.Applies(superResolutionOn, library.SuperResolutionEnabled, fact.Kind, replaceBound: fact.Type == JobType.Normal)
+                        || VideoFieldOrder.Deinterlaces(library.DeinterlaceVideo, fact.FieldOrder)
+                        || NoiseReductionFilter.KeepsOnServer(library.NoiseReduction, fact.Kind)),
+                    availability.RemoteWorkersOn, availability.AWorkerCouldTakeWork, job.EnqueuedAt, now))
             .Select(job => job.Id)
             .ToHashSet();
     }

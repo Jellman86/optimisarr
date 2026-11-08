@@ -576,6 +576,42 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void A_denoised_encode_is_judged_against_a_reference_cleaned_the_same_way_after_any_deinterlace()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            Legacy(new QualityMeasurementContext(720, 576, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Cuda,
+                ReferenceFrameRate: 25,
+                ReferenceDeinterlace: true,
+                ReferenceDenoise: Optimisarr.Core.Queue.NoiseReduction.Light)),
+            threads: 4);
+
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+        var reference = command.FilterGraph[command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)..];
+        Assert.StartsWith("[1:v]" + Optimisarr.Core.Domain.VideoFieldOrder.DeinterlaceFilter + ","
+            + Optimisarr.Core.Queue.NoiseReductionFilter.For(Optimisarr.Core.Queue.NoiseReduction.Light) + ",", reference);
+        var distorted = command.FilterGraph[..command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)];
+        Assert.DoesNotContain("hqdn3d", distorted);
+    }
+
+    [Fact]
+    public void A_capped_and_denoised_reference_is_cleaned_from_every_frame_before_it_is_thinned_and_the_report_says_so()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            Legacy(new QualityMeasurementContext(720, 576, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceFrameRate: 50,
+                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(50, 25, 2),
+                ReferenceDenoise: Optimisarr.Core.Queue.NoiseReduction.Strong)),
+            threads: 4);
+
+        var reference = command.FilterGraph[command.FilterGraph.IndexOf("[1:v]", StringComparison.Ordinal)..];
+        Assert.True(reference.IndexOf("hqdn3d", StringComparison.Ordinal) < reference.IndexOf("select", StringComparison.Ordinal));
+        Assert.Contains("reference noise-reduced (strong)", command.Preprocessing);
+    }
+
+    [Fact]
     public void A_deinterlaced_encode_is_judged_against_a_reference_deinterlaced_the_same_way()
     {
         var command = QualityScoreCommandBuilder.Build(

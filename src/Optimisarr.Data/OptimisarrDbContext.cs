@@ -242,6 +242,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.MediaType).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.RuleProfile).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.HdrHandling).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.NoiseReduction).HasConversion<string>().HasMaxLength(16);
             entity.Property(library => library.LastAutoDedupeOutcome).HasConversion<string>().HasMaxLength(24);
             entity.Property(library => library.ImageDownscaleMode).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.ContentTune).HasConversion<string>().HasMaxLength(32);

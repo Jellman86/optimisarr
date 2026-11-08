@@ -36,6 +36,15 @@ public sealed class SuperResolutionCommandBuilderTests
         SuperResolutionCommandBuilder.BuildEncoder(spec, "libx265", frameRate, threads: 4, optimisedMarker: "optimisarr-1", videoStart, bitDepth, colour ?? Hd);
 
     [Fact]
+    public void Noise_is_reduced_before_the_engine_sees_the_picture()
+    {
+        var args = SuperResolutionCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 8, Hd, deinterlace: true,
+            denoise: NoiseReduction.Strong);
+
+        Assert.StartsWith($"bwdif=mode=send_frame:parity=auto:deint=interlaced,{NoiseReductionFilter.For(NoiseReduction.Strong)},scale=", After(args, "-vf"));
+    }
+
+    [Fact]
     public void A_deinterlaced_source_reaches_the_engine_with_its_fields_combined()
     {
         var args = SuperResolutionCommandBuilder.BuildDecoder("/media/source.mkv", threads: 4, sourceBitDepth: 8, Hd, deinterlace: true);

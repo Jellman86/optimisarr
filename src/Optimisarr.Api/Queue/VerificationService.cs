@@ -41,6 +41,8 @@ public sealed record OriginalSnapshot(
     Optimisarr.Core.Queue.FrameRateDecimation? FrameRate = null,
     // The encode deinterlaced, so the quality reference is deinterlaced identically.
     bool Deinterlaced = false,
+    // The encode reduced noise, so the quality reference is cleaned identically.
+    Optimisarr.Core.Queue.NoiseReduction Denoised = Optimisarr.Core.Queue.NoiseReduction.Off,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
     IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
@@ -481,6 +483,7 @@ public sealed class VerificationService(
                 ReferenceDurationSeconds: referenceVideoDuration,
                 ReferenceFrameRate: originalProbe.VideoFrameRate,
                 ReferenceCrop: reference.Crop, ReferenceDecimation: reference.FrameRate, ReferenceDeinterlace: reference.Deinterlaced,
+                ReferenceDenoise: reference.Denoised,
                 ReferenceContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(originalProbe),
                 DistortedContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(outputProbe),
                 PairFramesByNumber: reference.FrameRate is null
@@ -638,6 +641,7 @@ public sealed class VerificationService(
             ReferenceCrop: reference.Crop,
             ReferenceDecimation: reference.FrameRate,
             ReferenceDeinterlace: reference.Deinterlaced,
+            ReferenceDenoise: reference.Denoised,
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
             DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
             PairFramesByNumber: pairFramesByNumber,

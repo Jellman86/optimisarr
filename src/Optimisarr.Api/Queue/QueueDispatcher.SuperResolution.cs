@@ -159,7 +159,7 @@ public sealed partial class QueueDispatcher
         var request = new SuperResolutionRunRequest(
             transcodeOptions.Ffmpeg,
             detection.BinaryPath,
-            SuperResolutionCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!, work.Spec.Deinterlace),
+            SuperResolutionCommandBuilder.BuildDecoder(work.Spec.InputPath, work.CpuThreadLimit, source.BitDepth, source.Colour!, work.Spec.Deinterlace, work.Spec.Denoise),
             encoderArguments,
             (input, output) => options.Engine.BuildArguments(input, output, detection.ModelsRoot, options),
             WorkOutputRoot.ForSuperResolution(_workRoot, jobId, Guid.NewGuid()),

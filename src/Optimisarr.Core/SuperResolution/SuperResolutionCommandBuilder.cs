@@ -21,7 +21,8 @@ public static class SuperResolutionCommandBuilder
     /// engine and scratch space never grows with the length of the video. The engine owns the
     /// picture work; the only filter is the dither a deeper source needs.
     /// </summary>
-    public static IReadOnlyList<string> BuildDecoder(string inputPath, int threads, int sourceBitDepth, SuperResolutionColour colour, bool deinterlace = false)
+    public static IReadOnlyList<string> BuildDecoder(string inputPath, int threads, int sourceBitDepth, SuperResolutionColour colour, bool deinterlace = false,
+        Queue.NoiseReduction denoise = Queue.NoiseReduction.Off)
     {
         var args = new List<string>
         {
@@ -35,7 +36,10 @@ public static class SuperResolutionCommandBuilder
         // engine reads 8-bit pictures; error diffusion carries a deeper source's gradients into
         // them without the banding a plain truncation would add.
         var dither = sourceBitDepth > 8 ? ":sws_dither=ed" : "";
-        var deinterlaceFirst = deinterlace ? $"{Domain.VideoFieldOrder.DeinterlaceFilter}," : "";
+        // Fields are combined, then noise reduced, before the engine sees the picture: an upscaler sharpens
+        // noise into detail it then cannot lose.
+        var deinterlaceFirst = (deinterlace ? $"{Domain.VideoFieldOrder.DeinterlaceFilter}," : "")
+            + (Queue.NoiseReductionFilter.For(denoise) is { } noise ? $"{noise}," : "");
         args.AddRange(["-vf", $"{deinterlaceFirst}scale=in_color_matrix={colour.Matrix}:in_range={colour.Range}{dither},format=rgb24"]);
         args.AddRange(["-pix_fmt", "rgb24", "-c:v", "png", "-f", "image2pipe", "-"]);
         return args;
