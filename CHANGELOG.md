@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Say what quality number a hardware encoder really uses, and let the same-codec size limit go under 1 GB (#507). A custom video quality now shows the number Intel, NVIDIA, AMD and Apple encoders will use instead (24 is treated as 20, on purpose), and a job's details explain why the number used can differ from the one requested. The limit for re-encoding files already in the target codec accepts fractions of a GB, and a saved fraction no longer rounds to a whole number when the library is reopened.
+- Say what quality number a hardware encoder really uses, and let the same-codec size limit go under 1 GB (#507). A custom video quality now shows the number Intel, NVIDIA, AMD and Apple encoders start from instead (24 starts at 20, on purpose), and a job's details explain why the number used can differ from the one requested. The limit for re-encoding files already in the target codec accepts fractions of a GB, and a saved fraction no longer rounds to a whole number when the library is reopened.
 
 - Make the setup wizard finish properly and say what really happens (#519). Finishing setup now looks through each enabled library for files and shows what it found, with a retry if one fails, instead of leaving an empty Inventory for up to an hour. The Safety step explains that originals stay in Quarantine and keep using space until they are approved or reach a time limit, which can now be set there. Setup no longer recommends turning VMAF off just because it would run on the CPU: each library keeps its own setting, and Off is offered only when the VMAF tool is missing. Recommendations now say why. Dry-run is described correctly: replacing is blocked until it is turned off in Settings.
 

@@ -25,6 +25,8 @@ const library = {
   lastAutoEnqueueAt: null, fileCount: 1,
 }
 
+const SKIP_EFFICIENT = /^Skip already-efficient sources/
+
 async function mockLibraries(page: Page, configuredLibrary = library, superResolutionOn = false, extraOptions: Record<string, unknown> = {}) {
   let currentLibrary = { ...configuredLibrary }
   await page.route('**/api/**', async (route: Route) => {
@@ -528,14 +530,26 @@ test('reopening a same-codec size limit does not round it or count as an edit', 
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
 })
 
+for (const [typed, bytes] of [['0.123', 132_070_244], ['0.001', 1_073_742]] as const) {
+  test(`a same-codec limit of ${typed} GB survives saving something else`, async ({ page }) => {
+    await mockLibraries(page, { ...library, mediaType: 'Film', reencodeSameCodecAboveBytes: bytes })
+    await page.goto('/#/libraries/1/configure/source/advanced')
+    await expect(page.getByRole('spinbutton', { name: 'Re-encode when larger than', exact: true })).toHaveValue(typed)
+    await page.getByRole('checkbox', { name: SKIP_EFFICIENT }).uncheck()
+    const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    expect((await saved).postDataJSON()).toMatchObject({ reencodeSameCodecAboveBytes: bytes, skipEfficientSources: false })
+  })
+}
+
 test('a custom video quality says what a hardware encoder really uses', async ({ page }) => {
   await mockLibraries(page, { ...library, mediaType: 'Film', qualityCrf: 24 }, false, { hardwareQualityHeadroom: 4 })
   await page.goto('/#/libraries/1/configure/encode/video/advanced')
-  await expect(page.getByText(/Software encoders use this number exactly\. Hardware encoders .* treat it as 20, 4 lower/)).toBeVisible()
+  await expect(page.getByText(/Software encoders start at this number\. Hardware encoders .* start at 20, 4 lower.*Adaptive VMAF and quality retries can move it/)).toBeVisible()
   await page.getByRole('slider', { name: 'Quality (CRF)', exact: true }).fill('28')
-  await expect(page.getByText(/treat it as 24, 4 lower/)).toBeVisible()
+  await expect(page.getByText(/start at 24, 4 lower/)).toBeVisible()
   await page.getByRole('checkbox', { name: /^Customise/ }).first().uncheck()
-  await expect(page.getByText(/Software encoders use this number exactly/)).toBeHidden()
+  await expect(page.getByText(/Software encoders start at this number/)).toBeHidden()
 })
 
 test('encoder effort uses portable choices and custom settings remain visible on the overview', async ({ page }) => {

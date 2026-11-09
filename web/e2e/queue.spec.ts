@@ -309,7 +309,7 @@ test('job detail explains why the quality used differs from the one requested', 
   await expect(details.getByText('ICQ 20')).toBeVisible()
   await expect(details.getByText('requested 24')).toBeVisible()
   await details.getByRole('button', { name: 'About: Video quality', exact: true }).focus()
-  await expect(details.getByRole('tooltip')).toContainText('hardware encoders always run a few points lower')
+  await expect(details.getByRole('tooltip')).toContainText('hardware encoders start a few points lower')
 
   await page.keyboard.press('Escape')
   await page.keyboard.press('Escape')

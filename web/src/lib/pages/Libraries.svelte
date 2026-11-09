@@ -1228,8 +1228,9 @@
       autoReplace: library.autoReplace,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
-    // Two decimals undo the rounding to whole bytes on save, so 0.3 reopens as 0.3.
-    sameCodecGb = library.reencodeSameCodecAboveBytes != null ? Math.round(library.reencodeSameCodecAboveBytes / BYTES_PER_GB * 100) / 100 : ''
+    // Six decimals undo the rounding to whole bytes on save, so 0.3 reopens as 0.3 and saving again
+    // cannot move a limit, while staying finer than anyone would type.
+    sameCodecGb = library.reencodeSameCodecAboveBytes != null ? Number((library.reencodeSameCodecAboveBytes / BYTES_PER_GB).toFixed(6)) : ''
     // A loaded library reads as Custom only when it actually carries a codec/container override
     // (isCustom derives that); the explicit flag starts clear so it doesn't leak between edits.
     customSelected = false
