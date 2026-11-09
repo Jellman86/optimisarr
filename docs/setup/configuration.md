@@ -578,7 +578,7 @@ researched quality target; specialist controls are available from the applicable
 
 A file already in the target codec is normally skipped. Enable **"Re-encode large
 files already in the target codec"** (**Choose files → Advanced eligibility**) to also re-encode oversized
-same-codec files above a size you set (default 20 GB) — useful for shrinking a huge
+same-codec files above a size you set (default 20 GB, and fractions such as 0.5 work) — useful for shrinking a huge
 HEVC remux under an HEVC preset. The size-saving verification gate still rejects an
 output that does not get smaller, so the original is never lost.
 

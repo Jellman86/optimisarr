@@ -511,6 +511,18 @@ public sealed class AdminTokenAuthEndpointTests
     }
 
     [Fact]
+    public async Task Library_options_say_how_far_hardware_encoders_move_the_quality_number()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+
+        var options = JsonNode.Parse(await client.GetStringAsync("/api/library-options"))!.AsObject();
+
+        var headroom = options["hardwareQualityHeadroom"]!.GetValue<int>();
+        Assert.Equal(EncoderQualityPolicy.Resolve("hevc_qsv", 24, retryCount: 0).Effective, 24 - headroom);
+    }
+
+    [Fact]
     public async Task Library_options_expose_the_complete_server_owned_video_preset_bundles()
     {
         var client = _api.CreateClient();
