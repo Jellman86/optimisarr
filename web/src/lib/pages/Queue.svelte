@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InfoTip from '../components/InfoTip.svelte'
   import CapturedDiagnosticTimeline from '../components/CapturedDiagnosticTimeline.svelte'
   import { tick } from 'svelte'
   import { modal } from '../modal'
@@ -826,6 +827,7 @@
               {selectedJob.videoQualityMode} {selectedJob.effectiveVideoQuality}
               {#if selectedJob.requestedVideoQuality != null && selectedJob.requestedVideoQuality !== selectedJob.effectiveVideoQuality}
                 <span class="text-ink-4">({t(i18n.m.queue.quality_requested, { value: selectedJob.requestedVideoQuality })})</span>
+                <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.queue.detail_quality })} text={i18n.m.queue.quality_effective_tip} />
               {/if}
             {:else}—{/if}
           </dd>

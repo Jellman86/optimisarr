@@ -25,7 +25,9 @@ const library = {
   lastAutoEnqueueAt: null, fileCount: 1,
 }
 
-async function mockLibraries(page: Page, configuredLibrary = library, superResolutionOn = false) {
+const SKIP_EFFICIENT = /^Skip already-efficient sources/
+
+async function mockLibraries(page: Page, configuredLibrary = library, superResolutionOn = false, extraOptions: Record<string, unknown> = {}) {
   let currentLibrary = { ...configuredLibrary }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
@@ -51,6 +53,7 @@ async function mockLibraries(page: Page, configuredLibrary = library, superResol
       videoCodecs: ['h264', 'hevc', 'av1'], containers: ['mp4', 'mkv'],
       encoderPresets: ['quick', 'balanced', 'efficient'], legacyEncoderPresets: ['veryslow'],
       imageFormats: ['webp'],
+      ...extraOptions,
     })
     if (path === '/api/candidates/summary') return json(route, [{ libraryId: 1, eligible: 0, skipped: 1 }])
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
@@ -504,6 +507,49 @@ test('invalid settings stay discoverable after navigating away from their field'
   await expect(page.getByLabel('Keep subtitle languages', { exact: true })).toHaveValue('english')
   await page.getByLabel('Keep subtitle languages', { exact: true }).fill('eng')
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+})
+
+test('the same-codec size limit can be under 1 GB and a saved fraction stays as it was', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Film' })
+  await page.goto('/#/libraries/1/configure/source/advanced')
+  await page.getByRole('checkbox', { name: /Re-encode large files already in the target codec/ }).check()
+  const size = page.getByRole('spinbutton', { name: 'Re-encode when larger than', exact: true })
+  await size.fill('0.5')
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ reencodeSameCodecAboveBytes: 536_870_912 })
+  await page.reload()
+  await expect(size).toHaveValue('0.5')
+})
+
+test('reopening a same-codec size limit does not round it or count as an edit', async ({ page }) => {
+  // 0.3 GB is what the editor saves for "0.3", and it does not divide back to exactly 0.3.
+  await mockLibraries(page, { ...library, mediaType: 'Film', reencodeSameCodecAboveBytes: Math.round(0.3 * 1024 ** 3) })
+  await page.goto('/#/libraries/1/configure/source/advanced')
+  await expect(page.getByRole('spinbutton', { name: 'Re-encode when larger than', exact: true })).toHaveValue('0.3')
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+})
+
+for (const [typed, bytes] of [['0.123', 132_070_244], ['0.001', 1_073_742]] as const) {
+  test(`a same-codec limit of ${typed} GB survives saving something else`, async ({ page }) => {
+    await mockLibraries(page, { ...library, mediaType: 'Film', reencodeSameCodecAboveBytes: bytes })
+    await page.goto('/#/libraries/1/configure/source/advanced')
+    await expect(page.getByRole('spinbutton', { name: 'Re-encode when larger than', exact: true })).toHaveValue(typed)
+    await page.getByRole('checkbox', { name: SKIP_EFFICIENT }).uncheck()
+    const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    expect((await saved).postDataJSON()).toMatchObject({ reencodeSameCodecAboveBytes: bytes, skipEfficientSources: false })
+  })
+}
+
+test('a custom video quality says what a hardware encoder really uses', async ({ page }) => {
+  await mockLibraries(page, { ...library, mediaType: 'Film', qualityCrf: 24 }, false, { hardwareQualityHeadroom: 4 })
+  await page.goto('/#/libraries/1/configure/encode/video/advanced')
+  await expect(page.getByText(/Software encoders start at this number\. Hardware encoders .* start at 20, 4 lower.*Adaptive VMAF and quality retries can move it/)).toBeVisible()
+  await page.getByRole('slider', { name: 'Quality (CRF)', exact: true }).fill('28')
+  await expect(page.getByText(/start at 24, 4 lower/)).toBeVisible()
+  await page.getByRole('checkbox', { name: /^Customise/ }).first().uncheck()
+  await expect(page.getByText(/Software encoders start at this number/)).toBeHidden()
 })
 
 test('encoder effort uses portable choices and custom settings remain visible on the overview', async ({ page }) => {

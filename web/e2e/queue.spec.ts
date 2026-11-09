@@ -298,6 +298,27 @@ test('a job skipped before encoding says why', async ({ page }) => {
   await expect(page.getByTestId('job-cancelled-reason')).toContainText('Interlaced video')
 })
 
+test('job detail explains why the quality used differs from the one requested', async ({ page }) => {
+  await mockWorkingQueue(page, { jobs: [
+    { ...job(8, 'Failed', false), videoEncoder: 'hevc_qsv', videoQualityMode: 'ICQ', requestedVideoQuality: 24, effectiveVideoQuality: 20 },
+    job(9, 'Failed', false),
+  ] })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-8').click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details.getByText('ICQ 20')).toBeVisible()
+  await expect(details.getByText('requested 24')).toBeVisible()
+  await details.getByRole('button', { name: 'About: Video quality', exact: true }).focus()
+  await expect(details.getByRole('tooltip')).toContainText('hardware encoders start a few points lower')
+
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  await expect(details).toBeHidden()
+  await page.locator('#queue-job-9').click()
+  await expect(details.getByText('crf 24')).toBeVisible()
+  await expect(details.getByRole('button', { name: 'About: Video quality', exact: true })).toHaveCount(0)
+})
+
 test('job detail downloads only a matching opt-in diagnostic capture', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [job(8, 'Failed', false), job(9, 'Failed', false)] })
   let releaseLookup!: () => void

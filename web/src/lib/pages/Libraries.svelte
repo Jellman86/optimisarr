@@ -45,6 +45,7 @@
     encoderPresets: [],
     legacyEncoderPresets: [],
     imageFormats: [],
+    hardwareQualityHeadroom: 0,
   })
 
   // Named queue-priority levels, so the slider reads as a word rather than a raw number.
@@ -1227,7 +1228,9 @@
       autoReplace: library.autoReplace,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
-    sameCodecGb = library.reencodeSameCodecAboveBytes != null ? Math.round(library.reencodeSameCodecAboveBytes / BYTES_PER_GB) : ''
+    // Six decimals undo the rounding to whole bytes on save, so 0.3 reopens as 0.3 and saving again
+    // cannot move a limit, while staying finer than anyone would type.
+    sameCodecGb = library.reencodeSameCodecAboveBytes != null ? Number((library.reencodeSameCodecAboveBytes / BYTES_PER_GB).toFixed(6)) : ''
     // A loaded library reads as Custom only when it actually carries a codec/container override
     // (isCustom derives that); the explicit flag starts clear so it doesn't leak between edits.
     customSelected = false
@@ -2539,7 +2542,7 @@
           {#if sameCodecGb !== ''}
             <div class="mt-2 flex items-center gap-2 pl-6 text-sm">
               <span class="text-ink-3">{i18n.m.libraries.same_codec_when}</span>
-              <input class="input w-24" type="number" min="1" step="1" bind:value={sameCodecGb} aria-label={i18n.m.libraries.same_codec_when} />
+              <input class="input w-24" type="number" min="0.1" step="0.1" bind:value={sameCodecGb} aria-label={i18n.m.libraries.same_codec_when} />
               <span class="text-ink-3">{i18n.m.libraries.gb}</span>
             </div>
           {/if}
@@ -2820,6 +2823,9 @@
               <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
               <span class="badge col-span-3 w-10 justify-center justify-self-end tone-accent sm:col-span-1">{form.qualityCrf}</span>
             </div>
+            {#if options.hardwareQualityHeadroom > 0}
+              <p class="mt-1 text-xs text-ink-4">{t(i18n.m.libraries.quality_hardware_note, { hardware: Math.max(0, form.qualityCrf - options.hardwareQualityHeadroom), offset: options.hardwareQualityHeadroom })}</p>
+            {/if}
           {:else}
             <p class="text-xs text-ink-4">{i18n.m.libraries.using_preset_quality}</p>
           {/if}

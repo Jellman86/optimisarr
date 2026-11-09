@@ -380,6 +380,7 @@ export type LibraryOptions = {
   encoderPresets: string[]
   legacyEncoderPresets: string[]
   imageFormats: string[]
+  hardwareQualityHeadroom: number
 }
 
 /** The Real-CUGAN super-resolution engine section. The engine itself is fixed — these
