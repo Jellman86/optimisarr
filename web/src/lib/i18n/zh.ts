@@ -1010,6 +1010,8 @@ export const zh: Messages = {
     attempt_history: '先前的尝试',
     attempt_number: '第 {number} 次尝试',
     attempt_rejected: '已拒绝的候选文件',
+    attempt_failed: "失败的尝试",
+    attempt_ffmpeg_said: "FFmpeg 的输出",
     attempts: '尝试记录',
     attempt_current: '当前尝试',
     attempt_decode_corruption: '硬件解码损坏',

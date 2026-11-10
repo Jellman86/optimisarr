@@ -912,11 +912,17 @@
               <li class="attempt-item">
                 <div class="attempt-card">
                   <div class="attempt-card-top">
-                    <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {i18n.m.queue.attempt_rejected}</strong>
+                    <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {attempt.outcome === 'Failed' ? i18n.m.queue.attempt_failed : i18n.m.queue.attempt_rejected}</strong>
                     <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
                   </div>
                   <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder}{` · ${attempt.hardwareDecoder}`}{/if}</p>
                   {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason === 'IntelQsvTimestamps' ? i18n.m.queue.attempt_qsv_timestamps : attempt.reason === 'WorkerHandback' ? i18n.m.queue.attempt_worker_handback : attempt.reason}</p>{/if}
+                  {#if (attempt.reason === 'WorkerHandback' || attempt.reason === 'IntelQsvTimestamps') && attempt.processLog}
+                    <details class="attempt-checks">
+                      <summary>{i18n.m.queue.attempt_ffmpeg_said}</summary>
+                      <pre class="attempt-log">{attempt.processLog}</pre>
+                    </details>
+                  {/if}
                   {#if attemptChecks(attempt).length > 0}
                     <details class="attempt-checks">
                       <summary>{i18n.m.queue.attempt_checks}</summary>
@@ -1195,6 +1201,7 @@
   .attempt-card .attempt-reason { color: var(--ink-2); }
   .attempt-checks { margin-top: .875rem; border-top: 1px solid var(--divide-soft); padding-top: .75rem; }
   .attempt-checks summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: .25rem 0; }
+  .attempt-log { margin-top: .5rem; max-height: 16rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .6875rem; line-height: 1.5; color: var(--ink-2); }
   .queue-diagnostic-action { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; border: 1px solid var(--edge); border-radius: .75rem; padding: 1rem; background: var(--raised); box-shadow: var(--lift-1); transition: box-shadow 180ms ease; }
   .queue-diagnostic-action:hover, .queue-diagnostic-action:focus-within { box-shadow: var(--lift-3); }
   .queue-diagnostic-action > div { min-width: 0; }

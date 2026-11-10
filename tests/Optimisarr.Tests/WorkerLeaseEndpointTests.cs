@@ -1094,6 +1094,61 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_second_refusal_of_the_same_job_makes_the_same_worker_wait_twice_as_long()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Repeating");
+        var jobId = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            // One earlier refusal by this worker, and its latest one 15 minutes ago: past the first
+            // ten-minute wait, inside the twenty that a second refusal earns.
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var workerId = (await db.Workers.SingleAsync(w => w.Name == "Repeating")).Id;
+            var now = DateTimeOffset.UtcNow;
+            foreach (var endedAt in new[] { now.AddMinutes(-60), now.AddMinutes(-15) })
+            {
+                db.JobLeases.Add(new JobLease
+                {
+                    Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId, State = LeaseState.Released,
+                    AcquiredAt = endedAt.AddMinutes(-3), ExpiresAt = endedAt, EndedAt = endedAt,
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_failure_reported_for_a_job_cancelled_meanwhile_is_not_recorded()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Late");
+        var jobId = await QueueAJob();
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release",
+            new { failure = "FFmpeg exited with code 255.\nExiting normally, received signal 15." });
+
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        using var after = _api.Services.CreateScope();
+        var stored = await after.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Cancelled, stored.Status);
+        Assert.Null(stored.AttemptHistoryJson);
+    }
+
+    [Fact]
     public async Task A_worker_handback_that_names_another_failure_is_kept_without_changing_the_encoder()
     {
         await EnableRemoteWorkers();

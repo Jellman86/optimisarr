@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
@@ -1205,14 +1206,16 @@ internal static class WorkerLeaseEndpoints
             var requeued = false;
             return await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
                 (lease, workerId, now) => lease.Release(workerId, now),
-                (_, job, outcome) =>
+                (lease, job, outcome) =>
                 {
                     // Requeue unfinished work, but preserve cancellation if it won while the
                     // worker was stopping its child process. Release still frees lease capacity.
                     if (job.Status == JobStatus.Leased)
                     {
                         job.Status = JobStatus.Queued;
-                        requeued = true;
+                        // A late repeat of an earlier release must not be recorded against the
+                        // attempt another worker has claimed since.
+                        requeued = lease.ExecutionAttempt == job.ExecutionAttempt;
                     }
                 },
                 _ => Results.NoContent(),
@@ -1224,6 +1227,8 @@ internal static class WorkerLeaseEndpoints
                     WorkerHandback.Record(job, lease, workerName, failure, DateTimeOffset.UtcNow);
                 });
         })
+        // A report is a few kilobytes and is cut to 8,000 characters; nothing larger is read.
+        .WithMetadata(new RequestSizeLimitAttribute(64 * 1024))
         .WithName("ReleaseLease")
         // Declared like the other worker routes: this is outside admin-token protection, so the
         // document transformer will not add the 401 that an unknown or revoked credential returns.
