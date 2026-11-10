@@ -11,26 +11,33 @@
     label,
     hint = '',
     disabled = false,
+    bare = false,
+    describedBy = undefined,
   }: {
     checked?: boolean
     label: string
     hint?: string
     disabled?: boolean
+    /** Only the switch: the row it sits in already shows the label and explains it. */
+    bare?: boolean
+    describedBy?: string
   } = $props()
 </script>
 
 <label
-  class="flex items-center justify-between gap-4 {disabled
+  class="flex items-center gap-4 {bare ? 'min-h-11 justify-end' : 'justify-between'} {disabled
  ? 'cursor-not-allowed opacity-60'
  : 'cursor-pointer'}"
 >
-  <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-ink-2">
-    <span class="min-w-0 break-words">{label}</span>
-    {#if hint}<InfoTip text={hint} label={t(i18n.m.common.about_information, { label })} />{/if}
-  </span>
+  {#if !bare}
+    <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-ink-2">
+      <span class="min-w-0 break-words">{label}</span>
+      {#if hint}<InfoTip text={hint} label={t(i18n.m.common.about_information, { label })} />{/if}
+    </span>
+  {/if}
 
   <span class="relative inline-flex h-6 w-11 flex-shrink-0 items-center">
-    <input type="checkbox" class="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0" aria-label={label} bind:checked {disabled} />
+    <input type="checkbox" class="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0" aria-label={label} aria-describedby={describedBy} bind:checked {disabled} />
     <span class="switch-track"></span>
     <span class="switch-knob"></span>
   </span>

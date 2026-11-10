@@ -98,7 +98,7 @@ for tested paths and remaining limitations.
 
 ### Placement
 
-Open **Libraries → Configure → Choose files → Advanced eligibility → Where this library's work
+Open **Libraries → Configure → Schedule & replace → Where this library's work
 may run**. Placement is saved per library and applies to eligible video and audio re-encodes and
 still-image quality-first jobs.
 
@@ -109,7 +109,7 @@ still-image quality-first jobs.
 | **Prefer a worker** | Give an online, non-draining worker first opportunity, then allow the container after up to ten minutes. The waiting window starts when the job becomes eligible to run, not when it was queued. |
 | **Only on workers** | Wait for a compatible worker; do not fall back to a local encode. |
 
-![Advanced eligibility page showing its library breadcrumb and all four work-placement choices](../images/optimisarr-library-advanced-eligibility-dark.png)
+![Schedule & replace page showing all four work-placement choices](../images/optimisarr-library-automation-dark.png)
 
 Turning **Remote workers** off makes placement fall back to the container, including libraries
 saved as **Only on workers**. Keep remote workers enabled to enforce worker-only placement.

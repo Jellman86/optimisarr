@@ -125,10 +125,12 @@ try {
  await go('/');await expect(page.getByRole('heading',{name:'Dashboard',exact:true})).toBeVisible();await shot('dashboard',null);await shot('dashboard-main');await aliases('dashboard-main',['dashboard-savings'])
  await go('/libraries');await expect(page.locator('[data-library-card="1"]')).toBeVisible();await shot('libraries',null);await shot('libraries-main')
  await page.setViewportSize({width:2048,height:1167})
- await go('/libraries/1/configure');await expect(page.getByRole('button',{name:/Choose files/}).first()).toBeVisible();await shot('library-configure')
- for(const [route,name]of[['source','library-choose-files'],['source/advanced','library-advanced-eligibility'],['encode','library-encode'],['encode/video/advanced','library-advanced-encoding'],['verify/advanced','library-advanced-verification'],['automate','library-automation']]){await go('/libraries/1/configure/'+route);await shot(name)}
+ // A settings page is one long scroll inside the app frame, so the window grows to show all of it.
+ async function wholePage(){await page.setViewportSize({width:2048,height:1167});const height=await page.locator('main').evaluate(main=>main.scrollHeight+window.innerHeight-main.clientHeight);await page.setViewportSize({width:2048,height:Math.min(Math.max(height,1167),7000)});await page.waitForTimeout(200)}
+ await go('/libraries/1/configure');await expect(page.locator('[data-library-summary]')).toBeVisible();await wholePage();await shot('library-configure')
+ for(const [route,name]of[['files','library-choose-files'],['video','library-encode'],['audio','library-audio'],['checks','library-checks'],['schedule','library-automation']]){await go('/libraries/1/configure/'+route);await wholePage();await shot(name)}
  await page.getByRole('radio',{name:'Replace the original automatically',exact:true}).click();await expect(page.getByRole('dialog',{name:'Do you really, really mean it?'})).toBeVisible();await shot('auto-accept-confirmation','dialog');await page.keyboard.press('Escape')
- await go('/libraries/1/configure');await page.getByRole('button',{name:/^Candidates/}).click();await shot('library-candidates');await page.getByRole('button',{name:/^Excluded/}).click();await shot('library-excluded')
+ await page.setViewportSize({width:2048,height:1167});await go('/libraries/1/configure');await page.getByRole('button',{name:/^Candidates/}).click();await shot('library-candidates');await page.getByRole('button',{name:/^Excluded/}).click();await shot('library-excluded')
  await page.setViewportSize({width:1440,height:1000})
  await go('/inventory');await expect(page.getByRole('button',{name:/Lumen Coast.mkv/})).toBeVisible();await shot('inventory',null);await shot('inventory-main');await page.getByRole('button',{name:/Lumen Coast.mkv/}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('inventory-detail','dialog')
  await page.route('**/api/libraries',route=>json(route,[...f.libraries,f.duplicateArchive]))
@@ -154,11 +156,11 @@ try {
  await page.route('**/api/jobs?*',route=>json(route,[f.audioJob]));await page.route('**/api/jobs',route=>json(route,[f.audioJob]));
  await page.setViewportSize({width:1440,height:1000});await go('/queue');await page.locator('tbody tr').first().getByRole('button').first().click();
  await expect(page.getByRole('region',{name:'Audio quality report',exact:true})).toBeVisible();await shot('audio-report','[aria-label="Audio quality report"]');await page.keyboard.press('Escape')
- await go('/libraries/4/configure/verify/advanced');await expect(page.getByRole('spinbutton',{name:'Minimum SSIMULACRA2 score',exact:true})).toHaveValue('80');await shot('image-quality-settings','fieldset:not([data-library-workflow]):has(#lib-image-perceptual-score)')
+ await go('/libraries/4/configure/images');await expect(page.locator('#lib-image-perceptual-score')).toHaveValue('80');await shot('image-quality-settings','#library-image-quality')
  await page.route('**/api/jobs?*',route=>json(route,[f.imageQualityJob]));await page.route('**/api/jobs',route=>json(route,[f.imageQualityJob]));
  await go('/queue');await page.getByRole('button',{name:'View job',exact:true}).click();await expect(page.getByRole('region',{name:'Image quality report',exact:true})).toBeVisible();await shot('image-quality-report','[aria-label="Image quality report"]');await page.keyboard.press('Escape')
- await go('/libraries/3/configure/encode/audio');await expect(page.locator('[data-audio-encoding-preset]')).toBeVisible();await shot('audio-encoding-presets','[data-config-section]:has([data-audio-encoding-preset])')
- await go('/libraries/3/configure/verify/advanced');await expect(page.getByRole('spinbutton',{name:'Maximum audio difference',exact:true})).toHaveValue('0.005');await shot('audio-quality-settings','fieldset:not([data-library-workflow]):has(#lib-audio-quality-limit)')
+ await go('/libraries/3/configure/audio');await expect(page.locator('[data-audio-encoding-preset]')).toBeVisible();await shot('audio-encoding-presets','[data-setting-row]:has([data-audio-encoding-preset])')
+ await expect(page.locator('#lib-audio-quality-limit')).toHaveValue('0.005');await shot('audio-quality-settings','[data-setting-row]:has(#lib-audio-quality-stop)')
  await page.route('**/api/jobs?*',route=>json(route,[f.audioGatedJob]));await page.route('**/api/jobs',route=>json(route,[f.audioGatedJob]));
  await go('/queue');await page.locator('tbody tr').first().getByRole('button').first().click();await expect(page.getByRole('region',{name:'Audio quality report',exact:true})).toContainText('Blocked');await shot('audio-gate','[aria-label="Audio quality report"]');await page.keyboard.press('Escape')
 
@@ -168,8 +170,8 @@ try {
  await shot('soundtrack-report','[aria-label="Soundtrack quality report"]');await page.keyboard.press('Escape');await page.setViewportSize({width:1440,height:1000});
  await page.route('**/api/libraries',route=>json(route,f.libraries.map(library=>library.id===1?{...library,
    soundtrackQualityReportingEnabled:true,soundtrackQualityGateEnabled:true,maximumSoundtrackQualityDistance:0.005}:library)));
- await go('/libraries/1/configure/verify/advanced');await expect(page.locator('#lib-soundtrack-quality-limit')).toHaveValue('0.005');
- await shot('soundtrack-quality-settings','fieldset:not([data-library-workflow]):has(#lib-soundtrack-quality-limit)');
+ await go('/libraries/1/configure/audio');await expect(page.locator('#lib-soundtrack-quality-limit')).toHaveValue('0.005');
+ await shot('soundtrack-quality-settings','#library-soundtrack-quality');
  await page.unroute('**/api/jobs?*');await page.unroute('**/api/jobs');await page.unroute('**/api/libraries');queueStatus=f.playbackQueue
  await page.reload()
  await go('/queue');await expect(page.locator('.status-strip-reason')).toContainText('Lumen Coast');await expect(page.locator('.playback-holds').first()).toContainText('Taylor on Living room TV');await expect(page.locator('.playback-holds img.opacity-100')).toHaveCount(3);await shot('queue-playback',null)

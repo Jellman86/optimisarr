@@ -517,8 +517,8 @@ test('embedded library configuration never offers an unreachable quality-check p
   await mockSetup(page, 3)
   await page.goto('/')
   await page.getByRole('button', { name: 'Configure', exact: true }).click()
-  await page.getByRole('navigation', { name: 'Processing workflow' }).getByRole('button', { name: /Encode/ }).click()
-  await page.getByRole('button', { name: 'Video settings', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Library settings pages' }).getByRole('button', { name: 'Video', exact: true }).click()
+  await expect(page.locator('#lib-vmaf-policy')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Personal quality check', exact: true })).toHaveCount(0)
 })
 
