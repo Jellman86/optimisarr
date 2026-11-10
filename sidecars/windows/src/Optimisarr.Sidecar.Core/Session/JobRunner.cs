@@ -175,7 +175,8 @@ public sealed class JobRunner(
 
             if (!result.Succeeded)
             {
-                await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                await client.ReleaseAfterFailureAsync(pairing, assignment.LeaseId,
+                    $"FFmpeg exited with code {result.ExitCode}.\n{result.ErrorTail}", CancellationToken.None);
                 return new JobOutcome(assignment.JobId, false,
                     $"FFmpeg exited with code {result.ExitCode}. {FirstLine(result.ErrorTail)}");
             }

@@ -8,6 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Data;
@@ -1055,6 +1056,197 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var second = await worker.PostAsJsonAsync("/api/workers/claim", new { });
 
         Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_worker_handback_with_a_qsv_timestamp_failure_is_recorded_and_avoids_qsv_next_time()
+    {
+        // Boothby failed this way 20 times on 2026-11-09 and the server never knew why: a release
+        // carried no reason. Now the worker says, the attempt is kept on the job, and the next
+        // assignment avoids QSV instead of failing at the same frame again.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Boothby", 1, ["hevc_qsv", "hevc_vaapi", "libx265"], ["qsv", "vaapi"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var assignment = await claimed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("hevc_qsv", assignment.GetProperty("videoEncoder").GetString());
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+        const string failure = "FFmpeg exited with code 234.\n[vost#0:0/hevc_qsv @ 0x5626] Non-monotonic DTS; previous: 16507520, "
+            + "current: 16444160; Error submitting a packet to the muxer: Invalid argument\nConversion failed!";
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { failure });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Queued, job.Status);
+            Assert.True(job.AvoidIntelQsv);
+            Assert.Equal("AvoidIntelQsv", job.RetryReason);
+            var attempt = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+            Assert.Equal("Boothby", attempt.WorkerName);
+            Assert.Equal("IntelQsvTimestamps", attempt.Reason);
+            Assert.Contains("Non-monotonic DTS", attempt.ProcessLog);
+            var lease = await db.JobLeases.AsNoTracking().SingleAsync(l => l.JobId == jobId);
+            Assert.Contains("Non-monotonic DTS", lease.HandbackFailure);
+        }
+    }
+
+    [Fact]
+    public async Task A_second_refusal_of_the_same_job_makes_the_same_worker_wait_twice_as_long()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Repeating");
+        var jobId = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            // One earlier refusal by this worker, and its latest one 15 minutes ago: past the first
+            // ten-minute wait, inside the twenty that a second refusal earns.
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var workerId = (await db.Workers.SingleAsync(w => w.Name == "Repeating")).Id;
+            var now = DateTimeOffset.UtcNow;
+            foreach (var endedAt in new[] { now.AddMinutes(-60), now.AddMinutes(-15) })
+            {
+                db.JobLeases.Add(new JobLease
+                {
+                    Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId, State = LeaseState.Released,
+                    AcquiredAt = endedAt.AddMinutes(-3), ExpiresAt = endedAt, EndedAt = endedAt,
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_capacity_return_does_not_restart_the_long_wait_old_refusals_earned()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("CapacityReturner");
+        var jobId = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            // Seven refusals long enough ago that even their six-hour wait is over, then a capacity
+            // return 15 minutes ago: that earns only the ordinary ten-minute pause.
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var workerId = (await db.Workers.SingleAsync(w => w.Name == "CapacityReturner")).Id;
+            var now = DateTimeOffset.UtcNow;
+            for (var refusal = 0; refusal < 7; refusal++)
+            {
+                var endedAt = now.AddHours(-20 + refusal);
+                db.JobLeases.Add(new JobLease { Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId,
+                    State = LeaseState.Released, AcquiredAt = endedAt.AddMinutes(-3), ExpiresAt = endedAt, EndedAt = endedAt });
+            }
+            db.JobLeases.Add(new JobLease { Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId,
+                State = LeaseState.Released, EndReason = LeaseEndReason.CapacityUnavailable,
+                AcquiredAt = now.AddMinutes(-16), ExpiresAt = now.AddMinutes(-15), EndedAt = now.AddMinutes(-15) });
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_late_repeat_of_an_old_release_leaves_the_job_with_the_worker_that_claimed_it_since()
+    {
+        await EnableRemoteWorkers();
+        var first = await PairCapableWorker("Earlier");
+        var second = await PairCapableWorker("Later");
+        var jobId = await QueueAJob();
+        using var claimed = await first.PostAsJsonAsync("/api/workers/claim", new { });
+        var oldLease = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using (var released = await first.PostAsJsonAsync($"/api/workers/leases/{oldLease}/release", new { }))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        }
+        using var reclaimed = await second.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, reclaimed.StatusCode);
+
+        using var repeated = await first.PostAsJsonAsync($"/api/workers/leases/{oldLease}/release",
+            new { failure = "FFmpeg exited with code 234.\n[vost#0:0/hevc_qsv @ 0x1] Non-monotonic DTS; Error submitting a packet to the muxer" });
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Leased, job.Status);
+        Assert.False(job.AvoidIntelQsv);
+        Assert.Null(job.AttemptHistoryJson);
+        Assert.Single(await db.JobLeases.AsNoTracking().Where(l => l.JobId == jobId && l.State == LeaseState.Held).ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_report_in_an_unreadable_charset_is_a_plain_release()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Odd");
+        var jobId = await QueueAJob();
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var content = new StringContent("{}");
+        content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=bogus");
+
+        using var released = await worker.PostAsync($"/api/workers/leases/{leaseId}/release", content);
+
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Null(job.AttemptHistoryJson);
+    }
+
+    [Fact]
+    public async Task A_failure_reported_for_a_job_cancelled_meanwhile_is_not_recorded()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Late");
+        var jobId = await QueueAJob();
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release",
+            new { failure = "FFmpeg exited with code 255.\nExiting normally, received signal 15." });
+
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        using var after = _api.Services.CreateScope();
+        var stored = await after.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Cancelled, stored.Status);
+        Assert.Null(stored.AttemptHistoryJson);
+    }
+
+    [Fact]
+    public async Task A_worker_handback_that_names_another_failure_is_kept_without_changing_the_encoder()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Plain");
+        var jobId = await QueueAJob();
+
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release",
+            new { failure = "FFmpeg exited with code 1.\nNo space left on device" });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.False(job.AvoidIntelQsv);
+        Assert.Null(job.RetryReason);
+        var attempt = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+        Assert.Equal("WorkerHandback", attempt.Reason);
+        Assert.Contains("No space left", attempt.ProcessLog);
     }
 
     [Fact]

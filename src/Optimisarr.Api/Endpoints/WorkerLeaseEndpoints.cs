@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
@@ -312,10 +313,21 @@ internal static class WorkerLeaseEndpoints
                     .Where(handback => handback.EndReason == null)
                     .GroupBy(h => h.JobId)
                     .ToDictionary(g => g.Key, g => g.Select(h => h.WorkerId).Distinct().Count());
-                var lastHandbackHere = handbacks
-                    .Where(h => h.WorkerId == worker.Id)
+                // A refusal and a capacity return each start their own wait: a capacity return earns
+                // only the ordinary pause, and must not restart the longer wait old refusals earned.
+                var lastRefusalHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id && h.EndReason == null)
                     .GroupBy(h => h.JobId)
                     .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+                var lastCapacityReturnHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id && h.EndReason == LeaseEndReason.CapacityUnavailable)
+                    .GroupBy(h => h.JobId)
+                    .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+                // Each refusal from this machine doubles its own wait; see HandbackPolicy.MaxCooldown.
+                var refusalsHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id && h.EndReason == null)
+                    .GroupBy(h => h.JobId)
+                    .ToDictionary(g => g.Key, g => g.Count());
 
                 var candidates = shortlist
                     .Select(id => loaded.FirstOrDefault(job => job.Id == id))
@@ -351,12 +363,20 @@ internal static class WorkerLeaseEndpoints
 
                     // A job this worker already gave back, or that too many workers have given back.
                     // Offering it again straight away is a loop that re-downloads the source each time.
-                    lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
+                    lastRefusalHere.TryGetValue(job.Id, out var refusedAt);
+                    lastCapacityReturnHere.TryGetValue(job.Id, out var returnedAt);
                     refusingWorkers.TryGetValue(job.Id, out var refusedBy);
-                    if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now))
+                    refusalsHere.TryGetValue(job.Id, out var refusedHere);
+                    if (!HandbackPolicy.MayOffer(refusedAt, refusedBy, now, refusedHere))
                     {
                         skipped++;
-                        lastReason = HandbackPolicy.Explain(handedBackHere, refusedBy, now);
+                        lastReason = HandbackPolicy.Explain(refusedAt, refusedBy, now, refusedHere);
+                        continue;
+                    }
+                    if (!HandbackPolicy.MayOffer(returnedAt, workersWhoRefused: 0, now))
+                    {
+                        skipped++;
+                        lastReason = HandbackPolicy.Explain(returnedAt, workersWhoRefused: 0, now);
                         continue;
                     }
 
@@ -1195,20 +1215,61 @@ internal static class WorkerLeaseEndpoints
             CancellationToken cancellationToken) =>
             await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
                 (lease, workerId, now) => lease.Release(workerId, now),
-                (_, job, outcome) =>
+                (_, _, _) => { },
+                _ => Results.NoContent(),
+                afterApply: async (db, lease, job) =>
                 {
                     // Requeue unfinished work, but preserve cancellation if it won while the
                     // worker was stopping its child process. Release still frees lease capacity.
-                    if (job.Status == JobStatus.Leased)
+                    // A late repeat of an earlier release must not take the job back from the
+                    // worker that has claimed it since, nor be recorded against its attempt.
+                    if (job.Status != JobStatus.Leased
+                        || await db.JobLeases.AnyAsync(other => other.JobId == job.Id && other.Id != lease.Id
+                            && other.State == LeaseState.Held, cancellationToken))
                     {
-                        job.Status = JobStatus.Queued;
+                        return;
                     }
-                },
-                _ => Results.NoContent()))
+
+                    job.Status = JobStatus.Queued;
+                    // Read only now, after the worker has been authenticated and its lease released.
+                    // Older workers send no body, or an empty object. A newer one says what went wrong.
+                    if (WorkerHandbackFailure.Normalise((await ReadReleaseAsync(http, cancellationToken))?.Failure)
+                        is not { } failure)
+                    {
+                        return;
+                    }
+
+                    var workerName = await db.Workers.AsNoTracking().Where(w => w.Id == lease.WorkerId)
+                        .Select(w => w.Name).FirstOrDefaultAsync(cancellationToken);
+                    WorkerHandback.Record(job, lease, workerName, failure, DateTimeOffset.UtcNow);
+                }))
+        // A report is a few kilobytes and is cut to 8,000 characters; nothing larger is read.
+        .WithMetadata(new RequestSizeLimitAttribute(64 * 1024))
         .WithName("ReleaseLease")
         // Declared like the other worker routes: this is outside admin-token protection, so the
         // document transformer will not add the 401 that an unknown or revoked credential returns.
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+    }
+
+    private sealed record ReleaseRequest(string? Failure);
+
+    private static async Task<ReleaseRequest?> ReadReleaseAsync(HttpRequest http, CancellationToken cancellationToken)
+    {
+        if (http.ContentLength is 0 || !http.HasJsonContentType())
+        {
+            return null;
+        }
+
+        // A report the server cannot read, malformed or in an unsupported charset, is a plain release.
+        try
+        {
+            return await http.ReadFromJsonAsync<ReleaseRequest>(cancellationToken);
+        }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException
+            or NotSupportedException or System.Text.DecoderFallbackException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

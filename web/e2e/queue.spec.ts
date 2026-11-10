@@ -255,6 +255,32 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
   await expect(rows.filter({ hasText: 'Severance' })).toContainText('waiting for a worker')
 })
 
+test('a job a worker failed on QSV says so, shows what FFmpeg said and is retried without QSV', async ({ page }) => {
+  const failed = {
+    number: 1, workerName: 'Boothby', videoEncoder: 'hevc_qsv', hardwareDecoder: 'qsv',
+    startedAt: '2026-11-09T02:03:45Z', endedAt: '2026-11-09T02:11:08Z', verificationPassed: null,
+    verificationReportJson: null, verifiedAt: null, outputSizeBytes: null, outcome: 'Failed', reason: 'IntelQsvTimestamps',
+    processLog: 'FFmpeg exited with code 234.\n[vost#0:0/hevc_qsv @ 0x5626] Non-monotonic DTS; Error submitting a packet to the muxer: Invalid argument',
+  }
+  const retried = {
+    ...job(8, 'Transcoding', null), relativePath: 'Pokémon S20E35.mkv', workerName: 'Boothby', videoEncoder: 'hevc_vaapi',
+    executionAttempt: 2, retryReason: 'AvoidIntelQsv', attemptHistoryJson: JSON.stringify([failed]), outputSizeBytes: null,
+  }
+  await mockWorkingQueue(page, { jobs: [retried] })
+  await page.goto('/#/queue')
+  await page.getByRole('region', { name: 'Working now' }).getByRole('button', { name: 'View job' }).click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details).toContainText('Retrying without Intel QSV')
+  await expect(details).toContainText("Intel QSV on Boothby stopped because this file's picture times jump")
+  const attempts = details.getByRole('list', { name: 'Attempts' })
+  await expect(attempts).toContainText('Attempt 1 · Failed attempt')
+  await expect(attempts).toContainText("Intel QSV stopped on the file's timestamps")
+  await expect(attempts).toContainText('Boothby · hevc_qsv')
+  await expect(details.getByText(/Non-monotonic DTS/)).toBeHidden()
+  await attempts.getByText('What FFmpeg said').click()
+  await expect(details.getByText(/Non-monotonic DTS/)).toBeVisible()
+})
+
 test('a software-decode retry shows its current worker and keeps the rejected Mac checks in history', async ({ page }) => {
   const previous = {
     number: 1, workerName: 'MacBook Air', videoEncoder: 'hevc_videotoolbox',
