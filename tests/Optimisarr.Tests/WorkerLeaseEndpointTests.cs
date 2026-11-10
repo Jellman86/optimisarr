@@ -1123,6 +1123,84 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_capacity_return_does_not_restart_the_long_wait_old_refusals_earned()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("CapacityReturner");
+        var jobId = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            // Seven refusals long enough ago that even their six-hour wait is over, then a capacity
+            // return 15 minutes ago: that earns only the ordinary ten-minute pause.
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var workerId = (await db.Workers.SingleAsync(w => w.Name == "CapacityReturner")).Id;
+            var now = DateTimeOffset.UtcNow;
+            for (var refusal = 0; refusal < 7; refusal++)
+            {
+                var endedAt = now.AddHours(-20 + refusal);
+                db.JobLeases.Add(new JobLease { Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId,
+                    State = LeaseState.Released, AcquiredAt = endedAt.AddMinutes(-3), ExpiresAt = endedAt, EndedAt = endedAt });
+            }
+            db.JobLeases.Add(new JobLease { Id = Guid.NewGuid(), JobId = jobId, WorkerId = workerId,
+                State = LeaseState.Released, EndReason = LeaseEndReason.CapacityUnavailable,
+                AcquiredAt = now.AddMinutes(-16), ExpiresAt = now.AddMinutes(-15), EndedAt = now.AddMinutes(-15) });
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_late_repeat_of_an_old_release_leaves_the_job_with_the_worker_that_claimed_it_since()
+    {
+        await EnableRemoteWorkers();
+        var first = await PairCapableWorker("Earlier");
+        var second = await PairCapableWorker("Later");
+        var jobId = await QueueAJob();
+        using var claimed = await first.PostAsJsonAsync("/api/workers/claim", new { });
+        var oldLease = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using (var released = await first.PostAsJsonAsync($"/api/workers/leases/{oldLease}/release", new { }))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        }
+        using var reclaimed = await second.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, reclaimed.StatusCode);
+
+        using var repeated = await first.PostAsJsonAsync($"/api/workers/leases/{oldLease}/release",
+            new { failure = "FFmpeg exited with code 234.\n[vost#0:0/hevc_qsv @ 0x1] Non-monotonic DTS; Error submitting a packet to the muxer" });
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Leased, job.Status);
+        Assert.False(job.AvoidIntelQsv);
+        Assert.Null(job.AttemptHistoryJson);
+        Assert.Single(await db.JobLeases.AsNoTracking().Where(l => l.JobId == jobId && l.State == LeaseState.Held).ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_report_in_an_unreadable_charset_is_a_plain_release()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Odd");
+        var jobId = await QueueAJob();
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var content = new StringContent("{}");
+        content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=bogus");
+
+        using var released = await worker.PostAsync($"/api/workers/leases/{leaseId}/release", content);
+
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        using var scope = _api.Services.CreateScope();
+        var job = await scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Null(job.AttemptHistoryJson);
+    }
+
+    [Fact]
     public async Task A_failure_reported_for_a_job_cancelled_meanwhile_is_not_recorded()
     {
         await EnableRemoteWorkers();
