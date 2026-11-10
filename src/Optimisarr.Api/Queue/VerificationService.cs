@@ -489,9 +489,11 @@ public sealed class VerificationService(
                 DistortedContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(outputProbe),
                 PairFramesByNumber: reference.FrameRate is null
                     && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
+                // Placed by decoded pictures, never packets: the two can differ, and a window past
+                // the last picture measures nothing. Without a decoded count it keeps the reported rate.
                 ReferenceFrameCount: reference.FrameRate is null
-                    && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount)
-                    ? originalTimestampResult.PacketCount : null,
+                    && FramePairing.Applies(sourceDecodedFrames, candidateDecodedFrames)
+                    ? sourceDecodedFrames : null,
                 EncodedVideo: depth is { } bits && outputProbe.Width is { } width && outputProbe.Height is { } height
                     ? new(width, height, bits) : null,
                 ReferenceVideoCodec: originalProbe.VideoCodec);
