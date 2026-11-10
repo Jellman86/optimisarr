@@ -30,7 +30,7 @@ public static class FramePairing
     ];
 
     /// <summary>
-    /// Whether every frame window in a measurement command ends within a file of this many pictures.
+    /// Whether every frame window in a measurement command holds pictures and ends within a file of this many.
     /// The server places frame windows before anyone has counted the source, at the rate the file
     /// reports, and a variable-frame-rate file holds fewer pictures than that rate implies. A
     /// window past the last frame decodes nothing, writes no score and still exits cleanly, so a
@@ -39,11 +39,12 @@ public static class FramePairing
     /// </summary>
     public static bool FitsWithin(IReadOnlyList<string> command, int frames) =>
         command.SelectMany(argument => FrameWindow.Matches(argument))
-            .All(window => long.TryParse(window.Groups["end"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var end)
-                && end <= frames);
+            .All(window => long.TryParse(window.Groups["start"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var start)
+                && long.TryParse(window.Groups["end"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var end)
+                && start < end && end <= frames);
 
     private static readonly System.Text.RegularExpressions.Regex FrameWindow =
-        new(@"trim=start_frame=\d+:end_frame=(?<end>\d+)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        new(@"trim=start_frame=(?<start>\d+):end_frame=(?<end>\d+)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     public static int? ParseCount(string output) =>
         int.TryParse(output.Trim().TrimEnd(','), NumberStyles.None, CultureInfo.InvariantCulture, out var count)

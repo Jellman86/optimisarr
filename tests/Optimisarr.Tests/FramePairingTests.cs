@@ -38,7 +38,8 @@ public class FramePairingTests
 
     [Theory]
     [InlineData("[0:v]trim=start_frame=33358:end_frame=34379,settb=AVTB[d]", 37635, true)]
-    [InlineData("[0:v]trim=start_frame=37635:end_frame=37635,settb=AVTB[d]", 37635, true)]
+    [InlineData("[0:v]trim=start_frame=36435:end_frame=37635,settb=AVTB[d]", 37635, true)]
+    [InlineData("[0:v]trim=start_frame=37635:end_frame=37635,settb=AVTB[d]", 37635, false)]
     [InlineData("[0:v]trim=start_frame=39171:end_frame=40370,settb=AVTB[d]", 37635, false)]
     [InlineData("[0:v]settb=AVTB,setpts=N*41708[d]", 10, true)]
     public void A_frame_window_fits_only_when_it_ends_within_the_counted_frames(string filter, int frames, bool fits)

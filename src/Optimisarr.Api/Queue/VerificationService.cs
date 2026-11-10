@@ -489,6 +489,9 @@ public sealed class VerificationService(
                 DistortedContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(outputProbe),
                 PairFramesByNumber: reference.FrameRate is null
                     && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
+                ReferenceFrameCount: reference.FrameRate is null
+                    && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount)
+                    ? originalTimestampResult.PacketCount : null,
                 EncodedVideo: depth is { } bits && outputProbe.Width is { } width && outputProbe.Height is { } height
                     ? new(width, height, bits) : null,
                 ReferenceVideoCodec: originalProbe.VideoCodec);

@@ -14,16 +14,18 @@ enum FramePairing {
         return source > 0 && source == candidate
     }
 
-    /// Whether every frame window in a measurement command ends within a file of this many pictures.
+    /// Whether every frame window in a measurement command holds pictures and ends within a file of this many.
     /// A window past the last frame decodes nothing, writes no score and still exits cleanly. A
     /// command with no frame window, such as a complete-file comparison, always fits.
     static func fitsWithin(_ command: [String], frames: Int) -> Bool {
-        let pattern = try! NSRegularExpression(pattern: #"trim=start_frame=\d+:end_frame=(\d+)"#)
+        let pattern = try! NSRegularExpression(pattern: #"trim=start_frame=(\d+):end_frame=(\d+)"#)
         for argument in command {
             let range = NSRange(argument.startIndex..., in: argument)
             for match in pattern.matches(in: argument, range: range) {
-                guard let endRange = Range(match.range(at: 1), in: argument),
-                      let end = Int(argument[endRange]), end <= frames
+                guard let startRange = Range(match.range(at: 1), in: argument),
+                      let endRange = Range(match.range(at: 2), in: argument),
+                      let start = Int(argument[startRange]), let end = Int(argument[endRange]),
+                      start < end, end <= frames
                 else { return false }
             }
         }
