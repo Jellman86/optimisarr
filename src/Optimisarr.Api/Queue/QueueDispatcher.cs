@@ -1227,9 +1227,7 @@ public sealed partial class QueueDispatcher(
             // QSV stops at the same frame every time on a source whose picture times jump, so the
             // job goes back to the queue to be planned afresh with another encoder. The flag it
             // sets keeps QSV from being chosen again, so this cannot loop.
-            if (run.ExitCode != 0
-                && !run.SizeGateFailed
-                && IntelQsvTimestampFallback.Applies(preparedWork.VideoEncoder, run.Log ?? run.Error))
+            if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
             {
                 logger.LogWarning(
                     "Job {JobId}: Intel QSV stopped on this source's timestamps; queuing it again without QSV. ffmpeg: {Error}",
@@ -1332,6 +1330,10 @@ public sealed partial class QueueDispatcher(
                     if (run.ExitCode == 0)
                     {
                         await VerifyAndFinishAsync(jobId, executionAttempt, spec.OutputPath, retriedWork, cancellationToken);
+                    }
+                    else if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
+                    {
+                        await QueueWithoutIntelQsvAsync(jobId, executionAttempt, spec.OutputPath, run.Log, run.Error);
                     }
                     else
                     {
@@ -3839,6 +3841,9 @@ public sealed partial class QueueDispatcher(
                 // enables the frame-alignment probe for long-GOP sources.
                 VideoOnly: isCalibration && kind == MediaKind.Video)
             : null;
+
+    private static bool StoppedOnQsvTimestamps(string? encoder, FfmpegRun run) =>
+        run.ExitCode != 0 && !run.SizeGateFailed && IntelQsvTimestampFallback.Applies(encoder, run.Log ?? run.Error);
 
     private async Task QueueWithoutIntelQsvAsync(
         int jobId, int executionAttempt, string outputPath, string? processLog, string? error)

@@ -103,6 +103,21 @@ public sealed class JobClearingTests
     }
 
     [Fact]
+    public void A_calibration_clip_queued_again_without_qsv_keeps_the_quality_it_is_testing()
+    {
+        var job = new Job
+        {
+            Type = JobType.Calibration, Status = JobStatus.Transcoding, ExecutionAttempt = 1,
+            VideoEncoder = "hevc_qsv", RequestedVideoQuality = 26,
+        };
+
+        JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null, "Non-monotonic DTS", DateTimeOffset.UtcNow);
+
+        Assert.True(job.AvoidIntelQsv);
+        Assert.Equal(26, job.RequestedVideoQuality);
+    }
+
+    [Fact]
     public void A_rejected_remote_candidate_is_archived_before_its_active_result_is_cleared()
     {
         var verified = new DateTimeOffset(2026, 9, 20, 22, 20, 0, TimeSpan.Zero);

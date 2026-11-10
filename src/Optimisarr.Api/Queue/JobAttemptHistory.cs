@@ -67,7 +67,10 @@ internal static class JobAttemptHistory
         Archive(job, IntelQsvTimestampFallback.AttemptReason, nowUtc, workerName, outcome: "Failed");
         job.RetryReason = IntelQsvTimestampFallback.RetryReason;
         job.AvoidIntelQsv = true;
+        // A calibration job's requested quality is the candidate under test; its next attempt needs it.
+        var calibrationQuality = job.Type == JobType.Calibration ? job.RequestedVideoQuality : null;
         ClearForRequeue(job, nowUtc);
+        if (job.Type == JobType.Calibration) job.RequestedVideoQuality = calibrationQuality;
     }
 
     private static void ClearForRequeue(Job job, DateTimeOffset nowUtc)
