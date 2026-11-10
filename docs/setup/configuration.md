@@ -663,10 +663,21 @@ gates and links each library to its configuration.
 
 ![Schedule view with queue dispatch reason and per-library automation windows](../images/optimisarr-schedule-dark.png)
 
-**Auto-accept passed jobs** is off by default for every library type. Find it in
-**Libraries → Configure → Schedule & replace**. Enabling it opens **Do you really,
-really mean it?**: acknowledge the risk, confirm, then **Save** the library. Existing
-saved choices stay unchanged.
+**Libraries → Configure → Schedule & replace** asks what happens **After a file
+passes its checks**. It is one choice of three:
+
+- **Replace the original after I press Replace** is the default for every library
+  type. The new file waits at **Ready to replace** until you have looked at it.
+- **Replace the original automatically** replaces as soon as a file passes.
+  Choosing it opens **Do you really, really mean it?**: acknowledge the risk,
+  confirm, then **Save** the library.
+- **Save optimised files in another folder** leaves your library exactly as it is.
+  You end up with two files and save no space.
+
+Existing saved choices stay unchanged. A library saved with both automatic
+replacement and a target folder already saved to the folder and never replaced;
+it now shows **Save optimised files in another folder**, says so, and stores
+automatic replacement off the next time it is saved.
 
 Every job that passes all enabled checks replaces its library file automatically,
 including jobs already ready to replace, using the checks from their completed
@@ -679,10 +690,20 @@ Incorrect settings can damage media, reduce quality, or remove tracks and metada
 A passing result covers only the checks you enabled. Review a small manual batch
 and keep a separate backup before enabling this option. Switching it off and saving
 leaves verified jobs ready for manual replacement; a replacement already moving files
-finishes safely. **Move output to a target folder instead of replacing** leaves originals in place
-and takes precedence over auto-accept.
+finishes safely.
 
-![Auto-accept confirmation with the risk warning, Quarantine retention notice, acknowledgement, and disabled enable button](../images/optimisarr-auto-accept-confirmation-dark.png)
+**Save optimised files in another folder** keeps the original's sub-folders under the
+folder you choose. Plex, Jellyfin, Emby, Sonarr and Radarr are not told about the
+copies. The folder must exist, be writable, and be outside every library, the working
+space and Quarantine: a folder inside a library would be scanned and its files
+optimised again, and the other two are cleaned up automatically. The editor says why a
+folder is refused before you save. The same rule is checked again when a job
+finishes, because a library can be added later; a refused file stays in the working
+space, the job fails with the reason, and the original is not touched. **Overwrite
+a file that is already there** is off by default, so a name clash fails the job
+instead of replacing an earlier copy.
+
+![Replace automatically confirmation with the risk warning, Quarantine retention notice, acknowledgement, and disabled enable button](../images/optimisarr-auto-accept-confirmation-dark.png)
 
 **Dry-run mode** is a global replacement safety switch. It leaves scanning,
 queueing, transcoding, verification, previews, and rollback available, but blocks

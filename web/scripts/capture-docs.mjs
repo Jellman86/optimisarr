@@ -127,7 +127,7 @@ try {
  await page.setViewportSize({width:2048,height:1167})
  await go('/libraries/1/configure');await expect(page.getByRole('button',{name:/Choose files/}).first()).toBeVisible();await shot('library-configure')
  for(const [route,name]of[['source','library-choose-files'],['source/advanced','library-advanced-eligibility'],['encode','library-encode'],['encode/video/advanced','library-advanced-encoding'],['verify/advanced','library-advanced-verification'],['automate','library-automation']]){await go('/libraries/1/configure/'+route);await shot(name)}
- await page.getByRole('checkbox',{name:'Auto-accept passed jobs',exact:true}).click();await expect(page.getByRole('dialog',{name:'Do you really, really mean it?'})).toBeVisible();await shot('auto-accept-confirmation','dialog');await page.keyboard.press('Escape')
+ await page.getByRole('radio',{name:'Replace the original automatically',exact:true}).click();await expect(page.getByRole('dialog',{name:'Do you really, really mean it?'})).toBeVisible();await shot('auto-accept-confirmation','dialog');await page.keyboard.press('Escape')
  await go('/libraries/1/configure');await page.getByRole('button',{name:/^Candidates/}).click();await shot('library-candidates');await page.getByRole('button',{name:/^Excluded/}).click();await shot('library-excluded')
  await page.setViewportSize({width:1440,height:1000})
  await go('/inventory');await expect(page.getByRole('button',{name:/Lumen Coast.mkv/})).toBeVisible();await shot('inventory',null);await shot('inventory-main');await page.getByRole('button',{name:/Lumen Coast.mkv/}).click();await expect(page.getByRole('dialog')).toBeVisible();await shot('inventory-detail','dialog')

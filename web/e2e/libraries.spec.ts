@@ -29,6 +29,7 @@ const SKIP_EFFICIENT = /^Skip already-efficient sources/
 
 async function mockLibraries(page: Page, configuredLibrary = library, superResolutionOn = false, extraOptions: Record<string, unknown> = {}) {
   let currentLibrary = { ...configuredLibrary }
+  const { settings: settingOverrides, ...optionOverrides } = extraOptions
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/auth/status') return json(route, { required: false })
@@ -36,8 +37,25 @@ async function mockLibraries(page: Page, configuredLibrary = library, superResol
     if (path === '/api/libraries') return json(route, [currentLibrary])
     if (path === '/api/settings') return json(route, {
       remoteWorkersAvailable: false, remoteWorkersEnabled: false,
+      dryRunMode: false, replacementQuarantineRetentionDays: 30,
       superResolution: { enabled: superResolutionOn, preset: 'mixed', scale: 2, noiseLevel: 1, device: 'auto', binaryPath: '', modelsPath: '' },
+      ...(settingOverrides as Record<string, unknown> | undefined),
     })
+    if (path === '/api/fs/browse') {
+      const folder = new URL(route.request().url()).searchParams.get('path') || '/'
+      return json(route, folder === '/'
+        ? { path: '/', parent: null, directories: [{ name: 'media', path: '/media' }, { name: 'optimised', path: '/optimised' }] }
+        : folder === '/media'
+          ? { path: '/media', parent: '/', directories: [{ name: 'films', path: '/media/films' }] }
+          : { path: folder, parent: '/', directories: [] })
+    }
+    // The same answers the server gives: a folder inside the library is refused by name.
+    if (path === '/api/libraries/target-folder-check') {
+      const folder = String(route.request().postDataJSON().path)
+      return json(route, folder.startsWith('/media/films')
+        ? { path: folder, allowed: false, reason: 'insideLibrary', libraryName: 'Films', message: 'inside', availableBytes: null }
+        : { path: folder, allowed: true, reason: 'none', libraryName: null, message: 'ok', availableBytes: 1_500_000_000_000 })
+    }
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings', 'RemuxCleanup', 'TrackCleanup'],
@@ -53,7 +71,7 @@ async function mockLibraries(page: Page, configuredLibrary = library, superResol
       videoCodecs: ['h264', 'hevc', 'av1'], containers: ['mp4', 'mkv'],
       encoderPresets: ['quick', 'balanced', 'efficient'], legacyEncoderPresets: ['veryslow'],
       imageFormats: ['webp'],
-      ...extraOptions,
+      ...optionOverrides,
     })
     if (path === '/api/candidates/summary') return json(route, [{ libraryId: 1, eligible: 0, skipped: 1 }])
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
@@ -96,24 +114,36 @@ test('library cards and overview open exact-copy review with that library select
   expect(scanPosts).toEqual([])
 })
 
+const filesChoice = (page: Page, name: 'ask' | 'auto' | 'elsewhere') => page.getByRole('radio', {
+  name: {
+    ask: 'Replace the original after I press Replace',
+    auto: 'Replace the original automatically',
+    elsewhere: 'Save optimised files in another folder',
+  }[name],
+  exact: true,
+})
+
 for (const mediaType of ['Film', 'TV', 'Music', 'Photo', 'Other']) {
-  test(`${mediaType} auto-accept needs risk acknowledgement and confirmation before saving`, async ({ page }) => {
+  test(`${mediaType} replacing automatically needs risk acknowledgement and confirmation before saving`, async ({ page }) => {
     await mockLibraries(page, { ...library, mediaType })
     await page.goto('/#/libraries/1/configure/automate')
-    const setting = page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })
+    const setting = filesChoice(page, 'auto')
+    await expect(filesChoice(page, 'ask')).toBeChecked()
     await expect(setting).not.toBeChecked()
-    await expect(page.getByText(/Misconfigured settings can leave you with broken files/)).toBeVisible()
+    await expect(page.getByText(/asks you to confirm first, and explains the risk/)).toBeVisible()
     await setting.click()
     const dialog = page.getByRole('dialog', { name: 'Do you really, really mean it?' })
     await expect(dialog).toBeVisible()
     await expect(setting).not.toBeChecked()
+    await expect(dialog.getByText(/Misconfigured settings can leave you with broken files/)).toBeVisible()
     await expect(dialog.getByText(/Originals stay in Quarantine/)).toBeVisible()
-    const enable = dialog.getByRole('button', { name: 'Yes, really. Enable auto-accept' })
+    const enable = dialog.getByRole('button', { name: 'Yes, really. Replace automatically' })
     await expect(enable).toBeDisabled()
     await expect(dialog.getByRole('button', { name: 'Keep it off' })).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(dialog).not.toBeVisible()
     await expect(setting).not.toBeChecked()
+    await expect(filesChoice(page, 'ask')).toBeChecked()
     await expect(setting).toBeFocused()
     await setting.click()
     await expect(enable).toBeDisabled()
@@ -123,59 +153,141 @@ for (const mediaType of ['Film', 'TV', 'Music', 'Photo', 'Other']) {
     await expect(setting).toBeChecked()
     const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
     await page.getByRole('button', { name: 'Save', exact: true }).click()
-    expect((await saved).postDataJSON()).toMatchObject({ autoReplace: true, mediaType })
+    expect((await saved).postDataJSON()).toMatchObject({ autoReplace: true, moveOnComplete: false, mediaType })
   })
 }
 
-test('auto-accept can be switched off without confirmation and the saved choice stays off', async ({ page }) => {
+test('replacing automatically can be switched back to asking without confirmation and stays off', async ({ page }) => {
   await mockLibraries(page, { ...library, autoReplace: true })
   await page.goto('/#/libraries/1/configure/automate')
-  const setting = page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })
-  await expect(setting).toBeChecked()
-  await setting.uncheck()
+  await expect(filesChoice(page, 'auto')).toBeChecked()
+  await filesChoice(page, 'ask').check()
   await expect(page.getByRole('dialog')).not.toBeVisible()
   const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  expect((await saved).postDataJSON()).toMatchObject({ autoReplace: false })
+  expect((await saved).postDataJSON()).toMatchObject({ autoReplace: false, moveOnComplete: false })
   await expect(page.getByText('Updated library "Films".', { exact: true })).toBeVisible()
   await expect(page.locator('[data-library-workflow]')).toBeEnabled()
-  await expect(setting).not.toBeChecked()
+  await expect(filesChoice(page, 'ask')).toBeChecked()
 })
 
-test('new libraries keep auto-accept off even when an existing library has it on', async ({ page }) => {
+test('new libraries ask before replacing even when an existing library replaces automatically', async ({ page }) => {
   await mockLibraries(page, { ...library, autoReplace: true })
   await page.goto('/#/libraries/new/automate')
   await expect(page).toHaveURL(/#\/libraries\/new\/automate$/)
-  await expect(page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })).not.toBeChecked()
+  await expect(filesChoice(page, 'ask')).toBeChecked()
 })
 
-test('auto-accept confirmation fits a phone and stops pulsing with reduced motion', async ({ page }) => {
+test('what happens to files is one choice of three, and each says where both files end up', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/automate')
+  const choice = page.locator('[data-files-choice]')
+  await expect(choice.getByRole('radio')).toHaveCount(3)
+  await expect(choice.getByText('A file that fails a check is never used. Your original stays exactly as it was.')).toBeVisible()
+  await expect(choice.getByText(/Moves to Quarantine. It still uses its space and can be put back. After 30 days it is deleted. The space is freed and this can't be undone./)).toBeVisible()
+  await expect(choice.getByText('Takes its place in your library, in the same folder.')).toBeVisible()
+  await expect(choice.getByText(/one setting for every library, in Settings → Files & safety. Quarantine is not a backup./)).toBeVisible()
+  await expect(choice.locator('[data-files-choice-dry-run]')).toHaveCount(0)
+
+  await filesChoice(page, 'elsewhere').check()
+  await expect(choice.getByText('Stays in your library. It is never moved or deleted.')).toBeVisible()
+  await expect(choice.getByText('You end up with two files. Your library is not changed. You save no space.')).toBeVisible()
+  await expect(choice.getByText('Plex, Jellyfin, Emby, Sonarr and Radarr are not told about the copies.')).toBeVisible()
+  await expect(choice.getByText(/Moves to Quarantine/)).toHaveCount(0)
+})
+
+test('a library kept until approved and locked by dry-run says both beside the choice', async ({ page }) => {
+  await mockLibraries(page, library, false, { settings: { dryRunMode: true, replacementQuarantineRetentionDays: 0 } })
+  await page.goto('/#/libraries/1/configure/automate')
+  const choice = page.locator('[data-files-choice]')
+  await expect(choice.getByText(/It stays there until you approve it, so you free the space yourself./)).toBeVisible()
+  await expect(choice.locator('[data-files-choice-dry-run]')).toContainText('Replacing is locked (dry-run) for every library.')
+})
+
+test('saving elsewhere needs a folder, refuses one inside a library with the reason, and saves an allowed one', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/automate')
+  await filesChoice(page, 'elsewhere').check()
+  const save = page.getByRole('button', { name: 'Save', exact: true })
+  const folder = page.getByLabel('Folder for optimised files', { exact: true })
+  await expect(page.getByText('Choose a folder before you save.').first()).toBeVisible()
+  await expect(save).toBeDisabled()
+
+  await page.getByRole('button', { name: 'Browse', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Choose a folder' })
+  await picker.getByRole('button', { name: 'media', exact: true }).click()
+  await picker.getByRole('button', { name: 'films', exact: true }).click()
+  await picker.getByRole('button', { name: 'Select folder', exact: true }).click()
+  await expect(folder).toHaveValue('/media/films')
+  await expect(page.locator('[data-target-folder-state="insideLibrary"]')).toContainText('This is inside the Films library. Optimisarr would find its own output on the next scan')
+  await expect(folder).toHaveAttribute('aria-invalid', 'true')
+  await expect(save).toBeDisabled()
+
+  await page.getByRole('button', { name: 'Browse', exact: true }).click()
+  await picker.getByRole('button', { name: 'Up one level', exact: true }).click()
+  await picker.getByRole('button', { name: 'optimised', exact: true }).click()
+  await picker.getByRole('button', { name: 'Select folder', exact: true }).click()
+  await expect(page.locator('[data-target-folder-state="none"]')).toContainText('Not inside any library.')
+  await expect(page.locator('[data-target-folder-state="none"]')).toContainText('Optimisarr can write here.')
+  await expect(save).toBeEnabled()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await save.click()
+  expect((await saved).postDataJSON()).toMatchObject({ moveOnComplete: true, targetFolder: '/optimised', moveOverwrite: false, autoReplace: false })
+})
+
+test('a library saved with both switches on shows saving elsewhere, says so, and saves replace automatically off', async ({ page }) => {
+  await mockLibraries(page, { ...library, autoReplace: true, moveOnComplete: true, targetFolder: '/optimised' })
+  await page.goto('/#/libraries')
+  await expect(page.locator('[data-library-card="1"]')).toContainText('saves to another folder')
+  await expect(page.locator('[data-library-card="1"]')).not.toContainText('auto-replace')
+  await page.goto('/#/libraries/1/configure/automate')
+  await expect(filesChoice(page, 'elsewhere')).toBeChecked()
+  await expect(filesChoice(page, 'auto')).not.toBeChecked()
+  await expect(page.locator('[data-files-choice-both]')).toContainText('Saving in another folder won, so nothing was replaced.')
+  await page.getByRole('checkbox', { name: /Overwrite a file that is already there/ }).check()
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ moveOnComplete: true, targetFolder: '/optimised', moveOverwrite: true, autoReplace: false })
+  await expect(page.locator('[data-files-choice-both]')).toHaveCount(0)
+})
+
+test('the choice of three fits a phone without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await mockLibraries(page, { ...library, moveOnComplete: true, targetFolder: '/media/films/optimised' })
+  await page.goto('/#/libraries/1/configure/automate')
+  await expect(page.locator('[data-target-folder-state="insideLibrary"]')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  const accessibility = await new AxeBuilder({ page }).include('[data-files-choice]').analyze()
+  expect(accessibility.violations).toEqual([])
+})
+
+test('the replace automatically confirmation fits a phone and stops pulsing with reduced motion', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 667 })
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' })
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure/automate')
-  await page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true }).click()
+  await filesChoice(page, 'auto').click()
   const dialog = page.getByRole('dialog', { name: 'Do you really, really mean it?' })
   await expect(dialog).toBeVisible()
   expect(await dialog.locator('[data-auto-accept-warning]').evaluate(element => getComputedStyle(element).animationName)).toBe('none')
   expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   await expect(dialog.getByRole('button', { name: 'Keep it off' })).toBeVisible()
   await dialog.getByRole('button', { name: 'Keep it off' }).click()
-  await expect(page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })).not.toBeChecked()
+  await expect(filesChoice(page, 'auto')).not.toBeChecked()
 })
 
 for (const [theme, viewport] of [
   ['light', { width: 1440, height: 900 }],
   ['dark', { width: 667, height: 375 }],
 ] as const) {
-  test(`auto-accept ${theme} confirmation stays accessible and cancellation never saves`, async ({ page }, testInfo) => {
+  test(`replace automatically ${theme} confirmation stays accessible and cancellation never saves`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
     await page.addInitScript(value => localStorage.setItem('optimisarr.theme', value), theme)
     await mockLibraries(page, { ...library, name: 'A long library name '.repeat(6) })
     const writes: string[] = []
     page.on('request', request => { if (request.method() === 'PUT') writes.push(request.url()) })
     await page.goto('/#/libraries/1/configure/automate')
-    const setting = page.getByRole('checkbox', { name: 'Auto-accept passed jobs', exact: true })
+    const setting = filesChoice(page, 'auto')
     await setting.click()
     const dialog = page.getByRole('dialog', { name: 'Do you really, really mean it?' })
     await expect(dialog).toBeVisible()
@@ -192,7 +304,7 @@ for (const [theme, viewport] of [
     await expect(setting).not.toBeChecked()
     expect(writes).toEqual([])
     await setting.click()
-    await expect(dialog.getByRole('button', { name: 'Yes, really. Enable auto-accept' })).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Yes, really. Replace automatically' })).toBeDisabled()
     await dialog.getByRole('button', { name: 'Keep it off' }).click()
     expect(writes).toEqual([])
   })
@@ -379,7 +491,7 @@ test('ordinary controls and advanced pages have distinct homes for every media k
   await expect(page.locator('#lib-maxheight')).toBeVisible()
   await expect(page.locator('#lib-downscale')).toHaveCount(0)
   await stage(page, 'Schedule').click()
-  await expect(page.getByRole('checkbox', { name: /Move output to a target folder/ })).toBeVisible()
+  await expect(filesChoice(page, 'elsewhere')).toBeVisible()
   await stage(page, 'Choose files').click()
   await page.getByLabel('Media type', { exact: true }).selectOption('Music')
   await stage(page, 'Encode').click()
