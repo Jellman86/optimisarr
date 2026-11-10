@@ -6,16 +6,16 @@
   import Thumbnail from './Thumbnail.svelte'
   import Icon from './Icon.svelte'
 
-  let { row, libraryName, probing, queueing, queuedMessage, error, onclose, onprobe, onpreview, onqueue }: {
-    row: InventoryRow; libraryName: string; probing: boolean; queueing: boolean; queuedMessage: string | null; error: string | null
-    onclose: () => void; onprobe: () => void; onpreview: () => void; onqueue: () => void
+  let { row, libraryName, probing, error, onclose, onprobe, onpreview }: {
+    row: InventoryRow; libraryName: string; probing: boolean; error: string | null
+    onclose: () => void; onprobe: () => void; onpreview: () => void
   } = $props()
   let file = $derived(row.file)
   let title = $derived((file.relativePath.split(/[\\/]/).pop() ?? file.relativePath).replace(/\.[^.]+$/, '').replace(/[._]+/g, ' '))
   let artworkFailed = $state(false)
   let artworkLoaded = $state(false)
   let container = $derived(containerLabel(file.container, file.relativePath))
-  let verdict = $derived(row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.inventory.badge_eligible : i18n.m.inventory.badge_skipped)
+  let verdict = $derived(row.eligible === null ? i18n.m.inventory.badge_unprobed : row.eligible ? i18n.m.onePlan.yes : i18n.m.onePlan.no)
 </script>
 
 <dialog class="app-modal inventory-dialog" use:modal={onclose} aria-labelledby="inventory-detail-title">
@@ -36,9 +36,12 @@
   </header>
 
   <div class="detail-body">
-    <section class="detail-verdict" aria-label={i18n.m.inventory.rule_verdict}>
-      <div class="flex flex-wrap items-center justify-between gap-2"><h3>{i18n.m.inventory.rule_verdict}</h3><span class="badge {row.eligible ? 'tone-ok' : 'tone-muted'}">{verdict}</span></div>
-      <p>{row.reason ?? i18n.m.inventory.verdict_probe_hint}</p>
+    <section class="detail-verdict" aria-label={i18n.m.onePlan.can_it}>
+      <div class="flex flex-wrap items-center justify-between gap-2"><h3>{i18n.m.onePlan.can_it}</h3><span class="badge {row.eligible ? 'tone-ok' : 'tone-muted'}">{verdict}</span></div>
+      <p id="inventory-detail-verdict">{row.reason ?? i18n.m.inventory.verdict_probe_hint}</p>
+      {#if row.eligible === false && file.libraryId}
+        <p>{t(i18n.m.onePlan.skipped_where, { library: libraryName })} <a class="focus-ring font-medium text-accent underline" href={`#/libraries/${file.libraryId}/configure/files`}>{libraryName} → {i18n.m.librarySummary.topic_files}</a></p>
+      {/if}
     </section>
     {#if error}<p class="callout tone-bad mb-4" role="alert">{error}</p>{/if}
     {#if file.probeError}<p class="callout tone-bad mb-4">{t(i18n.m.inventory.probe_failed, { error: file.probeError })}</p>{/if}
@@ -57,14 +60,17 @@
   </div>
   <footer class="detail-actions">
     <button class="btn" onclick={onprobe} disabled={probing}><Icon name="search" />{probing ? i18n.m.inventory.probing : file.status === 'Discovered' ? i18n.m.inventory.probe : i18n.m.inventory.reprobe}</button>
-    {#if queuedMessage}<p class="detail-queued" role="status">{queuedMessage}</p>{/if}
-    {#if row.eligible}<button class="btn btn-primary" onclick={onpreview} disabled={probing}><Icon name="play" />{i18n.m.inventory.preview}</button>{/if}
-    {#if row.eligible}<button class="btn" onclick={onqueue} disabled={probing || queueing}><Icon name="plus" />{queueing ? i18n.m.inventory.queueing : i18n.m.inventory.queue_file}</button>{/if}
+    {#if row.eligible}<button class="btn" onclick={onpreview} disabled={probing}><Icon name="play" />{i18n.m.inventory.preview}</button>{/if}
+    <!-- A file the rules skip keeps the button, off, and the reason is the verdict above it. -->
+    {#if row.eligible}
+      <a class="btn btn-primary" href={`#/inventory/optimise/${file.id}`}>{i18n.m.onePlan.open}</a>
+    {:else}
+      <button class="btn btn-primary" disabled aria-describedby="inventory-detail-verdict">{i18n.m.onePlan.open}</button>
+    {/if}
   </footer>
 </dialog>
 
 <style>
-  .detail-queued { flex: 1 1 100%; font-size: .8125rem; color: var(--ink-2); }
   .inventory-dialog { width: 48rem; grid-template-rows: auto minmax(0, 1fr) auto; }
   .detail-hero { position: relative; display: flex; align-items: center; gap: 1.75rem; padding: 2rem; background: var(--raised); isolation: isolate; overflow: hidden; }
   .detail-backdrop { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; object-position: 50% 35%; filter: blur(10px); transform: scale(1.1); opacity: 0; }

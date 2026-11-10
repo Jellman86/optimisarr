@@ -1148,6 +1148,51 @@ export type CandidateSummary = {
 
 export type InventoryFilter = 'all' | 'eligible' | 'skipped' | 'unprobed'
 
+/** What queueing one file would do, by its library's settings as they are now. */
+export type MediaPlan = {
+  mediaFileId: number
+  libraryId: number | null
+  eligible: boolean
+  reason: string
+  kind: string
+  action: 'Encode' | 'Remux' | 'TrackCleanup' | 'Audio' | 'Image'
+  source: {
+    relativePath: string
+    sizeBytes: number
+    container: string | null
+    videoCodec: string | null
+    width: number | null
+    height: number | null
+    durationSeconds: number | null
+    isHdr: boolean
+    isDolbyVision: boolean
+    interlaced: boolean
+    audioCodecs: string | null
+    maxAudioChannels: number
+    audioTrackCount: number | null
+    subtitleTrackCount: number | null
+  }
+  /** Null unless the video is re-encoded. A null size or cap means it is left as it is. */
+  picture: {
+    codec: string
+    crf: number | null
+    width: number | null
+    height: number | null
+    frameRateCap: number | null
+    tonemapToSdr: boolean
+    deinterlace: boolean
+    cropBlackBars: boolean
+    noiseReduction: NoiseReduction
+  } | null
+  /** A null codec means every kept track is copied untouched. */
+  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean } | null
+  /** Null when the file was probed before track languages were recorded. */
+  audioTracks: MediaPlanTrack[] | null
+  subtitleTracks: MediaPlanTrack[] | null
+  file: { container: string; fileName: string; renamed: boolean; mayBecomeMatroska: boolean }
+}
+export type MediaPlanTrack = { index: number; language: string | null; kept: boolean }
+
 export type InventoryRow = {
   file: MediaFile
   eligible: boolean | null
@@ -1613,6 +1658,7 @@ export const api = {
   probeBatch: (id: number) => request<MediaProbeBatch>(`/api/media/batch/probe/${id}`),
   /** Stops a running probe batch; the file it is on finishes. */
   cancelProbeBatch: (id: number) => request<void>(`/api/media/batch/probe/${id}`, { method: 'DELETE' }),
+  mediaPlan: (id: number) => request<MediaPlan>(`/api/media/${id}/plan`),
   enqueueFile: (id: number) =>
     request<{ jobId: number; alreadyQueued: boolean }>(`/api/media/${id}/enqueue`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>

@@ -1209,3 +1209,141 @@ for (const width of [375, 1440]) {
     })
   }
 }
+
+async function mockReplacementSettings(page: Page, settings: Record<string, unknown>, save?: (route: Route) => Promise<void> | void) {
+  let current = settings
+  const saved: Record<string, unknown>[] = []
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() !== 'PUT') return json(route, current)
+    saved.push(route.request().postDataJSON())
+    if (save) return save(route)
+    current = route.request().postDataJSON()
+    return json(route, current)
+  })
+  return saved
+}
+
+function failedJob(failedCheck: string) {
+  return {
+    ...job(9, 'Failed', false),
+    relativePath: 'Film 9.mkv', failureCategory: 'Verification', clearable: true,
+    errorMessage: `Verification failed: ${failedCheck}`,
+    verificationReportJson: JSON.stringify({ checks: [
+      { name: 'Decode health', outcome: 'Passed', detail: 'Complete decode finished without errors.' },
+      { name: failedCheck, outcome: 'Failed', detail: 'Below what this library asks for.' },
+    ] }),
+  }
+}
+
+test('a passed job says what replacing does beside the button', async ({ page }) => {
+  await mockQueue(page)
+  await mockReplacementSettings(page, { dryRunMode: false, replacementQuarantineRetentionDays: 30 })
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  const result = page.locator('#queue-job-dialog [data-job-result]')
+
+  await expect(result).toHaveAttribute('data-job-result', 'passed')
+  await expect(result.getByRole('heading', { name: 'Every check passed' })).toBeVisible()
+  await expect(result).toContainText('The original has not been touched.')
+  await expect(result).toContainText('The original moves to Quarantine. The new file takes its place.')
+  await expect(result.locator('[data-replace-undo]')).toHaveText('You can put the original back for 30 days. After that it is deleted and this cannot be undone.')
+  await expect(result).toContainText('You get the space back when the original is deleted, not before.')
+  await expect(result.getByRole('button', { name: 'Replace original' })).toBeEnabled()
+  await expect(result.locator('[data-dry-run-unlock]')).toHaveCount(0)
+})
+
+test('with replacing locked, Replace is off with the reason and one click unlocks it for every library', async ({ page }) => {
+  await mockQueue(page)
+  const saved = await mockReplacementSettings(page, { dryRunMode: true, replacementQuarantineRetentionDays: 0, maxConcurrentJobs: 2 })
+  await page.goto('/#/queue')
+
+  // Nothing on the list offers a replacement that cannot happen.
+  await expect(page.getByRole('button', { name: 'Replace all (2)' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Replace all (2)' })).toHaveAccessibleDescription('Replace is off because replacing is locked (dry-run).')
+  await expect(page.locator('[data-replace-all-locked]')).toBeVisible()
+  await expect(page.locator('tbody').getByRole('button', { name: 'Replace', exact: true })).toHaveCount(0)
+
+  await page.locator('#queue-job-1').click()
+  const result = page.locator('#queue-job-dialog [data-job-result]')
+  const replace = result.getByRole('button', { name: 'Replace original' })
+  await expect(replace).toBeDisabled()
+  await expect(replace).toHaveAccessibleDescription('Replace is off because replacing is locked (dry-run).')
+  await expect(result.locator('[data-replace-undo]')).toContainText('until you approve it in Quarantine')
+  const unlock = result.locator('[data-dry-run-unlock]')
+  await expect(unlock).toContainText('This unlocks replacing for every library, not only this file.')
+  await expect(unlock).toContainText('Libraries set to replace automatically will then replace without asking.')
+  await expect(unlock).toContainText('You can lock it again in Settings → Files & safety.')
+  expect(saved).toEqual([])
+
+  await unlock.getByRole('button', { name: 'Unlock replacing' }).click()
+
+  await expect(replace).toBeEnabled()
+  await expect(unlock).toHaveCount(0)
+  // Only the lock changes; every other setting is sent back as it was read.
+  expect(saved).toEqual([{ dryRunMode: false, replacementQuarantineRetentionDays: 0, maxConcurrentJobs: 2 }])
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Replace all (2)' })).toBeEnabled()
+  await expect(page.locator('[data-replace-all-locked]')).toHaveCount(0)
+})
+
+test('an unlock the server refuses says so and leaves replacing locked', async ({ page }) => {
+  await mockQueue(page)
+  await mockReplacementSettings(page, { dryRunMode: true, replacementQuarantineRetentionDays: 14 },
+    route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Settings could not be saved.' }) }))
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').click()
+  const result = page.locator('#queue-job-dialog [data-job-result]')
+
+  await result.getByRole('button', { name: 'Unlock replacing' }).click()
+
+  await expect(result.getByRole('alert')).toContainText('Settings could not be saved.')
+  await expect(result.getByRole('button', { name: 'Replace original' })).toBeDisabled()
+  await expect(result.getByRole('button', { name: 'Unlock replacing' })).toBeEnabled()
+})
+
+test('a job that missed its picture-quality check is told what can be done, and never offered a replacement', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [failedJob('Perceptual quality (VMAF)')]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const dialog = page.locator('#queue-job-dialog')
+  const result = dialog.locator('[data-job-result]')
+
+  await expect(result).toHaveAttribute('data-job-result', 'missed')
+  await expect(result.getByRole('heading', { name: 'Missed 1 check' })).toBeVisible()
+  await expect(result).toContainText('The original has not been touched. The new file will not replace it.')
+  await expect(result.locator('[data-advice]')).toHaveCount(3)
+  await expect(result.locator('[data-advice="retry"]')).toContainText('Retry at higher quality encodes this file again one step better')
+  await expect(result.locator('[data-advice="target"]')).toContainText('This changes the check itself, for every file in the library.')
+  await expect(result.getByRole('link', { name: 'Open the library’s video settings' })).toHaveAttribute('href', '#/libraries/1/configure/video')
+  await expect(result.locator('[data-advice="exclude"]')).toContainText('until you remove it from the library’s Excluded list')
+  await expect(result).toContainText('There is no “replace anyway”. A file that missed a check never replaces an original.')
+  await expect(dialog.getByRole('button', { name: 'Replace original' })).toHaveCount(0)
+  // The buttons the advice names are the ones in the dialog.
+  await expect(dialog.getByRole('button', { name: 'Retry at higher quality', exact: true })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Exclude', exact: true })).toBeVisible()
+})
+
+test('a job that missed another check is not told to lower the quality target', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [failedJob('Duration')]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const result = page.locator('#queue-job-dialog [data-job-result]')
+
+  await expect(result.locator('[data-advice]')).toHaveCount(1)
+  await expect(result.locator('[data-advice="exclude"]')).toBeVisible()
+  await expect(result).toContainText('There is no “replace anyway”.')
+})
+
+test('each check is named in plain words and keeps the name a log would quote', async ({ page }) => {
+  await mockQueue(page)
+  await page.route('**/api/jobs', route => route.request().method() === 'GET' ? json(route, [failedJob('Perceptual quality (VMAF)')]) : route.fallback())
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-9').click()
+  const dialog = page.locator('#queue-job-dialog')
+
+  await expect(dialog.locator('[data-check-name="Decode health"]')).toHaveText('Plays from start to end without errors')
+  await expect(dialog.locator('[data-check-name="Decode health"]')).toHaveAttribute('title', 'Decode health')
+  await expect(dialog.locator('[data-check-name="Perceptual quality (VMAF)"]')).toHaveText('Picture quality')
+})

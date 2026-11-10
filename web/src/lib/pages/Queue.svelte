@@ -20,6 +20,8 @@
   import Banner from '../components/Banner.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
+  import JobResult from '../components/JobResult.svelte'
+  import { plainCheckName } from '../plain-checks'
   import AudioQualityReport from '../components/AudioQualityReport.svelte'
   import SoundtrackQualityReport from '../components/SoundtrackQualityReport.svelte'
   import SoundtrackSearchReport from '../components/SoundtrackSearchReport.svelte'
@@ -102,6 +104,21 @@
   let requestId = 0
   let disposed = false
   let progressRevision = 0
+  // Whether replacing is locked for every library, and how long a replaced original is kept.
+  // Unknown until the settings arrive; the server refuses a replacement under dry-run either way.
+  let dryRun = $state(false)
+  let retentionDays = $state<number | null>(null)
+
+  async function loadReplacementSettings() {
+    try {
+      const settings = await api.settings()
+      if (disposed) return
+      dryRun = settings.dryRunMode
+      retentionDays = settings.replacementQuarantineRetentionDays
+    } catch {
+      /* The result card then says only what holds whatever the settings are. */
+    }
+  }
   const progressVersions = new Map<number, number>()
 
   // Updates arrive over SignalR (jobsChanged + jobProgress). A slow poll is kept
@@ -109,6 +126,7 @@
   // which is not pushed.
   $effect(() => {
     void load()
+    void loadReplacementSettings()
     const connection = createJobsConnection({
       onChanged: () => void load(),
       onProgress: applyProgress,
@@ -802,10 +820,14 @@
               <!-- "Retry at higher quality" is wrong advice once a search has already tried its highest setting. -->
               {#if searchReport(selectedJob)?.result?.decision?.fellBack === true}<p class="mt-1 text-xs leading-relaxed">{i18n.m.quality_first.hint_none_met}</p>
               {:else if story.hint}<p class="mt-1 text-xs leading-relaxed">{story.hint}</p>{/if}
-              {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.join(' · ') })}</p>{/if}
+              {#if story.failedChecks.length > 1}<p class="mt-2 text-xs">{t(i18n.m.queue.cause_also, { checks: story.failedChecks.map((name) => plainCheckName(name, i18n.m.checkNames)).join(' · ') })}</p>{/if}
             </div>
             {#if selectedJob.errorMessage}<details open={selectedJob.errorMessage.startsWith('Size saving prediction:')} class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
           {/if}
+          <JobResult job={selectedJob} checks={parseReport(selectedJob)} {dryRun} {retentionDays}
+            canRetryHigher={isVmafOnlyFailure(selectedJob)}
+            replacing={replacingId === selectedJob.id} replaceBlocked={replacingAll || replacingId !== null}
+            onreplace={() => selectedJob && replace(selectedJob)} onunlocked={() => (dryRun = false)} />
           {#if selectedJob.status === 'AwaitingSizeReview'}
             <div class="callout tone-warn mb-4 p-4" role="status">
               <p class="font-semibold">{i18n.m.queue.size_review_title}</p>
@@ -849,18 +871,6 @@
           <span class="font-medium">{i18n.m.queue.detail_vmaf_sampling}:</span>
           {vmafSamplingLabel(report.context.vmafSampling)}
         </p>
-      {/if}
-
-      {#if selectedJob.status === 'Failed' && isVmafOnlyFailure(selectedJob)}
-        <div class="callout tone-warn mt-4 p-4" role="status" aria-live="polite">
-          <div class="flex items-start gap-2">
-            <Icon name="warning" class="mt-0.5 h-4 w-4 flex-shrink-0 text-warn" />
-            <div>
-              <p class="font-semibold">{i18n.m.queue.vmaf_recovery_title}</p>
-              <p class="mt-1 text-xs leading-relaxed text-warn-strong">{i18n.m.queue.vmaf_recovery_desc}</p>
-            </div>
-          </div>
-        </div>
       {/if}
 
       <!-- The exact ffmpeg command for this job — the "under the hood" view that complements the
@@ -976,11 +986,6 @@
         <footer class="queue-detail-actions">
                 <!-- Actions -->
       <div class="flex flex-wrap gap-2">
-        {#if selectedJob.status === 'ReadyToReplace' && selectedJob.verificationPassed && !selectedJob.finalizing}
-          <button class="btn btn-primary px-3 py-1 text-xs" onclick={() => selectedJob && replace(selectedJob)} disabled={replacingAll || replacingId !== null}>
-            {replacingId === selectedJob.id ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace_original}
-          </button>
-        {/if}
         {#if selectedJob.status === 'AwaitingSizeReview'}
           <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && approveSizePreflight(selectedJob)} disabled={approvingSizeId === selectedJob.id}>
             {approvingSizeId === selectedJob.id ? i18n.m.common.loading_short : i18n.m.queue.action_encode_anyway}
@@ -1026,7 +1031,7 @@
             {/each}
           </div>
           <div class="queue-bulk">
-            {#if readyToReplaceCount > 0}<button class="btn btn-primary" onclick={replaceAll} disabled={replacingAll || replacingId !== null} title={i18n.m.queue.replace_all_title}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
+            {#if readyToReplaceCount > 0}{#if dryRun}<span id="replace-all-locked" class="text-xs text-ink-3" data-replace-all-locked>{i18n.m.jobResult.locked_reason}</span>{/if}<button class="btn btn-primary" onclick={replaceAll} disabled={dryRun || replacingAll || replacingId !== null} title={dryRun ? undefined : i18n.m.queue.replace_all_title} aria-describedby={dryRun ? 'replace-all-locked' : undefined}><Icon name="replace" />{replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}</button>{/if}
             {#if pendingCount > 0 || erroredClearable > 0 || counts.completed > 0}<details class="queue-management"><summary class="focus-ring">{i18n.m.queue.manage_queue}</summary><div>
               {#if pendingCount > 0}<button class="btn btn-ghost" onclick={clearPending} disabled={clearingPending} title={i18n.m.queue.clear_queue_title + (counts.review > 0 ? ` ${t(i18n.m.queue.clear_review_included, { count: counts.review })}` : '')}>{clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}</button>{/if}
               {#if erroredClearable > 0}<button class="btn btn-ghost" onclick={() => clear('errored')} disabled={clearingScope !== null} title={i18n.m.queue.clear_errored_title}>{clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: erroredClearable })}</button>{/if}
@@ -1082,7 +1087,7 @@
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
               <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForResources}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_resources_row}</small>{:else if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureStory(job.failureCategory, job.errorMessage, fullReport(job)?.checks, i18n.m).headline}</small>{:else if job.status === 'AwaitingSizeReview'}<small class="queue-row-note text-warn">{i18n.m.queue.size_review_title}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
-              <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
+              <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing && dryRun}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{:else if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>
           {/each}</tbody>
         </table></div>
