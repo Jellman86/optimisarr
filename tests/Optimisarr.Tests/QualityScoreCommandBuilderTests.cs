@@ -307,6 +307,37 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void Counted_frames_place_a_late_window_inside_a_variable_frame_rate_file()
+    {
+        // A Pokémon SD episode reports 29.97 fps but holds 37,635 pictures over 1,474.6 s, about
+        // 25.5 a second. At the reported rate its late window started at frame 39,171, after the
+        // last one, so libvmaf scored nothing and strict verification failed the job.
+        var context = Legacy(new QualityMeasurementContext(640, 480, false, false,
+            ReferenceStartSeconds: 1307, ReferenceDurationSeconds: 1474.573, DistortedStartSeconds: 1307,
+            MeasureDurationSeconds: 40, ReferenceFrameRate: 30000 / 1001d, PairFramesByNumber: true));
+
+        var reported = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json", context, 2);
+        var counted = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json",
+            context with { ReferenceFrameCount = 37635 }, 2);
+
+        Assert.Contains("trim=start_frame=39171:end_frame=40370", reported.FilterGraph);
+        Assert.Equal(2, counted.FilterGraph.Split("trim=start_frame=33358:end_frame=34379").Length - 1);
+    }
+
+    [Fact]
+    public void A_frame_window_that_would_run_past_the_last_frame_ends_on_it_instead()
+    {
+        var context = Legacy(new QualityMeasurementContext(640, 480, false, false,
+            ReferenceStartSeconds: 90, ReferenceDurationSeconds: 100, DistortedStartSeconds: 90,
+            MeasureDurationSeconds: 40, ReferenceFrameRate: 25, PairFramesByNumber: true,
+            ReferenceFrameCount: 2_400));
+
+        var command = QualityScoreCommandBuilder.Build("candidate.mp4", "source.mkv", "scores.json", context, 2);
+
+        Assert.Equal(2, command.FilterGraph.Split("trim=start_frame=1440:end_frame=2400").Length - 1);
+    }
+
+    [Fact]
     public void Frame_pairing_needs_a_frame_rate_and_a_window_and_leaves_cut_clips_alone()
     {
         QualityMeasurementContext Context(bool pair, double? rate = 24000d / 1001d, int? duration = 40, bool cutClip = false) =>
