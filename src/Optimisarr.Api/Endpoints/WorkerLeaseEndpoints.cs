@@ -316,6 +316,11 @@ internal static class WorkerLeaseEndpoints
                     .Where(h => h.WorkerId == worker.Id)
                     .GroupBy(h => h.JobId)
                     .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+                // Each refusal from this machine doubles its own wait; see HandbackPolicy.MaxCooldown.
+                var refusalsHere = handbacks
+                    .Where(h => h.WorkerId == worker.Id && h.EndReason == null)
+                    .GroupBy(h => h.JobId)
+                    .ToDictionary(g => g.Key, g => g.Count());
 
                 var candidates = shortlist
                     .Select(id => loaded.FirstOrDefault(job => job.Id == id))
@@ -353,10 +358,11 @@ internal static class WorkerLeaseEndpoints
                     // Offering it again straight away is a loop that re-downloads the source each time.
                     lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
                     refusingWorkers.TryGetValue(job.Id, out var refusedBy);
-                    if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now))
+                    refusalsHere.TryGetValue(job.Id, out var refusedHere);
+                    if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now, refusedHere))
                     {
                         skipped++;
-                        lastReason = HandbackPolicy.Explain(handedBackHere, refusedBy, now);
+                        lastReason = HandbackPolicy.Explain(handedBackHere, refusedBy, now, refusedHere);
                         continue;
                     }
 
@@ -1193,7 +1199,11 @@ internal static class WorkerLeaseEndpoints
             SettingsStore settings,
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
-            await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+        {
+            // Older workers send no body, or an empty object. A newer one says what went wrong.
+            var failure = WorkerHandbackFailure.Normalise((await ReadReleaseAsync(http, cancellationToken))?.Failure);
+            var requeued = false;
+            return await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
                 (lease, workerId, now) => lease.Release(workerId, now),
                 (_, job, outcome) =>
                 {
@@ -1202,13 +1212,41 @@ internal static class WorkerLeaseEndpoints
                     if (job.Status == JobStatus.Leased)
                     {
                         job.Status = JobStatus.Queued;
+                        requeued = true;
                     }
                 },
-                _ => Results.NoContent()))
+                _ => Results.NoContent(),
+                afterApply: async (db, lease, job) =>
+                {
+                    if (failure is null || !requeued) return;
+                    var workerName = await db.Workers.AsNoTracking().Where(w => w.Id == lease.WorkerId)
+                        .Select(w => w.Name).FirstOrDefaultAsync(cancellationToken);
+                    WorkerHandback.Record(job, lease, workerName, failure, DateTimeOffset.UtcNow);
+                });
+        })
         .WithName("ReleaseLease")
         // Declared like the other worker routes: this is outside admin-token protection, so the
         // document transformer will not add the 401 that an unknown or revoked credential returns.
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+    }
+
+    private sealed record ReleaseRequest(string? Failure);
+
+    private static async Task<ReleaseRequest?> ReadReleaseAsync(HttpRequest http, CancellationToken cancellationToken)
+    {
+        if (http.ContentLength is 0 || !http.HasJsonContentType())
+        {
+            return null;
+        }
+
+        try
+        {
+            return await http.ReadFromJsonAsync<ReleaseRequest>(cancellationToken);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

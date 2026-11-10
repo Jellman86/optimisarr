@@ -1259,7 +1259,8 @@ public struct JobRunner: WorkExecutor {
         guard encode.0 == 0 else {
             let detail = encode.1.trimmingCharacters(in: .whitespacesAndNewlines)
             return await release(assignment, pairing: pairing,
-                reason: "ffmpeg exited with code \(encode.0)." + (detail.isEmpty ? "" : " \(detail)"))
+                reason: "ffmpeg exited with code \(encode.0)." + (detail.isEmpty ? "" : " \(detail)"),
+                failure: "FFmpeg exited with code \(encode.0).\n\(detail)")
         }
 
         // The final mux can add bytes between the size monitor's last poll and FFmpeg's exit.
@@ -1338,11 +1339,13 @@ public struct JobRunner: WorkExecutor {
 
     /// Hands the job back. Best effort: if the release itself fails the lease lapses on its own
     /// and the server reclaims the job then, so nothing is stranded either way.
-    private func release(_ assignment: Assignment, pairing: StoredPairing, reason: String) async -> JobOutcome {
+    private func release(
+        _ assignment: Assignment, pairing: StoredPairing, reason: String, failure: String? = nil
+    ) async -> JobOutcome {
         do {
             try await client.release(
                 serverAddress: pairing.serverAddress, credential: pairing.credential,
-                leaseId: assignment.leaseId)
+                leaseId: assignment.leaseId, failure: failure)
             return .released(jobId: assignment.jobId, reason: reason)
         } catch {
             return .unconfirmed(jobId: assignment.jobId, reason: "\(reason) Hand-back was not acknowledged: \(error.localizedDescription)")

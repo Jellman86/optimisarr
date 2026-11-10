@@ -944,6 +944,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("HandbackFailure")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("HardwareDecoder")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");

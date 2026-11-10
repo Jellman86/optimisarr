@@ -1014,6 +1014,7 @@ export const zh: Messages = {
     attempt_current: '当前尝试',
     attempt_decode_corruption: '硬件解码损坏',
     attempt_qsv_timestamps: "Intel QSV 因文件时间戳而停止",
+    attempt_worker_handback: "工作节点编码失败，已将任务交回",
     attempt_checks: '验证检查',
     attempt_open_diagnostics: '打开诊断设置',
     detail_encoder: "编码器",

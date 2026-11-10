@@ -548,9 +548,22 @@ public struct SidecarClient: Sendable {
     }
 
     /// Hands the job back so the server can reassign it. Tolerant of a lease already gone.
-    public func release(serverAddress: String, credential: String, leaseId: String, capacityUnavailable: Bool = false) async throws {
+    /// A failure, such as FFmpeg's error, is sent with it; an older server reads no body.
+    public func release(
+        serverAddress: String, credential: String, leaseId: String, capacityUnavailable: Bool = false,
+        failure: String? = nil
+    ) async throws {
         let action = capacityUnavailable ? "capacity-unavailable" : "release"
-        try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId, action: action)
+        try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId, action: action,
+                          failure: capacityUnavailable ? nil : failure)
+    }
+
+    /// The longest failure report sent. FFmpeg's own explanation is at the end, so the end is kept.
+    static let maximumFailureLength = 8000
+
+    static func boundedFailure(_ failure: String) -> String {
+        let text = failure.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.count <= maximumFailureLength ? text : String(text.suffix(maximumFailureLength))
     }
 
     /// Runtime interruption says nothing about this worker's ability to encode the file.
@@ -558,9 +571,15 @@ public struct SidecarClient: Sendable {
         try await release(serverAddress: serverAddress, credential: credential, leaseId: leaseId, action: "interrupted")
     }
 
-    private func release(serverAddress: String, credential: String, leaseId: String, action: String) async throws {
-        let request = try authorised(
+    private func release(
+        serverAddress: String, credential: String, leaseId: String, action: String, failure: String? = nil
+    ) async throws {
+        var request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/\(action)", credential: credential, method: "POST")
+        if let failure {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["failure": Self.boundedFailure(failure)])
+        }
         let (data, response) = try await perform(request)
         await diagnostics.record(leaseId: leaseId, reason: (200..<300).contains(response.statusCode) ? "Worker.LeaseReleased" : "Worker.RequestFailed", httpStatus: response.statusCode)
         try Self.checkLease(response.statusCode, data)

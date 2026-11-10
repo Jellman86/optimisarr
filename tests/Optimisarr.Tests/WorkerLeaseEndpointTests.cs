@@ -8,6 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Data;
@@ -1055,6 +1056,64 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var second = await worker.PostAsJsonAsync("/api/workers/claim", new { });
 
         Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_worker_handback_with_a_qsv_timestamp_failure_is_recorded_and_avoids_qsv_next_time()
+    {
+        // Boothby failed this way 20 times on 2026-11-09 and the server never knew why: a release
+        // carried no reason. Now the worker says, the attempt is kept on the job, and the next
+        // assignment avoids QSV instead of failing at the same frame again.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Boothby", 1, ["hevc_qsv", "hevc_vaapi", "libx265"], ["qsv", "vaapi"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var assignment = await claimed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("hevc_qsv", assignment.GetProperty("videoEncoder").GetString());
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+        const string failure = "FFmpeg exited with code 234.\n[vost#0:0/hevc_qsv @ 0x5626] Non-monotonic DTS; previous: 16507520, "
+            + "current: 16444160; Error submitting a packet to the muxer: Invalid argument\nConversion failed!";
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { failure });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+            Assert.Equal(JobStatus.Queued, job.Status);
+            Assert.True(job.AvoidIntelQsv);
+            Assert.Equal("AvoidIntelQsv", job.RetryReason);
+            var attempt = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+            Assert.Equal("Boothby", attempt.WorkerName);
+            Assert.Equal("IntelQsvTimestamps", attempt.Reason);
+            Assert.Contains("Non-monotonic DTS", attempt.ProcessLog);
+            var lease = await db.JobLeases.AsNoTracking().SingleAsync(l => l.JobId == jobId);
+            Assert.Contains("Non-monotonic DTS", lease.HandbackFailure);
+        }
+    }
+
+    [Fact]
+    public async Task A_worker_handback_that_names_another_failure_is_kept_without_changing_the_encoder()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Plain");
+        var jobId = await QueueAJob();
+
+        using var claimed = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release",
+            new { failure = "FFmpeg exited with code 1.\nNo space left on device" });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.False(job.AvoidIntelQsv);
+        Assert.Null(job.RetryReason);
+        var attempt = Assert.Single(JobAttemptHistory.Read(job.AttemptHistoryJson));
+        Assert.Equal("WorkerHandback", attempt.Reason);
+        Assert.Contains("No space left", attempt.ProcessLog);
     }
 
     [Fact]
