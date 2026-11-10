@@ -14,6 +14,22 @@ enum FramePairing {
         return source > 0 && source == candidate
     }
 
+    /// Whether every frame window in a measurement command ends within a file of this many pictures.
+    /// A window past the last frame decodes nothing, writes no score and still exits cleanly. A
+    /// command with no frame window, such as a complete-file comparison, always fits.
+    static func fitsWithin(_ command: [String], frames: Int) -> Bool {
+        let pattern = try! NSRegularExpression(pattern: #"trim=start_frame=\d+:end_frame=(\d+)"#)
+        for argument in command {
+            let range = NSRange(argument.startIndex..., in: argument)
+            for match in pattern.matches(in: argument, range: range) {
+                guard let endRange = Range(match.range(at: 1), in: argument),
+                      let end = Int(argument[endRange]), end <= frames
+                else { return false }
+            }
+        }
+        return true
+    }
+
     /// Counts a file's pictures by decoding frames; packet counts can include non-picture packets. Nil when it cannot say.
     static func count(ffprobe: URL?, file: URL, runner: CommandRunner) async -> Int? {
         guard let ffprobe else { return nil }

@@ -283,6 +283,7 @@ public sealed class VerificationService(
                         // source, whatever its timestamps say. A capped encode thins its
                         // reference by its own index rule and keeps the timestamp path.
                         pairDecodedFrames,
+                        pairDecodedFrames ? sourceDecodedFrames : null,
                         progress,
                         cancellationToken));
                 }
@@ -615,6 +616,7 @@ public sealed class VerificationService(
         VmafAcceleration acceleration,
         VerificationPolicy policy,
         bool pairFramesByNumber,
+        int? referenceFrameCount,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
@@ -645,6 +647,7 @@ public sealed class VerificationService(
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
             DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
             PairFramesByNumber: pairFramesByNumber,
+            ReferenceFrameCount: referenceFrameCount,
             ReferenceVideoCodec: originalProbe.VideoCodec,
             ModelVersion: reference.VmafModel ?? QualityScoreCommandBuilder.LegacyModelVersionFor(
                 reference.Crop?.Width ?? originalProbe.Width.Value, reference.Crop?.Height ?? originalProbe.Height.Value),

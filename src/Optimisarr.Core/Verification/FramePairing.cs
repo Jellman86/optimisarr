@@ -29,6 +29,22 @@ public static class FramePairing
         "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", file,
     ];
 
+    /// <summary>
+    /// Whether every frame window in a measurement command ends within a file of this many pictures.
+    /// The server places frame windows before anyone has counted the source, at the rate the file
+    /// reports, and a variable-frame-rate file holds fewer pictures than that rate implies. A
+    /// window past the last frame decodes nothing, writes no score and still exits cleanly, so a
+    /// worker checks this against its own count and measures such a window by timestamp instead.
+    /// A command with no frame window, such as a complete-file comparison, always fits.
+    /// </summary>
+    public static bool FitsWithin(IReadOnlyList<string> command, int frames) =>
+        command.SelectMany(argument => FrameWindow.Matches(argument))
+            .All(window => long.TryParse(window.Groups["end"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var end)
+                && end <= frames);
+
+    private static readonly System.Text.RegularExpressions.Regex FrameWindow =
+        new(@"trim=start_frame=\d+:end_frame=(?<end>\d+)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
     public static int? ParseCount(string output) =>
         int.TryParse(output.Trim().TrimEnd(','), NumberStyles.None, CultureInfo.InvariantCulture, out var count)
             ? count
