@@ -339,8 +339,9 @@ versions `1`–`3` preserve existing controls when omitted. See
 | `GET` | `/api/library-options` | Available media types, rule profiles with video/standalone-audio defaults, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
 | `GET` | `/api/libraries` | List configured libraries. |
 | `GET` | `/api/libraries/{id}/access` | Check whether the configured path exists and is readable/writable. |
-| `POST` | `/api/libraries` | Create a library. |
-| `PUT` | `/api/libraries/{id}` | Update a library. |
+| `POST` | `/api/libraries` | Create a library. With `moveOnComplete`, `targetFolder` must exist, be writable, and be outside every library, the working space and Quarantine; otherwise `400` with a `library.targetFolder.*` code. `autoReplace` is stored `false` while `moveOnComplete` is `true`. |
+| `PUT` | `/api/libraries/{id}` | Update a library. The same `targetFolder` rule applies. |
+| `POST` | `/api/libraries/target-folder-check` | Say whether a folder may collect a library's optimised files. Body: `path`, and optionally `libraryId`, `libraryName` and `libraryPath` to judge an unsaved library by the folder it is about to have. Returns `allowed`, `reason` (`none`, `insideLibrary`, `workFolder`, `quarantine`, `missing`, `unwritable`), `libraryName`, an English `message` and `availableBytes`. Creates and removes one empty probe file to test writing. |
 | `DELETE` | `/api/libraries/{id}` | Delete a library record. |
 | `POST` | `/api/libraries/{id}/scan` | Scan one library. |
 | `POST` | `/api/libraries/scan` | Scan all enabled libraries. |

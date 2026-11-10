@@ -3907,6 +3907,17 @@ public sealed partial class QueueDispatcher(
             var mediaWorkRoot = WorkOutputRoot.ForMediaFile(_workRoot, work.MediaFileId);
             var destination = MoveTarget.Resolve(mediaWorkRoot, outputPath, targetFolder);
 
+            // The folder was checked when the library was saved, but a library can be added, or a
+            // folder linked, afterwards. A file saved inside a library would be scanned and
+            // optimised again; one in the working space or Quarantine would be cleaned up.
+            var refusal = await RefusedSaveDestinationAsync(destination);
+            if (refusal is not null)
+            {
+                await CompleteAsync(jobId, JobStatus.Failed, progress: 1.0, error: refusal);
+                await NotifyJobFailedAsync(jobId, refusal);
+                return;
+            }
+
             // Don't silently clobber an existing converted file unless the library opts into it.
             // Failing here keeps the just-produced output in the work dir for inspection.
             if (!work.MoveOverwrite && File.Exists(destination))
@@ -3981,6 +3992,19 @@ public sealed partial class QueueDispatcher(
             }
             await NotifyAsync();
         }
+    }
+
+    private async Task<string?> RefusedSaveDestinationAsync(string destination)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var verdict = await TargetFolderGuard.CheckDestinationAsync(
+            destination,
+            scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>(),
+            environment,
+            CancellationToken.None);
+        return verdict.IsAllowed
+            ? null
+            : $"The optimised file was not saved. {verdict.Describe(destination)} Your original has not been touched.";
     }
 
     // Move our own work output; never the original. Falls back to copy+delete across
