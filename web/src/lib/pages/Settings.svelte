@@ -74,7 +74,10 @@
     return match ? match[0] : null
   }
 
-  let openRoom = $derived(roomFromPath(router.path))
+  // Setup shows one room's forms inside its own page, without the Settings frame around them.
+  let { embeddedRoom = null }: { embeddedRoom?: 'servers' | 'downloads' | null } = $props()
+
+  let openRoom = $derived(embeddedRoom ?? roomFromPath(router.path))
 
   let focusAfterNavigation = $state<string | null>(null)
 
@@ -941,12 +944,14 @@ let settings = $state<Settings>({
 {/snippet}
 
 <div class="settings-layout">
+{#if !embeddedRoom}
 <header class="settings-page-header">
   <div class="min-w-0">
     <h1 class="page-title">{i18n.m.nav.settings}</h1>
     <p class="page-subtitle">{i18n.m.settings.subtitle}</p>
   </div>
 </header>
+{/if}
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>
@@ -988,7 +993,7 @@ let settings = $state<Settings>({
         </section>
       {/each}
     </div>
-  {:else}
+  {:else if !embeddedRoom}
     <div class="settings-room-heading">
       <button type="button" class="btn btn-ghost -ml-2 mb-5 px-2 text-xs" onclick={closeRoom}>
         <Icon name="arrow-left" /> {i18n.m.settings.all_settings}

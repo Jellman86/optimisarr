@@ -14,31 +14,41 @@ the system. Existing saved light/dark choices are retained.
 
 ## First-run setup
 
-A genuinely new database opens a five-step setup workspace before the normal dashboard. It verifies
-database access, the config/work/quarantine paths, required media tools, and detected hardware. The
-storage ledger shows effective read/write access, free and total capacity, filesystem and mount
-identity, the work-space reserve, and whether each existing library can move atomically to work and
-quarantine. A failed row explains the cause and offers local, Docker Compose, Unraid, or TrueNAS
-recovery steps. **Re-test system** reruns the actual probes and announces the refreshed result; it
-never claims to create a host mount or change host permissions. Setup then
-lets you add and fully configure as many libraries as needed before reviewing the starting safety
-posture. The same complete per-library rules editor is used inside and outside setup, and every
-configured path is rechecked before Continue. Progress is saved after each step, so refreshing or
-restarting resumes at the first incomplete step. Finishing setup looks through each enabled library
-for files and shows what it found, and you can retry a library that fails. Files are then checked in
-the background. Finishing setup does not itself enqueue, encode, replace, or delete a file, but a
-library with automatic enqueue already on can start work on the files found, within its schedule,
-and replace originals if it also has auto-replace and dry-run is off.
+A genuinely new database opens setup before the normal dashboard. It has five steps, each about one
+thing. Progress is saved after each step, so refreshing or restarting resumes where you left off.
+Nothing in setup encodes, replaces or deletes a file.
 
-The Safety step explains what happens to originals. A replaced original stays in Quarantine and
-keeps using space until you approve it or it reaches the time limit you set there. `0`, the default,
-keeps originals until you approve them. In dry-run mode, replacing is blocked until you turn dry-run
-off in **Settings → Files & safety**.
+1. **This machine.** Each thing Optimisarr needs is tested and reported in a sentence: the media
+   tools, the settings folder, the working space, Quarantine, and whether replacing a file will be a
+   fast rename or a slower checked copy. Filesystem and mount identity are under **Technical
+   details**, which opens by itself when something needs fixing. A failed line says what is wrong
+   and gives steps for a local install, Docker Compose, Unraid or TrueNAS. **Test again** reruns the
+   real checks; it never claims to create a host mount or change host permissions. A hardware
+   encoder that passed a test encode is pre-selected, with **CPU only** as the other choice. The
+   picture quality check gets a sentence about what it costs on this machine; setup never offers to
+   turn it off. Continue is off, and says why, while a required tool or folder is missing.
+2. **Your library.** A name, what is in it, a folder and, for film and TV, one of three presets. A
+   summary under the form says what the library will do, worked out from the values about to be
+   saved. Saving a library looks through its folder for files straight away. That only reads them.
+   Every other setting is in the library's own settings after setup.
+3. **Your other apps.** Optional. Sonarr and Radarr, and Plex, Jellyfin or Emby, each with what it
+   prevents. The forms are the ones in **Settings → Download managers** and **Settings → Media
+   servers**, and you can add them there later.
+4. **Your files.** What happens after a file passes its checks: replace the original after you press
+   Replace, or save the optimised file in another folder. Replacing automatically is not offered
+   here; turn it on per library once a file has passed and you are happy with it. You also choose
+   how long originals stay in Quarantine (until you approve each one, or a number of days and then
+   deleted) and whether to start with replacing locked (dry-run).
+5. **Try one file.** Suggestions from the files found so far, each with **Optimise this file…**.
+   Choosing one finishes setup and opens that file's plan; nothing is queued until you press
+   **Queue this file** there. **Finish and open the dashboard** finishes without choosing. The step
+   also lists what you set up, one line per step, each with **Change**.
 
-Setup recommends an encoder from what passed the test on your machine, and says why. It offers
-Balanced VMAF when VMAF can use an NVIDIA GPU. When VMAF would run on the CPU, it leaves each
-library's quality setting as it is. It offers VMAF off only when the VMAF tool is missing. Nothing
-is applied unless you select it.
+Finishing setup does not itself enqueue, encode, replace or delete a file. When you run setup again
+on a server whose library already optimises automatically, the last step says that the library can
+start work on the files found, within its schedule, instead of saying nothing else will start.
+
+The server refuses to finish setup while FFmpeg or ffprobe is missing, whatever the page shows.
 
 Fresh installations start in dry-run with one concurrent job. Every new library has automatic
 enqueue and automatic replacement disabled. New video re-encode libraries start on Adaptive

@@ -1398,6 +1398,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.import.invalid': return i18n.m.settings.validation_import
     case 'setup.step.invalid': return i18n.m.setup.error_save
     case 'setup.completion.invalid': return i18n.m.setup.error_save
+    case 'setup.tools.required': return t(i18n.m.wizard.tools_refused, args)
     case 'setup.library.required': return i18n.m.setup.library_required_error
     case 'setup.library.unavailable': return i18n.m.setup.required_tools_error
     default: return error
