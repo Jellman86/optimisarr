@@ -85,7 +85,7 @@ public sealed class JobClearingTests
         };
 
         JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null,
-            "Non-monotonic DTS; Error submitting a packet to the muxer", "Conversion failed!", started.AddMinutes(1));
+            "Non-monotonic DTS; Error submitting a packet to the muxer", started.AddMinutes(1));
 
         Assert.Equal(JobStatus.Queued, job.Status);
         Assert.True(job.AvoidIntelQsv);

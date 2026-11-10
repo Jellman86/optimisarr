@@ -61,11 +61,9 @@ internal static class JobAttemptHistory
     /// Archive an Intel QSV attempt that stopped on the source's timestamps, and queue the job to
     /// be planned again with another encoder. See IntelQsvTimestampFallback.
     /// </summary>
-    internal static void RequeueWithoutIntelQsv(
-        Job job, string? workerName, string? processLog, string? error, DateTimeOffset nowUtc)
+    internal static void RequeueWithoutIntelQsv(Job job, string? workerName, string? processLog, DateTimeOffset nowUtc)
     {
         job.ProcessLog = processLog;
-        job.ErrorMessage = error;
         Archive(job, IntelQsvTimestampFallback.AttemptReason, nowUtc, workerName, outcome: "Failed");
         job.RetryReason = IntelQsvTimestampFallback.RetryReason;
         job.AvoidIntelQsv = true;

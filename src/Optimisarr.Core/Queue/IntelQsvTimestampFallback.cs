@@ -19,10 +19,18 @@ public static class IntelQsvTimestampFallback
     /// <summary>The job's retry reason while it runs again without QSV.</summary>
     public const string RetryReason = "AvoidIntelQsv";
 
+    /// <summary>
+    /// True when the QSV encoder's own output stream was refused by the muxer for a backward
+    /// decode time. Both halves must sit on one line: FFmpeg also logs a harmless
+    /// "Non-monotonic DTS ... changing to" warning for copied audio, and a run that then fails for
+    /// another reason, such as a full disk, also mentions the muxer.
+    /// </summary>
     public static bool Applies(string? encoder, string? ffmpegLog) =>
         encoder is not null
         && encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase)
         && ffmpegLog is not null
-        && ffmpegLog.Contains("Non-monotonic DTS", StringComparison.OrdinalIgnoreCase)
-        && ffmpegLog.Contains("muxer", StringComparison.OrdinalIgnoreCase);
+        && ffmpegLog.Split('\n').Any(line =>
+            line.Contains("_qsv", StringComparison.OrdinalIgnoreCase)
+            && line.Contains("Non-monotonic DTS", StringComparison.OrdinalIgnoreCase)
+            && line.Contains("Error submitting a packet to the muxer", StringComparison.OrdinalIgnoreCase));
 }

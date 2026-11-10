@@ -33,6 +33,15 @@ public sealed class IntelQsvTimestampFallbackTests
         Assert.False(IntelQsvTimestampFallback.Applies(encoder, MuxerRefusal));
     }
 
+    [Fact]
+    public void A_copied_audio_timestamp_warning_beside_an_unrelated_muxer_failure_is_not_blamed_on_qsv()
+    {
+        const string log = "[mp4 @ 0x5626] Non-monotonic DTS in output stream 0:1; previous: 1000, current: 990; changing to 1001.\n"
+            + "[vost#0:0/hevc_qsv @ 0x5626] Error submitting a packet to the muxer: No space left on device\nConversion failed!";
+
+        Assert.False(IntelQsvTimestampFallback.Applies("hevc_qsv", log));
+    }
+
     [Theory]
     [InlineData("Error while opening encoder for output stream #0:0")]
     [InlineData("No space left on device")]

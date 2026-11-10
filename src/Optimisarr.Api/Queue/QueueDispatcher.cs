@@ -3844,8 +3844,7 @@ public sealed partial class QueueDispatcher(
         int jobId, int executionAttempt, string outputPath, string? processLog, string? error)
     {
         if (!await RetryAfterCleanupAsync(jobId, executionAttempt, outputPath, job =>
-            JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null, processLog,
-                FfmpegErrorInterpreter.Explain(error) ?? error, DateTimeOffset.UtcNow),
+            JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null, processLog, DateTimeOffset.UtcNow),
             CancellationToken.None,
             rejectedProcessLog: processLog, rejectedError: FfmpegErrorInterpreter.Explain(error) ?? error)) return;
         await NotifyAsync();
