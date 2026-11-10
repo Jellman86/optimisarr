@@ -283,6 +283,7 @@ public sealed class VerificationService(
                         // source, whatever its timestamps say. A capped encode thins its
                         // reference by its own index rule and keeps the timestamp path.
                         pairDecodedFrames,
+                        pairDecodedFrames ? sourceDecodedFrames : null,
                         progress,
                         cancellationToken));
                 }
@@ -488,6 +489,11 @@ public sealed class VerificationService(
                 DistortedContainerLeadSeconds: QueueDispatcher.ContainerLeadSeconds(outputProbe),
                 PairFramesByNumber: reference.FrameRate is null
                     && FramePairing.Applies(originalTimestampResult.PacketCount, timestampResult.PacketCount),
+                // Placed by decoded pictures, never packets: the two can differ, and a window past
+                // the last picture measures nothing. Without a decoded count it keeps the reported rate.
+                ReferenceFrameCount: reference.FrameRate is null
+                    && FramePairing.Applies(sourceDecodedFrames, candidateDecodedFrames)
+                    ? sourceDecodedFrames : null,
                 EncodedVideo: depth is { } bits && outputProbe.Width is { } width && outputProbe.Height is { } height
                     ? new(width, height, bits) : null,
                 ReferenceVideoCodec: originalProbe.VideoCodec);
@@ -615,6 +621,7 @@ public sealed class VerificationService(
         VmafAcceleration acceleration,
         VerificationPolicy policy,
         bool pairFramesByNumber,
+        int? referenceFrameCount,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
@@ -645,6 +652,7 @@ public sealed class VerificationService(
             ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
             DistortedContainerLeadSeconds: distortedContainerLeadSeconds,
             PairFramesByNumber: pairFramesByNumber,
+            ReferenceFrameCount: referenceFrameCount,
             ReferenceVideoCodec: originalProbe.VideoCodec,
             ModelVersion: reference.VmafModel ?? QualityScoreCommandBuilder.LegacyModelVersionFor(
                 reference.Crop?.Width ?? originalProbe.Width.Value, reference.Crop?.Height ?? originalProbe.Height.Value),
