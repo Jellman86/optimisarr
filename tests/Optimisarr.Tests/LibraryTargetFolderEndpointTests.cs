@@ -120,7 +120,7 @@ public sealed class LibraryTargetFolderEndpointTests(AdminTokenAuthEndpointTests
     }
 
     [Fact]
-    public async Task The_check_endpoint_says_why_a_folder_is_refused_and_how_much_room_an_allowed_one_has()
+    public async Task The_check_endpoint_says_why_a_folder_is_refused_and_how_much_room_an_allowed_one_has_where_that_is_known()
     {
         using var client = Admin();
         var name = "Checked " + Guid.NewGuid().ToString("N");
@@ -135,7 +135,9 @@ public sealed class LibraryTargetFolderEndpointTests(AdminTokenAuthEndpointTests
         Assert.Equal(name, inside.GetProperty("libraryName").GetString());
         Assert.True(outside.GetProperty("allowed").GetBoolean());
         Assert.Equal("none", outside.GetProperty("reason").GetString());
-        Assert.True(outside.GetProperty("availableBytes").GetInt64() > 0);
+        // Free space comes from mount evidence, which not every platform can give.
+        var available = outside.GetProperty("availableBytes");
+        Assert.True(available.ValueKind == JsonValueKind.Null || available.GetInt64() > 0);
         Assert.Equal("missing", missing.GetProperty("reason").GetString());
     }
 
