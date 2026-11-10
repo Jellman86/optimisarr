@@ -1411,7 +1411,8 @@ internal static class WorkerLeaseEndpoints
             && WorkerEncoderCatalogue.Select(
                 targetCodec,
                 encoderMode,
-                capabilities.VideoEncoders).Succeeded;
+                capabilities.VideoEncoders,
+                avoidIntelQsv: job.AvoidIntelQsv).Succeeded;
     }
 
     private sealed class ClaimHistory

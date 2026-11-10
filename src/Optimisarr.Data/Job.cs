@@ -290,6 +290,13 @@ public sealed class Job
     /// </summary>
     public bool PreferSoftwareDecode { get; set; }
 
+    /// <summary>
+    /// Set when an Intel QSV encode of this job stopped because the source's picture times jump
+    /// (see IntelQsvTimestampFallback), so every later attempt, here or on a worker, uses another
+    /// encoder. Kept on the job for the same reason as <see cref="PreferSoftwareDecode"/>.
+    /// </summary>
+    public bool AvoidIntelQsv { get; set; }
+
     public DateTimeOffset EnqueuedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? StartedAt { get; set; }

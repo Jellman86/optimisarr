@@ -1224,6 +1224,18 @@ public sealed partial class QueueDispatcher(
                     minCandidateBytes: minCandidateBytes);
             }
 
+            // QSV stops at the same frame every time on a source whose picture times jump, so the
+            // job goes back to the queue to be planned afresh with another encoder. The flag it
+            // sets keeps QSV from being chosen again, so this cannot loop.
+            if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
+            {
+                logger.LogWarning(
+                    "Job {JobId}: Intel QSV stopped on this source's timestamps; queuing it again without QSV. ffmpeg: {Error}",
+                    jobId, run.Error);
+                await QueueWithoutIntelQsvAsync(jobId, executionAttempt, spec.OutputPath, run.Log, run.Error);
+                return;
+            }
+
             if (run.ExitCode == 0)
             {
                 // Stamp the portable marker on an image *before* verification, so the file that is
@@ -1318,6 +1330,10 @@ public sealed partial class QueueDispatcher(
                     if (run.ExitCode == 0)
                     {
                         await VerifyAndFinishAsync(jobId, executionAttempt, spec.OutputPath, retriedWork, cancellationToken);
+                    }
+                    else if (StoppedOnQsvTimestamps(preparedWork.VideoEncoder, run))
+                    {
+                        await QueueWithoutIntelQsvAsync(jobId, executionAttempt, spec.OutputPath, run.Log, run.Error);
                     }
                     else
                     {
@@ -2209,11 +2225,13 @@ public sealed partial class QueueDispatcher(
                     spec.VideoCodec,
                     queueSettings.EncoderMode,
                     remoteWorker.VideoEncoders,
-                    sourceBitDepth)
+                    sourceBitDepth,
+                    job.AvoidIntelQsv)
                 : await ResolveVideoEncoderAsync(
                     spec.VideoCodec,
                     queueSettings.EncoderMode,
                     sourceBitDepth,
+                    job.AvoidIntelQsv,
                     cancellationToken);
             if (videoEncoder is { Succeeded: false })
             {
@@ -3824,6 +3842,20 @@ public sealed partial class QueueDispatcher(
                 VideoOnly: isCalibration && kind == MediaKind.Video)
             : null;
 
+    private static bool StoppedOnQsvTimestamps(string? encoder, FfmpegRun run) =>
+        run.ExitCode != 0 && !run.SizeGateFailed && IntelQsvTimestampFallback.Applies(encoder, run.Log ?? run.Error);
+
+    private async Task QueueWithoutIntelQsvAsync(
+        int jobId, int executionAttempt, string outputPath, string? processLog, string? error)
+    {
+        if (!await RetryAfterCleanupAsync(jobId, executionAttempt, outputPath, job =>
+            JobAttemptHistory.RequeueWithoutIntelQsv(job, workerName: null, processLog, DateTimeOffset.UtcNow),
+            CancellationToken.None,
+            rejectedProcessLog: processLog, rejectedError: FfmpegErrorInterpreter.Explain(error) ?? error)) return;
+        await NotifyAsync();
+        Wake();
+    }
+
     internal async Task QueueHigherQualityRetryAsync(int jobId, int executionAttempt, string outputPath)
     {
         if (!await RetryAfterCleanupAsync(jobId, executionAttempt, outputPath, job =>
@@ -4299,6 +4331,7 @@ public sealed partial class QueueDispatcher(
         string? targetCodec,
         EncoderMode encoderMode,
         int? sourceBitDepth,
+        bool avoidIntelQsv,
         CancellationToken cancellationToken)
     {
         if (targetCodec is null)
@@ -4307,7 +4340,7 @@ public sealed partial class QueueDispatcher(
         }
 
         var detected = await hardware.DetectAsync(cancellationToken);
-        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth);
+        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth, avoidIntelQsv);
     }
 
     // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc,
