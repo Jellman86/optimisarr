@@ -773,6 +773,12 @@
               <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_software_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server, encoder: lastAttempt.videoEncoder ?? '—' })}</p>
             </div>
           {/if}
+          {#if selectedJob.retryReason === 'AvoidIntelQsv' && lastAttempt && ['Queued', 'Probing', 'Transcoding', 'Leased', 'AwaitingVerification', 'Verifying'].includes(selectedJob.status)}
+            <div class="callout tone-warn mb-4 p-4" role="status">
+              <p class="font-semibold">{i18n.m.queue.retry_qsv_title}</p>
+              <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_qsv_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server })}</p>
+            </div>
+          {/if}
           {#if selectedJob.status !== 'Queued' && selectedJob.status !== 'AwaitingSizeReview'}
             <section class="queue-execution-path" aria-label={i18n.m.queue.execution_path}>
               <h3>{i18n.m.queue.execution_path}</h3>
@@ -899,6 +905,7 @@
                 </div>
                 <p>{selectedJob.workerName ?? i18n.m.dashboard.this_server} · {selectedJob.videoEncoder ?? '—'}</p>
                 {#if selectedJob.retryReason === 'SoftwareDecode'}<p class="attempt-reason">{i18n.m.queue.retry_software_title}</p>{/if}
+                {#if selectedJob.retryReason === 'AvoidIntelQsv'}<p class="attempt-reason">{i18n.m.queue.retry_qsv_title}</p>{/if}
               </div>
             </li>
             {#each [...earlierAttempts].reverse() as attempt (attempt.number)}
@@ -909,7 +916,7 @@
                     <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
                   </div>
                   <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder}{` · ${attempt.hardwareDecoder}`}{/if}</p>
-                  {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason}</p>{/if}
+                  {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason === 'IntelQsvTimestamps' ? i18n.m.queue.attempt_qsv_timestamps : attempt.reason}</p>{/if}
                   {#if attemptChecks(attempt).length > 0}
                     <details class="attempt-checks">
                       <summary>{i18n.m.queue.attempt_checks}</summary>

@@ -1430,6 +1430,28 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_job_intel_qsv_stopped_on_is_given_to_a_worker_with_another_encoder()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Intel", 1, ["hevc_qsv", "hevc_vaapi", "libx265"], ["qsv", "vaapi"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.AvoidIntelQsv = true;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("hevc_vaapi", assignment.GetProperty("videoEncoder").GetString());
+        Assert.DoesNotContain(assignment.GetProperty("arguments").EnumerateArray(), a => a.GetString()!.Contains("qsv", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_job_without_a_quality_gate_asks_the_worker_to_measure_nothing()
     {
         await EnableRemoteWorkers();

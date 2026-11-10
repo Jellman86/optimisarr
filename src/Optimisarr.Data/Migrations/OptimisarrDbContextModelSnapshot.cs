@@ -706,6 +706,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("AttemptHistoryJson")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AvoidIntelQsv")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("BypassSizePreflight")
                         .HasColumnType("INTEGER");
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Optimisarr.Core.Queue;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Queue;
@@ -53,6 +54,26 @@ internal static class JobAttemptHistory
         Archive(job, "HardwareDecodeCorruption", nowUtc, workerName, hardwareDecoder, "Rejected");
         job.RetryReason = SoftwareDecodeReason;
         job.PreferSoftwareDecode = true;
+        ClearForRequeue(job, nowUtc);
+    }
+
+    /// <summary>
+    /// Archive an Intel QSV attempt that stopped on the source's timestamps, and queue the job to
+    /// be planned again with another encoder. See IntelQsvTimestampFallback.
+    /// </summary>
+    internal static void RequeueWithoutIntelQsv(
+        Job job, string? workerName, string? processLog, string? error, DateTimeOffset nowUtc)
+    {
+        job.ProcessLog = processLog;
+        job.ErrorMessage = error;
+        Archive(job, IntelQsvTimestampFallback.AttemptReason, nowUtc, workerName, outcome: "Failed");
+        job.RetryReason = IntelQsvTimestampFallback.RetryReason;
+        job.AvoidIntelQsv = true;
+        ClearForRequeue(job, nowUtc);
+    }
+
+    private static void ClearForRequeue(Job job, DateTimeOffset nowUtc)
+    {
         job.Status = JobStatus.Queued;
         job.Progress = 0;
         job.ErrorMessage = null;
