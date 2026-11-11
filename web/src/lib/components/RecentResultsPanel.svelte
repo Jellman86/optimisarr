@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { OptimisationResult } from '../api'
-  import { formatRelative, formatSize, mediaTitle, sizeBarShares, sizeChangePercent, sizeChangeStatus } from '../format'
+  import { formatRelative, formatSize, mediaTitle, sizeBarShares, sizeChangeStatus } from '../format'
   import { i18n } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import SizeChange from './SizeChange.svelte'
@@ -43,8 +43,7 @@
       </div>
       {#each results as result (result.jobId)}
         {@const title = mediaTitle(result.relativePath)}
-        {@const change = sizeChangePercent(result.sourceSizeBytes, result.outputSizeBytes)}
-        {@const status = sizeChangeStatus(change)}
+        {@const status = sizeChangeStatus(result.sourceSizeBytes, result.outputSizeBytes)}
         {@const shares = sizeBarShares(result.sourceSizeBytes, result.outputSizeBytes)}
         <div class="results-row" role="row">
           <span role="cell" class="flex min-w-0 items-center gap-3">

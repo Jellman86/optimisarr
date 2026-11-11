@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { api, type QuarantinedDuplicates, type Replacement, type ReplacementDetail, type VerificationCheck, type VerificationReport } from '../api'
-  import { formatSize } from '../format'
+  import { formatSize, formatSizeChangeBytes } from '../format'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
@@ -255,7 +255,7 @@
       <div class="review-metrics grid grid-cols-3 gap-2 sm:gap-4">
         <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{r.status === 'Replaced' ? i18n.m.quarantine.original_quarantined : i18n.m.shared.original}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSize(r.originalSizeBytes)}</p></div>
         <div class="card p-3 sm:p-5"><p class="min-h-10 text-xs text-ink-3 sm:min-h-0">{r.status === 'Replaced' ? i18n.m.quarantine.replacement_in_place : i18n.m.shared.encoded}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSize(r.newSizeBytes)}</p></div>
-        <div class="card p-3 sm:p-5"><p class="min-h-10 break-words text-xs text-ink-3 sm:min-h-0">{i18n.m.quarantine.col_size_change}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSize(Math.abs(r.originalSizeBytes - r.newSizeBytes))} <span class="text-sm">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span></p></div>
+        <div class="card p-3 sm:p-5"><p class="min-h-10 break-words text-xs text-ink-3 sm:min-h-0">{i18n.m.quarantine.col_size_change}</p><p class="mt-2 text-base font-semibold tabular-nums sm:text-xl">{formatSizeChangeBytes(r.originalSizeBytes, r.newSizeBytes)} <span class="text-sm">(<SizeChange sourceSizeBytes={r.originalSizeBytes} outputSizeBytes={r.newSizeBytes} />)</span></p></div>
       </div>
       {#if r.status === 'Replaced'}
         <section class="card p-5 sm:p-6" aria-labelledby="quarantine-decision">

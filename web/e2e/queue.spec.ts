@@ -1127,7 +1127,10 @@ test('the size change is signed by the file itself, and a file that grew is neve
   const smaller = { ...job(61, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 600_000_000, finishedAt: '2026-10-03T09:18:26Z' }
   const same = { ...job(62, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_000_000_000, finishedAt: '2026-10-03T09:18:26Z' }
   const bigger = { ...job(63, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_200_000_000, finishedAt: '2026-10-03T09:18:26Z' }
-  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [smaller, same, bigger]))
+  // Changes finer than one percent, where an old rounding could turn a real change into "0%".
+  const finerShrink = { ...job(64, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 999_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  const finerGrow = { ...job(65, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 1_004_000_000, finishedAt: '2026-10-03T09:18:26Z' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [smaller, same, bigger, finerShrink, finerGrow]))
 
   await page.goto('/#/queue')
   const details = page.locator('#queue-job-dialog')
@@ -1147,6 +1150,31 @@ test('the size change is signed by the file itself, and a file that grew is neve
   await page.locator('#queue-job-63').click()
   await expect(sizes.getByText('+20%')).toHaveClass(/text-warn/)
   await expect(sizes.getByText('+20%')).not.toHaveClass(/text-ok/)
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  // A change under one percent keeps a decimal, and says which way it went.
+  await page.locator('#queue-job-64').click()
+  await expect(sizes.getByText('−0.1%')).toHaveClass(/text-ok/)
+  await expect(sizes.getByText('0.1% smaller than source')).toBeVisible()
+  await details.getByRole('button', { name: 'Close details' }).click()
+
+  await page.locator('#queue-job-65').click()
+  await expect(sizes.getByText('+0.4%')).toHaveClass(/text-warn/)
+  await expect(sizes.getByText('0.4% larger than source')).toBeVisible()
+})
+
+test('a job whose output is nothing at all still reports its size change', async ({ page }) => {
+  await mockQueue(page)
+  // A zero-byte output is a legitimate answer, not a missing one: the whole file went.
+  const emptied = { ...job(81, 'Completed', true), sourceSizeBytes: 1_000_000_000, outputSizeBytes: 0, finishedAt: '2026-10-03T09:18:26Z' }
+  await page.route(/\/api\/jobs(\?.*)?$/, (route) => json(route, [emptied]))
+
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-81').click()
+  const sizes = page.locator('#queue-job-dialog').locator('.queue-detail-sizes')
+  await expect(sizes).toContainText('954 MB → 0 B')
+  await expect(sizes).toContainText('−100%')
+  await expect(sizes).toContainText('100% smaller than source')
 })
 
 test('the queue detail and the recent results read the same size change', async ({ page }) => {

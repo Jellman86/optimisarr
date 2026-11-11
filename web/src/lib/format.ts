@@ -29,38 +29,57 @@ export function formatRelative(value: string | Date, now: Date = new Date(), loc
   return format.format(Math.round(seconds / 86400), 'day')
 }
 
-// The rounded change in file size: negative means the output came out smaller than the source
-// (a saving), positive means it grew. The sign follows the size change itself, not the saving
-// it produced, so a file that grew can never read as a saving. Sizes that cannot describe a
-// change — non-finite, a missing or empty source, a negative output — leave null rather than a
-// number a reader would have to guess at.
-export function sizeChangePercent(sourceBytes: number, outputBytes: number): number | null {
-  if (![sourceBytes, outputBytes].every(Number.isFinite)) return null
-  if (sourceBytes <= 0 || outputBytes < 0) return null
-  const percent = Math.round((outputBytes / sourceBytes - 1) * 100)
-  // Math.round(-0.1) is -0, and a -0 would slip past every `< 0` check as a saving.
-  return Object.is(percent, -0) ? 0 : percent
-}
-
 export type SizeChangeStatus = 'saved' | 'unchanged' | 'grew'
 
-// The direction of a size change, for tone and wording. Unknown (null) is a state of its own;
-// it is not "unchanged".
-export function sizeChangeStatus(percent: number | null): SizeChangeStatus | null {
-  if (percent === null) return null
-  if (percent < 0) return 'saved'
-  if (percent > 0) return 'grew'
+// The direction of a size change is a fact about the bytes, and the bytes are its only source:
+// a smaller output saved, a larger one grew, an equal one did not change. It is never read from
+// a rounded percentage, because a real change smaller than the rounding — 1000 → 999 is a 0.1%
+// saving — would be reported as no change at all. Sizes that cannot be compared — non-finite, a
+// missing or empty source, a negative output — leave null rather than a guess.
+export function sizeChangeStatus(sourceBytes: number, outputBytes: number): SizeChangeStatus | null {
+  if (![sourceBytes, outputBytes].every(Number.isFinite)) return null
+  if (sourceBytes <= 0 || outputBytes < 0) return null
+  if (outputBytes < sourceBytes) return 'saved'
+  if (outputBytes > sourceBytes) return 'grew'
   return 'unchanged'
 }
 
+// The change in file size as a percentage, signed the way the bytes say: negative when the
+// output came out smaller, positive when it grew. Changes of a percent or more read as whole
+// numbers ("−71%"); smaller changes keep a tenth of a percent so they still read as the change
+// they are ("−0.1%", "+0.4%") and never as a quiet 0%. A real change finer than that tenth —
+// one byte in a few megabytes — is shown at the display's resolution, ±0.1%, rather than as
+// no change, so the figure always agrees with the direction the bytes carry.
+export function sizeChangePercent(sourceBytes: number, outputBytes: number): number | null {
+  const status = sizeChangeStatus(sourceBytes, outputBytes)
+  if (status === null) return null
+  const raw = (outputBytes / sourceBytes - 1) * 100
+  const percent = Math.abs(raw) >= 1 ? Math.round(raw) : Math.round(raw * 10) / 10
+  // Math.round(-0.01) is -0, and a -0 would slip past every `< 0` check as a saving.
+  if (percent === 0 && status !== 'unchanged') return status === 'saved' ? -0.1 : 0.1
+  return percent
+}
+
 // Every panel reads a size change from this one place, so the sign and the zero are written
-// once: smaller reads "−71%", larger reads "+12%", no change reads "0%", unknown reads "—".
-// The minus is U+2212, the sign the Quarantine list, the preview badge and the translated copy
-// already draw a saving with, and the sign that pairs with the plain plus above the number.
+// once: smaller reads "−71%", larger reads "+20%", a tenth of a percent keeps its decimal
+// ("−0.1%"), no change reads "0%", unknown reads "—". The minus is U+2212, the sign the
+// Quarantine list, the preview badge and the translated copy already draw a saving with, and
+// the sign that pairs with the plain plus above the number.
 export function formatSizeChangePercent(percent: number | null): string {
   if (percent === null) return '—'
   if (percent === 0) return '0%'
-  return percent < 0 ? `−${Math.abs(percent)}%` : `+${percent}%`
+  const magnitude = Number.isInteger(percent) ? Math.abs(percent).toString() : Math.abs(percent).toFixed(1)
+  return percent < 0 ? `−${magnitude}%` : `+${magnitude}%`
+}
+
+// The change in file size itself, signed the same way as the percent: "−400 MB", "+200 MB",
+// "0 MB", and "—" when the change cannot be judged. The direction comes from the bytes, so a
+// size figure and its percent beside it can never disagree about which way the file went.
+export function formatSizeChangeBytes(sourceBytes: number, outputBytes: number): string {
+  const status = sizeChangeStatus(sourceBytes, outputBytes)
+  if (status === null) return '—'
+  if (status === 'unchanged') return formatSize(0)
+  return `${status === 'saved' ? '−' : '+'}${formatSize(Math.abs(outputBytes - sourceBytes))}`
 }
 
 export interface MediaTitle {

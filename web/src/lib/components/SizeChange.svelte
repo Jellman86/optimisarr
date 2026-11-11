@@ -18,7 +18,7 @@
   } = $props()
 
   const percent = $derived(sizeChangePercent(sourceSizeBytes, outputSizeBytes))
-  const status = $derived(sizeChangeStatus(percent))
+  const status = $derived(sizeChangeStatus(sourceSizeBytes, outputSizeBytes))
   // A saving is the app's success tone, a file that grew is a warning, and a file that did not
   // change — or a change that cannot be judged — is a plain fact in neutral ink.
   const tone = $derived(status === 'saved' ? 'text-ok' : status === 'grew' ? 'text-warn' : 'text-ink-2')

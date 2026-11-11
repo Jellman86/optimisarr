@@ -788,7 +788,7 @@
               {#if selectedJob.executionAttempt && selectedJob.executionAttempt > 0}<span>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt })}</span>{/if}
               {#if isWorkingJob(selectedJob)}<span>{detailLocation(selectedJob)}</span>{/if}
             </div>
-            {#if selectedJob.sourceSizeBytes && selectedJob.outputSizeBytes && !isWorkingJob(selectedJob)}
+            {#if selectedJob.sourceSizeBytes != null && selectedJob.outputSizeBytes != null && !isWorkingJob(selectedJob)}
               {@const change = sizeChangePercent(selectedJob.sourceSizeBytes, selectedJob.outputSizeBytes)}
               <p class="queue-detail-sizes">{formatSize(selectedJob.sourceSizeBytes)} → {formatSize(selectedJob.outputSizeBytes)}{' '}<strong><SizeChange sourceSizeBytes={selectedJob.sourceSizeBytes} outputSizeBytes={selectedJob.outputSizeBytes} label={sizeChangeSentence(change)} /></strong></p>
             {/if}
