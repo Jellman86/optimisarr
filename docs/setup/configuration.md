@@ -697,11 +697,20 @@ folder you choose. Plex, Jellyfin, Emby, Sonarr and Radarr are not told about th
 copies. The folder must exist, be writable, and be outside every library, the working
 space and Quarantine: a folder inside a library would be scanned and its files
 optimised again, and the other two are cleaned up automatically. The editor says why a
-folder is refused before you save. The same rule is checked again when a job
-finishes, because a library can be added later; a refused file stays in the working
-space, the job fails with the reason, and the original is not touched. **Overwrite
-a file that is already there** is off by default, so a name clash fails the job
-instead of replacing an earlier copy.
+folder is refused before you save. The same rule is checked again before a job
+encodes and again when it finishes, because a library can be added later. A job
+refused before encoding fails with the reason and writes nothing, and the library's
+card says the save folder can't be used. A file refused when it finishes stays in
+the working space. In both cases the original is not touched. A configuration
+import is held to the same rule and imports nothing if a folder breaks it.
+
+Folders are compared as text, after symbolic links are followed. Two mounts of the
+same host folder under different container paths are not recognised as the same
+place, so do not mount a library a second time and save into it.
+
+**Overwrite a file that is already there** is off by default, so a name clash fails
+the job instead of replacing an earlier copy. With it on, the file already there is
+replaced for good: it does not go to Quarantine and cannot be put back.
 
 ![Replace automatically confirmation with the risk warning, Quarantine retention notice, acknowledgement, and disabled enable button](../images/optimisarr-auto-accept-confirmation-dark.png)
 

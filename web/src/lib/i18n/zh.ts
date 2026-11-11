@@ -2092,8 +2092,11 @@ export const zh: Messages = {
     folder_unchecked: "暂时无法检查此文件夹。保存时会再次检查。",
     example: "例如，{from} 会保存为 {to}。",
     overwrite_label: "覆盖那里已有的文件",
-    overwrite_hint: "关闭：任务会失败并说明原因，新文件留在工作区。无论哪种情况，原文件都不受影响。",
+    overwrite_hint: "关闭：任务会失败并给出说明，新文件留在工作区。开启：已存在的文件会被永久替换，不会进入隔离区，也无法恢复。两种情况下您的原始文件都不受影响。",
     both_note: "此媒体库同时开启了“自动替换”和“保存到另一个文件夹”。实际生效的是保存到另一个文件夹，因此没有替换任何文件。下次保存时会关闭“自动替换”。",
     badge_elsewhere: "保存到另一个文件夹",
+    folder_refused: "用于存放优化后文件的文件夹无法使用",
+    badge_folder_refused: "保存文件夹无法使用",
+    badge_folder_refused_hint: "在更改文件夹之前，此媒体库的文件不会被编码。请打开“配置”，然后进入“计划与替换”。",
   },
 }

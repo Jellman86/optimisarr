@@ -2287,9 +2287,12 @@ result_dismiss: 'Dismiss',
     folder_unchecked: "Couldn't check this folder just now. It is checked again when you save.",
     example: "For example, {from} is saved as {to}.",
     overwrite_label: "Overwrite a file that is already there",
-    overwrite_hint: "Off: the job fails and says so, and the new file stays in the working space. Your originals are not affected either way.",
+    overwrite_hint: "Off: the job fails and says so, and the new file stays in the working space. On: the file already there is replaced for good. It does not go to Quarantine and cannot be put back. Your originals are not affected either way.",
     both_note: "This library had both “replace automatically” and “save in another folder” switched on. Saving in another folder won, so nothing was replaced. Replace automatically is switched off the next time you save.",
     badge_elsewhere: "saves to another folder",
+    folder_refused: "The folder for optimised files can’t be used",
+    badge_folder_refused: "Save folder can’t be used",
+    badge_folder_refused_hint: "Files from this library are not encoded until the folder is changed. Open Configure, then Schedule & replace.",
   },
 }
 

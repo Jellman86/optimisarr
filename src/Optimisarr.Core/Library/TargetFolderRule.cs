@@ -91,11 +91,54 @@ public static class TargetFolderRule
         return candidate.StartsWith(prefix, PathComparison);
     }
 
+    // A link can point at a path that itself goes through another link, so one pass from the
+    // root is not enough. Forty passes is the depth Linux itself gives up at.
+    private const int MaxLinkPasses = 40;
+
+    /// <summary>
+    /// False for text no filesystem can hold as a path, such as one with a NUL in it, so a caller
+    /// can refuse it as bad input instead of failing while resolving it.
+    /// </summary>
+    public static bool IsUsablePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Contains('\0'))
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = Path.GetFullPath(path);
+            return true;
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// The path with every symbolic link on it followed, so a link into a library cannot pass as a
     /// folder outside it. Parts that do not exist yet are kept as written.
     /// </summary>
     public static string ResolveLinks(string path)
+    {
+        var resolved = Normalise(path);
+        for (var pass = 0; pass < MaxLinkPasses; pass++)
+        {
+            var next = ResolveLinksOnce(resolved);
+            if (string.Equals(next, resolved, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            resolved = next;
+        }
+
+        return resolved;
+    }
+
+    private static string ResolveLinksOnce(string path)
     {
         var full = Path.GetFullPath(path);
         var root = Path.GetPathRoot(full) ?? string.Empty;

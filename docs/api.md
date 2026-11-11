@@ -252,7 +252,7 @@ Health response:
 | `GET` | `/api/settings/cleanup` | Preview files and bytes currently eligible under the saved cleanup policy without changing anything. |
 | `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
-| `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
+| `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. A library's `targetFolder` is held to the same rule as on Save (outside every library the server would then have, the working space and Quarantine), and nothing is imported if one breaks it. A library with `moveOnComplete` is stored with `autoReplace` off. |
 
 New exports use configuration format version 4. This build accepts versions 1–4 and rejects newer
 formats. When an older backup omits a field, verification settings take the value from that backup's legacy global policy, or its defaults (for example, the VMAF gate off); audio quality reporting is off; and the newer audio, image and soundtrack quality controls keep the library's current values. New libraries retain their defaults.

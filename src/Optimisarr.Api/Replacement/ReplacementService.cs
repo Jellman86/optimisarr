@@ -275,7 +275,9 @@ public sealed class ReplacementService
     }
 
     private Task<bool> IsAutomaticAcceptanceEnabledAsync(int? libraryId, CancellationToken cancellationToken) =>
-        _db.Libraries.AsNoTracking().AnyAsync(library => library.Id == libraryId && library.AutoReplace, cancellationToken);
+        // The same rule as AutoReplacePolicy.ReplacesAutomatically, written so the database can apply it.
+        _db.Libraries.AsNoTracking().AnyAsync(
+            library => library.Id == libraryId && library.AutoReplace && !library.MoveOnComplete, cancellationToken);
 
     private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, bool automatic, CancellationToken cancellationToken)
     {

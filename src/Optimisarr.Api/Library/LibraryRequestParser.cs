@@ -1,3 +1,4 @@
+using Optimisarr.Core.Library;
 using Optimisarr.Core.SuperResolution;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
@@ -580,6 +581,12 @@ internal static class LibraryRequestParser
         if (moveOnComplete && targetFolder is null)
         {
             error = "A target folder is required when 'move output on complete' is enabled.";
+            return false;
+        }
+
+        if (targetFolder is not null && !TargetFolderRule.IsUsablePath(targetFolder))
+        {
+            error = "The target folder is not a path this server can use.";
             return false;
         }
 

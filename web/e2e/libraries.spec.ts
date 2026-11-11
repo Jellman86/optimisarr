@@ -1334,3 +1334,49 @@ test('choosing a preset keeps same as source, because keeping file names is not 
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await saved).postDataJSON()).toMatchObject({ ruleProfile: 'CompatibilityH264', targetContainer: 'source' })
 })
+
+test('a refused save folder holds Save back on every page of the editor and the callout names the problem', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/automate')
+  await filesChoice(page, 'elsewhere').check()
+  await page.getByRole('button', { name: 'Browse', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Choose a folder' })
+  await picker.getByRole('button', { name: 'media', exact: true }).click()
+  await picker.getByRole('button', { name: 'films', exact: true }).click()
+  await picker.getByRole('button', { name: 'Select folder', exact: true }).click()
+  await expect(page.locator('[data-target-folder-state="insideLibrary"]')).toBeVisible()
+
+  // The folder control is no longer on screen, but the refusal still stands.
+  await page.goto('/#/libraries/1/configure/verify')
+
+  const problem = page.getByRole('alert').getByRole('button', { name: 'The folder for optimised files can’t be used', exact: true })
+  await expect(problem).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await problem.click()
+  await expect(page).toHaveURL(/configure\/automate$/)
+  await expect(page.locator('[data-target-folder-state="insideLibrary"]')).toBeVisible()
+})
+
+test('a saved library whose save folder can no longer be used is flagged on its card', async ({ page }) => {
+  await mockLibraries(page, { ...library, moveOnComplete: true, targetFolder: '/media/films/optimised' })
+  await page.goto('/#/libraries')
+  const card = page.locator('[data-library-card="1"]')
+
+  await expect(card.locator('[data-save-folder-refused]')).toHaveText('Save folder can’t be used')
+  await expect(card.locator('[data-save-folder-hint]')).toContainText('Files from this library are not encoded until the folder is changed.')
+})
+
+test('a library saving to a usable folder is not flagged', async ({ page }) => {
+  await mockLibraries(page, { ...library, moveOnComplete: true, targetFolder: '/optimised' })
+  await page.goto('/#/libraries')
+
+  await expect(page.locator('[data-library-card="1"]')).toBeVisible()
+  await expect(page.locator('[data-save-folder-refused]')).toHaveCount(0)
+})
+
+test('the overwrite switch says what On does as well as Off', async ({ page }) => {
+  await mockLibraries(page, { ...library, moveOnComplete: true, targetFolder: '/optimised' })
+  await page.goto('/#/libraries/1/configure/automate')
+
+  await expect(page.locator('main')).toContainText('On: the file already there is replaced for good. It does not go to Quarantine and cannot be put back.')
+})

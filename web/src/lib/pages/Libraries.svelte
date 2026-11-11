@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { tick } from 'svelte'
-  import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type WorkPlacement } from '../api'
+  import { tick, untrack } from 'svelte'
+  import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type TargetFolderCheck, type WorkPlacement } from '../api'
   import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
@@ -456,7 +456,12 @@
   let busyId = $state<number | null>(null)
   let pickerOpen = $state(false)
   // Set by the files choice while the chosen folder is one the server would refuse on Save.
-  let targetFolderRefused = $state(false)
+  // The server's answer about the save folder, asked here rather than only by the control that
+  // edits it: that control is on one page of the editor, and Save is on all of them.
+  let targetFolderCheck = $state<TargetFolderCheck | null>(null)
+  // The same question for each saved library, so a folder that has stopped being usable shows on
+  // its card instead of only when a job fails.
+  let refusedSaveFolders = $state<Record<number, TargetFolderCheck>>({})
 
   // null = nothing open; 0 = adding a new library; >0 = editing that card.
   let editingId = $state<number | null>(null)
@@ -674,11 +679,25 @@
     form.encoderPreset != null && options.legacyEncoderPresets.includes(form.encoderPreset),
   )
 
+  $effect(() => {
+    const path = editingId !== null && form.moveOnComplete ? form.targetFolder?.trim() : ''
+    targetFolderCheck = null
+    if (!path) return
+    let cancelled = false
+    // The name only labels a refusal, so typing it must not ask the server again.
+    api.checkTargetFolder({ path, libraryId: editingId || null, libraryName: untrack(() => form.name), libraryPath: form.path })
+      .then((result) => { if (!cancelled) targetFolderCheck = result })
+      // Unanswered is not refused: Save asks the server again.
+      .catch(() => {})
+    return () => { cancelled = true }
+  })
+  const targetFolderRefused = $derived(form.moveOnComplete && targetFolderCheck !== null && !targetFolderCheck.allowed)
+
   // Saving elsewhere needs a folder the server will accept; say which before Save, not after.
   const targetFolderProblem = $derived(
     !form.moveOnComplete ? null
       : !form.targetFolder?.trim() ? i18n.m.filesChoice.folder_required
-        : targetFolderRefused ? i18n.m.filesChoice.folder_label
+        : targetFolderRefused ? i18n.m.filesChoice.folder_refused
           : null,
   )
 
@@ -948,6 +967,7 @@
     void loadRemoteWorkers()
     // Proactively flag any path Optimisarr can't reach/read/write before the user hits a failure.
     void checkAllAccess()
+    void checkSaveFolders()
 
     const routeEditor = requestedEditorId()
     if (routeEditor === 0) {
@@ -971,6 +991,18 @@
 
   // One line for how a library gets its work: the auto-optimise window (or that it is off), and
   // whether verified outputs replace originals on their own.
+  async function checkSaveFolders() {
+    const saving = libraries.filter((library) => library.moveOnComplete && library.targetFolder)
+    const answers = await Promise.all(saving.map(async (library) => {
+      try {
+        return [library.id, await api.checkTargetFolder({ path: library.targetFolder!, libraryId: library.id, libraryName: library.name, libraryPath: library.path })] as const
+      } catch {
+        return null
+      }
+    }))
+    refusedSaveFolders = Object.fromEntries(answers.filter((answer) => answer !== null && !answer[1].allowed).map((answer) => answer!))
+  }
+
   function scheduleLabel(library: Library): string {
     const window = library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd
       ? i18n.m.libraries.any_time
@@ -2447,7 +2479,6 @@
         bind:moveOnComplete={form.moveOnComplete}
         bind:targetFolder={form.targetFolder}
         bind:moveOverwrite={form.moveOverwrite}
-        bind:folderRefused={targetFolderRefused}
         libraryId={editingId || null}
         libraryName={form.name}
         libraryPath={form.path}
@@ -3287,6 +3318,9 @@
             {#if !library.enabled}
               <span class="badge tone-muted">{i18n.m.libraries.badge_disabled}</span>
             {/if}
+            {#if refusedSaveFolders[library.id]}
+              <span class="badge tone-warn" data-save-folder-refused>{i18n.m.filesChoice.badge_folder_refused}</span>
+            {/if}
           </div>
           <ActionMenu
             label={t(i18n.m.libraries.more_actions, { name: library.name })}
@@ -3298,6 +3332,9 @@
             ]}
           />
         </div>
+        {#if refusedSaveFolders[library.id]}
+          <p class="text-xs leading-relaxed text-warn" data-save-folder-hint>{i18n.m.filesChoice.badge_folder_refused_hint}</p>
+        {/if}
 
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink">{library.fileCount.toLocaleString()}</span>

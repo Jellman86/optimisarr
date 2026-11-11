@@ -191,6 +191,99 @@ public sealed class LibraryTargetFolderEndpointTests(AdminTokenAuthEndpointTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task A_folder_that_cannot_be_a_path_is_bad_input_not_a_server_error()
+    {
+        using var client = Admin();
+        var broken = Path.Combine(_root, "opti\0mised");
+
+        var checkedFolder = await client.PostAsJsonAsync("/api/libraries/target-folder-check", new { path = broken });
+        var checkedLibrary = await client.PostAsJsonAsync("/api/libraries/target-folder-check",
+            new { path = Folder("optimised"), libraryPath = broken, libraryName = "Broken" });
+        var saved = await client.PostAsJsonAsync("/api/libraries", Fields("Broken saver", Folder("tv"), broken));
+
+        foreach (var response in new[] { checkedFolder, checkedLibrary, saved })
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("library.validation", await response.Content.ReadAsStringAsync());
+        }
+    }
+
+    [Fact]
+    public async Task A_refused_destination_writes_nothing_and_keeps_the_output_in_the_work_folder()
+    {
+        using var client = Admin();
+        var target = Folder("optimised");
+        (await client.PostAsJsonAsync("/api/libraries", Fields("Late " + Guid.NewGuid().ToString("N"), target))).EnsureSuccessStatusCode();
+        var (workRoot, output) = WorkOutput("Show", "Episode.mkv");
+
+        var saved = await Saver().SaveAsync(workRoot, output, target, overwrite: true);
+
+        Assert.Null(saved.Destination);
+        Assert.Contains("The optimised file was not saved.", saved.Error);
+        Assert.Contains("Your original has not been touched.", saved.Error);
+        Assert.Equal("VERIFIED", await File.ReadAllTextAsync(output));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(target));
+    }
+
+    [Fact]
+    public async Task An_allowed_destination_receives_the_output_under_the_same_folders()
+    {
+        var target = Folder("optimised");
+        var (workRoot, output) = WorkOutput("Show", "Episode.mkv");
+
+        var saved = await Saver().SaveAsync(workRoot, output, target, overwrite: false);
+
+        Assert.Null(saved.Error);
+        Assert.Equal(Path.Combine(target, "Show", "Episode.mkv"), Path.GetFullPath(saved.Destination!));
+        Assert.Equal("VERIFIED", await File.ReadAllTextAsync(saved.Destination!));
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public async Task A_file_already_at_the_destination_is_kept_when_overwrite_is_off()
+    {
+        var target = Folder("optimised");
+        var existing = Path.Combine(Folder("optimised", "Show"), "Episode.mkv");
+        await File.WriteAllTextAsync(existing, "EARLIER");
+        var (workRoot, output) = WorkOutput("Show", "Episode.mkv");
+
+        var saved = await Saver().SaveAsync(workRoot, output, target, overwrite: false);
+
+        Assert.Contains("already exists at the destination", saved.Error);
+        Assert.Equal("EARLIER", await File.ReadAllTextAsync(existing));
+        Assert.Equal("VERIFIED", await File.ReadAllTextAsync(output));
+    }
+
+    [Fact]
+    public async Task A_saved_library_whose_folder_now_breaks_the_rule_is_refused_before_encoding()
+    {
+        using var client = Admin();
+        var target = Folder("optimised");
+        var allowed = await Saver().RefusalBeforeEncodingAsync(target, CancellationToken.None);
+        var later = "Later " + Guid.NewGuid().ToString("N");
+        (await client.PostAsJsonAsync("/api/libraries", Fields(later, target))).EnsureSuccessStatusCode();
+
+        var refused = await Saver().RefusalBeforeEncodingAsync(target, CancellationToken.None);
+
+        Assert.Null(allowed);
+        Assert.StartsWith("Not encoded.", refused);
+        Assert.Contains($"inside the {later} library", refused);
+        Assert.Contains("Your original has not been touched.", refused);
+    }
+
+    private SaveElsewhere Saver() =>
+        new(api.Services.GetRequiredService<IServiceScopeFactory>(), api.Services.GetRequiredService<IHostEnvironment>());
+
+    // A verified output as the dispatcher leaves it: under the file's own work root, in the library's folders.
+    private (string WorkRoot, string Output) WorkOutput(string folder, string name)
+    {
+        var workRoot = Folder("work-" + Guid.NewGuid().ToString("N"));
+        var output = Path.Combine(Directory.CreateDirectory(Path.Combine(workRoot, folder)).FullName, name);
+        File.WriteAllText(output, "VERIFIED");
+        return (workRoot, output);
+    }
+
     private static Task<JsonElement> CheckAsync(HttpClient client, string path) => CheckAsync(client, new { path });
 
     private static async Task<JsonElement> CheckAsync(HttpClient client, object request)

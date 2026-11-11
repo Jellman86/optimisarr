@@ -98,9 +98,15 @@ internal static class LibraryEndpoints
                 return ApiErrors.BadRequest("library.validation", "A folder is required.");
             }
 
+            var libraryPath = request.LibraryPath?.Trim();
+            if (!TargetFolderRule.IsUsablePath(path)
+                || (!string.IsNullOrWhiteSpace(libraryPath) && !TargetFolderRule.IsUsablePath(libraryPath)))
+            {
+                return ApiErrors.BadRequest("library.validation", "That is not a path this server can use.");
+            }
+
             // An unsaved library's own folder counts too, so the editor can refuse a folder inside
             // the library it is about to create or move.
-            var libraryPath = request.LibraryPath?.Trim();
             var beingSaved = string.IsNullOrWhiteSpace(libraryPath)
                 ? null
                 : new LibraryFolder(request.LibraryName?.Trim() ?? string.Empty, libraryPath);

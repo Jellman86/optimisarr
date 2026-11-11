@@ -83,6 +83,42 @@ public sealed class TargetFolderRuleTests : IDisposable
     }
 
     [Fact]
+    public void ResolveLinks_follows_a_link_whose_target_goes_through_another_link()
+    {
+        // alias → media, out → alias/tv: following "out" once lands on a path that still has a link in it.
+        var alias = Path.Combine(_root, "alias");
+        Directory.CreateSymbolicLink(alias, Path.Combine(_root, "media"));
+        var link = Path.Combine(_root, "out");
+        Directory.CreateSymbolicLink(link, Path.Combine(alias, "tv"));
+
+        var resolved = TargetFolderRule.ResolveLinks(Path.Combine(link, "optimised"));
+
+        Assert.Equal(Path.Combine(TargetFolderRule.ResolveLinks(_libraries[0].Path), "optimised"), resolved);
+        Assert.Equal(TargetFolderRefusal.InsideLibrary, TargetFolderRule.Check(resolved, _libraries, _work, _quarantine).Refusal);
+    }
+
+    [Fact]
+    public void ResolveLinks_stops_on_links_that_point_at_each_other()
+    {
+        var first = Path.Combine(_root, "first");
+        var second = Path.Combine(_root, "second");
+        Directory.CreateSymbolicLink(first, second);
+        Directory.CreateSymbolicLink(second, first);
+
+        var resolved = TargetFolderRule.ResolveLinks(Path.Combine(first, "optimised"));
+
+        Assert.EndsWith("optimised", resolved);
+    }
+
+    [Theory]
+    [InlineData("/data/optimised", true)]
+    [InlineData("/data/opti\0mised", false)]
+    [InlineData("  ", false)]
+    [InlineData(null, false)]
+    public void IsUsablePath_refuses_text_that_cannot_be_a_path(string? path, bool usable) =>
+        Assert.Equal(usable, TargetFolderRule.IsUsablePath(path));
+
+    [Fact]
     public void ResolveLinks_keeps_parts_that_do_not_exist_yet()
     {
         var missing = Path.Combine(_root, "optimised", "not-made-yet");
