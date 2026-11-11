@@ -43,33 +43,35 @@ Do this:
 
 1. Go to **Libraries**.
 2. Add a library or click **Configure** on an existing one.
-3. In **Choose files**, use a path as the container sees it, usually below `/data`, and pick the
-   media type, eligibility rules, and priority.
-4. In **Encode**, choose the processing mode and preset or format. Open **Video settings**,
-   **Audio & subtitles**, or image settings when you need those controls.
-5. For video re-encodes, review **Video quality path**: new libraries start with Adaptive per-title
-   VMAF and the Visually lossless target. Fixed quality can use a named VMAF tier or turn VMAF off.
-6. In **Verify**, review the required safety checks. **Advanced verification** contains precise
-   tolerances and custom perceptual-quality floors and sampling.
-7. In **Schedule & replace**, choose automation, its time window, and the output destination.
-8. Use the overview or breadcrumbs to move between stages. The draft is retained, and **Save**
-   applies changes from all stages together. Advanced pages are optional refinements.
+3. In **Which files**, use a path as the container sees it, usually below `/data`, and pick the
+   media type and the rules for which files are picked up.
+4. In **Video**, choose what to do and a preset. Format, quality, picture, encoder and AI
+   upscaling are all on that page. **Audio & subtitles** and **Images** hold the rest.
+5. For video re-encodes, review **Quality**: new libraries start with **Smallest file that meets
+   the target** and the Visually lossless target. A fixed setting can be checked against the
+   target or have no picture check.
+6. In **Checks**, read the checks that are always on, then switch on the optional ones you want.
+   Their tolerances are on the same page.
+7. In **Schedule & replace**, choose automation, its hours, queue priority, and what happens to
+   your files after they pass.
+8. Use the page list, the overview's **Edit** buttons or the breadcrumb to move around. The draft
+   is retained, and **Save** applies changes from all pages together.
 
-The stage bar remains available on configuration, Candidates and Excluded pages. The stage being
-edited is filled with the accent colour; selecting another stage retains the draft.
+The page list stays above every settings page; the page being read is filled with the accent colour.
 
-For explicitly re-encoded video audio, **Verify** also offers **Soundtrack quality report**
-and **Require soundtrack quality**, both off by default and separate from standalone audio.
-When enabling the gate, choose **Maximum soundtrack difference** in **Advanced verification**.
+For video audio that is converted, **Audio & subtitles** also offers **Soundtrack quality**,
+off by default and separate from standalone audio.
+When requiring a limit, choose **Maximum soundtrack difference** in the row below it.
 Reports alone do not block replacement; a configured gate needs every retained supported track
 and sample to pass. Copied audio and previews skip this assessment. Review the
 [supported tracks, sample coverage and cost](../setup/configuration.md#assess-re-encoded-video-soundtracks)
 before using it on a library.
 
-The library overview groups controls by processing stage. Each stage opens its own page, and
-breadcrumbs return to the overview without discarding your draft.
+The library overview says what the library does, one line per page, with a tag on any line that
+changes the picture, renames files, removes tracks or deletes originals later. **Edit** opens the
+page with every control for that line.
 
-![Library overview showing Choose files, Encode, Verify, and Schedule & replace stages](../images/optimisarr-library-configure-dark.png)
+![Library overview with one sentence per page, warning tags, and Edit buttons](../images/optimisarr-library-configure-dark.png)
 
 Preset guide:
 
@@ -81,7 +83,7 @@ Preset guide:
 | Scott's compatibility-first setup | Scott's Settings |
 | No re-encode, container cleanup only | Remux / cleanup |
 
-Under **Encode → Video settings → Advanced encoding**, **Encoder effort** is portable across encoder modes:
+Under **Video → Encoder**, **Encoder effort** is portable across encoder modes:
 
 | Choice | Behaviour |
 |---|---|

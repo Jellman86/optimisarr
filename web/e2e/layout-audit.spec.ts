@@ -8,19 +8,13 @@ const routes = [
   ['dashboard', '/'],
   ['libraries', '/libraries'],
   ['library overview', '/libraries/1/configure'],
-  ['library source', '/libraries/1/configure/source'],
-  ['library source advanced', '/libraries/1/configure/source/advanced'],
-  ['library encode', '/libraries/1/configure/encode'],
-  ['library quality', '/libraries/1/configure/encode/quality'],
-  ['library video', '/libraries/1/configure/encode/video'],
-  ['library video advanced', '/libraries/1/configure/encode/video/advanced'],
-  ['library audio', '/libraries/1/configure/encode/audio'],
-  ['library audio advanced', '/libraries/1/configure/encode/audio/advanced'],
-  ['library verification', '/libraries/1/configure/verify'],
-  ['library verification advanced', '/libraries/1/configure/verify/advanced'],
-  ['library automation', '/libraries/1/configure/automate'],
-  ['photo encoding', '/libraries/4/configure/encode/images'],
-  ['photo encoding advanced', '/libraries/4/configure/encode/images/advanced'],
+  ['library files', '/libraries/1/configure/files'],
+  ['library video', '/libraries/1/configure/video'],
+  ['library audio', '/libraries/1/configure/audio'],
+  ['library checks', '/libraries/1/configure/checks'],
+  ['library schedule', '/libraries/1/configure/schedule'],
+  ['photo images', '/libraries/4/configure/images'],
+  ['photo checks', '/libraries/4/configure/checks'],
   ['inventory', '/inventory'],
   ['queue', '/queue'],
   ['quarantine', '/quarantine'],
@@ -213,8 +207,8 @@ async function waitForAuditedContent(page: Page, name: string) {
   const selector: Record<string, string> = {
     'settings media servers': '#global-media-servers label input[type="checkbox"]',
     'settings notifications': '#global-notifications label input[type="checkbox"]',
-    'library video advanced': '#lib-codec',
-    'photo encoding advanced': '#lib-image-quality',
+    'library video': '#lib-codec',
+    'photo images': '#lib-image-quality',
     'personal quality check': 'main select',
   }
   if (selector[name]) await expect(page.locator(selector[name]).first()).toBeVisible()
@@ -261,7 +255,7 @@ for (const viewport of [
       expect(layout.mainOverflow, name).toBeLessThanOrEqual(2)
       expect(layout.escapedCards, name).toEqual([])
       expect(layout.clippedCards, name).toEqual([])
-      if (['library overview', 'library source', 'library verification advanced'].includes(name)) {
+      if (['library overview', 'library files', 'library checks'].includes(name)) {
         await page.screenshot({ path: testInfo.outputPath(`${name.replaceAll(' ', '-')}.png`), animations: 'disabled' })
       }
     }
@@ -386,7 +380,7 @@ test('detail surfaces fit the viewport and leave the page scrollable', async ({ 
 
 test('interactive cards retain their hover lift and keyboard focus', async ({ page }) => {
   await mockApp(page)
-  await page.goto('/#/libraries/1/configure')
+  await page.goto('/#/settings')
   const card = page.locator('.card-interactive').first()
   await expect(card).toBeVisible()
   const before = await card.evaluate(element => getComputedStyle(element).boxShadow)

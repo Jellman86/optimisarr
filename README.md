@@ -241,11 +241,12 @@ with `libvmaf`; the Tools page reports that optional capability independently. A
 support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
 failure retries in software. New video re-encode libraries enable VMAF with the Visually lossless
 target by default; remux and non-video libraries skip it, and existing libraries keep their saved policy.
-The same editor presents two mutually exclusive video-quality paths: the default **Adaptive per-title
-VMAF**, or **Fixed library quality**. Adaptive mode tests up to four encoder values across
+A library's **Video** page has one **How quality is chosen** control: the default **Smallest file
+that meets the target** (adaptive per-title VMAF), **Fixed setting, checked against the target**, or
+**Fixed setting, no picture check**. The first tests up to four encoder values across
 bounded early/middle/late video-only samples before the full encode, then chooses the smallest
-measured passing candidate. Adaptive preparation falls back to Fixed when evidence is unavailable
-or contradictory and never replaces final verification. Fixed remains a one-click opt-out when the
+measured passing candidate. That preparation falls back to the fixed setting when evidence is unavailable
+or contradictory and never replaces final verification. A fixed setting remains a one-click opt-out when the
 extra measurement cost is not appropriate.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, source-cadence frame alignment, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
