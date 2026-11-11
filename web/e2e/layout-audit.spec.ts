@@ -16,6 +16,7 @@ const routes = [
   ['photo images', '/libraries/4/configure/images'],
   ['photo checks', '/libraries/4/configure/checks'],
   ['inventory', '/inventory'],
+  ['optimise file', '/inventory/optimise/1'],
   ['queue', '/queue'],
   ['quarantine', '/quarantine'],
   ['quarantine review', '/quarantine/1'],
@@ -104,6 +105,8 @@ async function mockApp(page: Page) {
       items: fixtures.files.map(file => ({ file, eligible: true, reason: 'Eligible for optimisation.' })),
       total: fixtures.files.length, counts: { all: fixtures.files.length, eligible: fixtures.files.length, skipped: 0, unprobed: 0 },
     })
+    if (/^\/api\/media\/\d+\/plan$/.test(path)) return json(route, fixtures.plan)
+    if (path === '/api/settings/dry-run-unlock') return json(route, fixtures.unlockEffects)
     if (path === '/api/replacements') return json(route, fixtures.replacements)
     if (path === '/api/quarantine/duplicates') return json(route, [{ id: '11111111-1111-1111-1111-111111111111', state: 'Quarantined', heldSince: '2026-11-07T10:00:00Z', attentionReason: null, keptPaths: ['/data/films/A very long film title that needs to wrap on a phone (2026)/A very long film title that needs to wrap on a phone (2026).mkv'], copies: [{ path: '/data/films/Backup/A very long film title that needs to wrap on a phone (2026).mkv', quarantinePath: '/data/films/.optimisarr-dedupe/1/Backup/A very long film title that needs to wrap on a phone (2026).mkv', sizeBytes: 4_000_000_000 }] }])
     if (/\/duplicates\/cleanup\/preview$/.test(path)) return json(route, { ready: true, groups: 1, copies: 1, bytesToFree: 1024, leftAlone: { SharedExtra: 2 } })
@@ -208,6 +211,7 @@ async function waitForAuditedContent(page: Page, name: string) {
     'settings media servers': '#global-media-servers label input[type="checkbox"]',
     'settings notifications': '#global-notifications label input[type="checkbox"]',
     'library video': '#lib-codec',
+    'optimise file': '[data-one-file-plan]',
     'photo images': '#lib-image-quality',
     'personal quality check': 'main select',
   }

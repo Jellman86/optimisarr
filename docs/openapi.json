@@ -1248,6 +1248,79 @@
         ],
         "type": "object"
       },
+      "DryRunUnlockEffects": {
+        "properties": {
+          "duplicateBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "duplicatesToDelete": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "jobsToReplace": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "librariesCleaningDuplicatesDaily": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "needsConfirmation": {
+            "type": "boolean"
+          },
+          "originalBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "originalsToDelete": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "retentionDays": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "retentionDays",
+          "originalsToDelete",
+          "originalBytes",
+          "duplicatesToDelete",
+          "duplicateBytes",
+          "librariesCleaningDuplicatesDaily",
+          "jobsToReplace"
+        ],
+        "type": "object"
+      },
       "ExactDuplicateAlias": {
         "properties": {
           "id": {
@@ -3235,6 +3308,339 @@
       "MediaKind": {
         "type": "integer"
       },
+      "MediaPlanDto": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "audioTracks": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedTrack"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "file": {
+            "$ref": "#/components/schemas/PlannedFile"
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MediaPlanImageDto"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "mediaFileId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "picture": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MediaPlanPictureDto"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "sound": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannedSound"
+              }
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/MediaPlanSourceDto"
+          },
+          "subtitleTracks": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedTrack"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "mediaFileId",
+          "libraryId",
+          "eligible",
+          "reason",
+          "kind",
+          "action",
+          "source",
+          "picture",
+          "sound",
+          "audioTracks",
+          "subtitleTracks",
+          "file",
+          "image"
+        ],
+        "type": "object"
+      },
+      "MediaPlanImageDto": {
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "quality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "recompressesLossy": {
+            "type": "boolean"
+          },
+          "resizeMode": {
+            "type": "string"
+          },
+          "resizeValue": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "format",
+          "quality",
+          "resizeMode",
+          "resizeValue",
+          "recompressesLossy"
+        ],
+        "type": "object"
+      },
+      "MediaPlanPictureDto": {
+        "properties": {
+          "codec": {
+            "type": "string"
+          },
+          "crf": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "cropBlackBars": {
+            "type": "boolean"
+          },
+          "deinterlace": {
+            "type": "boolean"
+          },
+          "frameRateCap": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "height": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "noiseReduction": {
+            "type": "string"
+          },
+          "shrinkToHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "tonemapToSdr": {
+            "type": "boolean"
+          },
+          "upscales": {
+            "type": "boolean"
+          },
+          "width": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "codec",
+          "crf",
+          "width",
+          "height",
+          "shrinkToHeight",
+          "frameRateCap",
+          "tonemapToSdr",
+          "deinterlace",
+          "cropBlackBars",
+          "noiseReduction",
+          "upscales"
+        ],
+        "type": "object"
+      },
+      "MediaPlanSourceDto": {
+        "properties": {
+          "audioCodecs": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "audioTrackCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "container": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "durationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "height": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "interlaced": {
+            "type": "boolean"
+          },
+          "isDolbyVision": {
+            "type": "boolean"
+          },
+          "isHdr": {
+            "type": "boolean"
+          },
+          "maxAudioChannels": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "subtitleTrackCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "videoCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "width": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "relativePath",
+          "sizeBytes",
+          "container",
+          "videoCodec",
+          "width",
+          "height",
+          "durationSeconds",
+          "isHdr",
+          "isDolbyVision",
+          "interlaced",
+          "audioCodecs",
+          "maxAudioChannels",
+          "audioTrackCount",
+          "subtitleTrackCount"
+        ],
+        "type": "object"
+      },
       "NotificationTargetSnapshot": {
         "properties": {
           "enabled": {
@@ -3574,6 +3980,84 @@
         },
         "required": [
           "pinned"
+        ],
+        "type": "object"
+      },
+      "PlannedFile": {
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mayBecomeMatroska": {
+            "type": "boolean"
+          },
+          "renamed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "container",
+          "fileName",
+          "renamed",
+          "mayBecomeMatroska"
+        ],
+        "type": "object"
+      },
+      "PlannedSound": {
+        "properties": {
+          "bitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "codec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "downmixToStereo": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "codec",
+          "bitrateKbps",
+          "downmixToStereo"
+        ],
+        "type": "object"
+      },
+      "PlannedTrack": {
+        "properties": {
+          "index": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "kept": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "index",
+          "language",
+          "kept"
         ],
         "type": "object"
       },
@@ -9661,6 +10145,61 @@
         ]
       }
     },
+    "/api/media/{id}/plan": {
+      "get": {
+        "operationId": "GetMediaPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaPlanDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
     "/api/media/{id}/preview": {
       "post": {
         "operationId": "CreatePreview",
@@ -10656,6 +11195,29 @@
               }
             },
             "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/settings/dry-run-unlock": {
+      "get": {
+        "operationId": "PreviewDryRunUnlock",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunUnlockEffects"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [

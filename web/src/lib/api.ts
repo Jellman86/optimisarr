@@ -1148,6 +1148,70 @@ export type CandidateSummary = {
 
 export type InventoryFilter = 'all' | 'eligible' | 'skipped' | 'unprobed'
 
+/** What queueing one file would do, by its library's settings as they are now. */
+export type MediaPlan = {
+  mediaFileId: number
+  libraryId: number | null
+  eligible: boolean
+  reason: string
+  kind: string
+  action: 'Encode' | 'Remux' | 'TrackCleanup' | 'Audio' | 'Image'
+  source: {
+    relativePath: string
+    sizeBytes: number
+    container: string | null
+    videoCodec: string | null
+    width: number | null
+    height: number | null
+    durationSeconds: number | null
+    isHdr: boolean
+    isDolbyVision: boolean
+    interlaced: boolean
+    audioCodecs: string | null
+    maxAudioChannels: number
+    audioTrackCount: number | null
+    subtitleTrackCount: number | null
+  }
+  /** Null unless the video is re-encoded. A null size or cap means it is left as it is. */
+  picture: {
+    codec: string
+    crf: number | null
+    width: number | null
+    height: number | null
+    /** The height limit the new size is worked out from; the exact size is null while black bars are still to be measured. */
+    shrinkToHeight: number | null
+    /** A rule, not a finding: it only changes a file that runs above it. */
+    frameRateCap: number | null
+    tonemapToSdr: boolean
+    deinterlace: boolean
+    cropBlackBars: boolean
+    noiseReduction: NoiseReduction
+    /** The job would run through AI upscaling, which copies its sound. */
+    upscales: boolean
+  } | null
+  /** Null unless the file is an image. */
+  image: { format: string; quality: number; resizeMode: 'None' | 'MaxLongEdge' | 'Percent'; resizeValue: number; recompressesLossy: boolean } | null
+  /** A null codec means every kept track is copied untouched. */
+  sound: { codec: string | null; bitrateKbps: number | null; downmixToStereo: boolean } | null
+  /** Null when the file was probed before track languages were recorded. */
+  audioTracks: MediaPlanTrack[] | null
+  subtitleTracks: MediaPlanTrack[] | null
+  file: { container: string; fileName: string; renamed: boolean; mayBecomeMatroska: boolean }
+}
+export type MediaPlanTrack = { index: number; language: string | null; kept: boolean }
+
+/** What turning dry-run off would start without anyone pressing anything further. */
+export type DryRunUnlockEffects = {
+  retentionDays: number
+  originalsToDelete: number
+  originalBytes: number
+  duplicatesToDelete: number
+  duplicateBytes: number
+  librariesCleaningDuplicatesDaily: number
+  jobsToReplace: number
+  needsConfirmation: boolean
+}
+
 export type InventoryRow = {
   file: MediaFile
   eligible: boolean | null
@@ -1496,6 +1560,7 @@ export const api = {
   settings: () => request<Settings>('/api/settings'),
   superResolutionStatus: (engine: SuperResolutionEngine) => request<SuperResolutionStatus>(`/api/system/super-resolution/${engine}`),
   probeSuperResolution: (engine: SuperResolutionEngine) => request<SuperResolutionProbe>(`/api/system/super-resolution/${engine}/probe`, { method: 'POST' }),
+  dryRunUnlockEffects: () => request<DryRunUnlockEffects>('/api/settings/dry-run-unlock'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   appearance: () => request<{ brandStyle: string }>('/api/settings/appearance'),
@@ -1613,6 +1678,7 @@ export const api = {
   probeBatch: (id: number) => request<MediaProbeBatch>(`/api/media/batch/probe/${id}`),
   /** Stops a running probe batch; the file it is on finishes. */
   cancelProbeBatch: (id: number) => request<void>(`/api/media/batch/probe/${id}`, { method: 'DELETE' }),
+  mediaPlan: (id: number) => request<MediaPlan>(`/api/media/${id}/plan`),
   enqueueFile: (id: number) =>
     request<{ jobId: number; alreadyQueued: boolean }>(`/api/media/${id}/enqueue`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>

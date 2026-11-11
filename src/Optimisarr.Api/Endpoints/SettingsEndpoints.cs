@@ -11,6 +11,7 @@ using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Deduplication;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
@@ -112,6 +113,38 @@ internal static class SettingsEndpoints
         })
         .WithName("PreviewTimedCleanup")
         .Produces<TimedCleanupPreview>();
+
+        // Read-only. Dry-run holds back more than the Replace button, so the page that offers to
+        // unlock it asks here what would then happen without anyone pressing anything further.
+        app.MapGet("/api/settings/dry-run-unlock", async (
+            TimedCleanupService cleanup,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var preview = await cleanup.PreviewWithoutDryRunAsync(cancellationToken);
+            var dedupeLibraries = (await db.Libraries.AsNoTracking()
+                    .Where(library => library.Enabled && library.AutoDedupeEnabled)
+                    .Select(library => library.MediaType)
+                    .ToListAsync(cancellationToken))
+                .Count(AutoDedupeSchedule.Supports);
+            // The same jobs the dispatcher's reconcile pass would replace once dry-run is off.
+            var jobsToReplace = await db.Jobs.AsNoTracking().CountAsync(
+                job => job.Status == JobStatus.ReadyToReplace
+                    && job.VerificationPassed == true
+                    && !job.SuperResolutionApplied
+                    && db.Libraries.Any(library => library.Id == job.LibraryId && library.AutoReplace && !library.MoveOnComplete),
+                cancellationToken);
+            return Results.Ok(new DryRunUnlockEffects(
+                preview.RetentionDays,
+                preview.QuarantinedOriginalCount,
+                preview.QuarantinedOriginalBytes,
+                preview.QuarantinedCopyCount,
+                preview.QuarantinedCopyBytes,
+                dedupeLibraries,
+                jobsToReplace));
+        })
+        .WithName("PreviewDryRunUnlock")
+        .Produces<DryRunUnlockEffects>();
 
         app.MapPost("/api/settings/cleanup", async (
             TimedCleanupPreview confirmedPreview,

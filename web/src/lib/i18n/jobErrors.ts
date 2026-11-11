@@ -24,6 +24,8 @@ export function jobFailureDescription(
 export type FailureStory = {
   headline: string
   hint: string | null
+  /** What to try, for a place that offers no advice of its own. The job's result card does. */
+  advice: string | null
   /** Every failed gate, so the headline never hides that others failed too. */
   failedChecks: string[]
 }
@@ -41,14 +43,14 @@ export function jobFailureStory(
   const failedChecks = failedCheckNames(checks)
   const q = messages.queue
   switch (primaryFailureCause(checks, errorMessage)) {
-    case 'damaged_source': return { headline: q.cause_damaged_source, hint: q.cause_damaged_source_hint, failedChecks }
-    case 'broken_output': return { headline: q.cause_broken_output, hint: q.cause_broken_output_hint, failedChecks }
-    case 'looks_worse': return { headline: q.cause_looks_worse, hint: q.cause_looks_worse_hint, failedChecks }
-    case 'sounds_worse': return { headline: q.cause_sounds_worse, hint: q.cause_sounds_worse_hint, failedChecks }
-    case 'lost_content': return { headline: q.cause_lost_content, hint: q.cause_lost_content_hint, failedChecks }
-    case 'size_predicted': return { headline: q.failure_size_prediction, hint: null, failedChecks }
-    case 'too_big': return { headline: q.cause_too_big, hint: q.cause_too_big_hint, failedChecks }
-    default: return { headline: jobFailureDescription(category, messages), hint: null, failedChecks }
+    case 'damaged_source': return { headline: q.cause_damaged_source, hint: q.cause_damaged_source_hint, advice: null, failedChecks }
+    case 'broken_output': return { headline: q.cause_broken_output, hint: q.cause_broken_output_hint, advice: null, failedChecks }
+    case 'looks_worse': return { headline: q.cause_looks_worse, hint: q.cause_looks_worse_hint, advice: q.cause_looks_worse_advice, failedChecks }
+    case 'sounds_worse': return { headline: q.cause_sounds_worse, hint: q.cause_sounds_worse_hint, advice: null, failedChecks }
+    case 'lost_content': return { headline: q.cause_lost_content, hint: q.cause_lost_content_hint, advice: null, failedChecks }
+    case 'size_predicted': return { headline: q.failure_size_prediction, hint: null, advice: null, failedChecks }
+    case 'too_big': return { headline: q.cause_too_big, hint: q.cause_too_big_hint, advice: null, failedChecks }
+    default: return { headline: jobFailureDescription(category, messages), hint: null, advice: null, failedChecks }
   }
 }
 
