@@ -1014,8 +1014,10 @@
   // Per-library filesystem access (exists / readable / writable), keyed by library id.
   let access = $state<Record<number, LibraryAccess>>({})
 
-  // One line for how a library gets its work: the auto-optimise window (or that it is off), and
-  // whether verified outputs replace originals on their own.
+  // The card flags only what the server refuses before encoding. A folder that is missing or
+  // can't be written to yet is created or reported when a file is saved, so its files still encode.
+  const refusedBeforeEncoding: ReadonlySet<TargetFolderCheck['reason']> = new Set(['insideLibrary', 'workFolder', 'quarantine'])
+
   async function checkSaveFolders() {
     const saving = libraries.filter((library) => library.moveOnComplete && library.targetFolder)
     const answers = await Promise.all(saving.map(async (library) => {
@@ -1025,9 +1027,12 @@
         return null
       }
     }))
-    refusedSaveFolders = Object.fromEntries(answers.filter((answer) => answer !== null && !answer[1].allowed).map((answer) => answer!))
+    refusedSaveFolders = Object.fromEntries(
+      answers.filter((answer) => answer !== null && refusedBeforeEncoding.has(answer[1].reason)).map((answer) => answer!))
   }
 
+  // One line for how a library gets its work: the auto-optimise window (or that it is off), and
+  // whether verified outputs replace originals on their own.
   function scheduleLabel(library: Library): string {
     const window = library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd
       ? i18n.m.libraries.any_time

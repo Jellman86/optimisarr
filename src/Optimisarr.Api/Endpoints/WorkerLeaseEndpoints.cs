@@ -403,6 +403,16 @@ internal static class WorkerLeaseEndpoints
                         continue;
                     }
 
+                    // The same save-folder refusal the local dispatcher makes, before a worker
+                    // downloads the source and spends the whole encode only to be refused at finish.
+                    if (job.Type == JobType.Normal && await dispatcher.RefusedForSaveFolderAsync(job.Id, cancellationToken))
+                    {
+                        skipped++;
+                        lastReason = "The library's folder for optimised files can't be used.";
+                        db.Entry(job).State = EntityState.Detached;
+                        continue;
+                    }
+
                     // Preparation remains authoritative, including fresh source facts and policy.
                     // Refusals are summarised when the worker cannot find any suitable queued work.
                     var plan = await dispatcher.PrepareRemoteWorkAsync(job.Id, capabilities, cancellationToken);

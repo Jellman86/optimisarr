@@ -98,6 +98,37 @@ public sealed class TargetFolderRuleTests : IDisposable
     }
 
     [Fact]
+    public void ResolveLinks_judges_a_relative_link_from_where_it_really_is_not_from_the_path_that_reached_it()
+    {
+        // save → mnt/out, mnt → pool/snap, pool/snap/out → ../../media/tv. The kernel reads the last
+        // link from pool/snap, so save lands in the TV library. Collapsing ".." against mnt as text
+        // would put it outside the root and let it pass.
+        var snap = Folder("pool", "snap");
+        Directory.CreateSymbolicLink(Path.Combine(snap, "out"), Path.Combine("..", "..", "media", "tv"));
+        Directory.CreateSymbolicLink(Path.Combine(_root, "mnt"), snap);
+        var save = Path.Combine(_root, "save");
+        Directory.CreateSymbolicLink(save, Path.Combine(_root, "mnt", "out"));
+
+        var resolved = TargetFolderRule.ResolveLinks(Path.Combine(save, "optimised"));
+
+        Assert.Equal(Path.Combine(TargetFolderRule.ResolveLinks(_libraries[0].Path), "optimised"), resolved);
+        Assert.Equal(TargetFolderRefusal.InsideLibrary, TargetFolderRule.Check(resolved, _libraries, _work, _quarantine).Refusal);
+    }
+
+    [Fact]
+    public void ResolveLinks_climbs_out_of_a_link_from_where_the_link_points()
+    {
+        // up → media/tv/season, so up/../extra is media/tv/extra on disk, not <root>/extra.
+        var season = Folder("media", "tv", "season");
+        var up = Path.Combine(_root, "up");
+        Directory.CreateSymbolicLink(up, season);
+
+        var resolved = TargetFolderRule.ResolveLinks(up + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + "extra");
+
+        Assert.Equal(Path.Combine(TargetFolderRule.ResolveLinks(_libraries[0].Path), "extra"), resolved);
+    }
+
+    [Fact]
     public void ResolveLinks_stops_on_links_that_point_at_each_other()
     {
         var first = Path.Combine(_root, "first");
