@@ -134,6 +134,33 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(0, await db.JobLeases.CountAsync(l => l.JobId == id));
     }
 
+    [Fact]
+    public async Task A_job_whose_save_folder_is_refused_is_failed_before_a_worker_encodes_it()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Save folder check");
+        var id = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var library = await db.Libraries.SingleAsync(l => db.Jobs.Any(j => j.Id == id && j.LibraryId == l.Id));
+            // Saved before the rule existed: a folder inside the library itself.
+            library.MoveOnComplete = true;
+            library.TargetFolder = Path.Combine(library.Path, "optimised");
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var checkDb = check.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await checkDb.Jobs.AsNoTracking().SingleAsync(j => j.Id == id);
+        Assert.Equal(JobStatus.Failed, job.Status);
+        Assert.StartsWith("Not encoded.", job.ErrorMessage);
+        Assert.Equal(0, await checkDb.JobLeases.CountAsync(l => l.JobId == id));
+    }
+
     [Theory]
     [InlineData(MediaFileStatus.Probed)]
     [InlineData(MediaFileStatus.Discovered)]

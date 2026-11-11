@@ -54,7 +54,9 @@ async function mockLibraries(page: Page, configuredLibrary = library, superResol
       const folder = String(route.request().postDataJSON().path)
       return json(route, folder.startsWith('/media/films')
         ? { path: folder, allowed: false, reason: 'insideLibrary', libraryName: 'Films', message: 'inside', availableBytes: null }
-        : { path: folder, allowed: true, reason: 'none', libraryName: null, message: 'ok', availableBytes: 1_500_000_000_000 })
+        : folder.startsWith('/unmounted')
+          ? { path: folder, allowed: false, reason: 'missing', libraryName: null, message: 'missing', availableBytes: null }
+          : { path: folder, allowed: true, reason: 'none', libraryName: null, message: 'ok', availableBytes: 1_500_000_000_000 })
     }
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
@@ -1614,6 +1616,14 @@ test('a saved library whose save folder can no longer be used is flagged on its 
 
 test('a library saving to a usable folder is not flagged', async ({ page }) => {
   await mockLibraries(page, { ...library, moveOnComplete: true, targetFolder: '/optimised' })
+  await page.goto('/#/libraries')
+
+  await expect(page.locator('[data-library-card="1"]')).toBeVisible()
+  await expect(page.locator('[data-save-folder-refused]')).toHaveCount(0)
+})
+
+test('a library saving to a folder that is only missing is not flagged, because its files still encode', async ({ page }) => {
+  await mockLibraries(page, { ...library, moveOnComplete: true, targetFolder: '/unmounted/optimised' })
   await page.goto('/#/libraries')
 
   await expect(page.locator('[data-library-card="1"]')).toBeVisible()

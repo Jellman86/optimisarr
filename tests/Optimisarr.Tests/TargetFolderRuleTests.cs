@@ -98,6 +98,39 @@ public sealed class TargetFolderRuleTests : IDisposable
     }
 
     [Fact]
+    public void ResolveLinks_judges_a_relative_link_from_where_it_really_is_not_from_the_path_that_reached_it()
+    {
+        // save → mnt/out, mnt → pool/snap, pool/snap/out → ../../media/tv. The kernel reads the last
+        // link from pool/snap, so save lands in the TV library. Collapsing ".." against mnt as text
+        // would put it outside the root and let it pass.
+        var snap = Folder("pool", "snap");
+        Directory.CreateSymbolicLink(Path.Combine(snap, "out"), Path.Combine("..", "..", "media", "tv"));
+        Directory.CreateSymbolicLink(Path.Combine(_root, "mnt"), snap);
+        var save = Path.Combine(_root, "save");
+        Directory.CreateSymbolicLink(save, Path.Combine(_root, "mnt", "out"));
+
+        var resolved = TargetFolderRule.ResolveLinks(Path.Combine(save, "optimised"));
+
+        Assert.Equal(Path.Combine(TargetFolderRule.ResolveLinks(_libraries[0].Path), "optimised"), resolved);
+        Assert.Equal(TargetFolderRefusal.InsideLibrary, TargetFolderRule.Check(resolved, _libraries, _work, _quarantine).Refusal);
+    }
+
+    [Fact]
+    public void ResolveLinks_collapses_dot_dot_in_the_path_as_given_the_way_files_are_written()
+    {
+        // .NET collapses "link/../tv" to "media/tv" as text before it creates the folder or moves a
+        // file there, so that is the folder the rule must judge, wherever "link" points.
+        Directory.CreateSymbolicLink(Path.Combine(_root, "media", "link"), Folder("other", "deep"));
+        var typed = Path.Combine(_root, "media", "link") + Path.DirectorySeparatorChar + ".."
+            + Path.DirectorySeparatorChar + "tv";
+
+        var resolved = TargetFolderRule.ResolveLinks(typed);
+
+        Assert.Equal(TargetFolderRule.ResolveLinks(_libraries[0].Path), resolved);
+        Assert.Equal(TargetFolderRefusal.InsideLibrary, TargetFolderRule.Check(resolved, _libraries, _work, _quarantine).Refusal);
+    }
+
+    [Fact]
     public void ResolveLinks_stops_on_links_that_point_at_each_other()
     {
         var first = Path.Combine(_root, "first");
@@ -115,6 +148,9 @@ public sealed class TargetFolderRuleTests : IDisposable
     [InlineData("/data/opti\0mised", false)]
     [InlineData("  ", false)]
     [InlineData(null, false)]
+    [InlineData(".", false)]
+    [InlineData("optimised", false)]
+    [InlineData("./optimised", false)]
     public void IsUsablePath_refuses_text_that_cannot_be_a_path(string? path, bool usable) =>
         Assert.Equal(usable, TargetFolderRule.IsUsablePath(path));
 

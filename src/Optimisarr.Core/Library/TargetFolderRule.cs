@@ -91,17 +91,17 @@ public static class TargetFolderRule
         return candidate.StartsWith(prefix, PathComparison);
     }
 
-    // A link can point at a path that itself goes through another link, so one pass from the
-    // root is not enough. Forty passes is the depth Linux itself gives up at.
-    private const int MaxLinkPasses = 40;
+    // Forty links is the depth Linux itself gives up at, so a loop of links stops here too.
+    private const int MaxLinksFollowed = 40;
 
     /// <summary>
     /// False for text no filesystem can hold as a path, such as one with a NUL in it, so a caller
-    /// can refuse it as bad input instead of failing while resolving it.
+    /// can refuse it as bad input instead of failing while resolving it. Also false for a relative
+    /// path such as ".", which would land under the server's own working directory.
     /// </summary>
     public static bool IsUsablePath(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path) || path.Contains('\0'))
+        if (string.IsNullOrWhiteSpace(path) || path.Contains('\0') || !Path.IsPathRooted(path))
         {
             return false;
         }
@@ -121,46 +121,67 @@ public static class TargetFolderRule
     /// The path with every symbolic link on it followed, so a link into a library cannot pass as a
     /// folder outside it. Parts that do not exist yet are kept as written.
     /// </summary>
+    /// <remarks>
+    /// ".." in the path as given is collapsed as text first, because that is what .NET does before
+    /// it creates a folder or moves a file there, and the rule must judge the folder that is really
+    /// written to. After that the walk goes one part at a time the way the kernel does: a link's
+    /// target is read from the folder the link really sits in, and ".." inside a link's target
+    /// climbs from there, not from the path that reached the link.
+    /// </remarks>
     public static string ResolveLinks(string path)
     {
-        var resolved = Normalise(path);
-        for (var pass = 0; pass < MaxLinkPasses; pass++)
-        {
-            var next = ResolveLinksOnce(resolved);
-            if (string.Equals(next, resolved, StringComparison.Ordinal))
-            {
-                break;
-            }
-
-            resolved = next;
-        }
-
-        return resolved;
-    }
-
-    private static string ResolveLinksOnce(string path)
-    {
         var full = Path.GetFullPath(path);
-        var root = Path.GetPathRoot(full) ?? string.Empty;
-        var resolved = root;
-        foreach (var part in full[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        var resolved = Path.GetPathRoot(full) ?? string.Empty;
+        var remaining = new Queue<string>(Parts(full, resolved));
+        var linksFollowed = 0;
+        while (remaining.TryDequeue(out var part))
         {
-            resolved = Path.Combine(resolved, part);
-            try
+            if (part == ".")
             {
-                var target = Directory.ResolveLinkTarget(resolved, returnFinalTarget: true);
-                if (target is not null)
-                {
-                    resolved = target.FullName;
-                }
+                continue;
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+
+            if (part == "..")
             {
-                // A part that cannot be read is kept as written; the text comparison still applies.
+                resolved = Path.GetDirectoryName(resolved) ?? resolved;
+                continue;
             }
+
+            var candidate = Path.Combine(resolved, part);
+            var linkTarget = linksFollowed < MaxLinksFollowed ? LinkTarget(candidate) : null;
+            if (linkTarget is null)
+            {
+                resolved = candidate;
+                continue;
+            }
+
+            linksFollowed++;
+            // `resolved` has no links left on it, so it is the folder the link really sits in.
+            var target = Path.IsPathRooted(linkTarget) ? linkTarget : Path.Combine(resolved, linkTarget);
+            var targetRoot = Path.GetPathRoot(target) ?? string.Empty;
+            remaining = new Queue<string>(Parts(target, targetRoot).Concat(remaining));
+            resolved = targetRoot;
         }
 
         return Normalise(resolved);
+    }
+
+    private static string[] Parts(string path, string root) =>
+        path[root.Length..].Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+
+    private static string? LinkTarget(string path)
+    {
+        try
+        {
+            return new FileInfo(path).LinkTarget;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // A part that cannot be read is kept as written; the text comparison still applies.
+            return null;
+        }
     }
 
     private static string Normalise(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));

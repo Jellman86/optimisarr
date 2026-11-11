@@ -1049,14 +1049,8 @@ public sealed partial class QueueDispatcher(
                     return;
                 }
 
-                // A save folder the rule refuses would only be found out after the whole encode.
-                // Refuse now instead: nothing has been written and the original is untouched.
-                if (work.Value is { MoveOnComplete: true, TargetFolder: { } saveFolder }
-                    && await SaveElsewhere().RefusalBeforeEncodingAsync(saveFolder, cancellationToken) is { } refusedFolder)
+                if (await RefusedForSaveFolderAsync(jobId, cancellationToken))
                 {
-                    await CompleteAsync(jobId, JobStatus.Failed, error: refusedFolder);
-                    await NotifyJobFailedAsync(jobId, refusedFolder);
-                    logger.LogWarning("Job {JobId}: not encoded — {Reason}", jobId, refusedFolder);
                     return;
                 }
 
@@ -2899,6 +2893,38 @@ public sealed partial class QueueDispatcher(
             logger.LogInformation("Marked {Count} existing size-review jobs as predicted size failures; originals were unchanged", held.Count);
             await NotifyAsync();
         }
+    }
+
+    /// <summary>
+    /// Fails a job before any encoding when its library saves optimised files into a folder the
+    /// rule refuses, which would otherwise only be found out after the whole encode, here or on a
+    /// worker. True when the job was failed: nothing has been written and the original is
+    /// untouched. Failed rather than skipped, so automatic queueing does not pick the file up again
+    /// every cycle while the folder stays wrong.
+    /// </summary>
+    public async Task<bool> RefusedForSaveFolderAsync(int jobId, CancellationToken cancellationToken)
+    {
+        string? saveFolder;
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            saveFolder = await db.Libraries.AsNoTracking()
+                .Where(library => library.MoveOnComplete
+                    && db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
+                .Select(library => library.TargetFolder)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        if (saveFolder is null
+            || await SaveElsewhere().RefusalBeforeEncodingAsync(saveFolder, cancellationToken) is not { } refusal)
+        {
+            return false;
+        }
+
+        await CompleteAsync(jobId, JobStatus.Failed, error: refusal);
+        await NotifyJobFailedAsync(jobId, refusal);
+        logger.LogWarning("Job {JobId}: not encoded — {Reason}", jobId, refusal);
+        return true;
     }
 
     /// <summary>

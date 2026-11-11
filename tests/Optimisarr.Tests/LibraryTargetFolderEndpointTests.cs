@@ -272,6 +272,85 @@ public sealed class LibraryTargetFolderEndpointTests(AdminTokenAuthEndpointTests
         Assert.Contains("Your original has not been touched.", refused);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task A_blank_save_folder_is_refused_before_encoding_and_nothing_is_moved(string blank)
+    {
+        var (workRoot, output) = WorkOutput("films", "Film.mkv");
+
+        var refused = await Saver().RefusalBeforeEncodingAsync(blank, CancellationToken.None);
+        var saved = await Saver().SaveAsync(workRoot, output, blank, overwrite: true);
+
+        Assert.StartsWith("Not encoded.", refused);
+        Assert.Contains("No folder is set", refused);
+        Assert.Null(saved.Destination);
+        Assert.Contains("No folder is set", saved.Error);
+        Assert.Equal("VERIFIED", await File.ReadAllTextAsync(output));
+    }
+
+    [Fact]
+    public async Task A_relative_save_folder_is_refused_before_encoding_and_nothing_is_moved()
+    {
+        var (workRoot, output) = WorkOutput("films", "Film.mkv");
+
+        var refused = await Saver().RefusalBeforeEncodingAsync(".", CancellationToken.None);
+        var saved = await Saver().SaveAsync(workRoot, output, "optimised", overwrite: true);
+
+        Assert.Contains("not a full path", refused);
+        Assert.Null(saved.Destination);
+        Assert.Contains("not a full path", saved.Error);
+        Assert.Equal("VERIFIED", await File.ReadAllTextAsync(output));
+    }
+
+    [Fact]
+    public async Task A_link_already_at_the_destination_is_not_replaced()
+    {
+        // out/Show/Episode.mkv is a link into somewhere else: moving onto it would replace the link
+        // entry, so the rule would have judged one place and the file landed in another.
+        var target = Folder("optimised");
+        var elsewhere = Path.Combine(Folder("elsewhere"), "Episode.mkv");
+        await File.WriteAllTextAsync(elsewhere, "EARLIER");
+        var link = Path.Combine(Folder("optimised", "Show"), "Episode.mkv");
+        File.CreateSymbolicLink(link, elsewhere);
+        var (workRoot, output) = WorkOutput("Show", "Episode.mkv");
+
+        var saved = await Saver().SaveAsync(workRoot, output, target, overwrite: true);
+
+        Assert.Null(saved.Destination);
+        Assert.Contains("is a link", saved.Error);
+        Assert.Equal(elsewhere, new FileInfo(link).LinkTarget);
+        Assert.Equal("EARLIER", await File.ReadAllTextAsync(elsewhere));
+        Assert.Equal("VERIFIED", await File.ReadAllTextAsync(output));
+    }
+
+    [Fact]
+    public async Task A_library_row_with_an_unusable_path_does_not_break_the_check_for_the_others()
+    {
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            // Only a hand-edited backup can leave a library like this; the editor requires a folder.
+            db.Libraries.Add(new Optimisarr.Data.Library { Name = "Blank " + Guid.NewGuid().ToString("N"), Path = Path.Combine(_root, "blank-marker") });
+            await db.SaveChangesAsync();
+            await db.Libraries.Where(library => library.Path == Path.Combine(_root, "blank-marker"))
+                .ExecuteUpdateAsync(update => update.SetProperty(library => library.Path, ""));
+        }
+
+        try
+        {
+            var refused = await Saver().RefusalBeforeEncodingAsync(Folder("optimised"), CancellationToken.None);
+
+            Assert.Null(refused);
+        }
+        finally
+        {
+            using var cleanup = api.Services.CreateScope();
+            await cleanup.ServiceProvider.GetRequiredService<OptimisarrDbContext>()
+                .Libraries.Where(library => library.Path == "").ExecuteDeleteAsync();
+        }
+    }
+
     private SaveElsewhere Saver() =>
         new(api.Services.GetRequiredService<IServiceScopeFactory>(), api.Services.GetRequiredService<IHostEnvironment>());
 
