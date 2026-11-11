@@ -90,6 +90,17 @@ public sealed class TimedCleanupService
     }
 
     /// <summary>Purges all expired retained files and returns the total number processed.</summary>
+    /// <summary>
+    /// What the next clean-up would delete if dry-run were off, whatever it is set to now. Read-only:
+    /// it is how unlocking dry-run can say what it would start.
+    /// </summary>
+    public async Task<TimedCleanupPreview> PreviewWithoutDryRunAsync(CancellationToken cancellationToken)
+    {
+        var queueSettings = await _settings.GetQueueSettingsAsync(cancellationToken);
+        var plan = await BuildCleanupPlanAsync(queueSettings with { DryRunMode = false }, DateTimeOffset.UtcNow, cancellationToken);
+        return plan.Preview;
+    }
+
     public async Task<int> PurgeExpiredAsync(CancellationToken cancellationToken)
     {
         var result = await RunExpiredAsync(cancellationToken);

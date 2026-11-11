@@ -206,9 +206,10 @@ curl http://localhost:8787/api/ready
 Open `http://localhost:8787`. A new database opens the resumable five-step setup, verifies the
 mounted paths, free space, filesystem/mount relationships, permissions, and media tools. Missing
 or inaccessible storage gets concrete Docker Compose, Unraid, TrueNAS, or local recovery steps and
-a real Re-test action. Setup lets you fully configure as many libraries as needed and starts in
-**Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
-then scan and queue a small test set deliberately. Use **Settings → System → First-run setup → Run
+a real **Test again** action. Setup asks for a library's name, folder and preset, looks through
+the folder for files (which only reads them), and starts in **Dry-run mode**. It ends on **Try one
+file**: choose a suggested file to see what would happen to it before anything is queued. Completing
+setup never starts a job. Use **Settings → System → First-run setup → Run
 setup again** to revisit the guided checks without deleting existing configuration.
 Add libraries from `/data/media`; the hidden work and quarantine directories remain below the same
 container mount boundary.

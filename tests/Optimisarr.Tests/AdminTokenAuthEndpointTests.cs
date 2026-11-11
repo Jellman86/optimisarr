@@ -1,5 +1,6 @@
 using Optimisarr.Api.Workers;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Setup;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Security;
@@ -58,6 +60,8 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("POST", "/api/setup/restart")]
     [InlineData("POST", "/api/libraries")]
     [InlineData("POST", "/api/libraries/target-folder-check")]
+    [InlineData("GET", "/api/media/1/plan")]
+    [InlineData("GET", "/api/settings/dry-run-unlock")]
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
     [InlineData("POST", "/api/libraries/1/calibration")]
@@ -673,6 +677,59 @@ public sealed class AdminTokenAuthEndpointTests
         using var restart = await client.PostAsync("/api/setup/restart", content: null);
         Assert.Equal(HttpStatusCode.OK, restart.StatusCode);
         Assert.Contains("\"currentStep\":1", await restart.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Setup_cannot_finish_while_a_required_tool_is_missing()
+    {
+        await using var withoutFfmpeg = _api.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IRequiredToolsGate>();
+            services.AddSingleton<IRequiredToolsGate>(new FixedRequiredTools(["FFmpeg", "ffprobe"]));
+        }));
+        var client = withoutFfmpeg.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using var library = await client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Setup plan library",
+            path = _api.LibraryDirectory,
+            mediaType = "Film",
+            ruleProfile = "ConservativeHevc"
+        });
+        Assert.True(
+            library.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict,
+            await library.Content.ReadAsStringAsync());
+        using var restart = await client.PostAsync("/api/setup/restart", content: null);
+        Assert.Equal(HttpStatusCode.OK, restart.StatusCode);
+        foreach (var completedStep in new[] { 1, 2, 3, 4 })
+        {
+            using var progress = await client.PutAsJsonAsync("/api/setup/progress", new { completedStep });
+            Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
+        }
+        var settings = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        var concurrency = settings["maxConcurrentJobs"]!.GetValue<int>();
+        var changed = settings.DeepClone().AsObject();
+        changed["maxConcurrentJobs"] = concurrency + 1;
+
+        using var applied = await client.PostAsJsonAsync("/api/setup/apply", new
+        {
+            settings = changed,
+            useRecommendedEncoder = false,
+            applyRecommendedVmaf = false,
+            applyRecommendedSchedule = false
+        });
+        using var completed = await client.PostAsync("/api/setup/complete", content: null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, applied.StatusCode);
+        var refusal = await applied.Content.ReadAsStringAsync();
+        Assert.Contains("setup.tools.required", refusal);
+        Assert.Contains("FFmpeg, ffprobe", refusal);
+        Assert.Equal(HttpStatusCode.BadRequest, completed.StatusCode);
+        Assert.Contains("setup.tools.required", await completed.Content.ReadAsStringAsync());
+        // Nothing of the refused plan was saved, and setup is still open.
+        var saved = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        Assert.Equal(concurrency, saved["maxConcurrentJobs"]!.GetValue<int>());
+        Assert.Contains("\"completed\":false", await client.GetStringAsync("/api/setup"));
     }
 
     [Fact]
@@ -1385,6 +1442,11 @@ public sealed class AdminTokenAuthEndpointTests
     /// The real app with the admin token configured, a throwaway config directory (fresh migrated
     /// SQLite), and no background workers — the auth tests only exercise the HTTP pipeline.
     /// </summary>
+    private sealed class FixedRequiredTools(IReadOnlyList<string> missing) : IRequiredToolsGate
+    {
+        public Task<IReadOnlyList<string>> MissingAsync(CancellationToken cancellationToken) => Task.FromResult(missing);
+    }
+
     public sealed class TokenedApi : WebApplicationFactory<Program>
     {
         public const string Token = "test-admin-token-0123456789";
@@ -1435,6 +1497,9 @@ public sealed class AdminTokenAuthEndpointTests
                 {
                     services.Remove(windowBytes);
                 }
+                // Finishing setup needs FFmpeg and ffprobe; a test host must not depend on either being installed.
+                services.RemoveAll<IRequiredToolsGate>();
+                services.AddSingleton<IRequiredToolsGate>(new FixedRequiredTools([]));
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
                 services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
                 services.AddSingleton<IWorkerSampleSource, FixtureWorkerSampleSource>();

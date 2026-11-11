@@ -23,20 +23,9 @@
   import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
   import { ruleProfileLabel } from '../rule-profile-label'
   import { filesChoice } from '../files-choice'
+  import { withMediaType } from '../library-defaults'
   import { codecName, presetChanges, presetName, summariseLibrary, vmafLevelName, vmafLevels, type SummaryTopic } from '../library-summary'
   import { encoderFamily, encoderIgnores, encoderName, type EncoderSetting } from '../encoder-support'
-
-  let {
-    embeddedEditorId = null,
-    onEmbeddedClose,
-    onEmbeddedSaved,
-  }: {
-    embeddedEditorId?: number | null
-    onEmbeddedClose?: () => void
-    onEmbeddedSaved?: (library: Library) => void
-  } = $props()
-
-  const embedded = $derived(embeddedEditorId !== null)
 
   let libraries = $state<Library[]>([])
   let options = $state<LibraryOptions>({
@@ -664,14 +653,9 @@
   }
 
   function setMediaType(type: string) {
-    form.mediaType = type
-    if (!isVideoType(type) && (form.ruleProfile === 'TrackCleanup' || form.ruleProfile === 'RemuxCleanup')) {
-      form.ruleProfile = 'ConservativeHevc'
-    }
-    if (!isVideoType(type)) {
-      setVideoQualityStrategy('Fixed')
-      setVmafMode('off')
-    }
+    // The rule for what a kind allows is shared with setup, which also lets a kind be chosen.
+    form = withMediaType(form, type)
+    if (!isVideoType(type)) vmafCustomSelected = false
   }
 
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
@@ -911,10 +895,8 @@
   }
   let workflowHeading: HTMLHeadingElement | undefined = $state()
   let saving = $state(false)
-  let embeddedPage = $state<LibraryPage>('files')
   const editorBase = $derived(editingId === 0 ? '/libraries/new' : `/libraries/${editingId}/configure`)
   const page = $derived.by((): LibraryPage => {
-    if (embedded) return pages.includes(embeddedPage) ? embeddedPage : 'files'
     const segment = router.path.slice(editorBase.length + 1)
     const wanted = (Object.hasOwn(pageNames, segment) ? segment : formerRooms[segment]) as LibraryPage | undefined
     if (wanted && pages.includes(wanted)) return wanted
@@ -927,8 +909,7 @@
   const editorTitle = $derived(activeTab === 'candidates' ? i18n.m.libraries.tab_candidates : activeTab === 'excluded' ? i18n.m.libraries.tab_excluded : page === 'overview' ? form.name || i18n.m.libraries.add_library : pageNames[page])
   function goPage(next: LibraryPage, anchor?: string) {
     activeTab = 'rules'
-    if (embedded) embeddedPage = next
-    else router.go(next === 'overview' && editingId !== 0 ? editorBase : `${editorBase}/${next}`)
+    router.go(next === 'overview' && editingId !== 0 ? editorBase : `${editorBase}/${next}`)
     if (!anchor) return
     // Changing page scrolls to the top once its fields are in place; a link to one section has to
     // win over that, and still work when the section is already on screen.
@@ -945,7 +926,7 @@
   }
   function confirmLeavingEditor(): boolean {
     const next = window.location.hash.replace(/^#/, '')
-    if (!embedded && (next === editorBase || next.startsWith(`${editorBase}/`))) return true
+    if (next === editorBase || next.startsWith(`${editorBase}/`)) return true
     return confirmDiscardIfDirty()
   }
   // Only the fields unmount between pages. The editor, form and validation stay alive.
@@ -956,7 +937,7 @@
     void tick().then(() => {
       workflowHeading?.focus({ preventScroll: true })
       if (pendingAnchor) scrollToPendingAnchor()
-      else if (!embedded) document.querySelector('main')?.scrollTo({ top: 0 })
+      else document.querySelector('main')?.scrollTo({ top: 0 })
     })
   })
 
@@ -1005,7 +986,6 @@
   }
 
   function requestedEditorId(): number | null {
-    if (embeddedEditorId !== null) return embeddedEditorId
     if (/^\/libraries\/new(?:\/|$)/.test(router.path)) return 0
     const match = router.path.match(/^\/libraries\/(\d+)\/configure(?:\/|$)/)
     return match ? Number(match[1]) : null
@@ -1341,8 +1321,7 @@
     // Leaving the editor drops the Excluded tab's selection with it.
     exclusionSelection.clear()
     exclusionOutcome = null
-    if (embedded) onEmbeddedClose?.()
-    else router.go('/libraries')
+    router.go('/libraries')
   }
 
   function emptyToNull(value: string | null): string | null {
@@ -1457,21 +1436,12 @@
         const created = await api.createLibrary(payload())
         const success = t(i18n.m.libraries.added, { name: form.name })
         markPristine()
-        if (embedded) {
-          onEmbeddedSaved?.(created)
-          return
-        }
         sessionStorage.setItem(FLASH_KEY, success)
         router.replace(`/libraries/${created.id}/configure`)
         return
       } else if (editingId) {
-        const updated = await api.updateLibrary(editingId, payload())
+        await api.updateLibrary(editingId, payload())
         message = t(i18n.m.libraries.updated, { name: form.name })
-        if (embedded) {
-          markPristine()
-          onEmbeddedSaved?.(updated)
-          return
-        }
       }
       // The saved values are now the baseline, so the form is no longer dirty.
       markPristine()
@@ -1629,7 +1599,7 @@
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <span class="badge tone-info">{i18n.m.libraries.media_type}: {mediaTypeLabel(form.mediaType, i18n.m)}</span>
-        {#if savedLibrary && !embedded && page === 'overview' && activeTab === 'rules'}
+        {#if savedLibrary && page === 'overview' && activeTab === 'rules'}
           <button class="btn min-h-11" onclick={() => scan(savedLibrary)} disabled={busyId === savedLibrary.id || !savedLibrary.enabled || isDirty} title={isDirty ? i18n.m.libraries.unsaved : undefined}>
             <Icon name={busyId === savedLibrary.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === savedLibrary.id ? 'animate-spin' : ''}" />
             {busyId === savedLibrary.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
@@ -1691,7 +1661,7 @@
 
 <!-- The personal quality check compares real results from this library by eye; it belongs beside the quality settings it informs. -->
 {#snippet qualityCheckRow()}
-  {#if !embedded && editingId && editingId > 0}
+  {#if editingId && editingId > 0}
     <SettingRow label={i18n.m.calibration.eyebrow} sentence={i18n.m.calibration.intro}
       disabledReason={isDirty ? i18n.m.libraryEditor.save_first : null}>
       <button type="button" class="btn min-h-11" disabled={isDirty} onclick={() => router.go(`/libraries/${editingId}/quality-check`)}>{i18n.m.calibration.eyebrow}</button>
@@ -2550,7 +2520,7 @@
 
 {#snippet overviewPage()}
   <LibrarySummary lines={summaryLines} unsaved={isDirty} onedit={(topic: SummaryTopic) => goPage(topic)} />
-  {#if !embedded && editingId !== null && editingId > 0}
+  {#if editingId !== null && editingId > 0}
     <section class="card flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
       <div class="min-w-0 flex-1"><h2 class="text-base font-semibold">{i18n.m.duplicates.title}</h2><p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.duplicates.entryHint}</p></div>
       <button type="button" class="btn min-h-11" disabled={isDirty || saving} title={isDirty ? i18n.m.libraries.unsaved : undefined} onclick={() => router.go(`/libraries/${editingId}/duplicates`)}><Icon name="copies" class="h-4 w-4" />{i18n.m.duplicates.entry}</button>
@@ -2600,7 +2570,7 @@
 {/snippet}
 
 {#if editingId !== null}
-  {#if editingId !== 0 && !embedded}
+  {#if editingId !== 0}
     <nav class="segmented mb-4" aria-label={i18n.m.libraries.configure}>
       <button class="segment" aria-pressed={activeTab === 'rules'} onclick={() => (activeTab = 'rules')}>{i18n.m.nav.settings}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
       <button class="segment" aria-pressed={activeTab === 'candidates'} onclick={() => (activeTab = 'candidates')}><span>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading}{' '}({editorEligibleCount}){/if}</span></button>

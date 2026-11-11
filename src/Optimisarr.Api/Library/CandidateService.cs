@@ -179,6 +179,9 @@ public sealed class CandidateService(OptimisarrDbContext db)
         return markedPaths.Any(path => string.Equals(StemOf(path), stem, StringComparison.Ordinal));
     }
 
+    /// <summary>The probed facts of one inventory row, as the pure rules and planner take them.</summary>
+    public static MediaProperties PropertiesOf(MediaFile file) => Describe(file).Media;
+
     // Project a probed row into the pure evaluator's input plus the codec that drives its eligibility
     // (audio files report their audio codec; video and still-image files carry it as the video codec).
     private static (MediaProperties Media, string? Codec) Describe(MediaFile file)
