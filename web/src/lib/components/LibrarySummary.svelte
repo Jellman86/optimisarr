@@ -6,8 +6,10 @@
   import type { SummaryLine, SummaryTopic } from '../library-summary'
   import Icon from './Icon.svelte'
 
-  let { lines, onedit = undefined, unsaved = false, headingId = 'library-summary-heading' }: {
+  let { lines, onedit = undefined, unsaved = false, headingId = 'library-summary-heading', intro = undefined }: {
     lines: SummaryLine[]
+    /** Said under the heading instead of the editor's own sentence, where there is no Edit to point at. */
+    intro?: string
     /** Opens the page holding every control behind a line. Leave out where nothing can be edited. */
     onedit?: (topic: SummaryTopic) => void
     unsaved?: boolean
@@ -23,7 +25,7 @@
   <header class="px-4 py-4 hairline-b sm:px-6">
     <h2 id={headingId} class="text-base font-semibold text-ink">{i18n.m.librarySummary.title}</h2>
     <p class="mt-0.5 text-sm leading-relaxed text-ink-3">
-      {i18n.m.librarySummary.intro}
+      {intro ?? i18n.m.librarySummary.intro}
       {#if unsaved}<span class="text-warn" data-summary-unsaved>{i18n.m.librarySummary.unsaved_note}</span>{/if}
     </p>
   </header>

@@ -422,11 +422,18 @@ The release check closes that gap:
      deleting configuration.
      Connections remain explicitly skipped on the final review and can be added later, so an optional
      provider can never block first use.
-   - **Five stable, task-oriented steps: done.** One heading and primary action drive:
-     (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) any
-     number of libraries and their optimisation rules; (4) verification, scheduling, quarantine, and replacement
-     safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
-     skippable sub-step, so Plex/Jellyfin/Sonarr/Radarr availability can never block first use. A
+   - **Five stable, task-oriented steps: done, reshaped in the UI redesign (#519).** One heading
+     and primary action drive: (1) this machine: readiness in plain sentences, with the tested
+     encoder pre-selected; (2) your library: name, kind, folder and one preset, summarised from the
+     values about to be saved, and read as soon as it is saved; (3) your other apps: Sonarr, Radarr
+     and media servers, optional and skippable; (4) your files: replace after you press Replace or
+     save elsewhere, how long originals are kept, and the dry-run lock; (5) try one file: suggested
+     files that open a read-only plan, and a list of what was set up with a Change per line. The
+     earlier shape was welcome, readiness, libraries, safety, review; the bullets below describe that
+     first version where they mention the embedded rules editor, the VMAF and schedule
+     recommendations, the representative preview and the review receipt, all of which the redesign
+     removed. Setup now reads a library when it is saved, which scans but changes nothing, and the
+     server refuses to finish while FFmpeg or ffprobe is missing. A
      stable step indicator shows “step N of 5”, current/completed/pending text, `aria-current`, and
      separate Back/Continue controls—the [USWDS step-indicator guidance](https://designsystem.digital.gov/components/step-indicator/)
      recommends this pattern for linear processes with three or more high-level sections.
@@ -441,7 +448,7 @@ The release check closes that gap:
      carries free/total capacity plus filesystem, mount, type, and boundary evidence; configured
      libraries state whether work and quarantine moves are atomic. Missing, unreadable, unwritable,
      and low-space states produce exact local, Compose, Unraid, and TrueNAS recovery steps. A
-     loading/announced **Re-test system** action reruns the real probes and clears resolved advice.
+     loading/announced **Test again** action (first shipped as **Re-test system**) reruns the real probes and clears resolved advice.
      The container never pretends it can create a host bind mount or change host permissions. Docker
      documents that mounts must be explicitly granted to a service and recommends
      [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).

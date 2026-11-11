@@ -22,6 +22,7 @@
     exampleRelativePath = null,
     retentionDays = null,
     dryRun = false,
+    offerAutomatic = true,
   }: {
     autoReplace?: boolean
     moveOnComplete?: boolean
@@ -37,6 +38,8 @@
     /** Null until the server's settings have loaded. */
     retentionDays?: number | null | 'unavailable'
     dryRun?: boolean
+    /** Setup leaves out "replace automatically": that comes after a first file has passed. */
+    offerAutomatic?: boolean
   } = $props()
 
   const id = $props.id()
@@ -53,7 +56,7 @@
     { value: 'ask', label: i18n.m.filesChoice.ask_label, description: i18n.m.filesChoice.ask_desc },
     { value: 'auto', label: i18n.m.filesChoice.auto_label, description: i18n.m.filesChoice.auto_desc },
     { value: 'elsewhere', label: i18n.m.filesChoice.elsewhere_label, description: i18n.m.filesChoice.elsewhere_desc },
-  ])
+  ].filter((option) => offerAutomatic || option.value !== 'auto' || choice === 'auto') as { value: FilesChoice; label: string; description: string }[])
 
   function choose(next: FilesChoice, event: Event) {
     if (next === 'auto' && choice !== 'auto') {
