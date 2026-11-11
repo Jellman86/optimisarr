@@ -16,6 +16,8 @@ the system. Existing saved light/dark choices are retained.
 
 A genuinely new database opens setup before the normal dashboard. It has five steps, each about one
 thing. Progress is saved after each step, so refreshing or restarting resumes where you left off.
+The answers on **Your files** are applied when setup finishes; after a reload that step shows the
+server's values again, so a draft left in a browser can never switch dry-run off.
 Nothing in setup encodes, replaces or deletes a file.
 
 1. **This machine.** Each thing Optimisarr needs is tested and reported in a sentence: the media
@@ -24,16 +26,21 @@ Nothing in setup encodes, replaces or deletes a file.
    details**, which opens by itself when something needs fixing. A failed line says what is wrong
    and gives steps for a local install, Docker Compose, Unraid or TrueNAS. **Test again** reruns the
    real checks; it never claims to create a host mount or change host permissions. A hardware
-   encoder that passed a test encode is pre-selected, with **CPU only** as the other choice. The
+   encoder that passed a test encode is pre-selected, with **CPU only** as the other choice. When
+   setup is run again on a server that already has a hardware encoder saved, keeping that encoder is
+   offered too and is the default, including when it did not pass the test this time, which the
+   line says. The
    picture quality check gets a sentence about what it costs on this machine; setup never offers to
    turn it off. Continue is off, and says why, while a required tool or folder is missing.
 2. **Your library.** A name, what is in it, a folder and, for film and TV, one of three presets. A
+   music or photo library is saved without a picture check, which only video can have. A
    summary under the form says what the library will do, worked out from the values about to be
    saved. Saving a library looks through its folder for files straight away. That only reads them.
    Every other setting is in the library's own settings after setup.
 3. **Your other apps.** Optional. Sonarr and Radarr, and Plex, Jellyfin or Emby, each with what it
    prevents. The forms are the ones in **Settings → Download managers** and **Settings → Media
-   servers**, and you can add them there later.
+   servers**, and you can add them there later. A connection is counted as soon as it is saved.
+   Continue is off while something typed into a library or connection form has not been saved.
 4. **Your files.** What happens after a file passes its checks: replace the original after you press
    Replace, or save the optimised file in another folder. Replacing automatically is not offered
    here; turn it on per library once a file has passed and you are happy with it. You also choose

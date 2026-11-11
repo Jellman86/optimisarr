@@ -4,6 +4,7 @@
 import type { RuleProfileSpec, SaveLibrary } from './api'
 import { filesChoice } from './files-choice.ts'
 import { formatSize } from './format.ts'
+import { holdsVideo } from './library-defaults.ts'
 import type { Messages } from './i18n/en'
 
 export type SummaryTopic = 'files' | 'video' | 'audio' | 'images' | 'checks' | 'schedule'
@@ -49,7 +50,7 @@ export const vmafLevels: readonly VmafLevel[] = [
 const noEncodeProfiles = ['RemuxCleanup', 'TrackCleanup']
 const codecNames: Record<string, string> = { h264: 'H.264', hevc: 'HEVC (H.265)', av1: 'AV1', aac: 'AAC', opus: 'Opus', mp3: 'MP3', jpeg: 'JPEG', webp: 'WebP' }
 
-export const isVideoLibrary = (mediaType: string) => mediaType !== 'Music' && mediaType !== 'Photo'
+export const isVideoLibrary = holdsVideo
 export const isAudioLibrary = (mediaType: string) => mediaType === 'Music' || mediaType === 'Other'
 export const isImageLibrary = (mediaType: string) => mediaType === 'Photo' || mediaType === 'Other'
 

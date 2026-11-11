@@ -2,6 +2,30 @@
 // use them without loading the HTTP client.
 import type { SaveLibrary } from './api'
 
+/** Film, TV and mixed libraries hold video. Music and photo libraries do not. */
+export const holdsVideo = (mediaType: string) => mediaType !== 'Music' && mediaType !== 'Photo'
+
+/**
+ * A library's settings after its kind is set. The server refuses choosing quality by a picture
+ * score, a picture check, or a video-only clean-up mode on a library with no video, so those are
+ * switched off here, in one place, for every form that lets a kind be chosen.
+ */
+export function withMediaType<T extends SaveLibrary>(library: T, mediaType: string): T {
+  if (holdsVideo(mediaType)) return { ...library, mediaType }
+  return {
+    ...library,
+    mediaType,
+    ruleProfile: library.ruleProfile === 'TrackCleanup' || library.ruleProfile === 'RemuxCleanup' ? 'ConservativeHevc' : library.ruleProfile,
+    videoQualityStrategy: 'Fixed',
+    vmafQualityGateEnabled: false,
+    minVmafHarmonicMean: null,
+    minVmafMin: null,
+    minVmafCatastrophicMin: null,
+    clipVmafEnabled: null,
+    vmafFrameSubsample: null,
+  }
+}
+
 export function newLibraryDefaults(): SaveLibrary {
   return {
     superResolutionEnabled: false,

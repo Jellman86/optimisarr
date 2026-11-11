@@ -23,6 +23,7 @@
   import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
   import { ruleProfileLabel } from '../rule-profile-label'
   import { filesChoice } from '../files-choice'
+  import { withMediaType } from '../library-defaults'
   import { codecName, presetChanges, presetName, summariseLibrary, vmafLevelName, vmafLevels, type SummaryTopic } from '../library-summary'
   import { encoderFamily, encoderIgnores, encoderName, type EncoderSetting } from '../encoder-support'
 
@@ -652,14 +653,9 @@
   }
 
   function setMediaType(type: string) {
-    form.mediaType = type
-    if (!isVideoType(type) && (form.ruleProfile === 'TrackCleanup' || form.ruleProfile === 'RemuxCleanup')) {
-      form.ruleProfile = 'ConservativeHevc'
-    }
-    if (!isVideoType(type)) {
-      setVideoQualityStrategy('Fixed')
-      setVmafMode('off')
-    }
+    // The rule for what a kind allows is shared with setup, which also lets a kind be chosen.
+    form = withMediaType(form, type)
+    if (!isVideoType(type)) vmafCustomSelected = false
   }
 
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for

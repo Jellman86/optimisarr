@@ -2427,5 +2427,10 @@ export const zh: Messages = {
     finish_dashboard: "完成并打开仪表板",
     finishing: "正在完成…",
     tools_refused: "缺少必需工具时无法完成设置：{tools}。",
+    encoder_keep: "保留 {name}",
+    encoder_saved_untested: "{name} 是此服务器已保存的编码器，但刚才未通过测试。可以保留它，或切换到 CPU。",
+    blocked_library_draft: "在添加或取消您已开始填写的媒体库之前，“继续”不可用。",
+    blocked_apps_draft: "在保存或清除您在上方表单中输入的内容之前，“继续”不可用，否则内容会丢失。",
+    encoder_automatic: "自动",
   },
 }

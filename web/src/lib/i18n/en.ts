@@ -2573,6 +2573,11 @@ result_dismiss: 'Dismiss',
     finish_dashboard: "Finish and open the dashboard",
     finishing: "Finishing…",
     tools_refused: "Setup cannot finish while a required tool is missing: {tools}.",
+    encoder_keep: "Keep {name}",
+    encoder_saved_untested: "{name} is this server’s saved encoder, but it did not pass the test just now. Keep it, or switch to the CPU.",
+    blocked_library_draft: "Continue is off until you add the library you have started, or cancel it.",
+    blocked_apps_draft: "Continue is off until you save what you typed in the form above, or clear it. It would be lost.",
+    encoder_automatic: "Automatic",
   },
 }
 

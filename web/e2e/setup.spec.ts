@@ -119,6 +119,7 @@ async function mockSetup(page: Page, mock: Mock = {}) {
   let completed = false
   const calls = { readiness: 0, scans: [] as number[], created: [] as Record<string, unknown>[], updated: [] as Record<string, unknown>[], applied: [] as Record<string, unknown>[] }
   const currentLibraries = (mock.libraries ?? [library]).map((item) => ({ ...item }))
+  const arrs = [...(mock.arrs ?? [])] as Record<string, unknown>[]
   await page.route('**/api/**', async (route: Route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
@@ -146,6 +147,10 @@ async function mockSetup(page: Page, mock: Mock = {}) {
     if (path === '/api/libraries') {
       if (method === 'POST') {
         const body = route.request().postDataJSON()
+        // The server's own rule (LibraryRequestParser): no picture score on a library with no video.
+        if (['Music', 'Photo'].includes(body.mediaType) && (body.videoQualityStrategy === 'AdaptiveVmaf' || body.vmafQualityGateEnabled === true)) {
+          return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ code: 'library.validation', error: 'Adaptive VMAF requires a library that re-encodes video.' }) })
+        }
         calls.created.push(body)
         const created = { ...library, ...body, id: currentLibraries.length + 1 }
         currentLibraries.push(created)
@@ -198,7 +203,13 @@ async function mockSetup(page: Page, mock: Mock = {}) {
     })
     if (path === '/api/settings') return json(route, { ...settings, ...mock.settings })
     if (path === '/api/settings/cleanup') return json(route, { retentionDays: 0, dryRunMode: true, failedOutputCount: 0, failedOutputBytes: 0, quarantinedOriginalCount: 0, quarantinedOriginalBytes: 0, planToken: 'setup', totalCount: 0, totalBytes: 0 })
-    if (path === '/api/arr-connections') return json(route, mock.arrs ?? [])
+    if (path === '/api/arr-connections') {
+      if (method === 'POST') {
+        arrs.push({ id: arrs.length + 1, hasApiKey: true, createdAt: '2026-11-10T10:00:00Z', updatedAt: '2026-11-10T10:00:00Z', ...route.request().postDataJSON() })
+        return json(route, arrs[arrs.length - 1])
+      }
+      return json(route, arrs)
+    }
     if (path === '/api/activity-watchers') return json(route, mock.watchers ?? [])
     if (path === '/api/arr-connections/tracking' || path === '/api/notification-targets' || path === '/api/workers') return json(route, [])
     if (path === '/api/inventory') {
@@ -211,7 +222,8 @@ async function mockSetup(page: Page, mock: Mock = {}) {
     if (path === '/api/media/12/plan') return json(route, {
       mediaFileId: 12, libraryId: 1, eligible: true, reason: 'Video qualifies.', kind: 'Video', action: 'Encode',
       source: { relativePath: 'Typical/Typical.mkv', sizeBytes: 3_400_000_000, container: 'matroska', videoCodec: 'h264', width: 1920, height: 1080, durationSeconds: 3000, isHdr: false, isDolbyVision: false, interlaced: false, audioCodecs: 'aac', maxAudioChannels: 2, audioTrackCount: 1, subtitleTrackCount: 0 },
-      picture: { codec: 'hevc', crf: 24, width: null, height: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off' },
+      picture: { codec: 'hevc', crf: 24, width: null, height: null, shrinkToHeight: null, frameRateCap: null, tonemapToSdr: false, deinterlace: false, cropBlackBars: false, noiseReduction: 'Off', upscales: false },
+      image: null,
       sound: { codec: 'aac', bitrateKbps: 160, downmixToStereo: false }, audioTracks: null, subtitleTracks: null,
       file: { container: 'mp4', fileName: 'Typical.mp4', renamed: true, mayBecomeMatroska: true },
     })
@@ -761,7 +773,7 @@ test('restricted draft storage cannot break setup or completion', async ({ page 
     for (const method of ['getItem', 'setItem', 'removeItem'] as const) {
       const original = Storage.prototype[method]
       Storage.prototype[method] = function (key: string, value?: string) {
-        if (key === 'optimisarr.setup.plan.v2') throw new DOMException('Storage denied', 'SecurityError')
+        if (key === 'optimisarr.setup.plan.v3') throw new DOMException('Storage denied', 'SecurityError')
         return original.call(this, key, value!)
       }
     }
@@ -773,17 +785,140 @@ test('restricted draft storage cannot break setup or completion', async ({ page 
   expect(errors).toEqual([])
 })
 
-test('answers survive a reload before setup is finished', async ({ page }) => {
+test('a reload brings back the server’s safety answers, never a draft left in the browser', async ({ page }) => {
   await mockSetup(page, { currentStep: 4 })
+  // Drafts an earlier run could have left behind, in the old shape and the new one.
+  await page.addInitScript(() => {
+    localStorage.setItem('optimisarr.setup.plan.v2', JSON.stringify({ dryRunMode: false, retentionDays: 1, encoderChoice: 'cpu' }))
+    localStorage.setItem('optimisarr.setup.plan.v3', JSON.stringify({ dryRunMode: false, retentionDays: 1, encoderChoice: 'cpu' }))
+  })
   await page.goto('/')
-  await page.locator('[data-setup-keep]').getByRole('radio', { name: 'For a set number of days, then delete them' }).check()
-  await page.locator('[data-setup-keep]').getByRole('spinbutton', { name: 'Days' }).fill('21')
+
+  await expect(page.locator('[data-setup-lock]').getByRole('checkbox')).toBeChecked()
+  await expect(page.locator('[data-setup-keep]').getByRole('radio', { name: /Until I approve each one/ })).toBeChecked()
+
   await page.locator('[data-setup-lock]').getByRole('checkbox').uncheck()
+  await page.reload()
+  await expect(page.locator('[data-setup-lock]').getByRole('checkbox')).toBeChecked()
+})
+
+test('the encoder choice survives a reload', async ({ page }) => {
+  await mockSetup(page, { currentStep: 1 })
+  await page.goto('/')
+  await page.getByRole('group', { name: 'Encoder' }).getByRole('button', { name: 'CPU only' }).click()
 
   await page.reload()
 
-  await expect(page.locator('[data-setup-keep]').getByRole('spinbutton', { name: 'Days' })).toHaveValue('21')
-  await expect(page.locator('[data-setup-lock]').getByRole('checkbox')).not.toBeChecked()
+  await expect(page.getByRole('group', { name: 'Encoder' }).getByRole('button', { name: 'CPU only' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+for (const [kind, label] of [['Music', 'Music'], ['Photo', 'Photos']] as const) {
+  test(`a ${kind.toLowerCase()} library is accepted when it is added`, async ({ page }) => {
+    const calls = await mockSetup(page, { currentStep: 2, libraries: [] })
+    await page.goto('/')
+    const form = page.locator('[data-setup-library-form]')
+    await form.getByLabel('Name').fill(label)
+    await form.getByRole('group', { name: 'What’s in it' }).getByRole('button', { name: label, exact: true }).click()
+    await form.getByLabel('Folder').fill('/media/other')
+
+    await form.getByRole('button', { name: 'Add library', exact: true }).click()
+
+    await expect(page.locator('[data-setup-library="1"]')).toContainText('/media/other')
+    await expect(form.getByRole('alert')).toHaveCount(0)
+    expect(calls.created).toHaveLength(1)
+    expect(calls.created[0]).toMatchObject({ mediaType: kind, videoQualityStrategy: 'Fixed', vmafQualityGateEnabled: false, minVmafHarmonicMean: null })
+  })
+}
+
+test('going back from music to TV brings the picture check back', async ({ page }) => {
+  const calls = await mockSetup(page, { currentStep: 2, libraries: [] })
+  await page.goto('/')
+  const form = page.locator('[data-setup-library-form]')
+  await form.getByLabel('Name').fill('TV')
+  await form.getByLabel('Folder').fill('/media/tv')
+  const kinds = form.getByRole('group', { name: 'What’s in it' })
+  await kinds.getByRole('button', { name: 'Music', exact: true }).click()
+  await kinds.getByRole('button', { name: 'TV', exact: true }).click()
+
+  await expect(form.getByLabel('Name')).toHaveValue('TV')
+  await form.getByRole('button', { name: 'Add library', exact: true }).click()
+
+  await expect.poll(() => calls.created.length).toBe(1)
+  expect(calls.created[0]).toMatchObject({ mediaType: 'TV', videoQualityStrategy: 'AdaptiveVmaf', vmafQualityGateEnabled: true })
+})
+
+test('a library started but not added blocks Continue until it is added or cancelled', async ({ page }) => {
+  await mockSetup(page, { currentStep: 2 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Add another library' }).click()
+  const form = page.locator('[data-setup-library-form]')
+  await expect(next(page)).toBeEnabled()
+
+  await form.getByLabel('Name').fill('Music')
+
+  await expect(next(page)).toBeDisabled()
+  await expect(next(page)).toHaveAccessibleDescription('Continue is off until you add the library you have started, or cancel it.')
+  await form.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(next(page)).toBeEnabled()
+})
+
+test('a connection saved in the open form is counted at once, and typed input blocks Continue', async ({ page }) => {
+  await mockSetup(page, { currentStep: 3 })
+  await page.goto('/')
+  const arr = page.locator('[data-setup-app="downloads"]')
+  await arr.getByRole('button', { name: 'Set up' }).click()
+  await expect(arr.locator('[data-setup-app-count]')).toHaveText('None connected')
+
+  await arr.locator('#arr-name').fill('Sonarr')
+  const proceed = page.getByRole('button', { name: /^(Continue|Skip for now)$/ })
+  await expect(proceed).toBeDisabled()
+  await expect(proceed).toHaveAccessibleDescription('Continue is off until you save what you typed in the form above, or clear it. It would be lost.')
+  await arr.locator('#arr-url').fill('http://sonarr:8989')
+  await arr.locator('#arr-key').fill('secret')
+  await arr.getByRole('button', { name: /^Add/ }).last().click()
+
+  // The form is still open; the count must not wait for it to be hidden.
+  await expect(arr.locator('[data-setup-app-count]')).toHaveText('1 connected')
+  await expect(arr.locator('[data-setup-app-form]')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled()
+})
+
+test('run again with a saved hardware encoder that fails the test now: it is named, kept by default, and CPU is the other choice', async ({ page }) => {
+  const calls = await mockSetup(page, { currentStep: 1, settings: { encoderMode: 'IntelQsv', hardwareDecode: true },
+    recommended: { encoderMode: 'Cpu', encoderReason: 'cpu', hardwareDecode: false } })
+  await page.goto('/')
+  const encoders = page.getByRole('group', { name: 'Encoder' })
+
+  await expect(check(page, 'encoder')).toContainText('Intel Quick Sync is this server’s saved encoder, but it did not pass the test just now.')
+  await expect(check(page, 'encoder')).not.toContainText('so this uses the CPU')
+  await expect(encoders.getByRole('button')).toHaveText(['Keep Intel Quick Sync', 'CPU only'])
+  await expect(encoders.getByRole('button', { name: 'Keep Intel Quick Sync' })).toHaveAttribute('aria-pressed', 'true')
+  for (let step = 1; step < 5; step++) await page.getByRole('button', { name: /^(Continue|Skip for now)$/ }).click()
+  await expect(page.locator('[data-setup-summary]')).toContainText('Encoder: Intel Quick Sync.')
+  await page.getByRole('button', { name: 'Finish and open the dashboard' }).click()
+
+  await expect.poll(() => calls.applied.length).toBe(1)
+  expect(calls.applied[0].useRecommendedEncoder).toBe(false)
+  expect(calls.applied[0].settings).toMatchObject({ encoderMode: 'IntelQsv', hardwareDecode: true })
+})
+
+test('run again with a different hardware encoder saved: setup offers the tested one but keeps the saved one unless asked', async ({ page }) => {
+  const calls = await mockSetup(page, { currentStep: 1, settings: { encoderMode: 'Vaapi', hardwareDecode: true } })
+  await page.goto('/')
+  const encoders = page.getByRole('group', { name: 'Encoder' })
+
+  await expect(encoders.getByRole('button')).toHaveText(['Intel Quick Sync (recommended)', 'Keep VAAPI', 'CPU only'])
+  await expect(encoders.getByRole('button', { name: 'Keep VAAPI' })).toHaveAttribute('aria-pressed', 'true')
+  for (let step = 1; step < 5; step++) await page.getByRole('button', { name: /^(Continue|Skip for now)$/ }).click()
+  await expect(page.locator('[data-setup-summary]')).toContainText('Encoder: VAAPI.')
+  await page.locator('[data-setup-summary]').getByRole('button', { name: 'Change' }).first().click()
+  await encoders.getByRole('button', { name: 'Intel Quick Sync (recommended)' }).click()
+  for (let step = 1; step < 5; step++) await page.getByRole('button', { name: /^(Continue|Skip for now)$/ }).click()
+  await expect(page.locator('[data-setup-summary]')).toContainText('Encoder: Intel Quick Sync.')
+  await page.getByRole('button', { name: 'Finish and open the dashboard' }).click()
+
+  await expect.poll(() => calls.applied.length).toBe(1)
+  expect(calls.applied[0].useRecommendedEncoder).toBe(true)
 })
 
 test('the last step remains usable at the WCAG 400% reflow equivalent and in landscape', async ({ page }) => {

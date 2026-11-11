@@ -8,7 +8,7 @@
   import { firstUnavailableLibrary, libraryPathsReady as allLibraryPathsReady } from '../setup-library-readiness'
   import { filesChoice } from '../files-choice'
   import { containerLabel, formatDuration, formatSize } from '../format'
-  import { newLibraryDefaults } from '../library-defaults'
+  import { newLibraryDefaults, withMediaType } from '../library-defaults'
   import { isVideoLibrary, presetName, summariseLibrary } from '../library-summary'
   import { setup } from '../stores/setup.svelte'
   import BrandMark from '../components/BrandMark.svelte'
@@ -43,12 +43,18 @@
   let retesting = $state(false)
   let retestMessage = $state<string | null>(null)
   let recommendation = $state<SetupRecommendation | null>(null)
-  // The hardware encoder that passed its test is chosen unless the person picks the CPU.
-  let encoderChoice = $state<'recommended' | 'cpu'>('recommended')
-  let savedEncoderMode = 'Auto'
+  // The hardware encoder that passed its test is chosen unless the person picks the CPU. When
+  // setup is run again on a server that already has a hardware encoder saved, keeping that one
+  // is a choice too, and the default: setup must not change it without being asked.
+  type EncoderChoice = 'recommended' | 'cpu' | 'keep'
+  let encoderChoice = $state<EncoderChoice>('recommended')
+  let savedEncoderMode = $state('Auto')
   let savedHardwareDecode = false
-  const DRAFT_KEY = 'optimisarr.setup.plan.v2'
-  type SetupDraft = { dryRunMode: boolean; retentionDays: number; encoderChoice: 'recommended' | 'cpu' }
+  // Only a convenience is kept across a reload. Whether replacing is locked and how long
+  // originals are kept always come from the server, so a draft left in this browser by an
+  // earlier run can never switch dry-run off or shorten retention.
+  const DRAFT_KEY = 'optimisarr.setup.plan.v3'
+  type SetupDraft = { encoderChoice: EncoderChoice }
 
   // Step 2: one small form. The full editor is in the library's settings after setup.
   let form = $state<SaveLibrary>(newLibraryDefaults())
@@ -64,6 +70,8 @@
   let arrCount = $state(0)
   let serverCount = $state(0)
   let appsOpen = $state<'downloads' | 'servers' | null>(null)
+  // Something typed into the open connection form and not saved.
+  let appsDraft = $state(false)
 
   // Step 4: one answer per library, saved when the step is left.
   type FilesAnswer = { autoReplace: boolean; moveOnComplete: boolean; targetFolder: string | null; moveOverwrite: boolean; folderRefused: boolean }
@@ -84,6 +92,20 @@
   const machineReady = $derived(databaseAvailable && requiredToolsReady && requiredPathsReady)
   const libraryPathsReady = $derived(allLibraryPathsReady(libraries, libraryAccess))
   const hardwareOffered = $derived(recommendation !== null && recommendation.encoderMode !== 'Cpu')
+  const savedHardware = $derived(savedEncoderMode !== 'Auto' && savedEncoderMode !== 'Cpu')
+  // Offered when the saved hardware encoder is not the one setup would pick, including when no
+  // hardware passed the test this time.
+  const keepOffered = $derived(savedHardware && recommendation?.encoderMode !== savedEncoderMode)
+  const encoderChoices = $derived<{ value: EncoderChoice; label: string }[]>([
+    ...(hardwareOffered && recommendation ? [{ value: 'recommended' as const, label: t(w.encoder_recommended, { name: encoderName(recommendation.encoderMode) }) }] : []),
+    ...(keepOffered ? [{ value: 'keep' as const, label: t(w.encoder_keep, { name: encoderName(savedEncoderMode) }) }] : []),
+    ...(hardwareOffered || keepOffered ? [{ value: 'cpu' as const, label: w.encoder_cpu }] : []),
+  ])
+  function encoderName(mode: string): string {
+    return mode === 'Auto' ? w.encoder_automatic : encoderNames[mode as SetupRecommendation['encoderMode']] ?? mode
+  }
+  // Started but not added: moving on would drop it without a word.
+  const libraryDraft = $derived(formOpen && libraries.length > 0 && (editingId !== null || form.name.trim() !== '' || form.path.trim() !== ''))
   const retentionDays = $derived(keepMode === 'approve' ? 0 : Number(keepDays))
   const retentionError = $derived(keepMode === 'days' && (!Number.isInteger(retentionDays) || retentionDays < 1) ? i18n.m.setup.retention_invalid : null)
   const folderRefused = $derived(Object.values(filesAnswers).some((answer) => answer.moveOnComplete && (answer.folderRefused || !answer.targetFolder?.trim())))
@@ -153,16 +175,22 @@
       : recommendation.encoderReason === 'intel' ? i18n.m.setup.reason_encoder_intel
         : recommendation.encoderReason === 'vaapi' ? i18n.m.setup.reason_encoder_vaapi
           : i18n.m.setup.reason_encoder_cpu
-    return hardwareOffered ? `${reason} ${w.encoder_faster}` : reason
+    if (hardwareOffered) return `${reason} ${w.encoder_faster}`
+    // "So this uses the CPU" would be untrue while a saved hardware encoder is being kept.
+    return savedHardware ? t(w.encoder_saved_untested, { name: encoderName(savedEncoderMode) }) : reason
   })
   const qualityCheck = $derived.by<{ text: string; state: CheckState } | null>(() => {
     if (!recommendation) return null
     if (recommendation.vmafReason === 'unavailable') return { text: w.quality_missing, state: 'missing' }
     return recommendation.vmafReason === 'cuda-balanced' ? { text: w.quality_gpu, state: 'ready' } : { text: w.quality_cpu, state: 'slower' }
   })
-  const chosenEncoderName = $derived(hardwareOffered && encoderChoice === 'recommended' && recommendation
-    ? encoderNames[recommendation.encoderMode]
-    : encoderChoice === 'cpu' || !hardwareOffered ? encoderNames.Cpu : savedEncoderMode)
+  const chosenEncoderName = $derived.by(() => {
+    if (encoderChoice === 'cpu') return encoderNames.Cpu
+    if (encoderChoice === 'keep' && savedHardware) return encoderName(savedEncoderMode)
+    if (hardwareOffered && recommendation) return encoderName(recommendation.encoderMode)
+    // Nothing passed the test and nothing explicit is saved, so jobs run on the CPU.
+    return savedHardware ? encoderName(savedEncoderMode) : encoderNames.Cpu
+  })
 
   const kinds = $derived((options?.mediaTypes ?? ['Film', 'TV', 'Music', 'Photo']).filter((kind) => kind !== 'Other'))
   const presets = $derived([
@@ -184,6 +212,8 @@
     if (viewStep === 1 && contextReady && !machineReady) return w.blocked_machine
     if (viewStep === 2 && libraries.length === 0) return w.blocked_library_none
     if (viewStep === 2 && !libraryPathsReady) return w.blocked_library_path
+    if (viewStep === 2 && libraryDraft) return w.blocked_library_draft
+    if (viewStep === 3 && appsOpen !== null && appsDraft) return w.blocked_apps_draft
     if (viewStep === 4 && retentionError) return retentionError
     if (viewStep === 4 && folderRefused) return w.blocked_folder
     return null
@@ -236,10 +266,12 @@
       savedEncoderMode = settingsResult.encoderMode
       savedHardwareDecode = settingsResult.hardwareDecode
       if (!announce) {
-        encoderChoice = settingsResult.encoderMode === 'Cpu' ? 'cpu' : 'recommended'
+        encoderChoice = settingsResult.encoderMode === 'Cpu' ? 'cpu'
+          : settingsResult.encoderMode !== 'Auto' && settingsResult.encoderMode !== readiness.recommendation.encoderMode ? 'keep'
+            : 'recommended'
         keepMode = settingsResult.replacementQuarantineRetentionDays === 0 ? 'approve' : 'days'
         if (settingsResult.replacementQuarantineRetentionDays > 0) keepDays = settingsResult.replacementQuarantineRetentionDays
-        restoreDraft(settingsResult)
+        restoreDraft()
         settings = settingsResult
       } else if (settings) {
         // A re-test refreshes what was measured and keeps what the person has chosen.
@@ -299,6 +331,15 @@
     editingId = null
     formError = null
     formOpen = true
+  }
+
+  // A kind decides what else a library may have: a music or photo library cannot choose quality
+  // by a picture score, and the server refuses one that tries. A new library starts again from
+  // the defaults for its kind, so going back to film or TV brings the picture check back.
+  function chooseKind(kind: string) {
+    form = editingId === null
+      ? withMediaType({ ...newLibraryDefaults(), name: form.name, path: form.path, ruleProfile: form.ruleProfile }, kind)
+      : withMediaType(form, kind)
   }
 
   function startEditing(library: Library) {
@@ -362,6 +403,7 @@
 
   function toggleApps(room: 'downloads' | 'servers') {
     appsOpen = appsOpen === room ? null : room
+    appsDraft = false
     // The embedded forms save for themselves; closing them is when the counts can have changed.
     if (appsOpen === null) void loadApps()
   }
@@ -436,11 +478,12 @@
     error = null
     try {
       const useRecommendedEncoder = hardwareOffered && encoderChoice === 'recommended'
+      const choseCpu = encoderChoice === 'cpu' && encoderChoices.some((choice) => choice.value === 'cpu')
       const plan: Settings = {
         ...settings,
         replacementQuarantineRetentionDays: retentionDays,
-        encoderMode: encoderChoice === 'cpu' && hardwareOffered ? 'Cpu' : savedEncoderMode,
-        hardwareDecode: encoderChoice === 'cpu' && hardwareOffered ? false : savedHardwareDecode,
+        encoderMode: choseCpu ? 'Cpu' : savedEncoderMode,
+        hardwareDecode: choseCpu ? false : savedHardwareDecode,
       }
       const receipt = await api.applySetup({ settings: plan, useRecommendedEncoder, applyRecommendedVmaf: false, applyRecommendedSchedule: false })
       clearDraft()
@@ -496,17 +539,13 @@
     try { localStorage.removeItem(DRAFT_KEY) } catch { /* Storage is optional in restricted browsers. */ }
   }
 
-  function restoreDraft(target: Settings) {
+  function restoreDraft() {
     try {
       const raw = localStorage.getItem(DRAFT_KEY)
       if (!raw) return
       const draft = JSON.parse(raw) as Partial<SetupDraft>
-      if (typeof draft.dryRunMode === 'boolean') target.dryRunMode = draft.dryRunMode
-      if (typeof draft.retentionDays === 'number' && Number.isInteger(draft.retentionDays) && draft.retentionDays >= 0) {
-        keepMode = draft.retentionDays === 0 ? 'approve' : 'days'
-        if (draft.retentionDays > 0) keepDays = draft.retentionDays
-      }
-      if (draft.encoderChoice === 'cpu' || draft.encoderChoice === 'recommended') encoderChoice = draft.encoderChoice
+      // Only a choice that is on offer now: a draft can be older than this machine's hardware.
+      if (encoderChoices.some((choice) => choice.value === draft.encoderChoice)) encoderChoice = draft.encoderChoice!
     } catch {
       clearDraft()
     }
@@ -514,7 +553,7 @@
 
   $effect(() => {
     if (!settings) return
-    const draft: SetupDraft = { dryRunMode: settings.dryRunMode, retentionDays: Number.isInteger(retentionDays) ? retentionDays : 0, encoderChoice }
+    const draft: SetupDraft = { encoderChoice }
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)) } catch { /* Keep the in-memory plan usable. */ }
   })
 </script>
@@ -602,13 +641,13 @@
             {/each}
             {#if recommendation}
               <div>
-              {@render checkRow('encoder', w.encoder_title, encoderText, hardwareOffered ? 'tested' : 'ready')}
-              {#if hardwareOffered}
+              {@render checkRow('encoder', w.encoder_title, encoderText, hardwareOffered ? 'tested' : savedHardware ? 'missing' : 'ready')}
+              {#if encoderChoices.length > 0}
                 <div class="mb-4 ml-9 flex flex-wrap gap-2" role="group" aria-label={w.encoder_title}>
-                  <button class="choice min-h-11 rounded-md px-3 text-sm font-medium {encoderChoice === 'recommended' ? 'choice-selected' : 'text-ink-2'}" type="button"
-                    aria-pressed={encoderChoice === 'recommended'} onclick={() => (encoderChoice = 'recommended')}>{t(w.encoder_recommended, { name: encoderNames[recommendation.encoderMode] })}</button>
-                  <button class="choice min-h-11 rounded-md px-3 text-sm font-medium {encoderChoice === 'cpu' ? 'choice-selected' : 'text-ink-2'}" type="button"
-                    aria-pressed={encoderChoice === 'cpu'} onclick={() => (encoderChoice = 'cpu')}>{w.encoder_cpu}</button>
+                  {#each encoderChoices as choice (choice.value)}
+                    <button class="choice min-h-11 rounded-md px-3 text-sm font-medium {encoderChoice === choice.value ? 'choice-selected' : 'text-ink-2'}" type="button"
+                      aria-pressed={encoderChoice === choice.value} onclick={() => (encoderChoice = choice.value)}>{choice.label}</button>
+                  {/each}
                 </div>
               {/if}
               </div>
@@ -682,7 +721,7 @@
                 <div class="flex flex-wrap gap-2" role="group" aria-labelledby="setup-library-kind">
                   {#each kinds as kind (kind)}
                     <button class="choice min-h-11 rounded-md px-3 text-sm font-medium {form.mediaType === kind ? 'choice-selected' : 'text-ink-2'}" type="button"
-                      aria-pressed={form.mediaType === kind} onclick={() => (form.mediaType = kind)}>{mediaTypeLabel(kind, i18n.m)}</button>
+                      aria-pressed={form.mediaType === kind} onclick={() => chooseKind(kind)}>{mediaTypeLabel(kind, i18n.m)}</button>
                   {/each}
                 </div>
               </div>
@@ -740,7 +779,7 @@
                   {#each app.points as point (point)}<li>{point}</li>{/each}
                 </ul>
                 <button class="btn mt-3 min-h-11" type="button" aria-expanded={appsOpen === app.room} onclick={() => toggleApps(app.room)}>{appsOpen === app.room ? w.apps_close : w.apps_open}</button>
-                {#if appsOpen === app.room}<div class="mt-4" data-setup-app-form><Settings_ embeddedRoom={app.room} /></div>{/if}
+                {#if appsOpen === app.room}<div class="mt-4" data-setup-app-form><Settings_ embeddedRoom={app.room} onEmbeddedChange={() => void loadApps()} bind:embeddedDraft={appsDraft} /></div>{/if}
               </section>
             {/each}
           </div>
