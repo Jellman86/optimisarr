@@ -313,7 +313,7 @@ Once a manual batch looks good, enable automation per library.
 Use **Optimise automatically** when you want eligible files queued and started
 inside a local-time window. Use `00:00` to `00:00` for all day.
 
-Use **Auto-accept passed jobs** in **Schedule & replace** only after reviewing a
+Use **Replace the original automatically** in **Schedule & replace** only after reviewing a
 small manual batch for that library and preset. It is off by default for every
 library type. Read the warning, acknowledge the risk, confirm, then **Save**.
 Already-ready jobs are included. Originals stay in Quarantine until approval or

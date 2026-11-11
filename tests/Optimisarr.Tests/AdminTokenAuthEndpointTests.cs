@@ -57,6 +57,7 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("POST", "/api/setup/apply")]
     [InlineData("POST", "/api/setup/restart")]
     [InlineData("POST", "/api/libraries")]
+    [InlineData("POST", "/api/libraries/target-folder-check")]
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
     [InlineData("POST", "/api/libraries/1/calibration")]

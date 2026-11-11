@@ -243,14 +243,14 @@ public sealed partial class QueueDispatcher(
                     db.Libraries,
                     job => job.LibraryId,
                     library => library.Id,
-                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace, job.SuperResolutionApplied })
+                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace, library.MoveOnComplete, job.SuperResolutionApplied })
                 .ToListAsync(cancellationToken);
 
             jobIds = ready
                 .Where(candidate => AutoReplacePolicy.ShouldReconcile(
                     candidate.Status,
                     candidate.VerificationPassed,
-                    candidate.AutoReplace,
+                    AutoReplacePolicy.ReplacesAutomatically(candidate.AutoReplace, candidate.MoveOnComplete),
                     queueSettings.DryRunMode,
                     pauseManager.IsPaused,
                     candidate.SuperResolutionApplied))
@@ -751,7 +751,7 @@ public sealed partial class QueueDispatcher(
                     // The worker's byte limit and verification contract were fixed together at
                     // claim time. Applying a later library edit here could reject an output the
                     // worker was told to produce, or accept one the worker was told to stop.
-                    AutoReplace = library?.AutoReplace ?? false,
+                    AutoReplace = AutoReplacePolicy.ReplacesAutomatically(library?.AutoReplace ?? false, library?.MoveOnComplete ?? false),
                     MoveOnComplete = library?.MoveOnComplete ?? false,
                     TargetFolder = library?.TargetFolder,
                     MoveOverwrite = library?.MoveOverwrite ?? false
@@ -1046,6 +1046,17 @@ public sealed partial class QueueDispatcher(
                         error: $"Skipped before encoding: {decision.Reason}");
                     logger.LogInformation(
                         "Job {JobId}: skipped before encoding — {Reason}", jobId, decision.Reason);
+                    return;
+                }
+
+                // A save folder the rule refuses would only be found out after the whole encode.
+                // Refuse now instead: nothing has been written and the original is untouched.
+                if (work.Value is { MoveOnComplete: true, TargetFolder: { } saveFolder }
+                    && await SaveElsewhere().RefusalBeforeEncodingAsync(saveFolder, cancellationToken) is { } refusedFolder)
+                {
+                    await CompleteAsync(jobId, JobStatus.Failed, error: refusedFolder);
+                    await NotifyJobFailedAsync(jobId, refusedFolder);
+                    logger.LogWarning("Job {JobId}: not encoded — {Reason}", jobId, refusedFolder);
                     return;
                 }
 
@@ -2414,7 +2425,7 @@ public sealed partial class QueueDispatcher(
             library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
             library?.WorkPlacement ?? WorkPlacement.Anywhere,
             adaptiveVideoQuality,
-            library?.AutoReplace ?? false,
+            AutoReplacePolicy.ReplacesAutomatically(library?.AutoReplace ?? false, library?.MoveOnComplete ?? false),
             queueSettings.CpuThreadLimit,
             hardwareDecode,
             hardwareToneMap,
@@ -3905,20 +3916,16 @@ public sealed partial class QueueDispatcher(
             // Resolve against this file's own work root so the per-media-file id segment is not
             // mirrored into the target folder — the destination keeps the library's structure.
             var mediaWorkRoot = WorkOutputRoot.ForMediaFile(_workRoot, work.MediaFileId);
-            var destination = MoveTarget.Resolve(mediaWorkRoot, outputPath, targetFolder);
-
-            // Don't silently clobber an existing converted file unless the library opts into it.
-            // Failing here keeps the just-produced output in the work dir for inspection.
-            if (!work.MoveOverwrite && File.Exists(destination))
+            var saved = await SaveElsewhere().SaveAsync(mediaWorkRoot, outputPath, targetFolder, work.MoveOverwrite);
+            if (saved.Error is { } error)
             {
-                var error = $"A converted file already exists at the destination and overwrite is off: {destination}";
+                // Failing here keeps the just-produced output in the work dir for inspection.
                 await CompleteAsync(jobId, JobStatus.Failed, progress: 1.0, error: error);
                 await NotifyJobFailedAsync(jobId, error);
                 return;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            MoveFile(outputPath, destination);
+            var destination = saved.Destination!;
             // The output left the work dir; clean up its now-empty per-media scratch tree.
             WorkPaths.PruneEmptyAncestors(_workRoot, outputPath, IsWorkDirectoryReserved);
 
@@ -3983,20 +3990,7 @@ public sealed partial class QueueDispatcher(
         }
     }
 
-    // Move our own work output; never the original. Falls back to copy+delete across
-    // filesystems, where an atomic rename isn't possible.
-    private static void MoveFile(string source, string destination)
-    {
-        try
-        {
-            File.Move(source, destination, overwrite: true);
-        }
-        catch (IOException)
-        {
-            File.Copy(source, destination, overwrite: true);
-            File.Delete(source);
-        }
-    }
+    private SaveElsewhere SaveElsewhere() => new(scopeFactory, environment);
 
     // RunFfmpegAsync has reaped its process before cancellation reaches this handler.
     internal Task HandleCancelledAsync(int jobId, int executionAttempt) =>

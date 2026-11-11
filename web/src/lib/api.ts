@@ -242,6 +242,16 @@ export type LibraryAccess = {
   atomicWithQuarantine: boolean | null
 }
 
+/** The server's answer about a folder for "save optimised files in another folder". */
+export type TargetFolderCheck = {
+  path: string
+  allowed: boolean
+  reason: 'none' | 'insideLibrary' | 'workFolder' | 'quarantine' | 'missing' | 'unwritable'
+  libraryName: string | null
+  message: string
+  availableBytes: number | null
+}
+
 export type Library = LibraryRules & {
   id: number
   name: string
@@ -1362,6 +1372,11 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'library.validation': return i18n.m.common.api_library_invalid
     case 'library.pathConflict': return t(i18n.m.common.api_library_conflict, args)
     case 'library.pathMissing': return t(i18n.m.common.api_library_path_missing, args)
+    case 'library.targetFolder.insideLibrary': return t(i18n.m.filesChoice.folder_inside_library, args)
+    case 'library.targetFolder.workFolder': return i18n.m.filesChoice.folder_work
+    case 'library.targetFolder.quarantine': return i18n.m.filesChoice.folder_quarantine
+    case 'library.targetFolder.missing': return i18n.m.filesChoice.folder_missing
+    case 'library.targetFolder.unwritable': return i18n.m.filesChoice.folder_unwritable
     case 'media.notFound': return t(i18n.m.common.api_media_not_found, args)
     case 'media.previewUnavailable': return t(i18n.m.common.api_preview_unavailable, args)
     case 'media.status.invalid': return t(i18n.m.common.api_media_status_invalid, args)
@@ -1503,6 +1518,8 @@ export const api = {
   libraryOptions: () => request<LibraryOptions>('/api/library-options'),
   libraries: () => request<Library[]>('/api/libraries'),
   libraryAccess: (id: number) => request<LibraryAccess>(`/api/libraries/${id}/access`),
+  checkTargetFolder: (body: { path: string; libraryId?: number | null; libraryName?: string; libraryPath?: string }) =>
+    request<TargetFolderCheck>('/api/libraries/target-folder-check', { method: 'POST', body: JSON.stringify(body) }),
   createLibrary: (body: SaveLibrary) =>
     request<Library>('/api/libraries', { method: 'POST', body: JSON.stringify(body) }),
   updateLibrary: (id: number, body: SaveLibrary) =>

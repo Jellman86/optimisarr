@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { tick } from 'svelte'
-  import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type WorkPlacement } from '../api'
+  import { tick, untrack } from 'svelte'
+  import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type TargetFolderCheck, type WorkPlacement } from '../api'
   import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
-  import AutoAccept from '../components/AutoAccept.svelte'
+  import FilesChoice from '../components/FilesChoice.svelte'
   import Icon from '../components/Icon.svelte'
   import InfoTip from '../components/InfoTip.svelte'
   import Banner from '../components/Banner.svelte'
@@ -21,6 +21,7 @@
   import { createSelection } from '../selection.svelte'
   import { audioPresetBitrate, audioEncodingMode, audioBitrateAfterCodecChange, type AudioEncodingMode } from '../audio-encoding-presets'
   import { ruleProfileLabel } from '../rule-profile-label'
+  import { filesChoice } from '../files-choice'
 
   let {
     embeddedEditorId = null,
@@ -454,7 +455,13 @@
   let message = $state<string | null>(takeFlashMessage())
   let busyId = $state<number | null>(null)
   let pickerOpen = $state(false)
-  let targetPickerOpen = $state(false)
+  // Set by the files choice while the chosen folder is one the server would refuse on Save.
+  // The server's answer about the save folder, asked here rather than only by the control that
+  // edits it: that control is on one page of the editor, and Save is on all of them.
+  let targetFolderCheck = $state<TargetFolderCheck | null>(null)
+  // The same question for each saved library, so a folder that has stopped being usable shows on
+  // its card instead of only when a job fails.
+  let refusedSaveFolders = $state<Record<number, TargetFolderCheck>>({})
 
   // null = nothing open; 0 = adding a new library; >0 = editing that card.
   let editingId = $state<number | null>(null)
@@ -543,6 +550,9 @@
   // AI super-resolution is experimental: a library's switch appears only while the feature is on,
   // and a hidden choice is kept unchanged for when it is turned back on.
   let superResolutionOn = $state(false)
+  // Two settings that belong to every library, shown beside the choice they change. Null until loaded.
+  let quarantineRetentionDays = $state<number | null>(null)
+  let dryRunOn = $state(false)
   const placements: WorkPlacement[] = ['Anywhere', 'LocalOnly', 'PreferWorker', 'WorkerOnly']
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
@@ -669,6 +679,28 @@
     form.encoderPreset != null && options.legacyEncoderPresets.includes(form.encoderPreset),
   )
 
+  $effect(() => {
+    const path = editingId !== null && form.moveOnComplete ? form.targetFolder?.trim() : ''
+    targetFolderCheck = null
+    if (!path) return
+    let cancelled = false
+    // The name only labels a refusal, so typing it must not ask the server again.
+    api.checkTargetFolder({ path, libraryId: editingId || null, libraryName: untrack(() => form.name), libraryPath: form.path })
+      .then((result) => { if (!cancelled) targetFolderCheck = result })
+      // Unanswered is not refused: Save asks the server again.
+      .catch(() => {})
+    return () => { cancelled = true }
+  })
+  const targetFolderRefused = $derived(form.moveOnComplete && targetFolderCheck !== null && !targetFolderCheck.allowed)
+
+  // Saving elsewhere needs a folder the server will accept; say which before Save, not after.
+  const targetFolderProblem = $derived(
+    !form.moveOnComplete ? null
+      : !form.targetFolder?.trim() ? i18n.m.filesChoice.folder_required
+        : targetFolderRefused ? i18n.m.filesChoice.folder_refused
+          : null,
+  )
+
   // Save is offered only for a named, located library with no outstanding validation error and at
   // least one edit to persist. Derived once so every Save control shares exactly one definition.
   const canSave = $derived(
@@ -679,7 +711,8 @@
       && !subtitleLanguageError
       && !encoderEffortError
       && !(!isNoEncodeProfile && vmafError)
-      && !verificationError,
+      && !verificationError
+      && !targetFolderProblem,
   )
 
   // Custom mode lets the operator fine-tune codec/container themselves instead of following a
@@ -934,6 +967,7 @@
     void loadRemoteWorkers()
     // Proactively flag any path Optimisarr can't reach/read/write before the user hits a failure.
     void checkAllAccess()
+    void checkSaveFolders()
 
     const routeEditor = requestedEditorId()
     if (routeEditor === 0) {
@@ -957,6 +991,18 @@
 
   // One line for how a library gets its work: the auto-optimise window (or that it is off), and
   // whether verified outputs replace originals on their own.
+  async function checkSaveFolders() {
+    const saving = libraries.filter((library) => library.moveOnComplete && library.targetFolder)
+    const answers = await Promise.all(saving.map(async (library) => {
+      try {
+        return [library.id, await api.checkTargetFolder({ path: library.targetFolder!, libraryId: library.id, libraryName: library.name, libraryPath: library.path })] as const
+      } catch {
+        return null
+      }
+    }))
+    refusedSaveFolders = Object.fromEntries(answers.filter((answer) => answer !== null && !answer[1].allowed).map((answer) => answer!))
+  }
+
   function scheduleLabel(library: Library): string {
     const window = library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd
       ? i18n.m.libraries.any_time
@@ -964,7 +1010,9 @@
     const schedule = library.autoEnqueueEnabled
       ? t(i18n.m.libraries.auto_optimise_window, { window })
       : i18n.m.libraries.auto_optimise_off
-    return library.autoReplace ? `${schedule} · ${i18n.m.libraries.badge_auto_replace}` : schedule
+    const files = filesChoice(library)
+    if (files === 'elsewhere') return `${schedule} · ${i18n.m.filesChoice.badge_elsewhere}`
+    return files === 'auto' ? `${schedule} · ${i18n.m.libraries.badge_auto_replace}` : schedule
   }
 
   function accessMessage(value: LibraryAccess): string {
@@ -993,6 +1041,8 @@
       const settings = await api.settings()
       remoteWorkersOn = settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
       superResolutionOn = settings.superResolution?.enabled ?? false
+      quarantineRetentionDays = settings.replacementQuarantineRetentionDays
+      dryRunOn = settings.dryRunMode
     } catch {
       remoteWorkersOn = false
       superResolutionOn = false
@@ -1307,6 +1357,8 @@
       imageQuality: toNullableNumber(form.imageQuality),
       imageDownscaleValue: Number(form.imageDownscaleValue) || 0,
       targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
+      // Saving elsewhere never replaces, so a leftover "replace automatically" is not sent back.
+      autoReplace: form.autoReplace && !form.moveOnComplete,
       minVmafHarmonicMean: toNullableNumber(form.minVmafHarmonicMean),
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
@@ -1513,17 +1565,6 @@
       pickerOpen = false
     }}
     onClose={() => (pickerOpen = false)}
-  />
-{/if}
-
-{#if targetPickerOpen}
-  <FolderPicker
-    initialPath={form.targetFolder ?? ''}
-    onSelect={(path) => {
-      form.targetFolder = path
-      targetPickerOpen = false
-    }}
-    onClose={() => (targetPickerOpen = false)}
   />
 {/if}
 
@@ -2432,35 +2473,20 @@
       </div>
     {/if}
 
-    <AutoAccept bind:checked={form.autoReplace} libraryName={form.name} />
-
-      <section class="border-t border-line pt-5">
-        <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.completed_output}</h3>
-        <p class="mt-1 mb-3 text-sm leading-relaxed text-ink-3">{i18n.m.libraries.completed_output_desc}</p>
-        <Toggle
-          bind:checked={form.moveOnComplete}
-          label={i18n.m.libraries.move_label}
-          hint={i18n.m.libraries.move_hint}
-        />
-        {#if form.moveOnComplete}
-          <div class="mt-3 max-w-xl">
-            <label class="label" for="lib-target">{i18n.m.libraries.target_folder} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_folder })} text={i18n.m.libraries.move_hint} /></label>
-            <div class="flex gap-2">
-              <input id="lib-target" aria-label={i18n.m.libraries.target_folder} class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
-              <button type="button" class="btn min-h-11 flex-shrink-0" onclick={event => { event.currentTarget.focus({ preventScroll: true }); targetPickerOpen = true }}>{i18n.m.libraries.browse}</button>
-            </div>
-          </div>
-          <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
-            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
-            <span>
-              {i18n.m.libraries.overwrite_label} <InfoTip text={i18n.m.libraries.overwrite_hint} />
-              <span class="mt-0.5 block text-xs font-normal text-ink-4">
-                {i18n.m.libraries.overwrite_hint}
-              </span>
-            </span>
-          </label>
-        {/if}
-      </section>
+    <div class="border-t border-line pt-5">
+      <FilesChoice
+        bind:autoReplace={form.autoReplace}
+        bind:moveOnComplete={form.moveOnComplete}
+        bind:targetFolder={form.targetFolder}
+        bind:moveOverwrite={form.moveOverwrite}
+        libraryId={editingId || null}
+        libraryName={form.name}
+        libraryPath={form.path}
+        exampleRelativePath={editorCandidates[0]?.relativePath ?? null}
+        retentionDays={quarantineRetentionDays}
+        dryRun={dryRunOn}
+      />
+    </div>
     </div>
   </ConfigSection>
 
@@ -3150,13 +3176,14 @@
       {@render automationFields()}
     {/if}
   </fieldset>
-  {#if audioLanguageError || subtitleLanguageError || encoderEffortError || verificationError || (!isNoEncodeProfile && vmafError)}
+  {#if audioLanguageError || subtitleLanguageError || encoderEffortError || verificationError || (!isNoEncodeProfile && vmafError) || targetFolderProblem}
     <div class="callout tone-warn mt-5" role="alert">
       <p class="text-sm font-medium">{i18n.m.libraryWorkflow.review_errors}</p>
       <div class="mt-2 flex flex-wrap gap-2">
         {#if audioLanguageError || subtitleLanguageError}<button class="btn min-h-11" onclick={() => goRoom('encode/audio')}>{audioLanguageError || subtitleLanguageError}</button>{/if}
         {#if encoderEffortError}<button class="btn min-h-11" onclick={() => goRoom('encode/video/advanced')}>{encoderEffortError}</button>{/if}
         {#if verificationError || (!isNoEncodeProfile && vmafError)}<button class="btn min-h-11" onclick={() => goRoom('verify/advanced')}>{verificationError || vmafError}</button>{/if}
+        {#if targetFolderProblem}<button class="btn min-h-11" onclick={() => goRoom('automate')}>{targetFolderProblem}</button>{/if}
       </div>
     </div>
   {/if}
@@ -3291,6 +3318,9 @@
             {#if !library.enabled}
               <span class="badge tone-muted">{i18n.m.libraries.badge_disabled}</span>
             {/if}
+            {#if refusedSaveFolders[library.id]}
+              <span class="badge tone-warn" data-save-folder-refused>{i18n.m.filesChoice.badge_folder_refused}</span>
+            {/if}
           </div>
           <ActionMenu
             label={t(i18n.m.libraries.more_actions, { name: library.name })}
@@ -3302,6 +3332,9 @@
             ]}
           />
         </div>
+        {#if refusedSaveFolders[library.id]}
+          <p class="text-xs leading-relaxed text-warn" data-save-folder-hint>{i18n.m.filesChoice.badge_folder_refused_hint}</p>
+        {/if}
 
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink">{library.fileCount.toLocaleString()}</span>

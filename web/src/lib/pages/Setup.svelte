@@ -3,6 +3,7 @@
   import { api, type HardwareCapability, type Library, type LibraryAccess, type MediaFile, type Settings, type SetupApplyReceipt, type SetupPath, type SetupReadiness, type SetupRecommendation, type SetupStorageRelationship, type ToolCheck } from '../api'
   import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
   import { firstUnavailableLibrary, libraryPathsReady as allLibraryPathsReady } from '../setup-library-readiness'
+  import { filesChoice } from '../files-choice'
   import { formatSize } from '../format'
   import { setup } from '../stores/setup.svelte'
   import BrandMark from '../components/BrandMark.svelte'
@@ -705,7 +706,7 @@
               <div class="py-4">
                 <div class="font-semibold text-ink">{i18n.m.setup.automation_title}</div>
                 <div class="mt-1 text-sm leading-6 text-ink-3">{i18n.m.setup.automation_body}</div>
-                <ul class="mt-3 space-y-2 text-sm text-ink-2">{#each libraries as library}<li>{library.name}: {librarySchedule(library)} · {i18n.m.libraries.badge_auto_replace}: {library.autoReplace ? i18n.m.settings.enabled : i18n.m.common.off}</li>{/each}</ul>
+                <ul class="mt-3 space-y-2 text-sm text-ink-2">{#each libraries as library}<li>{library.name}: {librarySchedule(library)} · {i18n.m.libraries.badge_auto_replace}: {filesChoice(library) === 'auto' ? i18n.m.settings.enabled : i18n.m.common.off}</li>{/each}</ul>
               </div>
             </div>
           {/if}

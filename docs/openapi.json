@@ -6254,6 +6254,41 @@
         ],
         "type": "object"
       },
+      "TargetFolderCheckRequest": {
+        "properties": {
+          "libraryId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "libraryName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "libraryPath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "path": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
       "TimedCleanupPreview": {
         "properties": {
           "dryRunMode": {
@@ -8670,6 +8705,32 @@
     "/api/libraries/scan": {
       "post": {
         "operationId": "ScanAllLibraries",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/libraries/target-folder-check": {
+      "post": {
+        "operationId": "CheckLibraryTargetFolder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetFolderCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"

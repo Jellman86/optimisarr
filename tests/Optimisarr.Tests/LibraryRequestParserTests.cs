@@ -43,6 +43,21 @@ public sealed class LibraryRequestParserTests
     }
 
     [Fact]
+    public void Saving_elsewhere_needs_a_folder_and_stores_replace_automatically_off()
+    {
+        var elsewhere = Request() with { MoveOnComplete = true, AutoReplace = true };
+        Assert.False(LibraryRequestParser.TryParse(elsewhere, out _, out var error));
+        Assert.Contains("target folder is required", error);
+
+        Assert.True(LibraryRequestParser.TryParse(elsewhere with { TargetFolder = Path.GetTempPath() }, out var parsed, out _));
+        Assert.True(parsed.MoveOnComplete);
+        Assert.False(parsed.AutoReplace);
+
+        Assert.True(LibraryRequestParser.TryParse(Request() with { AutoReplace = true }, out var replacing, out _));
+        Assert.True(replacing.AutoReplace);
+    }
+
+    [Fact]
     public void Existing_requests_keep_fixed_audio_and_image_encoding()
     {
         Assert.True(LibraryRequestParser.TryParse(Request(), out var parsed, out _));
